@@ -112,7 +112,7 @@ var (
 	errAttachmentsUnavailable = errors.New("communications: outbound attachments are not available")
 )
 
-// errChannelMisconfigured is a Microsoft 365 channel whose settings name no
+// errChannelMisconfigured is a mailbox channel whose settings name no
 // mailbox: nothing to send from, and no retry will find one.
 var errChannelMisconfigured = errors.New("communications: the channel's settings name no mailbox")
 
@@ -470,16 +470,18 @@ func (w *OutboxWorker) deliver(ctx context.Context, job store.CommunicationsOutb
 		return err
 	}
 	if message.SendAs == "personal" {
-		if err := w.sendThroughPersonalMailbox(ctx, message, envelope); err != nil {
+		sent, err := w.sendThroughPersonalMailbox(ctx, message, envelope)
+		if err != nil {
 			return err
 		}
-		return w.complete(ctx, job, leaseID, sendable)
+		return w.complete(ctx, job, leaseID, sendable, sent)
 	}
-	if message.ChannelProvider != providerSMTP {
-		if err := w.sendThroughMailbox(ctx, message, envelope); err != nil {
+	if isMailboxProvider(message.ChannelProvider) {
+		sent, err := w.sendThroughMailbox(ctx, message, envelope)
+		if err != nil {
 			return err
 		}
-		return w.complete(ctx, job, leaseID, sendable)
+		return w.complete(ctx, job, leaseID, sendable, sent)
 	}
 	smtp, err := w.smtpConfig(message)
 	if err != nil {
@@ -491,29 +493,30 @@ func (w *OutboxWorker) deliver(ctx context.Context, job store.CommunicationsOutb
 		return fmt.Errorf("communications: send outbound message: %w", err)
 	}
 
-	// Steps 9-13.
-	return w.complete(ctx, job, leaseID, sendable)
+	// Steps 9-13. SMTP answers nothing of the message beyond its 250.
+	return w.complete(ctx, job, leaseID, sendable, contracts.SentMessage{})
 }
 
 // sendThroughMailbox is step 8 for a channel on a mail channels provider
 // (M13): the same envelope rendered as MIME — our Message-Id and threading
 // headers, the Bcc header too when there are blind copies — and handed to
 // the provider's Send with the blind copies beside it, under the SMTP send's
-// own timeout. The provider's acceptance is the relay's 250.
-func (w *OutboxWorker) sendThroughMailbox(ctx context.Context, message store.GetOutboundMessageForSendRow, envelope mail.Outbound) error {
+// own timeout. The provider's acceptance is the relay's 250; what it knows
+// of the message it sent (G5) is answered for complete to record.
+func (w *OutboxWorker) sendThroughMailbox(ctx context.Context, message store.GetOutboundMessageForSendRow, envelope mail.Outbound) (contracts.SentMessage, error) {
 	mailbox, err := channelMailboxOf(message.ChannelSettings)
 	if err != nil {
-		return err
+		return contracts.SentMessage{}, err
 	}
 	if mailbox == "" {
-		return errChannelMisconfigured
+		return contracts.SentMessage{}, errChannelMisconfigured
 	}
 	provider, err := w.outboxMailbox(ctx, message.ChannelProvider)
 	if err != nil {
-		return err
+		return contracts.SentMessage{}, err
 	}
 	if provider == nil {
-		return fmt.Errorf("communications: no mail channels provider under %q: %w",
+		return contracts.SentMessage{}, fmt.Errorf("communications: no mail channels provider under %q: %w",
 			message.ChannelProvider, contracts.ErrMailboxUnavailable)
 	}
 	var opts []mail.RenderOption
@@ -522,30 +525,38 @@ func (w *OutboxWorker) sendThroughMailbox(ctx context.Context, message store.Get
 	}
 	mime, err := mail.RenderMIME(message.ChannelAddress, envelope, opts...)
 	if err != nil {
-		return err
+		return contracts.SentMessage{}, err
 	}
 	sendCtx, cancel := context.WithTimeout(ctx, outboxSendTimeout)
 	defer cancel()
-	if _, err := mailboxSend(sendCtx, provider, mailbox, mime, envelope.Bcc); err != nil {
-		return fmt.Errorf("communications: send outbound message through the mailbox: %w", err)
+	sent, err := mailboxSend(sendCtx, provider, mailbox, mime, envelope.Bcc)
+	if err != nil {
+		return contracts.SentMessage{}, fmt.Errorf("communications: send outbound message through the mailbox: %w", err)
 	}
-	return nil
+	return sent, nil
 }
 
 // sendThroughPersonalMailbox is step 8 for a message sent from the author's own
-// connected Microsoft 365 address (M20): the envelope rendered as MIME from
-// the author's directory address, with Reply-To set to the channel's address
-// and display name, dispatched via PersonalMailbox.Send under the author's user ID.
-func (w *OutboxWorker) sendThroughPersonalMailbox(ctx context.Context, message store.GetOutboundMessageForSendRow, envelope mail.Outbound) error {
+// connected address (M20): the envelope rendered as MIME from the author's
+// directory address, with Reply-To set to the channel's address and display
+// name, dispatched via the Send of the PersonalMailbox the message was
+// recorded with (send_provider, Google Workspace design G3) under the
+// author's user ID. A provider no longer filled is connection_needed, never
+// another provider (Outlook connection design Q7).
+func (w *OutboxWorker) sendThroughPersonalMailbox(ctx context.Context, message store.GetOutboundMessageForSendRow, envelope mail.Outbound) (contracts.SentMessage, error) {
 	if message.AuthorUserID == nil {
-		return fmt.Errorf("communications: personal send lacks author_user_id: %w", contracts.ErrConnectionNeeded)
+		return contracts.SentMessage{}, fmt.Errorf("communications: personal send lacks author_user_id: %w", contracts.ErrConnectionNeeded)
 	}
 	if message.FromAddress == nil || *message.FromAddress == "" {
-		return fmt.Errorf("communications: personal send lacks from_address: %w", contracts.ErrConnectionNeeded)
+		return contracts.SentMessage{}, fmt.Errorf("communications: personal send lacks from_address: %w", contracts.ErrConnectionNeeded)
 	}
-	provider := personalMailboxFor(w.deps, providerEntra)
+	if message.SendProvider == nil || *message.SendProvider == "" {
+		return contracts.SentMessage{}, fmt.Errorf("communications: personal send lacks send_provider: %w", contracts.ErrConnectionNeeded)
+	}
+	provider := personalMailboxFor(w.deps, *message.SendProvider)
 	if provider == nil {
-		return fmt.Errorf("communications: no personal mailbox provider wired: %w", contracts.ErrConnectionNeeded)
+		return contracts.SentMessage{}, fmt.Errorf("communications: no personal mailbox provider under %q: %w",
+			*message.SendProvider, contracts.ErrConnectionNeeded)
 	}
 	fromAddress := *message.FromAddress
 	var opts []mail.RenderOption
@@ -554,23 +565,26 @@ func (w *OutboxWorker) sendThroughPersonalMailbox(ctx context.Context, message s
 	}
 	mime, err := mail.RenderMIME(fromAddress, envelope, opts...)
 	if err != nil {
-		return err
+		return contracts.SentMessage{}, err
 	}
 	sendCtx, cancel := context.WithTimeout(ctx, outboxSendTimeout)
 	defer cancel()
 	authorCtx := contracts.AsUser(sendCtx, *message.AuthorUserID)
-	if _, err := personalMailboxSend(authorCtx, provider, mime, envelope.Bcc); err != nil {
-		return fmt.Errorf("communications: send outbound message through personal mailbox: %w", err)
+	sent, err := personalMailboxSend(authorCtx, provider, mime, envelope.Bcc)
+	if err != nil {
+		return contracts.SentMessage{}, fmt.Errorf("communications: send outbound message through personal mailbox: %w", err)
 	}
-	return nil
+	return sent, nil
 }
 
 // complete is steps 9-13. Step 10's lease check is the whole reason this is a
 // re-read rather than a blind update: if the lease changed while the send was
 // in flight, NOTHING is written — the mail is already out, the job stays
-// processing, and the new holder will send it again.
+// processing, and the new holder will send it again. sent is what the
+// provider answered of the message (G5), recorded on it with the completion
+// when it is not empty.
 func (w *OutboxWorker) complete(ctx context.Context, job store.CommunicationsOutboxJob, leaseID string,
-	sendable []store.ListMessageDeliveriesForSendRow) error {
+	sendable []store.ListMessageDeliveriesForSendRow, sent contracts.SentMessage) error {
 	now := w.now()
 	// Counted after the transaction commits, never inside it: .NET increments
 	// at `:177`, mid-transaction, and a rollback there would leave the counter
@@ -595,6 +609,11 @@ func (w *OutboxWorker) complete(ctx context.Context, job store.CommunicationsOut
 			Status: "completed", CompletedAt: &now, ID: job.ID,
 		}); err != nil {
 			return fmt.Errorf("communications: complete outbox job: %w", err)
+		}
+		if params, ok := sentMessageRecord(job.MessageID, sent); ok {
+			if err := q.RecordSentMessage(ctx, params); err != nil {
+				return fmt.Errorf("communications: record what the provider sent: %w", err)
+			}
 		}
 		for _, d := range sendable {
 			deliveryID := d.ID
@@ -1015,4 +1034,33 @@ func outboxDeliveryIsSendable(status string) bool {
 		return false
 	}
 	return true
+}
+
+// sentMessageRecord is what complete records of sent on message id (G5):
+// the thread id when the provider answered one, and the Message-ID it left
+// with — bracketed as rfc_message_id is, at most its 998 characters — when
+// it differs from the message's own (rfcMessageIDFor). ok is false when
+// there is nothing to record.
+func sentMessageRecord(id uuid.UUID, sent contracts.SentMessage) (store.RecordSentMessageParams, bool) {
+	params := store.RecordSentMessageParams{ID: id}
+	if thread := strings.TrimSpace(sent.ThreadID); thread != "" {
+		params.ProviderThreadID = &thread
+	}
+	if mid := bracketedMessageID(sent.MessageID); mid != "" && mid != rfcMessageIDFor(id) && len(mid) <= maxRfcMessageID {
+		params.SentMessageID = &mid
+	}
+	return params, params.ProviderThreadID != nil || params.SentMessageID != nil
+}
+
+// bracketedMessageID is a Message-ID as a header carries it, in angle
+// brackets, "" for a blank one.
+func bracketedMessageID(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
+	}
+	if !strings.HasPrefix(id, "<") {
+		id = "<" + strings.TrimSuffix(id, ">") + ">"
+	}
+	return id
 }

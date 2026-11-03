@@ -137,6 +137,6 @@ func newInboundMetrics(mp metric.MeterProvider, logger *slog.Logger) *inboundMet
 	meter := mp.Meter(meterName)
 	return &inboundMetrics{
 		cyclesFailed: counter(meter, logger, "communications.inbound.cycles_failed",
-			"Mailbox sync cycles that failed to read or import a Microsoft 365 channel's mail."),
+			"Mailbox sync cycles that failed to read or import a mailbox channel's mail."),
 	}
 }

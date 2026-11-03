@@ -9,6 +9,7 @@ sql:
       - ../db/migrations/00092_communications_inbound.sql
       - ../db/migrations/00094_communications_mailbox_marks.sql
       - ../db/migrations/00095_communications_personal_sending.sql
+      - ../db/migrations/00109_communications_provider_neutral.sql
     queries: queries
     gen:
       go:

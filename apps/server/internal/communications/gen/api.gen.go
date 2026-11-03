@@ -63,7 +63,7 @@ type ChannelProviderResponse struct {
 	Available   bool   `json:"available"`
 	DisplayName string `json:"displayName"`
 
-	// Key A channel's provider value, smtp or entra.
+	// Key A channel's provider value, smtp or a mailbox provider (`entra`, `google`).
 	Key string `json:"key"`
 
 	// MaxMessageBytes The largest message the provider sends, in bytes of MIME; null when the provider sets no limit of its own.
@@ -97,7 +97,7 @@ type ChannelResponse struct {
 	IsActive       bool               `json:"isActive"`
 	IsDefault      bool               `json:"isDefault"`
 
-	// Mailbox The Microsoft 365 mailbox of an entra channel, by its object id, and what closing a conversation does in Outlook (onClose — none, read or move — and folder when move); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+	// Mailbox The mailbox of a channel on a mailbox provider (`entra`, `google`), by the provider's id, and what closing a conversation does in the mailbox (onClose — none, read or move — and folder when move); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
 	Mailbox *struct {
 		Folder  *string `json:"folder"`
 		Id      string  `json:"id"`
@@ -113,7 +113,7 @@ type ChannelResponse struct {
 		Username *string `json:"username"`
 	} `json:"settings"`
 
-	// Sync Whether a Microsoft 365 channel receives: its mailbox sync's state — pending (waiting for its first sync), active, failed or stopped —, the code of its last failure (mailbox_denied, mailbox_gone, mailbox_unknown, sync_failed, provider_unavailable) and when it last finished a sync; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+	// Sync Whether a channel on a mailbox provider (`entra`, `google`) receives: its mailbox sync's state — pending (waiting for its first sync), active, failed or stopped —, the code of its last failure (mailbox_denied, mailbox_gone, mailbox_unknown, sync_failed, provider_unavailable) and when it last finished a sync; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
 	Sync *struct {
 		Error        *string    `json:"error"`
 		LastSyncedAt *time.Time `json:"lastSyncedAt"`
@@ -183,10 +183,10 @@ type ConversationDetailResponse struct {
 	LastActivityAt            time.Time          `json:"lastActivityAt"`
 	LastReadAt                *time.Time         `json:"lastReadAt"`
 
-	// MaxAttachmentBytes The attachments the conversation's channel takes, in bytes as the files are (a Microsoft 365 channel's): (maxMessageBytes − 16 KiB of headroom) × 100 / 137, rounded down to 0.1 MB — what the composer shows and a staging refused as too large names. null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+	// MaxAttachmentBytes The attachments the conversation's channel takes, in bytes as the files are (a mailbox provider's, `entra` or `google`): (maxMessageBytes − 16 KiB of headroom) × 100 / 137, rounded down to 0.1 MB — what the composer shows and a staging refused as too large names. null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
 	MaxAttachmentBytes *int64 `json:"maxAttachmentBytes"`
 
-	// MaxMessageBytes The largest message the conversation's channel sends, in bytes of MIME (a Microsoft 365 channel's); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+	// MaxMessageBytes The largest message the conversation's channel sends, in bytes of MIME (a mailbox provider's, `entra` or `google`); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
 	MaxMessageBytes *int64 `json:"maxMessageBytes"`
 	Messages        []struct {
 		Attachments []struct {
@@ -255,7 +255,7 @@ type ConversationDetailResponse struct {
 		Id          openapi_types.UUID `json:"id"`
 	} `json:"participants"`
 
-	// PersonalSender Whether the caller can send from their own connected Microsoft 365 address in this conversation's composer. Always answered; optional in the schema only because the recorded exchanges predate it.
+	// PersonalSender Whether the caller can send from their own connected address, through a personal mailbox provider, in this conversation's composer. Always answered; optional in the schema only because the recorded exchanges predate it.
 	PersonalSender *PersonalSenderResponse `json:"personalSender"`
 	PreviewText    *string                 `json:"previewText"`
 
@@ -336,17 +336,17 @@ type CreateChannelRequest struct {
 	Address     *string `json:"address"`
 	DisplayName *string `json:"displayName,omitempty"`
 
-	// Folder The folder in the Microsoft 365 mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo").
+	// Folder The folder in the mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo").
 	Folder *string `json:"folder,omitempty"`
 
-	// ImportWindow How far back a Microsoft 365 channel imports when it is created: from_now (default), last_30_days or last_90_days. Ignored for SMTP.
+	// ImportWindow How far back a channel on a mailbox provider (`entra`, `google`) imports when it is created: from_now (default), last_30_days or last_90_days. Ignored for SMTP.
 	ImportWindow *string `json:"importWindow,omitempty"`
 	IsDefault    *bool   `json:"isDefault,omitempty"`
 
-	// OnClose What closing a conversation on a Microsoft 365 channel does to its inbound messages in Outlook: none (default), read or move.
+	// OnClose What closing a conversation on a channel on a mailbox provider (`entra`, `google`) does to its inbound messages in the mailbox: none (default), read or move.
 	OnClose *string `json:"onClose,omitempty"`
 
-	// Provider smtp, with the smtp block, or entra: a Microsoft 365 shared mailbox found by its address through the mail channels provider, with no credentials.
+	// Provider smtp, with the smtp block, or a mailbox provider (`entra`, `google`) that GET /channel-providers lists: a shared mailbox found by its address through that provider, with no credentials.
 	Provider *string                       `json:"provider,omitempty"`
 	Smtp     *SmtpChannelCredentialRequest `json:"smtp,omitempty"`
 	Type     *string                       `json:"type"`
@@ -361,7 +361,7 @@ type CreateConversationRequest struct {
 	ParticipantIds *[]*openapi_types.UUID     `json:"participantIds,omitempty"`
 	Recipients     *[]ChannelRecipientRequest `json:"recipients,omitempty"`
 
-	// SendFromPersonal When true, sends the initial outbound message from the caller's own connected Microsoft 365 address with Reply-To set to the channel's address.
+	// SendFromPersonal When true, sends the initial outbound message from the caller's own connected address, through the personal mailbox provider personal-sender names, with Reply-To set to the channel's address.
 	SendFromPersonal *bool                    `json:"sendFromPersonal,omitempty"`
 	Subject          *string                  `json:"subject"`
 	TextBody         *string                  `json:"textBody,omitempty"`
@@ -396,12 +396,12 @@ type PaginatedResponseOfConversationListItem struct {
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
-// PersonalSenderResponse Whether the caller can send outbound mail from their own connected Microsoft 365 address (Outlook connection design M20), and the address and display name they would send from.
+// PersonalSenderResponse Whether the caller can send outbound mail from their own connected address through a personal mailbox provider (`entra`, `google`; Outlook connection design M20, Google Workspace design G3), and the address and display name they would send from.
 type PersonalSenderResponse struct {
 	// Address The caller's directory email address; null when the caller has no enabled directory account or personal sending is unavailable.
 	Address *string `json:"address"`
 
-	// Available True when the caller's Outlook connection is active with the mail scope granted.
+	// Available True when the caller's personal connection to a mailbox provider is active with the mail scope granted.
 	Available bool `json:"available"`
 
 	// DisplayName The caller's display name in Vantigo; null when address is null.
@@ -409,6 +409,9 @@ type PersonalSenderResponse struct {
 
 	// ErrorCode Why the provider refused the caller's connection (expired, sign_in_again, mfa, blocked, consent_missing) when reason is reconnect; null otherwise.
 	ErrorCode *string `json:"errorCode"`
+
+	// ProviderDisplayName The name of the personal mailbox provider the answer is from, as the composer's "Send from my address" names it (Outlook, Gmail): the first provider that can send for the caller, else the first that knows the caller's account; null when no provider is enabled. Always answered; optional in the schema only because the recorded exchanges predate it.
+	ProviderDisplayName *string `json:"providerDisplayName,omitempty"`
 
 	// Reason Why available is false (unavailable, no_account, not_connected, reconnect); null while available is true.
 	Reason *string `json:"reason"`
@@ -420,7 +423,7 @@ type ReplyRequest struct {
 	HtmlBody      *string               `json:"htmlBody,omitempty"`
 	ReplyMode     *string               `json:"replyMode,omitempty"`
 
-	// SendFromPersonal When true, sends the reply from the caller's own connected Microsoft 365 address with Reply-To set to the channel's address.
+	// SendFromPersonal When true, sends the reply from the caller's own connected address, through the personal mailbox provider personal-sender names, with Reply-To set to the channel's address.
 	SendFromPersonal *bool   `json:"sendFromPersonal,omitempty"`
 	Subject          *string `json:"subject,omitempty"`
 	TextBody         *string `json:"textBody,omitempty"`
@@ -445,16 +448,16 @@ type SuppressionResponse struct {
 
 // SwitchChannelProviderRequest defines model for SwitchChannelProviderRequest.
 type SwitchChannelProviderRequest struct {
-	// Folder The folder in the Microsoft 365 mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo").
+	// Folder The folder in the mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo").
 	Folder *string `json:"folder,omitempty"`
 
 	// ImportWindow How far back the switched channel imports: from_now (default), last_30_days or last_90_days.
 	ImportWindow *string `json:"importWindow,omitempty"`
 
-	// OnClose What closing a conversation on the switched channel does to its inbound messages in Outlook: none (default), read or move.
+	// OnClose What closing a conversation on the switched channel does to its inbound messages in the mailbox: none (default), read or move.
 	OnClose *string `json:"onClose,omitempty"`
 
-	// Provider entra, the only provider a channel is switched to.
+	// Provider A mailbox provider (`entra`, `google`) GET /channel-providers lists. smtp is refused; a channel on another mailbox provider is refused with provider_switch_unsupported.
 	Provider string `json:"provider"`
 }
 
@@ -469,15 +472,15 @@ type TagResponse struct {
 type UpdateChannelRequest struct {
 	DisplayName *string `json:"displayName,omitempty"`
 
-	// Folder The folder in the Microsoft 365 mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo").
+	// Folder The folder in the mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo").
 	Folder    *string `json:"folder,omitempty"`
 	IsActive  *bool   `json:"isActive,omitempty"`
 	IsDefault *bool   `json:"isDefault,omitempty"`
 
-	// OnClose What closing a conversation on a Microsoft 365 channel does to its inbound messages in Outlook: none, read or move.
+	// OnClose What closing a conversation on a channel on a mailbox provider (`entra`, `google`) does to its inbound messages in the mailbox: none, read or move.
 	OnClose *string `json:"onClose,omitempty"`
 
-	// Provider The channel's own provider when omitted. smtp with a full smtp block, the password included, switches a Microsoft 365 channel back to SMTP; entra is refused here (POST /channels/{id}/provider switches to it).
+	// Provider The channel's own provider when omitted. smtp with a full smtp block, the password included, switches a channel on a mailbox provider (`entra`, `google`) back to SMTP; another mailbox provider is refused here (POST /channels/{id}/provider switches to it).
 	Provider *string                       `json:"provider,omitempty"`
 	Smtp     *SmtpChannelCredentialRequest `json:"smtp,omitempty"`
 }

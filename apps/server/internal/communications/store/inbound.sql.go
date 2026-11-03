@@ -12,43 +12,45 @@ import (
 	"github.com/google/uuid"
 )
 
-const findConversationByGraphConversation = `-- name: FindConversationByGraphConversation :one
+const findConversationByProviderThread = `-- name: FindConversationByProviderThread :one
 SELECT c.id
 FROM communications.conversation_messages m
 JOIN communications.conversations c ON c.id = m.conversation_id
-WHERE c.channel_id = $1 AND m.direction = 'inbound'
-  AND m.channel_metadata_json->>'graphConversationId' = $2::text
+WHERE c.channel_id = $1
+  AND m.channel_metadata_json->>'providerThreadId' = $2::text
   AND m.occurred_at >= $3
 ORDER BY m.occurred_at DESC, m.id DESC
 LIMIT 1
 `
 
-type FindConversationByGraphConversationParams struct {
-	ChannelID           uuid.UUID
-	GraphConversationID string
-	Since               time.Time
+type FindConversationByProviderThreadParams struct {
+	ChannelID        uuid.UUID
+	ProviderThreadID string
+	Since            time.Time
 }
 
-// Threading's third step: the conversation of the newest inbound message of
-// the channel in Graph's conversation, received since @since.
-func (q *Queries) FindConversationByGraphConversation(ctx context.Context, arg FindConversationByGraphConversationParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, findConversationByGraphConversation, arg.ChannelID, arg.GraphConversationID, arg.Since)
+// Threading's third step: the conversation of the newest message of the
+// channel, of either direction, in the provider's thread (G5), since @since.
+func (q *Queries) FindConversationByProviderThread(ctx context.Context, arg FindConversationByProviderThreadParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, findConversationByProviderThread, arg.ChannelID, arg.ProviderThreadID, arg.Since)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
 }
 
 const findConversationsByRfcMessageIDs = `-- name: FindConversationsByRfcMessageIDs :many
-SELECT m.rfc_message_id::text AS rfc_message_id, c.id AS conversation_id
+SELECT ids.id::text AS rfc_message_id, c.id AS conversation_id
 FROM communications.conversation_messages m
 JOIN communications.conversations c ON c.id = m.conversation_id
-WHERE c.channel_id = $1 AND m.rfc_message_id = ANY($2::text[])
+JOIN unnest($1::text[]) AS ids(id) ON ids.id = m.rfc_message_id OR ids.id = m.sent_message_id
+WHERE c.channel_id = $2
+  AND (m.rfc_message_id = ANY($1::text[]) OR m.sent_message_id = ANY($1::text[]))
 ORDER BY m.occurred_at DESC, m.id DESC
 `
 
 type FindConversationsByRfcMessageIDsParams struct {
-	ChannelID uuid.UUID
 	Ids       []string
+	ChannelID uuid.UUID
 }
 
 type FindConversationsByRfcMessageIDsRow struct {
@@ -57,11 +59,13 @@ type FindConversationsByRfcMessageIDsRow struct {
 }
 
 // Threading's first two steps: every message of the channel, in any
-// direction, whose Message-Id is one of ids — In-Reply-To's and the
-// References' — newest first, so the caller takes, for the first id that
-// matches in its order, the newest message's conversation.
+// direction, whose Message-Id — its own, or the one its provider sent it
+// with (sent_message_id, Google Workspace design G5) — is one of ids,
+// In-Reply-To's and the References', newest first, so the caller takes, for
+// the first id that matches in its order, the newest message's conversation.
+// A message matched by both answers once per id it matched.
 func (q *Queries) FindConversationsByRfcMessageIDs(ctx context.Context, arg FindConversationsByRfcMessageIDsParams) ([]FindConversationsByRfcMessageIDsRow, error) {
-	rows, err := q.db.Query(ctx, findConversationsByRfcMessageIDs, arg.ChannelID, arg.Ids)
+	rows, err := q.db.Query(ctx, findConversationsByRfcMessageIDs, arg.Ids, arg.ChannelID)
 	if err != nil {
 		return nil, err
 	}

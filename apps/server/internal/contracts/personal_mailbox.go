@@ -116,4 +116,12 @@ type PersonalMailStatus struct {
 	// Address is the caller's directory email address, set whenever Mailbox
 	// is set.
 	Address string
+	// Provider is the Key of the PersonalMailbox that answered (Google
+	// Workspace design G3), "" when none did (Reason "unavailable"). A
+	// provider need not set it: the caller that asked it does.
+	Provider string
+	// ProviderDisplayName is that provider's DisplayName ("Outlook"), the
+	// name the composer's "Send from my address" copy uses; "" with
+	// Provider.
+	ProviderDisplayName string
 }

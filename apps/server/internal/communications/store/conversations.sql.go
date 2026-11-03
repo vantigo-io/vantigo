@@ -194,7 +194,7 @@ func (q *Queries) GetConversationForReply(ctx context.Context, id uuid.UUID) (Ge
 }
 
 const getConversationMessageForRetry = `-- name: GetConversationMessageForRetry :one
-SELECT m.id, m.conversation_id, m.direction, m.author_user_id, m.send_as,
+SELECT m.id, m.conversation_id, m.direction, m.author_user_id, m.send_as, m.send_provider,
        ch.is_active AS channel_is_active,
        j.id AS job_id, j.status AS job_status
 FROM communications.conversation_messages m
@@ -215,6 +215,7 @@ type GetConversationMessageForRetryRow struct {
 	Direction       string
 	AuthorUserID    *uuid.UUID
 	SendAs          string
+	SendProvider    *string
 	ChannelIsActive bool
 	JobID           *uuid.UUID
 	JobStatus       *string
@@ -232,6 +233,7 @@ func (q *Queries) GetConversationMessageForRetry(ctx context.Context, arg GetCon
 		&i.Direction,
 		&i.AuthorUserID,
 		&i.SendAs,
+		&i.SendProvider,
 		&i.ChannelIsActive,
 		&i.JobID,
 		&i.JobStatus,
@@ -486,10 +488,12 @@ func (q *Queries) InsertConversation(ctx context.Context, arg InsertConversation
 const insertConversationMessage = `-- name: InsertConversationMessage :one
 INSERT INTO communications.conversation_messages
  (id, conversation_id, direction, participant_id, author_user_id, subject, text_body, html_body,
-  channel_metadata_json, occurred_at, created_at, rfc_message_id, send_as, from_address, from_display_name)
+  channel_metadata_json, occurred_at, created_at, rfc_message_id, send_as, from_address, from_display_name,
+  send_provider)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
   $9, $10, $11, $12,
-  COALESCE(NULLIF($13::text, ''), 'channel'), $14, $15)
+  COALESCE(NULLIF($13::text, ''), 'channel'), $14, $15,
+  $16::text)
 RETURNING id
 `
 
@@ -509,6 +513,7 @@ type InsertConversationMessageParams struct {
 	SendAs              string
 	FromAddress         *string
 	FromDisplayName     *string
+	SendProvider        *string
 }
 
 // Shared by AddNote (direction=internal_note), CreateConversation and Reply
@@ -530,6 +535,7 @@ func (q *Queries) InsertConversationMessage(ctx context.Context, arg InsertConve
 		arg.SendAs,
 		arg.FromAddress,
 		arg.FromDisplayName,
+		arg.SendProvider,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)

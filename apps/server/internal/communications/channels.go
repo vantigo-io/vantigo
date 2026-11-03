@@ -17,7 +17,6 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/config"
-	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 )
@@ -32,17 +31,19 @@ import (
 // — module.Router already enforces it, so no handler here re-checks it.
 //
 // PROVIDERS. A channel is SMTP — its settings and sealed password on its
-// channel_credentials row — or Microsoft 365 (provider "entra", Outlook
-// connection design M12): an Exchange Online shared mailbox reached through
-// the contracts.ChannelMailbox slot, its object id in channels.settings, no
-// credential row. Mailgun, which the port never created (task 4's
-// Mailgun-branch decision), left the contract with delivery C; any provider
-// but these two is refused, and verifyChannel still refuses a non-SMTP one
-// defensively. A Microsoft 365 channel is created by its address, or an SMTP
-// channel is switched to one (POST /channels/{id}/provider, keeping its id,
-// conversations and default flag); it goes back by a PUT with provider smtp
-// and a full SMTP block. Every call of the slot is made before the
-// transaction opens or after it commits (contractscalls.go, rule 15).
+// channel_credentials row — or a mailbox channel (Outlook connection design
+// M12, Google Workspace design G4): its provider the Key of a filled
+// contracts.ChannelMailbox ("entra", "google"), a shared mailbox reached
+// through that provider, its id in channels.settings, no credential row.
+// Mailgun, which the port never created (task 4's Mailgun-branch decision),
+// left the contract with delivery C; any other provider is refused, and
+// verifyChannel still refuses a non-SMTP one defensively. A mailbox channel
+// is created by its address, or an SMTP channel is switched to one (POST
+// /channels/{id}/provider, keeping its id, conversations and default flag);
+// it goes back by a PUT with provider smtp and a full SMTP block, and only
+// from SMTP to another mailbox provider. Every call of the slot is made
+// before the transaction opens or after it commits (contractscalls.go, rule
+// 15).
 
 // channelCredentialPurpose is this port's internal/secrets purpose string
 // for a channel's SMTP password — the domain-separation label
@@ -128,7 +129,7 @@ func channelRowFromList(c store.ListChannelsRow) channelRow {
 	}
 }
 
-// mailboxSettings is channels.settings for a Microsoft 365 channel (M12, M17):
+// mailboxSettings is channels.settings for a mailbox channel (M12, M17):
 // the object id of the mailbox ChannelMailbox.Check resolved, and what
 // closing a conversation does in Outlook (onClose and folder).
 const (
@@ -148,7 +149,7 @@ type mailboxSettings struct {
 	Folder  *string `json:"folder,omitempty"`
 }
 
-// channelSettingsOf decodes channels.settings for a Microsoft 365 channel and
+// channelSettingsOf decodes channels.settings for a mailbox channel and
 // fills its defaults: onClose 'none', and folder 'Handled in Vantigo' when
 // onClose is 'move' (nil otherwise).
 func channelSettingsOf(settings []byte) (mailboxSettings, error) {
@@ -195,9 +196,9 @@ func importFromWindow(now time.Time, window string) time.Time {
 	}
 }
 
-// validateEntraChannelOptions validates optional importWindow, onClose and
+// validateMailboxChannelOptions validates optional importWindow, onClose and
 // folder fields on CreateChannelRequest and SwitchChannelProviderRequest.
-func validateEntraChannelOptions(rawWindow, rawOnClose, rawFolder *string, errs map[string][]string) (window, onClose string, folder *string) {
+func validateMailboxChannelOptions(rawWindow, rawOnClose, rawFolder *string, errs map[string][]string) (window, onClose string, folder *string) {
 	window = importWindowFromNow
 	if rawWindow != nil && strings.TrimSpace(*rawWindow) != "" {
 		w := strings.ToLower(strings.TrimSpace(*rawWindow))
@@ -236,14 +237,14 @@ func validateEntraChannelOptions(rawWindow, rawOnClose, rawFolder *string, errs 
 // channelResponseOf is ToChannelResponse (EP/ChannelEndpoints.cs:51,
 // inventory §15.6 item 13): the secret is never exposed, structurally —
 // settingsJSON (nil when the channel has no credential row at all, as a
-// Microsoft 365 channel never has) decodes only host/port/useSsl/username.
-// A Microsoft 365 channel answers its mailbox instead, settings null.
+// mailbox channel never has) decodes only host/port/useSsl/username.
+// A mailbox channel answers its mailbox instead, settings null.
 func channelResponseOf(row channelRow, settingsJSON *string) (gen.ChannelResponse, error) {
 	resp := gen.ChannelResponse{
 		Id: row.ID, Type: row.Type, Address: row.Address, DisplayName: row.DisplayName,
 		Provider: row.Provider, IsDefault: row.IsDefault, IsActive: row.IsActive, CreatedAt: row.CreatedAt,
 	}
-	if row.Provider == providerEntra {
+	if isMailboxProvider(row.Provider) {
 		ms, err := channelSettingsOf(row.Settings)
 		if err != nil {
 			return gen.ChannelResponse{}, err
@@ -257,11 +258,11 @@ func channelResponseOf(row channelRow, settingsJSON *string) (gen.ChannelRespons
 		}
 	}
 	// What the row alone says of whether the channel can send (integrations
-	// design T5): an SMTP channel has stored credentials, a Microsoft 365 one
+	// design T5): an SMTP channel has stored credentials, a mailbox channel
 	// a mailbox. Whether the provider is offered now is the provider's own
 	// state, which a call out of the module reads — never inside the
 	// transaction that built this response — and withProviderState folds in.
-	resp.Available = apicommon.Ptr(row.Provider == providerEntra && resp.Mailbox != nil ||
+	resp.Available = apicommon.Ptr(isMailboxProvider(row.Provider) && resp.Mailbox != nil ||
 		row.Provider == providerSMTP && settingsJSON != nil)
 	if settingsJSON == nil {
 		return resp, nil
@@ -285,32 +286,12 @@ func channelResponseOf(row channelRow, settingsJSON *string) (gen.ChannelRespons
 	return resp, nil
 }
 
-// entraOffered is whether the mail channels provider is filled under "entra"
-// and available now (its Status), the one fact about a provider that decides
-// whether a Microsoft 365 channel can send. A status that does not answer is
-// not offered, and logged. It makes a call out of the module, so it is asked
-// outside any transaction.
-func (s *server) entraOffered(ctx context.Context) (bool, error) {
-	m, err := s.channelMailbox(ctx)
-	if err != nil || m == nil {
-		return false, err
-	}
-	status, err := s.mailboxStatus(ctx, m)
-	if errors.Is(err, errCallInsideTransaction) {
-		return false, err
-	}
-	if err != nil {
-		s.deps.Logger.WarnContext(ctx, "communications: the mail channels provider's status did not answer", "err", err)
-		return false, nil
-	}
-	return status.State == contracts.MailboxAvailable, nil
-}
-
 // withProviderState folds the provider's state into a response's available: a
-// Microsoft 365 channel whose provider is not offered cannot send (offered is
-// entraOffered's answer). An SMTP channel's available is its credentials'.
-func withProviderState(resp gen.ChannelResponse, entraOffered bool) gen.ChannelResponse {
-	if resp.Provider == providerEntra && resp.Available != nil && !entraOffered {
+// mailbox channel whose provider is not filled, or not offered, cannot send
+// (offered is offeredMailboxes' answer). An SMTP channel's available is its
+// credentials'.
+func withProviderState(resp gen.ChannelResponse, offered map[string]bool) gen.ChannelResponse {
+	if isMailboxProvider(resp.Provider) && resp.Available != nil && !offered[resp.Provider] {
 		resp.Available = apicommon.Ptr(false)
 	}
 	return resp
@@ -329,11 +310,11 @@ func channelSyncs(ctx context.Context, q *store.Queries, ids []uuid.UUID) (map[u
 	return out, nil
 }
 
-// withSync is resp with its Microsoft 365 channel's receive state (delivery
+// withSync is resp with its mailbox channel's receive state (delivery
 // D, a plan addition): null for an SMTP channel, and for one with no sync
 // row.
 func withSync(resp gen.ChannelResponse, row *store.GetChannelSyncByChannelIDsRow) gen.ChannelResponse {
-	if row == nil || resp.Provider != providerEntra {
+	if row == nil || !isMailboxProvider(resp.Provider) {
 		return resp
 	}
 	resp.Sync = &struct {
@@ -390,7 +371,7 @@ type createChannelInput struct {
 	address      string
 	displayName  *string
 	isDefault    bool
-	provider     string // providerSMTP or providerEntra
+	provider     string // providerSMTP or a filled ChannelMailbox's Key
 	settings     smtpProviderSettings
 	password     string
 	importWindow string
@@ -403,10 +384,11 @@ type createChannelInput struct {
 // stopping at the first — the same "report every failure together" style
 // this codebase's other validators use (e.g. energy's ReplaceMeter,
 // customers' validateLegalIdentity). provider is "smtp" (the default),
-// needing a valid smtp block, or "entra", which takes none (see this file's
-// header note): an smtp block on entra, or any other provider, fails with
-// inventory §3.1's message for the SMTP-vs-selected-provider mismatch.
-func validateCreateChannel(body gen.CreateChannelRequest) (createChannelInput, map[string][]string) {
+// needing a valid smtp block, or the Key of a filled mail channels provider
+// (mailboxProvider answers which), which takes none (see this file's header
+// note): an smtp block on a mailbox provider, or any other provider, fails
+// with inventory §3.1's message for the SMTP-vs-selected-provider mismatch.
+func validateCreateChannel(body gen.CreateChannelRequest, mailboxProvider func(string) bool) (createChannelInput, map[string][]string) {
 	errs := map[string][]string{}
 	var in createChannelInput
 
@@ -444,8 +426,8 @@ func validateCreateChannel(body gen.CreateChannelRequest) (createChannelInput, m
 	}
 	in.provider = provider
 	switch {
-	case provider == providerEntra && body.Smtp == nil:
-		in.importWindow, in.onClose, in.folder = validateEntraChannelOptions(body.ImportWindow, body.OnClose, body.Folder, errs)
+	case provider != providerSMTP && mailboxProvider(provider) && body.Smtp == nil:
+		in.importWindow, in.onClose, in.folder = validateMailboxChannelOptions(body.ImportWindow, body.OnClose, body.Folder, errs)
 	case provider != providerSMTP:
 		errs["smtp"] = []string{"SMTP credentials require the smtp provider."}
 	default:
@@ -489,7 +471,7 @@ func (s *server) GetCommunicationsChannels(ctx context.Context, _ gen.GetCommuni
 	if err != nil {
 		return nil, err
 	}
-	offered, err := s.entraOffered(ctx)
+	offered, err := s.offeredMailboxes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -523,18 +505,18 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 		body = *req.Body
 	}
 
-	in, errs := validateCreateChannel(body)
+	in, errs := validateCreateChannel(body, s.filledMailboxProvider)
 	if len(errs) > 0 {
 		return gen.PostCommunicationsChannels400JSONResponse(validationErrorBody(errs)), nil
 	}
 
-	// A Microsoft 365 channel: the M12 table, before the transaction opens —
-	// the stored address is Check's primary one, and its settings the
-	// mailbox; no credential row.
+	// A mailbox channel: the M12 table, before the transaction opens — the
+	// stored address is Check's primary one, and its settings the mailbox;
+	// no credential row.
 	channelSettings := []byte("{}")
 	var settingsJSON, sealed []byte
-	if in.provider == providerEntra {
-		info, refusal, err := s.resolveSharedMailbox(ctx, in.address)
+	if isMailboxProvider(in.provider) {
+		info, refusal, err := s.resolveSharedMailbox(ctx, in.provider, in.address)
 		if err != nil {
 			return nil, err
 		}
@@ -582,7 +564,7 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 		if err != nil {
 			return err
 		}
-		if in.provider == providerEntra {
+		if isMailboxProvider(in.provider) {
 			// It receives from import_from (from_now, last_30_days or last_90_days, M14/M17).
 			sync, err := q.InsertChannelSync(ctx, store.InsertChannelSyncParams{
 				ChannelID: channel.ID, ImportFrom: importFromWindow(now, in.importWindow), Now: now,
@@ -611,7 +593,7 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 			return gen.PostCommunicationsChannels409JSONResponse(flatErrorBody(
 				"channel_exists", "A channel with this address already exists.")), nil
 		}
-		if db.IsUniqueViolation(txErr, "ux_channels_entra_mailbox") {
+		if db.IsUniqueViolation(txErr, "ux_channels_provider_mailbox") {
 			return gen.PostCommunicationsChannels409JSONResponse(flatErrorBody(
 				"mailbox_exists", "Another channel already uses this mailbox.")), nil
 		}
@@ -640,7 +622,7 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 		}
 		return nil, fmt.Errorf("communications: create channel: %w", txErr)
 	}
-	// A Microsoft 365 channel is created only while its provider is offered
+	// A mailbox channel is created only while its provider is offered
 	// (resolveSharedMailbox asked), so its own availability is the answer.
 	return gen.PostCommunicationsChannels201JSONResponse(resp), nil
 }
@@ -677,7 +659,7 @@ func (s *server) GetCommunicationsChannelsById(ctx context.Context, req gen.GetC
 	if err != nil {
 		return nil, err
 	}
-	offered, err := s.entraOffered(ctx)
+	offered, err := s.offeredMailboxes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -752,17 +734,17 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 	// now that the channel is known to exist.
 	//
 	// The provider defaults to the channel's own (a PUT carrying only
-	// isActive on a Microsoft 365 channel needs no credential). provider
-	// entra on an SMTP channel is refused: the switch is POST
-	// /channels/{id}/provider. provider smtp on a Microsoft 365 channel is
-	// the way back, and needs a full smtp block, the password included —
-	// there is no stored one to reuse.
+	// isActive on a mailbox channel needs no credential). A mailbox
+	// provider other than the channel's own is refused: the switch is POST
+	// /channels/{id}/provider. provider smtp on a mailbox channel is the way
+	// back, and needs a full smtp block, the password included — there is no
+	// stored one to reuse.
 	credErrs := map[string][]string{}
 	provider := existing.Provider
 	if body.Provider != nil && strings.TrimSpace(*body.Provider) != "" {
 		provider = strings.ToLower(strings.TrimSpace(*body.Provider))
 	}
-	backToSMTP := existing.Provider == providerEntra && provider == providerSMTP
+	backToSMTP := isMailboxProvider(existing.Provider) && provider == providerSMTP
 
 	var rewriteCredential bool
 	var newSettingsJSON string
@@ -772,10 +754,10 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 	// inside the transaction (see the transaction body).
 	var suppliedPassword *string
 	switch {
-	case provider == providerEntra && existing.Provider != providerEntra:
-		credErrs["provider"] = []string{"A channel is switched to Microsoft 365 through its provider switch, not an update."}
-	case provider == providerEntra && body.Smtp == nil:
-		// A Microsoft 365 channel's own fields only: no credential.
+	case provider != existing.Provider && provider != providerSMTP && s.filledMailboxProvider(provider):
+		credErrs["provider"] = []string{"A channel is switched to a mailbox provider through its provider switch, not an update."}
+	case provider == existing.Provider && isMailboxProvider(provider) && body.Smtp == nil:
+		// A mailbox channel's own fields only: no credential.
 	case provider != providerSMTP:
 		credErrs["smtp"] = []string{"SMTP credentials require the smtp provider."}
 	case backToSMTP && body.Smtp == nil:
@@ -836,8 +818,10 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 	var resp gen.ChannelResponse
 	// forget is the mailbox a channel switched back to SMTP left behind,
 	// for Unwatch and Forget once the transaction has committed; unwatch is
-	// the mailbox of an active Microsoft 365 channel that was deactivated.
+	// the mailbox of an active mailbox channel that was deactivated.
 	var forget, unwatch string
+	// mailboxProvider is the provider forget's or unwatch's mailbox is on.
+	mailboxProvider := existing.Provider
 	txErr := s.withTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		if err := lockDefaultChannelSlot(ctx, txq); err != nil {
 			return err
@@ -881,7 +865,7 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 		}
 		// Every decision above was made on `existing`'s provider; a switch
 		// committed in between would make them wrong (a credential written
-		// onto a Microsoft 365 channel, or a mailbox never forgotten).
+		// onto a mailbox channel, or a mailbox never forgotten).
 		if current.Provider != existing.Provider {
 			return errChannelProviderChanged
 		}
@@ -905,7 +889,7 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 			finalDisplayName = newDisplayName
 		}
 		finalSettings := current.Settings
-		if current.Provider == providerEntra && !backToSMTP {
+		if isMailboxProvider(current.Provider) && !backToSMTP {
 			ms, serr := channelSettingsOf(current.Settings)
 			if serr != nil {
 				return serr
@@ -1025,11 +1009,11 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 		return nil, fmt.Errorf("communications: update channel: %w", txErr)
 	}
 	if forget != "" {
-		s.forgetMailbox(ctx, req.Id, forget)
+		s.forgetMailbox(ctx, req.Id, mailboxProvider, forget)
 	} else if unwatch != "" {
-		s.unwatchMailbox(ctx, req.Id, unwatch)
+		s.unwatchMailbox(ctx, req.Id, mailboxProvider, unwatch)
 	}
-	offered, err := s.entraOffered(ctx)
+	offered, err := s.offeredMailboxes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1049,14 +1033,16 @@ var errChannelProviderChanged = errors.New("communications: the channel's provid
 // the same mailbox since the commit has had it Checked anew, and an Unwatch
 // or Forget now would leave that channel unable to receive or send, so it is
 // skipped.
-func (s *server) forgetMailbox(ctx context.Context, channelID uuid.UUID, mailbox string) {
-	m, err := s.channelMailbox(ctx)
+func (s *server) forgetMailbox(ctx context.Context, channelID uuid.UUID, provider, mailbox string) {
+	m, err := s.channelMailbox(ctx, provider)
 	if err == nil && m == nil {
 		return
 	}
 	var taken bool
 	if err == nil {
-		taken, err = store.New(s.deps.Pool).MailboxHasChannel(ctx, mailbox)
+		taken, err = store.New(s.deps.Pool).MailboxHasChannel(ctx, store.MailboxHasChannelParams{
+			Provider: provider, Mailbox: mailbox,
+		})
 	}
 	if err == nil && taken {
 		return
@@ -1074,10 +1060,10 @@ func (s *server) forgetMailbox(ctx context.Context, channelID uuid.UUID, mailbox
 	}
 }
 
-// unwatchMailbox drops the Inbox subscription of a Microsoft 365 channel that
-// was deactivated (M17): best-effort after commit.
-func (s *server) unwatchMailbox(ctx context.Context, channelID uuid.UUID, mailbox string) {
-	m, err := s.channelMailbox(ctx)
+// unwatchMailbox drops the Inbox subscription of a mailbox channel that was
+// deactivated (M17): best-effort after commit.
+func (s *server) unwatchMailbox(ctx context.Context, channelID uuid.UUID, provider, mailbox string) {
+	m, err := s.channelMailbox(ctx, provider)
 	if err == nil && m == nil {
 		return
 	}
@@ -1223,7 +1209,7 @@ func (s *server) PostCommunicationsChannelsByIdVerify(ctx context.Context, req g
 		return nil, fmt.Errorf("communications: get channel: %w", err)
 	}
 
-	if channel.Provider == providerEntra {
+	if isMailboxProvider(channel.Provider) {
 		return s.verifyMailboxChannel(ctx, channel)
 	}
 	verifyErr := s.verifyChannel(ctx, q, channel)
@@ -1238,7 +1224,7 @@ func (s *server) PostCommunicationsChannelsByIdVerify(ctx context.Context, req g
 		"verification_failed", "Channel verification failed.")), nil
 }
 
-// verifyMailboxChannel is verify for a Microsoft 365 channel (M12): Status
+// verifyMailboxChannel is verify for a mailbox channel (M12): Status
 // and Check of the channel's address again, ok only when it still reaches a
 // shared mailbox with the object id the channel holds. Every refusal is a
 // 422 with the create's code; mailbox_changed when the address now names
@@ -1248,7 +1234,7 @@ func (s *server) verifyMailboxChannel(ctx context.Context, channel store.GetChan
 	if err != nil {
 		return nil, err
 	}
-	info, refusal, err := s.resolveSharedMailbox(ctx, channel.Address)
+	info, refusal, err := s.resolveSharedMailbox(ctx, channel.Provider, channel.Address)
 	if err != nil {
 		return nil, err
 	}
@@ -1261,16 +1247,22 @@ func (s *server) verifyMailboxChannel(ctx context.Context, channel store.GetChan
 	return gen.PostCommunicationsChannelsByIdVerify200JSONResponse(gen.ChannelVerifyResponse{Ok: true}), nil
 }
 
-// errProviderUnchanged is the switch's refusal of a channel already on
-// Microsoft 365, found by the re-read under the lock.
-var errProviderUnchanged = errors.New("communications: the channel already uses the provider")
+// errProviderUnchanged is the switch's refusal of a channel already on the
+// provider, found by the re-read under the lock; errProviderSwitchUnsupported
+// its refusal of a channel on another mailbox provider.
+var (
+	errProviderUnchanged         = errors.New("communications: the channel already uses the provider")
+	errProviderSwitchUnsupported = errors.New("communications: the channel is on another mailbox provider")
+)
 
 // PostCommunicationsChannelsByIdProvider Switch a channel's provider
 // (POST /api/v1/communications/channels/{id}/provider)
 //
-// The switch of an SMTP channel to Microsoft 365 (M12): (1) the body names
-// entra -> 400; (2) the lookup -> 404 bare; (3) already entra -> 422
-// provider_unchanged; (4) Status and Check of the channel's own address,
+// The switch of an SMTP channel to a mailbox provider (M12, Google Workspace
+// design G4): (1) the body names no listed mailbox provider -> 400; (2) the
+// lookup -> 404 bare; (3) already on it -> 422 provider_unchanged; on
+// another mailbox provider -> 409 provider_switch_unsupported, the channel
+// goes back to SMTP first; (4) Status and Check of the channel's own address,
 // before the transaction -> the create's refusals; (5) under
 // lockDefaultChannelSlot and a re-read, the provider and the mailbox written
 // and the credential row deleted in ONE transaction, so a failure leaves the
@@ -1280,13 +1272,17 @@ var errProviderUnchanged = errors.New("communications: the channel already uses 
 // admin checked, and the next Check rewrites it.
 func (s *server) PostCommunicationsChannelsByIdProvider(ctx context.Context, req gen.PostCommunicationsChannelsByIdProviderRequestObject) (gen.PostCommunicationsChannelsByIdProviderResponseObject, error) {
 	errs := map[string][]string{}
-	if req.Body == nil || strings.ToLower(strings.TrimSpace(req.Body.Provider)) != providerEntra {
-		errs["provider"] = []string{"A channel is switched to the entra provider only."}
+	provider := ""
+	if req.Body != nil {
+		provider = strings.ToLower(strings.TrimSpace(req.Body.Provider))
+	}
+	if provider == providerSMTP || !s.filledMailboxProvider(provider) {
+		errs["provider"] = []string{"A channel is switched to a listed mailbox provider only."}
 	}
 	var importWindow, onClose string
 	var folder *string
 	if req.Body != nil {
-		importWindow, onClose, folder = validateEntraChannelOptions(req.Body.ImportWindow, req.Body.OnClose, req.Body.Folder, errs)
+		importWindow, onClose, folder = validateMailboxChannelOptions(req.Body.ImportWindow, req.Body.OnClose, req.Body.Folder, errs)
 	}
 	if len(errs) > 0 {
 		return gen.PostCommunicationsChannelsByIdProvider400JSONResponse(validationErrorBody(errs)), nil
@@ -1298,11 +1294,14 @@ func (s *server) PostCommunicationsChannelsByIdProvider(ctx context.Context, req
 	} else if err != nil {
 		return nil, fmt.Errorf("communications: get channel: %w", err)
 	}
-	if existing.Provider == providerEntra {
-		return switchProviderUnchanged(), nil
+	switch {
+	case existing.Provider == provider:
+		return s.switchProviderUnchanged(provider), nil
+	case existing.Provider != providerSMTP:
+		return switchProviderUnsupported(), nil
 	}
 
-	info, refusal, err := s.resolveSharedMailbox(ctx, existing.Address)
+	info, refusal, err := s.resolveSharedMailbox(ctx, provider, existing.Address)
 	if err != nil {
 		return nil, err
 	}
@@ -1333,11 +1332,14 @@ func (s *server) PostCommunicationsChannelsByIdProvider(ctx context.Context, req
 		} else if err != nil {
 			return fmt.Errorf("communications: re-read channel under the lock: %w", err)
 		}
-		if current.Provider == providerEntra {
+		switch {
+		case current.Provider == provider:
 			return errProviderUnchanged
+		case current.Provider != providerSMTP:
+			return errProviderSwitchUnsupported
 		}
 		updated, err := txq.SwitchChannelProvider(ctx, store.SwitchChannelProviderParams{
-			ID: req.Id, Provider: providerEntra, Settings: settings,
+			ID: req.Id, Provider: provider, Settings: settings,
 		})
 		if err != nil {
 			return err
@@ -1368,8 +1370,10 @@ func (s *server) PostCommunicationsChannelsByIdProvider(ctx context.Context, req
 	case errors.Is(txErr, errChannelVanished):
 		return gen.PostCommunicationsChannelsByIdProvider404Response{}, nil
 	case errors.Is(txErr, errProviderUnchanged):
-		return switchProviderUnchanged(), nil
-	case db.IsUniqueViolation(txErr, "ux_channels_entra_mailbox"):
+		return s.switchProviderUnchanged(provider), nil
+	case errors.Is(txErr, errProviderSwitchUnsupported):
+		return switchProviderUnsupported(), nil
+	case db.IsUniqueViolation(txErr, "ux_channels_provider_mailbox"):
 		return gen.PostCommunicationsChannelsByIdProvider409JSONResponse(flatErrorBody(
 			"mailbox_exists", "Another channel already uses this mailbox.")), nil
 	default:
@@ -1377,7 +1381,28 @@ func (s *server) PostCommunicationsChannelsByIdProvider(ctx context.Context, req
 	}
 }
 
-func switchProviderUnchanged() gen.PostCommunicationsChannelsByIdProviderResponseObject {
+// switchProviderUnchanged is the switch's refusal of a channel already on
+// provider, named by its DisplayName.
+func (s *server) switchProviderUnchanged(provider string) gen.PostCommunicationsChannelsByIdProviderResponseObject {
+	name := provider
+	if m := channelMailboxFor(s.deps, provider); m != nil {
+		name = m.DisplayName()
+	}
 	return gen.PostCommunicationsChannelsByIdProvider422JSONResponse(flatErrorBody(
-		"provider_unchanged", "The channel already uses Microsoft 365."))
+		"provider_unchanged", fmt.Sprintf("The channel already uses %s.", name)))
+}
+
+// switchProviderUnsupported is the switch's refusal of a channel on another
+// mailbox provider (G4): it goes back to SMTP first.
+func switchProviderUnsupported() gen.PostCommunicationsChannelsByIdProviderResponseObject {
+	return gen.PostCommunicationsChannelsByIdProvider409JSONResponse(flatErrorBody(
+		"provider_switch_unsupported",
+		"The channel uses another mailbox provider. Switch it back to SMTP first, then to the new provider."))
+}
+
+// filledMailboxProvider reports whether a mail channels provider is filled
+// under key: the one question channel validation asks of the slice (G4).
+// Reading the slice calls nobody.
+func (s *server) filledMailboxProvider(key string) bool {
+	return channelMailboxFor(s.deps, key) != nil
 }

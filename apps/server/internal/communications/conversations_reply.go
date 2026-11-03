@@ -48,7 +48,7 @@ import (
 //     implementation would leave open between check and claim).
 //
 // Step 7 finds the latest inbound message with a sender: the mailbox sync
-// (mailbox_sync.go) writes inbound messages for a Microsoft 365 channel, so a
+// (mailbox_sync.go) writes inbound messages for a mailbox channel, so a
 // conversation it imported is answered; one this module's own API created,
 // with no message received, is still refused there. A reply carries the
 // threading headers of the message it answers (In-Reply-To, References), and
@@ -407,7 +407,7 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 			"attachments_not_ready", "One or more attachments are still being scanned or are unavailable.")), nil
 	}
 
-	// Step 8b: a Microsoft 365 channel's budget (M13) -> 422 too_large,
+	// Step 8b: a mailbox channel's budget (M13) -> 422 too_large,
 	// before anything is written: the estimate of the message as MIME over
 	// what the provider sends would only fail at the outbox, after the
 	// caller was told it was queued.
@@ -430,14 +430,17 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 	sendAs := "channel"
 	var fromAddress *string
 	var fromDisplayName *string
+	// sendProvider is the PersonalMailbox the message is sent through (G3),
+	// written with fromAddress.
+	var sendProvider *string
 	if sendFromPersonal {
-		status, err := personalMailStatus(ctx, personalMailboxFor(s.deps, providerEntra))
+		status, err := personalMailStatus(ctx, s.deps)
 		if err != nil {
 			return nil, err
 		}
 		if !status.Available {
 			return gen.PostCommunicationsConversationsByIdReply409JSONResponse(flatErrorBody(
-				"connection_needed", "Your personal Outlook connection is not available. Please connect or reconnect Outlook before sending from your address.")), nil
+				"connection_needed", personalConnectionNeeded(status))), nil
 		}
 		sizes := make([]int64, 0, len(stagedRows))
 		for _, row := range stagedRows {
@@ -449,6 +452,7 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 		}
 		sendAs = "personal"
 		fromAddress = apicommon.Ptr(status.Address)
+		sendProvider = apicommon.Ptr(status.Provider)
 		if s.deps.Users != nil {
 			u, err := s.deps.Users.User(ctx, p.caller)
 			if err != nil {
@@ -511,7 +515,7 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 			ID: messageID, ConversationID: p.conversationID, Direction: "outbound", AuthorUserID: &p.caller,
 			Subject: p.messageSubject, TextBody: p.body.TextBody, HtmlBody: p.body.HtmlBody,
 			ChannelMetadataJson: p.metadata, OccurredAt: p.now, CreatedAt: p.now, RfcMessageID: &rfcMessageID,
-			SendAs: sendAs, FromAddress: fromAddress, FromDisplayName: fromDisplayName,
+			SendAs: sendAs, FromAddress: fromAddress, FromDisplayName: fromDisplayName, SendProvider: sendProvider,
 		}); err != nil {
 			return err
 		}

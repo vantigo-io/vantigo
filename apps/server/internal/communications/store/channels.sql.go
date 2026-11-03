@@ -21,10 +21,11 @@ SELECT EXISTS (SELECT 1 FROM communications.channels) AS any_exists
 // getCommunicationsChannelsById, putCommunicationsChannelsById and
 // postCommunicationsChannelsByIdVerify (communications inventory §1.1,
 // §2's CreateChannel/UpdateChannel/VerifyChannel bullets, §15.6's
-// per-channel-credential shape), and delivery C's Microsoft 365 channels
-// (Outlook connection design M12): an SMTP channel has exactly one
-// channel_credentials row and settings '{}'; an entra channel has no
-// credential row and settings {"mailbox": "<object id>"}. The list/get
+// per-channel-credential shape), and delivery C's mailbox channels
+// (Outlook connection design M12, Google Workspace design G4): an SMTP
+// channel has exactly one channel_credentials row and settings '{}'; a
+// mailbox channel (provider a mail channels provider's Key) has no
+// credential row and settings {"mailbox": "<mailbox id>"}. The list/get
 // queries below LEFT JOIN the credential so neither kind is hidden.
 // AnyChannelExists backs CreateChannel's "the first channel ever created is
 // forced default" rule (inventory §2's CreateChannel bullet:
@@ -104,7 +105,7 @@ DELETE FROM communications.channel_credentials WHERE channel_id = $1
 `
 
 // DeleteChannelCredential drops an SMTP channel's credential row as it is
-// switched to Microsoft 365, in SwitchChannelProvider's transaction.
+// switched to a mailbox provider, in SwitchChannelProvider's transaction.
 func (q *Queries) DeleteChannelCredential(ctx context.Context, channelID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteChannelCredential, channelID)
 	return err
@@ -231,9 +232,10 @@ type InsertChannelParams struct {
 }
 
 // InsertChannel is CreateChannel's channel-row insert: provider 'smtp' with
-// settings '{}' (its credential row follows), or 'entra' with the mailbox
-// Check resolved and no credential row. ux_channels_entra_mailbox refuses a
-// second channel on one mailbox.
+// settings '{}' (its credential row follows), or a mail channels provider's
+// Key with the mailbox Check resolved and no credential row.
+// ux_channels_provider_mailbox refuses a second channel on one mailbox of
+// one provider.
 func (q *Queries) InsertChannel(ctx context.Context, arg InsertChannelParams) (CommunicationsChannel, error) {
 	row := q.db.QueryRow(ctx, insertChannel,
 		arg.ID,
@@ -313,7 +315,7 @@ type ListChannelsRow struct {
 // ListChannels is GetChannelsEndpoint: a bare array (no pagination),
 // ordered by CreatedAt ascending (inventory §1.1's `:18`/`:25` note).
 // credential_settings_json is non-NULL for every SMTP channel this port
-// wrote and NULL for every Microsoft 365 one.
+// wrote and NULL for every mailbox one.
 func (q *Queries) ListChannels(ctx context.Context) ([]ListChannelsRow, error) {
 	rows, err := q.db.Query(ctx, listChannels)
 	if err != nil {
@@ -420,15 +422,20 @@ func (q *Queries) LockDefaultChannelSlot(ctx context.Context, lockClass int32) e
 const mailboxHasChannel = `-- name: MailboxHasChannel :one
 SELECT EXISTS (
     SELECT 1 FROM communications.channels
-    WHERE provider = 'entra' AND settings->>'mailbox' = $1::text
+    WHERE provider = $1::text AND settings->>'mailbox' = $2::text
 )
 `
 
-// MailboxHasChannel is whether a Microsoft 365 channel's settings name the
-// mailbox: read after a channel's switch back to SMTP has committed, so its
-// Forget is skipped when another channel took the mailbox in between.
-func (q *Queries) MailboxHasChannel(ctx context.Context, mailbox string) (bool, error) {
-	row := q.db.QueryRow(ctx, mailboxHasChannel, mailbox)
+type MailboxHasChannelParams struct {
+	Provider string
+	Mailbox  string
+}
+
+// MailboxHasChannel is whether a channel on provider names the mailbox in
+// its settings: read after a channel's switch back to SMTP has committed, so
+// its Forget is skipped when another channel took the mailbox in between.
+func (q *Queries) MailboxHasChannel(ctx context.Context, arg MailboxHasChannelParams) (bool, error) {
+	row := q.db.QueryRow(ctx, mailboxHasChannel, arg.Provider, arg.Mailbox)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -440,7 +447,7 @@ SET provider = 'smtp', settings = '{}'
 WHERE id = $1
 `
 
-// SetChannelSmtp turns a Microsoft 365 channel back into an SMTP one (a PUT
+// SetChannelSmtp turns a mailbox channel back into an SMTP one (a PUT
 // with provider smtp and a full smtp block): provider 'smtp', the mailbox
 // cleared. The credential row is written by UpsertChannelCredential in the
 // same transaction.
@@ -462,7 +469,7 @@ type SwitchChannelProviderParams struct {
 	ID       uuid.UUID
 }
 
-// SwitchChannelProvider is the switch of an SMTP channel to Microsoft 365
+// SwitchChannelProvider is the switch of an SMTP channel to a mailbox provider
 // (POST /channels/{id}/provider, M12): the provider and the mailbox, the id,
 // address, default flag and conversations untouched. DeleteChannelCredential
 // runs in the same transaction.

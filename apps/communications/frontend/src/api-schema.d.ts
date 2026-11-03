@@ -31,7 +31,7 @@ export interface paths {
         };
         /**
          * List the providers a channel can use
-         * @description The providers a channel can use — SMTP always, Microsoft 365 while a mail channels provider is enabled — with whether each is available now.
+         * @description The providers a channel can use — SMTP always, then every enabled mailbox provider (`entra`, `google`) — with whether each is available now.
          */
         get: operations["getCommunicationsChannelProviders"];
         put?: never;
@@ -89,7 +89,7 @@ export interface paths {
         put?: never;
         /**
          * Switch a mail channel to another provider
-         * @description Switches an SMTP channel to Microsoft 365 by its own address, keeping its id, conversations and default flag; the SMTP credentials are deleted in the same transaction.
+         * @description Switches an SMTP channel to a mailbox provider (`entra`, `google`) by its own address, keeping its id, conversations and default flag; the SMTP credentials are deleted in the same transaction.
          */
         post: operations["postCommunicationsChannelsByIdProvider"];
         delete?: never;
@@ -337,7 +337,7 @@ export interface paths {
         };
         /**
          * Get whether the caller can send from their own mailbox
-         * @description Whether the signed-in caller can send outbound mail from their own connected Microsoft 365 address (Outlook connection design M20), and the address and display name they would send from.
+         * @description Whether the signed-in caller can send outbound mail from their own connected address through a personal mailbox provider (`entra`, `google`; Outlook connection design M20, Google Workspace design G3), the address and display name they would send from, and the provider's name.
          */
         get: operations["getCommunicationsPersonalSender"];
         put?: never;
@@ -496,7 +496,7 @@ export interface components {
             /** @description Whether channels may be created on or switched to the provider now. */
             available: boolean;
             displayName: string;
-            /** @description A channel's provider value, smtp or entra. */
+            /** @description A channel's provider value, smtp or a mailbox provider (`entra`, `google`). */
             key: string;
             /**
              * Format: int64
@@ -529,7 +529,7 @@ export interface components {
             id: string;
             isActive: boolean;
             isDefault: boolean;
-            /** @description The Microsoft 365 mailbox of an entra channel, by its object id, and what closing a conversation does in Outlook (onClose — none, read or move — and folder when move); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            /** @description The mailbox of a channel on a mailbox provider (`entra`, `google`), by the provider's id, and what closing a conversation does in the mailbox (onClose — none, read or move — and folder when move); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it. */
             mailbox?: {
                 folder: string | null;
                 id: string;
@@ -544,7 +544,7 @@ export interface components {
                 useSsl: boolean | null;
                 username: string | null;
             } | null;
-            /** @description Whether a Microsoft 365 channel receives: its mailbox sync's state — pending (waiting for its first sync), active, failed or stopped —, the code of its last failure (mailbox_denied, mailbox_gone, mailbox_unknown, sync_failed, provider_unavailable) and when it last finished a sync; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            /** @description Whether a channel on a mailbox provider (`entra`, `google`) receives: its mailbox sync's state — pending (waiting for its first sync), active, failed or stopped —, the code of its last failure (mailbox_denied, mailbox_gone, mailbox_unknown, sync_failed, provider_unavailable) and when it last finished a sync; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it. */
             sync?: {
                 error: string | null;
                 /** Format: date-time */
@@ -624,12 +624,12 @@ export interface components {
             lastReadAt: string | null;
             /**
              * Format: int64
-             * @description The attachments the conversation's channel takes, in bytes as the files are (a Microsoft 365 channel's): (maxMessageBytes − 16 KiB of headroom) × 100 / 137, rounded down to 0.1 MB — what the composer shows and a staging refused as too large names. null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+             * @description The attachments the conversation's channel takes, in bytes as the files are (a mailbox provider's, `entra` or `google`): (maxMessageBytes − 16 KiB of headroom) × 100 / 137, rounded down to 0.1 MB — what the composer shows and a staging refused as too large names. null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
              */
             maxAttachmentBytes?: number | null;
             /**
              * Format: int64
-             * @description The largest message the conversation's channel sends, in bytes of MIME (a Microsoft 365 channel's); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+             * @description The largest message the conversation's channel sends, in bytes of MIME (a mailbox provider's, `entra` or `google`); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
              */
             maxMessageBytes?: number | null;
             messages: {
@@ -708,7 +708,7 @@ export interface components {
                 id: string;
             }[];
             previewText: string | null;
-            /** @description Whether the caller can send from their own connected Microsoft 365 address in this conversation's composer. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            /** @description Whether the caller can send from their own connected address, through a personal mailbox provider, in this conversation's composer. Always answered; optional in the schema only because the recorded exchanges predate it. */
             personalSender?: components["schemas"]["PersonalSenderResponse"];
             /** @description Who a reply answers, from the latest inbound message with a sender: replyTo is its sender and canReply whether there is one; replyAllCc the participants its Cc named — without the channel's own address and the sender, distinct by address in any case, at most 100 — and canReplyAll whether there are any. */
             replyRecipients: {
@@ -800,15 +800,15 @@ export interface components {
         CreateChannelRequest: {
             address: string | null;
             displayName?: string | null;
-            /** @description The folder in the Microsoft 365 mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo"). */
+            /** @description The folder in the mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo"). */
             folder?: string | null;
-            /** @description How far back a Microsoft 365 channel imports when it is created: from_now (default), last_30_days or last_90_days. Ignored for SMTP. */
+            /** @description How far back a channel on a mailbox provider (`entra`, `google`) imports when it is created: from_now (default), last_30_days or last_90_days. Ignored for SMTP. */
             importWindow?: string | null;
             isDefault?: boolean | null;
-            /** @description What closing a conversation on a Microsoft 365 channel does to its inbound messages in Outlook: none (default), read or move. */
+            /** @description What closing a conversation on a channel on a mailbox provider (`entra`, `google`) does to its inbound messages in the mailbox: none (default), read or move. */
             onClose?: string | null;
             /**
-             * @description smtp, with the smtp block, or entra: a Microsoft 365 shared mailbox found by its address through the mail channels provider, with no credentials.
+             * @description smtp, with the smtp block, or a mailbox provider (`entra`, `google`) that GET /channel-providers lists: a shared mailbox found by its address through that provider, with no credentials.
              * @default smtp
              */
             provider: string | null;
@@ -824,7 +824,7 @@ export interface components {
             htmlBody?: string | null;
             participantIds?: (string | null)[] | null;
             recipients?: components["schemas"]["ChannelRecipientRequest"][] | null;
-            /** @description When true, sends the initial outbound message from the caller's own connected Microsoft 365 address with Reply-To set to the channel's address. */
+            /** @description When true, sends the initial outbound message from the caller's own connected address, through the personal mailbox provider personal-sender names, with Reply-To set to the channel's address. */
             sendFromPersonal?: boolean | null;
             subject: string | null;
             textBody?: string | null;
@@ -848,16 +848,18 @@ export interface components {
             data: components["schemas"]["ConversationListItem"][];
             pagination: components["schemas"]["PaginationMetadata"];
         };
-        /** @description Whether the caller can send outbound mail from their own connected Microsoft 365 address (Outlook connection design M20), and the address and display name they would send from. */
+        /** @description Whether the caller can send outbound mail from their own connected address through a personal mailbox provider (`entra`, `google`; Outlook connection design M20, Google Workspace design G3), and the address and display name they would send from. */
         PersonalSenderResponse: {
             /** @description The caller's directory email address; null when the caller has no enabled directory account or personal sending is unavailable. */
             address: string | null;
-            /** @description True when the caller's Outlook connection is active with the mail scope granted. */
+            /** @description True when the caller's personal connection to a mailbox provider is active with the mail scope granted. */
             available: boolean;
             /** @description The caller's display name in Vantigo; null when address is null. */
             displayName: string | null;
             /** @description Why the provider refused the caller's connection (expired, sign_in_again, mfa, blocked, consent_missing) when reason is reconnect; null otherwise. */
             errorCode: string | null;
+            /** @description The name of the personal mailbox provider the answer is from, as the composer's "Send from my address" names it (Outlook, Gmail): the first provider that can send for the caller, else the first that knows the caller's account; null when no provider is enabled. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            providerDisplayName?: string | null;
             /** @description Why available is false (unavailable, no_account, not_connected, reconnect); null while available is true. */
             reason: string | null;
         };
@@ -866,7 +868,7 @@ export interface components {
             htmlBody?: string | null;
             /** @default reply */
             replyMode: string | null;
-            /** @description When true, sends the reply from the caller's own connected Microsoft 365 address with Reply-To set to the channel's address. */
+            /** @description When true, sends the reply from the caller's own connected address, through the personal mailbox provider personal-sender names, with Reply-To set to the channel's address. */
             sendFromPersonal?: boolean | null;
             subject?: string | null;
             textBody?: string | null;
@@ -888,13 +890,13 @@ export interface components {
             reason: string | null;
         };
         SwitchChannelProviderRequest: {
-            /** @description The folder in the Microsoft 365 mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo"). */
+            /** @description The folder in the mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo"). */
             folder?: string | null;
             /** @description How far back the switched channel imports: from_now (default), last_30_days or last_90_days. */
             importWindow?: string | null;
-            /** @description What closing a conversation on the switched channel does to its inbound messages in Outlook: none (default), read or move. */
+            /** @description What closing a conversation on the switched channel does to its inbound messages in the mailbox: none (default), read or move. */
             onClose?: string | null;
-            /** @description entra, the only provider a channel is switched to. */
+            /** @description A mailbox provider (`entra`, `google`) GET /channel-providers lists. smtp is refused; a channel on another mailbox provider is refused with provider_switch_unsupported. */
             provider: string;
         };
         TagResponse: {
@@ -905,13 +907,13 @@ export interface components {
         };
         UpdateChannelRequest: {
             displayName?: string | null;
-            /** @description The folder in the Microsoft 365 mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo"). */
+            /** @description The folder in the mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo"). */
             folder?: string | null;
             isActive?: boolean | null;
             isDefault?: boolean | null;
-            /** @description What closing a conversation on a Microsoft 365 channel does to its inbound messages in Outlook: none, read or move. */
+            /** @description What closing a conversation on a channel on a mailbox provider (`entra`, `google`) does to its inbound messages in the mailbox: none, read or move. */
             onClose?: string | null;
-            /** @description The channel's own provider when omitted. smtp with a full smtp block, the password included, switches a Microsoft 365 channel back to SMTP; entra is refused here (POST /channels/{id}/provider switches to it). */
+            /** @description The channel's own provider when omitted. smtp with a full smtp block, the password included, switches a channel on a mailbox provider (`entra`, `google`) back to SMTP; another mailbox provider is refused here (POST /channels/{id}/provider switches to it). */
             provider?: string | null;
             smtp?: components["schemas"]["SmtpChannelCredentialRequest"] | null;
         };
@@ -1142,7 +1144,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict — channel_exists (the address already has a channel), mailbox_exists (for entra, another channel already uses the mailbox), mail_channels_off (the Microsoft 365 provider is not available), default_channel_conflict. */
+            /** @description Conflict — channel_exists (the address already has a channel), mailbox_exists (for a mailbox provider, another channel already uses the mailbox on that provider), mail_channels_off (the mailbox provider is not available), default_channel_conflict. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1151,7 +1153,7 @@ export interface operations {
                     "application/json": components["schemas"]["CommunicationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity — for entra, personal_mailbox (not a shared mailbox), mailbox_denied (outside the application's scope), mailbox_unknown. */
+            /** @description Unprocessable Entity — for a mailbox provider, personal_mailbox (a person's own mailbox), group_address (the address is a group), mailbox_denied (outside the application's scope), mailbox_unknown. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1170,7 +1172,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Service Unavailable — provider_unreachable, Microsoft 365 did not answer. */
+            /** @description Service Unavailable — provider_unreachable, the mailbox provider did not answer. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1346,7 +1348,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — mailbox_exists (another channel already uses the mailbox), mail_channels_off. */
+            /** @description Conflict — mailbox_exists (another channel already uses the mailbox on that provider), mail_channels_off, provider_switch_unsupported (the channel is on another mailbox provider; switch it back to SMTP first). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1355,7 +1357,7 @@ export interface operations {
                     "application/json": components["schemas"]["CommunicationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity — provider_unchanged, personal_mailbox, mailbox_denied, mailbox_unknown. */
+            /** @description Unprocessable Entity — provider_unchanged, personal_mailbox, group_address, mailbox_denied, mailbox_unknown. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1374,7 +1376,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Service Unavailable — provider_unreachable, Microsoft 365 did not answer. */
+            /** @description Service Unavailable — provider_unreachable, the mailbox provider did not answer. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1430,7 +1432,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Unprocessable Entity — destination_rejected, verification_failed; for entra, mail_channels_off, personal_mailbox, mailbox_denied, mailbox_unknown, mailbox_changed (the address now names another mailbox), provider_unreachable. */
+            /** @description Unprocessable Entity — destination_rejected, verification_failed; for a mailbox provider, mail_channels_off, personal_mailbox, group_address, mailbox_denied, mailbox_unknown, mailbox_changed (the address now names another mailbox), provider_unreachable. */
             422: {
                 headers: {
                     [name: string]: unknown;

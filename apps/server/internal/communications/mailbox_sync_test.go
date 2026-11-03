@@ -372,7 +372,7 @@ func TestMailboxSync_ImportsAMessage(t *testing.T) {
 	case !m.occurredAt.Equal(received):
 		t.Errorf("occurred_at = %v, want receivedDateTime %v", m.occurredAt, received)
 	}
-	if m.metadata["from"] != sender || m.metadata["graphConversationId"] != "graph-conv-1" ||
+	if m.metadata["from"] != sender || m.metadata["providerThreadId"] != "graph-conv-1" ||
 		m.metadata["inReplyTo"] != "<root@example.test>" || m.metadata["autoSubmitted"] != false {
 		t.Errorf("metadata = %v", m.metadata)
 	}

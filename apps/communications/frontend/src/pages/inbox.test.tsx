@@ -589,6 +589,26 @@ describe("inbox", () => {
       );
     });
 
+    it("names the personal mailbox provider in Send from my address, in both languages", async () => {
+      const item = conversation("c-1", "Question");
+      mocks.fetchConversations.mockResolvedValue(page([item]));
+      const base = detail(item.id, item.subject);
+      mocks.fetchConversation.mockResolvedValue({
+        ...base,
+        messages: [inbound()],
+        replyRecipients: { canReply: true, canReplyAll: false, replyTo: participant.address, replyAllCc: [] },
+        personalSender: { ...base.personalSender, providerDisplayName: "Gmail" },
+      });
+      renderPage();
+      await screen.findByRole("heading", { name: "Question" });
+      expect(screen.getByLabelText("Send from my Gmail address (kari@nordlys.no)")).toBeTruthy();
+      cleanup();
+      setLanguagePreference("nb");
+      renderPage();
+      await screen.findByRole("heading", { name: "Question" });
+      expect(screen.getByLabelText("Send fra min Gmail-adresse (kari@nordlys.no)")).toBeTruthy();
+    });
+
     it("displays personal sender attribution on message", async () => {
       await open([
         {
@@ -647,9 +667,7 @@ describe("inbox", () => {
         }),
       );
       renderPage({ connectionButton });
-      expect(
-        await screen.findByText("Sending failed because your Outlook connection needs reconnecting."),
-      ).toBeTruthy();
+      expect(await screen.findByText("Sending failed because your mail connection needs reconnecting.")).toBeTruthy();
       expect(screen.getByRole("button", { name: "Reconnect Outlook" })).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Retry send" }));
       await waitFor(() => expect(mocks.retryMessage).toHaveBeenCalledWith("c-1", "m-out"));
@@ -716,7 +734,7 @@ describe("inbox", () => {
       );
       renderPage();
       expect(
-        await screen.findByText("Sendingen mislyktes fordi Outlook-tilkoblingen din må kobles til på nytt."),
+        await screen.findByText("Sendingen mislyktes fordi e-posttilkoblingen din må kobles til på nytt."),
       ).toBeTruthy();
       expect(screen.getByRole("button", { name: "Prøv å sende på nytt" })).toBeTruthy();
       expect(screen.getByText("Fra: kari@nordlys.no · Svar til: post@firma.no")).toBeTruthy();

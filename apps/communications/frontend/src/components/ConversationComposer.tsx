@@ -16,7 +16,7 @@ import {
   replyToConversation,
   stageConversationAttachment,
 } from "../api/conversations";
-import { returnHere } from "./conversationHelpers";
+import { personalSenderLabel, returnHere } from "./conversationHelpers";
 
 export type ConnectionButtonProps = {
   feature: "calendar" | "mail";
@@ -172,7 +172,7 @@ export function ConversationComposer({ conversation, onSent, connectionButton }:
         <Checkbox
           size="xs"
           mb="xs"
-          label={t("sendFromPersonal", { address: conversation.personalSender.address ?? "" })}
+          label={personalSenderLabel(t, conversation.personalSender)}
           checked={sendFromPersonal}
           onChange={(event) => setSendFromPersonal(event.currentTarget.checked)}
         />

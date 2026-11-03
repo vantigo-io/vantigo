@@ -24,7 +24,7 @@ import (
 )
 
 // This file is the communications-mailbox-sync worker (Outlook connection
-// design M14; delivery D, reading 13): it claims one Microsoft 365 channel's
+// design M14; delivery D, reading 13): it claims one mailbox channel's
 // channel_sync row under a lease, reads one page of its Inbox's delta, imports
 // each message the channel has no receipt for (inbound_import.go), and keeps
 // the page's link once every message of the page has a receipt.
@@ -101,7 +101,7 @@ var errSyncProviderHeld = errors.New("communications: the mail channels provider
 // store: never counted toward giving the message up.
 var errImportTransient = errors.New("communications: the provider or the store failed")
 
-// MailboxSyncWorker reads every Microsoft 365 channel's Inbox into
+// MailboxSyncWorker reads every mailbox channel's Inbox into
 // conversations. It implements worker.Worker.
 type MailboxSyncWorker struct {
 	deps module.Deps
@@ -112,9 +112,11 @@ type MailboxSyncWorker struct {
 	storeErr error
 	metrics  *inboundMetrics
 
+	// noticesSince and noticesFull are each provider's notices cursor, by
+	// its Key (G3).
 	noticesMu    sync.Mutex
-	noticesSince time.Time
-	noticesFull  bool
+	noticesSince map[string]time.Time
+	noticesFull  map[string]bool
 }
 
 var _ worker.Worker = (*MailboxSyncWorker)(nil)
@@ -203,37 +205,55 @@ func (w *MailboxSyncWorker) notificationsActive() bool {
 		strings.TrimSpace(w.deps.Config.PublicBaseURL) != ""
 }
 
-// takeNotices asks the provider for mailboxes notified since the worker's
-// cursor (with a 30s overlap) and marks their active Microsoft 365 channels
-// notified and due at now (M17).
+// takeNotices asks every mail channels provider for the mailboxes notified
+// since that provider's cursor (with a 30s overlap) and marks the active
+// channels on it of those mailboxes notified and due at now (M17). Each
+// provider keeps its own cursor (Google Workspace design G3): one provider's
+// notices never move another's.
 func (w *MailboxSyncWorker) takeNotices(ctx context.Context) {
-	provider, err := w.syncMailbox(ctx)
-	if err != nil || provider == nil {
-		return
-	}
 	w.noticesMu.Lock()
 	defer w.noticesMu.Unlock()
-	now := w.now()
-	if w.noticesSince.IsZero() {
-		w.noticesSince = now.Add(-mailboxSyncSafetyEvery)
+	for _, m := range w.deps.ChannelMailboxes {
+		if m == nil {
+			continue
+		}
+		provider, err := w.syncMailbox(ctx, m.Key())
+		if err != nil {
+			return
+		}
+		if provider != nil {
+			w.takeProviderNotices(ctx, provider)
+		}
 	}
-	since := w.noticesSince.Add(-mailboxNoticesOverlap)
-	if w.noticesFull {
-		since = w.noticesSince
+}
+
+// takeProviderNotices is takeNotices for one provider. noticesMu is held.
+func (w *MailboxSyncWorker) takeProviderNotices(ctx context.Context, provider contracts.ChannelMailbox) {
+	key := provider.Key()
+	if w.noticesSince == nil {
+		w.noticesSince, w.noticesFull = map[string]time.Time{}, map[string]bool{}
+	}
+	now := w.now()
+	if w.noticesSince[key].IsZero() {
+		w.noticesSince[key] = now.Add(-mailboxSyncSafetyEvery)
+	}
+	since := w.noticesSince[key].Add(-mailboxNoticesOverlap)
+	if w.noticesFull[key] {
+		since = w.noticesSince[key]
 	}
 	notices, err := mailboxNotified(ctx, provider, since)
 	if err != nil {
 		code, _ := syncFailureCode(err)
 		w.logger().Warn("mailbox sync: the mailboxes notified could not be read; the poll goes on",
-			"worker", mailboxSyncWorkerName, "code", code)
+			"worker", mailboxSyncWorkerName, "provider", key, "code", code)
 		return
 	}
 	if len(notices) == 0 {
-		w.noticesFull = false
+		w.noticesFull[key] = false
 		return
 	}
 	mailboxes, ats := make([]string, len(notices)), make([]time.Time, len(notices))
-	latest := w.noticesSince
+	latest := w.noticesSince[key]
 	for i, n := range notices {
 		mailboxes[i], ats[i] = n.Mailbox, n.At
 		if n.At.After(latest) {
@@ -241,13 +261,13 @@ func (w *MailboxSyncWorker) takeNotices(ctx context.Context) {
 		}
 	}
 	if _, err := store.New(w.deps.Pool).MarkChannelSyncNotified(ctx, store.MarkChannelSyncNotifiedParams{
-		Now: now, Mailboxes: mailboxes, Ats: ats,
+		Now: now, Provider: key, Mailboxes: mailboxes, Ats: ats,
 	}); err != nil {
 		w.logger().Warn("mailbox sync: the notified channels could not be made due; they are asked for again",
-			"worker", mailboxSyncWorkerName, "error", err)
+			"worker", mailboxSyncWorkerName, "provider", key, "error", err)
 		return
 	}
-	w.noticesSince, w.noticesFull = latest, len(notices) >= contracts.MailboxNoticesMax
+	w.noticesSince[key], w.noticesFull[key] = latest, len(notices) >= contracts.MailboxNoticesMax
 }
 
 // claim takes the first channel due by a conditional update. now and the
@@ -306,7 +326,7 @@ func (w *MailboxSyncWorker) cycle(ctx context.Context, c *syncCycle) error {
 	c.attempts, c.importFrom, c.channelAddress = row.Attempts, row.ImportFrom, row.ChannelAddress
 	c.lastSyncedAt, c.restartFrom = row.LastSyncedAt, row.RestartFrom
 
-	provider, err := w.syncMailbox(ctx)
+	provider, err := w.syncMailbox(ctx, row.ChannelProvider)
 	if err != nil {
 		return err
 	}

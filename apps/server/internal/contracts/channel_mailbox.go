@@ -23,7 +23,7 @@ import (
 // names its provider by Key and its mailbox by the
 // object id Check answered. The errors are MailboxCalendar's —
 // ErrMailboxUnavailable, ErrMailboxUnknown, ErrMailboxDenied, ErrMailboxGone,
-// and ErrMailboxDeltaExpired for Delta —, ErrMailTooLarge, ErrBccUnsupported
+// and ErrMailboxDeltaExpired for Delta —, ErrMailboxGroup for Check, ErrMailTooLarge, ErrBccUnsupported
 // and ErrMailItemGone; anything else is a failure to retry, never an answer.
 //
 // It declares only what Communications calls today; the notices arrive with
@@ -48,7 +48,8 @@ type ChannelMailbox interface {
 	// is a shared mailbox, records it, so Send may write to it:
 	// ErrMailboxUnknown when no such mailbox exists, ErrMailboxGone when its
 	// user has no mailbox, ErrMailboxDenied when the provider's scope does
-	// not reach it, ErrMailboxUnavailable when Status is not available. It
+	// not reach it, ErrMailboxGroup when the address is a group's,
+	// ErrMailboxUnavailable when Status is not available. It
 	// answers a personal mailbox too (Shared false) but never records one,
 	// so Send refuses it; the caller decides what it accepts.
 	Check(ctx context.Context, address string) (ChannelMailboxInfo, error)
@@ -178,6 +179,12 @@ type ChannelMailboxInfo struct {
 	DisplayName string
 	Shared      bool // may be a channel: not a person's own mailbox (Entra: userPurpose = shared)
 }
+
+// ErrMailboxGroup: the address Check was asked for is a group's, which has
+// no mailbox a channel can read (Google Workspace design G4, P2). Check
+// answers it; Communications refuses the address with group_address. A
+// provider whose groups have no address of their own never answers it.
+var ErrMailboxGroup = errors.New("contracts: the address is a group, not a mailbox")
 
 // ErrMailTooLarge: the message is larger than MaxMessage, or the provider refused it
 // as too large (413). Terminal for the message.

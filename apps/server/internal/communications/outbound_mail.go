@@ -20,8 +20,8 @@ import (
 // send customer mail through them. A consumer stores the id of a channel it
 // chose from Channels and sends with it; Send resolves the channel's provider
 // and sends, synchronously, under the caller's context — SMTP over the
-// channel's own sealed credentials, a Microsoft 365 channel through the
-// ChannelMailbox slot — never inside a transaction and never on the
+// channel's own sealed credentials, a mailbox channel through the
+// ChannelMailbox filled under its provider — never inside a transaction and never on the
 // installation's own SMTP credentials, which are the system mailbox's, for the
 // tenant's employees (T5).
 //
@@ -51,58 +51,93 @@ func newOutboundMail(d module.Deps) contracts.OutboundMail {
 	return &outboundMail{deps: d}
 }
 
-// entraProvider is the mail channels provider when it is filled under the key
-// a Microsoft 365 channel names, with its display name and whether it is
-// offered now (its Status says available); nil when no such provider is
-// filled. Key, DisplayName and Status make no network call.
-func (o *outboundMail) entraProvider(ctx context.Context) (m contracts.ChannelMailbox, name string, offered bool, err error) {
+// mailboxProvider is a filled mail channels provider as a consumer's channel
+// reads it: the provider, its display name and whether it is offered now
+// (its Status says available).
+type mailboxProvider struct {
+	m       contracts.ChannelMailbox
+	name    string
+	offered bool
+}
+
+// mailboxProviders is every filled mail channels provider by its Key. Key,
+// DisplayName and Status make no network call.
+func (o *outboundMail) mailboxProviders(ctx context.Context) (map[string]mailboxProvider, error) {
+	out := make(map[string]mailboxProvider, len(o.deps.ChannelMailboxes))
+	for _, m := range o.deps.ChannelMailboxes {
+		if m == nil {
+			continue
+		}
+		if err := noteContractCall(ctx, "ChannelMailbox.Key"); err != nil {
+			return nil, err
+		}
+		p, err := o.mailboxProviderOf(ctx, m)
+		if err != nil {
+			return nil, err
+		}
+		out[m.Key()] = p
+	}
+	return out, nil
+}
+
+// mailboxProviderFor is the provider filled under key, ok false when none
+// is: a channel is never served by a provider under another key.
+func (o *outboundMail) mailboxProviderFor(ctx context.Context, key string) (mailboxProvider, bool, error) {
 	if err := noteContractCall(ctx, "ChannelMailbox.Key"); err != nil {
-		return nil, "", false, err
+		return mailboxProvider{}, false, err
 	}
-	m = channelMailboxFor(o.deps, providerEntra)
+	m := channelMailboxFor(o.deps, key)
 	if m == nil {
-		return nil, "", false, nil
+		return mailboxProvider{}, false, nil
 	}
+	p, err := o.mailboxProviderOf(ctx, m)
+	return p, err == nil, err
+}
+
+// mailboxProviderOf is m's name and whether it is offered now. A status that
+// does not answer is not offered, and logged.
+func (o *outboundMail) mailboxProviderOf(ctx context.Context, m contracts.ChannelMailbox) (mailboxProvider, error) {
 	if err := noteContractCall(ctx, "ChannelMailbox.DisplayName"); err != nil {
-		return nil, "", false, err
+		return mailboxProvider{}, err
 	}
-	name = m.DisplayName()
+	p := mailboxProvider{m: m, name: m.DisplayName()}
 	status, err := syncMailboxStatus(ctx, m)
 	if errors.Is(err, errCallInsideTransaction) {
-		return nil, "", false, err
+		return mailboxProvider{}, err
 	}
 	if err != nil {
-		o.deps.Logger.WarnContext(ctx, "communications: the mail channels provider's status did not answer", "err", err)
-		return m, name, false, nil
+		o.deps.Logger.WarnContext(ctx, "communications: the mail channels provider's status did not answer",
+			"provider", m.Key(), "err", err)
+		return p, nil
 	}
-	return m, name, status.State == contracts.MailboxAvailable, nil
+	p.offered = status.State == contracts.MailboxAvailable
+	return p, nil
 }
 
 // outboundChannelOf is row as a consumer sees it: whether it can send is its
-// provider offered and its own credentials or mailbox present. cred is the
-// SMTP credential's settings, nil when the channel has none.
-func outboundChannelOf(row channelRow, cred *string, entraName string, entraOffered bool) (contracts.OutboundChannel, error) {
+// provider filled and offered and its own credentials or mailbox present.
+// cred is the SMTP credential's settings, nil when the channel has none;
+// providers the filled mail channels providers by Key.
+func outboundChannelOf(row channelRow, cred *string, providers map[string]mailboxProvider) (contracts.OutboundChannel, error) {
 	out := contracts.OutboundChannel{ID: row.ID, Address: row.Address, Provider: row.Provider}
 	if row.DisplayName != nil {
 		out.DisplayName = *row.DisplayName
 	}
-	switch row.Provider {
-	case providerSMTP:
+	if !isMailboxProvider(row.Provider) {
 		out.ProviderDisplayName = providerNameSMTP
 		out.Available = cred != nil
-	case providerEntra:
-		out.ProviderDisplayName = entraName
-		if out.ProviderDisplayName == "" {
-			out.ProviderDisplayName = "Microsoft 365"
-		}
-		mailbox, err := channelMailboxOf(row.Settings)
-		if err != nil {
-			return contracts.OutboundChannel{}, err
-		}
-		out.Available = entraOffered && mailbox != ""
-	default:
-		out.ProviderDisplayName = row.Provider
+		return out, nil
 	}
+	p, filled := providers[row.Provider]
+	out.ProviderDisplayName = row.Provider
+	if filled && p.name != "" {
+		out.ProviderDisplayName = p.name
+	}
+	mailbox, err := channelMailboxOf(row.Settings)
+	if err != nil {
+		return contracts.OutboundChannel{}, err
+	}
+	out.Available = filled && p.offered && mailbox != ""
 	return out, nil
 }
 
@@ -115,7 +150,7 @@ func listed(row channelRow) bool {
 // Channels lists the active mail channels, oldest first, each with whether it
 // can send now.
 func (o *outboundMail) Channels(ctx context.Context) ([]contracts.OutboundChannel, error) {
-	_, name, offered, err := o.entraProvider(ctx)
+	providers, err := o.mailboxProviders(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +164,7 @@ func (o *outboundMail) Channels(ctx context.Context) ([]contracts.OutboundChanne
 		if !listed(r) {
 			continue
 		}
-		c, err := outboundChannelOf(r, row.CredentialSettingsJson, name, offered)
+		c, err := outboundChannelOf(r, row.CredentialSettingsJson, providers)
 		if err != nil {
 			return nil, err
 		}
@@ -145,11 +180,17 @@ func (o *outboundMail) Channel(ctx context.Context, id uuid.UUID) (contracts.Out
 	if err != nil {
 		return contracts.OutboundChannel{}, err
 	}
-	_, name, offered, err := o.entraProvider(ctx)
-	if err != nil {
-		return contracts.OutboundChannel{}, err
+	providers := map[string]mailboxProvider{}
+	if isMailboxProvider(row.Provider) {
+		p, filled, err := o.mailboxProviderFor(ctx, row.Provider)
+		if err != nil {
+			return contracts.OutboundChannel{}, err
+		}
+		if filled {
+			providers[row.Provider] = p
+		}
 	}
-	return outboundChannelOf(channelRowFromGet(row), row.CredentialSettingsJson, name, offered)
+	return outboundChannelOf(channelRowFromGet(row), row.CredentialSettingsJson, providers)
 }
 
 // channelRow reads the channel a consumer named: ErrChannelUnknown for an id
@@ -177,14 +218,10 @@ func (o *outboundMail) Send(ctx context.Context, id uuid.UUID, out mail.Outbound
 	if err != nil {
 		return err
 	}
-	switch row.Provider {
-	case providerSMTP:
+	if !isMailboxProvider(row.Provider) {
 		return o.sendSMTP(ctx, row, out)
-	case providerEntra:
-		return o.sendMailbox(ctx, row, out)
-	default:
-		return fmt.Errorf("%w: no provider %q", contracts.ErrChannelUnavailable, row.Provider)
 	}
+	return o.sendMailbox(ctx, row, out)
 }
 
 // sendSMTP is Send over an SMTP channel's own credentials: the very reading
@@ -218,7 +255,7 @@ func (o *outboundMail) smtpSender() func(context.Context, config.MailConfig, mai
 	return mail.SendOutbound
 }
 
-// sendMailbox is Send over a Microsoft 365 channel: the message rendered as
+// sendMailbox is Send over a mailbox channel: the message rendered as
 // MIME from the channel's address and handed to the provider's Send with the
 // mailbox the channel names. A provider that is not filled or not offered, and
 // a mailbox it will not write to, are ErrChannelUnavailable; a message too
@@ -231,11 +268,12 @@ func (o *outboundMail) sendMailbox(ctx context.Context, row store.GetChannelByID
 	if mailbox == "" {
 		return fmt.Errorf("%w: %w", contracts.ErrChannelUnavailable, errChannelMisconfigured)
 	}
-	m, _, offered, err := o.entraProvider(ctx)
+	p, filled, err := o.mailboxProviderFor(ctx, row.Provider)
 	if err != nil {
 		return err
 	}
-	if m == nil || !offered {
+	m := p.m
+	if !filled || !p.offered {
 		return fmt.Errorf("%w: the mail channels provider is not available", contracts.ErrChannelUnavailable)
 	}
 	var opts []mail.RenderOption

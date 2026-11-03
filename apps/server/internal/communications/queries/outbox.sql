@@ -74,9 +74,10 @@ WHERE id = @id;
 -- wrong source. conversation_id and channel_id are likewise omitted rather than
 -- carried unread. channel_provider and channel_settings choose the path the
 -- send takes (Outlook connection design M13): an 'smtp' channel sends over its
--- credential row, an 'entra' one through ChannelMailbox.Send to the mailbox its
--- settings name, and has no credential row.
-SELECT m.id, m.author_user_id, m.send_as, m.from_address, m.from_display_name,
+-- credential row, a mailbox channel through the ChannelMailbox filled under
+-- its provider to the mailbox its settings name, and has no credential row;
+-- send_provider names the PersonalMailbox a personal message goes through.
+SELECT m.id, m.author_user_id, m.send_as, m.send_provider, m.from_address, m.from_display_name,
        m.subject, m.text_body, m.html_body, m.channel_metadata_json,
        c.subject AS conversation_subject,
        ch.type AS channel_type, ch.address AS channel_address,
@@ -208,3 +209,17 @@ WHERE id = @id;
 -- is the enqueue sites' four-column form and is left alone.
 INSERT INTO communications.message_events (id, message_id, delivery_id, event_type, occurred_at, data_json)
 VALUES (@id, @message_id, @delivery_id, @event_type, @occurred_at, @data_json);
+
+-- name: RecordSentMessage :exec
+-- What the provider answered of a message it sent (Google Workspace design
+-- G5), in the completion's transaction: its thread id as the message's
+-- providerThreadId, and the Message-ID it left with when that differs from
+-- the message's own as sent_message_id. Each is left as it is when NULL.
+UPDATE communications.conversation_messages
+SET channel_metadata_json = CASE
+        WHEN sqlc.narg('provider_thread_id')::text IS NULL THEN channel_metadata_json
+        ELSE COALESCE(channel_metadata_json, '{}'::jsonb)
+             || jsonb_build_object('providerThreadId', sqlc.narg('provider_thread_id')::text)
+    END,
+    sent_message_id = COALESCE(sqlc.narg('sent_message_id')::text, sent_message_id)
+WHERE id = @id;

@@ -11,6 +11,7 @@ import {
   createChannel,
 } from "../api/channels";
 import { channelErrorMessage } from "./channelErrors";
+import { isMailboxProvider } from "./channelProviders";
 
 type ChannelFormValues = {
   address: string;
@@ -29,7 +30,11 @@ export type ChannelFormProps = {
   opened: boolean;
   onClose: () => void;
   onCreated: () => void;
-  /** GET /channel-providers: Microsoft 365 is offered only while it answers `entra` available. */
+  /**
+   * GET /channel-providers: SMTP, then every mailbox provider in the order the
+   * server lists them; a provider not available now is listed, disabled, with
+   * its reason.
+   */
   providers: ChannelProvider[];
   providerLabel: (key: string) => string;
 };
@@ -57,8 +62,15 @@ const initialValues: ChannelFormValues = {
 export function ChannelForm({ opened, onClose, onCreated, providers, providerLabel }: ChannelFormProps) {
   const { t, locale } = useI18n("communications");
   const form = useForm<ChannelFormValues>({ initialValues });
-  const entraAvailable = providers.some((provider) => provider.key === "entra" && provider.available);
-  const provider = form.values.provider === "entra" && !entraAvailable ? "smtp" : form.values.provider;
+  const mailboxProviders = providers.filter((p) => isMailboxProvider(p.key));
+  const selectable = (key: string) =>
+    !isMailboxProvider(key) || mailboxProviders.some((p) => p.key === key && p.available);
+  const provider = selectable(form.values.provider) ? form.values.provider : "smtp";
+  const providerName = providerLabel(provider);
+  // A listed provider that cannot be picked now says so, with the reason
+  // the server answered (switch_off, status_unavailable, …) beside it.
+  const unavailableReason = (p: ChannelProvider | undefined) =>
+    p && !p.available ? t("providerUnavailable", { reason: p.reason ?? "" }) : "";
   const create = useMutation({
     mutationFn: (values: ChannelFormValues): Promise<unknown> => {
       const body: CreateChannelRequest = {
@@ -66,7 +78,7 @@ export function ChannelForm({ opened, onClose, onCreated, providers, providerLab
         address: values.address.trim(),
         displayName: values.name.trim() || undefined,
         provider,
-        ...(provider === "smtp"
+        ...(!isMailboxProvider(provider)
           ? {
               smtp: {
                 host: values.smtpHost.trim(),
@@ -113,23 +125,27 @@ export function ChannelForm({ opened, onClose, onCreated, providers, providerLab
             }}
             data={[
               { value: "smtp", label: providerLabel("smtp") },
-              ...(entraAvailable ? [{ value: "entra", label: providerLabel("entra") }] : []),
+              ...mailboxProviders.map((p) => ({ value: p.key, label: p.displayName, disabled: !p.available })),
               { value: hostedOption, label: t("providerHosted"), disabled: true },
             ]}
-            renderOption={({ option }) =>
-              option.value === hostedOption ? (
+            renderOption={({ option }) => {
+              const hint =
+                option.value === hostedOption
+                  ? t("providerHostedHint")
+                  : unavailableReason(mailboxProviders.find((p) => p.key === option.value));
+              return hint ? (
                 <Group justify="space-between" wrap="nowrap" w="100%">
                   <Text size="sm">{option.label}</Text>
                   <Text size="xs" c="dimmed">
-                    {t("providerHostedHint")}
+                    {hint}
                   </Text>
                 </Group>
               ) : (
                 <Text size="sm">{option.label}</Text>
-              )
-            }
+              );
+            }}
           />
-          {provider === "smtp" ? (
+          {!isMailboxProvider(provider) ? (
             <>
               <TextInput required label={t("smtpHost")} {...form.getInputProps("smtpHost")} />
               <TextInput required label={t("smtpPort")} {...form.getInputProps("smtpPort")} />
@@ -172,7 +188,9 @@ export function ChannelForm({ opened, onClose, onCreated, providers, providerLab
               )}
             </>
           )}
-          {create.error && <Alert color="red">{channelErrorMessage(create.error, t, locale)}</Alert>}
+          {create.error && (
+            <Alert color="red">{channelErrorMessage(create.error, t, locale, undefined, providerName)}</Alert>
+          )}
           <Button type="submit" loading={create.isPending}>
             {t("createChannel")}
           </Button>

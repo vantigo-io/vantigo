@@ -43,23 +43,27 @@ SELECT EXISTS (SELECT 1 FROM communications.conversation_messages WHERE id = @id
 
 -- name: FindConversationsByRfcMessageIDs :many
 -- Threading's first two steps: every message of the channel, in any
--- direction, whose Message-Id is one of ids — In-Reply-To's and the
--- References' — newest first, so the caller takes, for the first id that
--- matches in its order, the newest message's conversation.
-SELECT m.rfc_message_id::text AS rfc_message_id, c.id AS conversation_id
+-- direction, whose Message-Id — its own, or the one its provider sent it
+-- with (sent_message_id, Google Workspace design G5) — is one of ids,
+-- In-Reply-To's and the References', newest first, so the caller takes, for
+-- the first id that matches in its order, the newest message's conversation.
+-- A message matched by both answers once per id it matched.
+SELECT ids.id::text AS rfc_message_id, c.id AS conversation_id
 FROM communications.conversation_messages m
 JOIN communications.conversations c ON c.id = m.conversation_id
-WHERE c.channel_id = @channel_id AND m.rfc_message_id = ANY(@ids::text[])
+JOIN unnest(@ids::text[]) AS ids(id) ON ids.id = m.rfc_message_id OR ids.id = m.sent_message_id
+WHERE c.channel_id = @channel_id
+  AND (m.rfc_message_id = ANY(@ids::text[]) OR m.sent_message_id = ANY(@ids::text[]))
 ORDER BY m.occurred_at DESC, m.id DESC;
 
--- name: FindConversationByGraphConversation :one
--- Threading's third step: the conversation of the newest inbound message of
--- the channel in Graph's conversation, received since @since.
+-- name: FindConversationByProviderThread :one
+-- Threading's third step: the conversation of the newest message of the
+-- channel, of either direction, in the provider's thread (G5), since @since.
 SELECT c.id
 FROM communications.conversation_messages m
 JOIN communications.conversations c ON c.id = m.conversation_id
-WHERE c.channel_id = @channel_id AND m.direction = 'inbound'
-  AND m.channel_metadata_json->>'graphConversationId' = @graph_conversation_id::text
+WHERE c.channel_id = @channel_id
+  AND m.channel_metadata_json->>'providerThreadId' = @provider_thread_id::text
   AND m.occurred_at >= @since
 ORDER BY m.occurred_at DESC, m.id DESC
 LIMIT 1;

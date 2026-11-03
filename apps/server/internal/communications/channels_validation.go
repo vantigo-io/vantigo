@@ -86,7 +86,7 @@ func validSMTPPort(port int32) bool {
 	return port >= 1 && port <= 65535
 }
 
-// validFolderName validates a Microsoft 365 channel's on-close move folder
+// validFolderName validates a mailbox channel's on-close move folder
 // name (M17): at most 120 UTF-16 code units, already trimmed, no control
 // characters.
 func validFolderName(v string) bool {

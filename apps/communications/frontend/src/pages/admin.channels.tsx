@@ -17,13 +17,14 @@ import {
 } from "../api/channels";
 import { ChannelForm } from "../components/ChannelForm";
 import { channelErrorMessage } from "../components/channelErrors";
+import { isMailboxProvider } from "../components/channelProviders";
 import { relative } from "../components/conversationHelpers";
 import "../i18n";
 
 const syncErrors = ["mailbox_denied", "mailbox_gone", "mailbox_unknown", "provider_unavailable", "sync_failed"];
 
-/** Whether a channel receives: a Microsoft 365 channel's mailbox sync, by its state and last failure; SMTP sends only. */
-function ReceiveStatus({ sync }: { sync: ChannelSync | null | undefined }) {
+/** Whether a channel receives: a mailbox channel's sync, by its state and last failure; SMTP sends only. */
+function ReceiveStatus({ sync, provider }: { sync: ChannelSync | null | undefined; provider: string }) {
   const { t } = useI18n("communications");
   if (!sync)
     return (
@@ -32,8 +33,8 @@ function ReceiveStatus({ sync }: { sync: ChannelSync | null | undefined }) {
       </Text>
     );
   const reason = sync.error
-    ? t(`syncError.${syncErrors.includes(sync.error) ? sync.error : "sync_failed"}`)
-    : t("syncError.sync_failed");
+    ? t(`syncError.${syncErrors.includes(sync.error) ? sync.error : "sync_failed"}`, { provider })
+    : t("syncError.sync_failed", { provider });
   const label =
     sync.state === "failed"
       ? t("sync.failed", { reason })
@@ -64,10 +65,11 @@ export function ChannelsPage() {
   const query = useQuery(channelsQueryOptions());
   const providersQuery = useQuery(channelProvidersQueryOptions());
   const providers = providersQuery.data ?? [];
-  const entra = providers.find((provider) => provider.key === "entra");
+  // The mailbox providers an SMTP channel can be switched to now.
+  const switchTargets = providers.filter((provider) => isMailboxProvider(provider.key) && provider.available);
   const client = useQueryClient();
   const [opened, setOpened] = useState(false);
-  const [switching, setSwitching] = useState<Channel | null>(null);
+  const [switching, setSwitching] = useState<{ channel: Channel; provider: string } | null>(null);
   const [switchImportWindow, setSwitchImportWindow] = useState<ChannelImportWindow>("from_now");
   const [switchOnClose, setSwitchOnClose] = useState<ChannelOnClose>("none");
   const [switchFolder, setSwitchFolder] = useState("Handled in Vantigo");
@@ -78,8 +80,7 @@ export function ChannelsPage() {
   // The badge and the select name a provider as the provider names itself;
   // a channel whose provider is not offered now still reads as a name.
   const providerLabel = (key: string) =>
-    providers.find((provider) => provider.key === key)?.displayName ??
-    (key === "smtp" ? t("smtp") : key === "entra" ? t("microsoft365") : key);
+    providers.find((provider) => provider.key === key)?.displayName ?? (isMailboxProvider(key) ? key : t("smtp"));
   const update = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => updateChannel(id, { isActive }),
     onSuccess: () => void refresh(),
@@ -99,29 +100,34 @@ export function ChannelsPage() {
   const verify = useMutation({
     mutationFn: (channel: Channel) => verifyChannel(channel.id),
     onSuccess: () => notifications.show({ title: t("channelVerified"), message: t("channelConnectionValid") }),
-    onError: (error) =>
+    onError: (error, channel) =>
       notifications.show({
         color: "red",
         title: t("channelNotVerified"),
-        message: channelErrorMessage(error, t, locale, "errorVerificationFailed"),
+        message: channelErrorMessage(error, t, locale, "errorVerificationFailed", providerLabel(channel.provider)),
       }),
   });
   const switchProvider = useMutation({
-    mutationFn: (channel: Channel) => {
+    mutationFn: ({ channel, provider }: { channel: Channel; provider: string }) => {
       const opts: SwitchChannelProviderOptions = {
         ...(switchImportWindow !== "from_now" ? { importWindow: switchImportWindow } : {}),
         ...(switchOnClose !== "none" ? { onClose: switchOnClose } : {}),
         ...(switchOnClose === "move" && switchFolder.trim() ? { folder: switchFolder.trim() } : {}),
       };
-      return Object.keys(opts).length > 0 ? switchChannelProvider(channel.id, opts) : switchChannelProvider(channel.id);
+      return Object.keys(opts).length > 0
+        ? switchChannelProvider(channel.id, provider, opts)
+        : switchChannelProvider(channel.id, provider);
     },
-    onSuccess: () => {
+    onSuccess: (_, { provider }) => {
       setSwitching(null);
       setSwitchImportWindow("from_now");
       setSwitchOnClose("none");
       setSwitchFolder("Handled in Vantigo");
       void refresh();
-      notifications.show({ title: t("channelSwitched"), message: t("channelSwitchedMessage") });
+      notifications.show({
+        title: t("channelSwitched"),
+        message: t("channelSwitchedMessage", { provider: providerLabel(provider) }),
+      });
     },
   });
   const closeSwitch = () => {
@@ -198,19 +204,21 @@ export function ChannelsPage() {
                             {t("unavailable")}
                           </Badge>
                           <Text size="xs" c="dimmed">
-                            {channel.provider === "smtp" ? t("unavailableSmtp") : t("unavailableEntra")}
+                            {isMailboxProvider(channel.provider)
+                              ? t("unavailableMailbox", { provider: providerLabel(channel.provider) })
+                              : t("unavailableSmtp")}
                           </Text>
                         </>
                       )}
                     </Table.Td>
                     <Table.Td>
-                      <ReceiveStatus sync={channel.sync} />
-                      {channel.provider === "entra" && channel.mailbox?.onClose === "read" && (
+                      <ReceiveStatus sync={channel.sync} provider={providerLabel(channel.provider)} />
+                      {isMailboxProvider(channel.provider) && channel.mailbox?.onClose === "read" && (
                         <Text size="xs" c="dimmed">
                           {t("onCloseSummaryRead")}
                         </Text>
                       )}
-                      {channel.provider === "entra" && channel.mailbox?.onClose === "move" && (
+                      {isMailboxProvider(channel.provider) && channel.mailbox?.onClose === "move" && (
                         <Text size="xs" c="dimmed">
                           {t("onCloseSummaryMove", { folder: channel.mailbox.folder || "Handled in Vantigo" })}
                         </Text>
@@ -233,16 +241,22 @@ export function ChannelsPage() {
                         >
                           {channel.isActive ? t("deactivate") : t("activate")}
                         </Button>
-                        {channel.provider === "entra" && (
+                        {isMailboxProvider(channel.provider) && (
                           <Button size="xs" variant="subtle" onClick={() => openEditOnClose(channel)}>
                             {t("editOnClose")}
                           </Button>
                         )}
-                        {channel.provider === "smtp" && entra?.available && (
-                          <Button size="xs" variant="subtle" onClick={() => setSwitching(channel)}>
-                            {t("switchToMicrosoft365")}
-                          </Button>
-                        )}
+                        {!isMailboxProvider(channel.provider) &&
+                          switchTargets.map((target) => (
+                            <Button
+                              key={target.key}
+                              size="xs"
+                              variant="subtle"
+                              onClick={() => setSwitching({ channel, provider: target.key })}
+                            >
+                              {t("switchToProvider", { provider: target.displayName })}
+                            </Button>
+                          ))}
                       </Group>
                     </Table.Td>
                   </Table.Tr>
@@ -262,7 +276,11 @@ export function ChannelsPage() {
           notifications.show({ title: t("channelCreated"), message: t("emailChannelReady") });
         }}
       />
-      <Modal opened={switching !== null} onClose={closeSwitch} title={t("switchToMicrosoft365")}>
+      <Modal
+        opened={switching !== null}
+        onClose={closeSwitch}
+        title={t("switchToProvider", { provider: switching ? providerLabel(switching.provider) : "" })}
+      >
         <Stack>
           <Text size="sm">{t("switchConfirm")}</Text>
           <Select
@@ -299,7 +317,17 @@ export function ChannelsPage() {
               onChange={(event) => setSwitchFolder(event.currentTarget.value)}
             />
           )}
-          {switchProvider.error && <Alert color="red">{channelErrorMessage(switchProvider.error, t, locale)}</Alert>}
+          {switchProvider.error && (
+            <Alert color="red">
+              {channelErrorMessage(
+                switchProvider.error,
+                t,
+                locale,
+                undefined,
+                switching ? providerLabel(switching.provider) : "",
+              )}
+            </Alert>
+          )}
           <Group justify="end">
             <Button variant="default" onClick={closeSwitch}>
               {t("cancel")}
@@ -337,7 +365,17 @@ export function ChannelsPage() {
               onChange={(event) => setEditFolderValue(event.currentTarget.value)}
             />
           )}
-          {saveOnClose.error && <Alert color="red">{channelErrorMessage(saveOnClose.error, t, locale)}</Alert>}
+          {saveOnClose.error && (
+            <Alert color="red">
+              {channelErrorMessage(
+                saveOnClose.error,
+                t,
+                locale,
+                undefined,
+                editingOnClose ? providerLabel(editingOnClose.provider) : "",
+              )}
+            </Alert>
+          )}
           <Group justify="end">
             <Button variant="default" onClick={closeEditOnClose}>
               {t("cancel")}

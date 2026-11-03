@@ -129,8 +129,8 @@ func Module() module.Module {
 
 // workers is this module's background work (design §4): the outbox delivery
 // worker, the retention worker, the attachment-cleanup worker and the
-// mailbox sync (Outlook connection design M14), which reads each Microsoft
-// 365 channel's Inbox. cmd/vantigo starts these through module.Workers in worker mode, and
+// mailbox sync (Outlook connection design M14), which reads each mailbox
+// channel's Inbox. cmd/vantigo starts these through module.Workers in worker mode, and
 // in api mode when WORKERS_IN_PROCESS=1 — never in server mode.
 //
 // Only retention takes the advisory lease (inventory §14); delivery, cleanup
