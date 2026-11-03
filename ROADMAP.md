@@ -75,7 +75,7 @@ and a background worker dispatches to handlers with retries (the Communications
 outbox worker already proves the pattern). **No message broker** — Postgres is
 the queue, and every infrastructure piece multiplies per dedicated customer
 deployment. Build the event bus together with its first real consumer, most
-likely Orders (`OrderPlaced` → Communications sends confirmation, Warehouse
+likely Orders (`OrderPlaced` → Communications sends confirmation, Inventory
 reserves stock). If a module is ever extracted, the outbox dispatcher targets a
 transport instead of in-process handlers; event contracts stay unchanged.
 
@@ -740,7 +740,7 @@ category hierarchy (single category per product), GTIN barcodes with check-digit
 validation and uniqueness, and logistics fields (weight and dimensions).
 
 *Unblocks:* a usable catalog UI, category-based navigation and reporting, barcode
-lookup, and shipping-cost estimation groundwork for Orders/Warehouse.
+lookup, and shipping-cost estimation groundwork for Orders/Inventory.
 
 ### Phase 2 — Variants (done)
 
@@ -774,13 +774,15 @@ and quantity breaks, with an explicit, documented precedence order.
 *Unblocks:* B2B negotiated pricing and volume discounts; designed together with
 the Orders service so order lines resolve prices the same way the catalog does.
 
-### Phase 5 — Operational readiness (align with Warehouse)
+### Phase 5 — Operational readiness (align with Inventory)
 
 Unit-of-measure conversions (base unit + conversion factor) and supplier records
-per product/variant (vendor SKU, lead time, minimum order quantity).
+per product/variant (vendor SKU, lead time, minimum order quantity), designed with
+Orders. Packagings — a box of 15, a Euro pallet of 40 boxes, each with its own GTIN —
+moved to [Inventory](#inventory)'s phase 1, which needed them first.
 
-*Unblocks:* purchasing and warehouse receiving; designed together with the
-Warehouse service.
+*Unblocks:* purchasing in other units than the stock unit, and supplier records on
+Inventory's goods receipts; designed together with Orders.
 
 ### Later
 
@@ -791,6 +793,78 @@ Warehouse service.
 - **Tags/collections** — the designated answer for cross-cutting, multi-assignment
   grouping (e.g. "Summer sale"), deliberately separate from the single-assignment
   category hierarchy.
+
+## Inventory
+
+A new module, researched in
+[`docs/superpowers/research/2026-10-27-inventory-module.md`](docs/superpowers/research/2026-10-27-inventory-module.md)
+and designed in
+[`docs/superpowers/specs/2026-10-27-inventory-design.md`](docs/superpowers/specs/2026-10-27-inventory-design.md):
+the stock of the catalog's goods in warehouses and stores — Inventory, in Norwegian
+**Lager**. Each site is divided into the places an item can lie, from a pallet rack's
+bin to a shop's shelf, as a tree of locations with a printed, scannable code. Stock
+changes only through immutable movements — adjustments, moves, goods receipts and
+counts — and the balance per variant and location is kept from them in the same
+transaction, never below zero. What was asked for first: the total stock on the product
+page, every location where an item lies, and a lookup by code that shows what lies
+there. It **depends on Products**, reading and locking the variants through
+`contracts.ProductCatalog`, and Products refuses to delete a variant, or to make a
+product a service, while it holds stock.
+
+### Phase 1 — Sites, locations and the ledger
+
+Two deliveries, each opened against `main` after the previous one lands.
+
+**A — The ledger, in progress**
+([the plan](docs/superpowers/plans/2026-10-27-inventory-plan.md);
+[the reference](docs/src/content/docs/en/reference/inventory.md)): the `inventory`
+module and `@vantigo/inventory-ui`, with six permissions, none sensitive; sites and
+their locations, one by one or in bulk, with an events log; the ledger — adjustments,
+moves within a site and goods receipts, each idempotent; the Stock card on the product
+page, a location's contents, a variant's stock and the movements; the lookup by code;
+the dashboard card; and the Products seam — the catalog's barcode, `VariantsOfProduct`,
+`LookupCode`, `SearchVariants` and `LockVariants`, the `VariantReferences` slot, a
+variant with stock that cannot be deleted and a product with stock that cannot become a
+service. Migration `00108`.
+
+**B — Packagings and counts, planned**: packagings on Products' variants (a box, a
+case, a pallet, each with a GTIN, built from one another), entering and showing stock in
+them; counts, opened over a site or a location's subtree, with the expected quantities
+frozen when opened and the differences posted as one movement; location labels to print; the opening-balance import; and the stock column on
+Products' list.
+
+*Unblocks:* knowing what lies where before Orders reserves it and Point of sale sells
+it.
+
+### Later
+
+**Transfers between sites** (sent, in transit, received) wait for Orders.
+**Reservations** — available is on hand less reserved, per site — with the
+`contracts.Stock` and `StockLedger` reads, wait for Orders and the domain-events outbox.
+**Lots, serials, expiry, FEFO and traceability** wait for [Manufacturing](#manufacturing).
+**Negative stock**, allowed per site by an administrator, waits for Point of sale.
+**Placement** — a primary location, min and max, a low-stock list — waits for the
+owner's call. **Units other than packagings** (kg, litre, purchase units) wait for
+Products phase 5, and **supplier records on receipts** for the same phase with Orders.
+**Camera scanning** waits for browser support of `BarcodeDetector`, **thermal label
+printers** (ZPL) for demand, **valuation** for a ledger, and the **store flags**
+(*sells at the till*, *fulfils orders*) for Point of sale and Orders.
+
+## Manufacturing
+
+A later module, for turning stock into other stock: a production consumes components and
+produces a finished item. Nothing is designed yet, but Inventory's phase 1 keeps the
+rules that let it join without reshaping the ledger:
+
+- **Lots belong to Inventory.** The tracking mode — none, lot or serial — is a per-variant
+  Products field that may change only at zero stock, asked through the same
+  `VariantReferenceHolder` that guards a variant's delete.
+- **The balance key gains a lot**: `lot_id` joins the balance's key and the movement
+  lines, as nullable columns and an index change, since no contract, response or query
+  treats variant and location as the whole key.
+- **A production is one movement** with consume and produce lines — a line may have no
+  *from* or no *to* — and the source reference every movement already carries names the
+  production order.
 
 ## Projects
 

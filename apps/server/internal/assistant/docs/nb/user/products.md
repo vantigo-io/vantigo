@@ -71,6 +71,12 @@ Klikk **Lagre endringer**; bekreftelsen er **Produkt oppdatert**.
 Redigering av et produkt endrer bare de felles detaljene; SKU, enhet, kostnad, logistikk
 og priser hører til varianten og endres på produktsiden i stedet.
 
+Når Lager er i bruk, kan et produkt av typen **Varer** som fortsatt har varianter på lager,
+ikke bli en **Tjeneste**: lagringen sier **Produktet har beholdning** — *En variant av
+produktet har fortsatt beholdning. Flytt eller juster beholdningen til null før du gjør
+produktet til en tjeneste.* Flytt beholdningen eller juster den til null i
+[Lager](/nb/user/inventory/) først. Å gjøre en tjeneste om til varer er alltid tillatt.
+
 ## Produktsiden
 
 Når du klikker på et produkt, åpnes siden dets, med statusmerket ved siden av navnet.
@@ -80,6 +86,12 @@ eksempel *Møbler / Stoler*), **Strekkode**, **Enhet**, **Standardkostnad**,
 beskrivelsen. For varer viser en **Logistikk**-del **Vekt** og **Dimensjoner (L×B×H)**,
 eller sier at ingen er registrert. Under følger kortet **Priser** og, når produktet har
 mer enn én variant, kortet **Varianter**.
+
+Når organisasjonen bruker Lager og du har `inventory:locations-view` og
+`inventory:stock-view`, ligger kortet **Beholdning** over **Priser**: totalen på lager, og
+beholdningen per lagersted, som hver åpnes til lokasjonene der varen ligger — per variant
+når produktet har flere. En tjeneste har ikke noe beholdningskort. Se
+[Lager](/nb/user/inventory/).
 
 ## Varianter og enheter
 
@@ -102,6 +114,13 @@ dialogene spør etter:
 Klikk **Lagre variant**. Vantigo nekter å endre en SKU når produktet ikke lenger er et
 utkast, nekter en SKU eller strekkode som en annen variant allerede bruker, og nekter å
 fjerne den siste varianten (**Et produkt må beholde minst én variant.**).
+
+Søppelbøtten spør først: **Slett variant** — *Slette varianten {SKU}? Prisene slettes
+sammen med den.* — og **Slett** fjerner varianten med prisene. En variant som fortsatt
+ligger på lager, kan ikke slettes: appen sier **Varianten har fortsatt beholdning** —
+*Flytt eller juster beholdningen til null før du sletter varianten.* Når du kan se
+beholdning, lenker meldingen **Se hvor den ligger** til variantens beholdning i Lager. En
+variant med lagerbevegelser i historikken, men ingenting på lager, kan slettes.
 
 Strekkoden, vekten og dimensjonene på produktsiden er også variantfelter, men appen
 redigerer dem ikke; de settes gjennom API-et.
@@ -190,6 +209,9 @@ slettes.**): flytt de produktene til en annen mva-kategori først.
   produkter; linjen viser deretter produktets navn, SKU og enhet til alle på
   prosjektet, også uten en produktrettighet. Se
   [faktureringslinjer](/en/reference/projects/#billing-lines-and-the-optional-products-dependency).
+- **Lager** — holder beholdningen av **Varer**-variantene på lokasjonene på hvert
+  lagersted, og legger kortet **Beholdning** til produktsiden. Se
+  [Lager](/nb/user/inventory/).
 - **Fakturaer** — fakturalinjer skrives på selve fakturaen (beskrivelse, antall, enhet,
   enhetspris og mva-kode) og leser ikke katalogen. Se
   [referansen for Fakturaer](/en/reference/invoices/).

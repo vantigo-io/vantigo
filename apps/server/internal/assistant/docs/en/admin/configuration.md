@@ -49,7 +49,7 @@ the guides linked from each group say how to choose.
 | `PUBLIC_BASE_URL` | unset | The `https` address the pay page, the calendar answer page and Microsoft's change notifications are reached at from the internet |
 | `PORT` | `8080` | The listen port |
 | `DATABASE_URL`, `MIGRATIONS_DATABASE_URL` | required; the second defaults to the first | The runtime role's connection and the owner role the migrations use |
-| `MODULES` | every module the binary knows | The business modules this installation serves: `customers`, `products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `calendar`, `entra` and `assistant`. The `assistant` has no permissions of its own and needs no other module, but is of use only while `AI_PROVIDER` is set ([AI](#ai)) |
+| `MODULES` | every module the binary knows | The business modules this installation serves: `customers`, `products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `calendar`, `entra` and `assistant`. `inventory` requires `products`. The `assistant` has no permissions of its own and needs no other module, but is of use only while `AI_PROVIDER` is set ([AI](#ai)) |
 | `WORKERS_IN_PROCESS` | `1` | Whether the API process also runs the background workers |
 | `SHUTDOWN_TIMEOUT`, `LOG_LEVEL` | `30s`, `info` | How long a stop drains in-flight work; the log's verbosity |
 | `APP_SECRET` | required | The process-wide key material: cookies, CSRF, sealed secrets |

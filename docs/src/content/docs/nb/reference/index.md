@@ -32,7 +32,11 @@ Vantigo-installasjon serverer under `/docs/`.
 | [Utlegg](/en/reference/expenses/) | Utlegg og kjøregodtgjørelse, kvitteringer, godkjenning, refusjon og fakturering. |
 | [Fakturaer](/en/reference/invoices/) | Salgsdokumentet: nummerering, mva, utstedelse, kreditnotaer, PDF-en, betalinger, sending og eksport. |
 | [Ansatte](/en/reference/staff/) | Registeret over de ansatte: innstillingene, forretningstidssonen og bedriftens struktur. |
+| [Bemanning](/en/reference/planning/) | Booking av folks tid på prosjekter: allokeringer, tentative eller bekreftede, mot kapasiteten beregnet fra fakta i Ansatte; planen, prosjektplanen, tidslinjen, Ubemannet og Min bemanning; behov med kompetansekrav, kandidatene og inntaket av planlagte prosjekter; personenes ønsker. |
+| [Lager](/en/reference/inventory/) | Beholdningen av katalogens varer på lagre og i butikker: lagersteder, hvert et tre av lokasjoner; de uforanderlige bevegelsene — justeringer, flyttinger og varemottak — og saldoene de holder; et produkts beholdning, innholdet på en lokasjon, oppslaget på kode; låserekkefølgen delt med Produkter, og slettingen av en variant som nektes mens den har beholdning. |
 | [Kalender](/en/reference/calendar/) | Avtaler med gjentakelse og kolleger, kildene de andre modulene projiserer radene sine gjennom, vinduet i seerens tidssone og en kollegas opptatt og ledig. |
+| [Microsoft Entra ID](/en/reference/entra/) | Tilkoblingen til én leietaker, klienthemmelighetene og tilkoblingstesten, kontoreglene, den beskyttede Graph-klienten, og brukerlivsløpet Ansatte styrer gjennom den: kontoen forberedt, aktivert med et midlertidig tilgangspass, holdt i takt, deaktivert og slettet. |
+| [Assistent](/en/reference/assistant/) | Hver persons assistent: tilgjengelighet, private samtaler, kjøringer, verktøyene — dokumentasjonssøk og operasjonene en person kan kalle —, handlingsloggen, tillatelsesnivåene en eier setter, oppbevaring og slettingen. |
 
 Identitet er ikke en modul: kontoer, økter, MFA, RBAC, OIDC og SCIM er alltid en del av
 applikasjonen og er dokumentert under [Administrasjon](/nb/admin/authentication/).

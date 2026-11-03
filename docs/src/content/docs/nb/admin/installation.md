@@ -84,10 +84,10 @@ engangsjobb, og starter deretter Vantigo:
 - **API-kontrakten** — `GET http://localhost:8080/api/openapi.json` (krever en sesjon)
 
 Modulene Kunder, Produkter, Energi, Kommunikasjon, Prosjekter, Tid, Utgifter,
-Fakturaer, Ansatte, Bemanning, Kalender, Microsoft Entra ID og Assistent er aktivert som standard
+Fakturaer, Ansatte, Bemanning, Lager, Kalender, Microsoft Entra ID og Assistent er aktivert som standard
 (`MODULES` i `vantigo.env`). De deler én PostgreSQL-database ved navn `vantigo`, med
 uavhengige skjemaer `identity`, `customers`, `products`, `energy`, `communications`,
-`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `calendar`, `entra` og `assistant`, hver med sin egen
+`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `calendar`, `entra` og `assistant`, hver med sin egen
 migreringshistorikk.
 
 ## Hva stacken inneholder
@@ -191,9 +191,9 @@ prosedyrene og gjenopprettingen.
   denne installasjonen aktiverer. `identity` er alltid montert og listes aldri. Usatt
   aktiverer hver modul binæren kan montere: `customers`, `products`, `energy`,
   `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`,
-  `calendar`, `entra` og `assistant`. `energy`, `communications`, `projects` og `invoices` krever hver
+  `inventory`, `calendar`, `entra` og `assistant`. `energy`, `communications`, `projects` og `invoices` krever hver
   `customers`, `time` krever `projects`, `planning` krever både `projects` og `staff`,
-  og `entra` krever `staff`; `projects` bruker
+  `inventory` krever `products`, og `entra` krever `staff`; `projects` bruker
   også `products` når den er aktivert og svarer 409 på endepunktene for
   faktureringslinjer når den ikke er det; `expenses` krever ingenting og leser
   `projects` bare når den tilfeldigvis er aktivert; `staff`, `calendar` og `assistant` krever
@@ -272,9 +272,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Standardrettigheter dekker bare objekter som opprettes etterpå; gi rettigheter
 -- på skjemaene de aktiverte modulene allerede har opprettet (legg til/fjern
 -- skjemaer så de stemmer med MODULES aktivert i din installasjon).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra, assistant TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra, assistant TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra, assistant TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, assistant TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, assistant TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, assistant TO "vantigo_app";
 ```
 
 ## Bakgrunnsjobber og skalering
@@ -508,7 +508,7 @@ må den nye URI-en legges til appregistreringen
 API-prefiksene forblir `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
 `/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
-`/api/v1/calendar`, `/api/v1/entra` og `/api/v1/assistant`.
+`/api/v1/inventory`, `/api/v1/calendar`, `/api/v1/entra` og `/api/v1/assistant`.
 
 For eksempel, med nginx:
 
@@ -827,6 +827,18 @@ feiler en kjøring en omstart etterlot som pågående, og `assistant-retention`,
 samtaler som er eldre enn oppbevaringstiden og samtalene til personer identity har slettet.
 Å rulle migreringen tilbake dropper skjemaet med alle samtalene. Se
 [Assistent](/nb/user/assistant/) og [referansen for Assistent](/en/reference/assistant/).
+
+**Utgivelsen med Lager.** Den har `00108_inventory_baseline.sql`, skjemaet `inventory`
+uten lagersteder, lokasjoner eller beholdning. En installasjon som lar `MODULES` stå usatt,
+får modulen, og **Lager**-flisen for alle som får `inventory:locations-view` eller
+`inventory:stock-view`, ved oppgradering; en som lister `MODULES`, får den når
+`inventory` legges til ved siden av `products`, som den krever — `inventory` uten
+`products` nekter å starte. De seks rettighetene er nye, og ingen egendefinert rolle har
+dem før en eier legger dem til. En rolle med minste privilegium trenger tilgang til
+skjemaet `inventory` ([Databaseroller](#databaseroller)). Den starter ingen
+bakgrunnsjobb og trenger ingen innstilling; det er ikke noe mer å gjøre. Å rulle
+migreringen tilbake dropper skjemaet med alle lagersteder, lokasjoner og bevegelser. Se
+[Lager](/nb/user/inventory/).
 
 **Utgivelsen med kompetanse i Ansatte.** Den har `00066_staff_competence.sql`:
 kompetansekatalogen — fem kategorier og femten norske sertifikater forhåndsdefinert — og

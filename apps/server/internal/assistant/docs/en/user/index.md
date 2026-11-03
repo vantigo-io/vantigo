@@ -16,7 +16,7 @@ shown.
 ## Apps and the switcher
 
 Each module is an **app** with its own sidebar: Customers, Projects, Time, Calendar,
-Expenses, Staff, Planning, Invoices, Communications, Products and Energy — and Microsoft Entra ID,
+Expenses, Staff, Planning, Invoices, Communications, Products, Inventory and Energy — and Microsoft Entra ID,
 where an administrator connects the company's tenant. The [Assistant](/en/user/assistant/) is an app
 too, and also a panel that opens beside any screen with the button in the top bar or Cmd/Ctrl+J, and it can [show you where to click](/en/user/assistant/#show-me-how) in the main create flows. The app switcher in the top bar lists
 the apps you can open; **Home** is the dashboard, which opens with Calendar's **Today and
@@ -26,7 +26,10 @@ with the full-time equivalents, who starts and ends soon and who is away today, 
 `staff:view` or `staff:manage` ([the dashboard](/en/user/staff/#the-dashboard)); Planning's, the people
 with a confirmed booking this week, their confirmed load with the tentative beside it,
 the open requests and the people unbooked, for `planning:view`
-([the dashboard](/en/user/planning/#the-dashboard)). Its **Needs attention**
+([the dashboard](/en/user/planning/#the-dashboard)); Inventory's, the stock lines with the
+goods receipts posted this week beside them, for `inventory:locations-view` with
+`inventory:stock-view` — it adds nothing to the list below ([Inventory](/en/user/inventory/)).
+Its **Needs attention**
 list gathers the apps' items that wait for someone — Invoices' among them: overdue
 invoices, money owed back on an invoice, and, with `invoices:payments`, bank lines in the
 exception queue, reminders that failed or wait for a rate or a review, print batches
@@ -76,6 +79,7 @@ shorter than yours:
 | [Invoices](/en/user/invoices/) | Invoices, Quick invoice, Invoice journal, Overdue, Payments, Invoice settings |
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |
+| [Inventory](/en/user/inventory/) | Overview, Movements, Receipts |
 | [Energy](/en/user/energy/) | Metering points |
 | [Microsoft Entra ID](/en/user/entra/) | Microsoft Entra ID (the connection's status and its six setup steps), for `entra:manage` |
 | [Assistant](/en/user/assistant/) | Your conversations with the assistant, from anywhere in Vantigo; shown to everyone who has the assistant |

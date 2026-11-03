@@ -15,7 +15,7 @@ rollene dine gir deg. En modul du ikke har rettighet til vises rett og slett ikk
 ## Apper og app-velgeren
 
 Hver modul er en **app** med sin egen sidemeny: Kunder, Prosjekter, Timer, Kalender,
-Utlegg, Ansatte, Bemanning, Fakturaer, Kommunikasjon, Produkter og Energi — og Microsoft Entra ID,
+Utlegg, Ansatte, Bemanning, Fakturaer, Kommunikasjon, Produkter, Lager og Energi — og Microsoft Entra ID,
 der en administrator kobler til selskapets leietaker. [Assistenten](/nb/user/assistant/) er også en
 app, og et panel som åpnes ved siden av hvilket som helst skjermbilde med knappen i toppfeltet eller Cmd/Ctrl+J, og den kan [vise deg hvor du skal klikke](/nb/user/assistant/#vis-meg-hvordan) i de viktigste opprettelsesflytene. App-velgeren i toppfeltet lister appene
 du kan åpne; **Hjem** er dashbordet, som åpner med agendaen **I dag og denne uken** fra
@@ -27,7 +27,10 @@ tallene som trenger oppmerksomheten din — Ansattes, hvor mange som er ansatt i
 ([dashbordet](/nb/user/staff/#dashbordet)); Bemannings, hvor mange som har en bekreftet
 allokering denne uken, den bekreftede belastningen deres med den tentative ved siden av,
 de åpne behovene og hvor mange som er ubemannet, for `planning:view`
-([dashbordet](/nb/user/planning/#dashbordet)). Listen **Trenger oppfølging** samler det i
+([dashbordet](/nb/user/planning/#dashbordet)); Lagers, lagerlinjene med varemottakene
+bokført denne uken ved siden av, for `inventory:locations-view` sammen med
+`inventory:stock-view` — det legger ingenting til listen nedenfor ([Lager](/nb/user/inventory/)).
+Listen **Trenger oppfølging** samler det i
 appene som venter på noen — også fra Fakturaer: forfalte fakturaer, penger som skal
 tilbake på en faktura, og, med `invoices:payments`, banklinjer i avvikskøen, purringer
 som feilet eller venter på en sats eller en gjennomgang, utskriftsbunker som ikke er
@@ -79,6 +82,7 @@ kortere enn din:
 | [Fakturaer](/nb/user/invoices/) | Fakturaer, Hurtigfaktura, Fakturajournal, Forfalt, Innbetalinger, Fakturainnstillinger |
 | [Kommunikasjon](/nb/user/communications/) | Innboks, Kanaler, Blokkeringer |
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |
+| [Lager](/nb/user/inventory/) | Oversikt, Bevegelser, Varemottak |
 | [Energi](/nb/user/energy/) | Målepunkter |
 | [Microsoft Entra ID](/nb/user/entra/) | Microsoft Entra ID (tilkoblingens status og de seks stegene i oppsettet), for `entra:manage` |
 | [Assistent](/nb/user/assistant/) | Samtalene dine med assistenten, fra hvor som helst i Vantigo; vises for alle som har assistenten |

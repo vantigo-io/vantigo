@@ -51,7 +51,7 @@ veiledningene det lenkes til fra hver gruppe, sier hvordan du velger.
 | `PUBLIC_BASE_URL` | ikke satt | `https`-adressen betalingssiden, kalenderens svarside og Microsofts endringsvarsler nås på fra internett |
 | `PORT` | `8080` | Porten det lyttes på |
 | `DATABASE_URL`, `MIGRATIONS_DATABASE_URL` | påkrevd; den andre er som den første | Kjøretidsrollens tilkobling og eierrollen migreringene bruker |
-| `MODULES` | alle modulene binæren kjenner | Forretningsmodulene denne installasjonen betjener: `customers`, `products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `calendar`, `entra` og `assistant`. `assistant` har ingen egne rettigheter og trenger ingen annen modul, men har bare nytte av seg mens `AI_PROVIDER` er satt ([KI](#ki)) |
+| `MODULES` | alle modulene binæren kjenner | Forretningsmodulene denne installasjonen betjener: `customers`, `products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `calendar`, `entra` og `assistant`. `inventory` krever `products`. `assistant` har ingen egne rettigheter og trenger ingen annen modul, men har bare nytte av seg mens `AI_PROVIDER` er satt ([KI](#ki)) |
 | `WORKERS_IN_PROCESS` | `1` | Om API-prosessen også kjører bakgrunnsarbeiderne |
 | `SHUTDOWN_TIMEOUT`, `LOG_LEVEL` | `30s`, `info` | Hvor lenge et stopp tømmer pågående arbeid; loggens detaljnivå |
 | `APP_SECRET` | påkrevd | Nøkkelmaterialet for hele prosessen: cookies, CSRF, forseglede hemmeligheter |

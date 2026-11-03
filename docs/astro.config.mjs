@@ -23,6 +23,7 @@ const contracts = [
   "invoices",
   "staff",
   "planning",
+  "inventory",
   "calendar",
   "entra",
   "assistant",
