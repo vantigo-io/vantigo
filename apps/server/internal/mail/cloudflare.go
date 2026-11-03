@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
@@ -72,14 +73,7 @@ func newCloudflare(cfg config.MailConfig) (*cloudflareSender, error) {
 	}
 	transport := testCloudflareTransport
 	if transport == nil {
-		dialer := &net.Dialer{Timeout: 10 * time.Second}
-		transport = &http.Transport{
-			Proxy:                 nil,
-			DialContext:           netguard.DialContext(&net.Resolver{}, dialer.DialContext),
-			ForceAttemptHTTP2:     true,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ResponseHeaderTimeout: cloudflareSendTimeout,
-		}
+		transport = cloudflareTransport()
 	}
 	return &cloudflareSender{
 		endpoint: base + "/accounts/" + url.PathEscape(cfg.CloudflareAccountID) + "/email/sending/send",
@@ -93,6 +87,22 @@ func newCloudflare(cfg config.MailConfig) (*cloudflareSender, error) {
 		},
 	}, nil
 }
+
+// cloudflareTransport is the one guarded transport every Cloudflare send
+// shares. SendOutbound builds a sender per message, so a transport per sender
+// would leave each one's idle connection open until Cloudflare closed it.
+var cloudflareTransport = sync.OnceValue(func() http.RoundTripper {
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	return &http.Transport{
+		Proxy:                 nil,
+		DialContext:           netguard.DialContext(&net.Resolver{}, dialer.DialContext),
+		ForceAttemptHTTP2:     true,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: cloudflareSendTimeout,
+		IdleConnTimeout:       90 * time.Second,
+		MaxIdleConns:          4,
+	}
+})
 
 func (s *cloudflareSender) Send(ctx context.Context, m Message) error {
 	return s.send(ctx, Outbound{To: []string{m.To}, Subject: m.Subject, TextBody: m.TextBody})
@@ -228,7 +238,9 @@ func (s *cloudflareSender) send(ctx context.Context, out Outbound) error {
 		return cloudflareError(resp.StatusCode, parsed)
 	}
 	// A permanent bounce is reported inside a successful response; the mail
-	// did not arrive, so the caller must hear it as a failure.
+	// did not arrive, so the caller must hear it as a failure. Every system
+	// mail goes to one recipient, so nobody else has it already; a caller
+	// that sends to several and retries would deliver to the rest again.
 	if parsed.Result != nil && len(parsed.Result.PermanentBounces) > 0 {
 		return fmt.Errorf("mail: cloudflare reported %d of %d recipients as permanently bounced", len(parsed.Result.PermanentBounces), len(out.To)+len(out.Cc)+len(out.Bcc))
 	}
