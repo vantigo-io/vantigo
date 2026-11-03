@@ -1,9 +1,14 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { problemResponse, sentAll } from "../test/api";
-import { renderWithProviders } from "../test/render";
-import { directoryUser, type EntraServer, stubEntraApi } from "../test/server";
+import "../../i18n";
+import {
+  type DirectoryServer,
+  directoryUser,
+  identityRefusal,
+  renderWithProviders,
+  stubDirectoryApi,
+} from "../../test/directory";
 import { DirectoryPicker, type DirectoryPickerProps } from "./directory-picker";
 
 const KARI = directoryUser();
@@ -12,41 +17,43 @@ const OLA = directoryUser({
   displayName: "Ola Nordmann",
   mail: "ola@contoso.no",
   userPrincipalName: "ola@contoso.no",
-  employeeId: "1042",
-  accountEnabled: false,
+  employeeNumber: "1042",
+  enabled: false,
 });
 
-const openPicker = (server: EntraServer, props: Partial<DirectoryPickerProps> = {}) => {
-  const fetchMock = stubEntraApi(server);
+const openPicker = (server: DirectoryServer, props: Partial<DirectoryPickerProps> = {}) => {
+  const fetchMock = stubDirectoryApi(server);
   const onPick = vi.fn();
   renderWithProviders(<DirectoryPicker onPick={onPick} {...props} />);
   return { fetchMock, onPick, field: screen.getByLabelText(/Search the directory/) };
 };
 
-const searches = (fetchMock: ReturnType<typeof stubEntraApi>) =>
-  sentAll(fetchMock, "GET").filter((one) => one.url.startsWith("/api/v1/entra/directory/users"));
+const searches = (fetchMock: ReturnType<typeof stubDirectoryApi>) =>
+  fetchMock.actualCalls
+    .map(([input]) => String(input))
+    .filter((url) => url.startsWith("/api/v1/identity/owner/sso/directory/users"));
 
 describe("the directory picker", () => {
   it("asks nothing before two characters, then once after the pause", async () => {
-    const { fetchMock, field } = openPicker({ directory: [KARI, OLA] });
+    const { fetchMock, field } = openPicker({ users: [KARI, OLA] });
     await userEvent.type(field, "n");
     expect(await screen.findByText("Type at least two characters.")).toBeInTheDocument();
     await userEvent.type(field, "ordm");
     expect(await screen.findByRole("option", { name: /Kari Nordmann/ })).toBeInTheDocument();
-    expect(searches(fetchMock).map((one) => one.url)).toEqual(["/api/v1/entra/directory/users?q=nordm"]);
+    expect(searches(fetchMock)).toEqual(["/api/v1/identity/owner/sso/directory/users?search=nordm"]);
   });
 
-  it("shows each account's principal name, employee id and state", async () => {
-    const { field } = openPicker({ directory: [KARI, OLA] });
+  it("shows each account's principal name, employee number and state", async () => {
+    const { field } = openPicker({ users: [KARI, OLA] });
     await userEvent.type(field, "nordmann");
     const ola = await screen.findByRole("option", { name: /Ola Nordmann/ });
-    expect(ola).toHaveTextContent("ola@contoso.no · employee ID 1042");
+    expect(ola).toHaveTextContent("ola@contoso.no · employee number 1042");
     expect(ola).toHaveTextContent("Disabled");
     expect(screen.getByRole("option", { name: /Kari Nordmann/ })).not.toHaveTextContent("Disabled");
   });
 
   it("answers the picked account's two keys", async () => {
-    const { field, onPick } = openPicker({ directory: [KARI] });
+    const { field, onPick } = openPicker({ users: [KARI] });
     await userEvent.type(field, "kari");
     await userEvent.click(await screen.findByRole("option", { name: /Kari Nordmann/ }));
     expect(onPick).toHaveBeenCalledWith({ objectId: KARI.objectId, userPrincipalName: "kari@contoso.no" });
@@ -55,7 +62,7 @@ describe("the directory picker", () => {
 
   it("tells the host to forget the pick once the search changes after it, and only then", async () => {
     const onClear = vi.fn();
-    const { field } = openPicker({ directory: [KARI] }, { onClear });
+    const { field } = openPicker({ users: [KARI] }, { onClear });
     await userEvent.type(field, "kari");
     expect(onClear).not.toHaveBeenCalled();
     await userEvent.click(await screen.findByRole("option", { name: /Kari Nordmann/ }));
@@ -66,7 +73,7 @@ describe("the directory picker", () => {
   });
 
   it("marks a guest account", async () => {
-    const { field } = openPicker({ directory: [KARI, { ...OLA, guest: true }] });
+    const { field } = openPicker({ users: [KARI, { ...OLA, guest: true }] });
     await userEvent.type(field, "nordmann");
     expect(await screen.findByRole("option", { name: /Ola Nordmann/ })).toHaveTextContent("Guest");
     expect(screen.getByRole("option", { name: /Kari Nordmann/ })).not.toHaveTextContent("Guest");
@@ -75,7 +82,7 @@ describe("the directory picker", () => {
   it("marks a held account and keeps it from being picked, unless it is the user's own", async () => {
     const { field, onPick } = openPicker(
       {
-        directory: [
+        users: [
           directoryUser({ holder: { kind: "expected", userId: "u-2" } }),
           { ...OLA, holder: { kind: "expected", userId: "u-1" } },
           directoryUser({
@@ -117,22 +124,26 @@ describe("the directory picker", () => {
         userPrincipalName: `person${index}@contoso.no`,
       }),
     );
-    const { field } = openPicker({ directory: many });
+    const { field } = openPicker({ users: many });
     await userEvent.type(field, "person");
     expect(await screen.findByText(/Narrow the search/)).toBeInTheDocument();
     expect(screen.getAllByRole("option")).toHaveLength(25);
   });
 
   it("says in words why the directory could not be read", async () => {
-    const { field } = openPicker({
-      directory: problemResponse(503, "refused", { code: "tenant_unreachable" }),
-    });
+    const { field } = openPicker({ users: identityRefusal(503, "provider_unreachable") });
     await userEvent.type(field, "kari");
-    expect(await screen.findByText("The tenant did not answer. Try again in a moment.")).toBeInTheDocument();
+    expect(await screen.findByText(/The directory could not be asked/)).toBeInTheDocument();
+  });
+
+  it("says in words when there is no directory to search", async () => {
+    const { field } = openPicker({ users: identityRefusal(409, "no_directory") });
+    await userEvent.type(field, "kari");
+    expect(await screen.findByText(/No directory serves the configured single sign-on provider/)).toBeInTheDocument();
   });
 
   it("says when nothing matches", async () => {
-    const { field } = openPicker({ directory: [KARI] });
+    const { field } = openPicker({ users: [KARI] });
     await userEvent.type(field, "zz");
     await waitFor(() => expect(screen.getByText("No account in the directory matches.")).toBeInTheDocument());
   });

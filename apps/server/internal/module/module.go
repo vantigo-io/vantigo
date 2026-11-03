@@ -83,6 +83,18 @@ type Deps struct {
 	// does not, since no worker connects anyone. It is nil when no enabled
 	// module provides one.
 	SSOConnections contracts.SSOConnections
+	// DirectorySearches are every enabled module's contracts.DirectorySearch
+	// (Google Workspace design G8, module-boundaries rule 22): a directory's
+	// accounts as identity offers them to an Owner connecting existing users
+	// — a many-provider slot keyed by Key, the OIDC provider each serves;
+	// identity asks the one whose Key is the configured provider. Compose
+	// collects them from the enabled modules, after SSOConnections, which a
+	// provider reads; Workers does not, since no worker searches a directory.
+	// Compose appends to whatever the caller preset here (the seam
+	// modtest.WithDirectorySearch fills) and refuses a Key two providers
+	// claim or a reserved one. Only identity calls them, never inside a
+	// transaction. nil when no enabled module provides one.
+	DirectorySearches []contracts.DirectorySearch
 	// Products is the product catalog, the one sanctioned way a module
 	// reads products' catalog data (see contracts.ProductCatalog). Compose
 	// sets it, on every module's Deps copy, from whichever enabled module
@@ -411,6 +423,14 @@ type Module struct {
 	// it; Compose calls it before any Mount runs, after Users, and puts the
 	// result on every module's Deps.
 	SSOConnections func(Deps) contracts.SSOConnections
+	// DirectorySearch builds this module's contracts.DirectorySearch, if it
+	// offers its directory's accounts to identity's connecting of existing
+	// users (Google Workspace design G8). Any number of enabled modules may
+	// set it, each under its own Key; Compose calls it after SSOConnections
+	// is resolved — the provider may hold deps.SSOConnections — and puts the
+	// list on every module's Deps as DirectorySearches. Workers does not. A
+	// nil result contributes nothing.
+	DirectorySearch func(Deps) contracts.DirectorySearch
 	// Products builds this module's contracts.ProductCatalog
 	// implementation, if it provides one. At most one enabled module may
 	// set it; Compose calls it before any Mount runs and puts the result on

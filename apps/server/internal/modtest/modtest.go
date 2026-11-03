@@ -155,6 +155,7 @@ type setup struct {
 	mailboxCalendars  []contracts.MailboxCalendar
 	channelMailboxes  []contracts.ChannelMailbox
 	personalMailboxes []contracts.PersonalMailbox
+	directorySearches []contracts.DirectorySearch
 	outboundMail      contracts.OutboundMail
 	calendarBusy      contracts.CalendarBusy
 	hours             contracts.BillableHours
@@ -407,6 +408,18 @@ func WithMailboxCalendar(m contracts.MailboxCalendar) Option {
 // claim.
 func WithChannelMailbox(m contracts.ChannelMailbox) Option {
 	return func(s *setup) { s.channelMailboxes = append(s.channelMailboxes, m) }
+}
+
+// WithDirectorySearch appends to Deps.DirectorySearches, for identity's
+// directory endpoints to be tested against a fake directory
+// (FakeDirectorySearch) — its accounts, its matches and its refusals set by
+// the test — without composing Entra beside it: depguard keeps it out of
+// identity's tests. Given twice, under two keys (FakeDirectorySearch.WithKey),
+// it is two providers (Google Workspace design G8). module.Compose keeps the
+// values set here before the enabled modules' own and refuses a key both
+// claim.
+func WithDirectorySearch(d contracts.DirectorySearch) Option {
+	return func(s *setup) { s.directorySearches = append(s.directorySearches, d) }
 }
 
 // WithPersonalMailbox appends to Deps.PersonalMailboxes, for Communications to be
@@ -734,6 +747,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		MailboxCalendars:         s.mailboxCalendars,
 		ChannelMailboxes:         s.channelMailboxes,
 		PersonalMailboxes:        s.personalMailboxes,
+		DirectorySearches:        s.directorySearches,
 		OutboundMail:             s.outboundMail,
 		CalendarBusy:             s.calendarBusy,
 		BillableHours:            s.hours,

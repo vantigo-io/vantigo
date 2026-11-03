@@ -7,8 +7,9 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 )
 
-// This file is where the module reaches another: the directory picker and
-// the exact matches (directory.go) reach identity through
+// This file is where the module reaches another: the directory search and
+// the exact matches (directory.go, behind contracts.DirectorySearch) reach
+// identity through
 // contracts.SSOConnections (deps.SSOConnections), the users not yet
 // connected and who already holds a directory account's keys; the Outlook
 // connection (outlook.go) reads Staff's contracts.Workforce
@@ -66,31 +67,31 @@ func noteContractCall(ctx context.Context, method string) error {
 // (contracts.SSOConnections.Unconnected): nothing to anyone but an Owner,
 // contracts.ErrSSONotConfigured while single sign-on is off — also when
 // identity is not composed, as there is then no issuer to connect under.
-func (s *server) unconnected(ctx context.Context, limit int) ([]contracts.ConnectCandidate, error) {
+func (d *directorySearch) unconnected(ctx context.Context, limit int) ([]contracts.ConnectCandidate, error) {
 	if err := noteContractCall(ctx, "SSOConnections.Unconnected"); err != nil {
 		return nil, err
 	}
-	if s.deps.SSOConnections == nil {
+	if d.deps.SSOConnections == nil {
 		return nil, contracts.ErrSSONotConfigured
 	}
-	return s.deps.SSOConnections.Unconnected(ctx, limit)
+	return d.deps.SSOConnections.Unconnected(ctx, limit)
 }
 
 // keyHolders is who holds each of keys under the configured issuer
 // (contracts.SSOConnections.KeyHolders). It answers nothing for an empty
 // batch without asking, and nothing when identity is not composed: nobody
 // then holds anything.
-func (s *server) keyHolders(ctx context.Context, keys []contracts.DirectoryKey) ([]contracts.KeyHolder, error) {
+func (d *directorySearch) keyHolders(ctx context.Context, keys []contracts.DirectoryKey) ([]contracts.KeyHolder, error) {
 	if len(keys) == 0 {
 		return nil, nil
 	}
 	if err := noteContractCall(ctx, "SSOConnections.KeyHolders"); err != nil {
 		return nil, err
 	}
-	if s.deps.SSOConnections == nil {
+	if d.deps.SSOConnections == nil {
 		return nil, nil
 	}
-	return s.deps.SSOConnections.KeyHolders(ctx, keys)
+	return d.deps.SSOConnections.KeyHolders(ctx, keys)
 }
 
 // workforceDirectoryAccount is the principal's own account in an external

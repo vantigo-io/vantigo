@@ -419,6 +419,14 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		return nil, err
 	}
 
+	// The directory searches (contracts.DirectorySearch, Google Workspace
+	// design G8), a many-provider slot keyed by Key, are collected from the
+	// enabled modules after SSOConnections, which a provider holds. Workers
+	// does not collect them: no worker searches a directory.
+	if deps, err = withDirectorySearches(deps, mods); err != nil {
+		return nil, err
+	}
+
 	// The outbound mail (contracts.OutboundMail, integrations design T4)
 	// resolves after the personal mailboxes, by the helper Workers uses too:
 	// Invoices' reminder worker sends through it in worker mode as the API
@@ -932,4 +940,18 @@ func reservedProviderKey(key string) bool {
 		return true
 	}
 	return false
+}
+
+// withDirectorySearches collects contracts.DirectorySearch from the enabled
+// modules into Deps.DirectorySearches, after whatever the caller preset (the
+// seam modtest.WithDirectorySearch fills), refusing a duplicate or reserved
+// Key (G8). Compose alone calls it, after SSOConnections is resolved.
+func withDirectorySearches(deps Deps, enabled []Module) (Deps, error) {
+	providers, err := collectKeyed(deps.DirectorySearches, enabled, "Deps.DirectorySearches", "a directory search",
+		func(m Module) func(Deps) contracts.DirectorySearch { return m.DirectorySearch }, deps)
+	if err != nil {
+		return deps, err
+	}
+	deps.DirectorySearches = providers
+	return deps, nil
 }

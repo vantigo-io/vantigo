@@ -377,6 +377,24 @@ func TestWorkers_CollectTheMailboxSlots(t *testing.T) {
 	}
 }
 
+// No worker searches a directory, so Workers leaves the directory searches
+// (Google Workspace design G8) as the caller preset them, collecting no
+// enabled module's.
+func TestWorkers_LeaveTheDirectorySearches(t *testing.T) {
+	tc := directorySearchCase()
+	var seen []any
+	reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
+		seen = tc.read(d)
+		return nil
+	}}
+	ownerMod, _ := tc.provide("entra")
+	ownerMod.Name = "owner"
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader", "owner"}}}, reader, ownerMod)
+	if len(seen) != 0 {
+		t.Errorf("the workers saw %v, want no directory search", seen)
+	}
+}
+
 // Worker mode never composes, so Workers resolves the OutboundMail slot
 // itself, as Compose does (integrations design T4): Invoices' reminder worker
 // sends through it. From the enabled provider, and the caller's own when no

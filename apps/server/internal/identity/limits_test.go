@@ -36,6 +36,19 @@ func TestNamedPoliciesKeepDotNetsLimits(t *testing.T) {
 	}
 }
 
+// TestDirectoryLimitsKeepEntrasFigures pins the Owner's directory reads
+// (Google Workspace design G8) to the figures Entra's picker and matches
+// had: 60 and 6 a minute, each a bucket of its own.
+func TestDirectoryLimitsKeepEntrasFigures(t *testing.T) {
+	message := "Too many authentication attempts. Please try again later."
+	if want := (ratelimit.Policy{Name: "DirectorySearch", Limit: 60, Window: time.Minute, Message: message}); limits["getIdentityOwnerSsoDirectoryUsers"] != want {
+		t.Errorf("limits[getIdentityOwnerSsoDirectoryUsers] = %+v, want %+v", limits["getIdentityOwnerSsoDirectoryUsers"], want)
+	}
+	if want := (ratelimit.Policy{Name: "DirectoryMatches", Limit: 6, Window: time.Minute, Message: message}); limits["getIdentityOwnerSsoDirectoryMatches"] != want {
+		t.Errorf("limits[getIdentityOwnerSsoDirectoryMatches] = %+v, want %+v", limits["getIdentityOwnerSsoDirectoryMatches"], want)
+	}
+}
+
 // TestLoginAttemptThrottleKeepsDotNetsLimit pins the per-account login
 // throttle to .NET's LoginAttemptThrottle (ten failures a minute) with no
 // Retry-After, and the two operations this area rate-limits by IP.

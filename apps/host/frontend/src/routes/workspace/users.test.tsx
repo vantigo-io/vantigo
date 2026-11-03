@@ -1,7 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ManagedUser } from "../../api/users";
 import { stubFetch } from "../../test/fetch";
 import { renderRoute } from "../../test/render-route";
@@ -466,38 +466,41 @@ describe("the single sign-on column", () => {
   });
 });
 
-describe("the Entra directory in the users screen", () => {
+describe("the directory in the users screen", () => {
   const account = {
     objectId: "44444444-4444-4444-8444-444444444444",
     displayName: "Kari Nordmann",
     mail: "kari.nordmann@contoso.no",
     userPrincipalName: "kari.nordmann@contoso.no",
-    employeeId: "1042",
-    accountEnabled: true,
+    employeeNumber: "1042",
+    enabled: true,
   };
   const olaAccount = {
     objectId: "55555555-5555-4555-8555-555555555555",
     displayName: "Ola Hansen",
     userPrincipalName: "ola.hansen@contoso.no",
-    accountEnabled: true,
+    enabled: true,
   };
+  const entraDirectory = { provider: "entra", displayName: "Microsoft Entra ID" };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
       status,
       headers: { "Content-Type": status === 200 ? "application/json" : "application/problem+json" },
     });
 
-  /** The Entra module's two reads, faked at the network as its package calls them. */
-  const stubDirectory = () => {
+  /** The SSO settings naming a directory (or none), and identity's two directory reads, faked at the network. */
+  const stubDirectory = (directory: { provider: string; displayName: string } | null = entraDirectory) => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.startsWith("/api/v1/entra/directory/users?")) return Promise.resolve(json({ users: [account] }));
-      if (url === "/api/v1/entra/directory/matches")
+      if (url === "/api/v1/identity/owner/sso") return Promise.resolve(json({ directory }));
+      if (url.startsWith("/api/v1/identity/owner/sso/directory/users?"))
+        return Promise.resolve(json({ users: [account] }));
+      if (url === "/api/v1/identity/owner/sso/directory/matches")
         return Promise.resolve(
           json({
             matches: [
-              { userId: "u-1", account, matchedBy: ["userPrincipalName", "employeeId"] },
-              { userId: "u-2", account: olaAccount, matchedBy: ["userPrincipalName"] },
+              { userId: "u-1", account, matchedBy: ["principalName", "employeeNumber"] },
+              { userId: "u-2", account: olaAccount, matchedBy: ["principalName"] },
             ],
             candidates: 2,
             ambiguous: 0,
@@ -509,10 +512,6 @@ describe("the Entra directory in the users screen", () => {
     vi.stubGlobal("fetch", fetchMock);
     return fetchMock;
   };
-
-  afterEach(() => {
-    delete window.__VANTIGO_APP__;
-  });
 
   it("fills both keys from the account picked in the directory", async () => {
     stubDirectory();
@@ -584,8 +583,8 @@ describe("the Entra directory in the users screen", () => {
     expect(within(dialog).getByText("Check this match")).toBeInTheDocument();
   });
 
-  it("keeps the typed field alone while the module is off", async () => {
-    window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules: ["staff"] };
+  it("keeps the typed field alone while no directory serves the configured provider", async () => {
+    stubDirectory(null);
     await renderUsers([user({ ssoLink: { state: "none" } })]);
     expect(screen.queryByRole("button", { name: "Find matches in the directory…" })).not.toBeInTheDocument();
     fireEvent.click(within(row("Kari Nordmann")).getByRole("button", { name: "Connect…" }));

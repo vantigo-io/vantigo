@@ -382,6 +382,7 @@ func (s *server) ssoSettingsBody(row store.IdentitySsoSetting, events store.GetL
 		LastScimRequestAt:       events.LastScimRequestAt,
 		Oidc:                    gen.SsoOidcSettings{Enabled: row.OidcEnabled, AllowedDomains: []string{}, CallbackUrl: base + oidcCallbackPath},
 		Scim:                    gen.SsoScimSettings{Enabled: row.ScimEnabled, EndpointUrl: base + scimBasePath},
+		Directory:               s.directoryBody(row.OidcEnabled, row.OidcProvider),
 	}
 	if row.OidcEnabled {
 		o := &body.Oidc

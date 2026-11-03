@@ -9,8 +9,6 @@ import type {
   EntraSku,
 } from "../api/connection";
 import { requiredPermissions } from "../api/connection";
-import type { EntraDirectoryMatches, EntraDirectoryUser } from "../api/directory";
-import { DIRECTORY_SEARCH_LIMIT } from "../api/directory";
 import type { EntraOutlookComplete, EntraOutlookConnection } from "../api/outlook";
 import { jsonResponse, problemResponse } from "./api";
 import { type StubbedFetch, stubFetch, TEST_SESSION } from "./fetch";
@@ -127,10 +125,6 @@ export interface EntraServer {
   accounts?: EntraAccount[];
   /** What `GET /groups` answers: the module's groups, deleted ones included. None by default. */
   groups?: EntraGroup[];
-  /** The tenant's accounts `GET /directory/users` searches (a case-insensitive substring of the name, mail or principal name), or what it answers instead. */
-  directory?: EntraDirectoryUser[] | Response;
-  /** What `GET /directory/matches` answers; no proposal by default. */
-  matches?: EntraDirectoryMatches | Response;
   /** The caller's own Outlook connection, as `GET /outlook/connection` answers it; offered and not connected by default. */
   outlook?: EntraOutlookConnection;
   /** What `POST /outlook/connect` answers; Microsoft's authorization URL by default. */
@@ -208,25 +202,6 @@ export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
     if (method === "GET" && path.startsWith("/api/v1/entra/events")) return jsonResponse(200, server.events ?? []);
     if (method === "GET" && path === "/api/v1/entra/accounts") return jsonResponse(200, state.accounts);
     if (method === "GET" && path === "/api/v1/entra/groups") return jsonResponse(200, state.groups);
-    if (method === "GET" && path.startsWith("/api/v1/entra/directory/users?")) {
-      if (server.directory instanceof Response) return server.directory.clone();
-      const q = (new URLSearchParams(path.split("?")[1]).get("q") ?? "").trim().toLowerCase();
-      if (q.length < 2 || q.length > 100)
-        return problemResponse(400, "Validation failed", {
-          code: "invalid_request",
-          errors: { q: ["The search must be 2 to 100 characters."] },
-        });
-      const hits = (server.directory ?? [])
-        .filter((one) =>
-          [one.displayName, one.mail ?? "", one.userPrincipalName].some((value) => value.toLowerCase().includes(q)),
-        )
-        .slice(0, DIRECTORY_SEARCH_LIMIT);
-      return jsonResponse(200, { users: hits });
-    }
-    if (method === "GET" && path === "/api/v1/entra/directory/matches") {
-      if (server.matches instanceof Response) return server.matches.clone();
-      return jsonResponse(200, server.matches ?? { matches: [], candidates: 0, ambiguous: 0, truncated: false });
-    }
     const confirmGroup = method === "POST" && path.match(/^\/api\/v1\/entra\/groups\/([^/]+)\/confirm$/);
     if (confirmGroup) {
       const target = state.groups.find((one) => one.objectId === confirmGroup[1]);
@@ -393,15 +368,5 @@ export const entraGroup = (overrides: Partial<EntraGroup> = {}): EntraGroup => (
   createdByUs: true,
   lastMembersAt: "2026-10-20T06:00:00Z",
   createdAt: "2026-10-19T08:00:00Z",
-  ...overrides,
-});
-
-/** One account in the tenant, enabled and held by nobody. */
-export const directoryUser = (overrides: Partial<EntraDirectoryUser> = {}): EntraDirectoryUser => ({
-  objectId: "44444444-4444-4444-8444-444444444444",
-  displayName: "Kari Nordmann",
-  mail: "kari@contoso.no",
-  userPrincipalName: "kari@contoso.no",
-  accountEnabled: true,
   ...overrides,
 });

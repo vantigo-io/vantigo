@@ -1,10 +1,15 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { EntraDirectoryMatches } from "../api/directory";
-import { problemResponse } from "../test/api";
-import { renderWithProviders } from "../test/render";
-import { directoryUser, type EntraServer, stubEntraApi } from "../test/server";
+import type { DirectoryMatches as DirectoryMatchesBody } from "../../api/directory";
+import "../../i18n";
+import {
+  type DirectoryServer,
+  directoryUser,
+  identityRefusal,
+  renderWithProviders,
+  stubDirectoryApi,
+} from "../../test/directory";
 import { DirectoryMatches, type DirectoryMatchesProps } from "./directory-matches";
 
 const users = [
@@ -13,9 +18,9 @@ const users = [
   { id: "u-3", displayName: "Per Olsen", email: "per@example.com" },
 ];
 
-const proposals: EntraDirectoryMatches = {
+const proposals: DirectoryMatchesBody = {
   matches: [
-    { userId: "u-1", account: directoryUser(), matchedBy: ["mail", "userPrincipalName"] },
+    { userId: "u-1", account: directoryUser(), matchedBy: ["mail", "principalName"] },
     {
       userId: "u-2",
       account: directoryUser({
@@ -23,9 +28,9 @@ const proposals: EntraDirectoryMatches = {
         displayName: "Ola Hansen",
         mail: "ola@contoso.no",
         userPrincipalName: "ola@contoso.no",
-        employeeId: "1042",
+        employeeNumber: "1042",
       }),
-      matchedBy: ["employeeId"],
+      matchedBy: ["employeeNumber"],
     },
     {
       userId: "u-3",
@@ -34,7 +39,7 @@ const proposals: EntraDirectoryMatches = {
         displayName: "Per Olsen",
         mail: "per@contoso.no",
         userPrincipalName: "per@contoso.no",
-        accountEnabled: false,
+        enabled: false,
       }),
       matchedBy: ["mail"],
     },
@@ -44,8 +49,8 @@ const proposals: EntraDirectoryMatches = {
   truncated: false,
 };
 
-const openReview = (server: EntraServer, props: Partial<DirectoryMatchesProps> = {}) => {
-  stubEntraApi(server);
+const openReview = (server: DirectoryServer, props: Partial<DirectoryMatchesProps> = {}) => {
+  stubDirectoryApi(server);
   const connect = vi.fn<DirectoryMatchesProps["connect"]>().mockResolvedValue(undefined);
   const onDone = vi.fn();
   renderWithProviders(<DirectoryMatches users={users} connect={connect} onDone={onDone} {...props} />);
@@ -64,12 +69,12 @@ describe("the directory's matches", () => {
     ).toBeInTheDocument();
     expect(within(rowOf("kari@example.com")).getByText("Mail")).toBeInTheDocument();
     expect(within(rowOf("kari@example.com")).getByText("Principal name")).toBeInTheDocument();
-    expect(within(rowOf("ola@example.com")).getByText("Employee ID")).toBeInTheDocument();
+    expect(within(rowOf("ola@example.com")).getByText("Employee number")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Connect Kari Nordmann to kari@contoso.no" })).toBeChecked();
-    // An employee ID alone, or a mail alone, is a weaker key: left to the Owner to check.
+    // An employee number alone, or a mail alone, is a weaker key: left to the Owner to check.
     expect(screen.getByRole("checkbox", { name: "Connect Ola Hansen to ola@contoso.no" })).not.toBeChecked();
     expect(within(rowOf("ola@example.com")).getByText("Check this match")).toBeInTheDocument();
-    expect(within(rowOf("ola@example.com")).getByText(/Matched by mail or employee ID only/)).toBeInTheDocument();
+    expect(within(rowOf("ola@example.com")).getByText(/Matched by mail or employee number only/)).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Connect Per Olsen to per@contoso.no" })).not.toBeChecked();
     expect(within(rowOf("per@example.com")).getByText("Disabled")).toBeInTheDocument();
     expect(within(rowOf("kari@example.com")).queryByText("Check this match")).not.toBeInTheDocument();
@@ -120,21 +125,17 @@ describe("the directory's matches", () => {
   it("says so when nothing matches exactly, and when the list was cut", async () => {
     openReview({ matches: { matches: [], candidates: 1200, ambiguous: 0, truncated: true } });
     expect(await screen.findByText(/No user not yet connected matches exactly one account/)).toBeInTheDocument();
-    expect(screen.getByText(/Only the first 1,000 users were compared/)).toBeInTheDocument();
+    expect(screen.getByText(/Not every user was compared/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Connect selected/ })).not.toBeInTheDocument();
   });
 
-  it("says single sign-on is off in words", async () => {
-    openReview({ matches: problemResponse(409, "refused", { code: "sso_not_configured" }) });
-    expect(
-      await screen.findByText("Single sign-on is not configured, so there is nothing to connect users to."),
-    ).toBeInTheDocument();
+  it("says in words when there is no directory", async () => {
+    openReview({ matches: identityRefusal(409, "no_directory") });
+    expect(await screen.findByText(/No directory serves the configured single sign-on provider/)).toBeInTheDocument();
   });
 
-  it("says a throttled tenant in words", async () => {
-    openReview({ matches: problemResponse(503, "refused", { code: "throttled" }) });
-    expect(
-      await screen.findByText("The tenant is busy and asked Vantigo to wait. Try again in a minute."),
-    ).toBeInTheDocument();
+  it("says in words when the directory could not be asked", async () => {
+    openReview({ matches: identityRefusal(503, "provider_unreachable") });
+    expect(await screen.findByText(/The directory could not be asked/)).toBeInTheDocument();
   });
 });
