@@ -2086,7 +2086,10 @@ var defaultModules = knownModules
 // projects and on staff (planning design S25): it books Staff's people on
 // Projects' projects, reading both through their contracts
 // (contracts.ProjectDirectory and contracts.Workforce), and Customers comes
-// with Projects. Identity is always mounted and is never listed here.
+// with Projects. inventory depends on products (inventory design §8): it
+// keeps stock of the catalog's variants, read and locked through
+// contracts.ProductCatalog. Identity is always mounted and is never listed
+// here.
 func modules(p *problems, env map[string]string) []string {
 	v := env["MODULES"]
 	if v == "" {
@@ -2129,6 +2132,9 @@ func modules(p *problems, env map[string]string) []string {
 	}
 	if slices.Contains(out, "planning") && !slices.Contains(out, "staff") {
 		p.add("MODULES", "planning requires staff")
+	}
+	if slices.Contains(out, "inventory") && !slices.Contains(out, "products") {
+		p.add("MODULES", "inventory requires products")
 	}
 
 	return out

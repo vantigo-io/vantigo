@@ -926,7 +926,7 @@ func TestLoad_TrustedProxyHopsRequireCIDRsOutsideDevelopment(t *testing.T) {
 }
 
 func TestLoad_Modules(t *testing.T) {
-	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "calendar", "entra", "assistant"}) {
+	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "inventory", "calendar", "entra", "assistant"}) {
 		t.Errorf("Modules = %v, want the default customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,calendar,entra,assistant when MODULES is unset", cfg.Modules)
 	}
 
@@ -935,7 +935,7 @@ func TestLoad_Modules(t *testing.T) {
 		t.Errorf("Modules = %v, want trimmed, lower-cased entries with empties dropped", cfg.Modules)
 	}
 
-	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra, assistant") {
+	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, assistant") {
 		t.Errorf("error = %q, want it to name the bad value and the known set", msg)
 	}
 
@@ -1016,6 +1016,16 @@ func TestLoad_Modules(t *testing.T) {
 	cfg = mustLoad(t, with(validEnv(), "MODULES", "customers,projects,staff,planning"))
 	if !slices.Equal(cfg.Modules, []string{"customers", "projects", "staff", "planning"}) {
 		t.Errorf("Modules = %v, want exactly customers,projects,staff,planning", cfg.Modules)
+	}
+
+	// inventory keeps stock of Products' variants (inventory design §8):
+	// without products it is refused, and beside it it is valid.
+	if msg := loadError(t, with(validEnv(), "MODULES", "customers,inventory")); !strings.Contains(msg, "MODULES: inventory requires products") {
+		t.Errorf("error = %q, want inventory without products named", msg)
+	}
+	cfg = mustLoad(t, with(validEnv(), "MODULES", "products,inventory"))
+	if !slices.Equal(cfg.Modules, []string{"products", "inventory"}) {
+		t.Errorf("Modules = %v, want exactly products,inventory", cfg.Modules)
 	}
 }
 
