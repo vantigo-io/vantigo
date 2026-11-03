@@ -378,7 +378,10 @@ bruker den erstatter.
 [virksomhetsutvidelsens](#scim) `employeeNumber`, etter nummerets nøkkel; deretter på
 `userName` mot det kunngjorte brukerhovednavnet; deretter på `externalId` mot den
 kunngjorte objekt-ID-en. En første OIDC-innlogging matches på kravet `oid` mot
-objekt-ID-en, under den kunngjorte utstederen. Nummeret kommer først fordi leverandøren
+objekt-ID-en, under den kunngjorte utstederen — for en Google-leverandør
+(`OIDC_PROVIDER=google`) på kravet `sub` i stedet, siden ID-tokenet fra Google ikke har
+`oid`, og `sub` er kontoens bruker-ID i katalogen, 21 sifre, som kunngjøres og matches
+nøyaktig som de er (revisjonsloggens `matchedBy` sier fortsatt `oid`). Nummeret kommer først fordi leverandøren
 skriver det som kontoens `employeeId`, som Entras standardtilordning i SCIM sender som
 `employeeNumber`; brukerhovednavnet som nummer to, siden Entra sender `userName` fra det
 som standard; og objekt-ID-en sist for SCIM, fordi Entras standardtilordning sender
@@ -513,7 +516,7 @@ vanlig selvbetjent kobling som Ansatte aldri handler på.
 Når enkel pålogging slås på i en installasjon som allerede har brukere, kobler en
 adresse aldri en innlogging gjennom leverandøren til en eksisterende konto, så det første
 forsøket avvises med `oidc_email_conflict`. En eier **kunngjør** at brukeren har en
-katalogkonto; brukerens neste OIDC-innlogging (matchet på `oid` under den satte
+katalogkonto; brukerens neste OIDC-innlogging (matchet på `oid` — Googles `sub` — under den satte
 utstederen, ellers på tokenets prinsipalnavn, Entras `preferred_username`, eller det verifiserte `email`-kravet for en leverandør uten et slikt) eller SCIM-push (matchet på `userName` mot prinsipalnavnet, så `externalId`
 mot objekt-ID-en) kobler eller tilordner da til den brukeren. Hvordan ankomsten matches,
 står under [den kunngjorte koblingen](/nb/admin/sso-scim/#den-kunngjorte-koblingen).
