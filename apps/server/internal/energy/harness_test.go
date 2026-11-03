@@ -28,7 +28,8 @@ func newHarness(t *testing.T, opts ...modtest.Option) *modtest.Harness {
 
 // fakeDirectory is contracts.CustomerDirectory, ported from
 // EnergyApiFactory.cs's FakeCustomerDirectory (energy inventory §7 line
-// 430): customers 1001 and 1002 exist, everything else does not. Only
+// 430): customers 1001 and 1002 exist, everything else does not; 1002 holds
+// the industry code 24.420 (aluminium), 1001 none. Only
 // Customer is ever called by this task's operations (Create/Switch supply
 // period); Contact, ContactsByEmail, CustomersByLegalID and BillingProfile are
 // implemented to satisfy the interface and are never exercised here. Customers (the batch
@@ -40,16 +41,25 @@ var _ contracts.CustomerDirectory = fakeDirectory{}
 
 func (fakeDirectory) Customer(_ context.Context, id int32) (*contracts.CustomerEntry, error) {
 	if id == 1001 || id == 1002 {
-		return &contracts.CustomerEntry{ID: id, Name: "Test customer"}, nil
+		return &contracts.CustomerEntry{ID: id, Name: "Test customer", IndustryCode: fakeIndustryCode(id)}, nil
 	}
 	return nil, nil
+}
+
+// fakeIndustryCode is the fake customers' industry code: 1002's is aluminium
+// production, 1001 has none.
+func fakeIndustryCode(id int32) string {
+	if id == 1002 {
+		return "24.420"
+	}
+	return ""
 }
 
 func (fakeDirectory) Customers(_ context.Context, ids []int32) ([]contracts.CustomerEntry, error) {
 	entries := []contracts.CustomerEntry{}
 	for _, id := range ids {
 		if id == 1001 || id == 1002 {
-			entries = append(entries, contracts.CustomerEntry{ID: id, Name: "Test customer"})
+			entries = append(entries, contracts.CustomerEntry{ID: id, Name: "Test customer", IndustryCode: fakeIndustryCode(id)})
 		}
 	}
 	return entries, nil
