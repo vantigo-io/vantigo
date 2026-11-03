@@ -431,7 +431,7 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 	var fromAddress *string
 	var fromDisplayName *string
 	if sendFromPersonal {
-		status, err := personalMailStatus(ctx, s.deps.PersonalMailbox)
+		status, err := personalMailStatus(ctx, personalMailboxFor(s.deps, providerEntra))
 		if err != nil {
 			return nil, err
 		}

@@ -229,8 +229,15 @@ func (f *FakeChannelMailbox) Key() string {
 	return f.key
 }
 
-// DisplayName is "Microsoft 365".
-func (f *FakeChannelMailbox) DisplayName() string { return "Microsoft 365" }
+// DisplayName is "Microsoft 365" under the key "entra", else the key itself.
+func (f *FakeChannelMailbox) DisplayName() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.key == "entra" {
+		return "Microsoft 365"
+	}
+	return f.key
+}
 
 // MaxMessage answers SetMaxMessage's size, 3 000 000 until then.
 func (f *FakeChannelMailbox) MaxMessage() int64 {

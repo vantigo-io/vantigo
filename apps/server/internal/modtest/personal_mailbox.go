@@ -25,6 +25,7 @@ import (
 // while a test reads it.
 type FakePersonalMailbox struct {
 	mu         sync.Mutex
+	key        string
 	maxMessage int64
 	users      map[uuid.UUID]contracts.PersonalMailStatus
 	userErr    map[uuid.UUID]error
@@ -52,15 +53,42 @@ type PersonalMailboxCall struct {
 
 var _ contracts.PersonalMailbox = (*FakePersonalMailbox)(nil)
 
-// NewFakePersonalMailbox returns an empty FakePersonalMailbox with the default
-// 3 000 000-byte message limit.
+// NewFakePersonalMailbox returns an empty FakePersonalMailbox under the key
+// "entra" with the default 3 000 000-byte message limit.
 func NewFakePersonalMailbox() *FakePersonalMailbox {
 	return &FakePersonalMailbox{
+		key:        "entra",
 		maxMessage: FakeChannelMailboxMaxMessage,
 		users:      map[uuid.UUID]contracts.PersonalMailStatus{},
 		userErr:    map[uuid.UUID]error{},
 		fail:       map[string]error{},
 	}
+}
+
+// WithKey makes Key answer key. It answers the fake, for a constructor's
+// chain.
+func (f *FakePersonalMailbox) WithKey(key string) *FakePersonalMailbox {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.key = key
+	return f
+}
+
+// Key is the provider's key, "entra" unless WithKey set another.
+func (f *FakePersonalMailbox) Key() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.key
+}
+
+// DisplayName is "Outlook" under the key "entra", else the key itself.
+func (f *FakePersonalMailbox) DisplayName() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.key == "entra" {
+		return "Outlook"
+	}
+	return f.key
 }
 
 // SetUser sets the PersonalMailStatus Status answers for userID, and controls

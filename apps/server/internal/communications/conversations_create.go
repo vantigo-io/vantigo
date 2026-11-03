@@ -291,7 +291,7 @@ func (s *server) PostCommunicationsConversations(ctx context.Context, req gen.Po
 	var fromAddress *string
 	var fromDisplayName *string
 	if sendFromPersonal {
-		status, err := personalMailStatus(ctx, s.deps.PersonalMailbox)
+		status, err := personalMailStatus(ctx, personalMailboxFor(s.deps, providerEntra))
 		if err != nil {
 			return nil, err
 		}

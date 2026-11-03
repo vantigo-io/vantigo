@@ -31,6 +31,13 @@ func newPersonalMailbox(d module.Deps) contracts.PersonalMailbox {
 	return &personalMailbox{deps: d, client: c, tokens: newOutlookTokens(d)}
 }
 
+// Key is "entra", with no context and no network.
+func (p *personalMailbox) Key() string { return providerKey }
+
+// DisplayName is "Outlook", the mail service a person reads in the composer,
+// with no context and no network.
+func (p *personalMailbox) DisplayName() string { return "Outlook" }
+
 // Status reports whether the caller in contracts.UserID(ctx) can send mail from
 // their own address right now.
 func (p *personalMailbox) Status(ctx context.Context) (contracts.PersonalMailStatus, error) {

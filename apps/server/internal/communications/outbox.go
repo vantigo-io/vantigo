@@ -543,7 +543,7 @@ func (w *OutboxWorker) sendThroughPersonalMailbox(ctx context.Context, message s
 	if message.FromAddress == nil || *message.FromAddress == "" {
 		return fmt.Errorf("communications: personal send lacks from_address: %w", contracts.ErrConnectionNeeded)
 	}
-	provider := w.deps.PersonalMailbox
+	provider := personalMailboxFor(w.deps, providerEntra)
 	if provider == nil {
 		return fmt.Errorf("communications: no personal mailbox provider wired: %w", contracts.ErrConnectionNeeded)
 	}

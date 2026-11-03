@@ -100,7 +100,7 @@ func TestNotificationAccessors_WithNoProviderAreUnavailable(t *testing.T) {
 // the sequential tests run, so none counts them against itself.
 func TestNotificationAccessors_RefuseACallInsideATransaction(t *testing.T) {
 	box := modtest.NewFakeMailboxCalendar()
-	s := newServer(module.Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), MailboxCalendar: box})
+	s := newServer(module.Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), MailboxCalendars: []contracts.MailboxCalendar{box}})
 	locked := context.WithValue(context.Background(), lockedTxKey{}, true)
 	if err := s.mailboxWatch(locked, "oid"); !errors.Is(err, errCallInsideTransaction) {
 		t.Errorf("Watch inside a transaction: %v", err)

@@ -312,7 +312,12 @@ func (s *server) projectsProject(ctx context.Context, id int32) (*contracts.Proj
 // mailboxCalendar is the mailbox provider, nil when no enabled module fills
 // the slot (Entra off): the Outlook sync is then no_provider. Reading the
 // slot calls nobody, so it is not a reported call.
-func (s *server) mailboxCalendar() contracts.MailboxCalendar { return s.deps.MailboxCalendar }
+func (s *server) mailboxCalendar() contracts.MailboxCalendar {
+	if len(s.deps.MailboxCalendars) == 0 {
+		return nil
+	}
+	return s.deps.MailboxCalendars[0]
+}
 
 // mailboxStatus is whether the provider may write now (design O4); no
 // network. Without a provider it is unavailable.
@@ -320,10 +325,10 @@ func (s *server) mailboxStatus(ctx context.Context) (contracts.MailboxStatus, er
 	if err := noteContractCall(ctx, "MailboxCalendar.Status"); err != nil {
 		return contracts.MailboxStatus{}, err
 	}
-	if s.deps.MailboxCalendar == nil {
+	if s.mailboxCalendar() == nil {
 		return contracts.MailboxStatus{State: contracts.MailboxUnavailable}, nil
 	}
-	return s.deps.MailboxCalendar.Status(ctx)
+	return s.mailboxCalendar().Status(ctx)
 }
 
 // mailboxEnsure is the id of the calendar named name the provider made in
@@ -332,10 +337,10 @@ func (s *server) mailboxEnsure(ctx context.Context, mailbox, known, name string)
 	if err := noteContractCall(ctx, "MailboxCalendar.EnsureCalendar"); err != nil {
 		return "", err
 	}
-	if s.deps.MailboxCalendar == nil {
+	if s.mailboxCalendar() == nil {
 		return "", contracts.ErrMailboxUnavailable
 	}
-	return s.deps.MailboxCalendar.EnsureCalendar(ctx, mailbox, known, name)
+	return s.mailboxCalendar().EnsureCalendar(ctx, mailbox, known, name)
 }
 
 // mailboxDeleteCalendar deletes the provider's calendar and every event in
@@ -344,10 +349,10 @@ func (s *server) mailboxDeleteCalendar(ctx context.Context, mailbox, calendarID 
 	if err := noteContractCall(ctx, "MailboxCalendar.DeleteCalendar"); err != nil {
 		return err
 	}
-	if s.deps.MailboxCalendar == nil {
+	if s.mailboxCalendar() == nil {
 		return contracts.ErrMailboxUnavailable
 	}
-	return s.deps.MailboxCalendar.DeleteCalendar(ctx, mailbox, calendarID)
+	return s.mailboxCalendar().DeleteCalendar(ctx, mailbox, calendarID)
 }
 
 // mailboxApply runs ops against the mailbox's calendar ("" the default one)
@@ -356,10 +361,10 @@ func (s *server) mailboxApply(ctx context.Context, mailbox, calendarID string, o
 	if err := noteContractCall(ctx, "MailboxCalendar.Apply"); err != nil {
 		return nil, err
 	}
-	if s.deps.MailboxCalendar == nil {
+	if s.mailboxCalendar() == nil {
 		return nil, contracts.ErrMailboxUnavailable
 	}
-	return s.deps.MailboxCalendar.Apply(ctx, mailbox, calendarID, ops)
+	return s.mailboxCalendar().Apply(ctx, mailbox, calendarID, ops)
 }
 
 // mailboxFind is the events of the mailbox's calendar carrying this
@@ -368,10 +373,10 @@ func (s *server) mailboxFind(ctx context.Context, mailbox, calendarID string, fr
 	if err := noteContractCall(ctx, "MailboxCalendar.Find"); err != nil {
 		return nil, err
 	}
-	if s.deps.MailboxCalendar == nil {
+	if s.mailboxCalendar() == nil {
 		return nil, contracts.ErrMailboxUnavailable
 	}
-	return s.deps.MailboxCalendar.Find(ctx, mailbox, calendarID, from)
+	return s.mailboxCalendar().Find(ctx, mailbox, calendarID, from)
 }
 
 // workforceDirectoryAccount is the principal's own account in an external
@@ -394,10 +399,10 @@ func (s *server) mailboxDelta(ctx context.Context, mailbox string, from, to time
 	if err := noteContractCall(ctx, "MailboxCalendar.Delta"); err != nil {
 		return contracts.MailboxDelta{}, err
 	}
-	if s.deps.MailboxCalendar == nil {
+	if s.mailboxCalendar() == nil {
 		return contracts.MailboxDelta{}, contracts.ErrMailboxUnavailable
 	}
-	return s.deps.MailboxCalendar.Delta(ctx, mailbox, from, to, link)
+	return s.mailboxCalendar().Delta(ctx, mailbox, from, to, link)
 }
 
 // mailboxMarked is, among eventIDs — at most contracts.MailboxMarkedMax —
@@ -406,10 +411,10 @@ func (s *server) mailboxMarked(ctx context.Context, mailbox string, eventIDs []s
 	if err := noteContractCall(ctx, "MailboxCalendar.Marked"); err != nil {
 		return nil, err
 	}
-	if s.deps.MailboxCalendar == nil {
+	if s.mailboxCalendar() == nil {
 		return nil, contracts.ErrMailboxUnavailable
 	}
-	return s.deps.MailboxCalendar.Marked(ctx, mailbox, eventIDs)
+	return s.mailboxCalendar().Marked(ctx, mailbox, eventIDs)
 }
 
 // mailboxVersions is the versions of the copies the write-back may have to
@@ -419,10 +424,10 @@ func (s *server) mailboxVersions(ctx context.Context, mailbox, calendarID string
 	if err := noteContractCall(ctx, "MailboxCalendar.Versions"); err != nil {
 		return contracts.MailboxVersions{}, err
 	}
-	if s.deps.MailboxCalendar == nil {
+	if s.mailboxCalendar() == nil {
 		return contracts.MailboxVersions{}, contracts.ErrMailboxUnavailable
 	}
-	return s.deps.MailboxCalendar.Versions(ctx, mailbox, calendarID, from, to)
+	return s.mailboxCalendar().Versions(ctx, mailbox, calendarID, from, to)
 }
 
 // mailboxEvents is, among eventIDs — at most contracts.MailboxMarkedMax —
@@ -433,10 +438,10 @@ func (s *server) mailboxEvents(ctx context.Context, mailbox, calendarID string, 
 	if err := noteContractCall(ctx, "MailboxCalendar.Events"); err != nil {
 		return contracts.MailboxEventsRead{}, err
 	}
-	if s.deps.MailboxCalendar == nil {
+	if s.mailboxCalendar() == nil {
 		return contracts.MailboxEventsRead{}, contracts.ErrMailboxUnavailable
 	}
-	return s.deps.MailboxCalendar.Events(ctx, mailbox, calendarID, eventIDs)
+	return s.mailboxCalendar().Events(ctx, mailbox, calendarID, eventIDs)
 }
 
 // mailboxWatch makes sure the mailbox's changes are notified (design
@@ -446,10 +451,10 @@ func (s *server) mailboxWatch(ctx context.Context, mailbox string) error {
 	if err := noteContractCall(ctx, "MailboxCalendar.Watch"); err != nil {
 		return err
 	}
-	if s.deps.MailboxCalendar == nil {
+	if s.mailboxCalendar() == nil {
 		return contracts.ErrMailboxUnavailable
 	}
-	return s.deps.MailboxCalendar.Watch(ctx, mailbox)
+	return s.mailboxCalendar().Watch(ctx, mailbox)
 }
 
 // mailboxUnwatch deletes the mailbox's subscription (design O11.3); one not
@@ -458,10 +463,10 @@ func (s *server) mailboxUnwatch(ctx context.Context, mailbox string) error {
 	if err := noteContractCall(ctx, "MailboxCalendar.Unwatch"); err != nil {
 		return err
 	}
-	if s.deps.MailboxCalendar == nil {
+	if s.mailboxCalendar() == nil {
 		return contracts.ErrMailboxUnavailable
 	}
-	return s.deps.MailboxCalendar.Unwatch(ctx, mailbox)
+	return s.mailboxCalendar().Unwatch(ctx, mailbox)
 }
 
 // mailboxNotified is the mailboxes the directory notified after since,
@@ -471,10 +476,10 @@ func (s *server) mailboxNotified(ctx context.Context, since time.Time) ([]contra
 	if err := noteContractCall(ctx, "MailboxCalendar.Notified"); err != nil {
 		return nil, err
 	}
-	if s.deps.MailboxCalendar == nil {
+	if s.mailboxCalendar() == nil {
 		return nil, contracts.ErrMailboxUnavailable
 	}
-	return s.deps.MailboxCalendar.Notified(ctx, since)
+	return s.mailboxCalendar().Notified(ctx, since)
 }
 
 // mailboxConnections is the people's connections to the provider that moved
@@ -484,10 +489,10 @@ func (s *server) mailboxConnections(ctx context.Context, since time.Time) ([]con
 	if err := noteContractCall(ctx, "MailboxCalendar.Connections"); err != nil {
 		return nil, err
 	}
-	if s.deps.MailboxCalendar == nil {
+	if s.mailboxCalendar() == nil {
 		return nil, contracts.ErrMailboxUnavailable
 	}
-	return s.deps.MailboxCalendar.Connections(ctx, since)
+	return s.mailboxCalendar().Connections(ctx, since)
 }
 
 // accessHas is whether the caller of the request in ctx holds key, as

@@ -2491,62 +2491,6 @@ type fakeMailboxCalendar struct {
 
 func (f *fakeMailboxCalendar) Key() string { return f.key }
 
-// The MailboxCalendar slot (contracts.MailboxCalendar, calendar Outlook sync
-// design O4) is a sole-provider slot, resolved before any Mount runs and
-// after the identity provisioners; it reaches every module's Deps. Two
-// enabled providers are a compose error naming both, and a preset value
-// survives when no enabled module provides one.
-func TestCompose_ResolvesTheMailboxCalendarSlot(t *testing.T) {
-	specs := map[string]string{"alpha": alphaContract, "beta": betaContract}
-	t.Run("one provider", func(t *testing.T) {
-		provider := &fakeMailboxCalendar{key: "entra"}
-		var got Deps
-		_, err := compose(Deps{Access: &fakeAccess{}, MailboxCalendar: &fakeMailboxCalendar{key: "preset"}}, fakeLoad(specs),
-			Module{Name: "beta", MailboxCalendar: func(Deps) contracts.MailboxCalendar { return provider }, Mount: staticHandler("beta")},
-			Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
-				got = d
-				return staticHandler("alpha")(d)
-			}},
-		)
-		if err != nil {
-			t.Fatalf("compose: %v", err)
-		}
-		if got.MailboxCalendar != provider {
-			t.Errorf("Deps.MailboxCalendar = %v, want the provider's", got.MailboxCalendar)
-		}
-	})
-	t.Run("two providers", func(t *testing.T) {
-		provide := func(Deps) contracts.MailboxCalendar { return &fakeMailboxCalendar{} }
-		_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(specs),
-			Module{Name: "alpha", MailboxCalendar: provide, Mount: staticHandler("alpha")},
-			Module{Name: "beta", MailboxCalendar: provide, Mount: staticHandler("beta")},
-		)
-		if err == nil || !strings.Contains(err.Error(), "a mailbox calendar") ||
-			!strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
-			t.Errorf("compose = %v, want an error naming a mailbox calendar, alpha and beta", err)
-		}
-	})
-	t.Run("preset kept", func(t *testing.T) {
-		preset := &fakeMailboxCalendar{key: "preset"}
-		var got Deps
-		_, err := compose(
-			Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}, MailboxCalendar: preset},
-			fakeLoad(specs),
-			Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
-				got = d
-				return staticHandler("alpha")(d)
-			}},
-			Module{Name: "beta", MailboxCalendar: func(Deps) contracts.MailboxCalendar { return &fakeMailboxCalendar{key: "beta"} }, Mount: staticHandler("beta")},
-		)
-		if err != nil {
-			t.Fatalf("compose: %v", err)
-		}
-		if got.MailboxCalendar != preset {
-			t.Errorf("Deps.MailboxCalendar = %v, want the preset: beta (the provider) is disabled", got.MailboxCalendar)
-		}
-	})
-}
-
 // fakeChannelMailbox is a contracts.ChannelMailbox that answers nothing but
 // its key: these tests only need distinct values to assert on. The embedded
 // nil interface panics on any other call, which no test here makes.
@@ -2557,60 +2501,161 @@ type fakeChannelMailbox struct {
 
 func (f *fakeChannelMailbox) Key() string { return f.key }
 
-// The ChannelMailbox slot (contracts.ChannelMailbox, Outlook connection
-// design M11) is a sole-provider slot, resolved before any Mount runs and
-// after the mailbox calendar; it reaches every module's Deps. Two enabled
-// providers are a compose error naming both, and a preset value survives
-// when no enabled module provides one.
-func TestCompose_ResolvesTheChannelMailboxSlot(t *testing.T) {
+// fakePersonalMailbox is a contracts.PersonalMailbox that answers nothing
+// but its key. The embedded nil interface panics on any other call, which no
+// test here makes.
+type fakePersonalMailbox struct {
+	contracts.PersonalMailbox
+	key string
+}
+
+func (f *fakePersonalMailbox) Key() string { return f.key }
+
+// keyedSlotCase is one many-provider mailbox slot (Google Workspace design
+// G2) as the tests below drive it: a provider builder under a key, the
+// module field it goes in, the preset it goes in, and the slot read back.
+type keyedSlotCase struct {
+	name, what string
+	provide    func(key string) (Module, any) // a module "beta"-less field set, and the provider
+	preset     func(d *Deps, key string) any  // presets one provider under key
+	read       func(d Deps) []any             // the slot's providers
+}
+
+func keyedSlotCases() []keyedSlotCase {
+	return []keyedSlotCase{
+		{
+			name: "mailbox calendars", what: "a mailbox calendar",
+			provide: func(key string) (Module, any) {
+				p := &fakeMailboxCalendar{key: key}
+				return Module{MailboxCalendar: func(Deps) contracts.MailboxCalendar { return p }}, p
+			},
+			preset: func(d *Deps, key string) any {
+				p := &fakeMailboxCalendar{key: key}
+				d.MailboxCalendars = append(d.MailboxCalendars, p)
+				return p
+			},
+			read: func(d Deps) []any {
+				var out []any
+				for _, p := range d.MailboxCalendars {
+					out = append(out, p)
+				}
+				return out
+			},
+		},
+		{
+			name: "channel mailboxes", what: "a channel mailbox",
+			provide: func(key string) (Module, any) {
+				p := &fakeChannelMailbox{key: key}
+				return Module{ChannelMailbox: func(Deps) contracts.ChannelMailbox { return p }}, p
+			},
+			preset: func(d *Deps, key string) any {
+				p := &fakeChannelMailbox{key: key}
+				d.ChannelMailboxes = append(d.ChannelMailboxes, p)
+				return p
+			},
+			read: func(d Deps) []any {
+				var out []any
+				for _, p := range d.ChannelMailboxes {
+					out = append(out, p)
+				}
+				return out
+			},
+		},
+		{
+			name: "personal mailboxes", what: "a personal mailbox",
+			provide: func(key string) (Module, any) {
+				p := &fakePersonalMailbox{key: key}
+				return Module{PersonalMailbox: func(Deps) contracts.PersonalMailbox { return p }}, p
+			},
+			preset: func(d *Deps, key string) any {
+				p := &fakePersonalMailbox{key: key}
+				d.PersonalMailboxes = append(d.PersonalMailboxes, p)
+				return p
+			},
+			read: func(d Deps) []any {
+				var out []any
+				for _, p := range d.PersonalMailboxes {
+					out = append(out, p)
+				}
+				return out
+			},
+		},
+	}
+}
+
+// named is m with its name and a static mount.
+func named(m Module, name string) Module {
+	m.Name = name
+	m.Mount = staticHandler(name)
+	return m
+}
+
+// The three mailbox slots (contracts.MailboxCalendar, ChannelMailbox and
+// PersonalMailbox) are many-provider slots keyed by Key (Google Workspace
+// design G2), collected before any Mount runs, after the identity
+// provisioners; they reach every module's Deps. Two providers under two
+// keys are both kept, presets first; a key two claim and a reserved key are
+// compose errors naming the providers; a disabled module contributes none.
+func TestCompose_CollectsTheMailboxSlots(t *testing.T) {
 	specs := map[string]string{"alpha": alphaContract, "beta": betaContract}
-	t.Run("one provider", func(t *testing.T) {
-		provider := &fakeChannelMailbox{key: "entra"}
-		var got Deps
-		_, err := compose(Deps{Access: &fakeAccess{}, ChannelMailbox: &fakeChannelMailbox{key: "preset"}}, fakeLoad(specs),
-			Module{Name: "beta", ChannelMailbox: func(Deps) contracts.ChannelMailbox { return provider }, Mount: staticHandler("beta")},
-			Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+	for _, tc := range keyedSlotCases() {
+		t.Run(tc.name+"/two providers", func(t *testing.T) {
+			deps := Deps{Access: &fakeAccess{}}
+			preset := tc.preset(&deps, "preset")
+			betaMod, beta := tc.provide("entra")
+			alphaMod, alpha := tc.provide("google")
+			alphaMod.Name = "alpha"
+			var got Deps
+			alphaMod.Mount = func(d Deps) (http.Handler, error) {
 				got = d
 				return staticHandler("alpha")(d)
-			}},
-		)
-		if err != nil {
-			t.Fatalf("compose: %v", err)
-		}
-		if got.ChannelMailbox != provider {
-			t.Errorf("Deps.ChannelMailbox = %v, want the provider's", got.ChannelMailbox)
-		}
-	})
-	t.Run("two providers", func(t *testing.T) {
-		provide := func(Deps) contracts.ChannelMailbox { return &fakeChannelMailbox{} }
-		_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(specs),
-			Module{Name: "alpha", ChannelMailbox: provide, Mount: staticHandler("alpha")},
-			Module{Name: "beta", ChannelMailbox: provide, Mount: staticHandler("beta")},
-		)
-		if err == nil || !strings.Contains(err.Error(), "a channel mailbox") ||
-			!strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
-			t.Errorf("compose = %v, want an error naming a channel mailbox, alpha and beta", err)
-		}
-	})
-	t.Run("preset kept", func(t *testing.T) {
-		preset := &fakeChannelMailbox{key: "preset"}
-		var got Deps
-		_, err := compose(
-			Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}, ChannelMailbox: preset},
-			fakeLoad(specs),
-			Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
-				got = d
-				return staticHandler("alpha")(d)
-			}},
-			Module{Name: "beta", ChannelMailbox: func(Deps) contracts.ChannelMailbox { return &fakeChannelMailbox{key: "beta"} }, Mount: staticHandler("beta")},
-		)
-		if err != nil {
-			t.Fatalf("compose: %v", err)
-		}
-		if got.ChannelMailbox != preset {
-			t.Errorf("Deps.ChannelMailbox = %v, want the preset: beta (the provider) is disabled", got.ChannelMailbox)
-		}
-	})
+			}
+			_, err := compose(deps, fakeLoad(specs), named(betaMod, "beta"), alphaMod)
+			if err != nil {
+				t.Fatalf("compose: %v", err)
+			}
+			if slot := tc.read(got); len(slot) != 3 || slot[0] != preset || slot[1] != beta || slot[2] != alpha {
+				t.Errorf("the slot = %v, want the preset, beta's and alpha's in that order", slot)
+			}
+		})
+		t.Run(tc.name+"/a duplicate key refused", func(t *testing.T) {
+			alphaMod, _ := tc.provide("entra")
+			betaMod, _ := tc.provide("entra")
+			_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(specs), named(alphaMod, "alpha"), named(betaMod, "beta"))
+			if err == nil || !strings.Contains(err.Error(), tc.what) || !strings.Contains(err.Error(), `"entra"`) ||
+				!strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+				t.Errorf("compose = %v, want an error naming %s, the key, alpha and beta", err, tc.what)
+			}
+		})
+		t.Run(tc.name+"/a reserved key refused", func(t *testing.T) {
+			for _, key := range []string{"", "identity", "local", "external"} {
+				betaMod, _ := tc.provide(key)
+				_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(specs), named(betaMod, "beta"))
+				if err == nil || !strings.Contains(err.Error(), "reserved key") || !strings.Contains(err.Error(), "beta") {
+					t.Errorf("compose with key %q = %v, want a reserved-key error naming beta", key, err)
+				}
+			}
+		})
+		t.Run(tc.name+"/a disabled provider contributes none", func(t *testing.T) {
+			deps := Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}}
+			preset := tc.preset(&deps, "preset")
+			betaMod, _ := tc.provide("entra")
+			var got Deps
+			_, err := compose(deps, fakeLoad(specs),
+				Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+					got = d
+					return staticHandler("alpha")(d)
+				}},
+				named(betaMod, "beta"),
+			)
+			if err != nil {
+				t.Fatalf("compose: %v", err)
+			}
+			if slot := tc.read(got); len(slot) != 1 || slot[0] != preset {
+				t.Errorf("the slot = %v, want the preset alone: beta (the provider) is disabled", slot)
+			}
+		})
+	}
 }
 
 // fakeOutboundMail is a contracts.OutboundMail that answers nothing: these
@@ -2638,7 +2683,11 @@ func TestCompose_ResolvesTheOutboundMailSlot(t *testing.T) {
 			Module{Name: "beta", ChannelMailbox: func(Deps) contracts.ChannelMailbox { return mailbox }, Mount: staticHandler("beta")},
 			Module{Name: "alpha",
 				OutboundMail: func(d Deps) contracts.OutboundMail {
-					provider = &fakeOutboundMail{name: "alpha", channel: d.ChannelMailbox}
+					var first contracts.ChannelMailbox
+					if len(d.ChannelMailboxes) > 0 {
+						first = d.ChannelMailboxes[0]
+					}
+					provider = &fakeOutboundMail{name: "alpha", channel: first}
 					return provider
 				},
 				Mount: func(d Deps) (http.Handler, error) {
@@ -2653,7 +2702,7 @@ func TestCompose_ResolvesTheOutboundMailSlot(t *testing.T) {
 			t.Errorf("Deps.OutboundMail = %v, want the provider's", got.OutboundMail)
 		}
 		if provider != nil && provider.channel != mailbox {
-			t.Errorf("the provider was built seeing Deps.ChannelMailbox = %v, want the channel mailbox resolved first", provider.channel)
+			t.Errorf("the provider was built seeing Deps.ChannelMailboxes[0] = %v, want the channel mailboxes resolved first", provider.channel)
 		}
 	})
 	t.Run("two providers", func(t *testing.T) {
@@ -2711,7 +2760,11 @@ func TestCompose_ResolvesTheCalendarBusySlot(t *testing.T) {
 			Module{Name: "beta", MailboxCalendar: func(Deps) contracts.MailboxCalendar { return mailbox }, Mount: staticHandler("beta")},
 			Module{Name: "alpha",
 				CalendarBusy: func(d Deps) contracts.CalendarBusy {
-					provider = &fakeCalendarBusy{mailbox: d.MailboxCalendar}
+					var first contracts.MailboxCalendar
+					if len(d.MailboxCalendars) > 0 {
+						first = d.MailboxCalendars[0]
+					}
+					provider = &fakeCalendarBusy{mailbox: first}
 					return provider
 				},
 				Mount: func(d Deps) (http.Handler, error) {
@@ -2726,7 +2779,7 @@ func TestCompose_ResolvesTheCalendarBusySlot(t *testing.T) {
 			t.Errorf("Deps.CalendarBusy = %v, want the provider's", got.CalendarBusy)
 		}
 		if provider != nil && provider.mailbox != mailbox {
-			t.Errorf("the provider was built seeing Deps.MailboxCalendar = %v, want the mailbox calendar resolved first", provider.mailbox)
+			t.Errorf("the provider was built seeing Deps.MailboxCalendars[0] = %v, want the mailbox calendars resolved first", provider.mailbox)
 		}
 	})
 	t.Run("two providers", func(t *testing.T) {

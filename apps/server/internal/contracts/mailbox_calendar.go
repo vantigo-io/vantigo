@@ -28,11 +28,13 @@ import (
 // confirmed, and not deleted (ErrMailboxUnknown otherwise, design O3), so a
 // caller can never point it at a mailbox it does not own.
 //
-// It is a single-provider slot: a module fills it through
-// module.Module.MailboxCalendar, and Compose and Workers resolve the enabled
-// module's into module.Deps.MailboxCalendar, refusing two. Its mailbox is the
-// person's own contracts.DirectoryAccount (Workforce.DirectoryAccount),
-// whose Provider a caller matches against Key. The sentinels below are the
+// It is a many-provider slot keyed by Key (Google Workspace design G2): a
+// module fills it through module.Module.MailboxCalendar, and Compose and
+// Workers collect every enabled module's into module.Deps.MailboxCalendars,
+// refusing a Key two claim. A caller picks the provider whose Key is the
+// person's own contracts.DirectoryAccount's Provider
+// (Workforce.DirectoryAccount), and its mailbox is that account's external
+// id (G3). The sentinels below are the
 // provider's answers; anything else is a failure to retry — a throttled
 // request is retried by the provider within the call, then a failure.
 //
@@ -49,6 +51,11 @@ type MailboxCalendar interface {
 	// "entra" — answered with no context and no network, so the calendar can
 	// tell a person's account is this provider's before it writes.
 	Key() string
+
+	// DisplayName is the calendar service's name as a person reads it
+	// ("Outlook"), for the calendar's labels ("Busy in %s"), answered with no
+	// context and no network.
+	DisplayName() string
 
 	// Status is whether the provider may write now: MailboxAvailable,
 	// MailboxCleanup or MailboxUnavailable, with a reason code. It reads the

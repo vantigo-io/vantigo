@@ -21,10 +21,16 @@ const MaxPersonalAttachmentBytes int64 = 2_100_000
 // lands in the person's own Sent Items with Reply-To set to the
 // conversation's channel.
 //
-// It is optional: nil on module.Deps when no enabled module provides one,
-// which a caller answers as Reason "unavailable". A provider is wired into
-// every module's Deps by Compose and Workers through Module.PersonalMailbox,
-// at most one across the enabled modules.
+// It is optional: module.Deps.PersonalMailboxes is empty when no enabled
+// module provides one, which a caller answers as Reason "unavailable". It is
+// a many-provider slot keyed by Key (Google Workspace design G2): Compose and
+// Workers collect every enabled module's Module.PersonalMailbox, refusing a
+// Key two claim. A caller picks as G3 says: it asks every provider's Status
+// — each answers "no_account" for a caller whose directory account is not
+// its own — and uses the first Available answer, else the first whose
+// Reason is not "no_account", else "no_account"; it records the Key of the
+// provider it chose with the message and sends through that one only,
+// never another (Outlook connection design Q7).
 //
 // The contract is provider-neutral: no type, method or error names a vendor
 // (module-boundaries rule 12).
@@ -53,6 +59,12 @@ const MaxPersonalAttachmentBytes int64 = 2_100_000
 //     endpoint as a channel send, so MaxChannelMessageBytes (3 MB of MIME)
 //     and MaxChannelAttachmentBytes (2.1 MB of raw attachments) apply.
 type PersonalMailbox interface {
+	// Key is the provider's key — the DirectoryAccount.Provider value it
+	// serves, "entra" — answered with no context and no network.
+	Key() string
+	// DisplayName is the mail service's name as a person reads it in the
+	// composer ("Outlook"), answered with no context and no network.
+	DisplayName() string
 	// Status reports whether the caller in contracts.UserID(ctx) can send
 	// mail from their own address right now, and the directory address they
 	// would send from.

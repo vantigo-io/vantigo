@@ -59,8 +59,8 @@ func (o *outboundMail) entraProvider(ctx context.Context) (m contracts.ChannelMa
 	if err := noteContractCall(ctx, "ChannelMailbox.Key"); err != nil {
 		return nil, "", false, err
 	}
-	m = o.deps.ChannelMailbox
-	if m == nil || m.Key() != providerEntra {
+	m = channelMailboxFor(o.deps, providerEntra)
+	if m == nil {
 		return nil, "", false, nil
 	}
 	if err := noteContractCall(ctx, "ChannelMailbox.DisplayName"); err != nil {
