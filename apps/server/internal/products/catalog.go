@@ -1,9 +1,11 @@
 package products
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -188,6 +190,52 @@ func (c *catalog) LookupCode(ctx context.Context, code string) ([]contracts.Code
 		matches = append(matches, match)
 	}
 	return matches, nil
+}
+
+// lookupSKUsChunk bounds how many SKUs one CatalogLookupSKUs query carries.
+const lookupSKUsChunk = 1000
+
+// LookupSKUs answers, for each sku as the caller wrote it, every variant
+// whose SKU equals it ignoring case, by id: one query per lookupSKUsChunk
+// distinct SKUs and one packagings load for them all. An sku no variant has,
+// or a blank one, is absent.
+func (c *catalog) LookupSKUs(ctx context.Context, skus []string) (map[string][]contracts.VariantEntry, error) {
+	var lowered []string
+	seen := map[string]bool{}
+	for _, sku := range skus {
+		l := strings.ToLower(strings.TrimSpace(sku))
+		if l != "" && !seen[l] {
+			seen[l] = true
+			lowered = append(lowered, l)
+		}
+	}
+	var entries []contracts.VariantEntry
+	for start := 0; start < len(lowered); start += lookupSKUsChunk {
+		rows, err := c.q.CatalogLookupSKUs(ctx, lowered[start:min(start+lookupSKUsChunk, len(lowered))])
+		if err != nil {
+			return nil, fmt.Errorf("products: catalog lookup SKUs: %w", err)
+		}
+		for _, row := range rows {
+			entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus))
+		}
+	}
+	if err := withPackagings(ctx, c.q, entries); err != nil {
+		return nil, err
+	}
+	// Each chunk answers by id; the chunks together need not be.
+	slices.SortFunc(entries, func(a, b contracts.VariantEntry) int { return cmp.Compare(a.ID, b.ID) })
+	byLower := map[string][]contracts.VariantEntry{}
+	for _, e := range entries {
+		l := strings.ToLower(e.SKU)
+		byLower[l] = append(byLower[l], e)
+	}
+	out := map[string][]contracts.VariantEntry{}
+	for _, sku := range skus {
+		if found, ok := byLower[strings.ToLower(strings.TrimSpace(sku))]; ok {
+			out[sku] = found
+		}
+	}
+	return out, nil
 }
 
 // searchVariantsMax bounds SearchVariants whatever limit the caller asks.

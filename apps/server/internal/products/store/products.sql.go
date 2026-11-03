@@ -146,6 +146,56 @@ func (q *Queries) CatalogLookupCode(ctx context.Context, code string) ([]Catalog
 	return items, nil
 }
 
+const catalogLookupSKUs = `-- name: CatalogLookupSKUs :many
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+FROM products.product_variants v
+JOIN products.products p ON p.id = v.product_id
+WHERE lower(v.sku) = ANY($1::text[])
+ORDER BY v.id
+`
+
+type CatalogLookupSKUsRow struct {
+	ID            int32
+	ProductID     int32
+	ProductName   string
+	Sku           string
+	Barcode       *string
+	Unit          string
+	ProductType   string
+	ProductStatus string
+}
+
+// CatalogLookupSKUs is contracts.ProductCatalog.LookupSKUs: every variant
+// whose SKU, lowercased, is one of the given lowercased SKUs.
+func (q *Queries) CatalogLookupSKUs(ctx context.Context, skus []string) ([]CatalogLookupSKUsRow, error) {
+	rows, err := q.db.Query(ctx, catalogLookupSKUs, skus)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CatalogLookupSKUsRow
+	for rows.Next() {
+		var i CatalogLookupSKUsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.ProductName,
+			&i.Sku,
+			&i.Barcode,
+			&i.Unit,
+			&i.ProductType,
+			&i.ProductStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const catalogSearchVariants = `-- name: CatalogSearchVariants :many
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
 FROM products.product_variants v

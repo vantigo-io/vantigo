@@ -513,6 +513,15 @@ JOIN products.products p ON p.id = v.product_id
 WHERE lower(v.sku) = lower(@code::text) OR v.barcode = @code::text
 ORDER BY v.id;
 
+-- name: CatalogLookupSKUs :many
+-- CatalogLookupSKUs is contracts.ProductCatalog.LookupSKUs: every variant
+-- whose SKU, lowercased, is one of the given lowercased SKUs.
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+FROM products.product_variants v
+JOIN products.products p ON p.id = v.product_id
+WHERE lower(v.sku) = ANY(@skus::text[])
+ORDER BY v.id;
+
 -- name: CatalogSearchVariants :many
 -- CatalogSearchVariants is contracts.ProductCatalog.SearchVariants: goods
 -- variants whose SKU, product name or barcode matches the pattern, by SKU.
