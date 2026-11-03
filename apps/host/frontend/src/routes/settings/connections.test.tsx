@@ -12,6 +12,7 @@ import {
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setLanguagePreference } from "@vantigo/frontend-shell";
+import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type ConnectionButtonProps,
@@ -214,6 +215,37 @@ describe("the host's list of connection providers", () => {
     );
     expect(screen.queryByText(/Entra card/)).not.toBeInTheDocument();
     expect(screen.getByText("Other card")).toBeInTheDocument();
+  });
+
+  it("says there is nothing to connect only once every card has said it offers nothing", async () => {
+    const offering =
+      (name: string, offered: boolean) =>
+      ({ onOffered }: ConnectionCardProps) => {
+        useEffect(() => onOffered(offered), [onOffered]);
+        return offered ? <p>{name} card</p> : null;
+      };
+    const none: ConnectionProvider[] = [
+      { module: "entra", Card: offering("Entra", false), Button: fakeButton("Entra") },
+      { module: "calendar", Card: offering("Other", false), Button: fakeButton("Other") },
+    ];
+    render(
+      <MantineProvider>
+        <ConnectionCards providers={none} search={{}} onReturn={() => {}} />
+      </MantineProvider>,
+    );
+    expect(await screen.findByText(/^Nothing to connect/)).toBeInTheDocument();
+    cleanup();
+    const one: ConnectionProvider[] = [
+      { module: "entra", Card: offering("Entra", false), Button: fakeButton("Entra") },
+      { module: "calendar", Card: offering("Other", true), Button: fakeButton("Other") },
+    ];
+    render(
+      <MantineProvider>
+        <ConnectionCards providers={one} search={{}} onReturn={() => {}} />
+      </MantineProvider>,
+    );
+    expect(await screen.findByText("Other card")).toBeInTheDocument();
+    expect(screen.queryByText(/^Nothing to connect/)).not.toBeInTheDocument();
   });
 
   it("composes every enabled provider's button into the connection.button slot, and none when none is on", () => {

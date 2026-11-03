@@ -35,8 +35,9 @@ The **Outlook** card offers a connection only when two things hold:
   one it created, or whose adoption someone confirmed. Vantigo never guesses your
   account from your address.
 
-Otherwise the card says *Nothing to connect: the Outlook connection is turned off, or
-Vantigo knows no Microsoft account of yours.*
+Otherwise the **Outlook** card is not shown. When no provider's card has anything to
+offer you, the page says *Nothing to connect: no connection is turned on for you, or
+Vantigo knows no account of yours to connect.*
 
 ## Connect your Outlook
 
