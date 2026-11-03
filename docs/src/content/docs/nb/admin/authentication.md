@@ -564,11 +564,19 @@ konto, `account_locked` til de aktiveres. En eier eller en SystemAdmin kan kunng
 den lokale MFA-regelen gjelder. En kunngjort kobling går foran en kunngjort konto for
 samme ankomst, og en ankomst oppfyller aldri begge.
 
-**Med Entra-modulen.** Mens `entra` er slått på, velger brukerskjermen katalogkontoen
-fra leietakeren i stedet for at den skrives inn, og tilbyr en gjennomgang av alle
-brukere som passer nøyaktig med én konto (se
+**Med en katalog å søke i.** Mens katalogen til den valgte leverandøren kan søkes i —
+OIDC er på, og en påslått modul betjener leverandørens `contracts.DirectorySearch`, i
+dag `entra` — velger brukerskjermen katalogkontoen gjennom
+`GET /api/v1/identity/owner/sso/directory/users` i stedet for at den skrives inn, og
+tilbyr en gjennomgang av alle brukere som passer nøyaktig med én konto gjennom
+`GET /api/v1/identity/owner/sso/directory/matches` (se
+[SSO- og SCIM-drift](/nb/admin/sso-scim/) og, for Entra,
 [koble til eksisterende brukere](/en/reference/entra/#connecting-existing-users));
-hvert valgte par kunngjøres gjennom dette samme endepunktet. Det modulen trenger fra
+hvert valgte par kunngjøres gjennom dette samme endepunktet. Begge er under
+`policy:Owner+OwnerManagement`, høyst 60 søk og 6 gjennomganger i minuttet per
+klientadresse, 409 `no_directory` mens det ikke finnes noen katalog å søke i, og 503
+`provider_unreachable` når den ikke kunne spørres; `GET /owner/sso` navngir katalogen
+som `directory`, null mens det ikke finnes noen. Det modulen trenger fra
 identitetsmodulen til dette — brukerne som ikke er koblet til, med adressen og
 ansattnummeret de sammenlignes på, og hvem som allerede har nøklene til en katalogkonto
 — svarer identitetsmodulen på gjennom porten `contracts.SSOConnections`, og bare til en

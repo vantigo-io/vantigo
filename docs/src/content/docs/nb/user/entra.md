@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Å koble selskapets Microsoft Entra ID-leietaker til på siden Microsoft Entra ID under Integrasjoner i Administrer arbeidsområde — de fire fanene Status, Tilkobling, Kontoer og Outlook og e-post, hvor siden ligger og videresendingen fra /entra, kortet Status, veiviserens seks steg og hva Ferdig betyr på hvert, tillatelsene som skal kopieres, hemmeligheten som vises én gang, tilkoblingstesten, kontoreglene og bryteren Outlook-tilkobling med status, antall og omdirigerings-URI, bryteren E-postkanaler med status og kommandoene for Exchange Online som skal kopieres, varselet om tillatelser Vantigo ikke bruker, tabellen Grupper å bekrefte en gruppe Vantigo ikke opprettet, og å koble til eksisterende brukere med katalogvelgeren og gjennomgangen av nøyaktige treff — og hvem som ser hva.
+description: Å koble selskapets Microsoft Entra ID-leietaker til på siden Microsoft Entra ID under Integrasjoner i Administrer arbeidsområde — de fire fanene Status, Tilkobling, Kontoer og Outlook og e-post, hvor siden ligger og videresendingen fra /entra, kortet Status, veiviserens seks steg og hva Ferdig betyr på hvert, tillatelsene som skal kopieres, hemmeligheten som vises én gang, tilkoblingstesten, kontoreglene og bryteren Outlook-tilkobling med status, antall og omdirigerings-URI, bryteren E-postkanaler med status og kommandoene for Exchange Online som skal kopieres, varselet om tillatelser Vantigo ikke bruker, tabellen Grupper å bekrefte en gruppe Vantigo ikke opprettet, og leietakeren som katalogvelgeren og gjennomgangen av nøyaktige treff på Brukere søker i — og hvem som ser hva.
 sidebar:
   order: 47
 sources:
@@ -28,7 +28,7 @@ står i [referansen](/en/reference/entra/).
 | Stegene **1 Registrer applikasjonen**, **2 Legg til en klienthemmelighet** og **3 Gi tillatelsene og rollen** — **Lagre**, **Legg til hemmeligheten**, **Trekk tilbake**, **Test tilkoblingen** | en **eier**, innlogget med en andre faktor; for alle andre med `entra:manage` vises de skrivebeskyttet, med *En eier gjør dette steget. Du ser hva som er satt, men kan ikke endre det.* |
 | Steg **4 Sett kontoreglene** — **Lagre kontoreglene** — og fanen **Outlook og e-post** — **Lagre innstillingene for Outlook og e-post** | `entra:manage` |
 | Stegene **5 Innlogging** og **6 Klargjøring** | en **eier**: de er skjemaene fra kortet **Single sign-on**; alle andre leser steget uten dem |
-| **Søk i katalogen** i tilkoblingsdialogen og **Finn treff i katalogen…** under **Brukere** ([koble til eksisterende brukere](#koble-til-eksisterende-brukere)) | en **eier**, innlogget med en andre faktor når eiere må bruke en |
+| **Søk i katalogen** i tilkoblingsdialogen og **Finn treff i katalogen…** under **Brukere**, i denne leietakeren ([koble til eksisterende brukere](#koble-til-eksisterende-brukere)) | en **eier**, innlogget med en andre faktor når eiere må bruke en |
 
 `entra:manage` hører til kategorien Administrasjon og kan ikke delegeres: bare en eier
 gir den til en rolle. Eieren har den allerede. Den som har den uten å være eier, ser bare
@@ -379,81 +379,19 @@ kontokjøring.* Bekreft bare en gruppe du har sjekket.
 ## Koble til eksisterende brukere
 
 Når enkel pålogging slås på i et arbeidsområde som allerede har brukere, må hver av dem
-kobles til katalogkontoen sin før de kan logge inn gjennom Microsoft
+kobles til katalogkontoen sin før de kan logge inn gjennom Microsoft. Det gjøres under
+**Administrer arbeidsområde** › **Brukere**
 ([Koble en konto til enkel pålogging](/nb/user/workspace-administration/#koble-en-konto-til-enkel-pålogging)).
-Mens denne appen er slått på, trenger du ikke skrive inn kontoene: Vantigo slår dem opp i
-leietakeren. Begge måtene nedenfor er for en **eier**, under **Administrer arbeidsområde** ›
-**Brukere**, innlogget med en andre faktor når eiere må bruke en; de krever
-tilkoblingen til leietakeren fra steg 1 til 3, og kolonnen **Enkel pålogging**, som
-finnes mens enkel pålogging er på.
+Mens Microsoft Entra ID er den valgte leverandøren for enkel pålogging og denne appen er
+slått på, slår Brukere-siden opp kontoene i denne leietakeren: **Søk i katalogen** i
+tilkoblingsdialogen, og **Finn treff i katalogen…** for et helt arbeidsområde
+([Slå opp kontoene i katalogen](/nb/user/workspace-administration/#slå-opp-kontoene-i-katalogen)).
+De krever tilkoblingen til leietakeren fra steg 1 til 3.
 
-### Gå gjennom de nøyaktige treffene
-
-1. Velg **Finn treff i katalogen…** ved siden av søket under **Brukere**.
-2. **Brukere som passer med en konto i katalogen** åpnes. En linje øverst teller
-   *Brukere som ikke er koblet til*, *Nøyaktige treff* og dem som er *Utelatt fordi mer
-   enn én konto passet*. Under den er hvert forslag en rad: **Bruker**, med adressen;
-   **Konto i katalogen**, med visningsnavn, brukerprinsipalnavn, ansatt-ID når den har
-   en, og *Deaktivert* når kontoen er det; og **Treff på**: **E-post**,
-   **Brukerprinsipalnavn**, **Ansatt-ID**, eller flere.
-3. Se over radene. En rad er krysset av fra start bare når kontoen er aktiv,
-   brukerprinsipalnavnet traff, og brukeren ikke er eier. Alle andre rader står uten
-   kryss og er merket **Sjekk treffet**, med grunnen: *Treff bare på e-post eller
-   ansatt-ID, ikke på brukerprinsipalnavnet personen logger på med. Forsikre deg om at
-   det er samme person.*, eller *Denne brukeren er eier. Den som har denne kontoen,
-   logger på med eierens tilgang.* Kryss av dem du har sjekket, og fjern krysset på dem
-   du ikke vil ha.
-4. Velg **Koble til valgte**, som viser hvor mange som er krysset av. Vantigo kobler
-   parene til ett om gangen, og **Resultat** på hver rad sier *Koblet til*, eller med
-   ord hvorfor det ble avvist — for eksempel at en annen bruker allerede er koblet til
-   kontoen. **Brukere** oppdateres når det er ferdig.
-
-En bruker foreslås bare når treffet er **nøyaktig**: adressen deres er kontoens e-post
-eller brukerprinsipalnavn, uten hensyn til store og små bokstaver, eller
-ansattnummeret deres er kontoens ansatt-ID — og alt som traff, peker på den samme
-kontoen. Det gjettes ikke på navn eller lignende adresser. Utelatt blir:
-
-- en bruker som passer med mer enn én konto, eller der kontoen også passer med en annen
-  bruker — telt som *Utelatt fordi mer enn én konto passet*; koble dem til én om
-  gangen;
-- gjestekontoer, invitert fra en annen organisasjon: de foreslås aldri og telles ikke;
-- en konto noen andre allerede har: en kunngjort for en annen bruker, en leverandørens
-  klargjøring har gitt en annen bruker, eller en Ansatte har kunngjort for en ny person.
-  En konto leverandørens klargjøring allerede har gitt den samme brukeren, foreslås
-  likevel;
-- brukere som allerede er koblet til eller venter på første pålogging, brukere som er
-  **Venter**, og deg selv — du kobler deg selv til ved å logge inn gjennom Microsoft.
-
-Når ingen passer, sier vinduet det, og at du kobler dem til én om gangen fra kolonnen
-**Enkel pålogging**. Bare de 1 000 første brukerne som ikke er koblet til, sammenlignes;
-er det flere, sier det fra — koble til disse, og se så etter igjen. Å finne treffene kan
-ta litt tid i en stor leietaker; åpner du vinduet igjen i mellomtiden, venter det på det
-samme svaret, og etter to minutter gir det opp og sier at leietakeren ikke svarte.
-
-En rad som er koblet til, viser **Venter på første pålogging** under **Brukere** til
-personen neste gang logger inn gjennom Microsoft, eller leverandøren sender kontoen;
-da fullføres koblingen, og raden viser **Koblet til**. Navn, adresse og roller blir som
-de var.
-
-### Velg kontoen når du kobler til én bruker
-
-**Koble til…** i en brukers rad åpner **Koble _navn_ til enkel pålogging**, som, mens
-denne appen er slått på, begynner med **Søk i katalogen**. Skriv to tegn eller mer av
-personens navn, adresse eller brukerprinsipalnavn; etter en pause viser listen
-kontoene som passer, etter visningsnavn, hver med brukerprinsipalnavn, ansatt-ID,
-*Gjest* for en gjest i leietakeren, og *Deaktivert* når kontoen er det. En konto noen allerede har, viser *Venter på* og
-brukerens navn (eller *Venter på en annen bruker*), *Klargjort for en annen bruker*
-eller *Kunngjort av Ansatte*, og kan ikke velges. Høyst 25 kontoer vises; når det er så
-mange, ber den deg snevre inn søket.
-
-Å velge en konto fyller ut **Brukerprinsipalnavn** og, under **Mer**, **Objekt-ID**.
-De to hører sammen: endrer du brukerprinsipalnavnet, tømmes objekt-ID-en; søker du på
-nytt etter et valg, tømmes begge. Kontroller dem og velg **Koble til**, som før. Feltene du skriver i, blir stående: du
-kan fortsatt skrive navnet selv, og de er alt som finnes mens katalogen ikke kan leses.
-
-Et søk eller en gjennomgang kan avvises når leietakeren ikke kan spørres:
-hemmelighetene avvises, leietakeren svarer ikke, eller den ber Vantigo vente — prøv igjen
-om et minutt. Gjennomgangen avvises når enkel pålogging ikke er satt opp.
+Microsoft Entra ID sammenligner høyst de 1 000 første brukerne som ikke er koblet til, i
+én gjennomgang, og gir opp etter to minutter. Et søk eller en gjennomgang avvises med
+*Katalogen kunne ikke spørres* når leietakeren avviser alle hemmelighetene, ikke svarer
+eller ber Vantigo vente: sjekk kortet **Status**, og prøv igjen om et minutt.
 
 ## Etter oppsettet
 
