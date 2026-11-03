@@ -238,6 +238,23 @@ The page is headed by the GSRN, marked **GSRN**, and the address, and has six ca
   household use in Nordland, Troms and Finnmark is exempt from VAT — and *Standard*
   otherwise. It is shown so that a wrong postal code or a forgotten **Household use**
   is seen here, before an invoice is made.
+
+  Under them, the class the rules point to: *Suggested: Reduced rate*, for instance,
+  with one sentence saying why. It is worked out from the address, **Household use**
+  and the industry code of the point's current customer (from the Central
+  Coordinating Register, on the customer's registry record): in Finnmark and the
+  Nord-Troms municipalities Karlsøy, Kvænangen, Kåfjord, Lyngen, Nordreisa, Skjervøy
+  and Storfjord a household or public administration is **Exempt** and everything
+  else **Reduced rate**; elsewhere mining and manufacturing get **Reduced rate** — on
+  the power used in the production process only — and the rest **Ordinary rate**. A
+  yellow **Differs** badge and *The stored class is what settlements bill. Check it
+  against the customer's documentation.* appear when it is not the **Electricity
+  tax** set on the point; a grey **Check** badge when the facts cannot settle it —
+  no customer or no industry code, an industry that may qualify for a reduced rate or
+  an exemption, or postal code 9140, which crosses the zone's border. The suggestion
+  changes nothing: to follow it, edit the point and set **Electricity tax**. A point
+  outside Norway shows *No suggestion*. The rule is in the
+  [reference](/en/reference/energy/#the-electricity-tax-suggestion).
 - **Meter history**: every meter that has sat on the point, with **Installed** and
   **Removed** times. The current meter has no removed time.
 - **Supply periods**: which customer the point has been supplied to, from when to
@@ -475,7 +492,10 @@ At the top, four figures: **Metering points** supplied to this customer, their s
 **Active supply periods**. Below, a table with one row per metering point the customer
 has a non-cancelled supply period on: **Metering point ID**, **Installation address**,
 **Price area**, **Expected annual consumption**, **Supply periods** (the latest period
-and its status; hover to see them all) and **Status**. Click a row to open the
+and its status; hover to see them all), **Electricity tax** and **Status**.
+**Electricity tax** is the class stored on the point, with a yellow warning sign when
+the suggested class, read with this customer's industry code, differs; hover the sign
+to see the suggestion and why. Click a row to open the
 metering point. A customer with none is told *No metering points* — *Attach a
 metering point to start tracking consumption.*
 
