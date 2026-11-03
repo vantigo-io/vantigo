@@ -7,9 +7,11 @@ import {
   attentionTitleKey,
   attentionWeek,
   awaitingApprovalHint,
+  canReadInventoryStats,
   canReadPlanningStats,
   canReadStaffStats,
   expensesUnreimbursedValue,
+  inventoryKpi,
   invoicesKpi,
   invoicesOverdueHint,
   kpiCards,
@@ -1269,5 +1271,72 @@ describe("Dashboard_PaymentAttentionSentences", () => {
 
   it("leads each item to its invoice", () => {
     expect(types.map((type) => attentionHref(item(type)))).toEqual(types.map(() => "/invoices/1001"));
+  });
+});
+
+/**
+ * Inventory's cards (inventory design §7): the module card, shown with either
+ * view permission, and a KPI card fed by `GET /inventory/stats` — the stock
+ * lines, a quantity, so the KPI card asks for inventory:stock-view beside the
+ * endpoint's inventory:locations-view. Inventory has no activity series.
+ */
+describe("the dashboard's inventory card", () => {
+  it("has the card's words in English and Norwegian", () => {
+    for (const key of [
+      "dashboard.inventory",
+      "dashboard.manageInventory",
+      "dashboard.inventoryStockLines",
+      "dashboard.findInventory",
+    ] as const) {
+      expect(dashboardCatalog.en[key]).toBeTruthy();
+      expect(dashboardCatalog.nb[key]).toBeTruthy();
+    }
+    expect(dashboardCatalog.en["dashboard.inventory"]).toBe("Inventory");
+    expect(dashboardCatalog.nb["dashboard.inventory"]).toBe("Lager");
+    for (const lng of ["en", "nb"]) {
+      for (const count of [0, 1, 3]) {
+        expect(i18n.t("dashboard.inventoryReceiptsThisWeekHint", { ns: "host", lng, count })).toContain(String(count));
+      }
+    }
+  });
+
+  it("shows the card with the inventory module and either view permission, and not otherwise", () => {
+    const inventoryCard = (modules: Parameters<typeof visibleModuleCards>[0], permissions: string[] | undefined) =>
+      visibleModuleCards(modules, permissions).find((card) => card.module === "inventory");
+    expect(inventoryCard(["inventory"], ["inventory:locations-view"])).toMatchObject({
+      title: "dashboard.inventory",
+      description: "dashboard.manageInventory",
+      path: "/inventory",
+      requiredPermissions: ["inventory:locations-view", "inventory:stock-view"],
+    });
+    expect(inventoryCard(["inventory"], ["inventory:stock-view"])).toBeDefined();
+    expect(inventoryCard(["inventory"], ["inventory:stock-adjust"])).toBeUndefined();
+    expect(inventoryCard(["products"], ["*"])).toBeUndefined();
+  });
+
+  it("puts Inventory in the KPI row for both view permissions, and keeps it out of the activity chart", () => {
+    const cards = visibleModuleCards(["customers", "inventory"], ["*"]);
+    expect(kpiCards(cards, ["*"]).map((card) => card.module)).toEqual(["customers", "inventory"]);
+    const both = ["inventory:locations-view", "inventory:stock-view"];
+    expect(canReadInventoryStats(both)).toBe(true);
+    expect(kpiCards(cards, both).map((card) => card.module)).toContain("inventory");
+    for (const permissions of [["inventory:locations-view"], ["inventory:stock-view"], undefined]) {
+      expect(canReadInventoryStats(permissions)).toBe(false);
+      expect(kpiCards(cards, permissions).map((card) => card.module)).not.toContain("inventory");
+    }
+    expect(metrics.some((metric) => (metric.module as string) === "inventory")).toBe(false);
+  });
+
+  it("shows the stock lines, with this week's receipts as the hint", () => {
+    const t = (key: string, values?: Record<string, unknown>) => `${key}:${JSON.stringify(values)}`;
+    const formatNumber = (value: number) => new Intl.NumberFormat("en-US").format(value);
+    expect(inventoryKpi(undefined, formatNumber, t)).toEqual({ value: "—", hint: undefined });
+    expect(
+      inventoryKpi({ sites: 2, locations: 40, stockLines: 1234, receiptsThisWeek: 3, openCounts: 0 }, formatNumber, t),
+    ).toEqual({ value: "1,234", hint: 'dashboard.inventoryReceiptsThisWeekHint:{"count":3}' });
+  });
+
+  it("links an attention item to the app's home", () => {
+    expect(attentionHref({ module: "inventory", type: "countOpenLong", entityId: "5" })).toBe("/inventory");
   });
 });

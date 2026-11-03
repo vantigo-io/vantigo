@@ -49,6 +49,17 @@ const staffPermissionKeys = [
 // permissions`), for the same reason.
 const planningPermissionKeys = ["planning:access", "planning:view", "planning:manage"] as const;
 
+// Hand-kept in step with `apps/server/internal/inventory/module.go` (`var
+// permissions`), for the same reason.
+const inventoryPermissionKeys = [
+  "inventory:locations-view",
+  "inventory:locations-manage",
+  "inventory:stock-view",
+  "inventory:stock-adjust",
+  "inventory:receipts-manage",
+  "inventory:counts-manage",
+] as const;
+
 describe("the admin permission catalog", () => {
   it("has a display name and a description, in English and Norwegian, for these six projects permissions", () => {
     for (const key of projectsPermissionKeys) {
@@ -184,6 +195,50 @@ describe("the admin permission catalog", () => {
     expect(en["admin.permission.planningManageDescription"]).toBe(
       "Create, change, confirm and delete allocations and their terms, create, change, fill and withdraw requests, read the planners' notes, the candidates and the wishes, and change the Planning settings.",
     );
+  });
+
+  it("has a display name and a description, in English and Norwegian, for the six inventory permissions", () => {
+    for (const key of inventoryPermissionKeys) {
+      const translation = hostPermissionTranslationKeys[key];
+      expect(translation, `no catalog entry for ${key}`).toBeDefined();
+      expect(translation.moduleKey).toBe("admin.permission.module.inventory");
+      expect(translation.categoryKey).toBe("admin.permission.category.inventory");
+      for (const lng of ["en", "nb"] as const) {
+        const catalog = adminCatalog[lng] as Record<string, string>;
+        expect(catalog[translation.displayNameKey], `${key} display name (${lng})`).toBeTruthy();
+        expect(catalog[translation.descriptionKey], `${key} description (${lng})`).toBeTruthy();
+        expect(catalog[translation.moduleKey], `${key} module (${lng})`).toBeTruthy();
+        expect(catalog[translation.categoryKey], `${key} category (${lng})`).toBeTruthy();
+      }
+    }
+  });
+
+  it("matches the server's exact English display names and descriptions for inventory permissions", () => {
+    const en = adminCatalog.en as Record<string, string>;
+    expect(en["admin.permission.module.inventory"]).toBe("Inventory");
+    expect(en["admin.permission.category.inventory"]).toBe("Inventory");
+    expect(en["admin.permission.inventoryLocationsView"]).toBe("View locations");
+    expect(en["admin.permission.inventoryLocationsViewDescription"]).toBe(
+      "See the sites and their locations, and find a location by its code, without quantities.",
+    );
+    expect(en["admin.permission.inventoryLocationsManage"]).toBe("Manage locations");
+    expect(en["admin.permission.inventoryLocationsManageDescription"]).toBe(
+      "Create, change, archive and delete sites and locations, one by one or in bulk.",
+    );
+    expect(en["admin.permission.inventoryStockView"]).toBe("View stock");
+    expect(en["admin.permission.inventoryStockViewDescription"]).toBe(
+      "See what lies where: the quantities on hand, a product's Stock card, a location's contents and the movements.",
+    );
+    expect(en["admin.permission.inventoryStockAdjust"]).toBe("Adjust stock");
+    expect(en["admin.permission.inventoryStockAdjustDescription"]).toBe(
+      "Post adjustments and moves of stock between the locations of a site.",
+    );
+    expect(en["admin.permission.inventoryReceiptsManage"]).toBe("Receive goods");
+    expect(en["admin.permission.inventoryReceiptsManageDescription"]).toBe(
+      "Post goods receipts, putting delivered goods on the locations of a site.",
+    );
+    expect(en["admin.permission.inventoryCountsManage"]).toBe("Count stock");
+    expect(en["admin.permission.inventoryCountsManageDescription"]).toBe("Open, count, post and cancel stock counts.");
   });
 
   // Hand-kept in step with `apps/server/internal/calendar/module.go` (`var

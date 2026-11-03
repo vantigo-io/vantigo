@@ -8,6 +8,7 @@ import "@vantigo/communications-ui/i18n";
 import "@vantigo/customers-ui/i18n";
 import "@vantigo/energy-ui/i18n";
 import "@vantigo/entra-ui/i18n";
+import "@vantigo/inventory-ui/i18n";
 import "@vantigo/invoices-ui/i18n";
 import "@vantigo/planning-ui/i18n";
 import "@vantigo/products-ui/i18n";

@@ -11,6 +11,7 @@ export const moduleKeys = [
   "energy",
   "entra",
   "expenses",
+  "inventory",
   "invoices",
   "planning",
   "products",
@@ -66,6 +67,13 @@ export interface NavItem {
    * and Spotlight does not offer it. The built-in documentation is the case.
    */
   external?: boolean;
+  /**
+   * The search the destination opens with, when it is another entry's page
+   * filtered: Inventory's Receipts is its movements list with kind=receipt
+   * (inventory design §13.3). The sidebar link and Spotlight carry it, and
+   * the entry is the active one only while the URL carries it.
+   */
+  search?: Readonly<Record<string, string>>;
   /** Search defaults used when Spotlight opens this destination. */
   searchStrategy?: "customer-list" | "inbox-list" | "products-list" | "energy-list" | "projects-list" | "time-week";
 }
@@ -155,13 +163,36 @@ export const navSearchFor = (strategy: NavItem["searchStrategy"]) => {
   }
 };
 
-// No nav destination is "/" (the root route is a pure redirect, never a nav
-// target), so matching only needs the prefix form.
-export const activeNavPath = (pathname: string, items: readonly NavItem[]) => {
-  let best: string | undefined;
+/** An entry's identity among its section's: its path, and its search when it has one, since two may share a path. */
+export const navItemKey = (item: NavItem) =>
+  item.search ? `${item.to}?${new URLSearchParams(item.search).toString()}` : item.to;
+
+/**
+ * The entry the URL is on: the longest matching path. An entry with a search
+ * matches only while the URL carries it, and beats a sibling on the same path
+ * without one. No nav destination is "/" (the root route is a pure redirect,
+ * never a nav target), so matching only needs the prefix form.
+ */
+export const activeNavItem = (
+  pathname: string,
+  items: readonly NavItem[],
+  search: Readonly<Record<string, unknown>> = {},
+) => {
+  let best: NavItem | undefined;
   for (const item of items) {
-    const matches = pathname === item.to || pathname.startsWith(`${item.to}/`);
-    if (matches && (best === undefined || item.to.length > best.length)) best = item.to;
+    const matches =
+      (pathname === item.to || pathname.startsWith(`${item.to}/`)) &&
+      Object.entries(item.search ?? {}).every(([key, value]) => String(search[key]) === value);
+    if (
+      matches &&
+      (best === undefined ||
+        item.to.length > best.to.length ||
+        (item.to.length === best.to.length && !!item.search && !best.search))
+    ) {
+      best = item;
+    }
   }
   return best;
 };
+
+export const activeNavPath = (pathname: string, items: readonly NavItem[]) => activeNavItem(pathname, items)?.to;

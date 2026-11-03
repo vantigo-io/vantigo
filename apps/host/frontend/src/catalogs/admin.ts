@@ -453,6 +453,42 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.planningManage",
     descriptionKey: "admin.permission.planningManageDescription",
   },
+  "inventory:locations-view": {
+    moduleKey: "admin.permission.module.inventory",
+    categoryKey: "admin.permission.category.inventory",
+    displayNameKey: "admin.permission.inventoryLocationsView",
+    descriptionKey: "admin.permission.inventoryLocationsViewDescription",
+  },
+  "inventory:locations-manage": {
+    moduleKey: "admin.permission.module.inventory",
+    categoryKey: "admin.permission.category.inventory",
+    displayNameKey: "admin.permission.inventoryLocationsManage",
+    descriptionKey: "admin.permission.inventoryLocationsManageDescription",
+  },
+  "inventory:stock-view": {
+    moduleKey: "admin.permission.module.inventory",
+    categoryKey: "admin.permission.category.inventory",
+    displayNameKey: "admin.permission.inventoryStockView",
+    descriptionKey: "admin.permission.inventoryStockViewDescription",
+  },
+  "inventory:stock-adjust": {
+    moduleKey: "admin.permission.module.inventory",
+    categoryKey: "admin.permission.category.inventory",
+    displayNameKey: "admin.permission.inventoryStockAdjust",
+    descriptionKey: "admin.permission.inventoryStockAdjustDescription",
+  },
+  "inventory:receipts-manage": {
+    moduleKey: "admin.permission.module.inventory",
+    categoryKey: "admin.permission.category.inventory",
+    displayNameKey: "admin.permission.inventoryReceiptsManage",
+    descriptionKey: "admin.permission.inventoryReceiptsManageDescription",
+  },
+  "inventory:counts-manage": {
+    moduleKey: "admin.permission.module.inventory",
+    categoryKey: "admin.permission.category.inventory",
+    displayNameKey: "admin.permission.inventoryCountsManage",
+    descriptionKey: "admin.permission.inventoryCountsManageDescription",
+  },
   "calendar:access": {
     moduleKey: "admin.permission.module.calendar",
     categoryKey: "admin.permission.category.calendar",
@@ -695,6 +731,7 @@ const en = {
   "admin.permission.module.entra": "Microsoft Entra ID",
   "admin.permission.module.staff": "Staff",
   "admin.permission.module.planning": "Planning",
+  "admin.permission.module.inventory": "Inventory",
   "admin.permission.category.administration": "Administration",
   "admin.permission.category.customers": "Customers",
   "admin.permission.category.legalIdentity": "Legal identity",
@@ -717,6 +754,7 @@ const en = {
   "admin.permission.category.calendar": "Calendar",
   "admin.permission.category.staff": "Staff",
   "admin.permission.category.planning": "Planning",
+  "admin.permission.category.inventory": "Inventory",
   "admin.permission.identityManage": "Manage identity",
   "admin.permission.identityManageDescription": "Manage accounts, roles, and access.",
   "admin.permission.customersView": "View customers",
@@ -891,6 +929,23 @@ const en = {
   "admin.permission.planningManage": "Plan",
   "admin.permission.planningManageDescription":
     "Create, change, confirm and delete allocations and their terms, create, change, fill and withdraw requests, read the planners' notes, the candidates and the wishes, and change the Planning settings.",
+  "admin.permission.inventoryLocationsView": "View locations",
+  "admin.permission.inventoryLocationsViewDescription":
+    "See the sites and their locations, and find a location by its code, without quantities.",
+  "admin.permission.inventoryLocationsManage": "Manage locations",
+  "admin.permission.inventoryLocationsManageDescription":
+    "Create, change, archive and delete sites and locations, one by one or in bulk.",
+  "admin.permission.inventoryStockView": "View stock",
+  "admin.permission.inventoryStockViewDescription":
+    "See what lies where: the quantities on hand, a product's Stock card, a location's contents and the movements.",
+  "admin.permission.inventoryStockAdjust": "Adjust stock",
+  "admin.permission.inventoryStockAdjustDescription":
+    "Post adjustments and moves of stock between the locations of a site.",
+  "admin.permission.inventoryReceiptsManage": "Receive goods",
+  "admin.permission.inventoryReceiptsManageDescription":
+    "Post goods receipts, putting delivered goods on the locations of a site.",
+  "admin.permission.inventoryCountsManage": "Count stock",
+  "admin.permission.inventoryCountsManageDescription": "Open, count, post and cancel stock counts.",
   "admin.permission.calendarAccess": "Use Calendar",
   "admin.permission.calendarAccessDescription":
     "Use the Calendar app: your own calendar, your appointments and your answers to them, and the dashboard's agenda.",
@@ -1322,6 +1377,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.module.entra": "Microsoft Entra ID",
   "admin.permission.module.staff": "Ansatte",
   "admin.permission.module.planning": "Bemanning",
+  "admin.permission.module.inventory": "Lager",
   "admin.permission.category.administration": "Administrasjon",
   "admin.permission.category.customers": "Kunder",
   "admin.permission.category.legalIdentity": "Juridisk identitet",
@@ -1344,6 +1400,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.category.calendar": "Kalender",
   "admin.permission.category.staff": "Ansatte",
   "admin.permission.category.planning": "Bemanning",
+  "admin.permission.category.inventory": "Lager",
   "admin.permission.identityManage": "Administrer identitet",
   "admin.permission.identityManageDescription": "Administrer kontoer, roller og tilgang.",
   "admin.permission.customersView": "Se kunder",
@@ -1522,6 +1579,23 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.planningManage": "Planlegge",
   "admin.permission.planningManageDescription":
     "Opprette, endre, bekrefte og slette allokeringer og vilkårene deres, opprette, endre, fylle og trekke tilbake behov, lese planleggernes notater, kandidatene og ønskene, og endre innstillingene for Bemanning.",
+  "admin.permission.inventoryLocationsView": "Se lagersteder",
+  "admin.permission.inventoryLocationsViewDescription":
+    "Se lagerstedene og lokasjonene deres, og finne en lokasjon på koden, uten mengder.",
+  "admin.permission.inventoryLocationsManage": "Administrere lagersteder",
+  "admin.permission.inventoryLocationsManageDescription":
+    "Opprette, endre, arkivere og slette lagersteder og lokasjoner, én og én eller mange om gangen.",
+  "admin.permission.inventoryStockView": "Se beholdning",
+  "admin.permission.inventoryStockViewDescription":
+    "Se hva som ligger hvor: beholdningen, lagerkortet på produktsiden, innholdet på en lokasjon og bevegelsene.",
+  "admin.permission.inventoryStockAdjust": "Justere beholdning",
+  "admin.permission.inventoryStockAdjustDescription":
+    "Bokføre justeringer og flyttinger av varer mellom lokasjonene på et lagersted.",
+  "admin.permission.inventoryReceiptsManage": "Motta varer",
+  "admin.permission.inventoryReceiptsManageDescription":
+    "Bokføre varemottak og legge leverte varer på lokasjonene til et lagersted.",
+  "admin.permission.inventoryCountsManage": "Telle varer",
+  "admin.permission.inventoryCountsManageDescription": "Åpne, telle, bokføre og avbryte varetellinger.",
   "admin.permission.calendarAccess": "Bruk Kalender",
   "admin.permission.calendarAccessDescription":
     "Bruk Kalender-appen: din egen kalender, avtalene dine og svarene dine på dem, og agendaen på kontrollpanelet.",

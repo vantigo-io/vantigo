@@ -15,6 +15,7 @@ const allModules: ModuleKey[] = [
   "energy",
   "entra",
   "expenses",
+  "inventory",
   "planning",
   "products",
   "projects",
@@ -309,6 +310,46 @@ describe("AppSpotlight navigation authorization", () => {
     expect(screen.queryByText("New allocation", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("New request", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("My planning", { exact: true })).not.toBeInTheDocument();
+  });
+
+  // Find location or item (inventory design I28) lands on the Inventory home,
+  // whose lookup is autofocused; the lookup matches locations, so it is
+  // inventory:locations-view's.
+  it("opens the Inventory home from Find location or item for inventory:locations-view", async () => {
+    const onNavigate = vi.fn();
+    renderSpotlight(["inventory:locations-view"], false, false, onNavigate);
+
+    fireEvent.click(await waitFor(() => screen.getByText("Find location or item", { exact: true })));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/inventory", search: undefined }));
+  });
+
+  it("hides Find location or item without inventory:locations-view and when the module is off", async () => {
+    // stock-view alone offers the overview and nothing that reads stock:
+    // Movements and Receipts need both views (the server's all-of rule).
+    renderSpotlight(["inventory:stock-view"], false, false);
+    await waitFor(() => expect(screen.getByText("Overview", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("Movements", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("Find location or item", { exact: true })).not.toBeInTheDocument();
+
+    cleanup();
+    spotlight.close();
+    renderSpotlight(["*"], true, true, undefined, ["customers", "products"]);
+    await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("Find location or item", { exact: true })).not.toBeInTheDocument();
+  });
+
+  // Receipts is the movements list filtered to receipts: Spotlight opens it
+  // with the entry's own search.
+  it("opens Receipts as the movements list with kind=receipt", async () => {
+    renderSpotlight(["inventory:locations-view", "inventory:stock-view"], false, false);
+
+    fireEvent.click(await waitFor(() => screen.getByText("Receipts", { exact: true })));
+
+    expect(navigateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/inventory/movements", search: { kind: "receipt" } }),
+    );
   });
 
   // Request absence is everyone's in the app: it lands on My page's Absence

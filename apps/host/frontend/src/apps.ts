@@ -6,6 +6,7 @@ import {
   IconBrandWindows,
   IconBriefcase,
   IconBuildingBank,
+  IconBuildingWarehouse,
   IconCalendar,
   IconCalendarEvent,
   IconCalendarStats,
@@ -30,6 +31,7 @@ import {
   IconMailOff,
   IconMessageChatbot,
   IconPackage,
+  IconPackageImport,
   IconPlugConnected,
   IconReceipt2,
   IconReceiptTax,
@@ -39,6 +41,7 @@ import {
   IconSparkles,
   IconTelescope,
   IconTemplate,
+  IconTransfer,
   IconUser,
   IconUserPlus,
   IconUserQuestion,
@@ -46,6 +49,7 @@ import {
   IconUsers,
   IconUsersGroup,
 } from "@tabler/icons-react";
+import { type InventoryNavItem, inventoryNavItems } from "@vantigo/inventory-ui";
 import { type PlanningNavItem, planningNavItems } from "@vantigo/planning-ui";
 import { type StaffNavItem, staffNavItems } from "@vantigo/staff-ui";
 import { accountMenuSections } from "./account-menu";
@@ -168,6 +172,19 @@ const planningNavPresentation: Record<PlanningNavItem["key"], Pick<NavItem, "lab
   wishes: { label: "navigation.planningWishes", icon: IconHeartHandshake },
   myPlanning: { label: "navigation.planningMyPlanning", icon: IconCalendarUser },
   settings: { label: "navigation.planningSettings", icon: IconAdjustments },
+};
+
+/**
+ * The host's half of an Inventory sidebar entry, as Planning's above: where
+ * each destination is, the search it opens with and which permissions offer
+ * it are the package's (`inventoryNavItems`); the label and the icon are the
+ * host's. Receipts is the movements list filtered to receipts (design §13.3),
+ * so it shares Movements' path and carries `kind=receipt`.
+ */
+const inventoryNavPresentation: Record<InventoryNavItem["key"], Pick<NavItem, "label" | "icon">> = {
+  overview: { label: "navigation.inventoryOverview", icon: IconBuildingWarehouse },
+  movements: { label: "navigation.inventoryMovements", icon: IconTransfer },
+  receipts: { label: "navigation.inventoryReceipts", icon: IconPackageImport },
 };
 
 /** Every app, in switcher order. Home has no module and no sidebar. */
@@ -504,6 +521,22 @@ export const apps: readonly AppDefinition[] = [
       requiredPermissions: ["products:tax-categories-view"],
     },
   ]),
+  // The home needs inventory:locations-view or inventory:stock-view (design
+  // §5), which is what Overview declares, so the tile — the union of the
+  // entries' permissions — asks for the same.
+  moduleApp(
+    "inventory",
+    "navigation.inventory",
+    IconBuildingWarehouse,
+    "/inventory",
+    inventoryNavItems.map(({ key, to, search, requiredPermissions, requiredAllPermissions }) => ({
+      ...inventoryNavPresentation[key],
+      to,
+      search,
+      requiredPermissions,
+      requiredAllPermissions,
+    })),
+  ),
   moduleApp("energy", "navigation.energy", IconBolt, "/energy", [
     {
       label: "navigation.meteringPoints",

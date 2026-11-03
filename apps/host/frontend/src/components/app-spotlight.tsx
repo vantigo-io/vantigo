@@ -2,6 +2,7 @@ import { Center, Loader, Text } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { Spotlight } from "@mantine/spotlight";
 import {
+  IconBarcode,
   IconBolt,
   IconBriefcase,
   IconBuilding,
@@ -29,13 +30,21 @@ import { customersQueryOptions } from "@vantigo/customers-ui/api/customers";
 import { formatContactName } from "@vantigo/customers-ui/lib/format-contact-name";
 import { meteringPointsQueryOptions } from "@vantigo/energy-ui";
 import { useI18n } from "@vantigo/frontend-shell";
+import { INVENTORY_HOME_ROUTE_PATH } from "@vantigo/inventory-ui/lib/routes";
 import { BOARD_ROUTE_PATH, REQUESTS_ROUTE_PATH } from "@vantigo/planning-ui/lib/routes";
 import { projectSearchQueryOptions } from "@vantigo/projects-ui/api/projects";
 import { MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH } from "@vantigo/staff-ui/lib/routes";
 import { useState } from "react";
 import "../i18n";
 import { spotlightNavSections } from "../apps";
-import { hasPermissions, type ModuleKey, type NavFeature, navSearchFor, visibleNavSections } from "../navigation";
+import {
+  hasPermissions,
+  type ModuleKey,
+  type NavFeature,
+  navItemKey,
+  navSearchFor,
+  visibleNavSections,
+} from "../navigation";
 
 const MIN_SEARCH_LENGTH = 2;
 const MAX_RESULTS = 5;
@@ -196,6 +205,19 @@ export const AppSpotlight = ({
           { label: t("dashboard.newRequest"), icon: IconUserSearch, path: REQUESTS_ROUTE_PATH, search: { new: 1 } },
         ]
       : []),
+    // Find location or item (inventory design I28): the Inventory home has the
+    // lookup, autofocused, so the action lands there; the lookup matches
+    // locations, which need inventory:locations-view.
+    ...(enabledModules?.includes("inventory") && hasPermissions(permissions, ["inventory:locations-view"])
+      ? [
+          {
+            label: t("dashboard.findInventory"),
+            icon: IconBarcode,
+            path: INVENTORY_HOME_ROUTE_PATH,
+            search: undefined,
+          },
+        ]
+      : []),
     // New appointment is everyone's in the app, for themselves: the calendar
     // opens the appointment sheet on arrival (the package's `new` seam).
     ...(enabledModules?.includes("calendar") && hasPermissions(permissions, ["calendar:access"])
@@ -266,7 +288,7 @@ export const AppSpotlight = ({
           <Spotlight.ActionsGroup label={t("navigation.navigation")}>
             {matchingNavigation.map((action) => (
               <Spotlight.Action
-                key={action.to}
+                key={navItemKey(action)}
                 label={t(action.label)}
                 description={action.description}
                 leftSection={<action.icon size={20} stroke={1.5} />}
@@ -274,7 +296,7 @@ export const AppSpotlight = ({
                   handleNavigate(() =>
                     navigate({
                       to: action.to as never,
-                      search: navSearchFor(action.searchStrategy) as never,
+                      search: (action.search ?? navSearchFor(action.searchStrategy)) as never,
                     }),
                   )
                 }

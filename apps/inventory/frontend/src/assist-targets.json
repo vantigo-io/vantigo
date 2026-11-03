@@ -1,0 +1,86 @@
+[
+  {
+    "key": "inventory.home.lookup",
+    "route": "/inventory",
+    "label": {
+      "en": "Find location or item",
+      "nb": "Finn lokasjon eller vare"
+    },
+    "description": {
+      "en": "The field at the top of the Inventory home page: scan or type a location code, a label, a SKU or a barcode and press Enter to open it.",
+      "nb": "Feltet øverst på Lager-forsiden: skann eller skriv en lokasjonskode, en etikett, et varenummer eller en strekkode og trykk Enter for å åpne den."
+    }
+  },
+  {
+    "key": "inventory.home.new-site",
+    "route": "/inventory",
+    "label": {
+      "en": "New site",
+      "nb": "Nytt lagersted"
+    },
+    "description": {
+      "en": "The button on the Inventory home page that opens the form for a new site, a warehouse or a store.",
+      "nb": "Knappen på Lager-forsiden som åpner skjemaet for et nytt lagersted, et lager eller en butikk."
+    }
+  },
+  {
+    "key": "inventory.home.new-receipt",
+    "route": "/inventory",
+    "label": {
+      "en": "New receipt",
+      "nb": "Nytt varemottak"
+    },
+    "description": {
+      "en": "The button on the Inventory home page that opens a new goods receipt, to receive items onto a location.",
+      "nb": "Knappen på Lager-forsiden som åpner et nytt varemottak, for å motta varer til en lokasjon."
+    }
+  },
+  {
+    "key": "inventory.home.new-adjustment",
+    "route": "/inventory",
+    "label": {
+      "en": "New adjustment",
+      "nb": "Ny justering"
+    },
+    "description": {
+      "en": "The button on the Inventory home page that opens a new stock adjustment, to correct what lies on a location with a reason.",
+      "nb": "Knappen på Lager-forsiden som åpner en ny justering, for å korrigere det som ligger på en lokasjon, med en årsak."
+    }
+  },
+  {
+    "key": "inventory.home.new-move",
+    "route": "/inventory",
+    "label": {
+      "en": "New move",
+      "nb": "Ny flytting"
+    },
+    "description": {
+      "en": "The button on the Inventory home page that opens a new move, to move stock between two locations of one site.",
+      "nb": "Knappen på Lager-forsiden som åpner en ny flytting, for å flytte beholdning mellom to lokasjoner på samme lagersted."
+    }
+  },
+  {
+    "key": "inventory.site.new-location",
+    "route": "/inventory/sites/{siteId}",
+    "label": {
+      "en": "New location",
+      "nb": "Ny lokasjon"
+    },
+    "description": {
+      "en": "The button on a site's page that opens the form for a new location directly under the site.",
+      "nb": "Knappen på siden for et lagersted som åpner skjemaet for en ny lokasjon rett under lagerstedet."
+    }
+  },
+  {
+    "key": "inventory.site.bulk-add",
+    "route": "/inventory/sites/{siteId}",
+    "label": {
+      "en": "Bulk add",
+      "nb": "Legg til mange"
+    },
+    "description": {
+      "en": "The button on a site's page that creates a grid of locations at once, such as aisles, racks and shelves.",
+      "nb": "Knappen på siden for et lagersted som oppretter et rutenett av lokasjoner på én gang, som ganger, reoler og hyller."
+    }
+  }
+]

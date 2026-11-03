@@ -1,4 +1,12 @@
-import { IconCalendarEvent, IconCalendarStats, IconUsersGroup } from "@tabler/icons-react";
+import {
+  IconBuildingWarehouse,
+  IconCalendarEvent,
+  IconCalendarStats,
+  IconPackageImport,
+  IconTransfer,
+  IconUsersGroup,
+} from "@tabler/icons-react";
+import { inventoryNavItems } from "@vantigo/inventory-ui";
 import { planningNavItems } from "@vantigo/planning-ui";
 import { staffNavItems } from "@vantigo/staff-ui";
 import { describe, expect, it } from "vitest";
@@ -27,6 +35,7 @@ const allModules = [
   "energy",
   "entra",
   "expenses",
+  "inventory",
   "invoices",
   "planning",
   "products",
@@ -52,6 +61,7 @@ describe("the app registry", () => {
       "invoices",
       "communications",
       "products",
+      "inventory",
       "energy",
     ]);
     for (const app of apps.slice(1)) expect(app.module).toBe(app.key);
@@ -114,6 +124,9 @@ describe("the app registry", () => {
       "/products",
       "/products/categories",
       "/products/tax-categories",
+      "/inventory",
+      "/inventory/movements",
+      "/inventory/movements",
       "/energy/metering-points",
       "/energy/prices",
       "/energy/tariffs",
@@ -555,6 +568,83 @@ describe("the app registry", () => {
     ]);
   });
 
+  // Inventory's destinations are the package's (`inventoryNavItems`), the host
+  // adding the label and the icon. Receipts is the movements list filtered to
+  // receipts (inventory design §13.3), so it shares Movements' path and
+  // carries the search.
+  it("gives Inventory the overview, Movements and Receipts, from the package's destinations", () => {
+    const inventory = appForKey("inventory");
+    expect(inventory).toMatchObject({ module: "inventory", label: "navigation.inventory", home: "/inventory" });
+    expect(inventory.icon).toBe(IconBuildingWarehouse);
+    expect(inventory.requiredPermissions).toEqual(["inventory:locations-view", "inventory:stock-view"]);
+    const items = inventory.navSections.flatMap((section) => section.items);
+    expect(
+      items.map((item) => [
+        item.label,
+        item.to,
+        item.search,
+        item.requiredPermissions,
+        item.requiredAllPermissions,
+        item.guardPermissions,
+      ]),
+    ).toEqual([
+      [
+        "navigation.inventoryOverview",
+        "/inventory",
+        undefined,
+        ["inventory:locations-view", "inventory:stock-view"],
+        undefined,
+        undefined,
+      ],
+      [
+        "navigation.inventoryMovements",
+        "/inventory/movements",
+        undefined,
+        ["inventory:stock-view"],
+        ["inventory:locations-view", "inventory:stock-view"],
+        undefined,
+      ],
+      [
+        "navigation.inventoryReceipts",
+        "/inventory/movements",
+        { kind: "receipt" },
+        ["inventory:stock-view"],
+        ["inventory:locations-view", "inventory:stock-view"],
+        undefined,
+      ],
+    ]);
+    expect(items.map((item) => item.icon)).toEqual([IconBuildingWarehouse, IconTransfer, IconPackageImport]);
+    expect(items.map((item) => item.to)).toEqual(inventoryNavItems.map((item) => item.to));
+    for (const item of items) {
+      expect(navigationCatalog.en[item.label as keyof typeof navigationCatalog.en]).toBeTruthy();
+      expect(navigationCatalog.nb[item.label as keyof typeof navigationCatalog.nb]).toBeTruthy();
+    }
+    expect(navigationCatalog.en["navigation.inventory"]).toBe("Inventory");
+    expect(navigationCatalog.nb["navigation.inventory"]).toBe("Lager");
+  });
+
+  it("shows the Inventory tile for either view permission, and locations-view alone the overview alone", () => {
+    const keys = (permissions: string[], enabled: readonly (typeof allModules)[number][]) =>
+      switcherTiles(permissions, enabled, undefined).map((tile) => [tile.app.key, tile.enabled]);
+    expect(keys(["inventory:locations-view"], allModules)).toContainEqual(["inventory", true]);
+    expect(keys(["inventory:stock-view"], allModules)).toContainEqual(["inventory", true]);
+    expect(keys(["inventory:stock-adjust"], allModules).map(([key]) => key)).not.toContain("inventory");
+    expect(keys(["inventory:locations-view"], ["customers"])).toContainEqual(["inventory", false]);
+    const paths = (permissions: string[]) =>
+      appNavSections(appForKey("inventory"), allModules, {
+        permissions,
+        isOwner: false,
+        canManageAuthorization: false,
+        enabledModules: allModules,
+      }).flatMap((section) => section.items.map((item) => item.label));
+    expect(paths(["inventory:locations-view"])).toEqual(["navigation.inventoryOverview"]);
+    expect(paths(["inventory:locations-view", "inventory:stock-view"])).toEqual([
+      "navigation.inventoryOverview",
+      "navigation.inventoryMovements",
+      "navigation.inventoryReceipts",
+    ]);
+  });
+
   it("treats Home as always enabled and module apps as enabled when their module is", () => {
     expect(isAppEnabled(appForKey("home"), [])).toBe(true);
     expect(isAppEnabled(appForKey("energy"), ["customers"])).toBe(false);
@@ -585,6 +675,7 @@ describe("the administration areas", () => {
       "invoices",
       "communications",
       "products",
+      "inventory",
       "energy",
     ]);
     expect(tiles.some((tile) => tile.current)).toBe(false);
@@ -817,6 +908,7 @@ describe("switcherTiles", () => {
       ["invoices", false],
       ["communications", false],
       ["products", false],
+      ["inventory", false],
       ["energy", false],
     ]);
     expect(tiles.some((tile) => tile.current)).toBe(false);
