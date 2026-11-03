@@ -543,11 +543,19 @@ rules, `account_locked` until they are enabled. An Owner or a SystemAdmin may be
 announced, and the local MFA rule stands. An announced link outranks an announced
 account for the same arrival, and an arrival never fulfils both.
 
-**With the Entra module.** While `entra` is enabled the Users screen picks the
-directory account from the tenant instead of having it typed, and offers a review of
-every user who matches exactly one account (see
+**With a directory to search.** While the configured provider's directory can be
+searched — OIDC is on and an enabled module serves that provider's
+`contracts.DirectorySearch`, today `entra` — the Users screen picks the directory
+account through `GET /api/v1/identity/owner/sso/directory/users` instead of having it
+typed, and offers a review of every user who matches exactly one account through
+`GET /api/v1/identity/owner/sso/directory/matches` (see
+[the announced link](/en/admin/sso-scim/#the-announced-link) and, for Entra,
 [connecting existing users](/en/reference/entra/#connecting-existing-users)); each
-chosen pair is announced through this same endpoint. What the module needs of identity
+chosen pair is announced through this same endpoint. Both are under
+`policy:Owner+OwnerManagement`, at most 60 searches and 6 reviews a minute per client
+address, 409 `no_directory` while there is no directory to search and 503
+`provider_unreachable` when it could not be asked; `GET /owner/sso` names the directory
+as `directory`, null while there is none. What the module needs of identity
 for that — the users not yet connected, with the address and employee number they are
 matched by, and who already holds a directory account's keys — identity answers through
 the port `contracts.SSOConnections`, and only to an Owner under
