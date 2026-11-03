@@ -329,8 +329,6 @@ export const entraCatalog = {
     "outlook.failed_no_account":
       "Vantigo knows no Microsoft account of yours that it manages, so there is nothing to connect.",
     "outlook.failed_switch_off": "The Outlook connection is turned off for this workspace.",
-    "outlook.nothingToConnect":
-      "Nothing to connect: the Outlook connection is turned off, or Vantigo knows no Microsoft account of yours.",
 
     step5Title: "Sign-in",
     step5Path: "App registrations › the application › Authentication › Add a platform › Web",
@@ -776,8 +774,6 @@ export const entraCatalog = {
     "outlook.failed_no_account":
       "Vantigo kjenner ingen Microsoft-konto av deg som den forvalter, så det er ingenting å koble til.",
     "outlook.failed_switch_off": "Outlook-tilkoblingen er slått av for dette arbeidsområdet.",
-    "outlook.nothingToConnect":
-      "Ingenting å koble til: Outlook-tilkoblingen er slått av, eller Vantigo kjenner ingen Microsoft-konto av deg.",
 
     step5Title: "Innlogging",
     step5Path: "App registrations › applikasjonen › Authentication › Add a platform › Web",

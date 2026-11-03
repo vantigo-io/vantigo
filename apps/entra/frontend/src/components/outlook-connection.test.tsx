@@ -86,11 +86,32 @@ describe("OutlookConnectionCard — the states", () => {
     });
 
   for (const reason of ["switch_off", "no_account"] as const)
-    it(`says there is nothing to connect when not offered (${reason})`, async () => {
-      const { card } = await openCard({ outlook: outlookConnection({ offered: false, reason, account: undefined }) });
-      expect(await within(card).findByText(/^Nothing to connect/)).toBeInTheDocument();
-      expect(within(card).queryByRole("button")).not.toBeInTheDocument();
+    it(`renders nothing and says it offers nothing when not offered (${reason})`, async () => {
+      stubEntraApi({ outlook: outlookConnection({ offered: false, reason, account: undefined }) });
+      const onOffered = vi.fn();
+      renderWithProviders(<OutlookConnectionCard onReturn={vi.fn()} onOffered={onOffered} />);
+      await waitFor(() => expect(onOffered).toHaveBeenCalledWith(false));
+      expect(screen.queryByRole("region", { name: "Outlook" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button")).not.toBeInTheDocument();
     });
+
+  it("says it offers something once the connection is read", async () => {
+    stubEntraApi({ outlook: outlookConnection({ offered: true }) });
+    const onOffered = vi.fn();
+    renderWithProviders(<OutlookConnectionCard onReturn={vi.fn()} onOffered={onOffered} />);
+    await waitFor(() => expect(onOffered).toHaveBeenCalledWith(true));
+    expect(await screen.findByRole("region", { name: "Outlook" })).toBeInTheDocument();
+  });
+
+  it("still says a failed callback when nothing is offered", async () => {
+    const { card } = await openCard(
+      { outlook: outlookConnection({ offered: false, reason: "no_account", account: undefined }) },
+      { outlook: "failed", code: "tenant_mismatch" },
+    );
+    expect(
+      await within(card).findByText(/^You signed in with an account from another organisation/),
+    ).toBeInTheDocument();
+  });
 
   it("says a refused connect in its own sentence, and stays", async () => {
     const { open, card } = await openCard({ connect: refusal(409, "account_taken") });
@@ -199,12 +220,6 @@ describe("OutlookConnectionCard — in Norwegian", () => {
     inNorwegian(async () => {
       const { card } = await openCard({}, { outlook: "failed", code: "tenant_mismatch" });
       expect(await within(card).findByText(/^Du logget på med en konto fra en annen organisasjon/)).toBeInTheDocument();
-    }));
-
-  it("says there is nothing to connect", () =>
-    inNorwegian(async () => {
-      const { card } = await openCard({ outlook: outlookConnection({ offered: false, reason: "switch_off" }) });
-      expect(await within(card).findByText(/^Ingenting å koble til/)).toBeInTheDocument();
     }));
 });
 

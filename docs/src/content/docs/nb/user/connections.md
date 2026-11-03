@@ -36,8 +36,9 @@ Kortet **Outlook** tilbyr en tilkobling bare når to ting stemmer:
   opprettet, eller som noen har bekreftet adoptert. Vantigo gjetter aldri kontoen din ut
   fra adressen.
 
-Ellers sier kortet *Ingenting å koble til: Outlook-tilkoblingen er slått av, eller
-Vantigo kjenner ingen Microsoft-konto av deg.*
+Ellers vises ikke kortet **Outlook**. Når ingen leverandørs kort har noe å tilby deg,
+sier siden *Ingenting å koble til: ingen tilkobling er slått på for deg, eller Vantigo
+kjenner ingen konto av deg å koble til.*
 
 ## Koble til Outlook-en din
 

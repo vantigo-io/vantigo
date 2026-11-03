@@ -29,6 +29,12 @@ export interface OutlookConnectionCardProps {
   outcome?: OutlookOutcome;
   /** Where to go once a connect completed: always a path on this installation. */
   onReturn: (to: string) => void;
+  /**
+   * Told whether Outlook offers the person anything, once the connection is
+   * read: the host's Connections page says "nothing to connect" itself when
+   * no provider's card has anything to show.
+   */
+  onOffered?: (offered: boolean) => void;
 }
 
 export interface OutlookConnectButtonProps {
@@ -79,12 +85,14 @@ const ReconnectNeeded = ({ connection, t }: { connection: EntraOutlookConnection
  * M8): *Not connected* with **Connect Outlook**; *Connected as …* since a
  * date, the features using it, and **Disconnect**; or *Reconnect needed*
  * with Microsoft's reason and **Reconnect Outlook**. When nothing can be
- * connected — the switch is off or Vantigo knows no account of theirs — a
- * short line says so. Opened by the callback's redirect, it completes the
+ * connected — the switch is off or Vantigo knows no account of theirs — it
+ * renders nothing and tells `onOffered` so (Google Workspace design G9): the
+ * Connections page lists every provider's card and says itself when none has
+ * anything. A failed callback still shows its sentence. Opened by the callback's redirect, it completes the
  * connect once (`?outlook=complete`) and returns where the connect began, or
  * says why it failed (`?outlook=failed`).
  */
-export const OutlookConnectionCard = ({ outcome, onReturn }: OutlookConnectionCardProps) => {
+export const OutlookConnectionCard = ({ outcome, onReturn, onOffered }: OutlookConnectionCardProps) => {
   const { t, formatters } = useI18n("entra");
   const queryClient = useQueryClient();
   const connection = useQuery(outlookConnectionQueryOptions());
@@ -135,6 +143,12 @@ export const OutlookConnectionCard = ({ outcome, onReturn }: OutlookConnectionCa
         ? outlookFailedText(codeOf(complete.error), t)
         : undefined;
   const data = connection.data;
+  const offered = data?.offered;
+  useEffect(() => {
+    if (offered !== undefined) onOffered?.(offered);
+  }, [offered, onOffered]);
+
+  if (data && !data.offered && !failure && !complete.isPending) return null;
 
   return (
     <SectionCard title={t("outlook.title")} leading={<IconBrandWindows size={22} stroke={1.5} aria-hidden />}>
@@ -148,11 +162,6 @@ export const OutlookConnectionCard = ({ outcome, onReturn }: OutlookConnectionCa
       {connection.isError && (
         <Text size="sm" c="red">
           {t("outlook.loadFailed")}
-        </Text>
-      )}
-      {data && !data.offered && (
-        <Text size="sm" c="dimmed">
-          {t("outlook.nothingToConnect")}
         </Text>
       )}
       {data?.offered && isConnected(data) && (
