@@ -1321,7 +1321,7 @@ the person is mailed at their private email, else their work email, in their
 preferred language (`en` or `nb`), naming the account's last four digits and nothing
 more. It goes through `mail.SendOutbound` (the `Deps.SMTPSend` seam), outside every
 transaction, on a context the request's cancellation does not reach. It is skipped with
-a log line when the mail driver is not `smtp` or the person has no email, and a failed
+a log line when the mail driver is `log` (neither `smtp` nor `cloudflare`) or the person has no email, and a failed
 send is logged with the person's id and the address taken out of the error, however
 the server cased it; the change stands either way.
 
@@ -3458,7 +3458,7 @@ mails](#the-absence-mails) — at the work email Staff holds for each, else the 
 one, in each one's language (`en` in English, any other in Norwegian). A send that
 fails is logged with the recipient's person id and the address redacted, is never
 retried and never fails the cycle: the [dashboard item](#the-competence-items),
-computed on read, is the durable signal. With a mail driver other than `smtp` the rows
+computed on read, is the durable signal. With the `log` mail driver the rows
 are stamped all the same and nothing is sent. A second cycle finds the stamps and
 sends nothing; a renewal supersedes the row, and the new row starts unstamped. Each
 cycle logs how many rows it stamped and how many mails it sent and failed — never an
@@ -4251,7 +4251,7 @@ racing the person's cancel, finds the row no longer a request.
 Sent after the write has committed, outside every transaction, through the module's one
 SMTP accessor, one after the other under one budget of 30 seconds for all of a notice's
 mails (what the budget leaves unsent is logged by count); skipped with a log line when
-the mail driver is not `smtp`, and never failing the write (reading 26). Who is mailed
+the mail driver is `log`, and never failing the write (reading 26). Who is mailed
 (`notifications.go`):
 
 - **A request or a registration, to each manager-decider** at the address Staff holds —
