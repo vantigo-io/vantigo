@@ -1,18 +1,30 @@
 import { useQuery } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import type { BillingCadence, ElectricityTaxClass } from "../api/energy";
+import { type BillingCadence, ELECTRICITY_TAX_CLASSES, ELECTRICITY_TAX_REASONS } from "../api/energy";
 import { type TariffKind, tariffsQueryOptions } from "../api/tariffs";
 import "../i18n";
 
 /** The i18n key of a cadence's name: `cadenceMonthly`. */
 export const cadenceKey = (cadence: BillingCadence) => `cadence${cadence.charAt(0).toUpperCase()}${cadence.slice(1)}`;
 
-/** The i18n key of a tax class's name: `electricityTaxClassOrdinary`. */
-export const taxClassKey = (value: ElectricityTaxClass) =>
-  `electricityTaxClass${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+/**
+ * The i18n key of a tax class's name: `electricityTaxClassOrdinary`, or
+ * `electricityTaxClassUnknown` for a class the client does not know.
+ */
+export const taxClassKey = (value: string) =>
+  (ELECTRICITY_TAX_CLASSES as readonly string[]).includes(value)
+    ? `electricityTaxClass${value.charAt(0).toUpperCase()}${value.slice(1)}`
+    : "electricityTaxClassUnknown";
 
-/** The i18n key of an electricity-tax suggestion's reason: `electricityTaxReason_industry`. */
-export const taxReasonKey = (reason: string) => `electricityTaxReason_${reason}`;
+/**
+ * The i18n key of an electricity-tax suggestion's reason:
+ * `electricityTaxReason_industry`, or `electricityTaxReasonUnknown` for a
+ * reason the client does not know.
+ */
+export const taxReasonKey = (reason: string) =>
+  (ELECTRICITY_TAX_REASONS as readonly string[]).includes(reason)
+    ? `electricityTaxReason_${reason}`
+    : "electricityTaxReasonUnknown";
 
 /** `tariffId` as the server takes it. */
 export const tariffIdOf = (value: string | null) => (value ? Number(value) : null);

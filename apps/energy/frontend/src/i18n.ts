@@ -566,6 +566,7 @@ export const energyCatalog = {
     electricityTaxClassOrdinary: "Ordinary rate",
     electricityTaxClassReduced: "Reduced rate",
     electricityTaxClassExempt: "Exempt",
+    electricityTaxClassUnknown: "Unknown class",
     householdUse: "Household use",
     householdUseHint: "Supplied for use in a household.",
     yes: "Yes",
@@ -582,6 +583,7 @@ export const energyCatalog = {
     electricityTaxDiffersHint:
       "The stored class is what settlements bill. Check it against the customer's documentation.",
     electricityTaxDiffersTooltip: "Suggested: {{class}}. {{reason}}",
+    electricityTaxReasonUnknown: "The rules point to this class for a reason this version does not describe.",
     electricityTaxReason_not_norway: "The point is outside Norway, where Norwegian electricity tax does not apply.",
     electricityTaxReason_zone_household:
       "A household in the northern zone (Finnmark and seven Nord-Troms municipalities) is exempt.",
@@ -1204,6 +1206,7 @@ export const energyCatalog = {
     electricityTaxClassOrdinary: "Ordinær sats",
     electricityTaxClassReduced: "Redusert sats",
     electricityTaxClassExempt: "Fritatt",
+    electricityTaxClassUnknown: "Ukjent klasse",
     householdUse: "Husholdning",
     householdUseHint: "Leveres til bruk i en husholdning.",
     yes: "Ja",
@@ -1220,6 +1223,7 @@ export const energyCatalog = {
     electricityTaxDiffersHint:
       "Den lagrede klassen er det oppgjørene fakturerer. Kontroller den mot kundens dokumentasjon.",
     electricityTaxDiffersTooltip: "Foreslått: {{class}}. {{reason}}",
+    electricityTaxReasonUnknown: "Reglene peker på denne klassen av en grunn denne versjonen ikke beskriver.",
     electricityTaxReason_not_norway: "Målepunktet ligger utenfor Norge, der norsk elavgift ikke gjelder.",
     electricityTaxReason_zone_household:
       "En husholdning i tiltakssonen (Finnmark og sju kommuner i Nord-Troms) er fritatt.",
