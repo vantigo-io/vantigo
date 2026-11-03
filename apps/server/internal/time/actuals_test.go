@@ -3,6 +3,7 @@ package timetracking_test
 import (
 	"context"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"math"
 	"slices"
 	"strings"
@@ -129,6 +130,26 @@ func (f *forbiddenCatalog) Variants(context.Context, []int32) ([]contracts.Varia
 
 func (f *forbiddenCatalog) ListPrice(context.Context, int32, string, gotime.Time) (*contracts.Money, error) {
 	f.deny("ListPrice")
+	return nil, nil
+}
+
+func (f *forbiddenCatalog) VariantsOfProduct(context.Context, int32) ([]contracts.VariantEntry, error) {
+	f.deny("VariantsOfProduct")
+	return nil, nil
+}
+
+func (f *forbiddenCatalog) LookupCode(context.Context, string) ([]contracts.CodeMatch, error) {
+	f.deny("LookupCode")
+	return nil, nil
+}
+
+func (f *forbiddenCatalog) SearchVariants(context.Context, string, int) ([]contracts.VariantEntry, error) {
+	f.deny("SearchVariants")
+	return nil, nil
+}
+
+func (f *forbiddenCatalog) LockVariants(context.Context, pgx.Tx, []int32) ([]contracts.VariantEntry, error) {
+	f.deny("LockVariants")
 	return nil, nil
 }
 

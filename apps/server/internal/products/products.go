@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/products/gen"
 	"github.com/vantigo-io/vantigo/server/internal/products/store"
@@ -496,7 +497,10 @@ func (s *server) GetProduct(ctx context.Context, req gen.GetProductRequestObject
 // is neither validated nor ever read; a client PUTting a full product with
 // changed variants gets a 200 with the variants completely unchanged. Order:
 // field validation -> product exists (404) -> categoryId existence (400) ->
-// taxCategoryId existence (400) -> apply -> save.
+// taxCategoryId existence (400) -> apply -> save. A change from Goods to
+// Service first locks the variants and asks their holders, in the
+// transaction that saves it, then asks again about any variant added
+// meanwhile (409 "Product has stock", inventory design §9).
 func (s *server) PutProductsById(ctx context.Context, req gen.PutProductsByIdRequestObject) (gen.PutProductsByIdResponseObject, error) {
 	body := gen.ProductRequest{}
 	if req.Body != nil {
@@ -555,12 +559,84 @@ func (s *server) PutProductsById(ctx context.Context, req gen.PutProductsByIdReq
 		updatedAt = s.deps.Clock()
 	}
 
-	updated, err := q.UpdateProduct(ctx, store.UpdateProductParams{
+	params := store.UpdateProductParams{
 		Name: parsed.Name, Description: parsed.Description, CategoryID: parsed.CategoryID,
 		Type: parsed.Type, Status: status, TaxCategoryID: parsed.TaxCategoryID, UpdatedAt: updatedAt, ID: req.Id,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("products: update product: %w", err)
+	}
+	var updated store.ProductsProduct
+	if existing.Type == "Goods" && parsed.Type == "Service" {
+		// Inventory design §9 and §13.1: a product whose variants still lie
+		// in stock stays Goods. Every variant is locked FOR UPDATE in id
+		// order before the holders are asked, and the update runs in the
+		// same transaction, so a receipt that read Goods under
+		// ProductCatalog.LockVariants has committed first, or waits.
+		//
+		// A variant added meanwhile (its insert takes only FOR KEY SHARE on
+		// the product) escapes that lock, and a receipt to it may commit
+		// before the update gets the product row. So once the update holds
+		// the row — every posting that shared it has committed, and every
+		// later one waits for it and then reads Service — the variants are
+		// listed again with a plain read and the holders asked about the new
+		// ones. That read takes no lock: a FOR UPDATE on a variant after the
+		// product would reverse LockVariants' order (variant, then product)
+		// and deadlock against a posting that holds the variant and waits for
+		// the product.
+		var refused gen.PutProductsByIdResponseObject
+		err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			txq := store.New(tx)
+			variants, err := txq.LockVariantsOfProductForUpdate(ctx, req.Id)
+			if err != nil {
+				return fmt.Errorf("lock variants: %w", err)
+			}
+			asked := make(map[int32]bool, len(variants))
+			for _, v := range variants {
+				asked[v.ID] = true
+				hold, err := s.variantHeld(ctx, tx, v.ID)
+				if err != nil {
+					return err
+				}
+				if hold != nil {
+					refused = productHasStock(v.Sku, hold, v.Unit)
+					return nil
+				}
+			}
+			updated, err = txq.UpdateProduct(ctx, params)
+			if err != nil {
+				return err
+			}
+			again, err := txq.ListVariantsByProduct(ctx, req.Id)
+			if err != nil {
+				return fmt.Errorf("list variants again: %w", err)
+			}
+			for _, v := range again {
+				if asked[v.ID] {
+					continue
+				}
+				hold, err := s.variantHeld(ctx, tx, v.ID)
+				if err != nil {
+					return err
+				}
+				if hold != nil {
+					refused = productHasStock(v.Sku, hold, v.Unit)
+					return errRefusedProductHasStock
+				}
+			}
+			return nil
+		})
+		if errors.Is(err, errRefusedProductHasStock) {
+			return refused, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("products: update product: %w", err)
+		}
+		if refused != nil {
+			return refused, nil
+		}
+	} else {
+		updated, err = q.UpdateProduct(ctx, params)
+		if err != nil {
+			return nil, fmt.Errorf("products: update product: %w", err)
+		}
 	}
 
 	data, err := s.buildProductResponses(ctx, q, []store.ProductsProduct{updated}, s.deps.Clock())
@@ -568,6 +644,19 @@ func (s *server) PutProductsById(ctx context.Context, req gen.PutProductsByIdReq
 		return nil, err
 	}
 	return gen.PutProductsById200JSONResponse(data[0]), nil
+}
+
+// errRefusedProductHasStock rolls back a change from Goods to Service whose
+// update already ran when a variant added meanwhile is found held.
+var errRefusedProductHasStock = errors.New("products: product has stock")
+
+// productHasStock is the 409 refusing a change from Goods to Service while a
+// variant is held (inventory design §9).
+func productHasStock(sku string, hold *contracts.VariantHold, unit string) gen.PutProductsByIdResponseObject {
+	return gen.PutProductsById409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
+		"Product has stock",
+		fmt.Sprintf("Variant %s still has %s. Move the stock or adjust it to zero before you make the product a service.", sku, holdText(hold, unit)),
+		http.StatusConflict))
 }
 
 // DeleteProductsById Archive a product

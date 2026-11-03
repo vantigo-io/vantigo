@@ -644,6 +644,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: 'Conflict — titled Product has stock: the type changes from Goods to Service while a module holding one of its variants (Inventory) answers that it still lies somewhere. Products'' problems carry no code.'
             summary: Update a product
             tags:
                 - Products
@@ -780,7 +786,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
-                    description: Conflict
+                    description: 'Conflict — titled Last variant: a product keeps at least one variant; or titled Variant has stock: a module holding the variant (Inventory) answers that it still lies somewhere, and detail says how much and in how many places. Products'' problems carry no code, so a client tells them apart by title.'
             summary: Remove a product variant
             tags:
                 - Products

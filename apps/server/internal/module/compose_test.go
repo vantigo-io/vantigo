@@ -614,7 +614,7 @@ func TestCompose_MergesEveryRealContract(t *testing.T) {
 
 	// Every business module contract here must actually mount, so all of
 	// them are enabled; identity mounts regardless.
-	handler, err := Compose(Deps{Access: access, Config: &config.Config{Modules: []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "calendar", "entra", "assistant"}}}, mods...)
+	handler, err := Compose(Deps{Access: access, Config: &config.Config{Modules: []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "inventory", "calendar", "entra", "assistant"}}}, mods...)
 	if err != nil {
 		t.Fatalf("Compose: %v", err)
 	}
@@ -905,6 +905,23 @@ func (*fakeProductCatalog) Variants(context.Context, []int32) ([]contracts.Varia
 }
 
 func (*fakeProductCatalog) ListPrice(context.Context, int32, string, time.Time) (*contracts.Money, error) {
+	return nil, nil
+}
+
+// The catalog methods Inventory reads; this composition test asks none.
+func (*fakeProductCatalog) VariantsOfProduct(context.Context, int32) ([]contracts.VariantEntry, error) {
+	return nil, nil
+}
+
+func (*fakeProductCatalog) LookupCode(context.Context, string) ([]contracts.CodeMatch, error) {
+	return nil, nil
+}
+
+func (*fakeProductCatalog) SearchVariants(context.Context, string, int) ([]contracts.VariantEntry, error) {
+	return nil, nil
+}
+
+func (*fakeProductCatalog) LockVariants(context.Context, pgx.Tx, []int32) ([]contracts.VariantEntry, error) {
 	return nil, nil
 }
 

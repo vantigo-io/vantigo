@@ -128,3 +128,15 @@ func TestModulesEnv_ListsStaffBesideEntra(t *testing.T) {
 		t.Errorf("modulesEnv(staff) = %q, want exactly %q (entra is never added)", got, "customers,staff")
 	}
 }
+
+// TestModulesEnv_ListsProductsBesideInventory proves a harness composing
+// inventory lists products as enabled: config.go refuses "inventory" without
+// "products", and inventory's own tests stand in a fake catalog
+// (WithProducts) rather than compose products.
+func TestModulesEnv_ListsProductsBesideInventory(t *testing.T) {
+	t.Parallel()
+
+	if got := modulesEnv([]module.Module{{Name: "inventory"}}); got != "customers,inventory,products" {
+		t.Errorf("modulesEnv(inventory) = %q, want exactly %q", got, "customers,inventory,products")
+	}
+}

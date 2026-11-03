@@ -2508,6 +2508,20 @@ func (response PutProductsById404Response) VisitPutProductsByIdResponse(w http.R
 	return nil
 }
 
+type PutProductsById409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PutProductsById409ApplicationProblemPlusJSONResponse) VisitPutProductsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetProductsByIdVariantsRequestObject struct {
 	Id int32 `json:"id"`
 }

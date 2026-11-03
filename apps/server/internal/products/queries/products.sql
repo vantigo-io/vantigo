@@ -482,7 +482,7 @@ ORDER BY day;
 
 -- name: CatalogVariant :one
 -- CatalogVariant is contracts.ProductCatalog.Variant's lookup.
-SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.unit, p.type AS product_type, p.status AS product_status
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 WHERE v.id = @id;
@@ -490,7 +490,65 @@ WHERE v.id = @id;
 -- name: CatalogVariants :many
 -- CatalogVariants batch-loads the same fields as CatalogVariant for a set of
 -- ids; an id that does not exist is simply absent from the result.
-SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.unit, p.type AS product_type, p.status AS product_status
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 WHERE v.id = ANY(@ids::int[]);
+
+-- name: CatalogVariantsOfProduct :many
+-- CatalogVariantsOfProduct is contracts.ProductCatalog.VariantsOfProduct:
+-- every variant of a product in the order the product page lists them.
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+FROM products.product_variants v
+JOIN products.products p ON p.id = v.product_id
+WHERE v.product_id = @product_id
+ORDER BY v.id;
+
+-- name: CatalogLookupCode :many
+-- CatalogLookupCode is contracts.ProductCatalog.LookupCode's variant half: a
+-- SKU equal to the code ignoring case, or a barcode equal to it exactly.
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+FROM products.product_variants v
+JOIN products.products p ON p.id = v.product_id
+WHERE lower(v.sku) = lower(@code::text) OR v.barcode = @code::text
+ORDER BY v.id;
+
+-- name: CatalogSearchVariants :many
+-- CatalogSearchVariants is contracts.ProductCatalog.SearchVariants: goods
+-- variants whose SKU, product name or barcode matches the pattern, by SKU.
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+FROM products.product_variants v
+JOIN products.products p ON p.id = v.product_id
+WHERE p.type = 'Goods'
+  AND (v.sku ILIKE @pattern::text OR p.name ILIKE @pattern::text OR v.barcode ILIKE @pattern::text)
+ORDER BY v.sku
+LIMIT @max_rows::int;
+
+-- name: CatalogLockVariants :many
+-- CatalogLockVariants is contracts.ProductCatalog.LockVariants: FOR SHARE on
+-- the variants and their products, in variant id order, on the caller's
+-- transaction (inventory design I22).
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+FROM products.product_variants v
+JOIN products.products p ON p.id = v.product_id
+WHERE v.id = ANY(@ids::int[])
+ORDER BY v.id
+FOR SHARE OF v, p;
+
+-- name: LockVariantForDelete :one
+-- LockVariantForDelete takes the variant's row FOR UPDATE before its delete
+-- asks the variant's holders, so a posting holding FOR SHARE on it has
+-- committed first, or waits (inventory design I23). The unit names the
+-- quantity a holder answers.
+SELECT id, unit FROM products.product_variants
+WHERE id = @id AND product_id = @product_id
+FOR UPDATE;
+
+-- name: LockVariantsOfProductForUpdate :many
+-- LockVariantsOfProductForUpdate takes every variant of a product FOR UPDATE,
+-- in id order, before a change from Goods to Service asks their holders;
+-- the SKU and unit name the first one held.
+SELECT id, sku, unit FROM products.product_variants
+WHERE product_id = @product_id
+ORDER BY id
+FOR UPDATE;

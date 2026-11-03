@@ -1,5 +1,6 @@
 import {
   Alert,
+  Anchor,
   Badge,
   Button,
   Card,
@@ -20,10 +21,11 @@ import { IconAlertTriangle, IconArchive, IconPencil, IconPlus, IconTrash } from 
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import "../i18n";
 import { categoriesQueryOptions, categoryPath } from "../api/categories";
 import {
+  ApiConflictError,
   addProductPrice,
   addProductVariant,
   archiveProduct,
@@ -53,7 +55,21 @@ interface PriceFormValues {
   validTo: string | null;
 }
 
-export const ProductDetailsPage = () => {
+/**
+ * What the host composes into the product page from other modules. Both are
+ * optional, and the page is whole without them.
+ */
+export interface ProductDetailsPageProps {
+  /** Drawn after the variants card (after the details card when the product has one variant), before the prices. */
+  extraPanels?: ReactNode;
+  /**
+   * The href of a variant's stock, linked from the refusal to delete a variant
+   * that still has stock. Without it the refusal has no link.
+   */
+  stockHref?: (variantId: number) => string;
+}
+
+export const ProductDetailsPage = ({ extraPanels, stockHref }: ProductDetailsPageProps = {}) => {
   const { t, formatters } = useI18n("products");
   const { productId } = useParams({ strict: false }) as { productId: number };
   const queryClient = useQueryClient();
@@ -126,12 +142,32 @@ export const ProductDetailsPage = () => {
   const variantRemoval = useMutation({
     mutationFn: (id: number) => deleteProductVariant(product.id, id),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["products", product.id] }),
-    onError: (error) =>
+    onError: (error, id) => {
+      // Products' problems carry no code: the two 409s are told apart by title.
+      if (error instanceof ApiConflictError && error.title === "Variant has stock") {
+        notifications.show({
+          color: "red",
+          autoClose: stockHref ? false : undefined,
+          title: t("prices.variantHasStock"),
+          message: (
+            <Stack gap={4}>
+              <Text size="sm">{t("prices.variantHasStockMessage")}</Text>
+              {stockHref && (
+                <Anchor size="sm" href={stockHref(id)}>
+                  {t("prices.seeWhereItLies")}
+                </Anchor>
+              )}
+            </Stack>
+          ),
+        });
+        return;
+      }
       notifications.show({
         color: "red",
         title: t("prices.couldNotDeleteVariant"),
         message: (error as { status?: number }).status === 409 ? t("prices.lastVariant") : error.message,
-      }),
+      });
+    },
   });
 
   const openAddPrice = () => {
@@ -199,6 +235,16 @@ export const ProductDetailsPage = () => {
       labels: { confirm: t("common.delete"), cancel: t("common.cancel") },
       confirmProps: { color: "red" },
       onConfirm: () => removal.mutate(price.id),
+    });
+
+  const confirmDeleteVariant = (item: VariantResponse) =>
+    modals.openConfirmModal({
+      title: t("prices.deleteVariantTitle"),
+      centered: true,
+      children: <Text size="sm">{t("prices.deleteVariantConfirm", { sku: item.sku })}</Text>,
+      labels: { confirm: t("common.delete"), cancel: t("common.cancel") },
+      confirmProps: { color: "red" },
+      onConfirm: () => variantRemoval.mutate(item.id),
     });
 
   const submitPrice = priceForm.onSubmit((values) =>
@@ -354,7 +400,7 @@ export const ProductDetailsPage = () => {
                             variant="subtle"
                             color="red"
                             aria-label={t("common.deleteNamed", { name: item.sku })}
-                            onClick={() => variantRemoval.mutate(item.id)}
+                            onClick={() => confirmDeleteVariant(item)}
                           >
                             <IconTrash size={16} />
                           </Button>
@@ -368,6 +414,7 @@ export const ProductDetailsPage = () => {
           </Stack>
         </Card>
       )}
+      {extraPanels}
       <Card withBorder>
         <Stack>
           <Group justify="space-between">

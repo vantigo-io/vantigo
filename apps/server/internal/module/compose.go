@@ -349,6 +349,21 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	if len(holders) > 0 {
 		deps.CustomerReferenceHolders = append(slices.Clone(deps.CustomerReferenceHolders), holders...)
 	}
+	// The variant holders, collected from every module given as the customer
+	// holders are (module-boundaries rule 8's reason: a disabled module's
+	// schema still holds what it holds), appended onto a copy.
+	var variantHolders []contracts.VariantReferenceHolder
+	for _, mod := range given {
+		if mod.VariantReferences == nil {
+			continue
+		}
+		if holder := mod.VariantReferences(deps); holder != nil {
+			variantHolders = append(variantHolders, holder)
+		}
+	}
+	if len(variantHolders) > 0 {
+		deps.VariantReferenceHolders = append(slices.Clone(deps.VariantReferenceHolders), variantHolders...)
+	}
 
 	// Customer personal data is the second many-provider slot (customers GDPR
 	// design D2), collected from every module given, for the holders' reason

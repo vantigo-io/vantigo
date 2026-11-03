@@ -21,6 +21,7 @@ import { useEffect, useState } from "react";
 import "../i18n";
 import { buildCategoryTree, categoriesQueryOptions } from "../api/categories";
 import {
+  ApiConflictError,
   ApiValidationError,
   createProduct,
   PRODUCT_TYPES,
@@ -140,6 +141,14 @@ export const ProductFormModal = ({ state, onClose }: { state: ProductModalState 
     },
     onError: (error) => {
       if (error instanceof ApiValidationError) form.setErrors(error.fieldErrors);
+      // Products' problems carry no code: a Goods→Service change refused for
+      // stock is told by its title, and said in the reader's language.
+      else if (error instanceof ApiConflictError && error.title === "Product has stock")
+        notifications.show({
+          color: "red",
+          title: t("productForm.productHasStock"),
+          message: t("productForm.productHasStockMessage"),
+        });
       else notifications.show({ color: "red", title: t("productForm.couldNotSave"), message: error.message });
     },
   });

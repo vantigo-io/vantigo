@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -255,5 +256,187 @@ func TestCatalog_ListPrice_CurrencyIsCaseInsensitive(t *testing.T) {
 	}
 	if got == nil || *got != (contracts.Money{Amount: 599, Currency: "NOK"}) {
 		t.Errorf("ListPrice(nok) = %+v, want {599 NOK}", got)
+	}
+}
+
+// TestCatalog_VariantsOfProduct_AnswersEveryVariantByID pins
+// VariantsOfProduct (inventory design I22): every variant of the product, in
+// id order, and nothing of another product.
+func TestCatalog_VariantsOfProduct_AnswersEveryVariantByID(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+	created := createProduct(t, c, map[string]any{
+		"name": "Many Variants", "type": "Goods", "taxCategoryId": taxCategoryID,
+		"variants": []map[string]any{{"sku": sku(t, "many-a")}, {"sku": sku(t, "many-b")}},
+	})
+	createProduct(t, c, newProductBody(taxCategoryID, "Bystander", sku(t, "bystander")))
+
+	catalog := products.Module().Products(h.Deps())
+	got, err := catalog.VariantsOfProduct(context.Background(), created.Id)
+	if err != nil {
+		t.Fatalf("VariantsOfProduct: %v", err)
+	}
+	if len(got) != 2 || got[0].ID >= got[1].ID {
+		t.Fatalf("VariantsOfProduct = %+v, want the product's two variants by id", got)
+	}
+	for _, e := range got {
+		if e.ProductID != created.Id || e.ProductName != "Many Variants" {
+			t.Errorf("entry %+v belongs to another product", e)
+		}
+	}
+
+	none, err := catalog.VariantsOfProduct(context.Background(), 999_999)
+	if err != nil || len(none) != 0 {
+		t.Errorf("VariantsOfProduct(unknown) = %+v, %v, want empty without an error", none, err)
+	}
+}
+
+// TestCatalog_LookupCode_MatchesSkuIgnoringCaseAndBarcodeExactly pins
+// LookupCode: a SKU in any case, a barcode exactly, a part of either
+// nothing — and none is an empty answer, not an error.
+func TestCatalog_LookupCode_MatchesSkuIgnoringCaseAndBarcodeExactly(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+	barcode := newValidGTIN13(t)
+	created := createProduct(t, c, map[string]any{
+		"name": "Scannable", "type": "Goods", "taxCategoryId": taxCategoryID,
+		"variants": []map[string]any{{"sku": sku(t, "scan"), "barcode": barcode}},
+	})
+	variant := created.Variants[0]
+	catalog := products.Module().Products(h.Deps())
+
+	for _, code := range []string{variant.Sku, strings.ToLower(variant.Sku), "  " + variant.Sku + " ", barcode} {
+		got, err := catalog.LookupCode(context.Background(), code)
+		if err != nil {
+			t.Fatalf("LookupCode(%q): %v", code, err)
+		}
+		if len(got) != 1 || got[0].Variant.ID != variant.Id || got[0].Packaging != nil {
+			t.Errorf("LookupCode(%q) = %+v, want the one variant without a packaging", code, got)
+			continue
+		}
+		if got[0].Variant.Barcode == nil || *got[0].Variant.Barcode != barcode {
+			t.Errorf("LookupCode(%q).Barcode = %v, want %s", code, got[0].Variant.Barcode, barcode)
+		}
+	}
+	for _, code := range []string{barcode[:12], variant.Sku[:len(variant.Sku)-1], ""} {
+		got, err := catalog.LookupCode(context.Background(), code)
+		if err != nil || len(got) != 0 {
+			t.Errorf("LookupCode(%q) = %+v, %v, want empty without an error", code, got, err)
+		}
+	}
+}
+
+// TestCatalog_SearchVariants_GoodsOnlyBySkuWithinTheLimit pins
+// SearchVariants: SKU, product name and barcode, ignoring case; goods only;
+// ordered by SKU; at most limit; and LIKE's wildcards in q match literally.
+func TestCatalog_SearchVariants_GoodsOnlyBySkuWithinTheLimit(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+	barcode := newValidGTIN13(t)
+	goods := createProduct(t, c, map[string]any{
+		"name": "Brass Hinge", "type": "Goods", "taxCategoryId": taxCategoryID,
+		"variants": []map[string]any{
+			{"sku": "HINGE-B-" + sku(t, "x")},
+			{"sku": "HINGE-A-" + sku(t, "x"), "barcode": barcode},
+		},
+	})
+	service := newProductBody(taxCategoryID, "Hinge fitting", "HINGE-SERVICE-"+sku(t, "x"))
+	service["type"] = "Service"
+	createProduct(t, c, service)
+	createProduct(t, c, newProductBody(taxCategoryID, "100% wool", sku(t, "wool")))
+	createProduct(t, c, newProductBody(taxCategoryID, "1000 wool", sku(t, "wool")))
+	catalog := products.Module().Products(h.Deps())
+	ctx := context.Background()
+
+	byName, err := catalog.SearchVariants(ctx, "brass hinge", 50)
+	if err != nil {
+		t.Fatalf("SearchVariants(name): %v", err)
+	}
+	if len(byName) != 2 || byName[0].SKU >= byName[1].SKU || byName[0].ProductID != goods.Id {
+		t.Errorf("SearchVariants(name) = %+v, want both Brass Hinge variants by SKU", byName)
+	}
+
+	bySku, err := catalog.SearchVariants(ctx, "hinge-", 50)
+	if err != nil {
+		t.Fatalf("SearchVariants(sku): %v", err)
+	}
+	if len(bySku) != 2 {
+		t.Errorf("SearchVariants(sku) = %+v, want the two goods variants, never the service's", bySku)
+	}
+
+	limited, err := catalog.SearchVariants(ctx, "hinge", 1)
+	if err != nil || len(limited) != 1 || !strings.HasPrefix(limited[0].SKU, "HINGE-A-") {
+		t.Errorf("SearchVariants(limit 1) = %+v, %v, want the first by SKU only", limited, err)
+	}
+
+	byBarcode, err := catalog.SearchVariants(ctx, barcode[2:9], 50)
+	if err != nil || len(byBarcode) != 1 || byBarcode[0].Barcode == nil || *byBarcode[0].Barcode != barcode {
+		t.Errorf("SearchVariants(barcode part) = %+v, %v, want the barcoded variant", byBarcode, err)
+	}
+
+	literal, err := catalog.SearchVariants(ctx, "100%", 50)
+	if err != nil || len(literal) != 1 || literal[0].ProductName != "100% wool" {
+		t.Errorf("SearchVariants(100%%) = %+v, %v, want only 100%% wool: %% must match literally", literal, err)
+	}
+}
+
+// TestCatalog_LockVariants_AnswersAndHoldsOnTheCallersTransaction pins
+// LockVariants: it answers the entries in id order on the caller's tx,
+// skips unknown ids, and holds FOR SHARE until that tx ends — a FOR UPDATE
+// on the same variant from elsewhere cannot get its lock meanwhile.
+func TestCatalog_LockVariants_AnswersAndHoldsOnTheCallersTransaction(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+	first := createProduct(t, c, newProductBody(taxCategoryID, "Locked One", sku(t, "lock-one")))
+	second := createProduct(t, c, newProductBody(taxCategoryID, "Locked Two", sku(t, "lock-two")))
+	ids := []int32{second.Variants[0].Id, first.Variants[0].Id, 999_999}
+
+	ctx := context.Background()
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	catalog := products.Module().Products(h.Deps())
+	got, err := catalog.LockVariants(ctx, tx, ids)
+	if err != nil {
+		t.Fatalf("LockVariants: %v", err)
+	}
+	if len(got) != 2 || got[0].ID != first.Variants[0].Id || got[1].ID != second.Variants[0].Id {
+		t.Fatalf("LockVariants = %+v, want both known variants in id order", got)
+	}
+	if got[0].ProductType != "Goods" || got[0].ProductName != "Locked One" {
+		t.Errorf("LockVariants[0] = %+v, want the product's fields", got[0])
+	}
+
+	other, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("other: begin: %v", err)
+	}
+	defer func() { _ = other.Rollback(ctx) }()
+	var locked int
+	err = other.QueryRow(ctx, `SELECT count(*) FROM (SELECT id FROM products.product_variants WHERE id = $1 FOR UPDATE SKIP LOCKED) v`, first.Variants[0].Id).Scan(&locked)
+	if err != nil || locked != 0 {
+		t.Errorf("FOR UPDATE beside LockVariants got %d rows (%v), want the row locked", locked, err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	err = other.QueryRow(ctx, `SELECT count(*) FROM (SELECT id FROM products.product_variants WHERE id = $1 FOR UPDATE SKIP LOCKED) v`, first.Variants[0].Id).Scan(&locked)
+	if err != nil || locked != 1 {
+		t.Errorf("FOR UPDATE after the commit got %d rows (%v), want the row free", locked, err)
+	}
+
+	empty, err := catalog.LockVariants(ctx, nil, nil)
+	if err != nil || len(empty) != 0 {
+		t.Errorf("LockVariants(no ids) = %+v, %v, want empty without touching tx", empty, err)
 	}
 }

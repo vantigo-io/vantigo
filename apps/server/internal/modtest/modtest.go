@@ -146,6 +146,7 @@ type setup struct {
 	expenses        contracts.ProjectExpenses
 	receivables     contracts.CustomerReceivables
 	holders         []contracts.CustomerReferenceHolder
+	variantHolders  []contracts.VariantReferenceHolder
 	personalData    []contracts.CustomerPersonalDataHolder
 	invoicedWork    []contracts.InvoicedWorkHolder
 	calendarSources []contracts.CalendarSource
@@ -316,6 +317,15 @@ func WithReceivables(p contracts.CustomerReceivables) Option {
 // accumulate in order.
 func WithCustomerReferenceHolders(holders ...contracts.CustomerReferenceHolder) Option {
 	return func(s *setup) { s.holders = append(s.holders, holders...) }
+}
+
+// WithVariantReferenceHolders adds holders to Deps.VariantReferenceHolders,
+// for products to be tested against a fake that holds a variant, or not,
+// without composing inventory beside it — depguard keeps inventory out of
+// products' test package. module.Compose appends the composed modules' own
+// holders after these.
+func WithVariantReferenceHolders(holders ...contracts.VariantReferenceHolder) Option {
+	return func(s *setup) { s.variantHolders = append(s.variantHolders, holders...) }
 }
 
 // WithCustomerPersonalData adds holders to Deps.CustomerPersonalData, for the
@@ -592,6 +602,10 @@ func WithEnv(key, value string) Option {
 // keeps this file from having to mirror config.go's dependency rule as new
 // modules grow their own.
 //
+// "products" is likewise included whenever "inventory" is among mods:
+// config.go rejects "inventory" without "products", and inventory's own tests
+// stand in a fake catalog (WithProducts) rather than compose products.
+//
 // "staff" is likewise included whenever "entra" is among mods: config.go
 // rejects "entra" without "staff" (Staff's accounts worker is the provider's
 // only caller), and entra's own tests drive the provider and its endpoints
@@ -615,6 +629,9 @@ func modulesEnv(mods []module.Module, stubbed ...string) string {
 	}
 	if moduleSet["entra"] {
 		moduleSet["staff"] = true
+	}
+	if moduleSet["inventory"] {
+		moduleSet["products"] = true
 	}
 	for _, name := range stubbed {
 		moduleSet[name] = true
@@ -706,6 +723,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		Expenses:                 s.expenses,
 		Receivables:              s.receivables,
 		CustomerReferenceHolders: s.holders,
+		VariantReferenceHolders:  s.variantHolders,
 		CustomerPersonalData:     s.personalData,
 		InvoicedWork:             s.invoicedWork,
 		CalendarSources:          s.calendarSources,
