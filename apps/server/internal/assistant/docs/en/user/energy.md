@@ -29,6 +29,21 @@ Open **Energy** → **Metering points**. The list shows every metering point wit
 GSRN, meter number, address, price area and connection status (**New**, **Connected**
 or **Disconnected**), 25 per page, with the total in the heading.
 
+With `energy:supply-periods-view`, the first column is the **Customer**: the customer
+of the point's active supply period now, or *No customer*. With `customers:view` as
+well, the name is a link that opens the customer.
+
+Click a column heading (**GSRN**, **Meter number**, **Address**, **Price area** or
+**Status**) to sort by it: once ascending, twice descending, a third time back to the
+list's own order. Points without a meter sort last. The **Customer** column cannot be
+sorted; filter by it instead.
+
+Beside the search box, narrow the list by **Price area**, by **Status**, and — with
+`energy:supply-periods-view` — by **Customer**, which lists the points that customer
+has now; type in it to find the customer. The filters and the sort combine with the
+search and each other, and stay in the address, so a refresh or a shared link shows
+the same list.
+
 Type in the search box (**Search by GSRN, meter number or address…**) to narrow the
 list. The search matches the GSRN, the current meter's number, the street address and
 the city. The search box in the top bar finds metering points too, under the heading
@@ -212,10 +227,10 @@ field.
 
 ## Read a metering point's page
 
-The page is headed by the GSRN and the address, and has six cards:
+The page is headed by the GSRN, marked **GSRN**, and the address, and has six cards:
 
-- **Metering point details**: meter number, price area, grid area, connection status
-  and expected annual consumption.
+- **Metering point details**: the **GSRN (metering point ID)**, meter number, price
+  area, grid area, connection status and expected annual consumption.
 - **Billing**: the **Grid tariff** (or none), **Household use**, the **Electricity
   tax** and the **VAT**. The VAT is not set by hand: it is
   *Exempt — household in Northern Norway (VAT Act § 6-6)* when the point is for household use, its

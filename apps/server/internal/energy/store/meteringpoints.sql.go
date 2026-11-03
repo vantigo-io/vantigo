@@ -22,28 +22,49 @@ WHERE ($1::text IS NULL OR (
     mp.street_address ILIKE $1::text OR
     active.meter_number ILIKE $1::text
 ))
-AND ($2::timestamptz IS NULL OR NOT EXISTS (
+AND (NOT $2::bool OR NOT EXISTS (
     SELECT 1 FROM energy.supply_periods p
     WHERE p.metering_point_id = mp.id AND p.status = 'Active'
-      AND p.start <= $2::timestamptz
-      AND (p."end" IS NULL OR p."end" > $2::timestamptz)
+      AND p.start <= $3::timestamptz
+      AND (p."end" IS NULL OR p."end" > $3::timestamptz)
 ))
+AND ($4::int IS NULL OR EXISTS (
+    SELECT 1 FROM energy.supply_periods p
+    WHERE p.metering_point_id = mp.id AND p.status = 'Active' AND p.customer_id = $4::int
+      AND p.start <= $3::timestamptz
+      AND (p."end" IS NULL OR p."end" > $3::timestamptz)
+))
+AND ($5::text IS NULL OR mp.price_area = $5::text)
+AND ($6::text IS NULL OR mp.connection_status = $6::text)
 `
 
 type CountMeteringPointsParams struct {
-	SearchPattern     *string
-	WithoutCustomerAt *time.Time
+	SearchPattern    *string
+	WithoutCustomer  bool
+	At               time.Time
+	CustomerID       *int32
+	PriceArea        *string
+	ConnectionStatus *string
 }
 
 // CountMeteringPoints is GetMeteringPointsEndpoint's total row count over
 // the same filter ListMeteringPoints applies (:21-27): an ILIKE match on
 // the GSRN, the city, the street address, or the *current* meter's number
 // only (removed_at IS NULL) — a removed meter's number is never searched.
-// without_customer_at is the Without customer filter (energy import design
-// D9): when set, only the points with no Active supply period covering that
-// instant (start at or before it, no end or an end after it).
+// without_customer is the Without customer filter (energy import design
+// D9): when set, only the points with no Active supply period covering @at
+// (start at or before it, no end or an end after it). customer_id is the
+// Customer filter: only the points whose Active supply period covering @at
+// supplies that customer. price_area and connection_status match exactly.
 func (q *Queries) CountMeteringPoints(ctx context.Context, arg CountMeteringPointsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countMeteringPoints, arg.SearchPattern, arg.WithoutCustomerAt)
+	row := q.db.QueryRow(ctx, countMeteringPoints,
+		arg.SearchPattern,
+		arg.WithoutCustomer,
+		arg.At,
+		arg.CustomerID,
+		arg.PriceArea,
+		arg.ConnectionStatus,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -235,30 +256,65 @@ const listMeteringPoints = `-- name: ListMeteringPoints :many
 SELECT mp.id, mp.gsrn, mp.street_address, mp.postal_code, mp.city, mp.country_code, mp.price_area, mp.grid_area,
        mp.expected_annual_consumption_kwh, mp.latitude, mp.longitude, mp.connection_status, mp.created_at, mp.updated_at,
        mp.grid_tariff_id, mp.household, mp.electricity_tax_class,
-       active.meter_number AS active_meter_number
+       active.meter_number AS active_meter_number,
+       current_period.customer_id AS current_customer_id
 FROM energy.metering_points mp
 LEFT JOIN energy.meters active ON active.metering_point_id = mp.id AND active.removed_at IS NULL
-WHERE ($1::text IS NULL OR (
-    mp.gsrn ILIKE $1::text OR
-    mp.city ILIKE $1::text OR
-    mp.street_address ILIKE $1::text OR
-    active.meter_number ILIKE $1::text
+LEFT JOIN energy.supply_periods current_period ON current_period.metering_point_id = mp.id
+    AND current_period.status = 'Active'
+    AND current_period.start <= $1::timestamptz
+    AND (current_period."end" IS NULL OR current_period."end" > $1::timestamptz)
+WHERE ($2::text IS NULL OR (
+    mp.gsrn ILIKE $2::text OR
+    mp.city ILIKE $2::text OR
+    mp.street_address ILIKE $2::text OR
+    active.meter_number ILIKE $2::text
 ))
-AND ($2::timestamptz IS NULL OR NOT EXISTS (
+AND (NOT $3::bool OR NOT EXISTS (
     SELECT 1 FROM energy.supply_periods p
     WHERE p.metering_point_id = mp.id AND p.status = 'Active'
-      AND p.start <= $2::timestamptz
-      AND (p."end" IS NULL OR p."end" > $2::timestamptz)
+      AND p.start <= $1::timestamptz
+      AND (p."end" IS NULL OR p."end" > $1::timestamptz)
 ))
-ORDER BY mp.id
-LIMIT $4::int OFFSET $3::int
+AND ($4::int IS NULL OR EXISTS (
+    SELECT 1 FROM energy.supply_periods p
+    WHERE p.metering_point_id = mp.id AND p.status = 'Active' AND p.customer_id = $4::int
+      AND p.start <= $1::timestamptz
+      AND (p."end" IS NULL OR p."end" > $1::timestamptz)
+))
+AND ($5::text IS NULL OR mp.price_area = $5::text)
+AND ($6::text IS NULL OR mp.connection_status = $6::text)
+ORDER BY
+    CASE WHEN $7::text = 'gsrn' AND NOT $8::bool THEN mp.gsrn END ASC,
+    CASE WHEN $7::text = 'gsrn' AND $8::bool THEN mp.gsrn END DESC,
+    CASE WHEN $7::text = 'meterNumber' AND NOT $8::bool THEN active.meter_number END ASC NULLS LAST,
+    CASE WHEN $7::text = 'meterNumber' AND $8::bool THEN active.meter_number END DESC NULLS LAST,
+    CASE WHEN $7::text = 'address' AND NOT $8::bool THEN mp.street_address END ASC,
+    CASE WHEN $7::text = 'address' AND $8::bool THEN mp.street_address END DESC,
+    CASE WHEN $7::text = 'address' AND NOT $8::bool THEN mp.postal_code END ASC,
+    CASE WHEN $7::text = 'address' AND $8::bool THEN mp.postal_code END DESC,
+    CASE WHEN $7::text = 'priceArea' AND NOT $8::bool THEN mp.price_area END ASC,
+    CASE WHEN $7::text = 'priceArea' AND $8::bool THEN mp.price_area END DESC,
+    CASE WHEN $7::text = 'connectionStatus' AND NOT $8::bool THEN mp.connection_status END ASC,
+    CASE WHEN $7::text = 'connectionStatus' AND $8::bool THEN mp.connection_status END DESC,
+    CASE WHEN $7::text = 'createdAt' AND NOT $8::bool THEN mp.created_at END ASC,
+    CASE WHEN $7::text = 'createdAt' AND $8::bool THEN mp.created_at END DESC,
+    CASE WHEN $8::bool AND $7::text <> '' THEN mp.id END DESC,
+    mp.id ASC
+LIMIT $10::int OFFSET $9::int
 `
 
 type ListMeteringPointsParams struct {
-	SearchPattern     *string
-	WithoutCustomerAt *time.Time
-	RowOffset         int32
-	PageSize          int32
+	At               time.Time
+	SearchPattern    *string
+	WithoutCustomer  bool
+	CustomerID       *int32
+	PriceArea        *string
+	ConnectionStatus *string
+	SortBy           string
+	Descending       bool
+	RowOffset        int32
+	PageSize         int32
 }
 
 type ListMeteringPointsRow struct {
@@ -280,16 +336,29 @@ type ListMeteringPointsRow struct {
 	Household                    bool
 	ElectricityTaxClass          string
 	ActiveMeterNumber            *string
+	CurrentCustomerID            *int32
 }
 
-// ListMeteringPoints is GetMeteringPointsEndpoint's one page, ordered by id
-// (:30), each row carrying its current meter's number (or NULL if the
-// metering point has none) the way MeteringPointResponse.FromDomain reads
-// it off the already-loaded Meters collection (Dtos/MeteringPointResponse.cs:20).
+// ListMeteringPoints is GetMeteringPointsEndpoint's one page, each row
+// carrying its current meter's number (or NULL if the metering point has
+// none) the way MeteringPointResponse.FromDomain reads it off the
+// already-loaded Meters collection (Dtos/MeteringPointResponse.cs:20), and
+// the customer of its Active supply period covering @at (NULL without one;
+// supply_periods_no_overlap leaves at most one, so the join never repeats a
+// point). The filters are
+// CountMeteringPoints'. sort_by picks which CASE pair contributes to ORDER BY
+// (the customers list's pattern); every other pair is NULL for every row, and
+// the id breaks ties — and is the whole order when sort_by is ”.
 func (q *Queries) ListMeteringPoints(ctx context.Context, arg ListMeteringPointsParams) ([]ListMeteringPointsRow, error) {
 	rows, err := q.db.Query(ctx, listMeteringPoints,
+		arg.At,
 		arg.SearchPattern,
-		arg.WithoutCustomerAt,
+		arg.WithoutCustomer,
+		arg.CustomerID,
+		arg.PriceArea,
+		arg.ConnectionStatus,
+		arg.SortBy,
+		arg.Descending,
 		arg.RowOffset,
 		arg.PageSize,
 	)
@@ -319,6 +388,7 @@ func (q *Queries) ListMeteringPoints(ctx context.Context, arg ListMeteringPoints
 			&i.Household,
 			&i.ElectricityTaxClass,
 			&i.ActiveMeterNumber,
+			&i.CurrentCustomerID,
 		); err != nil {
 			return nil, err
 		}

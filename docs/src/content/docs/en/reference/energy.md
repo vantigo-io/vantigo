@@ -150,14 +150,31 @@ contract.
 
 ## The metering-point list
 
-`GET /metering-points?search&withoutCustomer&page&pageSize` lists points by id, a page
-of 1–100 (default 25). `search` matches the GSRN, the city, the street address or the
+`GET /metering-points?search&withoutCustomer&customerId&priceArea&connectionStatus&sortBy&sortDirection&page&pageSize`
+lists points, a page of 1–100 (default 25), by id unless `sortBy` names `gsrn`,
+`meterNumber`, `address` (the street address, then the postal code), `priceArea`,
+`connectionStatus` or `createdAt`; `sortDirection` is `asc` (the default) or `desc`,
+ties fall back to the id in the same direction, and a point without a meter sorts
+last either way. `priceArea` and `connectionStatus` match exactly. An unknown
+`sortBy`, `sortDirection`, `connectionStatus` or a malformed `priceArea` is a plain
+`400`. `search` matches the GSRN, the city, the street address or the
 current meter's number. **`withoutCustomer=true`** keeps only the points without a
 customer now: those with no `Active` supply period whose `start` is at or before the
 moment of the request and whose `end` is absent or after it. A point whose only
 `Active` period starts later is listed, as is a point whose periods have all ended or
 been cancelled. `false`, or absent, is every point. It is the list to attach the points
 an import left without a customer.
+
+Who a point supplies is a supply period's fact, so the customer is gated on
+`energy:supply-periods-view`, checked in the handler beyond the route's
+`energy:metering-points-view` and `energy:meters-view`. With it, each item carries
+**`currentCustomer`** — the `id` of the customer of its `Active` supply period
+covering the moment of the request (`supply_periods_no_overlap` leaves at most one),
+and its `name`, read for the whole page in one `CustomerDirectory.Customers` call —
+left out for a point without one; `name` is left out when no directory is composed or
+it does not hold the customer. **`customerId`** keeps the points whose customer now is
+that one, and answers `403` without the key. Energy never reads the customers schema,
+so the list cannot sort by the customer's name.
 
 ## The metering point's billing facts
 

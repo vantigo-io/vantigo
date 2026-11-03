@@ -29,6 +29,21 @@ listet nederst på denne siden.
 målernummer, adresse, prisområde og tilkoblingsstatus (**Ny**, **Tilkoblet** eller
 **Frakoblet**), 25 per side, med totalen i overskriften.
 
+Med `energy:supply-periods-view` er den første kolonnen **Kunde**: kunden i
+målepunktets aktive leveranseperiode nå, eller *Ingen kunde*. Har du også
+`customers:view`, er navnet en lenke som åpner kunden.
+
+Klikk på en kolonneoverskrift (**GSRN**, **Målernummer**, **Adresse**, **Prisområde**
+eller **Status**) for å sortere etter den: én gang stigende, to ganger synkende, en
+tredje gang tilbake til listens egen rekkefølge. Målepunkter uten måler kommer sist.
+Kolonnen **Kunde** kan ikke sorteres; filtrer på den i stedet.
+
+Ved siden av søkefeltet kan du avgrense listen etter **Prisområde**, etter **Status**
+og — med `energy:supply-periods-view` — etter **Kunde**, som viser målepunktene kunden
+har nå; skriv i feltet for å finne kunden. Filtrene og sorteringen virker sammen med
+søket og hverandre, og blir stående i adressen, så en oppdatering eller en delt lenke
+viser den samme listen.
+
 Skriv i søkefeltet (**Søk etter GSRN, målernummer eller adresse…**) for å avgrense
 listen. Søket treffer GSRN, nummeret på den nåværende måleren, gateadressen og byen.
 Søkefeltet i toppfeltet finner også målepunkter, under overskriften **Målepunkter**,
@@ -213,10 +228,10 @@ felt.
 
 ## Les et målepunkts side
 
-Siden har GSRN og adressen som overskrift, og seks kort:
+Siden har GSRN, merket **GSRN**, og adressen som overskrift, og seks kort:
 
-- **Detaljer om målepunkt**: målernummer, prisområde, nettområde, tilkoblingsstatus og
-  forventet årsforbruk.
+- **Detaljer om målepunkt**: **GSRN (målepunkt-ID)**, målernummer, prisområde,
+  nettområde, tilkoblingsstatus og forventet årsforbruk.
 - **Fakturering**: **Nettleie** (eller ingen), **Husholdning**, **Elavgift**
   og **Mva.**. Mva. settes ikke for hånd: den er *Fritatt – husholdning i Nord-Norge
   (mval. § 6-6)* når punktet er til husholdningsbruk, landet er `NO` og

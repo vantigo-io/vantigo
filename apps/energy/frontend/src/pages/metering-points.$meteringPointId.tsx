@@ -108,7 +108,14 @@ export const MeteringPointDetailsPage = ({
     <Stack gap="lg">
       <PageHeader
         breadcrumbs={[{ label: t("meteringPoints"), to: "/energy/metering-points" }, { label: point.gsrn }]}
-        title={point.gsrn}
+        title={
+          <>
+            {point.gsrn}{" "}
+            <Badge variant="light" size="lg" title={t("gsrnLabel")}>
+              {t("gsrn")}
+            </Badge>
+          </>
+        }
         description={`${point.address.streetAddress}, ${point.address.postalCode} ${point.address.city}`}
         actions={
           <Button
@@ -125,6 +132,9 @@ export const MeteringPointDetailsPage = ({
         <Stack>
           <Title order={3}>{t("meteringPointDetails")}</Title>
           <Group>
+            <Text>
+              <b>{t("gsrnLabel")}:</b> {point.gsrn}
+            </Text>
             <Text>
               <b>{t("meterNumber")}:</b> {point.meterNumber ?? t("notAvailable")}
             </Text>
