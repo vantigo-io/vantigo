@@ -26,8 +26,9 @@ import (
 // after its calls. Nothing of an event — not even its id — is ever logged.
 
 const (
-	// outlookKind is the kind of an Outlook event's item (design O9.5).
-	outlookKind = "calendar.outlook"
+	// mailboxKind is the kind of a mailbox event's item (design O9.5),
+	// whatever the provider (Google Workspace design G10).
+	mailboxKind = "calendar.mailbox"
 
 	// busyDaysBack and busyDaysAhead are the read's window around today
 	// (design O9.1): wider than the push's, so a delta started once lasts
@@ -46,11 +47,12 @@ var mailboxBusyCap = 5000
 
 // busyShown are the show_as values a colleague's calendar and the
 // CalendarBusy contract count as busy (design O9.7, O9.8).
-var busyShown = []string{contracts.ShowAsBusy, contracts.ShowAsOOF}
+var busyShown = []string{contracts.ShowAsBusy, contracts.ShowAsOutOfOffice}
 
 // busyRead is one sync's read of a person's default calendar.
 type busyRead struct {
 	userID   uuid.UUID
+	provider string // the key of the provider the mailbox is of
 	mailbox  string
 	from, to time.Time // the window, civil dates
 	fresh    bool      // the next page is a fresh delta's first
@@ -69,7 +71,7 @@ type busyRead struct {
 // failure as err.
 func (w *MailboxSyncWorker) readBusy(ctx, call context.Context, r store.CalendarMailboxSync, mailbox string, today time.Time, loc *time.Location, now time.Time) (callErr, err error) {
 	today = civil(today)
-	b := busyRead{userID: r.UserID, mailbox: mailbox}
+	b := busyRead{userID: r.UserID, provider: rowProvider(r), mailbox: mailbox}
 	busyTo, hasWindow := fromPgDate(r.BusyTo)
 	busyFrom, _ := fromPgDate(r.BusyFrom)
 	if r.BusyLink == nil || *r.BusyLink == "" || !hasWindow || busyTo.Before(addDays(today, busyRestartAhead)) {
@@ -96,7 +98,7 @@ func (w *MailboxSyncWorker) readBusy(ctx, call context.Context, r store.Calendar
 
 	restarted := false
 	for call.Err() == nil {
-		page, deltaErr := w.srv.mailboxDelta(call, mailbox, wallClock(b.from, loc), wallClock(addDays(b.to, 1), loc), b.link)
+		page, deltaErr := w.srv.mailboxDelta(call, b.provider, mailbox, wallClock(b.from, loc), wallClock(addDays(b.to, 1), loc), b.link)
 		if errors.Is(deltaErr, contracts.ErrMailboxDeltaExpired) && !restarted {
 			restarted = true
 			if err := w.forgetBusy(ctx, r.UserID, now); err != nil {
@@ -149,7 +151,7 @@ func (w *MailboxSyncWorker) marked(call context.Context, b *busyRead, changes []
 	}
 	var out []string
 	for start := 0; start < len(candidates); start += contracts.MailboxMarkedMax {
-		refs, err := w.srv.mailboxMarked(call, b.mailbox, candidates[start:min(start+contracts.MailboxMarkedMax, len(candidates))])
+		refs, err := w.srv.mailboxMarked(call, b.provider, b.mailbox, candidates[start:min(start+contracts.MailboxMarkedMax, len(candidates))])
 		if err != nil {
 			return nil, err
 		}
@@ -276,20 +278,20 @@ func (w *MailboxSyncWorker) forgetBusy(ctx context.Context, userID uuid.UUID, no
 	})
 }
 
-// outlookItemID is an Outlook event's item id (design O9.5): the first 16
+// mailboxItemID is a mailbox event's item id (design O9.5): the first 16
 // hex digits of the SHA-256 of its id in the mailbox, which never reaches
 // the browser.
-func outlookItemID(eventID string) string {
+func mailboxItemID(eventID string) string {
 	sum := sha256.Sum256([]byte(eventID))
 	return hex.EncodeToString(sum[:])[:16]
 }
 
-// outlookItem is one busy row on the wire: no title, its show_as, an
+// mailboxBusyItem is one busy row on the wire: no title, its show_as, an
 // all-day row's dates (end inclusive) or a timed one's instants.
-func outlookItem(row store.CalendarMailboxBusy) gen.CalendarItem {
+func mailboxBusyItem(row store.CalendarMailboxBusy) gen.CalendarItem {
 	it := gen.CalendarItem{
-		Kind: outlookKind, Id: outlookItemID(row.EventID), AllDay: row.AllDay,
-		Outlook: &gen.CalendarItemOutlook{ShowAs: gen.CalendarItemOutlookShowAs(row.ShowAs)},
+		Kind: mailboxKind, Id: mailboxItemID(row.EventID), AllDay: row.AllDay,
+		Mailbox: &gen.CalendarItemMailbox{ShowAs: gen.CalendarItemMailboxShowAs(row.ShowAs)},
 	}
 	sp := span{allDay: row.AllDay}
 	if row.AllDay {
@@ -303,10 +305,10 @@ func outlookItem(row store.CalendarMailboxBusy) gen.CalendarItem {
 }
 
 // outlookItems is userID's busy rows in the window as items (design O9.5),
-// when kinds is nil or names calendar.outlook — only while their sync is
+// when kinds is nil or names calendar.mailbox — only while their sync is
 // on, which the query holds.
 func (s *server) outlookItems(ctx context.Context, userID uuid.UUID, w window, kinds map[string]bool) ([]gen.CalendarItem, error) {
-	if kinds != nil && !kinds[outlookKind] {
+	if kinds != nil && !kinds[mailboxKind] {
 		return nil, nil
 	}
 	rows, err := s.queries().ListMailboxBusyInWindow(ctx, store.ListMailboxBusyInWindowParams{
@@ -317,7 +319,7 @@ func (s *server) outlookItems(ctx context.Context, userID uuid.UUID, w window, k
 	}
 	out := make([]gen.CalendarItem, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, outlookItem(row))
+		out = append(out, mailboxBusyItem(row))
 	}
 	return out, nil
 }
@@ -334,7 +336,7 @@ func (s *server) colleagueOutlookItems(ctx context.Context, userID uuid.UUID, w 
 	}
 	out := make([]gen.CalendarItem, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, outlookItem(row))
+		out = append(out, mailboxBusyItem(row))
 	}
 	return out, nil
 }

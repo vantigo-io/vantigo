@@ -294,13 +294,14 @@ type MailboxOp struct {
 	Event *MailboxEvent
 }
 
-// The values of MailboxEvent.ShowAs.
+// The values of MailboxEvent.ShowAs, the calendar's own words (Google
+// Workspace design G10): each provider maps its directory's values to them.
 const (
 	ShowAsFree             = "free"
 	ShowAsTentative        = "tentative"
 	ShowAsBusy             = "busy"
-	ShowAsOOF              = "oof"
-	ShowAsWorkingElsewhere = "workingElsewhere"
+	ShowAsOutOfOffice      = "out_of_office"
+	ShowAsWorkingElsewhere = "working_elsewhere"
 )
 
 // MailboxEvent is an event as the calendar wants it in the mailbox: no

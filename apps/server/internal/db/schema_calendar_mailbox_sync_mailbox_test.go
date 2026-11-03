@@ -16,11 +16,13 @@ const calendarMailboxSyncMailboxVersion = 86
 // TestCalendarMailboxSyncMailbox_AppliesAndIsIdempotent proves the migration
 // applies, rolls back and re-applies cleanly, and pins the index
 // MarkMailboxSyncNotified rests on: calendar.mailbox_sync's mailbox in lower
-// case, over the rows that are on. The down drops it.
+// case, over the rows that are on. The down drops it. 00110 replaces it, so
+// it is read at its own version.
 func TestCalendarMailboxSyncMailbox_AppliesAndIsIdempotent(t *testing.T) {
 	t.Parallel()
 	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, calendarMailboxSyncMailboxVersion)
+	migrateTo(t, url, calendarMailboxSyncMailboxVersion)
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)

@@ -437,7 +437,7 @@ func TestMailboxEvents_TheDefaultCalendar(t *testing.T) {
 	if s := got[others.ID]; !s.Foreign || s.Key != "" {
 		t.Errorf("another installation's copy: %+v, want Foreign with no key", s)
 	}
-	if s := got[own.ID]; s.Foreign || s.Key != "" || !s.Event.Private || s.Event.ShowAs != contracts.ShowAsOOF ||
+	if s := got[own.ID]; s.Foreign || s.Key != "" || !s.Event.Private || s.Event.ShowAs != contracts.ShowAsOutOfOffice ||
 		!s.TextBody || s.Event.Body != "Confidential" || s.Event.Subject != "Salary review" {
 		t.Errorf("the person's own event, its HTML body asked as text: %+v", s)
 	}

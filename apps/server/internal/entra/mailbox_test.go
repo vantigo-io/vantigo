@@ -805,7 +805,7 @@ func TestMailbox_TheEventsShape(t *testing.T) {
 
 	results, err := p.Apply(ctx, mailbox, "", []contracts.MailboxOp{
 		{Kind: contracts.MailboxOpCreate, Key: "staff.absence:7", Event: &contracts.MailboxEvent{
-			Subject: "Ferie", AllDay: true, TimeZone: "Europe/Oslo", ShowAs: contracts.ShowAsOOF,
+			Subject: "Ferie", AllDay: true, TimeZone: "Europe/Oslo", ShowAs: contracts.ShowAsOutOfOffice,
 			StartDate: time.Date(2026, 7, 6, 0, 0, 0, 0, time.UTC), EndDate: time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC),
 		}},
 		{Kind: contracts.MailboxOpCreate, Key: "appointment:9", Event: &contracts.MailboxEvent{

@@ -52,10 +52,10 @@ func TestSourceItems_RefusesAQueryAboutAnyoneButThePrincipal(t *testing.T) {
 func TestBusyReadAccessors_WithNoProviderAreUnavailable(t *testing.T) {
 	t.Parallel()
 	s := newServer(module.Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
-	if _, err := s.mailboxDelta(context.Background(), "oid", time.Time{}, time.Time{}, ""); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+	if _, err := s.mailboxDelta(context.Background(), "entra", "oid", time.Time{}, time.Time{}, ""); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("Delta with no provider: %v", err)
 	}
-	if _, err := s.mailboxMarked(context.Background(), "oid", nil); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+	if _, err := s.mailboxMarked(context.Background(), "entra", "oid", nil); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("Marked with no provider: %v", err)
 	}
 }
@@ -65,10 +65,10 @@ func TestBusyReadAccessors_WithNoProviderAreUnavailable(t *testing.T) {
 func TestWriteBackAccessors_WithNoProviderAreUnavailable(t *testing.T) {
 	t.Parallel()
 	s := newServer(module.Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
-	if _, err := s.mailboxVersions(context.Background(), "oid", "", time.Time{}, time.Time{}); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+	if _, err := s.mailboxVersions(context.Background(), "entra", "oid", "", time.Time{}, time.Time{}); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("Versions with no provider: %v", err)
 	}
-	if _, err := s.mailboxEvents(context.Background(), "oid", "", nil); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+	if _, err := s.mailboxEvents(context.Background(), "entra", "oid", "", nil); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("Events with no provider: %v", err)
 	}
 }
@@ -79,16 +79,16 @@ func TestWriteBackAccessors_WithNoProviderAreUnavailable(t *testing.T) {
 func TestNotificationAccessors_WithNoProviderAreUnavailable(t *testing.T) {
 	t.Parallel()
 	s := newServer(module.Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
-	if err := s.mailboxWatch(context.Background(), "oid"); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+	if err := s.mailboxWatch(context.Background(), "entra", "oid"); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("Watch with no provider: %v", err)
 	}
-	if err := s.mailboxUnwatch(context.Background(), "oid"); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+	if err := s.mailboxUnwatch(context.Background(), "entra", "oid"); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("Unwatch with no provider: %v", err)
 	}
-	if _, err := s.mailboxNotified(context.Background(), time.Time{}); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+	if _, err := s.mailboxNotified(context.Background(), "entra", time.Time{}); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("Notified with no provider: %v", err)
 	}
-	if _, err := s.mailboxConnections(context.Background(), time.Time{}); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+	if _, err := s.mailboxConnections(context.Background(), "entra", time.Time{}); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("Connections with no provider: %v", err)
 	}
 }
@@ -102,16 +102,16 @@ func TestNotificationAccessors_RefuseACallInsideATransaction(t *testing.T) {
 	box := modtest.NewFakeMailboxCalendar()
 	s := newServer(module.Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), MailboxCalendars: []contracts.MailboxCalendar{box}})
 	locked := context.WithValue(context.Background(), lockedTxKey{}, true)
-	if err := s.mailboxWatch(locked, "oid"); !errors.Is(err, errCallInsideTransaction) {
+	if err := s.mailboxWatch(locked, "entra", "oid"); !errors.Is(err, errCallInsideTransaction) {
 		t.Errorf("Watch inside a transaction: %v", err)
 	}
-	if err := s.mailboxUnwatch(locked, "oid"); !errors.Is(err, errCallInsideTransaction) {
+	if err := s.mailboxUnwatch(locked, "entra", "oid"); !errors.Is(err, errCallInsideTransaction) {
 		t.Errorf("Unwatch inside a transaction: %v", err)
 	}
-	if _, err := s.mailboxNotified(locked, time.Time{}); !errors.Is(err, errCallInsideTransaction) {
+	if _, err := s.mailboxNotified(locked, "entra", time.Time{}); !errors.Is(err, errCallInsideTransaction) {
 		t.Errorf("Notified inside a transaction: %v", err)
 	}
-	if _, err := s.mailboxConnections(locked, time.Time{}); !errors.Is(err, errCallInsideTransaction) {
+	if _, err := s.mailboxConnections(locked, "entra", time.Time{}); !errors.Is(err, errCallInsideTransaction) {
 		t.Errorf("Connections inside a transaction: %v", err)
 	}
 	if got := box.Calls(); len(got) != 0 {
@@ -119,16 +119,59 @@ func TestNotificationAccessors_RefuseACallInsideATransaction(t *testing.T) {
 	}
 	// Outside one, each goes through.
 	ctx := context.Background()
-	if err := s.mailboxWatch(ctx, "oid"); err != nil || !box.Watched("oid") {
+	if err := s.mailboxWatch(ctx, "entra", "oid"); err != nil || !box.Watched("oid") {
 		t.Errorf("Watch: %v, watched %v", err, box.Watched("oid"))
 	}
-	if err := s.mailboxUnwatch(ctx, "oid"); err != nil || box.Watched("oid") {
+	if err := s.mailboxUnwatch(ctx, "entra", "oid"); err != nil || box.Watched("oid") {
 		t.Errorf("Unwatch: %v, watched %v", err, box.Watched("oid"))
 	}
-	if _, err := s.mailboxNotified(ctx, time.Time{}); err != nil {
+	if _, err := s.mailboxNotified(ctx, "entra", time.Time{}); err != nil {
 		t.Errorf("Notified: %v", err)
 	}
-	if _, err := s.mailboxConnections(ctx, time.Time{}); err != nil {
+	if _, err := s.mailboxConnections(ctx, "entra", time.Time{}); err != nil {
 		t.Errorf("Connections: %v", err)
+	}
+}
+
+// A provider is found by its key (Google Workspace design G3): each call
+// reaches the provider filled under the key it names and no other, and a
+// key no provider is filled under is unavailable. accountProvider answers
+// the key of a usable account whose provider is filled, "" otherwise.
+func TestMailboxCalendarFor_PicksTheProviderByKey(t *testing.T) {
+	t.Parallel()
+	entra, google := modtest.NewFakeMailboxCalendar(), modtest.NewFakeMailboxCalendar().WithKey("google")
+	s := newServer(module.Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		MailboxCalendars: []contracts.MailboxCalendar{entra, google}})
+	if got := s.mailboxCalendarFor("google"); got != google {
+		t.Errorf("mailboxCalendarFor(google) = %v, want the google fake", got)
+	}
+	if got := s.mailboxCalendarFor(""); got != nil {
+		t.Errorf("mailboxCalendarFor(\"\") = %v, want none", got)
+	}
+	ctx := context.Background()
+	if err := s.mailboxWatch(ctx, "google", "g-1"); err != nil || !google.Watched("g-1") || entra.Watched("g-1") {
+		t.Errorf("Watch on google: %v, google %v entra %v", err, google.Watched("g-1"), entra.Watched("g-1"))
+	}
+	if err := s.mailboxWatch(ctx, "zoho", "z-1"); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+		t.Errorf("Watch on a key no provider is filled under: %v", err)
+	}
+	if st, err := s.mailboxStatus(ctx, "zoho"); err != nil || st.State != contracts.MailboxUnavailable {
+		t.Errorf("Status on a key no provider is filled under: %+v %v", st, err)
+	}
+	for _, c := range []struct {
+		name string
+		acct *contracts.DirectoryAccount
+		want string
+	}{
+		{"none", nil, ""},
+		{"google", &contracts.DirectoryAccount{Provider: "google", ExternalID: "g-1", Enabled: true}, "google"},
+		{"entra", &contracts.DirectoryAccount{Provider: "entra", ExternalID: "oid", Enabled: true}, "entra"},
+		{"disabled", &contracts.DirectoryAccount{Provider: "google", ExternalID: "g-1"}, ""},
+		{"no external id", &contracts.DirectoryAccount{Provider: "google", Enabled: true}, ""},
+		{"a provider not filled", &contracts.DirectoryAccount{Provider: "zoho", ExternalID: "z-1", Enabled: true}, ""},
+	} {
+		if got := s.accountProvider(c.acct); got != c.want {
+			t.Errorf("accountProvider(%s) = %q, want %q", c.name, got, c.want)
+		}
 	}
 }

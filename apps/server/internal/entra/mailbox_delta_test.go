@@ -114,7 +114,7 @@ func TestMailboxDelta_FreshAndLinked(t *testing.T) {
 	if !got[cancelled.ID].Cancelled || !got[occurrence.ID].Series || !got[exception.ID].Series || got[busy.ID].Series {
 		t.Errorf("cancelled %+v, occurrence %+v, exception %+v", got[cancelled.ID], got[occurrence.ID], got[exception.ID])
 	}
-	if c := got[allDay.ID]; !c.AllDay || c.ShowAs != contracts.ShowAsOOF ||
+	if c := got[allDay.ID]; !c.AllDay || c.ShowAs != contracts.ShowAsOutOfOffice ||
 		!c.StartDate.Equal(time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC)) || !c.EndDate.Equal(time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC)) ||
 		!c.StartsAt.IsZero() {
 		t.Errorf("the all-day event: %+v, want 10–12 November inclusive", c)

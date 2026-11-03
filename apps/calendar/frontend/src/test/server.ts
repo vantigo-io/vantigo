@@ -71,9 +71,13 @@ export const subscriptionFixture = (overrides: Partial<CalendarSubscription> = {
   ...overrides,
 });
 
-/** The Outlook sync as a caller who never turned it on is answered it: the defaults at revision 0. */
+/**
+ * The mailbox sync as a caller who never turned it on is answered it: the
+ * defaults at revision 0, served by Entra (Outlook).
+ */
 export const mailboxSyncFixture = (overrides: Partial<MailboxSync> = {}): MailboxSync => ({
   availability: "available",
+  provider: { key: "entra", displayName: "Outlook" },
   availableKinds: [
     { key: "calendar.appointment", module: "calendar" },
     { key: "staff.absence", module: "staff" },

@@ -1,9 +1,9 @@
 import type { EventInput } from "@fullcalendar/react";
 import type { CalendarItem, CalendarPublicHoliday } from "../api/items";
-import { colourForKind, colourForModule, colourForName, HOLIDAYS_KIND, OUTLOOK_KIND } from "./colours";
+import { colourForKind, colourForModule, colourForName, HOLIDAYS_KIND, MAILBOX_KIND } from "./colours";
 import { addDays } from "./dates";
 
-export type OutlookShowAs = NonNullable<CalendarItem["outlook"]>["showAs"];
+export type MailboxShowAs = NonNullable<CalendarItem["mailbox"]>["showAs"];
 
 /** What an event drawn from the API carries back to the page's handlers. */
 export interface CalendarEventProps {
@@ -17,8 +17,11 @@ export interface ToEventOptions {
    * private appointment, a busy-only subscription's item.
    */
   busyLabel: string;
-  /** The words for an Outlook busy block, by how it shows the person's time; it has no title. */
-  outlookLabels?: Record<OutlookShowAs, string>;
+  /**
+   * The words for a busy block from the person's mailbox calendar, by how it
+   * shows their time ("Busy in Outlook"); it has no title.
+   */
+  mailboxLabels?: Record<MailboxShowAs, string>;
   /** A colleague's calendar: nothing on it is the viewer's to move. */
   readOnly?: boolean;
 }
@@ -32,18 +35,18 @@ export interface ToEventOptions {
  */
 export const toEventInput = (
   item: CalendarItem,
-  { busyLabel, outlookLabels, readOnly = false }: ToEventOptions,
+  { busyLabel, mailboxLabels, readOnly = false }: ToEventOptions,
 ): EventInput => {
   const appointment = item.appointment;
   const subscription = item.subscription;
   const isPrivate = appointment?.visibility === "private" || subscription?.busyOnly === true;
-  const isOutlook = item.kind === OUTLOOK_KIND;
+  const isMailbox = item.kind === MAILBOX_KIND;
   const declined = appointment?.myStatus === "declined";
   const className = [
     "vantigo-calendar-item",
     item.done || declined ? "vantigo-calendar-done" : "",
     appointment?.transparency === "free" ? "vantigo-calendar-free" : "",
-    (readOnly && isPrivate) || isOutlook ? "vantigo-calendar-busy" : "",
+    (readOnly && isPrivate) || isMailbox ? "vantigo-calendar-busy" : "",
     appointment?.recurring ? "vantigo-calendar-recurring" : "",
   ]
     .filter(Boolean)
@@ -61,8 +64,8 @@ export const toEventInput = (
     id: `${item.kind}:${item.id}`,
     title: item.title.trim()
       ? item.title
-      : isOutlook
-        ? (outlookLabels?.[item.outlook?.showAs ?? "busy"] ?? busyLabel)
+      : isMailbox
+        ? (mailboxLabels?.[item.mailbox?.showAs ?? "busy"] ?? busyLabel)
         : isPrivate
           ? busyLabel
           : item.title,

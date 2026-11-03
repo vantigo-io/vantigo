@@ -129,8 +129,10 @@ func TestMailboxConnection_AParkedPersonIsReCheckedADayLaterAndWokenByAChange(t 
 	if asked := calls(r, from, "Versions"); len(asked) != 1 {
 		t.Errorf("the re-check asked Versions %d times, want once", len(asked))
 	}
-	// The cycle's steps, in order, before the provider's call that parks.
-	steps := []string{"MailboxCalendar.Status", "Access.UserHolds", "Workforce.DirectoryAccount", "MailboxCalendar.Versions"}
+	// The cycle's steps, in order, before the provider's call that parks:
+	// the account first, since it picks the provider (Google Workspace
+	// design G3).
+	steps := []string{"Workforce.DirectoryAccount", "MailboxCalendar.Status", "Access.UserHolds", "MailboxCalendar.Versions"}
 	rest := log.list()
 	for _, step := range steps {
 		i := slices.Index(rest, step)

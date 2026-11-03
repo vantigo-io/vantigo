@@ -128,7 +128,7 @@ func (w *MailboxSyncWorker) writeBack(ctx, call context.Context, r store.Calenda
 	for i := range desired {
 		run.want[desired[i].key] = &desired[i]
 	}
-	versions, callErr := w.srv.mailboxVersions(call, mailbox, calendarID, p.w.fromAt, p.w.toAt)
+	versions, callErr := w.srv.mailboxVersions(call, rowProvider(r), mailbox, calendarID, p.w.fromAt, p.w.toAt)
 	if callErr != nil {
 		return run.out, callErr, nil
 	}
@@ -198,7 +198,7 @@ func (w *MailboxSyncWorker) writeBack(ctx, call context.Context, r store.Calenda
 	ids = append(ids, fresh...)
 
 	if len(ids) > 0 {
-		read, callErr := w.srv.mailboxEvents(call, mailbox, calendarID, ids)
+		read, callErr := w.srv.mailboxEvents(call, rowProvider(r), mailbox, calendarID, ids)
 		if callErr != nil {
 			if err := run.commit(); err != nil {
 				return run.out, nil, err

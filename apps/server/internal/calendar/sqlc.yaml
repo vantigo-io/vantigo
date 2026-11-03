@@ -15,6 +15,7 @@ sql:
       - ../db/migrations/00086_calendar_mailbox_sync_mailbox.sql
       - ../db/migrations/00087_calendar_mailbox_sync_claim.sql
       - ../db/migrations/00097_calendar_settings.sql
+      - ../db/migrations/00110_calendar_mailbox_neutral.sql
     queries: queries
     gen:
       go:

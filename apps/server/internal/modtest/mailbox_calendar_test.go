@@ -220,7 +220,7 @@ func TestFakeMailboxCalendar_Delta(t *testing.T) {
 	from, to := Start.AddDate(0, 0, -30), Start.AddDate(0, 0, 210)
 	day := time.Date(2026, time.September, 14, 0, 0, 0, 0, time.UTC)
 
-	meeting := f.SeedForeign("oid-1", FakeBusyEvent{ID: "AAMk-1", StartsAt: Start, EndsAt: Start.Add(time.Hour), ShowAs: contracts.ShowAsOOF, Series: true})
+	meeting := f.SeedForeign("oid-1", FakeBusyEvent{ID: "AAMk-1", StartsAt: Start, EndsAt: Start.Add(time.Hour), ShowAs: contracts.ShowAsOutOfOffice, Series: true})
 	holiday := f.SeedForeign("oid-1", FakeBusyEvent{AllDay: true, StartDate: day, EndDate: day.AddDate(0, 0, 1), ShowAs: contracts.ShowAsBusy, Cancelled: true})
 	f.SeedForeign("oid-1", FakeBusyEvent{ID: "AAMk-past", StartsAt: from.AddDate(0, 0, -2), EndsAt: from.AddDate(0, 0, -1), ShowAs: contracts.ShowAsBusy})
 	res, _ := f.Apply(ctx, "oid-1", "", []contracts.MailboxOp{{Kind: contracts.MailboxOpCreate, Key: "appointment:1", Event: mailboxEvent("Standup")}})
@@ -233,7 +233,7 @@ func TestFakeMailboxCalendar_Delta(t *testing.T) {
 	if pages != 2 || !slices.Equal(changeIDs(changes), []string{"AAMk-1", holiday, copyID}) {
 		t.Fatalf("the fresh delta answered %v in %d pages; want the meeting, the holiday and the copy in 2", changeIDs(changes), pages)
 	}
-	if c := changes[0]; c.EventID != meeting || !c.Series || c.ShowAs != contracts.ShowAsOOF || !c.StartsAt.Equal(Start) || c.AllDay {
+	if c := changes[0]; c.EventID != meeting || !c.Series || c.ShowAs != contracts.ShowAsOutOfOffice || !c.StartsAt.Equal(Start) || c.AllDay {
 		t.Errorf("the meeting answered %+v", c)
 	}
 	if c := changes[1]; !c.AllDay || !c.Cancelled || !c.StartDate.Equal(day) || !c.EndDate.Equal(day.AddDate(0, 0, 1)) {

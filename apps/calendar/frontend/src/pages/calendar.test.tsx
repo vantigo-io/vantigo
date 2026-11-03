@@ -7,7 +7,7 @@ import "../i18n";
 import { addDays, daysBetween } from "../lib/dates";
 import { HIDDEN_KINDS_STORAGE_KEY } from "../lib/filter";
 import { renderRoute } from "../test/route-tree";
-import { defaultMeta, KARI, stubCalendarServer } from "../test/server";
+import { defaultMeta, KARI, mailboxSyncFixture, stubCalendarServer } from "../test/server";
 
 const ZONE = "Europe/Oslo";
 const today = () => civilDateIn(ZONE);
@@ -155,6 +155,79 @@ describe("CalendarPage", () => {
     expect(screen.queryByText("Call back Nordlys")).not.toBeInTheDocument();
   });
 
+  it.each([
+    ["en", "Google Calendar", "Busy in Google Calendar", "Tentative in Google Calendar"],
+    ["nb", "Google Calendar", "Opptatt i Google Calendar", "Foreløpig i Google Calendar"],
+    ["en", "Outlook", "Busy in Outlook", "Tentative in Outlook"],
+  ] as const)(
+    "labels the mailbox's busy time and its chip by the provider (%s, %s)",
+    async (language, name, busy, tentative) => {
+      if (language === "nb") setLanguagePreference("nb");
+      const mailboxItem = (id: string, showAs: "busy" | "tentative", time: string): CalendarItem => ({
+        kind: "calendar.mailbox",
+        id,
+        title: "",
+        allDay: false,
+        startsAt: at(0, time),
+        endsAt: at(
+          0,
+          time.replace(/^(\d\d)/, (h) => String(Number(h) + 1).padStart(2, "0")),
+        ),
+        done: false,
+        mailbox: { showAs },
+      });
+      stubCalendarServer({
+        meta: defaultMeta({
+          sources: [...(defaultMeta().sources ?? []), { kind: "calendar.mailbox", module: "calendar" }],
+        }),
+        items: [
+          ...items(),
+          mailboxItem("aaaaaaaaaaaaaaaa", "busy", "12:00"),
+          mailboxItem("bbbbbbbbbbbbbbbb", "tentative", "14:00"),
+        ],
+        mailboxSync: mailboxSyncFixture({
+          enabled: true,
+          state: "active",
+          provider: { key: "google", displayName: name },
+        }),
+      });
+      renderRoute("/calendar");
+
+      expect(await screen.findByText(busy)).toBeInTheDocument();
+      expect(screen.getByText(tentative)).toBeInTheDocument();
+      const legend = screen.getByRole("group", {
+        name: language === "nb" ? "Vist i kalenderen" : "Shown on the calendar",
+      });
+      expect(within(legend).getByText(name)).toBeInTheDocument();
+    },
+  );
+
+  it("drops a saved filter's kind the server no longer answers", async () => {
+    window.localStorage.setItem(HIDDEN_KINDS_STORAGE_KEY, JSON.stringify(["calendar.outlook", "customers.follow-up"]));
+    stubCalendarServer({
+      meta: defaultMeta({
+        sources: [...(defaultMeta().sources ?? []), { kind: "calendar.mailbox", module: "calendar" }],
+      }),
+      items: [
+        ...items(),
+        {
+          kind: "calendar.mailbox",
+          id: "aaaaaaaaaaaaaaaa",
+          title: "",
+          allDay: false,
+          startsAt: at(0, "12:00"),
+          endsAt: at(0, "13:00"),
+          done: false,
+          mailbox: { showAs: "busy" },
+        },
+      ],
+    });
+    renderRoute("/calendar");
+
+    expect(await screen.findByText("Busy in Outlook")).toBeInTheDocument();
+    expect(screen.queryByText("Call back Nordlys")).not.toBeInTheDocument();
+  });
+
   it("follows a projected item to its record", async () => {
     const user = userEvent.setup();
     stubCalendarServer({ items: items() });
@@ -263,14 +336,14 @@ describe("CalendarPage", () => {
           appointment: { id: 3002, isOwner: false, recurring: false, transparency: "busy", visibility: "shared" },
         },
         {
-          kind: "calendar.outlook",
+          kind: "calendar.mailbox",
           id: "0123456789abcdef",
           title: "",
           allDay: false,
           startsAt: at(0, "10:00"),
           endsAt: at(0, "11:00"),
           done: false,
-          outlook: { showAs: "oof" },
+          mailbox: { showAs: "out_of_office" },
         },
       ],
     });

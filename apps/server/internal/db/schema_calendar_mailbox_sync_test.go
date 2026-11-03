@@ -74,6 +74,7 @@ func TestCalendarMailboxSync_AppliesAndIsIdempotent(t *testing.T) {
 		// 00087's claim, pinned by
 		// TestCalendarMailboxSyncClaim_AppliesAndIsIdempotent.
 		"claimed_until:timestamp with time zone:YES:",
+		"provider:character varying(20):YES:",
 	}; !equalStrings(got, want) {
 		t.Errorf("calendar.mailbox_sync columns =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}

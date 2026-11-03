@@ -1,13 +1,17 @@
 import { useCallback, useState } from "react";
+import { RETIRED_KINDS } from "./colours";
 
 /** Where the legend keeps the kinds the person hid — a convenience per browser, not a setting. */
 export const HIDDEN_KINDS_STORAGE_KEY = "vantigo.calendar.hiddenKinds";
 
+/** The kinds the person hid, as saved; a kind the server no longer answers (RETIRED_KINDS) is dropped. */
 export const readHiddenKinds = (): string[] => {
   try {
     const raw = window.localStorage.getItem(HIDDEN_KINDS_STORAGE_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((kind): kind is string => typeof kind === "string") : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((kind): kind is string => typeof kind === "string" && !RETIRED_KINDS.includes(kind))
+      : [];
   } catch {
     return [];
   }

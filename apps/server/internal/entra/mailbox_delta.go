@@ -202,11 +202,7 @@ func changeOf(ev deltaEvent) (contracts.MailboxChange, bool) {
 		Cancelled: ev.IsCancelled,
 		AllDay:    ev.IsAllDay,
 	}
-	for _, v := range showAsValues {
-		if strings.EqualFold(ev.ShowAs, v) {
-			out.ShowAs = v
-		}
-	}
+	out.ShowAs = showAsOfGraph(ev.ShowAs)
 	start, okStart := deltaTime(ev.Start)
 	end, okEnd := deltaTime(ev.End)
 	if !okStart || !okEnd {

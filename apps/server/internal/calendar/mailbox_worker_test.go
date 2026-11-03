@@ -183,7 +183,7 @@ func TestMailboxSyncWorker_TheFirstSyncWritesEachCopyInItsShape(t *testing.T) {
 	if !h.AllDay || !h.StartDate.Equal(time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)) || !h.EndDate.Equal(time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC)) {
 		t.Errorf("the all-day one = %+v", h)
 	}
-	if a := got["staff.absence:7"].Event; a.ShowAs != contracts.ShowAsOOF || !a.AllDay || a.Subject != "Vacation" {
+	if a := got["staff.absence:7"].Event; a.ShowAs != contracts.ShowAsOutOfOffice || !a.AllDay || a.Subject != "Vacation" {
 		t.Errorf("the absence = %+v", a)
 	}
 	row := readSyncRow(t, r, me)
@@ -617,7 +617,7 @@ func TestMailboxSyncWorker_BusyDetailTitlesInThePersonsLanguage(t *testing.T) {
 	if ev.Subject != "Opptatt" || ev.Location != "" || strings.Contains(ev.Body, "Hemmelig") || !strings.HasPrefix(ev.Body, "http") {
 		t.Errorf("a busy copy = %+v", ev)
 	}
-	if abs := got["staff.absence:7"].Event; abs.Subject != "Opptatt" || abs.ShowAs != contracts.ShowAsOOF {
+	if abs := got["staff.absence:7"].Event; abs.Subject != "Opptatt" || abs.ShowAs != contracts.ShowAsOutOfOffice {
 		t.Errorf("a busy absence = %+v", abs)
 	}
 	// Full detail in Norwegian keeps the title and says where to change it.
