@@ -28,6 +28,7 @@ import { instantFromWallClock, PageHeader, useI18n } from "@vantigo/frontend-she
 import { useEffect, useMemo, useState } from "react";
 import { appointmentQueryOptions, appointmentWriteOf, putOccurrence, updateAppointment } from "../api/appointments";
 import { type CalendarItem, calendarItemsQueryOptions, colleagueItemsQueryOptions } from "../api/items";
+import { mailboxSyncQueryOptions } from "../api/mailbox-sync";
 import { calendarMetaQueryOptions } from "../api/meta";
 import { CALENDAR_QUERY_KEY } from "../api/request";
 import { AppointmentSheet } from "../components/appointment-sheet";
@@ -35,7 +36,7 @@ import { ColleaguePicker } from "../components/colleague-picker";
 import { type OccurrenceAnswer, OccurrenceQuestion } from "../components/occurrence-question";
 import { SourceLegend } from "../components/source-legend";
 import "../i18n";
-import { APPOINTMENT_KIND, HOLIDAYS_KIND, OUTLOOK_KIND } from "../lib/colours";
+import { APPOINTMENT_KIND, HOLIDAYS_KIND, MAILBOX_KIND } from "../lib/colours";
 import { addDays, daysBetween } from "../lib/dates";
 import { useHiddenKinds } from "../lib/filter";
 import { type CalendarEventProps, holidayEventInput, toEventInput } from "../lib/items";
@@ -151,33 +152,42 @@ export function CalendarPage() {
     if (controller.view && controller.view.type !== type) controller.changeView(type);
   }, [controller, view]);
 
-  const busyLabel = t("busy");
-  const outlookLabels = useMemo(
-    () => ({
-      busy: t("outlookShowAs.busy"),
-      tentative: t("outlookShowAs.tentative"),
-      oof: t("outlookShowAs.oof"),
-      workingElsewhere: t("outlookShowAs.workingElsewhere"),
-    }),
-    [t],
-  );
-  const events = useMemo(() => {
-    if (!items.data) return [];
-    const drawn = items.data.items
-      .filter((item) => !hidden.has(item.kind))
-      .map((item) => toEventInput(item, { busyLabel, outlookLabels, readOnly: colleague !== undefined }));
-    return hidden.has(HOLIDAYS_KIND) ? drawn : [...drawn, ...items.data.publicHolidays.map(holidayEventInput)];
-  }, [items.data, hidden, busyLabel, outlookLabels, colleague]);
-
   const kinds = useMemo(() => {
-    // A colleague's calendar has no providers, but their Outlook busy blocks are a chip of their own.
+    // A colleague's calendar has no providers, but their mailbox busy blocks are a chip of their own.
     const sources = colleague
-      ? items.data?.items.some((item) => item.kind === OUTLOOK_KIND)
-        ? [OUTLOOK_KIND]
+      ? items.data?.items.some((item) => item.kind === MAILBOX_KIND)
+        ? [MAILBOX_KIND]
         : []
       : (meta.data?.sources ?? items.data?.sources ?? []).map((source) => source.kind);
     return [...new Set([APPOINTMENT_KIND, ...sources, HOLIDAYS_KIND])];
   }, [colleague, meta.data, items.data]);
+
+  // The mailbox's busy blocks are labelled by the provider's name ("Busy in
+  // Outlook", Google Workspace design G10), read only while they are shown.
+  const sync = useQuery({
+    ...mailboxSyncQueryOptions(),
+    enabled: kinds.includes(MAILBOX_KIND),
+    refetchInterval: false,
+  });
+  const providerName = sync.data?.provider?.displayName;
+  const busyLabel = t("busy");
+  const mailboxLabels = useMemo(() => {
+    const named = (key: "busy" | "tentative") =>
+      providerName ? t(`mailboxShowAs.${key}`, { provider: providerName }) : t(`mailboxShowAs.${key}_unnamed`);
+    return {
+      busy: named("busy"),
+      tentative: named("tentative"),
+      out_of_office: t("mailboxShowAs.out_of_office"),
+      working_elsewhere: t("mailboxShowAs.working_elsewhere"),
+    };
+  }, [t, providerName]);
+  const events = useMemo(() => {
+    if (!items.data) return [];
+    const drawn = items.data.items
+      .filter((item) => !hidden.has(item.kind))
+      .map((item) => toEventInput(item, { busyLabel, mailboxLabels, readOnly: colleague !== undefined }));
+    return hidden.has(HOLIDAYS_KIND) ? drawn : [...drawn, ...items.data.publicHolidays.map(holidayEventInput)];
+  }, [items.data, hidden, busyLabel, mailboxLabels, colleague]);
 
   const changeView = (next: string) =>
     void navigate({ search: (previous) => ({ ...previous, view: next as CalendarView }), replace: true });
@@ -330,7 +340,7 @@ export function CalendarPage() {
           />
         </Group>
       </Group>
-      <SourceLegend kinds={kinds} hidden={hidden} onToggle={toggleKind} />
+      <SourceLegend kinds={kinds} hidden={hidden} onToggle={toggleKind} providerName={providerName} />
       {items.isError && (
         <Alert color="red" title={t("couldNotLoad")}>
           {items.error.message}

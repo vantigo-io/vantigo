@@ -20,7 +20,7 @@ import (
 // client's language, not this module's. A free one is left out, since the
 // view answers "when can I book them". Beside them, while the colleague's
 // Outlook sync is on, the busy and out-of-office events it read back from
-// their mailbox, as calendar.outlook items with no title (calendar Outlook
+// their mailbox, as calendar.mailbox items with no title (calendar Outlook
 // sync design O9.7) — tentative and working elsewhere are not busy, as a
 // tentative answer is not. No source is asked — a colleague's
 // follow-ups, tasks and hours are the other modules' data behind their own

@@ -156,7 +156,7 @@ func TestEventOf(t *testing.T) {
 	}
 
 	allDay := &contracts.MailboxEvent{
-		Subject: "Ferie", AllDay: true, TimeZone: "Europe/Oslo", ShowAs: contracts.ShowAsOOF,
+		Subject: "Ferie", AllDay: true, TimeZone: "Europe/Oslo", ShowAs: contracts.ShowAsOutOfOffice,
 		StartDate: time.Date(2026, 12, 24, 0, 0, 0, 0, time.UTC), EndDate: time.Date(2026, 12, 26, 0, 0, 0, 0, time.UTC),
 	}
 	update, err := eventOf(contracts.MailboxOp{Kind: contracts.MailboxOpUpdate, EventID: "AAMk", Event: allDay}, testPrefix)
@@ -255,4 +255,33 @@ func mustCanon(t *testing.T, raw []byte) []byte {
 	}
 	out, _ := json.Marshal(v)
 	return out
+}
+
+// TestGraphShowAs pins the map between the contract's busy words and
+// Graph's (Google Workspace design G10): each contract value is sent as
+// Graph's own, Graph's value is read back as the contract's whatever its
+// case, one the contract does not name is "", and a contract value Graph
+// has no word for is refused before anything is sent.
+func TestGraphShowAs(t *testing.T) {
+	t.Parallel()
+	for contract, graph := range map[string]string{
+		contracts.ShowAsFree: "free", contracts.ShowAsTentative: "tentative", contracts.ShowAsBusy: "busy",
+		contracts.ShowAsOutOfOffice: "oof", contracts.ShowAsWorkingElsewhere: "workingElsewhere",
+	} {
+		ev, err := eventOf(contracts.MailboxOp{Kind: contracts.MailboxOpUpdate, EventID: "AAMk",
+			Event: &contracts.MailboxEvent{Subject: "x", ShowAs: contract, StartsAt: time.Unix(0, 0), EndsAt: time.Unix(3600, 0)}}, testPrefix)
+		if err != nil || ev.ShowAs != graph {
+			t.Errorf("%s sent as %q (%v), want %q", contract, ev.ShowAs, err, graph)
+		}
+		if got := showAsOfGraph(strings.ToUpper(graph)); got != contract {
+			t.Errorf("Graph's %q read as %q, want %q", graph, got, contract)
+		}
+	}
+	if got := showAsOfGraph("unknown"); got != "" {
+		t.Errorf("Graph's unknown read as %q, want none", got)
+	}
+	if _, err := eventOf(contracts.MailboxOp{Kind: contracts.MailboxOpUpdate, EventID: "AAMk",
+		Event: &contracts.MailboxEvent{ShowAs: "oof"}}, testPrefix); err == nil {
+		t.Error("Graph's own word as the contract's value was sent, want it refused")
+	}
 }

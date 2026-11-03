@@ -38,18 +38,28 @@ import (
 //
 // For each person, in order:
 //
-//  1. The provider's Status: unavailable writes nothing and calls nothing —
-//     the row is retried in an hour, a clean-up owed kept owed.
+//  0. Workforce.DirectoryAccount under AsUser, which picks the provider
+//     (Google Workspace design G3): the one filled under the account's
+//     Provider, when the account is usable. Every call of the sync goes to
+//     that provider, and a clean-up to the one the row's mailbox is of.
+//  1. The provider's Status — the account's provider's, or with none the
+//     row's — unavailable writes nothing and calls nothing more — the row is
+//     retried in an hour, a clean-up owed kept owed. A person with neither,
+//     among providers that are on, asks no status: step 3 answers
+//     no_account.
 //  2. Access.UserHolds(calendar:access): a person who may no longer use
 //     Calendar, a provider in cleanup (the admin switch off) or a clean-up
 //     owed (turned off, the target changed) cleans up
 //     (O8). Then: off when turned off; unavailable (error unavailable) when
 //     the person or the provider cannot go on; otherwise — a target change —
 //     the sync goes on at once, from a reconcile.
-//  3. Workforce.DirectoryAccount under AsUser: none, a disabled one (a
-//     leaver's) or another provider's, cleans up what was written with the
-//     mailbox stored and is unavailable, error no_account. A different mailbox than the stored one cleans the
-//     old one up first and starts over on the new from a reconcile.
+//  3. The account read at step 0: none, a disabled one (a leaver's) or one
+//     of a provider no enabled module fills, cleans up what was written with
+//     the mailbox stored and is unavailable, error no_account. A different
+//     mailbox than the stored one — or the same id under another provider —
+//     cleans the old one up first, on the row's provider, and starts over on
+//     the new from a reconcile; the row records the mailbox with its
+//     provider.
 //  4. Target own: EnsureCalendar named Vantigo; a changed id forgets the map.
 //  5. Reconcile — the first sync, a create whose outcome is unknown, a
 //     clean-up, and the first sync of each business day: Find from the
@@ -102,14 +112,15 @@ import (
 //     has passed does not ask, and the next one does.
 //
 // Change notifications (O11.6): each cycle, before it claims anyone, holding
-// no connection across the provider's read, asks
-// Notified for the mailboxes the directory notified since the latest notice
-// it took (held on the worker, the poll interval ago at its first cycle),
+// no connection across the provider's read, asks each provider in turn
+// (Google Workspace design G3), with a cursor of its own, for the mailboxes
+// its directory notified since the latest notice it took from it (held on
+// the worker per provider key, the poll interval ago at its first cycle),
 // less mailboxNoticesOverlap — a notice whose mark committed after a later
 // one was read, or stamped by another replica's slightly slower clock, is
 // asked for again rather than lost — and makes due at once, in one
-// statement for the cycle's notices, each row of a notified mailbox,
-// compared case-insensitively, that is on, active or pending, not backing
+// statement for the provider's notices, each row of a notified mailbox of
+// that provider, compared case-insensitively, that is on, active or pending, not backing
 // off a failure, last synced before the notice and not due already. A
 // notice asked for twice marks nothing once the row has synced since. A
 // notice is a nudge: the reads stay the truth. A Notified that fails is
@@ -121,8 +132,8 @@ import (
 // a failure. The person is parked: unavailable, error not_connected (never
 // connected, or the connection closing) or reconnect (the provider refused
 // it), the next sync a day later with the attempts unchanged. That next sync
-// is the long re-check: it runs the cycle's steps in order — the status,
-// calendar:access, the directory account, each with its clean-up — before
+// is the long re-check: it runs the cycle's steps in order — the directory account,
+// the status, calendar:access, each with its clean-up — before
 // its first provider call parks again or syncs. A connection gone runs the
 // clean-up first (parked), by the removals a closing connection still
 // serves, or — its token forgotten, a leaver's — forgetting the copies left
@@ -233,19 +244,22 @@ type MailboxSyncWorker struct {
 	deps module.Deps
 	srv  *server
 
-	// noticesMu guards noticesSince, the latest notice's At a cycle took
-	// (design O11.6): zero until the first cycle sets it a poll ago.
-	noticesMu    sync.Mutex
-	noticesSince time.Time
-	// noticesFull is whether the last Notified answered
+	// noticesMu guards the cursors below, each kept per provider key (Google
+	// Workspace design G3): every provider's notices and connections are its
+	// own rows, read from its own instant.
+	noticesMu sync.Mutex
+	// noticesSince is the latest notice's At a cycle took from the provider
+	// (design O11.6): absent until the first cycle sets it a poll ago.
+	noticesSince map[string]time.Time
+	// noticesFull is whether the provider's last Notified answered
 	// contracts.MailboxNoticesMax: the next asks from noticesSince exactly,
 	// the next page, not with the overlap that would answer the same page.
-	noticesFull bool
+	noticesFull map[string]bool
 	// connectionsSince and connectionsFull are Connections' cursor, as
 	// noticesSince and noticesFull are Notified's (Outlook connection design
 	// M9), under noticesMu.
-	connectionsSince time.Time
-	connectionsFull  bool
+	connectionsSince map[string]time.Time
+	connectionsFull  map[string]bool
 }
 
 var _ worker.Worker = (*MailboxSyncWorker)(nil)
@@ -258,7 +272,11 @@ func NewMailboxSyncWorker(d module.Deps) *MailboxSyncWorker {
 	if d.Clock == nil {
 		d.Clock = time.Now
 	}
-	return &MailboxSyncWorker{deps: d, srv: newServer(d)}
+	return &MailboxSyncWorker{
+		deps: d, srv: newServer(d),
+		noticesSince: map[string]time.Time{}, noticesFull: map[string]bool{},
+		connectionsSince: map[string]time.Time{}, connectionsFull: map[string]bool{},
+	}
 }
 
 // Name identifies this worker in the runner's logs.
@@ -355,7 +373,8 @@ func (w *MailboxSyncWorker) releaseClaim(ctx context.Context, userID uuid.UUID, 
 }
 
 // takeNotices makes the notified people's syncs due (design O11.6): it asks
-// the provider for the mailboxes notified since mailboxNoticesOverlap
+// each provider in turn (Google Workspace design G3), with its own cursor,
+// for the mailboxes notified since mailboxNoticesOverlap
 // before the latest notice taken — since that notice itself after a full
 // page (noticesFull), so a page of contracts.MailboxNoticesMax is followed
 // by the next rather than asked again — and marks their rows due at now in
@@ -366,41 +385,55 @@ func (w *MailboxSyncWorker) releaseClaim(ctx context.Context, userID uuid.UUID, 
 // moves on to the latest At only when that statement worked; one that
 // fails is logged, and the same notices are asked for again next cycle.
 // Without a provider nothing is asked; a failing Notified is logged by its
-// code and the cycle goes on.
+// code and the cycle goes on to the next provider. A notice marks only the
+// rows of its own provider's mailboxes.
 //
-// The same step then takes the connections that moved (takeConnections).
+// The same step then takes each provider's connections that moved
+// (takeConnections).
 func (w *MailboxSyncWorker) takeNotices(ctx context.Context) {
-	if w.srv.mailboxCalendar() == nil {
+	providers := w.srv.deps.MailboxCalendars
+	if len(providers) == 0 {
 		return
 	}
 	w.noticesMu.Lock()
 	defer w.noticesMu.Unlock()
+	if w.noticesSince == nil {
+		w.noticesSince, w.noticesFull = map[string]time.Time{}, map[string]bool{}
+		w.connectionsSince, w.connectionsFull = map[string]time.Time{}, map[string]bool{}
+	}
 	now := w.deps.Clock()
-	w.takeNotified(ctx, now)
-	w.takeConnections(ctx, now)
+	for _, p := range providers {
+		if ctx.Err() != nil {
+			return
+		}
+		key := p.Key()
+		w.takeNotified(ctx, key, now)
+		w.takeConnections(ctx, key, now)
+	}
 }
 
-// takeNotified is takeNotices' Notified part. w.noticesMu is held.
-func (w *MailboxSyncWorker) takeNotified(ctx context.Context, now time.Time) {
-	if w.noticesSince.IsZero() {
-		w.noticesSince = now.Add(-w.poll())
+// takeNotified is takeNotices' Notified part for the provider key.
+// w.noticesMu is held.
+func (w *MailboxSyncWorker) takeNotified(ctx context.Context, key string, now time.Time) {
+	if w.noticesSince[key].IsZero() {
+		w.noticesSince[key] = now.Add(-w.poll())
 	}
-	since := w.noticesSince.Add(-mailboxNoticesOverlap)
-	if w.noticesFull {
-		since = w.noticesSince
+	since := w.noticesSince[key].Add(-mailboxNoticesOverlap)
+	if w.noticesFull[key] {
+		since = w.noticesSince[key]
 	}
-	notices, err := w.srv.mailboxNotified(ctx, since)
+	notices, err := w.srv.mailboxNotified(ctx, key, since)
 	if err != nil {
 		w.deps.Logger.WarnContext(ctx, "calendar: the mailboxes notified could not be read; the poll goes on",
-			"worker", mailboxWorkerName, "error", mailboxErrorCode(err))
+			"worker", mailboxWorkerName, "provider", key, "error", mailboxErrorCode(err))
 		return
 	}
 	if len(notices) == 0 {
-		w.noticesFull = false
+		w.noticesFull[key] = false
 		return
 	}
 	mailboxes, ats := make([]string, len(notices)), make([]time.Time, len(notices))
-	latest := w.noticesSince
+	latest := w.noticesSince[key]
 	for i, n := range notices {
 		mailboxes[i], ats[i] = n.Mailbox, n.At
 		if n.At.After(latest) {
@@ -408,16 +441,16 @@ func (w *MailboxSyncWorker) takeNotified(ctx context.Context, now time.Time) {
 		}
 	}
 	marked, err := w.srv.queries().MarkMailboxSyncNotified(ctx, store.MarkMailboxSyncNotifiedParams{
-		Now: now, Mailboxes: mailboxes, Ats: ats,
+		Now: now, Provider: key, Mailboxes: mailboxes, Ats: ats,
 	})
 	if err != nil {
 		w.deps.Logger.WarnContext(ctx, "calendar: the notified mailboxes' syncs could not be made due; they are asked for again",
-			"worker", mailboxWorkerName, "error", mailboxErrorCode(err))
+			"worker", mailboxWorkerName, "provider", key, "error", mailboxErrorCode(err))
 		return
 	}
-	w.noticesSince, w.noticesFull = latest, len(notices) >= contracts.MailboxNoticesMax
+	w.noticesSince[key], w.noticesFull[key] = latest, len(notices) >= contracts.MailboxNoticesMax
 	w.deps.Logger.DebugContext(ctx, "calendar: mailbox change notices taken",
-		"worker", mailboxWorkerName, "notices", len(notices), "due", marked)
+		"worker", mailboxWorkerName, "provider", key, "notices", len(notices), "due", marked)
 }
 
 // takeConnections wakes the people whose connection to the provider moved
@@ -432,27 +465,28 @@ func (w *MailboxSyncWorker) takeNotified(ctx context.Context, now time.Time) {
 // row has synced past it; one written within the overlap — the change
 // committed during that person's own sync, or on a clock behind — is. connectionsSince moves on only when the
 // statement worked; a failing Connections is logged by its code and the
-// cycle goes on. w.noticesMu is held.
-func (w *MailboxSyncWorker) takeConnections(ctx context.Context, now time.Time) {
-	if w.connectionsSince.IsZero() {
-		w.connectionsSince = now.Add(-w.poll())
+// cycle goes on. Each provider has its own cursor and marks only the rows of
+// its own mailboxes. w.noticesMu is held.
+func (w *MailboxSyncWorker) takeConnections(ctx context.Context, key string, now time.Time) {
+	if w.connectionsSince[key].IsZero() {
+		w.connectionsSince[key] = now.Add(-w.poll())
 	}
-	since := w.connectionsSince.Add(-mailboxNoticesOverlap)
-	if w.connectionsFull {
-		since = w.connectionsSince
+	since := w.connectionsSince[key].Add(-mailboxNoticesOverlap)
+	if w.connectionsFull[key] {
+		since = w.connectionsSince[key]
 	}
-	changes, err := w.srv.mailboxConnections(ctx, since)
+	changes, err := w.srv.mailboxConnections(ctx, key, since)
 	if err != nil {
 		w.deps.Logger.WarnContext(ctx, "calendar: the connections that moved could not be read; the re-checks go on",
-			"worker", mailboxWorkerName, "error", mailboxErrorCode(err))
+			"worker", mailboxWorkerName, "provider", key, "error", mailboxErrorCode(err))
 		return
 	}
 	if len(changes) == 0 {
-		w.connectionsFull = false
+		w.connectionsFull[key] = false
 		return
 	}
 	mailboxes, ats := make([]string, len(changes)), make([]time.Time, len(changes))
-	latest := w.connectionsSince
+	latest := w.connectionsSince[key]
 	for i, c := range changes {
 		// A row written up to the overlap after the change is still marked:
 		// the change may have committed while that person's own sync ran,
@@ -463,16 +497,16 @@ func (w *MailboxSyncWorker) takeConnections(ctx context.Context, now time.Time) 
 		}
 	}
 	marked, err := w.srv.queries().MarkMailboxSyncConnected(ctx, store.MarkMailboxSyncConnectedParams{
-		Now: now, Mailboxes: mailboxes, Ats: ats,
+		Now: now, Provider: key, Mailboxes: mailboxes, Ats: ats,
 	})
 	if err != nil {
 		w.deps.Logger.WarnContext(ctx, "calendar: the syncs of the connections that moved could not be made due; they are asked for again",
-			"worker", mailboxWorkerName, "error", mailboxErrorCode(err))
+			"worker", mailboxWorkerName, "provider", key, "error", mailboxErrorCode(err))
 		return
 	}
-	w.connectionsSince, w.connectionsFull = latest, len(changes) >= contracts.ConnectionChangesMax
+	w.connectionsSince[key], w.connectionsFull[key] = latest, len(changes) >= contracts.ConnectionChangesMax
 	w.deps.Logger.DebugContext(ctx, "calendar: connection changes taken",
-		"worker", mailboxWorkerName, "changes", len(changes), "due", marked)
+		"worker", mailboxWorkerName, "provider", key, "changes", len(changes), "due", marked)
 }
 
 // mailboxResult is what one person's sync writes to their row.
@@ -496,9 +530,25 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 	call, cancel := context.WithTimeout(ctx, mailboxPersonDeadline)
 	defer cancel()
 	now := w.deps.Clock()
-	st, err := w.srv.mailboxStatus(call)
+	// The person's account picks the provider (Google Workspace design G3):
+	// key is the provider that serves it, "" for none. The status asked is
+	// that provider's — or, with none, the one the row's mailbox is of, whose
+	// clean-up may be owed. A person neither has, among providers that are
+	// on, has nothing to ask: step 3 answers no_account.
+	acct, err := w.srv.workforceDirectoryAccount(contracts.AsUser(withoutRequest{call}, r.UserID))
 	if err != nil {
-		return w.failed(ctx, r, now, "read the provider's status", err)
+		return w.failed(ctx, r, now, "read the person's directory account", err)
+	}
+	key := w.srv.accountProvider(acct)
+	statusKey := key
+	if statusKey == "" {
+		statusKey = rowProvider(r)
+	}
+	st := contracts.MailboxStatus{State: contracts.MailboxAvailable}
+	if statusKey != "" || len(w.srv.deps.MailboxCalendars) == 0 {
+		if st, err = w.srv.mailboxStatus(call, statusKey); err != nil {
+			return w.failed(ctx, r, now, "read the provider's status", err)
+		}
 	}
 	if st.State != contracts.MailboxAvailable && st.State != contracts.MailboxCleanup {
 		state := mailboxStateUnavailable
@@ -534,15 +584,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 		r.State = mailboxStatePending
 	}
 
-	acct, err := w.srv.workforceDirectoryAccount(contracts.AsUser(withoutRequest{call}, r.UserID))
-	if err != nil {
-		return w.failed(ctx, r, now, "read the person's directory account", err)
-	}
-	key := ""
-	if p := w.srv.mailboxCalendar(); p != nil {
-		key = p.Key()
-	}
-	if !usableAccount(acct, key) {
+	if key == "" {
 		if err := w.cleanup(ctx, call, &r, now, true); err != nil {
 			return w.failed(ctx, r, now, "clean up", err)
 		}
@@ -551,14 +593,18 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 			next: timePtr(now.Add(mailboxRetryUnavailable)), reconcile: true,
 		})
 	}
+	// A mailbox of another provider than the row's is a changed mailbox
+	// (design O8, G3): the clean-up runs on the row's provider, then the row
+	// takes the new one.
 	mailbox := acct.ExternalID
-	if r.Mailbox != nil && *r.Mailbox != mailbox {
+	changed := r.Mailbox == nil || *r.Mailbox != mailbox || rowProvider(r) != key
+	if r.Mailbox != nil && changed {
 		if err := w.cleanup(ctx, call, &r, now, true); err != nil {
 			return w.failed(ctx, r, now, "clean up the previous mailbox", err)
 		}
 	}
-	if r.Mailbox == nil || *r.Mailbox != mailbox {
-		r.Mailbox = &mailbox
+	if changed {
+		r.Mailbox, r.Provider = &mailbox, &key
 		if err := w.setMailbox(ctx, r, now); err != nil {
 			return err
 		}
@@ -570,7 +616,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 		if r.CalendarID != nil {
 			known = *r.CalendarID
 		}
-		id, err := w.srv.mailboxEnsure(call, mailbox, known, mailboxCalendarName)
+		id, err := w.srv.mailboxEnsure(call, key, mailbox, known, mailboxCalendarName)
 		if err != nil {
 			return w.refusedOrFailed(ctx, call, r, now, "ensure the Vantigo calendar", err)
 		}
@@ -629,7 +675,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 	d := newMailboxDiff(r.UserID, desired)
 	d.load(rows)
 	if reconcile {
-		refs, err := w.srv.mailboxFind(call, mailbox, calendarID, p.w.fromAt)
+		refs, err := w.srv.mailboxFind(call, key, mailbox, calendarID, p.w.fromAt)
 		if err != nil {
 			return w.refusedOrFailed(ctx, call, r, now, "list the mailbox's copies", err)
 		}
@@ -640,7 +686,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 		return err
 	}
 
-	stop, opErr, createUnknown, err := w.apply(ctx, call, r.UserID, mailbox, calendarID, ops, now)
+	stop, opErr, createUnknown, err := w.apply(ctx, call, r.UserID, key, mailbox, calendarID, ops, now)
 	if err != nil {
 		return err
 	}
@@ -672,7 +718,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 	if err != nil {
 		return err
 	}
-	w.watch(ctx, call, r.UserID, mailbox)
+	w.watch(ctx, call, r.UserID, key, mailbox)
 	return nil
 }
 
@@ -681,11 +727,11 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 // not at all once its deadline has passed: the next sync asks. Its error is
 // logged by its code and changes nothing: the row is already written, and
 // the poll runs either way.
-func (w *MailboxSyncWorker) watch(ctx, call context.Context, userID uuid.UUID, mailbox string) {
+func (w *MailboxSyncWorker) watch(ctx, call context.Context, userID uuid.UUID, provider, mailbox string) {
 	if call.Err() != nil {
 		return
 	}
-	if err := w.srv.mailboxWatch(call, mailbox); err != nil {
+	if err := w.srv.mailboxWatch(call, provider, mailbox); err != nil {
 		w.deps.Logger.WarnContext(ctx, "calendar: a person's mailbox could not be watched for changes; the poll goes on",
 			"worker", mailboxWorkerName, "user_id", userID.String(), "error", mailboxErrorCode(err))
 	}
@@ -860,7 +906,7 @@ func createOp(it *mailboxItem) pendingOp {
 // failure among a slice's ops (opErr) — throttled or any other, after which
 // no further slice is sent — and whether a create's outcome is unknown, or
 // the database's error.
-func (w *MailboxSyncWorker) apply(ctx, call context.Context, userID uuid.UUID, mailbox, calendarID string, queue []pendingOp, now time.Time) (stop, opErr error, createUnknown bool, err error) {
+func (w *MailboxSyncWorker) apply(ctx, call context.Context, userID uuid.UUID, provider, mailbox, calendarID string, queue []pendingOp, now time.Time) (stop, opErr error, createUnknown bool, err error) {
 	for len(queue) > 0 {
 		if call.Err() != nil {
 			return nil, call.Err(), false, nil
@@ -872,7 +918,7 @@ func (w *MailboxSyncWorker) apply(ctx, call context.Context, userID uuid.UUID, m
 		for i, p := range slice {
 			ops[i] = p.op
 		}
-		results, callErr := w.srv.mailboxApply(call, mailbox, calendarID, ops)
+		results, callErr := w.srv.mailboxApply(call, provider, mailbox, calendarID, ops)
 		if callErr != nil {
 			if mailboxRefusal(callErr) {
 				return callErr, nil, false, nil
@@ -947,27 +993,27 @@ func (w *MailboxSyncWorker) apply(ctx, call context.Context, userID uuid.UUID, m
 // a mailbox move's among them, goes on.
 func (w *MailboxSyncWorker) cleanup(ctx, call context.Context, r *store.CalendarMailboxSync, now time.Time, unwatch bool) error {
 	if r.Mailbox != nil {
-		mailbox := *r.Mailbox
+		provider, mailbox := rowProvider(*r), *r.Mailbox
 		var err error
 		if r.CalendarID != nil {
 			var meetings, released int
-			meetings, released, err = w.meetingsIn(ctx, call, r.UserID, mailbox, *r.CalendarID)
+			meetings, released, err = w.meetingsIn(ctx, call, r.UserID, provider, mailbox, *r.CalendarID)
 			switch {
 			case err != nil:
 			case meetings > 0 || released > 0:
 				w.deps.Logger.InfoContext(ctx, "calendar: a person's Vantigo calendar holds meetings; only the copies in it are deleted, the calendar left",
 					"worker", mailboxWorkerName, "user_id", r.UserID.String(), "meetings", meetings, "released", released)
-				err = w.cleanupEvents(ctx, call, r.UserID, mailbox, *r.CalendarID, now)
+				err = w.cleanupEvents(ctx, call, r.UserID, provider, mailbox, *r.CalendarID, now)
 			default:
-				err = w.srv.mailboxDeleteCalendar(call, mailbox, *r.CalendarID)
+				err = w.srv.mailboxDeleteCalendar(call, provider, mailbox, *r.CalendarID)
 				if errors.Is(err, contracts.ErrCalendarNotOurs) {
 					w.deps.Logger.WarnContext(ctx, "calendar: a person's Vantigo calendar is not one the provider made; only the copies in it are deleted",
 						"worker", mailboxWorkerName, "user_id", r.UserID.String())
-					err = w.cleanupEvents(ctx, call, r.UserID, mailbox, *r.CalendarID, now)
+					err = w.cleanupEvents(ctx, call, r.UserID, provider, mailbox, *r.CalendarID, now)
 				}
 			}
 		} else {
-			err = w.cleanupEvents(ctx, call, r.UserID, mailbox, "", now)
+			err = w.cleanupEvents(ctx, call, r.UserID, provider, mailbox, "", now)
 		}
 		switch {
 		case err == nil:
@@ -978,7 +1024,7 @@ func (w *MailboxSyncWorker) cleanup(ctx, call context.Context, r *store.Calendar
 			return err
 		}
 		if unwatch {
-			err := w.srv.mailboxUnwatch(call, mailbox)
+			err := w.srv.mailboxUnwatch(call, provider, mailbox)
 			switch {
 			case err == nil:
 			case errors.Is(err, contracts.ErrMailboxGone) || errors.Is(err, contracts.ErrMailboxUnknown) ||
@@ -1008,8 +1054,8 @@ func (w *MailboxSyncWorker) cleanup(ctx, call context.Context, r *store.Calendar
 // deleted whole (design O8, O10.8): the events Find answers there that are
 // meetings, and the person's released rows — a copy they turned into a
 // meeting, whatever Find now says of it.
-func (w *MailboxSyncWorker) meetingsIn(ctx, call context.Context, userID uuid.UUID, mailbox, calendarID string) (int, int, error) {
-	refs, err := w.srv.mailboxFind(call, mailbox, calendarID, time.Time{})
+func (w *MailboxSyncWorker) meetingsIn(ctx, call context.Context, userID uuid.UUID, provider, mailbox, calendarID string) (int, int, error) {
+	refs, err := w.srv.mailboxFind(call, provider, mailbox, calendarID, time.Time{})
 	if err != nil {
 		return 0, 0, err
 	}
@@ -1038,8 +1084,8 @@ func (w *MailboxSyncWorker) meetingsIn(ctx, call context.Context, userID uuid.UU
 // released row's event — is never deleted, only forgotten. A refusal is
 // answered as is; a list as long as Find's bound is answered as a failure
 // once its deletes are done, so the rest are deleted on the retry.
-func (w *MailboxSyncWorker) cleanupEvents(ctx, call context.Context, userID uuid.UUID, mailbox, calendarID string, now time.Time) error {
-	refs, err := w.srv.mailboxFind(call, mailbox, calendarID, time.Time{})
+func (w *MailboxSyncWorker) cleanupEvents(ctx, call context.Context, userID uuid.UUID, provider, mailbox, calendarID string, now time.Time) error {
+	refs, err := w.srv.mailboxFind(call, provider, mailbox, calendarID, time.Time{})
 	if err != nil {
 		return err
 	}
@@ -1085,7 +1131,7 @@ func (w *MailboxSyncWorker) cleanupEvents(ctx, call context.Context, userID uuid
 		for i, id := range slice {
 			ops[i] = contracts.MailboxOp{Kind: contracts.MailboxOpDelete, EventID: id}
 		}
-		results, err := w.srv.mailboxApply(call, mailbox, calendarID, ops)
+		results, err := w.srv.mailboxApply(call, provider, mailbox, calendarID, ops)
 		if err != nil {
 			return err
 		}
@@ -1342,11 +1388,20 @@ func (w *MailboxSyncWorker) write(ctx context.Context, r store.CalendarMailboxSy
 // setMailbox records r's mailbox and calendar as soon as they are known.
 func (w *MailboxSyncWorker) setMailbox(ctx context.Context, r store.CalendarMailboxSync, now time.Time) error {
 	if err := w.srv.queries().SetMailboxSyncMailbox(ctx, store.SetMailboxSyncMailboxParams{
-		Mailbox: r.Mailbox, CalendarID: r.CalendarID, Now: now, UserID: r.UserID,
+		Mailbox: r.Mailbox, Provider: r.Provider, CalendarID: r.CalendarID, Now: now, UserID: r.UserID,
 	}); err != nil {
 		return fmt.Errorf("calendar: record the person's mailbox: %w", err)
 	}
 	return nil
+}
+
+// rowProvider is the key of the provider the row's mailbox is of (Google
+// Workspace design G3), "" while none is confirmed.
+func rowProvider(r store.CalendarMailboxSync) string {
+	if r.Provider == nil {
+		return ""
+	}
+	return *r.Provider
 }
 
 // forgetAll empties the person's map.

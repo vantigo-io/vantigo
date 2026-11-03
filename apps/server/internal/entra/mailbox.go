@@ -107,10 +107,26 @@ var mailboxGoneCodes = []string{
 	"MailboxNotEnabledForRESTAPI", "ErrorInvalidUser", "ErrorNonExistentMailbox", "Request_ResourceNotFound",
 }
 
-// The Graph event's values the contract's ShowAs names.
-var showAsValues = []string{
-	contracts.ShowAsFree, contracts.ShowAsTentative, contracts.ShowAsBusy,
-	contracts.ShowAsOOF, contracts.ShowAsWorkingElsewhere,
+// graphShowAs maps the contract's ShowAs values to the Graph event's
+// (Google Workspace design G10): the calendar's words are neutral, Graph's
+// are its own, and what Entra sends and reads in Graph is unchanged.
+var graphShowAs = map[string]string{
+	contracts.ShowAsFree:             "free",
+	contracts.ShowAsTentative:        "tentative",
+	contracts.ShowAsBusy:             "busy",
+	contracts.ShowAsOutOfOffice:      "oof",
+	contracts.ShowAsWorkingElsewhere: "workingElsewhere",
+}
+
+// showAsOfGraph is the contract's value for Graph's showAs, whatever its
+// case, "" for one the contract does not name.
+func showAsOfGraph(v string) string {
+	for contract, graph := range graphShowAs {
+		if strings.EqualFold(v, graph) {
+			return contract
+		}
+	}
+	return ""
 }
 
 // mailboxCalendar is the module's contracts.MailboxCalendar over client,
@@ -595,14 +611,15 @@ func eventOf(op contracts.MailboxOp, prefix string) (graphEvent, error) {
 	if showAs == "" {
 		showAs = contracts.ShowAsBusy
 	}
-	if !slices.Contains(showAsValues, showAs) {
+	graphValue, ok := graphShowAs[showAs]
+	if !ok {
 		return graphEvent{}, fmt.Errorf("entra: an event shown as %q", showAs)
 	}
 	out := graphEvent{
 		Subject:     e.Subject,
 		Body:        graphItemBody{ContentType: "text", Content: e.Body},
 		IsAllDay:    e.AllDay,
-		ShowAs:      showAs,
+		ShowAs:      graphValue,
 		Sensitivity: "normal",
 	}
 	if e.Private {

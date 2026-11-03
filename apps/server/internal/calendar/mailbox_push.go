@@ -280,7 +280,7 @@ func (s *server) mailboxProjected(p mailboxPush, it gen.CalendarItem) (mailboxIt
 func projectedShowAs(it gen.CalendarItem) string {
 	switch {
 	case it.Kind == "staff.absence":
-		return contracts.ShowAsOOF
+		return contracts.ShowAsOutOfOffice
 	case it.Kind == "time.entry" || it.Kind == "expenses.claim":
 		return contracts.ShowAsBusy
 	case it.AllDay:

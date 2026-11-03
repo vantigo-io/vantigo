@@ -126,6 +126,7 @@ type CalendarMailboxSync struct {
 	PutBackKey    *string
 	PutBackAt     *time.Time
 	ClaimedUntil  *time.Time
+	Provider      *string
 }
 
 type CalendarSetting struct {

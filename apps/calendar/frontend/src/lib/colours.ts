@@ -1,6 +1,12 @@
+/**
+ * The kind of a busy block read back from the person's mailbox calendar on
+ * `/items` (Outlook sync design O9.5), whatever the provider (Google
+ * Workspace design G10).
+ */
+export const MAILBOX_KIND = "calendar.mailbox";
+/** Kinds the server no longer answers: a saved filter naming one is dropped on read. */
+export const RETIRED_KINDS: readonly string[] = ["calendar.outlook"];
 /** The kind of an appointment's item on `/items`. */
-/** The kind of an Outlook busy block on `/items` (Outlook sync design O9.5). */
-export const OUTLOOK_KIND = "calendar.outlook";
 export const APPOINTMENT_KIND = "calendar.appointment";
 /** The kind of a subscribed calendar's item on `/items` (feed design D8). */
 export const SUBSCRIPTION_KIND = "calendar.subscription";
@@ -27,9 +33,9 @@ export const moduleOfKind = (kind: string): string => kind.split(".")[0];
 
 export const colourForModule = (module: string): string => `var(--vantigo-calendar-${moduleColours[module] ?? "gray"})`;
 
-/** A kind with a colour of its own, apart from its module's: Outlook's busy time is not an appointment. */
+/** A kind with a colour of its own, apart from its module's: the mailbox's busy time is not an appointment. */
 const kindColours: Record<string, string> = {
-  [OUTLOOK_KIND]: "cyan",
+  [MAILBOX_KIND]: "cyan",
 };
 
 export const colourForKind = (kind: string): string =>

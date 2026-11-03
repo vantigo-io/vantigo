@@ -105,7 +105,7 @@ export interface SettingsPageProps {
 
 /**
  * My calendar (feed design D9): the person's own calendar addresses — the
- * full calendar and a busy-only one — their calendar in Outlook (Outlook
+ * full calendar and a busy-only one — their calendar in their mailbox (Outlook
  * sync design O5), and the calendars from elsewhere they subscribe to. Everything on it is the caller's own; the host guards the
  * route with `calendar:access`.
  */
@@ -116,7 +116,7 @@ export const SettingsPage = ({ connectionButton }: SettingsPageProps = {}) => {
     <Stack gap="lg">
       <PageHeader title={t("settings.title")} description={t("settings.description")} />
       <FeedSection />
-      <OutlookSection connectionButton={connectionButton} />
+      <MailboxSection connectionButton={connectionButton} />
       <SubscriptionsSection />
       {/* The workspace's, not the person's: the channel invitations go out from (integrations design T6). */}
       {meta.data?.canManage === true && <InvitationsCard />}
@@ -276,29 +276,35 @@ const FeedCard = ({ variant, address }: { variant: FeedVariant; address?: FeedAd
 const knownOr = (exists: (key: string) => boolean, key: string, fallback: string) => (exists(key) ? key : fallback);
 
 /**
- * Outlook (Outlook sync design O5): the person's own copy of their Vantigo
- * calendar in their Microsoft 365 mailbox. Every change is saved as it is
+ * The mailbox sync (Outlook sync design O5; any provider, Google Workspace
+ * design G10): the person's own copy of their Vantigo calendar in their
+ * mailbox, the card's words naming the provider that serves them
+ * (`provider.displayName` — Outlook) and neutral words while none does. Every change is saved as it is
  * made, under If-Match on the revision read; a revision that moved on
  * reloads the card. While the sync cannot run the toggle says why and only
  * turns it off. Under the description, the `connection.button` slot shows
- * the person's Outlook connection when the host fills it; while the sync
+ * the person's connection to the provider when the host fills it; while the sync
  * waits for that connection (not_connected, reconnect) the card names the
  * button above it, keeps the toggle and Sync now usable, and reads itself
  * again until the first sync.
  */
-const OutlookSection = ({ connectionButton }: SettingsPageProps) => {
+const MailboxSection = ({ connectionButton }: SettingsPageProps) => {
   const { t, i18n, locale } = useI18n("calendar");
   const queryClient = useQueryClient();
   const titleId = useId();
   const sync = useQuery(mailboxSyncQueryOptions());
+  const providerName = sync.data?.provider?.displayName;
+  const provider = providerName ?? t("mailboxSync.unnamed");
   const exists = (key: string) => i18n.exists(key, { ns: "calendar" });
-  const kindLabel = (kind: string) => (exists(kindLabelKey(kind)) ? t(kindLabelKey(kind)) : kind);
+  const kindLabel = (kind: string) => (exists(kindLabelKey(kind)) ? t(kindLabelKey(kind), { provider }) : kind);
   const availabilityText = (availability: string) =>
-    t(knownOr(exists, `outlook.availability_${availability}`, "outlook.availability_unavailable"));
+    t(knownOr(exists, `mailboxSync.availability_${availability}`, "mailboxSync.availability_unavailable"), {
+      provider,
+    });
 
   const onRefused = async (error: Error, title: string) => {
     if (error instanceof ApiConflictError && error.code === REVISION_MISMATCH) {
-      notifications.show({ color: "yellow", title: t("outlook.changedElsewhere"), message: "" });
+      notifications.show({ color: "yellow", title: t("mailboxSync.changedElsewhere"), message: "" });
     } else if (error instanceof ApiConflictError && error.code === MAILBOX_SYNC_UNAVAILABLE) {
       notifications.show({ color: "red", title, message: availabilityText(error.detail ?? "") });
     } else {
@@ -313,16 +319,16 @@ const OutlookSection = ({ connectionButton }: SettingsPageProps) => {
     mutationFn: ({ revision, write }: { revision: number; write: MailboxSyncWrite }) =>
       updateMailboxSync(revision, write),
     onSuccess: (answer) => queryClient.setQueryData(mailboxSyncQueryKey, answer),
-    onError: (error: Error) => onRefused(error, t("outlook.couldNotSave")),
+    onError: (error: Error) => onRefused(error, t("mailboxSync.couldNotSave")),
   });
 
   const run = useMutation({
     mutationFn: runMailboxSync,
     onSuccess: (answer) => {
       queryClient.setQueryData(mailboxSyncQueryKey, answer);
-      notifications.show({ color: "teal", title: t("outlook.syncRequested"), message: "" });
+      notifications.show({ color: "teal", title: t("mailboxSync.syncRequested"), message: "" });
     },
-    onError: (error: Error) => onRefused(error, t("outlook.couldNotSync")),
+    onError: (error: Error) => onRefused(error, t("mailboxSync.couldNotSync")),
   });
 
   const data = sync.data;
@@ -345,17 +351,17 @@ const OutlookSection = ({ connectionButton }: SettingsPageProps) => {
           <IconCalendarShare size={22} stroke={1.5} aria-hidden style={{ flexShrink: 0, marginTop: 2 }} />
           <Stack gap={0}>
             <Title order={4} id={titleId}>
-              {t("outlook.heading")}
+              {providerName ? t("mailboxSync.heading", { provider }) : t("mailboxSync.headingUnnamed")}
             </Title>
             <Text size="sm" c="dimmed">
-              {t("outlook.description")}
+              {t("mailboxSync.description", { provider })}
             </Text>
           </Stack>
         </Group>
         {connectionButton?.({ feature: "calendar", returnTo: "/calendar/settings" })}
 
         {sync.isError && (
-          <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("outlook.couldNotLoad")}>
+          <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("mailboxSync.couldNotLoad")}>
             {sync.error.message}
           </Alert>
         )}
@@ -363,7 +369,7 @@ const OutlookSection = ({ connectionButton }: SettingsPageProps) => {
         {data && (
           <>
             <Switch
-              label={t("outlook.toggle")}
+              label={t("mailboxSync.toggle", { provider })}
               checked={data.enabled}
               // Off is always taken; on only while the sync can run.
               disabled={busy || (!available && !data.enabled)}
@@ -378,27 +384,27 @@ const OutlookSection = ({ connectionButton }: SettingsPageProps) => {
             {data.enabled && (
               <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="lg">
                 <Radio.Group
-                  label={t("outlook.where")}
+                  label={t("mailboxSync.where")}
                   value={data.target}
                   onChange={(value) => write(data, { target: value as MailboxSyncWrite["target"] })}
                 >
                   <Stack gap="xs" mt={6}>
                     <Radio
                       value="default"
-                      label={t("outlook.targetDefault")}
-                      description={t("outlook.targetDefaultHelp")}
+                      label={t("mailboxSync.targetDefault")}
+                      description={t("mailboxSync.targetDefaultHelp", { provider })}
                       disabled={busy || !available}
                     />
                     <Radio
                       value="own"
-                      label={t("outlook.targetOwn")}
-                      description={t("outlook.targetOwnHelp")}
+                      label={t("mailboxSync.targetOwn")}
+                      description={t("mailboxSync.targetOwnHelp")}
                       disabled={busy || !available}
                     />
                   </Stack>
                 </Radio.Group>
                 <Checkbox.Group
-                  label={t("outlook.what")}
+                  label={t("mailboxSync.what")}
                   value={data.kinds}
                   onChange={(kinds) => write(data, { kinds })}
                 >
@@ -424,16 +430,16 @@ const OutlookSection = ({ connectionButton }: SettingsPageProps) => {
                   </Stack>
                 </Checkbox.Group>
                 <Radio.Group
-                  label={t("outlook.titles")}
+                  label={t("mailboxSync.titles")}
                   value={data.detail}
                   onChange={(value) => write(data, { detail: value as MailboxSyncWrite["detail"] })}
                 >
                   <Stack gap="xs" mt={6}>
-                    <Radio value="full" label={t("outlook.detailFull")} disabled={busy || !available} />
+                    <Radio value="full" label={t("mailboxSync.detailFull")} disabled={busy || !available} />
                     <Radio
                       value="busy"
-                      label={t("outlook.detailBusy")}
-                      description={t("outlook.detailBusyHelp")}
+                      label={t("mailboxSync.detailBusy")}
+                      description={t("mailboxSync.detailBusyHelp")}
                       disabled={busy || !available}
                     />
                   </Stack>
@@ -444,11 +450,11 @@ const OutlookSection = ({ connectionButton }: SettingsPageProps) => {
             {data.enabled && (
               <Stack gap={2}>
                 <Text size="sm" c="dimmed">
-                  {t("outlook.busyIn")}
+                  {t("mailboxSync.busyIn", { provider })}
                 </Text>
                 {data.busySyncedAt && (
                   <Text size="sm" c="dimmed" role="status">
-                    {t("outlook.busySynced", { relative: relativeTime(data.busySyncedAt, locale) })}
+                    {t("mailboxSync.busySynced", { relative: relativeTime(data.busySyncedAt, locale) })}
                   </Text>
                 )}
               </Stack>
@@ -456,15 +462,15 @@ const OutlookSection = ({ connectionButton }: SettingsPageProps) => {
 
             {data.enabled && (
               <Text size="sm" c="dimmed">
-                {t(data.target === "own" ? "outlook.twoWayOwn" : "outlook.twoWay")}
+                {t(data.target === "own" ? "mailboxSync.twoWayOwn" : "mailboxSync.twoWay", { provider })}
               </Text>
             )}
 
-            {data.enabled && data.putBack && <OutlookPutBack putBack={data.putBack} />}
+            {data.enabled && data.putBack && <MailboxPutBack putBack={data.putBack} provider={provider} />}
 
             {(data.enabled || data.state !== "off") && (
               <Group justify="space-between" gap="sm">
-                <OutlookState sync={data} />
+                <MailboxState sync={data} provider={provider} />
                 {data.enabled && (
                   <Button
                     size="xs"
@@ -474,7 +480,7 @@ const OutlookSection = ({ connectionButton }: SettingsPageProps) => {
                     disabled={!available || save.isPending}
                     onClick={() => run.mutate()}
                   >
-                    {t("outlook.syncNow")}
+                    {t("mailboxSync.syncNow")}
                   </Button>
                 )}
               </Group>
@@ -486,16 +492,18 @@ const OutlookSection = ({ connectionButton }: SettingsPageProps) => {
   );
 };
 
-/** The last change from Outlook that Vantigo did not take, and why it was put back. */
-const OutlookPutBack = ({ putBack }: { putBack: NonNullable<MailboxSync["putBack"]> }) => {
+/** The last change from the provider's calendar that Vantigo did not take, and why it was put back. */
+const MailboxPutBack = ({ putBack, provider }: { putBack: NonNullable<MailboxSync["putBack"]>; provider: string }) => {
   const { t, i18n, locale, formatters } = useI18n("calendar");
-  const reason = i18n.exists(`outlook.putBack_${putBack.reason}`, { ns: "calendar" }) ? putBack.reason : "not_editable";
+  const reason = i18n.exists(`mailboxSync.putBack_${putBack.reason}`, { ns: "calendar" })
+    ? putBack.reason
+    : "not_editable";
   const title =
-    putBack.title ?? t(reason === "not_editable" ? "outlook.putBackAnItem" : "outlook.putBackAnAppointment");
+    putBack.title ?? t(reason === "not_editable" ? "mailboxSync.putBackAnItem" : "mailboxSync.putBackAnAppointment");
   return (
-    <Alert color="yellow" icon={<IconAlertCircle size={16} />} title={t("outlook.putBackHeading")}>
+    <Alert color="yellow" icon={<IconAlertCircle size={16} />} title={t("mailboxSync.putBackHeading", { provider })}>
       <Stack gap={2}>
-        <Text size="sm">{t(`outlook.putBack_${reason}`, { title })}</Text>
+        <Text size="sm">{t(`mailboxSync.putBack_${reason}`, { title, provider })}</Text>
         <Text
           size="xs"
           c="dimmed"
@@ -509,34 +517,36 @@ const OutlookPutBack = ({ putBack }: { putBack: NonNullable<MailboxSync["putBack
 };
 
 /** Where the worker stands: waiting, last synced, removing, or why it stopped — in the person's words. */
-const OutlookState = ({ sync }: { sync: MailboxSync }) => {
+const MailboxState = ({ sync, provider }: { sync: MailboxSync; provider: string }) => {
   const { t, i18n, locale, formatters } = useI18n("calendar");
   const exists = (key: string) => i18n.exists(key, { ns: "calendar" });
-  const errorText = sync.error ? t(knownOr(exists, `outlook.error_${sync.error}`, "outlook.error_failed")) : undefined;
+  const errorText = sync.error
+    ? t(knownOr(exists, `mailboxSync.error_${sync.error}`, "mailboxSync.error_failed"), { provider })
+    : undefined;
   let text: string;
   let colour = "dimmed";
   switch (sync.state) {
     case "active":
       text = sync.lastSyncedAt
-        ? t("outlook.stateActive", { relative: relativeTime(sync.lastSyncedAt, locale) })
-        : t("outlook.statePending");
+        ? t("mailboxSync.stateActive", { relative: relativeTime(sync.lastSyncedAt, locale) })
+        : t("mailboxSync.statePending");
       break;
     case "stopping":
-      text = t("outlook.stateStopping");
+      text = t("mailboxSync.stateStopping", { provider });
       break;
     case "unavailable":
-      text = errorText ?? t("outlook.stateUnavailable");
+      text = errorText ?? t("mailboxSync.stateUnavailable");
       colour = "orange";
       break;
     case "failed":
-      text = errorText ?? t("outlook.error_failed");
+      text = errorText ?? t("mailboxSync.error_failed");
       colour = "red";
       break;
     case "off":
-      text = t("outlook.stateOff");
+      text = t("mailboxSync.stateOff");
       break;
     default:
-      text = t("outlook.statePending");
+      text = t("mailboxSync.statePending");
   }
   return (
     <Text

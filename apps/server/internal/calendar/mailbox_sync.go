@@ -22,14 +22,17 @@ import (
 // worker that pushes it mailbox_worker.go's.
 //
 // Whether the sync can run is the availability, asked of the neighbours
-// outside any transaction: no_provider when no enabled module fills the
-// MailboxCalendar slot; the provider's Status — available, switch_off
-// whenever the provider's reason is switch_off, whatever its state (a
-// switch off with no working credential is unavailable to the provider, but
-// off is what the person needs to hear), unavailable otherwise;
-// and no_account when Staff links the caller to no enabled account of the
-// provider's (Workforce.DirectoryAccount, design O3) — a disabled account,
-// a leaver's, is none. Nothing of a person's mailbox is ever guessed.
+// outside any transaction, in this order (Google Workspace design G3):
+// no_provider when no enabled module fills the MailboxCalendar slot at all;
+// no_account when Staff links the caller to no enabled account
+// (Workforce.DirectoryAccount, design O3) — a disabled account, a leaver's,
+// is none — or to none whose provider is filled; then that provider's
+// Status — available, switch_off whenever the provider's reason is
+// switch_off, whatever its state (a switch off with no working credential is
+// unavailable to the provider, but off is what the person needs to hear),
+// unavailable otherwise. The provider that serves the caller is the one
+// their account belongs to, answered as provider (its key and DisplayName)
+// beside the availability. Nothing of a person's mailbox is ever guessed.
 // Then the person's own connection to the provider (Outlook connection
 // design M9), which no request can ask: not_connected or reconnect is the
 // worker's last finding — the caller's row on, unavailable, its error one
@@ -70,7 +73,7 @@ var mailboxDefaultKinds = []string{appointmentKind, "staff.absence"}
 // (GET /api/v1/calendar/mailbox-sync)
 func (s *server) GetCalendarMailboxSync(ctx context.Context, _ gen.GetCalendarMailboxSyncRequestObject) (gen.GetCalendarMailboxSyncResponseObject, error) {
 	me := callerID(ctx)
-	availability, kinds, err := s.mailboxAvailability(ctx)
+	avail, err := s.mailboxAvailability(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +81,7 @@ func (s *server) GetCalendarMailboxSync(ctx context.Context, _ gen.GetCalendarMa
 	if err != nil {
 		return nil, err
 	}
-	out := mailboxSyncOut(row, availability, kinds)
+	out := mailboxSyncOut(row, avail)
 	if out.PutBack, err = s.putBackOut(ctx, row, me); err != nil {
 		return nil, err
 	}
@@ -150,11 +153,12 @@ func (s *server) PutCalendarMailboxSync(ctx context.Context, req gen.PutCalendar
 		body = *req.Body
 	}
 	me := callerID(ctx)
-	availability, available, err := s.mailboxAvailability(ctx)
+	avail, err := s.mailboxAvailability(ctx)
 	if err != nil {
 		return nil, err
 	}
-	kinds, f := readMailboxSync(body, available)
+	availability := avail.availability
+	kinds, f := readMailboxSync(body, avail.kinds)
 	if f.failed() {
 		return gen.PutCalendarMailboxSync400ApplicationProblemPlusJSONResponse(invalid(invalidMailboxSyncTitle, f)), nil
 	}
@@ -207,7 +211,7 @@ func (s *server) PutCalendarMailboxSync(ctx context.Context, req gen.PutCalendar
 	if err != nil {
 		return nil, err
 	}
-	out := mailboxSyncOut(&row, availability, available)
+	out := mailboxSyncOut(&row, avail)
 	if out.PutBack, err = s.putBackOut(ctx, &row, me); err != nil {
 		return nil, err
 	}
@@ -223,10 +227,11 @@ func (s *server) PutCalendarMailboxSync(ctx context.Context, req gen.PutCalendar
 // off 409 mailbox_sync_off.
 func (s *server) PostCalendarMailboxSyncRun(ctx context.Context, _ gen.PostCalendarMailboxSyncRunRequestObject) (gen.PostCalendarMailboxSyncRunResponseObject, error) {
 	me := callerID(ctx)
-	availability, kinds, err := s.mailboxAvailability(ctx)
+	avail, err := s.mailboxAvailability(ctx)
 	if err != nil {
 		return nil, err
 	}
+	availability := avail.availability
 	q := s.queries()
 	row, err := s.mailboxSyncRow(ctx, q, me, false)
 	if err != nil {
@@ -245,63 +250,74 @@ func (s *server) PostCalendarMailboxSyncRun(ctx context.Context, _ gen.PostCalen
 	if row, err = s.mailboxSyncRow(ctx, q, me, false); err != nil {
 		return nil, err
 	}
-	out := mailboxSyncOut(row, availability, kinds)
+	out := mailboxSyncOut(row, avail)
 	if out.PutBack, err = s.putBackOut(ctx, row, me); err != nil {
 		return nil, err
 	}
 	return gen.PostCalendarMailboxSyncRun200JSONResponse(out), nil
 }
 
+// mailboxAvail is whether the caller's sync can run, the kinds they may
+// choose, and the provider that serves them (nil for none).
+type mailboxAvail struct {
+	availability gen.MailboxSyncAvailability
+	kinds        []gen.MailboxSyncKind
+	provider     *gen.MailboxSyncProvider
+}
+
 // mailboxAvailability is whether the caller's sync can run (see the top of
-// the file) and the kinds they may choose: the appointment kind, then every
-// kind the sources declare, in module order — never calendar.subscription,
-// whose events came from elsewhere. It calls out of the module, so never
-// inside a transaction.
-func (s *server) mailboxAvailability(ctx context.Context) (gen.MailboxSyncAvailability, []gen.MailboxSyncKind, error) {
-	kinds := []gen.MailboxSyncKind{{Key: appointmentKind, Module: "calendar"}}
+// the file), the provider that serves them, and the kinds they may choose:
+// the appointment kind, then every kind the sources declare, in module
+// order — never calendar.subscription, whose events came from elsewhere. It
+// calls out of the module, so never inside a transaction.
+func (s *server) mailboxAvailability(ctx context.Context) (mailboxAvail, error) {
+	out := mailboxAvail{kinds: []gen.MailboxSyncKind{{Key: appointmentKind, Module: "calendar"}}}
 	sources, err := s.sourceKinds(ctx)
 	if err != nil {
-		return "", nil, err
+		return mailboxAvail{}, err
 	}
 	for _, k := range sources {
 		if k.Kind != subscriptionKind && k.Kind != appointmentKind {
-			kinds = append(kinds, gen.MailboxSyncKind{Key: k.Kind, Module: k.Module})
+			out.kinds = append(out.kinds, gen.MailboxSyncKind{Key: k.Kind, Module: k.Module})
 		}
 	}
-	provider := s.mailboxCalendar()
-	if provider == nil {
-		return gen.MailboxSyncAvailabilityNoProvider, kinds, nil
-	}
-	st, err := s.mailboxStatus(ctx)
-	if err != nil {
-		return "", nil, fmt.Errorf("calendar: read the mailbox provider's status: %w", err)
-	}
-	if a := availabilityOf(st); a != gen.MailboxSyncAvailabilityAvailable {
-		return a, kinds, nil
+	if len(s.deps.MailboxCalendars) == 0 {
+		out.availability = gen.MailboxSyncAvailabilityNoProvider
+		return out, nil
 	}
 	acct, err := s.workforceDirectoryAccount(ctx)
 	if err != nil {
-		return "", nil, fmt.Errorf("calendar: read the caller's directory account: %w", err)
+		return mailboxAvail{}, fmt.Errorf("calendar: read the caller's directory account: %w", err)
 	}
-	if !usableAccount(acct, provider.Key()) {
-		return gen.MailboxSyncAvailabilityNoAccount, kinds, nil
+	key := s.accountProvider(acct)
+	if key == "" {
+		out.availability = gen.MailboxSyncAvailabilityNoAccount
+		return out, nil
+	}
+	out.provider = &gen.MailboxSyncProvider{Key: key, DisplayName: s.mailboxCalendarFor(key).DisplayName()}
+	st, err := s.mailboxStatus(ctx, key)
+	if err != nil {
+		return mailboxAvail{}, fmt.Errorf("calendar: read the mailbox provider's status: %w", err)
+	}
+	if out.availability = availabilityOf(st); out.availability != gen.MailboxSyncAvailabilityAvailable {
+		return out, nil
 	}
 	row, err := s.mailboxSyncRow(ctx, s.queries(), callerID(ctx), false)
 	if err != nil {
-		return "", nil, err
+		return mailboxAvail{}, err
 	}
 	if row != nil && row.Error != nil {
 		switch {
 		case row.Enabled && row.State == mailboxStateUnavailable && *row.Error == mailboxErrNotConnected:
-			return gen.MailboxSyncAvailabilityNotConnected, kinds, nil
+			out.availability = gen.MailboxSyncAvailabilityNotConnected
 		// Turned off while waiting to reconnect: the clean-up owed needs the
 		// connection too, so the card still asks for it.
 		case ((row.Enabled && row.State == mailboxStateUnavailable) || row.State == mailboxStateStopping) &&
 			*row.Error == mailboxErrReconnect:
-			return gen.MailboxSyncAvailabilityReconnect, kinds, nil
+			out.availability = gen.MailboxSyncAvailabilityReconnect
 		}
 	}
-	return gen.MailboxSyncAvailabilityAvailable, kinds, nil
+	return out, nil
 }
 
 // canRun reports whether a sync of availability a may be turned on or run
@@ -323,13 +339,6 @@ func availabilityOf(st contracts.MailboxStatus) gen.MailboxSyncAvailability {
 		return gen.MailboxSyncAvailabilitySwitchOff
 	}
 	return gen.MailboxSyncAvailabilityUnavailable
-}
-
-// usableAccount reports whether acct is a mailbox the sync may write: the
-// provider's (key), with an external id, and enabled — a disabled link, a
-// leaver's, is no account (design O3).
-func usableAccount(acct *contracts.DirectoryAccount, key string) bool {
-	return acct != nil && acct.Enabled && acct.Provider == key && acct.ExternalID != ""
 }
 
 // mailboxSyncRow is the person's row, nil when they never turned the sync
@@ -380,12 +389,13 @@ func readMailboxSync(body gen.MailboxSyncWrite, available []gen.MailboxSyncKind)
 	return kinds, f
 }
 
-// mailboxSyncOut is the setting on the wire: the row, or the defaults at
-// revision 0 — off, the main calendar, full detail, and the default kinds
+// mailboxSyncOut is the setting on the wire, with the availability and the
+// provider: the row, or the defaults at revision 0 — off, the main calendar, full detail, and the default kinds
 // the caller may choose.
-func mailboxSyncOut(row *store.CalendarMailboxSync, availability gen.MailboxSyncAvailability, available []gen.MailboxSyncKind) gen.MailboxSync {
+func mailboxSyncOut(row *store.CalendarMailboxSync, avail mailboxAvail) gen.MailboxSync {
+	available := avail.kinds
 	out := gen.MailboxSync{
-		Availability: availability, AvailableKinds: available,
+		Availability: avail.availability, AvailableKinds: available, Provider: avail.provider,
 		Target: gen.Default, Detail: gen.MailboxSyncDetailFull, State: gen.MailboxSyncStateOff,
 		Kinds: []string{},
 	}

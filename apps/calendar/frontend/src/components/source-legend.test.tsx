@@ -18,6 +18,35 @@ describe("the filter's memory", () => {
     expect(readHiddenKinds()).toEqual([]);
   });
 
+  it("drops a kind the server no longer answers, the Outlook kind before the mailbox kind", () => {
+    window.localStorage.setItem(HIDDEN_KINDS_STORAGE_KEY, JSON.stringify(["calendar.outlook", "projects.task"]));
+    expect(readHiddenKinds()).toEqual(["projects.task"]);
+  });
+
+  it.each([
+    ["Google Calendar", "Google Calendar"],
+    [undefined, "Mailbox calendar"],
+  ] as const)("names the mailbox's chip by its provider (%s)", (providerName, label) => {
+    renderWithProviders(
+      <SourceLegend
+        kinds={["calendar.appointment", "calendar.mailbox"]}
+        hidden={new Set()}
+        onToggle={() => undefined}
+        providerName={providerName}
+      />,
+    );
+    expect(screen.getByRole("checkbox", { name: label })).toBeChecked();
+    expect((document.querySelector('[data-swatch="calendar.mailbox"]') as HTMLElement).style.background).toBe(
+      "var(--vantigo-calendar-cyan)",
+    );
+  });
+
+  it("names the mailbox's busy words in both languages", () => {
+    expect(calendarCatalog.en.mailboxShowAs.busy).toBe("Busy in {{provider}}");
+    expect(calendarCatalog.nb.mailboxShowAs.busy).toBe("Opptatt i {{provider}}");
+    expect(calendarCatalog.nb.kind_calendar_mailbox_unnamed).toBe("Postbokskalender");
+  });
+
   it("names a kind no catalog knows by the kind itself", async () => {
     const toggled: string[] = [];
     renderWithProviders(

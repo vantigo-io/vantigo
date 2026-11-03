@@ -64,7 +64,7 @@ func TestCalendarBusy_MergesAppointmentsAndOutlookBusyTimeForWhomTheCallerMaySee
 	create(t, colleague, timed(t, "Outside", oslo, "2026-12-03T09:00", "2026-12-03T10:00"))
 	r.box.SeedForeign(mb, foreign(t, "ev-busy", "2026-11-05T10:00", "2026-11-05T11:00", contracts.ShowAsBusy))
 	r.box.SeedForeign(mb, foreign(t, "ev-tent", "2026-11-05T12:00", "2026-11-05T13:00", contracts.ShowAsTentative))
-	r.box.SeedForeign(mb, modtest.FakeBusyEvent{ID: "ev-oof", AllDay: true, StartDate: day("2026-11-10"), EndDate: day("2026-11-11"), ShowAs: contracts.ShowAsOOF})
+	r.box.SeedForeign(mb, modtest.FakeBusyEvent{ID: "ev-oof", AllDay: true, StartDate: day("2026-11-10"), EndDate: day("2026-11-11"), ShowAs: contracts.ShowAsOutOfOffice})
 	on := turnOn(t, colleague, "default", "full", "calendar.appointment")
 	mailboxCycle(t, r)
 	create(t, plain, timed(t, "Mine", oslo, "2026-11-06T09:00", "2026-11-06T10:00"))

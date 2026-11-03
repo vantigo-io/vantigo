@@ -85,12 +85,14 @@ WHERE user_id = @user_id AND revision = @revision::integer
 RETURNING *;
 
 -- name: SetMailboxSyncMailbox :exec
--- SetMailboxSyncMailbox records the mailbox the worker last confirmed and
--- the Vantigo calendar it made there (null for none) as soon as it learns
--- them, whatever revision the row holds: the clean-up must find what was
--- written even after a PUT overtook the sync that wrote it.
+-- SetMailboxSyncMailbox records the mailbox the worker last confirmed, the
+-- provider it is the account of (Google Workspace design G3), and the
+-- Vantigo calendar it made there (null for none) as soon as it learns them,
+-- whatever revision the row holds: the clean-up must find what was written,
+-- and on which provider, even after a PUT overtook the sync that wrote it.
 UPDATE calendar.mailbox_sync SET
     mailbox = sqlc.narg(mailbox)::varchar,
+    provider = sqlc.narg(provider)::varchar,
     calendar_id = sqlc.narg(calendar_id)::varchar,
     updated_at = @now::timestamptz
 WHERE user_id = @user_id;
@@ -196,14 +198,17 @@ WHERE user_id = @user_id;
 -- pending, not backing off a failure (attempts 0: a notice never overrides
 -- the backoff), whose last sync started before at, and which are not due
 -- already. A notice asked for twice marks nothing the second time once the
--- row has synced since. Through the index on lower(mailbox) of the rows on.
+-- row has synced since. The notices are one provider's: only rows of that
+-- provider's mailboxes are marked (Google Workspace design G3). Through the
+-- index on (provider, lower(mailbox)) of the rows on.
 UPDATE calendar.mailbox_sync s SET next_sync_at = @now::timestamptz
 FROM (
     SELECT lower(n.mailbox) AS mailbox, max(n.at) AS at
     FROM (SELECT unnest(@mailboxes::text[]) AS mailbox, unnest(@ats::timestamptz[]) AS at) AS n
     GROUP BY lower(n.mailbox)
 ) AS notice
-WHERE lower(s.mailbox) = notice.mailbox
+WHERE s.provider = @provider::varchar
+  AND lower(s.mailbox) = notice.mailbox
   AND s.enabled
   AND s.state IN ('active', 'pending')
   AND s.attempts = 0
@@ -221,14 +226,16 @@ WHERE lower(s.mailbox) = notice.mailbox
 -- do. The caller passes each change's instant plus the notices' overlap, so
 -- a row written while the change committed — during that person's own
 -- sync, or on a clock behind — is still marked; a change taken twice marks
--- nothing once the row was written past that.
+-- nothing once the row was written past that. The changes are one
+-- provider's: only rows of that provider's mailboxes are marked.
 UPDATE calendar.mailbox_sync s SET next_sync_at = @now::timestamptz
 FROM (
     SELECT lower(c.mailbox) AS mailbox, max(c.at) AS at
     FROM (SELECT unnest(@mailboxes::text[]) AS mailbox, unnest(@ats::timestamptz[]) AS at) AS c
     GROUP BY lower(c.mailbox)
 ) AS change
-WHERE lower(s.mailbox) = change.mailbox
+WHERE s.provider = @provider::varchar
+  AND lower(s.mailbox) = change.mailbox
   AND (s.enabled OR s.state = 'stopping')
   AND s.updated_at < change.at
   AND (s.next_sync_at IS NULL OR s.next_sync_at > @now::timestamptz);

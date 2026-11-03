@@ -146,24 +146,24 @@ func (e CalendarInvitationSettingsState) Valid() bool {
 	}
 }
 
-// Defines values for CalendarItemOutlookShowAs.
+// Defines values for CalendarItemMailboxShowAs.
 const (
-	CalendarItemOutlookShowAsBusy             CalendarItemOutlookShowAs = "busy"
-	CalendarItemOutlookShowAsOof              CalendarItemOutlookShowAs = "oof"
-	CalendarItemOutlookShowAsTentative        CalendarItemOutlookShowAs = "tentative"
-	CalendarItemOutlookShowAsWorkingElsewhere CalendarItemOutlookShowAs = "workingElsewhere"
+	CalendarItemMailboxShowAsBusy             CalendarItemMailboxShowAs = "busy"
+	CalendarItemMailboxShowAsOutOfOffice      CalendarItemMailboxShowAs = "out_of_office"
+	CalendarItemMailboxShowAsTentative        CalendarItemMailboxShowAs = "tentative"
+	CalendarItemMailboxShowAsWorkingElsewhere CalendarItemMailboxShowAs = "working_elsewhere"
 )
 
-// Valid indicates whether the value is a known member of the CalendarItemOutlookShowAs enum.
-func (e CalendarItemOutlookShowAs) Valid() bool {
+// Valid indicates whether the value is a known member of the CalendarItemMailboxShowAs enum.
+func (e CalendarItemMailboxShowAs) Valid() bool {
 	switch e {
-	case CalendarItemOutlookShowAsBusy:
+	case CalendarItemMailboxShowAsBusy:
 		return true
-	case CalendarItemOutlookShowAsOof:
+	case CalendarItemMailboxShowAsOutOfOffice:
 		return true
-	case CalendarItemOutlookShowAsTentative:
+	case CalendarItemMailboxShowAsTentative:
 		return true
-	case CalendarItemOutlookShowAsWorkingElsewhere:
+	case CalendarItemMailboxShowAsWorkingElsewhere:
 		return true
 	default:
 		return false
@@ -671,7 +671,7 @@ type CalendarInvitationSettingsWrite struct {
 	InvitationChannel json.RawMessage `json:"invitationChannel"`
 }
 
-// CalendarItem One thing on a person's calendar: an appointment's occurrence (kind calendar.appointment, with appointment set), a row another module projects through its calendar source (with path set), an event of a calendar the person subscribes to (kind calendar.subscription, with subscription set — calendar feed design D8), or an event of the person's Outlook calendar that blocks their time, read back by their Outlook sync (kind calendar.outlook, with outlook set and no title — calendar Outlook sync design O9.5). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length).
+// CalendarItem One thing on a person's calendar: an appointment's occurrence (kind calendar.appointment, with appointment set), a row another module projects through its calendar source (with path set), an event of a calendar the person subscribes to (kind calendar.subscription, with subscription set — calendar feed design D8), or an event of the person's mailbox calendar (Outlook, or another provider's) that blocks their time, read back by their mailbox sync (kind calendar.mailbox, with mailbox set and no title — calendar Outlook sync design O9.5, Google Workspace design G10). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length).
 type CalendarItem struct {
 	AllDay bool `json:"allDay"`
 
@@ -683,14 +683,14 @@ type CalendarItem struct {
 	EndDate *openapi_types.Date `json:"endDate,omitempty"`
 	EndsAt  *time.Time          `json:"endsAt,omitempty"`
 
-	// Id Stable within the kind. An appointment's "1001", or "1001:2026-11-03" for one occurrence of a series; a provider's row id; a subscription's "<subscription id>:<UID>", with ":<start>" after it for an occurrence of a rule (20261103T080000Z, or the date for an all-day one); an Outlook event's the first 16 hex digits of the SHA-256 of its id in the mailbox, which never reaches the browser.
+	// Id Stable within the kind. An appointment's "1001", or "1001:2026-11-03" for one occurrence of a series; a provider's row id; a subscription's "<subscription id>:<UID>", with ":<start>" after it for an occurrence of a rule (20261103T080000Z, or the date for an all-day one); a mailbox event's the first 16 hex digits of the SHA-256 of its id in the mailbox, which never reaches the browser.
 	Id string `json:"id"`
 
-	// Kind calendar.appointment, calendar.subscription, calendar.outlook, or one of the kinds in sources.
+	// Kind calendar.appointment, calendar.subscription, calendar.mailbox, or one of the kinds in sources.
 	Kind string `json:"kind"`
 
-	// Outlook The Outlook event behind an item of kind calendar.outlook (calendar Outlook sync design O9.5): how it shows the person's time in Outlook — busy, tentative, oof (out of office) or workingElsewhere — which the app labels it by (Busy in Outlook, Tentative, Out of office, Working elsewhere). Nothing else of the event is stored or answered: a free or cancelled event is never an item.
-	Outlook *CalendarItemOutlook `json:"outlook,omitempty"`
+	// Mailbox The mailbox event behind an item of kind calendar.mailbox (calendar Outlook sync design O9.5, Google Workspace design G10): how it shows the person's time in their mailbox calendar — busy, tentative, out_of_office or working_elsewhere, the calendar's own words whatever the provider calls them — which the app labels it by (Busy in <provider>, Tentative, Out of office, Working elsewhere; the provider's name is GET /mailbox-sync's provider.displayName). Nothing else of the event is stored or answered: a free or cancelled event is never an item.
+	Mailbox *CalendarItemMailbox `json:"mailbox,omitempty"`
 
 	// Path The SPA route of the provider's record, for the link back. Absent on an appointment, which the sheet opens by id, and on a subscription's item, which opens nothing — the event's own URL is the other calendar's and is not followed.
 	Path      *string             `json:"path,omitempty"`
@@ -703,7 +703,7 @@ type CalendarItem struct {
 	// Subtitle One line — the customer's name, the project's code, the subscription's name. Absent when empty.
 	Subtitle *string `json:"subtitle,omitempty"`
 
-	// Title Empty on a busy-only subscription's item, which the app labels Busy, and on an Outlook event, which the app labels by its outlook.showAs.
+	// Title Empty on a busy-only subscription's item, which the app labels Busy, and on a mailbox event, which the app labels by its mailbox.showAs.
 	Title string `json:"title"`
 }
 
@@ -726,13 +726,13 @@ type CalendarItemAppointment struct {
 	Visibility AppointmentVisibility `json:"visibility"`
 }
 
-// CalendarItemOutlook The Outlook event behind an item of kind calendar.outlook (calendar Outlook sync design O9.5): how it shows the person's time in Outlook — busy, tentative, oof (out of office) or workingElsewhere — which the app labels it by (Busy in Outlook, Tentative, Out of office, Working elsewhere). Nothing else of the event is stored or answered: a free or cancelled event is never an item.
-type CalendarItemOutlook struct {
-	ShowAs CalendarItemOutlookShowAs `json:"showAs"`
+// CalendarItemMailbox The mailbox event behind an item of kind calendar.mailbox (calendar Outlook sync design O9.5, Google Workspace design G10): how it shows the person's time in their mailbox calendar — busy, tentative, out_of_office or working_elsewhere, the calendar's own words whatever the provider calls them — which the app labels it by (Busy in <provider>, Tentative, Out of office, Working elsewhere; the provider's name is GET /mailbox-sync's provider.displayName). Nothing else of the event is stored or answered: a free or cancelled event is never an item.
+type CalendarItemMailbox struct {
+	ShowAs CalendarItemMailboxShowAs `json:"showAs"`
 }
 
-// CalendarItemOutlookShowAs defines model for CalendarItemOutlook.ShowAs.
-type CalendarItemOutlookShowAs string
+// CalendarItemMailboxShowAs defines model for CalendarItemMailbox.ShowAs.
+type CalendarItemMailboxShowAs string
 
 // CalendarItemSubscription The subscription behind an item of kind calendar.subscription (calendar feed design D8): what the app draws it by — its colour and its name — and whether it is busy only, in which case the item's title is empty and the app labels it Busy.
 type CalendarItemSubscription struct {
@@ -769,7 +769,7 @@ type CalendarMeta struct {
 	// InvitationsAvailable Whether invitations are mailed - the channel chosen in the Calendar settings can send (integrations design T6). When false, outside attendees are stored and marked not sent.
 	InvitationsAvailable bool `json:"invitationsAvailable"`
 
-	// Sources Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours — calendar.subscription when the caller has at least one subscription, and calendar.outlook while the caller's Outlook sync is on.
+	// Sources Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours — calendar.subscription when the caller has at least one subscription, and calendar.mailbox while the caller's mailbox sync is on.
 	Sources []CalendarSourceKind `json:"sources"`
 
 	// TimeZone The workspace's business time zone.
@@ -779,7 +779,7 @@ type CalendarMeta struct {
 	Today openapi_types.Date `json:"today"`
 }
 
-// CalendarProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: invitations are off in the Calendar settings, or the chosen channel cannot send, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already), mailbox_sync_unavailable (409: the Outlook sync cannot run now; detail carries the availability — switch_off, no_provider, unavailable or no_account) and mailbox_sync_off (409: Sync now of an Outlook sync that is turned off). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.
+// CalendarProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: invitations are off in the Calendar settings, or the chosen channel cannot send, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already), mailbox_sync_unavailable (409: the mailbox sync cannot run now; detail carries the availability — no_provider, no_account, switch_off or unavailable) and mailbox_sync_off (409: Sync now of a mailbox sync that is turned off). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.
 type CalendarProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -893,7 +893,7 @@ type FeedAddresses struct {
 // FeedVariant A calendar address's variant (calendar feed design D3): full is the person's calendar as they see it — never a colleague's appointment, a cancelled or a declined one, a subscription's item or a public holiday; busy is its busy spans and nothing else, each titled Busy.
 type FeedVariant string
 
-// MailboxSync The caller's Outlook sync (calendar Outlook sync design O5, on the person's own Outlook connection, Outlook connection design M9): their setting, the worker's state, and whether it can run. availability is available, or why not — switch_off (an Owner has not turned on the Outlook connection in the Entra module), no_provider (no enabled module writes mailboxes), unavailable (the provider's connection is not working), no_account (the caller has no account in the directory that Staff links to them), not_connected (the caller has not connected Outlook, or their connection closed: the worker's last finding) or reconnect (Microsoft refused the caller's connection; they reconnect: the worker's last finding). A PUT and Sync now are taken while it is available, not_connected or reconnect. availableKinds are the kinds the caller may choose: the appointment kind and the kinds the calendar sources declare today. state is pending (on, not yet synced), active, stopping (the copies are being removed), off, unavailable or failed; error is the last refusal's code, absent after a sync that worked. A caller who never turned it on is answered the defaults at revision 0.
+// MailboxSync The caller's mailbox sync (calendar Outlook sync design O5, on the person's own connection to their provider, Outlook connection design M9; any provider, Google Workspace design G3): their setting, the worker's state, and whether it can run. provider is the provider that serves the caller — the one their directory account in Staff belongs to — its key and the name the screens show (Outlook), null when no enabled provider serves an account of theirs. availability is available, or why not, asked in this order — no_provider (no enabled module writes mailboxes), no_account (the caller has no enabled account in the directory that Staff links to them, or none of a provider that is on), switch_off (an administrator has not turned on the connection for people in the provider's settings), unavailable (the provider's connection is not working) — then not_connected (the caller has not connected to the provider, or their connection closed: the worker's last finding) or reconnect (the provider refused the caller's connection; they reconnect: the worker's last finding). A PUT and Sync now are taken while it is available, not_connected or reconnect. availableKinds are the kinds the caller may choose: the appointment kind and the kinds the calendar sources declare today. state is pending (on, not yet synced), active, stopping (the copies are being removed), off, unavailable or failed; error is the last refusal's code, absent after a sync that worked. A caller who never turned it on is answered the defaults at revision 0.
 type MailboxSync struct {
 	Availability   MailboxSyncAvailability `json:"availability"`
 	AvailableKinds []MailboxSyncKind       `json:"availableKinds"`
@@ -902,11 +902,12 @@ type MailboxSync struct {
 	BusySyncedAt *time.Time `json:"busySyncedAt,omitempty"`
 
 	// Detail What the copies show — full, the titles, the places and the links, or busy, Busy for every title and the link alone.
-	Detail       MailboxSyncDetail `json:"detail"`
-	Enabled      bool              `json:"enabled"`
-	Error        *MailboxSyncError `json:"error,omitempty"`
-	Kinds        []string          `json:"kinds"`
-	LastSyncedAt *time.Time        `json:"lastSyncedAt,omitempty"`
+	Detail       MailboxSyncDetail    `json:"detail"`
+	Enabled      bool                 `json:"enabled"`
+	Error        *MailboxSyncError    `json:"error,omitempty"`
+	Kinds        []string             `json:"kinds"`
+	LastSyncedAt *time.Time           `json:"lastSyncedAt,omitempty"`
+	Provider     *MailboxSyncProvider `json:"provider"`
 
 	// PutBack The last change the caller made in Outlook to a copy that the sync did not take, and put back (calendar Outlook sync design O10.3). reason is conflict (the appointment was changed in Vantigo too, and Vantigo's version won), refused (the appointment's rules refused the change), not_owner (the copy is of an appointment the caller attends, not one they own), not_editable (the copy is of an item another module projects, or the change is one an occurrence cannot carry) or many_deleted (more than ten of the caller's own appointments were deleted in Outlook in one sync, so none was taken and every copy was put back; appointmentId is then absent). Absent when nothing was put back since the sync was last turned on or cleaned up.
 	PutBack *MailboxSyncPutBack `json:"putBack,omitempty"`
@@ -935,6 +936,12 @@ type MailboxSyncDetail string
 type MailboxSyncKind struct {
 	Key    string `json:"key"`
 	Module string `json:"module"`
+}
+
+// MailboxSyncProvider The provider that serves the caller's mailbox sync (Google Workspace design G3, G10): key is the module's key (entra), displayName the name the screens show (Outlook) — Busy in Outlook, Sync with Outlook.
+type MailboxSyncProvider struct {
+	DisplayName string `json:"displayName"`
+	Key         string `json:"key"`
 }
 
 // MailboxSyncPutBack The last change the caller made in Outlook to a copy that the sync did not take, and put back (calendar Outlook sync design O10.3). reason is conflict (the appointment was changed in Vantigo too, and Vantigo's version won), refused (the appointment's rules refused the change), not_owner (the copy is of an appointment the caller attends, not one they own), not_editable (the copy is of an item another module projects, or the change is one an occurrence cannot carry) or many_deleted (more than ten of the caller's own appointments were deleted in Outlook in one sync, so none was taken and every copy was put back; appointmentId is then absent). Absent when nothing was put back since the sync was last turned on or cleaned up.

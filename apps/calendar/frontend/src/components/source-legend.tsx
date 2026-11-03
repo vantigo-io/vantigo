@@ -2,13 +2,15 @@ import { Box, Chip, Group } from "@mantine/core";
 import { useI18n } from "@vantigo/frontend-shell";
 import type { JSX } from "react";
 import "../i18n";
-import { colourForKind, kindLabelKey, SUBSCRIPTION_KIND } from "../lib/colours";
+import { colourForKind, kindLabelKey, MAILBOX_KIND, SUBSCRIPTION_KIND } from "../lib/colours";
 
 export interface SourceLegendProps {
   /** The kinds to offer, in order: appointments, the providers' from `/meta`, the holidays. */
   kinds: readonly string[];
   hidden: ReadonlySet<string>;
   onToggle: (kind: string) => void;
+  /** The name of the provider whose busy time the mailbox kind is ("Outlook"); unnamed while not known. */
+  providerName?: string;
 }
 
 /**
@@ -18,10 +20,16 @@ export interface SourceLegendProps {
  * (feed design D9), grey with a ring for a swatch: each subscription has a
  * colour of its own, and a filled grey square is the holidays'.
  */
-export function SourceLegend({ kinds, hidden, onToggle }: SourceLegendProps): JSX.Element {
+export function SourceLegend({ kinds, hidden, onToggle, providerName }: SourceLegendProps): JSX.Element {
   const { t, i18n } = useI18n("calendar");
-  // A kind from a module newer than this catalog reads as itself rather than failing.
-  const label = (kind: string) => (i18n.exists(kindLabelKey(kind), { ns: "calendar" }) ? t(kindLabelKey(kind)) : kind);
+  // A kind from a module newer than this catalog reads as itself rather than failing; the
+  // mailbox's chip is named by its provider.
+  const label = (kind: string) => {
+    if (kind === MAILBOX_KIND && !providerName) return t(`${kindLabelKey(kind)}_unnamed`);
+    return i18n.exists(kindLabelKey(kind), { ns: "calendar" })
+      ? t(kindLabelKey(kind), { provider: providerName })
+      : kind;
+  };
   return (
     <Group gap={6} role="group" aria-label={t("legend")}>
       {kinds.map((kind) => (

@@ -264,18 +264,16 @@ describe("SettingsPage: calendars from elsewhere", () => {
   });
 });
 
-describe("SettingsPage: Outlook", () => {
+describe("SettingsPage: the mailbox sync", () => {
   afterEach(() => setLanguagePreference("auto"));
 
   const outlook = () => card("Outlook");
-  const toggle = async () => within(await outlook()).findByRole("switch", { name: "Sync to my Outlook calendar" });
+  const toggle = async () => within(await outlook()).findByRole("switch", { name: "Sync with Outlook" });
 
   it.each([
-    ["switch_off", "Your administrator has not turned on the Outlook connection."],
-    ["no_provider", "Calendar sync needs the Microsoft Entra ID module."],
-    ["unavailable", "The connection to Microsoft 365 is not working right now."],
-    ["no_account", "Your Vantigo user is not connected to a Microsoft 365 account that Vantigo manages."],
-  ] as const)("says why it cannot be turned on when %s", async (availability, words) => {
+    ["switch_off", "Your administrator has not turned on the Outlook connection for people."],
+    ["unavailable", "The connection to Outlook is not working right now."],
+  ] as const)("says why it cannot be turned on when %s, naming the provider", async (availability, words) => {
     stubCalendarServer({ mailboxSync: mailboxSyncFixture({ availability }) });
     renderWithProviders(<SettingsPage />);
 
@@ -284,10 +282,52 @@ describe("SettingsPage: Outlook", () => {
   });
 
   it.each([
+    ["no_provider", "Calendar sync needs a module that connects Vantigo to your organisation's mailboxes."],
+    [
+      "no_account",
+      "Your Vantigo user is not connected to an account in your organisation's directory that Vantigo manages.",
+    ],
+  ] as const)(
+    "says why it cannot be turned on when %s, in neutral words with no provider",
+    async (availability, words) => {
+      stubCalendarServer({ mailboxSync: mailboxSyncFixture({ availability, provider: null }) });
+      renderWithProviders(<SettingsPage />);
+
+      const region = await card("Calendar sync");
+      expect(await within(region).findByRole("switch", { name: "Sync with your mailbox" })).toBeDisabled();
+      expect(within(region).getByText(words)).toBeInTheDocument();
+    },
+  );
+
+  it.each([
+    ["en", "Google Calendar", "Sync with Google Calendar", "busy in your main Google Calendar calendar shows"],
+    [
+      "nb",
+      "Google Calendar",
+      "Synkroniser med Google Calendar",
+      "opptatt i hovedkalenderen din i Google Calendar vises",
+    ],
+  ] as const)("names another provider in its labels (%s)", async (language, name, toggleName, busyIn) => {
+    if (language === "nb") setLanguagePreference("nb");
+    stubCalendarServer({
+      mailboxSync: mailboxSyncFixture({
+        enabled: true,
+        state: "active",
+        provider: { key: "google", displayName: name },
+      }),
+    });
+    renderWithProviders(<SettingsPage />);
+
+    const region = await card(name);
+    expect(await within(region).findByRole("switch", { name: toggleName })).toBeChecked();
+    expect(within(region).getByText(new RegExp(busyIn))).toBeInTheDocument();
+  });
+
+  it.each([
     ["not_connected", "en", "Connect Outlook above to start the sync."],
-    ["reconnect", "en", "Microsoft wants you to sign in again: choose Reconnect Outlook above."],
+    ["reconnect", "en", "Outlook wants you to sign in again: choose Reconnect Outlook above."],
     ["not_connected", "nb", "Koble til Outlook ovenfor for å starte synkroniseringen."],
-    ["reconnect", "nb", "Microsoft vil at du logger på igjen: velg Koble til Outlook på nytt ovenfor."],
+    ["reconnect", "nb", "Outlook vil at du logger på igjen: velg Koble til Outlook på nytt ovenfor."],
   ] as const)(
     "names the connection's button above while %s (%s), the toggle and Sync now usable",
     async (availability, language, words) => {
@@ -390,10 +430,10 @@ describe("SettingsPage: Outlook", () => {
 
     const region = await outlook();
     expect(await within(region).findByRole("alert")).toHaveTextContent(
-      "Microsoft wants you to sign in again: choose Reconnect Outlook above.",
+      "Outlook wants you to sign in again: choose Reconnect Outlook above.",
     );
     expect(within(region).getByRole("button", { name: "Reconnect Outlook" })).toBeInTheDocument();
-    expect(within(region).getByRole("switch", { name: "Sync to my Outlook calendar" })).not.toBeChecked();
+    expect(within(region).getByRole("switch", { name: "Sync with Outlook" })).not.toBeChecked();
   });
 
   it("still lets a person who has it on turn it off while it cannot run", async () => {
@@ -495,7 +535,7 @@ describe("SettingsPage: Outlook", () => {
 
     await user.click(await within(await outlook()).findByRole("checkbox", { name: "Tasks" }));
     expect(
-      await screen.findByText("Your Outlook setting was changed elsewhere; it has been reloaded"),
+      await screen.findByText("Your calendar sync setting was changed elsewhere; it has been reloaded"),
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(sentAll(fetchMock, "GET").filter((call) => call.url === "/api/v1/calendar/mailbox-sync")).toHaveLength(2),
@@ -642,7 +682,7 @@ describe("SettingsPage: Outlook", () => {
     renderWithProviders(<SettingsPage />);
 
     const region = await card("Outlook");
-    expect(await within(region).findByRole("switch", { name: "Synkroniser til Outlook-kalenderen min" })).toBeChecked();
+    expect(await within(region).findByRole("switch", { name: "Synkroniser med Outlook" })).toBeChecked();
     expect(within(region).getByRole("radio", { name: /^Hovedkalenderen min/ })).toBeChecked();
     expect(within(region).getByRole("radio", { name: /^En egen Vantigo-kalender/ })).toBeInTheDocument();
     expect(within(region).getByRole("checkbox", { name: "Fravær" })).toBeChecked();
@@ -673,7 +713,7 @@ describe("SettingsPage: the connection.button slot", () => {
     renderWithProviders(<SettingsPage />);
 
     const region = await card("Outlook");
-    expect(await within(region).findByRole("switch", { name: "Sync to my Outlook calendar" })).toBeInTheDocument();
+    expect(await within(region).findByRole("switch", { name: "Sync with Outlook" })).toBeInTheDocument();
     expect(within(region).queryByRole("button", { name: /^connect/ })).not.toBeInTheDocument();
   });
 });

@@ -132,7 +132,7 @@ func TestMailboxBusy_StoresThePersonsBusyTimeAndSkipsTheCalendarsOwnCopies(t *te
 	cancelled.Cancelled = true
 	r.box.SeedForeign(mb, cancelled)
 	r.box.SeedForeign(mb, foreign(t, "ev-tent", "2026-09-16T10:00", "2026-09-16T11:00", contracts.ShowAsTentative))
-	r.box.SeedForeign(mb, modtest.FakeBusyEvent{ID: "ev-oof", AllDay: true, StartDate: day("2026-09-21"), EndDate: day("2026-09-22"), ShowAs: contracts.ShowAsOOF})
+	r.box.SeedForeign(mb, modtest.FakeBusyEvent{ID: "ev-oof", AllDay: true, StartDate: day("2026-09-21"), EndDate: day("2026-09-22"), ShowAs: contracts.ShowAsOutOfOffice})
 	series := foreign(t, "ev-series", "2026-09-17T10:00", "2026-09-17T11:00", contracts.ShowAsBusy)
 	series.Series = true
 	r.box.SeedForeign(mb, series)
@@ -155,7 +155,7 @@ func TestMailboxBusy_StoresThePersonsBusyTimeAndSkipsTheCalendarsOwnCopies(t *te
 	if b := rows["ev-busy"]; b.allDay || b.showAs != "busy" || !b.startsAt.Equal(at(t, oslo, "2026-09-15T10:00")) || !b.endsAt.Equal(at(t, oslo, "2026-09-15T11:00")) || b.startDate != nil {
 		t.Errorf("the busy one = %+v", b)
 	}
-	if b := rows["ev-oof"]; !b.allDay || b.showAs != "oof" || b.startDate == nil || *b.startDate != "2026-09-21" || *b.endDate != "2026-09-22" || b.startsAt != nil {
+	if b := rows["ev-oof"]; !b.allDay || b.showAs != "out_of_office" || b.startDate == nil || *b.startDate != "2026-09-21" || *b.endDate != "2026-09-22" || b.startsAt != nil {
 		t.Errorf("the all-day one = %+v", b)
 	}
 	if rows["ev-odd"].showAs != "busy" || rows["ev-tent"].showAs != "tentative" {
@@ -190,7 +190,7 @@ func TestMailboxBusy_StoresThePersonsBusyTimeAndSkipsTheCalendarsOwnCopies(t *te
 	r.box.MoveForeign(mb, foreign(t, "ev-odd", "2026-09-18T12:00", "2026-09-18T13:00", contracts.ShowAsBusy))
 	series.Cancelled = true
 	r.box.MoveForeign(mb, series)
-	r.box.SeedForeign(mb, foreign(t, "ev-new", "2026-09-22T10:00", "2026-09-22T11:00", contracts.ShowAsOOF))
+	r.box.SeedForeign(mb, foreign(t, "ev-new", "2026-09-22T10:00", "2026-09-22T11:00", contracts.ShowAsOutOfOffice))
 	before := len(r.box.Calls())
 	r.Advance(15 * time.Minute)
 	mailboxCycle(t, r)
@@ -440,7 +440,7 @@ func TestMailboxBusy_TheCalendarShowsItAsOutlookItems(t *testing.T) {
 	viewer, _ := signIn(t, r.harness, "calendar:view-colleagues")
 	r.box.SeedForeign(mb, foreign(t, "ev-busy", "2026-09-15T10:00", "2026-09-15T11:00", contracts.ShowAsBusy))
 	r.box.SeedForeign(mb, foreign(t, "ev-tent", "2026-09-15T13:00", "2026-09-15T14:00", contracts.ShowAsTentative))
-	r.box.SeedForeign(mb, modtest.FakeBusyEvent{ID: "ev-oof", AllDay: true, StartDate: day("2026-09-17"), EndDate: day("2026-09-18"), ShowAs: contracts.ShowAsOOF})
+	r.box.SeedForeign(mb, modtest.FakeBusyEvent{ID: "ev-oof", AllDay: true, StartDate: day("2026-09-17"), EndDate: day("2026-09-18"), ShowAs: contracts.ShowAsOutOfOffice})
 	r.box.SeedForeign(mb, foreign(t, "ev-else", "2026-09-16T08:00", "2026-09-16T16:00", contracts.ShowAsWorkingElsewhere))
 	on := turnOn(t, c, "default", "full", "calendar.appointment")
 	mailboxCycle(t, r)
@@ -448,7 +448,7 @@ func TestMailboxBusy_TheCalendarShowsItAsOutlookItems(t *testing.T) {
 	outlook := func(items []gen.CalendarItem) map[string]gen.CalendarItem {
 		out := map[string]gen.CalendarItem{}
 		for _, it := range items {
-			if it.Kind == "calendar.outlook" {
+			if it.Kind == "calendar.mailbox" {
 				out[it.Id] = it
 			}
 		}
@@ -461,12 +461,12 @@ func TestMailboxBusy_TheCalendarShowsItAsOutlookItems(t *testing.T) {
 		t.Fatalf("outlook items = %+v", items)
 	}
 	b, ok := items[outlookID("ev-busy")]
-	if !ok || b.Title != "" || b.Outlook == nil || b.Outlook.ShowAs != gen.CalendarItemOutlookShowAsBusy || b.AllDay ||
+	if !ok || b.Title != "" || b.Mailbox == nil || b.Mailbox.ShowAs != gen.CalendarItemMailboxShowAsBusy || b.AllDay ||
 		b.StartsAt == nil || !b.StartsAt.Equal(at(t, oslo, "2026-09-15T10:00")) || !b.EndsAt.Equal(at(t, oslo, "2026-09-15T11:00")) {
 		t.Errorf("the busy item = %+v", b)
 	}
 	o := items[outlookID("ev-oof")]
-	if !o.AllDay || o.StartDate == nil || o.StartDate.String() != "2026-09-17" || o.EndDate.String() != "2026-09-18" || o.Outlook.ShowAs != gen.CalendarItemOutlookShowAsOof {
+	if !o.AllDay || o.StartDate == nil || o.StartDate.String() != "2026-09-17" || o.EndDate.String() != "2026-09-18" || o.Mailbox.ShowAs != gen.CalendarItemMailboxShowAsOutOfOffice {
 		t.Errorf("the all-day item = %+v", o)
 	}
 	for _, it := range got.Items {
@@ -478,15 +478,15 @@ func TestMailboxBusy_TheCalendarShowsItAsOutlookItems(t *testing.T) {
 	if n := len(outlook(got.Items)); n != 0 {
 		t.Errorf("kinds=calendar.appointment answered %d outlook items", n)
 	}
-	do(t, c, http.MethodGet, windowPath("2026-09-14", "2026-09-20", "kinds=calendar.outlook"), nil, http.StatusOK, &got)
+	do(t, c, http.MethodGet, windowPath("2026-09-14", "2026-09-20", "kinds=calendar.mailbox"), nil, http.StatusOK, &got)
 	if n := len(outlook(got.Items)); n != 4 || len(got.Items) != 4 {
-		t.Errorf("kinds=calendar.outlook answered %d of %d items", n, len(got.Items))
+		t.Errorf("kinds=calendar.mailbox answered %d of %d items", n, len(got.Items))
 	}
 
 	var meta gen.CalendarMeta
 	do(t, c, http.MethodGet, metaPath, nil, http.StatusOK, &meta)
-	if !slices.Contains(meta.Sources, gen.CalendarSourceKind{Kind: "calendar.outlook", Module: "calendar"}) {
-		t.Errorf("meta's sources = %+v, want calendar.outlook while the sync is on", meta.Sources)
+	if !slices.Contains(meta.Sources, gen.CalendarSourceKind{Kind: "calendar.mailbox", Module: "calendar"}) {
+		t.Errorf("meta's sources = %+v, want calendar.mailbox while the sync is on", meta.Sources)
 	}
 
 	// A colleague sees the busy and out-of-office ones, untitled.
@@ -512,7 +512,7 @@ func TestMailboxBusy_TheCalendarShowsItAsOutlookItems(t *testing.T) {
 		t.Errorf("turned off, the colleague's calendar answers %d outlook items", n)
 	}
 	do(t, c, http.MethodGet, metaPath, nil, http.StatusOK, &meta)
-	if slices.ContainsFunc(meta.Sources, func(k gen.CalendarSourceKind) bool { return k.Kind == "calendar.outlook" }) {
+	if slices.ContainsFunc(meta.Sources, func(k gen.CalendarSourceKind) bool { return k.Kind == "calendar.mailbox" }) {
 		t.Errorf("meta's sources = %+v after turning off", meta.Sources)
 	}
 }

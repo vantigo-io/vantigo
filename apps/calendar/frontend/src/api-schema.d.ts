@@ -123,7 +123,7 @@ export interface paths {
         };
         /**
          * A colleague's calendar
-         * @description A colleague's calendar in a window (calendar design D6): their appointments — owned, or attended and accepted — that block time (transparency busy), expanded as GET /items does. A shared one carries its title and location; a private one carries an empty title, no subtitle and visibility private, which the app labels Busy. While the colleague's Outlook sync is on, the events of their Outlook calendar shown as busy or out of office come too, as calendar.outlook items with no title (calendar Outlook sync design O9.7). No provider is asked and sources is empty. The caller's own id answers as their own calendar would, private titles included.
+         * @description A colleague's calendar in a window (calendar design D6): their appointments — owned, or attended and accepted — that block time (transparency busy), expanded as GET /items does. A shared one carries its title and location; a private one carries an empty title, no subtitle and visibility private, which the app labels Busy. While the colleague's mailbox sync is on, the events of their mailbox calendar shown as busy or out of office come too, as calendar.mailbox items with no title (calendar Outlook sync design O9.7). No provider is asked and sources is empty. The caller's own id answers as their own calendar would, private titles included.
          */
         get: operations["getCalendarColleaguesByUserIdItems"];
         put?: never;
@@ -255,7 +255,7 @@ export interface paths {
         };
         /**
          * The caller's Outlook sync
-         * @description The caller's Outlook sync (calendar Outlook sync design O5) — their setting, its state and its last sync, whether it can run and, when not, why, and the kinds they may choose.
+         * @description The caller's Outlook sync (calendar Outlook sync design O5) — their setting, its state and its last sync, the provider that serves them, whether it can run and, when not, why, and the kinds they may choose.
          */
         get: operations["getCalendarMailboxSync"];
         /**
@@ -299,7 +299,7 @@ export interface paths {
         };
         /**
          * The calendar's settings
-         * @description The business time zone and today in it, whether the caller may see colleagues' calendars, whether invitations are mailed, and every kind the enabled modules' calendar sources declare — with calendar.subscription and calendar.outlook as CalendarMeta.sources says.
+         * @description The business time zone and today in it, whether the caller may see colleagues' calendars, whether invitations are mailed, and every kind the enabled modules' calendar sources declare — with calendar.subscription and calendar.mailbox as CalendarMeta.sources says.
          */
         get: operations["getCalendarMeta"];
         put?: never;
@@ -672,7 +672,7 @@ export interface components {
             /** Format: uuid */
             invitationChannel: string | null;
         };
-        /** @description One thing on a person's calendar: an appointment's occurrence (kind calendar.appointment, with appointment set), a row another module projects through its calendar source (with path set), an event of a calendar the person subscribes to (kind calendar.subscription, with subscription set — calendar feed design D8), or an event of the person's Outlook calendar that blocks their time, read back by their Outlook sync (kind calendar.outlook, with outlook set and no title — calendar Outlook sync design O9.5). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length). */
+        /** @description One thing on a person's calendar: an appointment's occurrence (kind calendar.appointment, with appointment set), a row another module projects through its calendar source (with path set), an event of a calendar the person subscribes to (kind calendar.subscription, with subscription set — calendar feed design D8), or an event of the person's mailbox calendar (Outlook, or another provider's) that blocks their time, read back by their mailbox sync (kind calendar.mailbox, with mailbox set and no title — calendar Outlook sync design O9.5, Google Workspace design G10). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length). */
         CalendarItem: {
             allDay: boolean;
             appointment?: components["schemas"]["CalendarItemAppointment"];
@@ -682,9 +682,9 @@ export interface components {
             endDate?: string;
             /** Format: date-time */
             endsAt?: string;
-            /** @description Stable within the kind. An appointment's "1001", or "1001:2026-11-03" for one occurrence of a series; a provider's row id; a subscription's "<subscription id>:<UID>", with ":<start>" after it for an occurrence of a rule (20261103T080000Z, or the date for an all-day one); an Outlook event's the first 16 hex digits of the SHA-256 of its id in the mailbox, which never reaches the browser. */
+            /** @description Stable within the kind. An appointment's "1001", or "1001:2026-11-03" for one occurrence of a series; a provider's row id; a subscription's "<subscription id>:<UID>", with ":<start>" after it for an occurrence of a rule (20261103T080000Z, or the date for an all-day one); a mailbox event's the first 16 hex digits of the SHA-256 of its id in the mailbox, which never reaches the browser. */
             id: string;
-            /** @description calendar.appointment, calendar.subscription, calendar.outlook, or one of the kinds in sources. */
+            /** @description calendar.appointment, calendar.subscription, calendar.mailbox, or one of the kinds in sources. */
             kind: string;
             /** @description The SPA route of the provider's record, for the link back. Absent on an appointment, which the sheet opens by id, and on a subscription's item, which opens nothing — the event's own URL is the other calendar's and is not followed. */
             path?: string;
@@ -695,9 +695,9 @@ export interface components {
             subscription?: components["schemas"]["CalendarItemSubscription"];
             /** @description One line — the customer's name, the project's code, the subscription's name. Absent when empty. */
             subtitle?: string;
-            /** @description Empty on a busy-only subscription's item, which the app labels Busy, and on an Outlook event, which the app labels by its outlook.showAs. */
+            /** @description Empty on a busy-only subscription's item, which the app labels Busy, and on a mailbox event, which the app labels by its mailbox.showAs. */
             title: string;
-            outlook?: components["schemas"]["CalendarItemOutlook"];
+            mailbox?: components["schemas"]["CalendarItemMailbox"];
         };
         /** @description What the view needs about the appointment behind an item. */
         CalendarItemAppointment: {
@@ -714,10 +714,10 @@ export interface components {
             transparency: components["schemas"]["AppointmentTransparency"];
             visibility: components["schemas"]["AppointmentVisibility"];
         };
-        /** @description The Outlook event behind an item of kind calendar.outlook (calendar Outlook sync design O9.5): how it shows the person's time in Outlook — busy, tentative, oof (out of office) or workingElsewhere — which the app labels it by (Busy in Outlook, Tentative, Out of office, Working elsewhere). Nothing else of the event is stored or answered: a free or cancelled event is never an item. */
-        CalendarItemOutlook: {
+        /** @description The mailbox event behind an item of kind calendar.mailbox (calendar Outlook sync design O9.5, Google Workspace design G10): how it shows the person's time in their mailbox calendar — busy, tentative, out_of_office or working_elsewhere, the calendar's own words whatever the provider calls them — which the app labels it by (Busy in <provider>, Tentative, Out of office, Working elsewhere; the provider's name is GET /mailbox-sync's provider.displayName). Nothing else of the event is stored or answered: a free or cancelled event is never an item. */
+        CalendarItemMailbox: {
             /** @enum {string} */
-            showAs: "busy" | "tentative" | "oof" | "workingElsewhere";
+            showAs: "busy" | "tentative" | "out_of_office" | "working_elsewhere";
         };
         /** @description The subscription behind an item of kind calendar.subscription (calendar feed design D8): what the app draws it by — its colour and its name — and whether it is busy only, in which case the item's title is empty and the app labels it Busy. */
         CalendarItemSubscription: {
@@ -748,7 +748,7 @@ export interface components {
             canViewColleagues: boolean;
             /** @description Whether invitations are mailed - the channel chosen in the Calendar settings can send (integrations design T6). When false, outside attendees are stored and marked not sent. */
             invitationsAvailable: boolean;
-            /** @description Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours — calendar.subscription when the caller has at least one subscription, and calendar.outlook while the caller's Outlook sync is on. */
+            /** @description Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours — calendar.subscription when the caller has at least one subscription, and calendar.mailbox while the caller's mailbox sync is on. */
             sources: components["schemas"]["CalendarSourceKind"][];
             /** @description The workspace's business time zone. */
             timeZone: string;
@@ -758,7 +758,7 @@ export interface components {
              */
             today: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: invitations are off in the Calendar settings, or the chosen channel cannot send, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already), mailbox_sync_unavailable (409: the Outlook sync cannot run now; detail carries the availability — switch_off, no_provider, unavailable or no_account) and mailbox_sync_off (409: Sync now of an Outlook sync that is turned off). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: invitations are off in the Calendar settings, or the chosen channel cannot send, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already), mailbox_sync_unavailable (409: the mailbox sync cannot run now; detail carries the availability — no_provider, no_account, switch_off or unavailable) and mailbox_sync_off (409: Sync now of a mailbox sync that is turned off). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither. */
         CalendarProblem: {
             code?: string | null;
             detail?: string | null;
@@ -870,11 +870,12 @@ export interface components {
          * @enum {string}
          */
         FeedVariant: "full" | "busy";
-        /** @description The caller's Outlook sync (calendar Outlook sync design O5, on the person's own Outlook connection, Outlook connection design M9): their setting, the worker's state, and whether it can run. availability is available, or why not — switch_off (an Owner has not turned on the Outlook connection in the Entra module), no_provider (no enabled module writes mailboxes), unavailable (the provider's connection is not working), no_account (the caller has no account in the directory that Staff links to them), not_connected (the caller has not connected Outlook, or their connection closed: the worker's last finding) or reconnect (Microsoft refused the caller's connection; they reconnect: the worker's last finding). A PUT and Sync now are taken while it is available, not_connected or reconnect. availableKinds are the kinds the caller may choose: the appointment kind and the kinds the calendar sources declare today. state is pending (on, not yet synced), active, stopping (the copies are being removed), off, unavailable or failed; error is the last refusal's code, absent after a sync that worked. A caller who never turned it on is answered the defaults at revision 0. */
+        /** @description The caller's mailbox sync (calendar Outlook sync design O5, on the person's own connection to their provider, Outlook connection design M9; any provider, Google Workspace design G3): their setting, the worker's state, and whether it can run. provider is the provider that serves the caller — the one their directory account in Staff belongs to — its key and the name the screens show (Outlook), null when no enabled provider serves an account of theirs. availability is available, or why not, asked in this order — no_provider (no enabled module writes mailboxes), no_account (the caller has no enabled account in the directory that Staff links to them, or none of a provider that is on), switch_off (an administrator has not turned on the connection for people in the provider's settings), unavailable (the provider's connection is not working) — then not_connected (the caller has not connected to the provider, or their connection closed: the worker's last finding) or reconnect (the provider refused the caller's connection; they reconnect: the worker's last finding). A PUT and Sync now are taken while it is available, not_connected or reconnect. availableKinds are the kinds the caller may choose: the appointment kind and the kinds the calendar sources declare today. state is pending (on, not yet synced), active, stopping (the copies are being removed), off, unavailable or failed; error is the last refusal's code, absent after a sync that worked. A caller who never turned it on is answered the defaults at revision 0. */
         MailboxSync: {
             /** @enum {string} */
             availability: "available" | "switch_off" | "no_provider" | "unavailable" | "no_account" | "not_connected" | "reconnect";
             availableKinds: components["schemas"]["MailboxSyncKind"][];
+            provider: components["schemas"]["MailboxSyncProvider"] | null;
             detail: components["schemas"]["MailboxSyncDetail"];
             enabled: boolean;
             /** @enum {string} */
@@ -896,6 +897,11 @@ export interface components {
             /** @enum {string} */
             state: "pending" | "active" | "stopping" | "off" | "unavailable" | "failed";
             target: components["schemas"]["MailboxSyncTarget"];
+        };
+        /** @description The provider that serves the caller's mailbox sync (Google Workspace design G3, G10): key is the module's key (entra), displayName the name the screens show (Outlook) — Busy in Outlook, Sync with Outlook. */
+        MailboxSyncProvider: {
+            displayName: string;
+            key: string;
         };
         /**
          * @description What the copies show — full, the titles, the places and the links, or busy, Busy for every title and the link alone.
