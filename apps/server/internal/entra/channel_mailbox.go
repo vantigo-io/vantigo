@@ -306,8 +306,15 @@ func (m *channelMailbox) Forget(ctx context.Context, mailbox string) error {
 // (ErrMailboxUnknown otherwise, with no call): larger than MaxMessage
 // ErrMailTooLarge, the provider not available ErrMailboxUnavailable, both
 // before any call. Without bcc, POST /users/{id}/sendMail; with them, a
-// draft (sendMIME). Neither is retried on a 5xx.
-func (m *channelMailbox) Send(ctx context.Context, mailbox string, mime []byte, bcc []string) error {
+// draft (sendMIME). Neither is retried on a 5xx. It answers the zero
+// SentMessage: Graph keeps the Message-ID the MIME carries and sendMail
+// answers no body (Google Workspace design G5).
+func (m *channelMailbox) Send(ctx context.Context, mailbox string, mime []byte, bcc []string) (contracts.SentMessage, error) {
+	return contracts.SentMessage{}, m.send(ctx, mailbox, mime, bcc)
+}
+
+// send is Send's work.
+func (m *channelMailbox) send(ctx context.Context, mailbox string, mime []byte, bcc []string) error {
 	oid, err := m.recorded(ctx, mailbox)
 	if err != nil {
 		return err

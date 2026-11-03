@@ -97,7 +97,14 @@ func (p *personalMailbox) Status(ctx context.Context) (contracts.PersonalMailSta
 // row for the same account. The rest — reconnect, closing, the account on
 // use and the mail scope — is the token's to decide (outlookTokens.issue,
 // feature "mail"), as Status reads it.
-func (p *personalMailbox) Send(ctx context.Context, mime []byte, bcc []string) error {
+// It answers the zero SentMessage, as the channel mailbox's Send does
+// (Google Workspace design G5).
+func (p *personalMailbox) Send(ctx context.Context, mime []byte, bcc []string) (contracts.SentMessage, error) {
+	return contracts.SentMessage{}, p.send(ctx, mime, bcc)
+}
+
+// send is Send's work.
+func (p *personalMailbox) send(ctx context.Context, mime []byte, bcc []string) error {
 	userID, ok := contracts.UserID(ctx)
 	if !ok {
 		return needsPerson(outlookNotConnected)

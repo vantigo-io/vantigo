@@ -170,7 +170,7 @@ func TestPersonalMailbox_Send_SizeLimit(t *testing.T) {
 	ctx := contracts.AsUser(context.Background(), userID)
 
 	huge := make([]byte, contracts.MaxPersonalMessageBytes+1)
-	err := prov.Send(ctx, huge, nil)
+	_, err := prov.Send(ctx, huge, nil)
 	if !errors.Is(err, contracts.ErrMailTooLarge) {
 		t.Errorf("Send huge = %v, want ErrMailTooLarge", err)
 	}
@@ -186,7 +186,7 @@ func TestPersonalMailbox_Send_FailsWhenConsentMissing(t *testing.T) {
 	prov := personalProvider(f.h)
 	ctx := contracts.AsUser(context.Background(), userID)
 
-	err := prov.Send(ctx, personalMIME(""), nil)
+	_, err := prov.Send(ctx, personalMIME(""), nil)
 	var needed *contracts.ConnectionNeededError
 	if !errors.As(err, &needed) {
 		t.Fatalf("Send without mail scope = %v, want ConnectionNeededError", err)
@@ -214,7 +214,7 @@ func TestPersonalMailbox_Send_SuccessNoBcc(t *testing.T) {
 	ctx := contracts.AsUser(context.Background(), userID)
 
 	callsBefore := len(f.g.Calls())
-	err := prov.Send(ctx, personalMIME(""), nil)
+	_, err := prov.Send(ctx, personalMIME(""), nil)
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestPersonalMailbox_Send_SuccessWithBcc(t *testing.T) {
 
 	callsBefore := len(f.g.Calls())
 	bcc := []string{"blind@example.com"}
-	err := prov.Send(ctx, personalMIME("blind@example.com"), bcc)
+	_, err := prov.Send(ctx, personalMIME("blind@example.com"), bcc)
 	if err != nil {
 		t.Fatalf("Send with bcc: %v", err)
 	}

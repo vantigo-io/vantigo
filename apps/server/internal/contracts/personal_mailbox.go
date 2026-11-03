@@ -83,8 +83,9 @@ type PersonalMailbox interface {
 	// ErrBccUnsupported when the provider would not keep every blind copy;
 	// ErrMailboxDenied when the provider refuses a recipient or the message;
 	// ErrMailboxUnavailable when the provider cannot be reached or throttles
-	// past retries.
-	Send(ctx context.Context, mime []byte, bcc []string) error
+	// past retries. On success it answers what the provider knows of the
+	// message it sent (SentMessage), the zero value when nothing.
+	Send(ctx context.Context, mime []byte, bcc []string) (SentMessage, error)
 }
 
 // PersonalMailStatus is what PersonalMailbox.Status answers for the caller.
