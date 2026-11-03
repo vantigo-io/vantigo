@@ -29,9 +29,11 @@ const renderTerms = (canViewTariffs: boolean, answer?: (init?: RequestInit) => R
     return answer?.(init) ?? json(period);
   });
   const onClose = vi.fn();
+  const client = new QueryClient();
+  client.setQueryData(["energy", "metering-points", 1], { id: 1 });
   render(
     <MantineProvider env="test">
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={client}>
         <SupplyTermsModal meteringPointId={1} period={period} onClose={onClose} canViewTariffs={canViewTariffs} />
       </QueryClientProvider>
     </MantineProvider>,
@@ -40,7 +42,7 @@ const renderTerms = (canViewTariffs: boolean, answer?: (init?: RequestInit) => R
     const call = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT");
     return call ? { url: String(call[0]), body: JSON.parse(String(call[1]?.body)) } : null;
   };
-  return { fetchMock, onClose, put };
+  return { fetchMock, onClose, put, client };
 };
 
 describe("SupplyTermsModal", () => {
@@ -56,6 +58,14 @@ describe("SupplyTermsModal", () => {
       url: "/api/v1/energy/metering-points/1/supply-periods/5",
       body: { tariffId: 1003, cadence: "yearly" },
     });
+  });
+
+  it("refetches the point, whose electricity-tax suggestion reads the current customer", async () => {
+    const { onClose, client } = renderTerms(true);
+    expect(await screen.findByDisplayValue("Fixed 2025 (archived)")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(client.getQueryState(["energy", "metering-points", 1])?.isInvalidated).toBe(true);
   });
 
   it("changes to another active tariff", async () => {

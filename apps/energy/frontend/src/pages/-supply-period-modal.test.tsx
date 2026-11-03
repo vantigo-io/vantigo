@@ -64,9 +64,11 @@ describe("SupplyPeriodModal", () => {
       return json({ endedPeriod: null, newPeriod: { id: 9 } });
     });
     const onClose = vi.fn();
+    const client = new QueryClient();
+    client.setQueryData(["energy", "metering-points", 1], { id: 1 });
     render(
       <MantineProvider env="test">
-        <QueryClientProvider client={new QueryClient()}>
+        <QueryClientProvider client={client}>
           <SupplyPeriodModal meteringPointId={1} opened onClose={onClose} canViewTariffs={canViewTariffs} />
         </QueryClientProvider>
       </MantineProvider>,
@@ -75,7 +77,7 @@ describe("SupplyPeriodModal", () => {
       const call = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
       return call ? JSON.parse(String(call[1]?.body)) : null;
     };
-    return { fetchMock, onClose, body };
+    return { fetchMock, onClose, body, client };
   };
 
   const chooseCustomerAndDate = async () => {
@@ -101,6 +103,14 @@ describe("SupplyPeriodModal", () => {
       "/api/v1/energy/tariffs?kind=power&status=active",
     );
     expect(body()).toMatchObject({ customerId: 1002, tariffId: 1001, cadence: "quarterly" });
+  });
+
+  it("refetches the point, whose electricity-tax suggestion reads the current customer", async () => {
+    const { onClose, client } = renderSwitch(false);
+    await chooseCustomerAndDate();
+    await userEvent.click(screen.getByRole("button", { name: "Assign customer" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(client.getQueryState(["energy", "metering-points", 1])?.isInvalidated).toBe(true);
   });
 
   it("starts the period with no tariff and monthly without energy:tariffs-view, and lists none", async () => {
