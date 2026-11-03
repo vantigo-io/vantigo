@@ -14,10 +14,10 @@ import userEvent from "@testing-library/user-event";
 import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ConnectionCards } from "../../components/connection-cards";
 import {
   type ConnectionButtonProps,
   type ConnectionCardProps,
-  ConnectionCards,
   type ConnectionProvider,
   connectionButtonFor,
   enabledConnectionProviders,

@@ -6,6 +6,8 @@ sidebar:
 sources:
   - apps/host/frontend/src/routes/settings/connections.tsx
   - apps/host/frontend/src/lib/connections.tsx
+  - apps/host/frontend/src/components/connection-cards.tsx
+  - apps/host/frontend/src/components/entra-connection-card.tsx
   - apps/entra/frontend/src/components/outlook-connection.tsx
 ---
 

@@ -1,7 +1,8 @@
 import { Stack } from "@mantine/core";
 import { createFileRoute, notFound, useRouter } from "@tanstack/react-router";
 import { PageHeader, useTranslation } from "@vantigo/frontend-shell";
-import { ConnectionCards, enabledConnectionProviders, validateConnectionsSearch } from "../../lib/connections";
+import { ConnectionCards } from "../../components/connection-cards";
+import { enabledConnectionProviders, validateConnectionsSearch } from "../../lib/connections";
 import "../../i18n";
 
 /**
