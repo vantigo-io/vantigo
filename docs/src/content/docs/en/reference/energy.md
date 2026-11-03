@@ -247,7 +247,9 @@ that customer, the one the tab shows. The code is
 `contracts.CustomerEntry.IndustryCode` read through `contracts.CustomerDirectory`
 (the Customers module's registry record, from Brønnøysund —
 [Registry record](/en/reference/customers/#registry-record)); an unknown customer, a
-customer without a record and a nil directory all read as no code. Codes are compared
+customer without a record and a nil directory all read as no code. A customer merged
+into another (`CustomerEntry.MergedInto`) is read as its survivor, and `customerId`
+is then the survivor's. Codes are compared
 as their digits, dots and whitespace dropped (`"24.420"` → `24420`), by prefix.
 
 **The rule**, in order:

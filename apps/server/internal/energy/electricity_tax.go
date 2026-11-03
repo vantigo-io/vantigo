@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/vantigo-io/vantigo/server/internal/energy/gen"
 	"github.com/vantigo-io/vantigo/server/internal/energy/store"
@@ -80,7 +81,7 @@ func inTaxZone(postalCode string) (bool, int) {
 // ("24.420" → "24420"), the form the rule compares prefixes of.
 func industryDigits(code string) string {
 	return strings.Map(func(r rune) rune {
-		if r == '.' || r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+		if r == '.' || unicode.IsSpace(r) {
 			return -1
 		}
 		return r
@@ -221,7 +222,10 @@ func currentCustomerID(periods []store.EnergySupplyPeriod, now time.Time) *int32
 
 // taxCustomerOf reads the customer's industry code through the directory; a
 // nil id, a nil directory (never in production) or a customer the directory
-// does not know is a customer without a code.
+// does not know is a customer without a code. A customer merged into another
+// is read as its survivor — the directory's MergedInto is always the last of
+// a chain — whose id the suggestion then reports: a merged-away customer's
+// own record describes a company that is no longer the one supplied.
 func (s *server) taxCustomerOf(ctx context.Context, id *int32) (taxCustomer, error) {
 	customer := taxCustomer{id: id}
 	if id == nil || s.deps.Directory == nil {
@@ -230,6 +234,13 @@ func (s *server) taxCustomerOf(ctx context.Context, id *int32) (taxCustomer, err
 	entry, err := s.deps.Directory.Customer(ctx, *id)
 	if err != nil {
 		return taxCustomer{}, fmt.Errorf("energy: read the customer's industry code: %w", err)
+	}
+	if entry != nil && entry.MergedInto != nil {
+		survivor := *entry.MergedInto
+		customer.id = &survivor
+		if entry, err = s.deps.Directory.Customer(ctx, survivor); err != nil {
+			return taxCustomer{}, fmt.Errorf("energy: read the surviving customer's industry code: %w", err)
+		}
 	}
 	if entry != nil {
 		customer.industryCode = entry.IndustryCode

@@ -82,6 +82,8 @@ func TestElectricityTaxSuggestion(t *testing.T) {
 		{"a household with a code", true, "NO", "0150", "24.420", electricityTaxHint{taxClassOrdinary, taxReasonHousehold, false}},
 		{"a smelter in Oslo", false, "NO", "0150", "24.420", electricityTaxHint{taxClassReduced, taxReasonIndustry, false}},
 		{"a code without dots", false, "NO", "0150", "24420", electricityTaxHint{taxClassReduced, taxReasonIndustry, false}},
+		{"a non-breaking space in the code", false, "NO", "0150", "24.\u00a0420", electricityTaxHint{taxClassReduced, taxReasonIndustry, false}},
+		{"a code of only a non-breaking space", false, "NO", "0150", "\u00a0", electricityTaxHint{taxClassOrdinary, taxReasonNoIndustryCode, true}},
 		{"the first division of section B", false, "NO", "0150", "05.100", electricityTaxHint{taxClassReduced, taxReasonIndustry, false}},
 		{"the last division of section C", false, "NO", "0150", "33.120", electricityTaxHint{taxClassReduced, taxReasonIndustry, false}},
 		{"the division before section B", false, "NO", "0150", "03.110", electricityTaxHint{taxClassOrdinary, taxReasonOrdinary, false}},
