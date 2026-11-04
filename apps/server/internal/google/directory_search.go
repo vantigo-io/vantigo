@@ -67,7 +67,6 @@ type searchAccount struct {
 	Suspended          bool             `json:"suspended"`
 	Aliases            []string         `json:"aliases"`
 	NonEditableAliases []string         `json:"nonEditableAliases"`
-	Emails             []map[string]any `json:"emails"`
 	ExternalIDs        []map[string]any `json:"externalIds"`
 }
 
@@ -91,11 +90,11 @@ func (a searchAccount) employeeNumber() string {
 }
 
 // aliases are the account's addresses other than its primary email, as the
-// matches compare them (addressKey): its aliases, its non-editable aliases
-// (the same names on an alias domain), and the addresses in emails[] on one
-// of the organisation's verified domains — an address an administrator typed
-// for the person elsewhere is not the account's own and matches nobody.
-func (a searchAccount) aliases(domains []string) []string {
+// matches compare them (addressKey): its aliases and its non-editable
+// aliases (the same names on an alias domain). The addresses in emails[] are
+// not the account's own — an administrator types them, on any domain — and
+// match nobody.
+func (a searchAccount) aliases() []string {
 	primary := addressKey(a.PrimaryEmail)
 	var out []string
 	add := func(s string) {
@@ -108,13 +107,6 @@ func (a searchAccount) aliases(domains []string) []string {
 	}
 	for _, s := range a.NonEditableAliases {
 		add(s)
-	}
-	for _, e := range a.Emails {
-		address := str(e["address"])
-		_, domain, ok := strings.Cut(addressKey(address), "@")
-		if ok && slices.ContainsFunc(domains, func(d string) bool { return strings.EqualFold(d, domain) }) {
-			add(address)
-		}
 	}
 	return out
 }
@@ -172,23 +164,23 @@ func searchUnavailable(err error) error {
 }
 
 // footing is a read's footing on the pool: the users' token source, as the
-// admin to impersonate, and the organisation's verified domains. A
+// admin to impersonate. A
 // connection that names no admin or holds no live key cannot be asked:
 // contracts.ErrDirectoryUnavailable.
-func (d *directorySearch) footing(ctx context.Context) (tokenSource, []string, error) {
+func (d *directorySearch) footing(ctx context.Context) (tokenSource, error) {
 	q := store.New(d.deps.Pool)
 	conn, err := q.GetConnection(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("google: read the connection: %w", err)
+		return nil, fmt.Errorf("google: read the connection: %w", err)
 	}
 	creds, err := q.ListCredentials(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("google: read the credentials: %w", err)
+		return nil, fmt.Errorf("google: read the credentials: %w", err)
 	}
 	if !configured(conn, creds) {
-		return nil, nil, searchUnavailable(errNotConfigured)
+		return nil, searchUnavailable(errNotConfigured)
 	}
-	return d.keys.tokenSource([]string{scopeUsers}, *conn.AdminSubject), conn.Domains, nil
+	return d.keys.tokenSource([]string{scopeUsers}, *conn.AdminSubject), nil
 }
 
 // failed is a call's error as the contract answers it: the request's own
@@ -218,7 +210,7 @@ func (d *directorySearch) Users(ctx context.Context, search string, limit int) (
 	if term == "" || limit < 1 {
 		return nil, nil
 	}
-	src, _, err := d.footing(ctx)
+	src, err := d.footing(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -345,7 +337,7 @@ func (d *directorySearch) readMatches(ctx context.Context) (contracts.DirectoryM
 	if len(candidates) == 0 {
 		return out, nil
 	}
-	src, domains, err := d.footing(readCtx)
+	src, err := d.footing(readCtx)
 	if err != nil {
 		if errors.Is(err, contracts.ErrDirectoryUnavailable) {
 			return contracts.DirectoryMatches{}, err
@@ -359,7 +351,7 @@ func (d *directorySearch) readMatches(ctx context.Context) (contracts.DirectoryM
 	if partial {
 		out.Truncated = true
 	}
-	proposals, ambiguous := matchAccounts(candidates, accounts, domains, !partial)
+	proposals, ambiguous := matchAccounts(candidates, accounts, !partial)
 	out.Ambiguous = ambiguous
 	proposed := make([]searchAccount, 0, len(proposals))
 	for _, p := range proposals {
@@ -435,13 +427,13 @@ type accountProposal struct {
 // two accounts or more, or one account another candidate's key matched too.
 // An address identity made up (Email "") and an empty number match nothing.
 // Proposals keep the candidates' order.
-func matchAccounts(candidates []contracts.ConnectCandidate, accounts []searchAccount, domains []string, byNumber bool) ([]accountProposal, int) {
+func matchAccounts(candidates []contracts.ConnectCandidate, accounts []searchAccount, byNumber bool) ([]accountProposal, int) {
 	byPrimary, byAlias, byEmployee := map[string][]int{}, map[string][]int{}, map[string][]int{}
 	for i, a := range accounts {
 		if k := addressKey(a.PrimaryEmail); k != "" {
 			byPrimary[k] = append(byPrimary[k], i)
 		}
-		for _, k := range a.aliases(domains) {
+		for _, k := range a.aliases() {
 			byAlias[k] = append(byAlias[k], i)
 		}
 		if byNumber {

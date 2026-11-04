@@ -466,7 +466,8 @@ announced link with the Directory id as `objectId` and the primary email as
 ([U1](#unverified-items)), and a sign-in whose `sub` is another id does not fulfil the
 link by its verified email.
 
-**`Users`** strips `'`, `"`, `\` and `*` from the search and asks nothing when nothing is
+**`Users`** strips `'`, `"`, `\` and `*` from the search — so `O'Brien` is searched as
+`OBrien` — and asks nothing when nothing is
 left. It then asks `users.list(customer=my_customer, projection=basic, viewType=admin_view,
 maxResults=20)` twice, with `query=name:'<s>*'` and with `query=email:'<s>*'` — the full
 name and the primary email or an alias starting with the search. Google documents no `OR`
@@ -477,10 +478,10 @@ marked with its holder from `SSOConnections.KeyHolders`.
 **`Matches`** reads `SSOConnections.Unconnected(1001)` — `truncated` past 1000, as
 Entra's — then the organisation's users once, `users.list(customer=my_customer,
 projection=basic)` in pages of 500, at most 20 pages (10,000 accounts). An account's
-addresses are its primary email, its `aliases`, its `nonEditableAliases`, and the
-`emails[]` entries on one of the connection's verified domains; an address an
-administrator typed for the person elsewhere (a home address) is not the account's own
-and matches nobody. A candidate's key matches an account when:
+addresses are its primary email, its `aliases` and its `nonEditableAliases`; the
+`emails[]` entries — addresses an administrator typed for the person, on any domain (a
+home address, or a work address the account does not receive) — are not the account's
+own and match nobody. A candidate's key matches an account when:
 
 | Key | Rule | `matchedBy` |
 | --- | --- | --- |

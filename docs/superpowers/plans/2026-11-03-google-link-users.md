@@ -55,8 +55,8 @@ Checked against `280cd94a` (delivery B's branch, `feat/google-accounts`).
 6. **The users' read** is `users.list(customer=my_customer, projection=basic,
    maxResults=500)` paged by `pageToken`; `basic` answers `primaryEmail`, `aliases`,
    `nonEditableAliases`, `emails[]`, `externalIds`, `name.fullName` and `suspended`.
-   `emails[]` may also hold addresses an administrator typed for the person
-   (`type: home`, an outside address), which are not the account's own.
+   `emails[]` holds addresses an administrator typed for the person (`type: home`, an
+   outside address, or a work address on any domain), which are not the account's own.
 7. **Identity's Google claim check** (`checkGoogleClaims`, `oidc_claims.go:198`)
    requires `hd` equal to the email's domain and listed among the allowed domains. The
    brief forbids changing it; U4 decides whether a user on a secondary domain passes it.
@@ -81,8 +81,8 @@ Checked against `280cd94a` (delivery B's branch, `feat/google-accounts`).
   `EmployeeNumber` the first organization external id, `Enabled` not suspended, `Guest`
   false, and its holder from `KeyHolders`. An id that is not digits is left out.
 - **An account's addresses** for the matches are its primary email, its `aliases` and
-  `nonEditableAliases`, and the `emails[]` addresses whose domain is one of the
-  connection's verified domains — never an outside address an administrator typed.
+  `nonEditableAliases` — never an `emails[]` entry, which an administrator types, on any
+  domain (changed in review: a typed work address on a verified domain matched too).
 - **The matching rule is Entra's, exact only.** A candidate's address equal to an
   account's primary email matches `mail` and `principalName` (the primary email is both
   on Google); equal to an alias, `mail`; their employee number equal to the account's
@@ -132,8 +132,8 @@ Checked against `280cd94a` (delivery B's branch, `feat/google-accounts`).
   queries, `projection=basic`, paging by `pageToken` and `maxResults`, aliases,
   `nonEditableAliases` and `emails[]`, alongside B's `externalId:`. Tests through
   identity's endpoints: the two queries and their merge, a holder shown, the search's
-  stripping, the matches by primary email, alias and number, an outside `emails[]`
-  address matching nothing, ambiguity both ways, an account held by another left out,
+  stripping, the email prefix ignoring case, the matches by primary email, alias and
+  number, an `emails[]` address (outside or on a verified domain) matching nothing, ambiguity both ways, an account held by another left out,
   candidates truncated, the directory truncated with the number unused, no key and a
   refused token answering 503, no address in the log; a pick announced keeps the
   Google id and the primary email.

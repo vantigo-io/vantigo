@@ -241,14 +241,28 @@ func TestDirectorySearch_TwentyAtMost(t *testing.T) {
 	}
 }
 
+// The email query is a prefix ignoring case, as Google's: a primary email
+// held in mixed case is found by a lower-case search.
+func TestDirectorySearch_TheEmailPrefixIgnoresCase(t *testing.T) {
+	t.Parallel()
+	_, g, o := directoryHarness(t)
+	id := person(g, "Kari", "Nordmann", "kari@nordlys.no", "")
+	g.SetUser(id, func(u *googletest.User) { u.PrimaryEmail = "Ola.Nordmann@Nordlys.no" })
+	r := search(o, "ola.nord")
+	var got dirUsers
+	r.JSON(&got)
+	if r.Status != http.StatusOK || len(got.Users) != 1 || got.Users[0].ObjectID != id {
+		t.Errorf("search ola.nord: %d %s, want the mixed-case primary email's account", r.Status, r.Body)
+	}
+}
+
 func TestDirectoryMatches_ExactByAddressAliasAndNumber(t *testing.T) {
 	t.Parallel()
 	h, g, o := directoryHarness(t)
 
 	// Proposed: Anne by her primary email (mail and principal name); Bjørn
 	// by an alias; Carl by his number, ignoring case; Ivar suspended, by
-	// his non-editable alias; Kjell by an emails[] address on a verified
-	// domain.
+	// his non-editable alias.
 	anne := addUser(t, h, "Anne@Nordlys.no", "")
 	anneAccount := person(g, "Anne", "A", "anne@nordlys.no", "")
 	bjorn := addUser(t, h, "bjorn@nordlys.no", "")
@@ -260,11 +274,6 @@ func TestDirectoryMatches_ExactByAddressAliasAndNumber(t *testing.T) {
 	g.SetUser(ivarAccount, func(u *googletest.User) {
 		u.Suspended = true
 		u.NonEditableAliases = []string{"ivar@nordlys.example"}
-	})
-	kjell := addUser(t, h, "kjell@nordlys.no", "")
-	kjellAccount := person(g, "Kjell", "K", "kjell.k@nordlys.no", "")
-	g.SetUser(kjellAccount, func(u *googletest.User) {
-		u.OtherEmails = []map[string]any{{"address": "Kjell@Nordlys.no", "type": "work"}}
 	})
 
 	// Left out, ambiguous: two accounts for Dina (one by address, one by
@@ -278,7 +287,8 @@ func TestDirectoryMatches_ExactByAddressAliasAndNumber(t *testing.T) {
 
 	// Left out, not ambiguous: Gro's account is held by another user's
 	// mapping; Jon has no account; Liv's address is on her account only as a
-	// home address an administrator typed, which is not the account's own.
+	// home address an administrator typed, and Kjell's only as a work
+	// address on a verified domain, neither of which is the account's own.
 	addUser(t, h, "gro@nordlys.no", "")
 	person(g, "Gro", "G", "gro@nordlys.no", "")
 	holder := addUser(t, h, "holder@example.test", "")
@@ -288,6 +298,11 @@ func TestDirectoryMatches_ExactByAddressAliasAndNumber(t *testing.T) {
 	livAccount := person(g, "Liv", "L", "liv@nordlys.no", "")
 	g.SetUser(livAccount, func(u *googletest.User) {
 		u.OtherEmails = []map[string]any{{"address": "liv@gmail.example", "type": "home"}}
+	})
+	addUser(t, h, "kjell@nordlys.no", "")
+	kjellAccount := person(g, "Kjell", "K", "kjell.k@nordlys.no", "")
+	g.SetUser(kjellAccount, func(u *googletest.User) {
+		u.OtherEmails = []map[string]any{{"address": "Kjell@Nordlys.no", "type": "work"}}
 	})
 
 	before := len(listCalls(g))
@@ -313,7 +328,6 @@ func TestDirectoryMatches_ExactByAddressAliasAndNumber(t *testing.T) {
 		{bjorn, bjornAccount, []string{"mail"}, true},
 		{carl, carlAccount, []string{"employeeNumber"}, true},
 		{ivar, ivarAccount, []string{"mail"}, false},
-		{kjell, kjellAccount, []string{"mail"}, true},
 	}
 	if len(got.Matches) != len(wants) {
 		t.Fatalf("matches: %+v, want %d", got.Matches, len(wants))
