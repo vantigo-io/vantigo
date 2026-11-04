@@ -408,10 +408,12 @@ export const staffCatalog = {
     "refusal.account_mismatch":
       "The account flag is off, but the user was not disabled: the account carries another employee number — someone else's account. It is disabled once the number is right.",
     "refusal.account_kind_locked":
-      "The account kind cannot leave Microsoft Entra ID while Microsoft Entra ID holds an account for the person. The person leaves the directory by Disable now or by the end of their employment.",
+      "The account kind cannot leave the identity provider while the provider holds an account for the person. The person leaves the directory by Disable now or by the end of their employment.",
     "refusal.provider_missing": "No enabled module offers this identity provider, so it cannot be chosen.",
     "refusal.pass_gone":
       "The pass was shown already, has expired, or none was issued. Run now (new pass) issues a new one.",
+    "refusal.pass_gone_google":
+      "The password was shown already, has expired, or none was issued. Run now (new password) issues a new one.",
     "refusal.provider_refused": "The identity provider refused the step; nothing more was done there.",
 
     // The Account tab (delivery C)
@@ -591,7 +593,7 @@ export const staffCatalog = {
     accountKindChoice_external: "External identity provider",
     accountKindChoice_entra: "Microsoft Entra ID",
     accountKindChoiceDescription:
-      "Who owns the person's account. Leaving Microsoft Entra ID is refused while it holds an account for the person.",
+      "Who owns the person's account. Leaving an identity provider is refused while it holds an account for the person.",
     defaultAccountKind: "Default account kind",
     defaultAccountKindDescription: "The kind a new person takes. People already registered keep theirs.",
     providersNone: "No identity provider is offered: no enabled module provides one.",
@@ -614,6 +616,8 @@ export const staffCatalog = {
     userPrincipalName: "User principal name",
     enabledSince: "Enabled since",
     passIssued: "Pass issued",
+    passIssued_google: "Password issued",
+    providerNameFallback: "the identity provider",
     accountAnnounced: "Announced",
     providerFailing: "Failed attempts in a row: {{count}}. The directory could not be reached; the worker tries again.",
     providerReason_user_gone: "The account is gone from the directory; Staff never creates a second.",
@@ -628,7 +632,7 @@ export const staffCatalog = {
       "The account holds an administrative role in the directory, which an administrator handles by hand.",
     accountReason_external_enabled: "The account was not deleted: it is still enabled in the directory.",
     accountReason_external_unconfirmed:
-      "The directory holds an account under the person's employee number that Vantigo did not create. Staff writes nothing to it until someone who manages Microsoft Entra ID confirms the adoption on the Microsoft Entra ID page.",
+      "The directory holds an account under the person's employee number that Vantigo did not create. Staff writes nothing to it until someone who manages {{provider}} confirms the adoption on its page under Integrations.",
     accountReason_leaver_step_failed: "A leaver step in the directory was not finished.",
     accountReason_adoption_unconfirmed: "Vantigo did not create this account, and its adoption is not yet confirmed.",
     accountReason_pass_forbidden:
@@ -638,6 +642,10 @@ export const staffCatalog = {
     leaverStep_leave_date: "writing the leave date",
     leaverStep_strip_licences: "removing the licences",
     leaverStep_remove_groups: "removing the person from groups",
+    leaverStep_remove_licences: "removing the licences",
+    leaverStep_sign_out: "signing the person out of their sessions",
+    accountReason_sign_out_refused:
+      "The directory refused to sign the person out of their sessions; the account is suspended all the same.",
     accountReason_manager_not_in_directory:
       "The person's manager has no account in the directory, so the account carries no manager.",
     accountReason_hire_date_not_written: "The directory refused the hire date.",
@@ -645,25 +653,36 @@ export const staffCatalog = {
     accountReason_privileged:
       "The account holds an administrative role in the directory, so the directory leaves it to an administrator.",
     accountReason_pass_not_allowed: "The directory does not allow a Temporary Access Pass for this account.",
+    accountReason_pass_not_allowed_google:
+      "Google's password policy refused the generated password; the account is active without one.",
     accountReason_manager_not_found: "The directory could not find the manager's account.",
     accountReason_photo_not_written: "The directory refused the photo.",
     accountReason_photo_pushed: "Photo written",
     accountReason_photo_cleared: "Photo removed",
     accountReason_photo_refused: "Photo refused by the directory",
     showPass: "Show the pass",
+    showPass_google: "Show the password",
     passTitle: "Temporary Access Pass",
+    passTitle_google: "First password",
     passExplained: "{{name}} types this pass at their first sign-in.",
+    passExplained_google: "{{name}} signs in with this password once, then chooses their own.",
     passShownOnce: "It will not be shown again.",
     passExpires: "Works until {{date}}.",
     copy: "Copy",
     copied: "Copied",
     close: "Close",
     couldNotShowPass: "Could not show the pass",
+    couldNotShowPass_google: "Could not show the password",
     runNowNewPass: "Run now (new pass)",
+    runNowNewPass_google: "Run now (new password)",
     runNowNewPassExplained:
       "Run now (new pass) does the next step of both accounts at once and has the directory issue a new pass, which Show the pass shows once.",
     runNowNewPassDone:
       "Done: when the account is enabled, the directory issued a new pass — Show the pass shows it once.",
+    runNowNewPassExplained_google:
+      "Run now (new password) does the next step of both accounts at once and has the directory issue a new first password, which Show the password shows once.",
+    runNowNewPassDone_google:
+      "Done: when the account is enabled, the directory issued a new first password — Show the password shows it once.",
     directoryProfile: "Directory profile",
     directoryProfileDescription:
       "Which fields Staff writes on a person's account in the identity provider's directory. A field switched off is not sent; the directory keeps what it has. The names, the employee number, the user principal name and the usage location are always written.",
@@ -2495,10 +2514,12 @@ export const staffCatalog = {
     "refusal.account_mismatch":
       "Kontoflagget er av, men brukeren ble ikke deaktivert: kontoen har et annet ansattnummer — den er noen andres. Den deaktiveres når nummeret stemmer.",
     "refusal.account_kind_locked":
-      "Kontotypen kan ikke forlate Microsoft Entra ID mens Microsoft Entra ID har en konto for personen. Personen forlater katalogen med Deaktiver nå eller når arbeidsforholdet slutter.",
+      "Kontotypen kan ikke forlate identitetsleverandøren mens leverandøren har en konto for personen. Personen forlater katalogen med Deaktiver nå eller når arbeidsforholdet slutter.",
     "refusal.provider_missing": "Ingen aktivert modul tilbyr denne identitetsleverandøren, så den kan ikke velges.",
     "refusal.pass_gone":
       "Passet er allerede vist, har utløpt, eller ble aldri utstedt. Kjør nå (nytt pass) utsteder et nytt.",
+    "refusal.pass_gone_google":
+      "Passordet er allerede vist, har utløpt, eller ble aldri utstedt. Kjør nå (nytt passord) utsteder et nytt.",
     "refusal.provider_refused": "Identitetsleverandøren avviste steget; ingenting mer ble gjort der.",
 
     // Fanen Konto (leveranse C)
@@ -2677,7 +2698,7 @@ export const staffCatalog = {
     accountKindChoice_external: "Ekstern identitetsleverandør",
     accountKindChoice_entra: "Microsoft Entra ID",
     accountKindChoiceDescription:
-      "Hvem som eier personens konto. Å forlate Microsoft Entra ID avvises mens den har en konto for personen.",
+      "Hvem som eier personens konto. Å forlate en identitetsleverandør avvises mens den har en konto for personen.",
     defaultAccountKind: "Standard kontotype",
     defaultAccountKindDescription: "Kontotypen en ny person får. Personer som allerede er registrert, beholder sin.",
     providersNone: "Ingen identitetsleverandør tilbys: ingen aktivert modul gir en.",
@@ -2700,6 +2721,8 @@ export const staffCatalog = {
     userPrincipalName: "Brukerhovednavn (UPN)",
     enabledSince: "Aktivert siden",
     passIssued: "Pass utstedt",
+    passIssued_google: "Passord utstedt",
+    providerNameFallback: "identitetsleverandøren",
     accountAnnounced: "Kunngjort",
     providerFailing: "Mislykkede forsøk på rad: {{count}}. Katalogen kunne ikke nås; arbeideren prøver igjen.",
     providerReason_user_gone: "Kontoen finnes ikke lenger i katalogen; Ansatte oppretter aldri en til.",
@@ -2714,7 +2737,7 @@ export const staffCatalog = {
       "Kontoen har en administratorrolle i katalogen, og en administrator tar seg av den for hånd.",
     accountReason_external_enabled: "Kontoen ble ikke slettet: den er fortsatt aktivert i katalogen.",
     accountReason_external_unconfirmed:
-      "Katalogen har en konto under personens ansattnummer som Vantigo ikke opprettet. Ansatte skriver ingenting til den før noen som administrerer Microsoft Entra ID, bekrefter overtakelsen på siden for Microsoft Entra ID.",
+      "Katalogen har en konto under personens ansattnummer som Vantigo ikke opprettet. Ansatte skriver ingenting til den før noen som administrerer {{provider}}, bekrefter overtakelsen på siden for den under Integrasjoner.",
     accountReason_leaver_step_failed: "Et avslutningssteg i katalogen ble ikke fullført.",
     accountReason_adoption_unconfirmed: "Vantigo opprettet ikke denne kontoen, og overtakelsen er ikke bekreftet ennå.",
     accountReason_pass_forbidden: "Katalogen avviste det midlertidige tilgangspasset; kontoen er aktivert uten et.",
@@ -2723,31 +2746,45 @@ export const staffCatalog = {
     leaverStep_leave_date: "å skrive sluttdatoen",
     leaverStep_strip_licences: "å fjerne lisensene",
     leaverStep_remove_groups: "å fjerne personen fra grupper",
+    leaverStep_remove_licences: "å fjerne lisensene",
+    leaverStep_sign_out: "å logge personen ut av øktene",
+    accountReason_sign_out_refused: "Katalogen nektet å logge personen ut av øktene; kontoen er suspendert likevel.",
     accountReason_manager_not_in_directory: "Personens leder har ingen konto i katalogen, så kontoen har ingen leder.",
     accountReason_hire_date_not_written: "Katalogen avviste ansettelsesdatoen.",
     accountReason_licence_unavailable: "En lisens fra personens grupper kunne ikke tildeles: det er ingen igjen.",
     accountReason_privileged:
       "Kontoen har en administratorrolle i katalogen, så katalogen overlater den til en administrator.",
     accountReason_pass_not_allowed: "Katalogen tillater ikke et midlertidig tilgangspass for denne kontoen.",
+    accountReason_pass_not_allowed_google:
+      "Googles passordregler avviste det genererte passordet; kontoen er aktiv uten et.",
     accountReason_manager_not_found: "Katalogen fant ikke lederens konto.",
     accountReason_photo_not_written: "Katalogen avviste bildet.",
     accountReason_photo_pushed: "Bildet er skrevet",
     accountReason_photo_cleared: "Bildet er fjernet",
     accountReason_photo_refused: "Bildet avvist av katalogen",
     showPass: "Vis passet",
+    showPass_google: "Vis passordet",
     passTitle: "Midlertidig tilgangspass",
+    passTitle_google: "Første passord",
     passExplained: "{{name}} skriver inn dette passet ved første pålogging.",
+    passExplained_google: "{{name}} logger inn med dette passordet én gang og velger så sitt eget.",
     passShownOnce: "Det vises ikke igjen.",
     passExpires: "Virker til {{date}}.",
     copy: "Kopier",
     copied: "Kopiert",
     close: "Lukk",
     couldNotShowPass: "Kunne ikke vise passet",
+    couldNotShowPass_google: "Kunne ikke vise passordet",
     runNowNewPass: "Kjør nå (nytt pass)",
+    runNowNewPass_google: "Kjør nå (nytt passord)",
     runNowNewPassExplained:
       "Kjør nå (nytt pass) gjør neste steg for begge kontoene med en gang og ber katalogen utstede et nytt pass, som Vis passet viser én gang.",
     runNowNewPassDone:
       "Ferdig: når kontoen er aktivert, har katalogen utstedt et nytt pass — Vis passet viser det én gang.",
+    runNowNewPassExplained_google:
+      "Kjør nå (nytt passord) gjør neste steg for begge kontoene med en gang og ber katalogen utstede et nytt første passord, som Vis passordet viser én gang.",
+    runNowNewPassDone_google:
+      "Ferdig: når kontoen er aktivert, har katalogen utstedt et nytt første passord — Vis passordet viser det én gang.",
     directoryProfile: "Katalogprofil",
     directoryProfileDescription:
       "Hvilke felter Ansatte skriver på en persons konto i identitetsleverandørens katalog. Et felt som slås av, sendes ikke; katalogen beholder det den har. Navnene, ansattnummeret, brukerhovednavnet og bruksstedet skrives alltid.",

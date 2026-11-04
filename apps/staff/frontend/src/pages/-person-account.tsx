@@ -67,13 +67,25 @@ const codeOf = (error: unknown): string | undefined => {
 
 type Translate = (key: string, values?: Record<string, unknown>) => string;
 
+/** The identity provider a provider link belongs to: its key and its name in words. */
+type LinkProvider = { key: string; name: string };
+
 /**
- * A code in words: a provider link's own wording first (`providerReason_`),
- * then the accounts' (`accountReason_`); a licence's code carries its SKU
- * after a colon, said after the words. A code a later server writes is
- * still said, by its code, rather than as a raw key.
+ * A key in the provider's own words where it has them (`<key>_<provider>`,
+ * Google's first password beside Entra's Temporary Access Pass), else the key.
  */
-const reasonWords = (t: Translate, code: string, provider = false) => {
+const byProvider = (key: string, provider: string | undefined) =>
+  provider && `${key}_${provider}` in staffCatalog.en ? `${key}_${provider}` : key;
+
+/**
+ * A code in words: for a provider link (`provider`), the provider's own
+ * wording first (`…_<provider>`), then the link's (`providerReason_`), then
+ * the accounts' (`accountReason_`), the provider named where a sentence
+ * names it; a licence's code carries its SKU after a colon, said after the
+ * words. A code a later server writes is still said, by its code, rather
+ * than as a raw key.
+ */
+const reasonWords = (t: Translate, code: string, provider?: LinkProvider) => {
   const [bare, detail] = code.split(/:(.*)/s);
   const key =
     provider && `providerReason_${bare}` in staffCatalog.en
@@ -88,20 +100,21 @@ const reasonWords = (t: Translate, code: string, provider = false) => {
     return t("accountReason_leaver_step_failed_step", {
       step: `leaverStep_${detail}` in staffCatalog.en ? t(`leaverStep_${detail}`) : detail,
     });
-  return detail ? `${t(key)} (${detail})` : t(key);
+  const words = t(byProvider(key, provider?.key), { provider: provider?.name ?? t("providerNameFallback") });
+  return detail ? `${words} (${detail})` : words;
 };
 
 /**
  * A refusal in words; the provider's refusal (`provider_refused`) with the
  * provider's code, which the problem's detail carries, in words after it.
  */
-const accountRefusalText = (error: unknown, t: Translate) => {
+const accountRefusalText = (error: unknown, t: Translate, provider?: LinkProvider) => {
   const words = refusalText(error, t);
   if (codeOf(error) !== "provider_refused" || !(error instanceof ApiConflictError)) return words;
   const code = [...(error.detail ?? "").matchAll(/[a-z]+(?:_[a-z]+)+/g)]
     .map((match) => match[0])
     .find((one) => `accountReason_${one}` in staffCatalog.en || `providerReason_${one}` in staffCatalog.en);
-  return code ? `${words} ${reasonWords(t, code, true)}` : words;
+  return code ? `${words} ${reasonWords(t, code, provider)}` : words;
 };
 
 /**
@@ -370,6 +383,8 @@ const AccountLinkGroup = ({
   const link = account.link;
   const providerLink = account.providerLink;
   const providerKind = isProviderKind(account.accountKind);
+  const providerKey = providerLink?.provider ?? account.accountKind;
+  const provider: LinkProvider = { key: providerKey, name: accountKindName(t, providerKey, providers) };
   const at = (instant: string) =>
     formatters.formatDate(new Date(instant), { dateStyle: "medium", timeStyle: "short", timeZone });
   const reasonText = (code: string) => reasonWords(t, code);
@@ -380,13 +395,19 @@ const AccountLinkGroup = ({
       queryClient.setQueryData(queryKey, answer.account);
       setOutcome({
         color: "teal",
-        text: t(answer.invitationSent ? "runNowSent" : providerKind ? "runNowNewPassDone" : "runNowNotSent"),
+        text: t(
+          answer.invitationSent
+            ? "runNowSent"
+            : providerKind
+              ? byProvider("runNowNewPassDone", providerKey)
+              : "runNowNotSent",
+        ),
       });
     },
     onError: async (error) => {
       setOutcome({
         color: codeOf(error) === "accounts_busy" ? "yellow" : "red",
-        text: accountRefusalText(error, t),
+        text: accountRefusalText(error, t, provider),
       });
       await queryClient.invalidateQueries({ queryKey });
     },
@@ -411,7 +432,7 @@ const AccountLinkGroup = ({
       const code = codeOf(error);
       setOutcome({
         color: code === "accounts_busy" ? "yellow" : "red",
-        text: code === "accounts_unavailable" ? t("disableUnavailable") : accountRefusalText(error, t),
+        text: code === "accounts_unavailable" ? t("disableUnavailable") : accountRefusalText(error, t, provider),
       });
       // The flag is off whatever identity answered, unless the worker held
       // the link — and even then it may have been written: read it again.
@@ -501,10 +522,11 @@ const AccountLinkGroup = ({
       {providerKind || providerLink ? (
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
           <LinkCard title={t("vantigoAccount")}>{vantigo}</LinkCard>
-          <LinkCard title={accountKindName(t, providerLink?.provider ?? account.accountKind, providers)}>
+          <LinkCard title={provider.name}>
             <ProviderLinkFields
               person={person}
               link={providerLink}
+              provider={provider}
               timeZone={timeZone}
               canReveal={canManage && !erased}
             />
@@ -533,7 +555,7 @@ const AccountLinkGroup = ({
                 run.mutate();
               }}
             >
-              {t(providerKind ? "runNowNewPass" : "runNow")}
+              {t(providerKind ? byProvider("runNowNewPass", providerKey) : "runNow")}
             </Button>
           )}
           {canDisable && (
@@ -551,7 +573,7 @@ const AccountLinkGroup = ({
       )}
       {canRun && (
         <Text size="xs" c="dimmed">
-          {t(providerKind ? "runNowNewPassExplained" : "runNowExplained")}
+          {t(providerKind ? byProvider("runNowNewPassExplained", providerKey) : "runNowExplained")}
         </Text>
       )}
       {outcome && (
@@ -568,16 +590,20 @@ const AccountLinkGroup = ({
  * answered, since when it is enabled, the pass not yet shown and the
  * announcement, the reason and the reported codes in words — and *Show the
  * pass*, which asks the server for it once and shows it in a dialog that
- * never asks again: closed, the pass is gone from the page.
+ * never asks again: closed, the pass is gone from the page. The pass is in
+ * the provider's words: Entra's Temporary Access Pass, Google's first
+ * password.
  */
 const ProviderLinkFields = ({
   person,
   link,
+  provider,
   timeZone,
   canReveal,
 }: {
   person: StaffPerson;
   link: StaffProviderLink | undefined;
+  provider: LinkProvider;
   timeZone?: string;
   canReveal: boolean;
 }) => {
@@ -603,7 +629,8 @@ const ProviderLinkFields = ({
       });
     },
     onError: async (error) => {
-      setRefusal(refusalText(error, t));
+      const own = byProvider(`refusal.${codeOf(error)}`, provider.key);
+      setRefusal(own in staffCatalog.en ? t(own) : refusalText(error, t));
       await queryClient.invalidateQueries({ queryKey });
     },
   });
@@ -615,6 +642,7 @@ const ProviderLinkFields = ({
       </Text>
     );
   const stateKey = `providerLinkState_${link.state}`;
+  const words = (key: string) => byProvider(key, provider.key);
   return (
     <>
       <Fields
@@ -623,15 +651,15 @@ const ProviderLinkFields = ({
           [t("userPrincipalName"), link.externalUpn],
           [t("enabledSince"), link.state === "enabled" && link.lastSyncedAt && at(link.lastSyncedAt)],
           [t("lastSynced"), link.state !== "enabled" && link.lastSyncedAt && at(link.lastSyncedAt)],
-          [t("passIssued"), link.hasPass && link.passIssuedAt && at(link.passIssuedAt)],
+          [t(words("passIssued")), link.hasPass && link.passIssuedAt && at(link.passIssuedAt)],
           [t("accountAnnounced"), link.announcedAt && at(link.announcedAt)],
           [t("nextAttempt"), link.nextAttemptAt && at(link.nextAttemptAt)],
         ]}
       />
-      {link.reason && <Text size="sm">{reasonWords(t, link.reason, true)}</Text>}
+      {link.reason && <Text size="sm">{reasonWords(t, link.reason, provider)}</Text>}
       {link.reportedCodes.map((code) => (
         <Text size="sm" key={code}>
-          {reasonWords(t, code, true)}
+          {reasonWords(t, code, provider)}
         </Text>
       ))}
       {link.state === "failed" && link.attempts > 0 && (
@@ -650,7 +678,7 @@ const ProviderLinkFields = ({
               reveal.mutate();
             }}
           >
-            {t("showPass")}
+            {t(words("showPass"))}
           </Button>
         </Group>
       )}
@@ -659,10 +687,10 @@ const ProviderLinkFields = ({
           {refusal}
         </Alert>
       )}
-      <Modal opened={pass !== null} onClose={() => setPass(null)} title={t("passTitle")} centered>
+      <Modal opened={pass !== null} onClose={() => setPass(null)} title={t(words("passTitle"))} centered>
         {pass && (
           <Stack gap="sm">
-            <Text size="sm">{t("passExplained", { name: person.displayName })}</Text>
+            <Text size="sm">{t(words("passExplained"), { name: person.displayName })}</Text>
             <Text ff="monospace" size="xl" fw={600} style={{ overflowWrap: "anywhere" }}>
               {pass.pass}
             </Text>

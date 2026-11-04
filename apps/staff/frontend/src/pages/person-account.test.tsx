@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { describe, expect, it } from "vitest";
 import type { components } from "../api-schema";
 import { entraProvider, erasedPerson, meta, withErased } from "../test/fixtures";
@@ -659,6 +660,21 @@ const entraLink = (overrides: Partial<ProviderLink> = {}): ProviderLink => ({
 const entraAccount = (overrides: Partial<Account> = {}): Account =>
   account({ accountKind: "entra", link: managed(), providerLink: entraLink(), ...overrides });
 
+/** Ada's account under Google Workspace, its first password waiting. */
+const googleAccount = (overrides: Partial<ProviderLink> = {}): Account =>
+  account({
+    accountKind: "google",
+    link: managed(),
+    providerLink: entraLink({ provider: "google", externalUpn: "ada@fjord.example", ...overrides }),
+  });
+
+/** HR's meta once the Google module offers its provider too. */
+const withGoogle = {
+  meta: meta("manage", {
+    providers: [entraProvider(), entraProvider({ key: "google", name: "Google Workspace" })],
+  }),
+};
+
 /** HR's meta once the Entra module offers its provider. */
 const withEntra = { meta: meta("manage", { providers: [entraProvider()] }) };
 
@@ -693,11 +709,7 @@ describe("Person page — the account kind", () => {
     await choose(card, /Account kind/, "Local");
     await userEvent.click(within(card).getByRole("button", { name: "Save the account flag" }));
     expect(
-      await within(card).findByText(
-        /cannot leave Microsoft Entra ID while Microsoft Entra ID holds an account/,
-        {},
-        slow,
-      ),
+      await within(card).findByText(/cannot leave the identity provider while the provider holds an account/, {}, slow),
     ).toBeInTheDocument();
     expect(fetchMock.state.accounts[101].accountKind).toBe("entra");
   });
@@ -806,7 +818,7 @@ describe("Person page — the two links", () => {
     [
       "external_unconfirmed",
       { state: "blocked", reason: "external_unconfirmed" },
-      /Vantigo did not create\. Staff writes nothing to it until/,
+      /Vantigo did not create\. Staff writes nothing to it until someone who manages Microsoft Entra ID confirms the adoption on its page under Integrations\./,
     ],
     [
       "leaver_step_failed",
@@ -829,6 +841,41 @@ describe("Person page — the two links", () => {
     renderRoute("/staff/people/101?tab=account");
     const entra = await region("Microsoft Entra ID");
     expect(within(entra).getByText(words)).toBeInTheDocument();
+  });
+
+  const googleWords: [string, Partial<ProviderLink>, RegExp][] = [
+    [
+      "external_unconfirmed",
+      { state: "blocked", reason: "external_unconfirmed" },
+      /until someone who manages Google Workspace confirms the adoption on its page under Integrations\./,
+    ],
+    [
+      "sign_out_refused",
+      { state: "disabled", reportedCodes: ["sign_out_refused"] },
+      /refused to sign the person out of their sessions; the account is suspended all the same\./,
+    ],
+    [
+      "leaver_step_failed:sign_out",
+      { state: "disabled", reportedCodes: ["leaver_step_failed:sign_out"] },
+      /not finished: signing the person out of their sessions\./,
+    ],
+    [
+      "leaver_step_failed:remove_licences",
+      { state: "disabled", reportedCodes: ["leaver_step_failed:remove_licences"] },
+      /not finished: removing the licences\./,
+    ],
+    [
+      "pass_not_allowed",
+      { reportedCodes: ["pass_not_allowed"] },
+      /Google's password policy refused the generated password; the account is active without one\./,
+    ],
+  ];
+  it.each(googleWords)("says Google's %s in words, naming Google", async (_, overrides, words) => {
+    stubStaffApi({ ...withGoogle, accounts: { 101: googleAccount({ hasPass: false, ...overrides }) } });
+    renderRoute("/staff/people/101?tab=account");
+    const google = await region("Google Workspace");
+    expect(within(google).getByText(words)).toBeInTheDocument();
+    expect(within(google).queryByText(/Microsoft Entra ID|Temporary Access Pass/)).not.toBeInTheDocument();
   });
 
   it("says provider_refused on Run now with the provider's code in words", async () => {
@@ -892,6 +939,53 @@ describe("Person page — the pass", () => {
     await userEvent.click(within(entra).getByRole("button", { name: "Show the pass" }));
     expect(await within(entra).findByText(/The pass was shown already, has expired/, {}, slow)).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("shows Google's first password, not a Temporary Access Pass, in the provider's words", async () => {
+    stubStaffApi({ ...withGoogle, accounts: { 101: googleAccount() } });
+    renderRoute("/staff/people/101?tab=account");
+    const group = await region("User account");
+    expect(within(group).getByRole("button", { name: "Run now (new password)" })).toBeInTheDocument();
+    expect(within(group).getByText(/has the directory issue a new first password/)).toBeInTheDocument();
+    const google = within(group).getByRole("region", { name: "Google Workspace" });
+    expect(within(google).getByText("Password issued")).toBeInTheDocument();
+    await userEvent.click(within(google).getByRole("button", { name: "Show the password" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "First password" }, slow);
+    expect(within(dialog).getByText(/signs in with this password once, then chooses their own\./)).toBeInTheDocument();
+    expect(within(dialog).getByText("It will not be shown again.")).toBeInTheDocument();
+    expect(screen.queryByText(/Temporary Access Pass/)).not.toBeInTheDocument();
+  });
+
+  it("says Google's first password in Norwegian", async () => {
+    setLanguagePreference("nb");
+    try {
+      stubStaffApi({ ...withGoogle, accounts: { 101: googleAccount() } });
+      renderRoute("/staff/people/101?tab=account");
+      const google = await screen.findByRole("region", { name: "Google Workspace" }, slow);
+      await userEvent.click(within(google).getByRole("button", { name: "Vis passordet" }));
+      const dialog = await screen.findByRole("dialog", { name: "Første passord" }, slow);
+      expect(
+        within(dialog).getByText(/logger inn med dette passordet én gang og velger så sitt eget\./),
+      ).toBeInTheDocument();
+    } finally {
+      setLanguagePreference("auto");
+    }
+  });
+
+  it("says pass_gone in Google's words", async () => {
+    stubStaffApi({
+      ...withGoogle,
+      accounts: { 101: googleAccount() },
+      write: (method, path) =>
+        method === "POST" && path.endsWith("/account/pass")
+          ? staffProblem(409, { code: "pass_gone", title: "Pass gone", detail: "The server's English" })
+          : undefined,
+    });
+    renderRoute("/staff/people/101?tab=account");
+    const google = await region("Google Workspace");
+    await userEvent.click(within(google).getByRole("button", { name: "Show the password" }));
+    expect(await within(google).findByText(/The password was shown already/, {}, slow)).toBeInTheDocument();
   });
 
   it("offers no pass when none is waiting", async () => {
