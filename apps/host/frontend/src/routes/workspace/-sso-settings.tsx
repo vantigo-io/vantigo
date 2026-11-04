@@ -86,11 +86,16 @@ const draftFrom = (oidc: SsoOidcSettings): OidcDraft => ({
   displayName: oidc.displayName ?? "",
 });
 
-/** What a page embedding the card may pre-fill the OIDC form with — the Entra wizard's tenant and client. */
+/**
+ * What a page embedding the card may pre-fill the OIDC form with — the Entra wizard's tenant and
+ * client, or the Google Workspace connection's web client and verified domains.
+ */
 export interface SsoDefaults {
   provider: SsoProvider;
   authority: string;
   clientId: string;
+  /** The allowed domains, for Google: the organisation's verified domains. */
+  allowedDomains?: readonly string[];
 }
 
 /** The card's two halves; a page embedding it may show one. */
@@ -102,7 +107,13 @@ export type SsoSection = "oidc" | "scim";
  */
 const draftWithDefaults = (saved: OidcDraft, defaults: SsoDefaults | undefined): OidcDraft =>
   defaults && saved.provider === "off" && !saved.authority && !saved.clientId
-    ? { ...saved, provider: defaults.provider, authority: defaults.authority, clientId: defaults.clientId }
+    ? {
+        ...saved,
+        provider: defaults.provider,
+        authority: defaults.authority,
+        clientId: defaults.clientId,
+        allowedDomains: defaults.allowedDomains?.length ? defaults.allowedDomains.join("\n") : saved.allowedDomains,
+      }
     : saved;
 
 const sameDraft = (a: OidcDraft, b: OidcDraft) =>

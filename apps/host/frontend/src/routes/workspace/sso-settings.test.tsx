@@ -63,6 +63,12 @@ const entraDefaults = {
   authority: otherAuthority,
   clientId: "44444444-4444-4444-4444-444444444444",
 };
+const googleDefaults = {
+  provider: "google" as const,
+  authority: "https://accounts.google.com",
+  clientId: "123456789012-abc.apps.googleusercontent.com",
+  allowedDomains: ["nordlys.no", "nordlys.example"],
+};
 
 /** A fake identity API: GET /owner/sso answers the row, every other request goes to `handle`. */
 const renderCard = async (
@@ -294,6 +300,39 @@ describe("the Single sign-on card", () => {
       clientId: entraDefaults.clientId,
       clientSecret: "s3cret",
     });
+  });
+
+  it("pre-fills Google's allowed domains with the rest, and sends them on Save", async () => {
+    const fetchMock = await renderCard(
+      (method) => (method === "PUT" ? json({ ...empty(), version: 1 }) : undefined),
+      empty(),
+      () => <SsoSettingsCard sections={["oidc"]} defaults={googleDefaults} />,
+    );
+
+    expect(screen.getByLabelText("Authority")).toHaveValue("https://accounts.google.com");
+    expect(screen.getByLabelText("Client ID")).toHaveValue(googleDefaults.clientId);
+    expect(screen.getByLabelText("Domains")).toHaveValue("nordlys.no\nnordlys.example");
+
+    type("Client secret", "s3cret");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(writes(fetchMock)).toHaveLength(1));
+    expect(writes(fetchMock)[0].body).toEqual({
+      provider: "google",
+      authority: "https://accounts.google.com",
+      clientId: googleDefaults.clientId,
+      clientSecret: "s3cret",
+      allowedDomains: ["nordlys.no", "nordlys.example"],
+    });
+  });
+
+  it("never puts Google's domains over a saved provider", async () => {
+    await renderCard(undefined, entraWithOverlap(), () => (
+      <SsoSettingsCard sections={["oidc"]} defaults={googleDefaults} />
+    ));
+
+    expect(screen.getByLabelText("Authority")).toHaveValue(authority);
+    expect(screen.queryByLabelText("Domains")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 
   it("never puts the defaults over saved values", async () => {
