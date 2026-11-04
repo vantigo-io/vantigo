@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setLanguagePreference } from "@vantigo/frontend-shell";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, problemResponse, sent, sentAll } from "../test/api";
 import { renderWithProviders } from "../test/render";
 import {
@@ -13,7 +13,7 @@ import {
   stubGoogleApi,
   unconfigured,
 } from "../test/server";
-import { GoogleAccountsTab } from "./accounts-tab";
+import { GoogleAccountsTab, type SignInDefaults } from "./accounts-tab";
 
 afterEach(() => setLanguagePreference("auto"));
 
@@ -21,9 +21,11 @@ afterEach(() => setLanguagePreference("auto"));
 const openPage = async (server: GoogleServer = {}, firstCard = "Account rules") => {
   const fetchMock = stubGoogleApi(server);
   const user = userEvent.setup();
-  renderWithProviders(<GoogleAccountsTab />);
+  const signIn = vi.fn((defaults: SignInDefaults) => <p>sign-in form for {defaults.clientId}</p>);
+  const provisioning = vi.fn(() => <p>provisioning form</p>);
+  renderWithProviders(<GoogleAccountsTab signIn={signIn} provisioning={provisioning} />);
   await screen.findByRole("region", { name: firstCard });
-  return { fetchMock, user };
+  return { fetchMock, user, signIn, provisioning };
 };
 
 const region = (name: string) => screen.getByRole("region", { name });
@@ -316,5 +318,56 @@ describe("GoogleAccountsTab — in Norwegian", () => {
     expect(within(accounts).getByRole("button", { name: "Bekreft kari.nordmann@contoso.no" })).toBeInTheDocument();
     const groups = await within(region("Grupper")).findByRole("table", { name: "Grupper" });
     expect(within(groups).getByText("Opprettet av Vantigo")).toBeInTheDocument();
+  });
+});
+
+describe("GoogleAccountsTab — sign-in and provisioning", () => {
+  it("hands the host's sign-in form Google, the web client and the verified domains", async () => {
+    const { signIn, provisioning } = await openPage({ connection: connected() });
+    expect(signIn).toHaveBeenCalledWith({
+      provider: "google",
+      authority: "https://accounts.google.com",
+      clientId: connected().oauthClientId,
+      allowedDomains: ["contoso.no", "contoso.com"],
+    });
+    expect(within(region("Sign-in")).getByText(`sign-in form for ${connected().oauthClientId}`)).toBeVisible();
+    expect(within(region("Sign-in")).getByText(/Find matches in the directory…/)).toBeVisible();
+    expect(provisioning).toHaveBeenCalled();
+    expect(within(region("Provisioning")).getByRole("link", { name: "Open Staff's settings" })).toHaveAttribute(
+      "href",
+      "/staff/settings",
+    );
+  });
+
+  it("asks for the web client before the form, when there is none", async () => {
+    const { signIn } = await openPage({ connection: connected({ oauthClientId: undefined }) });
+    expect(
+      within(region("Sign-in")).getByText("Enter the Internal web client on the Connection tab first."),
+    ).toBeVisible();
+    expect(signIn).not.toHaveBeenCalled();
+  });
+
+  it("is the Owner's", async () => {
+    const { signIn, provisioning } = await openPage({ connection: connected(), owner: false });
+    for (const name of ["Sign-in", "Provisioning"])
+      expect(
+        within(region(name)).getByText("An Owner does this step. You can see what is set, but not change it."),
+      ).toBeVisible();
+    expect(signIn).not.toHaveBeenCalled();
+    expect(provisioning).not.toHaveBeenCalled();
+  });
+
+  it("is hidden until a test has read the organisation", async () => {
+    const { signIn } = await openPage({ connection: connected({ customerId: undefined }) });
+    expect(screen.queryByRole("region", { name: "Sign-in" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Provisioning" })).not.toBeInTheDocument();
+    expect(signIn).not.toHaveBeenCalled();
+  });
+
+  it("speaks Norwegian", async () => {
+    setLanguagePreference("nb");
+    await openPage({ connection: connected() }, "Kontoregler");
+    expect(screen.getByRole("region", { name: "Innlogging" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Klargjøring" })).toBeInTheDocument();
   });
 });
