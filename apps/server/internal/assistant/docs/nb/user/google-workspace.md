@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Å koble til selskapets Google Workspace-organisasjon på siden Google Workspace under Integrasjoner i Administrer arbeidsområde — de fire fanene Status, Tilkobling, Kontoer og Kalender og Gmail, hvor siden er, de seks stegene på Tilkobling og hva Ferdig betyr på hvert, nøkkelen som aldri vises igjen, klient-ID-en og tilgangsområdene som skal kopieres, administratoren som etterlignes, Test tilkoblingen, den interne nettklienten og omdirigerings-URI-ene, fanen Status med tilgangsområder og hendelser, varselet om tilgangsområder Vantigo ikke bruker, fanen Kontoer med kontoreglene, stegene Innlogging og Klargjøring, lisensene, kontoene og gruppene Vantigo holder, og Bekreft for dem den ikke opprettet, å koble dem som allerede har en Vantigo-bruker til Google-kontoen sin, fanen Kalender og Gmail med Tilkobling for personer, status og antall og omdirigerings-URI-en som skal kopieres — og hvem som ser hva.
+description: Å koble til selskapets Google Workspace-organisasjon på siden Google Workspace under Integrasjoner i Administrer arbeidsområde — de fire fanene Status, Tilkobling, Kontoer og Kalender og Gmail, hvor siden er, de seks stegene på Tilkobling og hva Ferdig betyr på hvert, nøkkelen som aldri vises igjen, klient-ID-en og tilgangsområdene som skal kopieres, administratoren som etterlignes, Test tilkoblingen, den interne nettklienten og omdirigerings-URI-ene, fanen Status med tilgangsområder og hendelser, varselet om tilgangsområder Vantigo ikke bruker, fanen Kontoer med kontoreglene, stegene Innlogging og Klargjøring, lisensene, kontoene og gruppene Vantigo holder, og Bekreft for dem den ikke opprettet, å koble dem som allerede har en Vantigo-bruker til Google-kontoen sin, fanen Kalender og Gmail med Tilkobling for personer, status og antall og omdirigerings-URI-en som skal kopieres, og E-postkanaler, bryteren, statusen, de to Gmail-tilgangsområdene som skal delegeres og postboksene i bruk — og hvem som ser hva.
 sidebar:
   order: 48
 sources:
@@ -13,8 +13,10 @@ Siden **Google Workspace**, under **Integrasjoner** i Administrer arbeidsområde
 Vantigo til selskapets Google Workspace-organisasjon gjennom en tjenestekonto med
 domenedekkende delegering. Gjennom den holder Ansatte personenes Google-kontoer og
 gruppene sine i organisasjonen, etter kontoreglene på fanen **Kontoer**; hver persons
-egen Google-tilkobling slås på for alle på fanen **Kalender og Gmail**;
-kalendersynkronisering og Gmail kommer senere, på den tilkoblingen. Driftsprosedyren, med hva du gjør i Googles konsoller, står i
+egen Google-tilkobling slås på for alle på fanen **Kalender og Gmail**, og
+kalendersynkroniseringen bruker den; på den samme fanen lar **E-postkanaler** kanalene i
+Kommunikasjon sende fra og lese organisasjonens Gmail-postbokser; sending fra en persons
+egen Gmail kommer senere. Driftsprosedyren, med hva du gjør i Googles konsoller, står i
 [administrasjonsveiledningen](/nb/admin/google-workspace/); reglene står i
 [referansen](/en/reference/google/).
 
@@ -24,7 +26,7 @@ kalendersynkronisering og Gmail kommer senere, på den tilkoblingen. Driftsprose
 | --- | --- |
 | **Google Workspace** under **Administrer arbeidsområde** › **Integrasjoner**, fanen **Status** med tilgangsområder og **Siste hendelser**, og alle stegene skrivebeskyttet | `google:manage` |
 | Fanen **Kontoer**: å lagre kontoreglene, å lese lisensene, og **Bekreft** for en konto eller en gruppe Vantigo ikke opprettet | `google:manage` |
-| **Last opp nøkkel**, **Trekk tilbake**, å lagre administratoren som etterlignes, **Test tilkoblingen**, å lagre nettklienten, stegene **Innlogging** og **Klargjøring** på **Kontoer**, og bryteren **Tilkobling for personer** på **Kalender og Gmail** | en **eier**, innlogget med en andre faktor når eiere må bruke en; for alle andre med `google:manage` vises stegene med *En eier gjør dette steget. Du kan se hva som er satt, men ikke endre det.* |
+| **Last opp nøkkel**, **Trekk tilbake**, å lagre administratoren som etterlignes, **Test tilkoblingen**, å lagre nettklienten, stegene **Innlogging** og **Klargjøring** på **Kontoer**, og bryterne **Tilkobling for personer** og **E-postkanaler** på **Kalender og Gmail** | en **eier**, innlogget med en andre faktor når eiere må bruke en; for alle andre med `google:manage` vises stegene med *En eier gjør dette steget. Du kan se hva som er satt, men ikke endre det.* |
 
 `google:manage` (*Administrere Google Workspace*) er i kategorien Administrasjon og kan
 ikke delegeres: bare en eier gir den til en rolle. Eieren har den allerede. En som har
@@ -46,7 +48,7 @@ Siden har fire faner, hver med sin egen adresse, slik at det kan lenkes til en f
 | **Status** | Kortet **Status** — statusen, organisasjonen, tilgangsområdene — og **Siste hendelser** |
 | **Tilkobling** | De seks stegene som setter opp tilkoblingen |
 | **Kontoer** | Kontoreglene, stegene **Innlogging** og **Klargjøring**, organisasjonens lisenser, og kontoene og gruppene Vantigo holder for Ansatte |
-| **Kalender og Gmail** | **Tilkobling for personer** — bryteren, statusen, hvor mange som er tilkoblet og omdirigerings-URI-en — og *Kalendersynkronisering og Gmail kommer* |
+| **Kalender og Gmail** | **Tilkobling for personer** — bryteren, statusen, hvor mange som er tilkoblet og omdirigerings-URI-en — og **E-postkanaler** — bryteren, statusen, Gmail-tilgangsområdene som skal delegeres og postboksene i bruk |
 
 Mens ingenting er satt opp og ingen nøkkel er lastet opp, åpner siden på **Tilkobling**.
 Deretter åpner den på **Status**.
@@ -230,8 +232,9 @@ kan bli avvist ved innlogging; se
 
 **Tilkobling for personer** lar hver person koble sin egen Google-konto til Vantigo én
 gang, under **Innstillinger › Tilkoblinger** ([Tilkoblinger](/nb/user/connections/#koble-til-google-kontoen-din)).
-Kalendersynkronisering og sending fra Gmail, i en senere versjon, skal bruke den
-tilkoblingen; til da bruker ingenting den.
+[Kalendersynkroniseringen](/nb/user/calendar/#synkroniser-med-google-kalender) bruker den
+tilkoblingen, og sending fra en persons egen Gmail-adresse skal bruke den, i en senere
+versjon.
 
 - **Bryteren.** Slå på **Tilkobling for personer** for å tilby kortet **Google** til
   alle som har en Google-konto Vantigo forvalter i Ansatte-oppføringen sin. Bare en eier
@@ -251,3 +254,41 @@ tilkoblingen; til da bruker ingenting den.
 **Siste hendelser** på fanen **Status** viser bryteren og hver persons tilkobling,
 frakobling, avvisning og lukking — med Google-ID-en, aldri adressen. Hva som må settes
 opp hos Google først, står i [administrasjonsveiledningen](/nb/admin/google-workspace/#tilkobling-for-personer).
+
+### E-postkanaler
+
+**E-postkanaler** lar kanalene i Kommunikasjon sende fra og lese organisasjonens
+lisensierte Gmail-postbokser, som `post@`, gjennom tjenestekontoens domenedekkende
+delegering — ikke gjennom noens egen tilkobling. Kortet sier det: *La kanalene i
+Kommunikasjon sende fra og lese organisasjonens lisensierte Gmail-postbokser, som post@.
+Vantigo når dem gjennom domenedekkende delegering.*
+
+- **Bryteren.** Slå på **E-postkanaler** — *La kanaler i Kommunikasjon bruke
+  Gmail-postbokser.* Bare en eier endrer den; alle andre med `google:manage` ser den uten å
+  kunne endre den. Å slå den av sletter ingenting: kanalene blir stående, men ingen av dem
+  sender eller mottar før den er på igjen.
+- **Statusen.** *Av*; *Klar*; eller *Ikke tilgjengelig*, med årsaken: *Test tilkoblingen,
+  så Vantigo vet om Gmail-tilgangsområdene er delegert.*, *Google avviste
+  Gmail-tilgangsområdene. Legg dem til i den domenedekkende delegeringen, og test på
+  nytt.*, eller, når selve tilkoblingen ikke er **Tilkoblet**, *Tilkoblingen virker ikke.
+  Se fanen Status.*
+- **Tilgangsområdene.** Kortet viser, under *Legg disse tilgangsområdene til i
+  tjenestekontoens domenedekkende delegering*, `https://www.googleapis.com/auth/gmail.modify`
+  og `https://www.googleapis.com/auth/gmail.send`, kommadelt, med én kopieringsknapp. Mens
+  bryteren er på, kommer de også med i **OAuth-tilgangsområder (kommadelt)** på fanen **Tilkobling**; når de er lagt
+  til i administrasjonskonsollen, velger du **Test tilkoblingen** der. En oransje advarsel
+  sier hva de når: *Domenedekkende delegering kan ikke begrenses til noen postbokser:
+  disse tilgangsområdene når alle postboksene i domenet ditt. Vantigo bruker dem bare for
+  postboksene som er kanaler.* Mens bryteren er av, ber ikke Vantigo om dem, og en test
+  viser dem under **Tilgangsområder Vantigo ikke bruker** hvis de fortsatt er delegert.
+- **Antallet.** Mens bryteren er på, *Postbokser i bruk av kanaler: {n}.* — postboksene
+  Vantigo har sjekket for en kanal.
+
+Selve kanalene legges til i Kommunikasjon, med **Google Workspace** som leverandør
+([Legg til en Google Workspace-kanal](/nb/user/communications/#legg-til-en-google-workspace-kanal)).
+**Siste hendelser** på fanen **Status** viser hver gang bryteren slås på eller av. Hva som
+må settes opp hos Google først, står i
+[administrasjonsveiledningen](/nb/admin/google-workspace/#e-postkanaler).
+
+Under står *Sending fra Gmail kommer*: sending fra en persons egen Gmail-adresse kommer i
+en senere versjon.

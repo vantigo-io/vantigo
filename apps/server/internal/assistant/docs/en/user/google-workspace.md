@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Connecting the company's Google Workspace organisation on the Google Workspace page under Integrations in Workspace admin — its four tabs, Status, Connection, Accounts and Calendar and Gmail, where the page is, the six steps on Connection and what Done means on each, the key shown never again, the client ID and the scopes to copy, the admin to impersonate, Test connection, the Internal web client and its redirect URIs, the Status tab with its scopes and events, the warning for scopes Vantigo does not use, the Accounts tab with the account rules, the Sign-in and Provisioning steps, the licences, the accounts and the groups Vantigo keeps and Confirm for those it did not create, connecting the people who already have a Vantigo user to their Google account, the Calendar and Gmail tab with Connection for people, its status and counts and the redirect URI to copy — and who sees what.
+description: Connecting the company's Google Workspace organisation on the Google Workspace page under Integrations in Workspace admin — its four tabs, Status, Connection, Accounts and Calendar and Gmail, where the page is, the six steps on Connection and what Done means on each, the key shown never again, the client ID and the scopes to copy, the admin to impersonate, Test connection, the Internal web client and its redirect URIs, the Status tab with its scopes and events, the warning for scopes Vantigo does not use, the Accounts tab with the account rules, the Sign-in and Provisioning steps, the licences, the accounts and the groups Vantigo keeps and Confirm for those it did not create, connecting the people who already have a Vantigo user to their Google account, the Calendar and Gmail tab with Connection for people, its status and counts and the redirect URI to copy, and Mail channels, its switch, status, the two Gmail scopes to delegate and the mailboxes in use — and who sees what.
 sidebar:
   order: 48
 sources:
@@ -13,8 +13,10 @@ The **Google Workspace** page, under **Integrations** in Workspace admin, connec
 Vantigo to your company's Google Workspace organisation through a service account with
 domain-wide delegation. Through it Staff keeps your people's Google accounts and its
 groups in the organisation, by the account rules on the **Accounts** tab; each person's
-own Google connection is turned on for everyone on the **Calendar and Gmail** tab;
-calendar sync and Gmail come later, on that connection. The operator's procedure, with what to do in the Google consoles, is in
+own Google connection is turned on for everyone on the **Calendar and Gmail** tab, and
+calendar sync uses it; on the same tab, **Mail channels** lets Communications' channels
+send from and read the organisation's Gmail mailboxes; sending from a person's own Gmail
+comes later. The operator's procedure, with what to do in the Google consoles, is in
 [the administration guide](/en/admin/google-workspace/); the rules are in [the
 reference](/en/reference/google/).
 
@@ -24,7 +26,7 @@ reference](/en/reference/google/).
 | --- | --- |
 | **Google Workspace** under **Workspace admin** › **Integrations**, the **Status** tab with its scopes and **Recent events**, and every step read-only | `google:manage` |
 | The **Accounts** tab: saving the account rules, reading the licences, and **Confirm** for an account or a group Vantigo did not create | `google:manage` |
-| **Upload key**, **Revoke**, saving the admin to impersonate, **Test connection**, saving the web client, the **Sign-in** and **Provisioning** steps on **Accounts**, and the **Connection for people** switch on **Calendar and Gmail** | an **Owner**, signed in with a second factor when Owners must use one; to anyone else with `google:manage` the steps are shown with *An Owner does this step. You can see what is set, but not change it.* |
+| **Upload key**, **Revoke**, saving the admin to impersonate, **Test connection**, saving the web client, the **Sign-in** and **Provisioning** steps on **Accounts**, and the **Connection for people** and **Mail channels** switches on **Calendar and Gmail** | an **Owner**, signed in with a second factor when Owners must use one; to anyone else with `google:manage` the steps are shown with *An Owner does this step. You can see what is set, but not change it.* |
 
 `google:manage` (*Manage Google Workspace*) is in the category Administration and cannot
 be delegated: only an Owner gives it to a role. The Owner holds it already. A holder who
@@ -46,7 +48,7 @@ The page has four tabs, each with an address of its own, so a tab can be linked 
 | **Status** | The **Status** card — the status, the organisation, the scopes — and **Recent events** |
 | **Connection** | The six steps that set up the connection |
 | **Accounts** | The account rules, the **Sign-in** and **Provisioning** steps, the organisation's licences, and the accounts and groups Vantigo keeps for Staff |
-| **Calendar and Gmail** | **Connection for people** — the switch, its status, how many people are connected and the redirect URI — and *Calendar sync and Gmail are coming* |
+| **Calendar and Gmail** | **Connection for people** — the switch, its status, how many people are connected and the redirect URI — and **Mail channels** — the switch, its status, the Gmail scopes to delegate and the mailboxes in use |
 
 While nothing is set up and no key is uploaded, the page opens on **Connection**. From
 then on it opens on **Status**.
@@ -223,8 +225,8 @@ guide](/en/admin/sso-scim/#google-workspace).
 
 **Connection for people** lets each person connect their own Google account to Vantigo
 once, under **Settings › Connections** ([Connections](/en/user/connections/#connect-your-google-account)).
-Calendar sync and sending from Gmail, in a later release, will use that connection; until
-then nothing does.
+[Calendar sync](/en/user/calendar/#sync-with-google-calendar) uses that connection, and
+sending from a person's own Gmail address will, in a later release.
 
 - **The switch.** Turn on **Connection for people** to offer the **Google** card to
   everyone whose Staff record names a Google account Vantigo manages. Only an Owner
@@ -244,3 +246,42 @@ then nothing does.
 **Recent events** on the **Status** tab records the switch and each person's connect,
 disconnect, refusal and close — by their Google id, never their address. What to set up
 in Google first is in [the administration guide](/en/admin/google-workspace/#connection-for-people).
+
+### Mail channels
+
+**Mail channels** lets Communications' channels send from and read your organisation's
+licensed Gmail mailboxes, such as `post@`, through the service account's domain-wide
+delegation — not through anyone's own connection. The card says so: *Let Communications'
+channels send from and read your organisation's licensed Gmail mailboxes, such as post@.
+Vantigo reaches them through domain-wide delegation.*
+
+- **The switch.** Turn on **Mail channels** — *Let channels in Communications use Gmail
+  mailboxes.* Only an Owner changes it; anyone else with `google:manage` sees it
+  read-only. Turning it off deletes nothing: the channels stay, but none of them sends or
+  receives until it is back on.
+- **The status.** *Off*; *Ready*; or *Not available*, with the reason: *Test the
+  connection, so Vantigo knows whether the Gmail scopes are delegated.*, *Google refused
+  the Gmail scopes. Add them to the domain-wide delegation, then test again.*, or, when the
+  connection itself is not **Connected**, *The connection is not working. See the Status
+  tab.*
+- **The scopes.** The card lists, under *Add these scopes to the service account's
+  domain-wide delegation*, `https://www.googleapis.com/auth/gmail.modify` and
+  `https://www.googleapis.com/auth/gmail.send`, comma-separated, with one copy button.
+  While the switch is on they join the **OAuth scopes (comma-separated)** on the
+  **Connection** tab too; after adding them in
+  the Admin console, choose **Test connection** there. An orange warning says what they
+  reach: *Domain-wide delegation cannot be limited to some mailboxes: these scopes reach
+  every mailbox in your domain. Vantigo uses them only for the mailboxes that are
+  channels.* While the switch is off, Vantigo does not ask for them, and a test lists them
+  under **Scopes Vantigo does not use** if they are still delegated.
+- **The count.** While the switch is on, *Mailboxes in use by channels: {n}.* — the
+  mailboxes Vantigo has checked for a channel.
+
+The channels themselves are added in Communications, with **Google Workspace** as the
+provider ([Add a Google Workspace channel](/en/user/communications/#add-a-google-workspace-channel)).
+**Recent events** on the **Status** tab records each time the switch is turned on or off.
+What to set up in Google first is in [the administration
+guide](/en/admin/google-workspace/#mail-channels).
+
+Underneath, *Sending from Gmail is coming*: sending from a person's own Gmail address
+comes in a later release.
