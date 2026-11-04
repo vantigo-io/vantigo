@@ -125,6 +125,20 @@ func (g *FakeGoogle) IssueCode(grant CodeGrant) string {
 	return code
 }
 
+// IssueRefresh is a refresh token for grant as a completed connect would
+// have left it, without the authorization step: for a test that seeds a
+// person's connection directly. Granted must be set.
+func (g *FakeGoogle) IssueRefresh(grant CodeGrant) string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.auth.refreshes == nil {
+		g.auth.refreshes = map[string]CodeGrant{}
+	}
+	refresh := "1//0g" + randomText(72)
+	g.auth.refreshes[refresh] = grant
+	return refresh
+}
+
 // IDTokenFor sets how every later ID token is made: fn is handed the claims
 // the fake would sign and may change them — another iss, aud, nonce or hd —
 // and answers whether they are signed with the fake's published key (true)
