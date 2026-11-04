@@ -370,7 +370,9 @@ is off, which a consumer reads as *sending is disabled*.
 
 `available` is the channel's own state: an SMTP channel has stored credentials; a
 mailbox channel has a mailbox and the provider filled under its key is offered.
-`providerDisplayName` is that provider's `DisplayName()`, its key while none is filled. `Send` refuses a channel
+`providerDisplayName` is that provider's `DisplayName()`, its key while none is filled —
+except `entra`, the one provider channels had before there were many, which is then
+*Microsoft 365* (the admin's channel list names it so too). `Send` refuses a channel
 that cannot send before it builds or dials anything.
 
 - **From and the rest.** The message is sent From the **channel's address**; the caller's
