@@ -10,20 +10,6 @@ import (
 	"time"
 )
 
-const accountExists = `-- name: AccountExists :one
-SELECT EXISTS (SELECT 1 FROM google.accounts WHERE user_id = $1) AS held
-`
-
-// AccountExists reports whether the Directory id is an account the module
-// keeps for a person Staff manages, in any state: its mailbox is that
-// person's own (P2).
-func (q *Queries) AccountExists(ctx context.Context, userID string) (bool, error) {
-	row := q.db.QueryRow(ctx, accountExists, userID)
-	var held bool
-	err := row.Scan(&held)
-	return held, err
-}
-
 const countChannelMailboxes = `-- name: CountChannelMailboxes :one
 SELECT count(*) FROM google.channel_mailboxes
 `
@@ -70,6 +56,30 @@ func (q *Queries) GetChannelMailbox(ctx context.Context, googleUserID string) (G
 	var i GoogleChannelMailbox
 	err := row.Scan(&i.GoogleUserID, &i.Address, &i.CheckedAt)
 	return i, err
+}
+
+const personalMailboxHeld = `-- name: PersonalMailboxHeld :one
+SELECT (
+    EXISTS (SELECT 1 FROM google.accounts a
+            WHERE a.user_id = $1 OR lower(a.primary_email) = $2::text)
+    OR EXISTS (SELECT 1 FROM google.connections c WHERE c.google_user_id = $1)
+)::boolean AS held
+`
+
+type PersonalMailboxHeldParams struct {
+	GoogleUserID string
+	Address      string
+}
+
+// PersonalMailboxHeld reports whether the Directory id, or the address (lower
+// case), is a person's own mailbox (P2): an account the module keeps for a
+// person Staff manages, in any state, under that id or that primary address,
+// or a person's own connection under that id.
+func (q *Queries) PersonalMailboxHeld(ctx context.Context, arg PersonalMailboxHeldParams) (bool, error) {
+	row := q.db.QueryRow(ctx, personalMailboxHeld, arg.GoogleUserID, arg.Address)
+	var held bool
+	err := row.Scan(&held)
+	return held, err
 }
 
 const setMailChannels = `-- name: SetMailChannels :one
@@ -120,6 +130,22 @@ func (q *Queries) SetMailChannels(ctx context.Context, enabled bool) (GoogleConn
 		&i.MailChannels,
 	)
 	return i, err
+}
+
+const touchChannelMailbox = `-- name: TouchChannelMailbox :exec
+UPDATE google.channel_mailboxes SET checked_at = $1 WHERE google_user_id = $2
+`
+
+type TouchChannelMailboxParams struct {
+	CheckedAt    time.Time
+	GoogleUserID string
+}
+
+// TouchChannelMailbox records that the mailbox was resolved again as the
+// admin and is still the user Check recorded.
+func (q *Queries) TouchChannelMailbox(ctx context.Context, arg TouchChannelMailboxParams) error {
+	_, err := q.db.Exec(ctx, touchChannelMailbox, arg.CheckedAt, arg.GoogleUserID)
+	return err
 }
 
 const upsertChannelMailbox = `-- name: UpsertChannelMailbox :exec

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -24,6 +25,29 @@ const (
 	channelMaxCategories  = 25
 	channelMaxCategoryLen = 120
 )
+
+// reservedLabelNames are the names of Gmail's system labels, by id and as
+// Gmail shows them, lower case: no user label may take one, and a folder or
+// a category named so is refused before any call (errReservedLabel).
+var reservedLabelNames = []string{
+	"inbox", "sent", "sent mail", "trash", "bin", "spam", "draft", "drafts",
+	"starred", "important", "unread", "chat", "chats",
+}
+
+// errReservedLabel is a folder or a category named as one of Gmail's system
+// labels: refused for good (ErrMailboxDenied), as no retry makes it a name
+// Gmail takes.
+var errReservedLabel = fmt.Errorf("%w: a name Gmail keeps for a system label", contracts.ErrMailboxDenied)
+
+// reservedLabel reports whether name is one of reservedLabelNames, ignoring
+// case.
+func reservedLabel(name string) bool {
+	return slices.Contains(reservedLabelNames, strings.ToLower(name))
+}
+
+// userLabelPrefix begins the id of every user label Gmail makes; a system
+// label's id is its name (INBOX, TRASH).
+const userLabelPrefix = "Label_"
 
 // validLabelName reports whether name is a trimmed label name EnsureFolder
 // may send to Gmail: 1..120 runes, no control characters, no slash at
@@ -50,13 +74,17 @@ type gmailLabel struct {
 
 // EnsureFolder answers the id of the user label named name in mailbox,
 // creating it when it does not yet exist. A concurrent create that wins with
-// 409 is re-read and its label answered. A system label is never answered.
+// 409 is re-read and its label answered. A system label is never answered,
+// and a name Gmail keeps for one is errReservedLabel with no call.
 func (m *channelMailbox) EnsureFolder(ctx context.Context, mailbox, name string) (string, error) {
 	trimmed := strings.TrimSpace(name)
 	if !validLabelName(trimmed) {
 		return "", errors.New("google: not a valid label name")
 	}
-	s, err := m.open(ctx, mailbox)
+	if reservedLabel(trimmed) {
+		return "", errReservedLabel
+	}
+	s, err := m.open(ctx, mailbox, false)
 	if err != nil {
 		return "", err
 	}
@@ -111,8 +139,10 @@ func (m *channelMailbox) findLabel(ctx context.Context, s gmailSession, name str
 
 // Mark changes a message's state in mailbox (messages.modify): read takes
 // UNREAD off; category adds the labels named by the categories, each found
-// or created; move adds the label op.FolderID — one EnsureFolder answered —
-// and takes INBOX off. A 404 is contracts.ErrMailItemGone.
+// or created (a system label's name is errReservedLabel, with no call); move
+// adds the label op.FolderID — a user label's id (Label_…), one EnsureFolder
+// answered, never a system label's — and takes INBOX off. A 404 is
+// contracts.ErrMailItemGone.
 func (m *channelMailbox) Mark(ctx context.Context, mailbox, messageID string, op contracts.MailMark) error {
 	if !validGmailID(messageID) {
 		return errors.New("google: not a message id")
@@ -129,16 +159,19 @@ func (m *channelMailbox) Mark(ctx context.Context, mailbox, messageID string, op
 			if len(trimmed) > channelMaxCategoryLen || !validLabelName(trimmed) {
 				return errors.New("google: invalid category")
 			}
+			if reservedLabel(trimmed) {
+				return errReservedLabel
+			}
 			cats = append(cats, trimmed)
 		}
 	case contracts.MailMarkMove:
-		if !validGmailID(op.FolderID) || op.FolderID == labelInbox {
-			return errors.New("google: not a destination label id")
+		if !validGmailID(op.FolderID) || !strings.HasPrefix(op.FolderID, userLabelPrefix) {
+			return errors.New("google: not a user label's id")
 		}
 	default:
 		return fmt.Errorf("google: unknown mail mark kind %q", op.Kind)
 	}
-	s, err := m.open(ctx, mailbox)
+	s, err := m.open(ctx, mailbox, false)
 	if err != nil {
 		return err
 	}
