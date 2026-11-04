@@ -486,7 +486,7 @@ func userQuery(query string) (func(u *User) bool, bool) {
 	}
 	if s, ok := prefix("email"); ok {
 		return func(u *User) bool {
-			return strings.HasPrefix(u.PrimaryEmail, s) ||
+			return strings.HasPrefix(strings.ToLower(u.PrimaryEmail), s) ||
 				slices.ContainsFunc(u.Aliases, func(a string) bool { return strings.HasPrefix(strings.ToLower(a), s) })
 		}, true
 	}
