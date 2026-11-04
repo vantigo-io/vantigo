@@ -279,9 +279,11 @@ accounts and unverified or mismatched-domain identities are rejected.
 account's Directory user id (21 digits, kept exactly) — the object id an announced link
 names when the Owner picks the account from the directory, and the id the Google
 Workspace module knows the account by. That `sub` equals the Directory id is Google's
-documented behaviour, not yet confirmed in a test organisation (U1); should it differ,
-an announced link is fulfilled by its principal name instead — the primary email,
-against the token's verified email — so the person still lands on their own user.
+documented behaviour, not yet confirmed in a test organisation (U1). Should it differ,
+a link announced from a pick is not fulfilled: its principal name — the primary email —
+names it too, but under an object id the sign-in does not carry, and that is no match
+(see [the announced link](#the-announced-link)). Links would then have to be announced
+with the user principal name alone.
 
 **A user on a secondary domain.** Every verified domain of the organisation is prefilled
 as allowed, so the domain list never refuses one. Whether Google answers `hd` as the
@@ -448,7 +450,12 @@ account, and the Owner's act wins:
   (Entra's `preferred_username`, which is the user principal name; for a provider
   without one, the verified `email` claim) against the announced user principal name,
   compared as emails are compared. An announcement by principal name alone is
-  therefore fulfilled by a sign-in too. A match
+  therefore fulfilled by a sign-in too. An announcement that names an object id as well
+  is **not** fulfilled by its principal name when the token's object id is another (or
+  the token carries none): the address may have been given to another account since you
+  announced it, and the object id is the account. The sign-in then goes as it would
+  without the announcement, which stays pending, and the server logs the refusal with
+  the announced user's id (no address). A match
   creates the link, signs the user in as a linked account (a disabled user is
   `account_locked`; a user with TOTP is asked for it), and keeps the user's address,
   name and roles. **The email claim is not consulted**: the Owner named the user.

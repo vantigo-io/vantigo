@@ -494,7 +494,7 @@ ordinary self-service link Staff never acts on.
 When single sign-on is turned on in an installation that already has users, an
 address never links a provider sign-in to an existing account, so their first attempt is
 refused `oidc_email_conflict`. An Owner **announces** that the user holds a directory
-account; the user's next OIDC sign-in (matched on `oid` — Google's `sub` — under the configured issuer, else on the token's principal name, Entra's `preferred_username`, or the verified `email` claim for a provider without one)
+account; the user's next OIDC sign-in (matched on `oid` — Google's `sub` — under the configured issuer, else on the token's principal name, Entra's `preferred_username`, or the verified `email` claim for a provider without one, when the announcement names no other object id)
 or SCIM push (matched on `userName` against the principal name, then `externalId`
 against the object id) then links or maps to that user. How the arrival is matched is
 described with [the announced link](/en/admin/sso-scim/#the-announced-link).
@@ -572,9 +572,10 @@ mapping of an account block its proposal.
 **With Google as the provider.** The Google Workspace module serves the search while
 `google` is the configured provider: the object id is the account's Directory user id,
 the principal name its primary email, and a pick is announced with both. A Google
-sign-in is matched on its `sub` against the object id, else on its verified email against
-the principal name, so the link holds even before U1 (`sub` equals the Directory id) is
-confirmed in a test organisation. The module reads at most 10,000 accounts for the review;
+sign-in is matched on its `sub` against the object id; its verified email does not
+fulfil a link announced with another object id, so should U1 (`sub` equals the Directory
+id, not yet confirmed in a test organisation) turn out false, links must be announced
+with the principal name alone. The module reads at most 10,000 accounts for the review;
 past that the answer is truncated and it matches by address alone, as an address names
 one account in a Google organisation and an employee number may not. The single sign-on
 card is filled in from the module's connection — Google, the web client's ID and every
