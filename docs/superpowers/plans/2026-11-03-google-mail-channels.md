@@ -129,7 +129,9 @@ Checked against `5eb44be4` (`feat/google-calendar`, delivery E on `main`'s 0–D
   case), else `labels.create {name, labelListVisibility: labelShow, messageListVisibility:
   show}`; a 409 re-reads. A Gmail label id is `Label_<digits>`; a system label is never
   answered.
-- **`Watch`, `Unwatch`** nil and **`Notified`** none: v1 polls (Q7).
+- **`Watch`, `Unwatch`** nil and **`Notified`** none: v1 polls (Q7). *As built:* `Watch`
+  answers the new `contracts.ErrWatchUnsupported` (the coordinator's decision, the as-built note
+  under task 3), since a nil `Watch` made Communications wait its one-hour safety interval.
 - **The switch** `PUT /google/connection/mail-channels {enabled}` (Owner policy, the
   Owner's rate limit), audited `google.mail_channels.switched`; answers the connection,
   which gains `mailChannels {enabled, status (off | ready | unavailable), reason?,
@@ -144,28 +146,35 @@ Checked against `5eb44be4` (`feat/google-calendar`, delivery E on `main`'s 0–D
 
 ## Tasks
 
-- [ ] **1. Plan** — this file, `docs(google): the plan for Gmail channels (Google F)`.
-- [ ] **2. The switch** — `feat(google): the Mail channels switch and the Gmail scopes (Google F)`.
+- [x] **1. Plan** — this file, `docs(google): the plan for Gmail channels (Google F)`.
+- [x] **2. The switch** — `feat(google): the Mail channels switch and the Gmail scopes (Google F)`.
   `00118_google_mail_channels.sql` (`connection.mail_channels`, `google.channel_mailboxes`),
   `queries/channel_mailboxes.sql`, sqlc; `openapi/google.yaml` (the operation,
   `GoogleMailChannels`); `go generate`; the scopes in the test and the connection; tests:
   the switch, the scopes listed, the probe's subject, unexpected while off.
-- [ ] **3. The provider** — `feat(google): Gmail mail channels (Google F)`.
+- [x] **3. The provider** — `feat(google): Gmail mail channels (Google F)`.
   `channel_mailbox.go`, `channel_mailbox_inbound.go`, `channel_mailbox_marks.go`;
   `ChannelMailbox` on the module; `googletest/gmail.go` (profile, list, get metadata and
   raw, history with a stale start, modify, labels, the upload send with a replaceable
   Message-ID; subjects impersonated by address); tests per call, the refusals, never
   words, a pool of one.
-- [ ] **4. Through Communications** — `test(integration): Gmail channels through Communications' outbox and mailbox sync (Google F)`.
+*As built besides:* `feat(communications): a mailbox provider with no push keeps the normal
+poll (Google F)` — the docs pass found that a nil `Watch` puts a channel on
+`mailboxSyncSafetyEvery` (an hour) while Communications' notifications are active.
+`contracts.ErrWatchUnsupported` says a provider has no push; Communications keeps the
+five-minute poll and logs nothing; Google answers it, Entra is unchanged. The one change to
+Communications in this delivery, against the brief's "do not change Communications", on
+the coordinator's decision.
+- [x] **4. Through Communications** — `test(integration): Gmail channels through Communications' outbox and mailbox sync (Google F)`.
   A channel created (and refused for a group, a person's mailbox, an unknown address), a
   send whose replaced Message-ID is recorded, a reply threading by `sent_message_id` and
   by the thread, a too-large message, a delta restarted, read and move marks.
-- [ ] **5. The tab** — `feat(google-ui): the Mail channels card (Google F)`, both languages, tests.
-- [ ] **6. Documentation** — `docs(google): Gmail mail channels (Google F)`:
+- [x] **5. The tab** — `feat(google-ui): the Mail channels card (Google F)`, both languages, tests.
+- [x] **6. Documentation** — `docs(google): Gmail mail channels (Google F)`:
   `user/communications.md`, `admin/google-workspace.md`, `user/google-workspace.md` in
   `en` and `nb`; `reference/communications.md`, `reference/google.md`.
-- [ ] **7. Embedded docs** — `go generate ./...`, `chore(assistant): regenerate the embedded documentation`.
-- [ ] **8. Gates** — `mise run server:check`, `mise run server:test`,
+- [x] **7. Embedded docs** — `go generate ./...`, `chore(assistant): regenerate the embedded documentation`.
+- [x] **8. Gates** — `mise run server:check`, `mise run server:test`,
   `mise run frontend:check` (its log read), `mise run docs:check`,
   `bun run tools/docs/check-coverage.ts --base feat/google-calendar --head HEAD`, serially.
 
