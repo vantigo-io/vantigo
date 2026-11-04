@@ -164,6 +164,20 @@ export const googleCatalog = {
     oauthSavedBody: "The secret is sealed and will not be shown again.",
     couldNotSaveOauth: "Could not save the web client",
 
+    signInTitle: "Sign-in",
+    signInBody:
+      "To let people sign in to Vantigo with their Google account, save Google as the single sign-on provider below. The form is filled in with Google, the Internal web client and the organisation's verified domains; enter the web client's secret and save.",
+    signInConnect:
+      "Then connect the people who already have a Vantigo user to their Google account under Workspace admin › Users: Find matches in the directory… pairs them by address, alias or employee number, or connect one person and pick the account by name.",
+    signInWithout: "Without it, Staff still makes the Google accounts, but nobody signs in to Vantigo with them.",
+    signInNeedsClient: "Enter the Internal web client on the Connection tab first.",
+    provisioningTitle: "Provisioning",
+    provisioningBody:
+      "Google Workspace does not send users to Vantigo: Staff makes the Google accounts, and a person's Vantigo user appears at their first Google sign-in. The SCIM token below is only for a provisioning tool of your own.",
+    defaultKind:
+      "To give the people Staff registers a Google account by default, choose Google Workspace as the default account kind in Staff's settings.",
+    openStaffSettings: "Open Staff's settings",
+
     accountRules: "Account rules",
     accountRulesBody:
       "How Vantigo makes a person's Google account, and what it does when the person leaves. Staff decides who has an account; these rules decide how it is made and closed.",
@@ -453,6 +467,20 @@ export const googleCatalog = {
     oauthSaved: "Nettklienten er lagret",
     oauthSavedBody: "Hemmeligheten er forseglet og vises ikke igjen.",
     couldNotSaveOauth: "Kunne ikke lagre nettklienten",
+
+    signInTitle: "Innlogging",
+    signInBody:
+      "For å la folk logge inn i Vantigo med Google-kontoen sin lagrer du Google som leverandør for enkel pålogging nedenfor. Skjemaet er fylt ut med Google, den interne nettklienten og organisasjonens verifiserte domener; skriv inn nettklientens hemmelighet og lagre.",
+    signInConnect:
+      "Koble deretter dem som allerede har en Vantigo-bruker, til Google-kontoen sin under Administrer arbeidsområde › Brukere: Finn treff i katalogen… parer dem etter adresse, alias eller ansattnummer, eller koble én person og velg kontoen etter navn.",
+    signInWithout: "Uten dette oppretter Ansatte fortsatt Google-kontoene, men ingen logger inn i Vantigo med dem.",
+    signInNeedsClient: "Legg inn den interne nettklienten på fanen Tilkobling først.",
+    provisioningTitle: "Klargjøring",
+    provisioningBody:
+      "Google Workspace sender ikke brukere til Vantigo: Ansatte oppretter Google-kontoene, og personens Vantigo-bruker dukker opp ved første innlogging med Google. SCIM-tokenet nedenfor er bare for et eget klargjøringsverktøy.",
+    defaultKind:
+      "For å gi personene Ansatte registrerer en Google-konto som standard velger du Google Workspace som standard kontotype i innstillingene til Ansatte.",
+    openStaffSettings: "Åpne innstillingene til Ansatte",
 
     accountRules: "Kontoregler",
     accountRulesBody:
