@@ -26,6 +26,7 @@ export const refusalText = (error: unknown, t: Translate): string => {
   const code = codeOf(error);
   if (code && known(`refusal.${code}`)) return t(`refusal.${code}`);
   if ((error as ApiError | undefined)?.status === 412) return t("refusal.version_mismatch");
+  if ((error as ApiError | undefined)?.status === 429) return t("refusal.too_many_requests");
   if (error instanceof NotFoundError) return t("refusal.not_found");
   if (error instanceof ApiValidationError) return Object.values(error.fieldErrors)[0] ?? error.message;
   return error instanceof Error ? error.message : String(error);
@@ -66,3 +67,21 @@ export const codeText = (code: string, t: Translate): string => {
   if (known(`code.${code}`)) return t(`code.${code}`);
   return code;
 };
+
+/**
+ * What the module could not act on for an account (`privileged`,
+ * `licence_unavailable:<sku>`, `leaver_step_failed:<step>`, …) in words; the
+ * part after the colon is the detail. A code with no detail has its own words
+ * (`reported.<code>.alone`) when the catalogue has them; an unknown code is
+ * shown as it came.
+ */
+export const reportedText = (code: string, t: Translate): string => {
+  const [name, ...rest] = code.split(":");
+  const detail = rest.join(":");
+  if (!detail && known(`reported.${name}.alone`)) return t(`reported.${name}.alone`);
+  return known(`reported.${name}`) ? t(`reported.${name}`, { detail }) : code;
+};
+
+/** An account's last refusal (`privileged`, `ambiguous`, `address_taken`, `enabled`) in words; an unknown one as it came. */
+export const lastErrorText = (code: string, t: Translate): string =>
+  t("lastError", { reason: known(`lastError.${code}`) ? t(`lastError.${code}`) : code });

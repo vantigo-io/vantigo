@@ -1,4 +1,13 @@
-import type { GoogleConnection, GoogleConnectionTest, GoogleCredential, GoogleEvent } from "../api/connection";
+import type {
+  GoogleAccount,
+  GoogleConnection,
+  GoogleConnectionTest,
+  GoogleCredential,
+  GoogleEvent,
+  GoogleGroup,
+  GoogleSettingsRequest,
+  GoogleSku,
+} from "../api/connection";
 import { jsonResponse, problemResponse } from "./api";
 import { type StubbedFetch, stubFetch, TEST_SESSION } from "./fetch";
 
@@ -41,6 +50,14 @@ export const unconfigured = (overrides: Partial<GoogleConnection> = {}): GoogleC
   scopesMissing: [],
   scopesUnexpected: [],
   redirectUris: [...REDIRECT_URIS],
+  addressPattern: "given.family",
+  orgUnitPath: "/",
+  passLifetimeDays: 7,
+  passDelivery: "hr",
+  leaverRemoveLicences: true,
+  leaverRemoveGroups: "managed",
+  leaverSignOut: true,
+  skus: [],
   version: 1,
   ...overrides,
 });
@@ -76,6 +93,40 @@ export const connected = (overrides: Partial<GoogleConnection> = {}): GoogleConn
   ...overrides,
 });
 
+export const sku = (overrides: Partial<GoogleSku> = {}): GoogleSku => ({
+  productId: "Google-Apps",
+  skuId: "1010020027",
+  value: "Google-Apps/1010020027",
+  name: "Google Workspace Business Starter",
+  assigned: 12,
+  ...overrides,
+});
+
+/** A user the module made for a person in Staff, active, with one licence. */
+export const googleAccount = (overrides: Partial<GoogleAccount> = {}): GoogleAccount => ({
+  userId: "100000000000000000001",
+  employeeNumber: "1001",
+  primaryEmail: "kari.nordmann@contoso.no",
+  state: "enabled",
+  createdByUs: true,
+  licences: ["Google-Apps/1010020027"],
+  reported: [],
+  passWaiting: false,
+  lastSyncedAt: "2026-11-03T08:00:00Z",
+  createdAt: "2026-11-01T08:00:00Z",
+  ...overrides,
+});
+
+/** A group the module made for a Staff group. */
+export const googleGroup = (overrides: Partial<GoogleGroup> = {}): GoogleGroup => ({
+  groupId: "03abc123def456",
+  staffGroupId: "42",
+  email: "engineering@contoso.no",
+  createdByUs: true,
+  createdAt: "2026-11-01T08:00:00Z",
+  ...overrides,
+});
+
 export interface GoogleServer {
   connection?: GoogleConnection;
   /** Whether the caller holds the Owner role; the session answers it. True by default. */
@@ -83,22 +134,34 @@ export interface GoogleServer {
   /** What `POST /connection/test` answers; connected with every scope by default. */
   test?: GoogleConnectionTest;
   events?: GoogleEvent[];
+  accounts?: GoogleAccount[];
+  groups?: GoogleGroup[];
+  /** What `GET /connection/skus` reads from Google, kept on the connection; the connection's own by default. */
+  skus?: GoogleSku[];
   /** Answers a request instead of the fake's own; undefined falls through to it. */
   handle?: (method: string, path: string, body: unknown) => Response | undefined;
 }
 
-export type GoogleStub = StubbedFetch & { state: { connection: GoogleConnection } };
+export type GoogleStub = StubbedFetch & {
+  state: { connection: GoogleConnection; accounts: GoogleAccount[]; groups: GoogleGroup[] };
+};
 
 const googleProblem = (status: number, code: string) => problemResponse(status, `refused: ${code}`, { code });
 
 /**
  * A fake of the module's API, kept as a connection row the writes change:
- * If-Match on `PUT /connection` (412 `version_mismatch`), a key parsed for its
- * four clear fields (400 on `json`, 422 `client_mismatch`), revocation, the
- * web client, and the test written back.
+ * If-Match on `PUT /connection` and `PUT /connection/settings` (412
+ * `version_mismatch`), a key parsed for its four clear fields (400 on `json`,
+ * 422 `client_mismatch`), revocation, the web client, the test written back,
+ * the licences read, and the accounts and groups with their confirmation
+ * (409 `adoption_confirmed` for an account with nothing to confirm).
  */
 export const stubGoogleApi = (server: GoogleServer = {}): GoogleStub => {
-  const state = { connection: server.connection ?? unconfigured() };
+  const state = {
+    connection: server.connection ?? unconfigured(),
+    accounts: server.accounts ?? [],
+    groups: server.groups ?? [],
+  };
   let nextCredential = 100;
   const owner = server.owner ?? true;
   const session = { user: { ...TEST_SESSION.user, roles: owner ? ["user", "Owner"] : ["user"] } };
@@ -183,6 +246,51 @@ export const stubGoogleApi = (server: GoogleServer = {}): GoogleStub => {
         lastCheckedAt: "2026-11-03T10:00:00Z",
       };
       return jsonResponse(200, result);
+    }
+    if (method === "PUT" && path === "/api/v1/google/connection/settings") {
+      const supplied = new Headers(init?.headers).get("If-Match");
+      if (Number(supplied?.replaceAll('"', "")) !== c.version) return googleProblem(412, "version_mismatch");
+      const { addressDomain, ...rest } = body as GoogleSettingsRequest;
+      state.connection = {
+        ...c,
+        ...rest,
+        addressDomain: addressDomain === undefined ? c.addressDomain : addressDomain || undefined,
+        version: c.version + 1,
+      };
+      return jsonResponse(200, state.connection);
+    }
+    if (method === "GET" && path === "/api/v1/google/connection/skus") {
+      const skus = server.skus ?? c.skus;
+      state.connection = { ...c, skus };
+      return jsonResponse(200, skus);
+    }
+    if (method === "GET" && path === "/api/v1/google/accounts") return jsonResponse(200, state.accounts);
+    if (method === "GET" && path === "/api/v1/google/groups") return jsonResponse(200, state.groups);
+    const confirmAccount = method === "POST" && path.match(/^\/api\/v1\/google\/accounts\/([^/]+)\/confirm$/);
+    if (confirmAccount) {
+      const id = decodeURIComponent(confirmAccount[1]);
+      const target = state.accounts.find((one) => one.userId === id);
+      if (!target) return new Response(null, { status: 404 });
+      if (target.createdByUs || target.adoptionConfirmedAt) return googleProblem(409, "adoption_confirmed");
+      const confirmed: GoogleAccount = {
+        ...target,
+        adoptionConfirmedAt: "2026-11-04T08:00:00Z",
+        reported: target.reported.filter((code) => code !== "adoption_unconfirmed"),
+      };
+      state.accounts = state.accounts.map((one) => (one.userId === id ? confirmed : one));
+      return jsonResponse(200, confirmed);
+    }
+    const confirmGroup = method === "POST" && path.match(/^\/api\/v1\/google\/groups\/([^/]+)\/confirm$/);
+    if (confirmGroup) {
+      const id = decodeURIComponent(confirmGroup[1]);
+      const target = state.groups.find((one) => one.groupId === id);
+      if (!target) return new Response(null, { status: 404 });
+      const confirmed: GoogleGroup =
+        target.createdByUs || target.adoptionConfirmedAt
+          ? target
+          : { ...target, adoptionConfirmedAt: "2026-11-04T08:00:00Z" };
+      state.groups = state.groups.map((one) => (one.groupId === id ? confirmed : one));
+      return jsonResponse(200, confirmed);
     }
     return new Response(null, { status: 404 });
   };

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { GoogleAccountsTab } from "@vantigo/google-ui";
 
-/** The accounts and groups, still to come; a route from the start so links never move. */
+/** The account rules, the licences, and the users and groups the module keeps for Staff. */
 export const Route = createFileRoute("/workspace/google/accounts")({
   component: GoogleAccountsTab,
 });
