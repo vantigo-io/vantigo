@@ -231,8 +231,9 @@ with **Today and this week**, your appointments and dated items for today and th
 days after ([the dashboard](/en/user/calendar/#the-dashboard)). Below, it shows a card for each app you have access to,
 with its key numbers for the chosen date range (**7d**, **30d**, **90d**, **12m** or
 **Custom**), a **Needs attention** list of things waiting for you — each opens where
-it is dealt with, such as the person's page in Staff, or the **Microsoft Entra ID**
-page for an account in the tenant whose adoption is waiting to be confirmed — and
+it is dealt with, such as the person's page in Staff, or the page of the account's directory
+(**Microsoft Entra ID** or **Google Workspace**, named in the item) for an account
+whose adoption is waiting to be confirmed — and
 **Quick actions** for the things you do most. Staff's and Planning's cards carry their
 numbers for those who may read them — `staff:view` or `staff:manage`, and
 `planning:view`. A new workspace also shows **Finish your

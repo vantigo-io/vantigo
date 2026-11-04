@@ -872,6 +872,11 @@ consent.
 
 ## The address
 
+The rules below live in the platform package
+[`directoryaddress`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/directoryaddress),
+shared with the Google Workspace module; the module keeps the choice of the domain —
+the `.onmicrosoft.com` fallback included — and the alphabet is the UPN's.
+
 The UPN — and `mailNickname`, its local part, at most 64 characters — is made once, at
 the create:
 
