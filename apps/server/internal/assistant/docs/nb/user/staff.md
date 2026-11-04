@@ -729,7 +729,11 @@ leses som kortet for Microsoft Entra ID, med Googles ord:
   dager med mindre kontoreglene på [fanen Kontoer](/nb/user/google-workspace/#fanen-kontoer)
   på siden for Google Workspace sier noe annet. Etter det glemmes det; **Kjør nå (nytt
   passord)** setter et nytt bare så lenge ingen har logget inn på kontoen ennå, aldri over
-  en konto noen bruker. Gi det til personen selv; det sendes aldri på e-post.
+  en konto noen bruker. Gi det til personen selv; det sendes aldri på e-post. Når
+  suspenderingen som oppheves, gjelder en konto noen allerede har brukt — en en
+  administrator suspenderte, eller den gamle kontoen til en som kommer tilbake — settes
+  ikke noe passord, og Konto-fanen sier det: trenger personen et nytt, tilbakestiller en
+  administrator det i Googles administrasjonskonsoll.
 - Hva Google ikke fikk gjort, sies i én setning hver, som for Entra: kontoen funnet i
   Google, men ikke opprettet av Vantigo og ikke bekreftet ennå (en med `google:manage`
   bekrefter den på fanen Kontoer), en konto med en administratorrolle, ingen lisens

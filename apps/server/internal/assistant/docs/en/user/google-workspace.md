@@ -162,5 +162,7 @@ writes nothing to it until you confirm it is the person's
 **Groups.** Every Google group Vantigo keeps for a Staff group: its address, the Staff
 group, and whether Vantigo made it (*Created by Vantigo*, *Found and adopted*). A group
 Vantigo found at the address rather than made is marked *Found — confirm* and has
-**Confirm**, for the same reason; once confirmed, Vantigo writes Staff's name,
-members and settings to it, but never deletes it.
+**Confirm**, for the same reason. Once confirmed, Vantigo reconciles it with Staff's
+group: its name, description and visibility are overwritten with Staff's, owners Staff
+does not name are made members, and members Staff's group does not list are removed. It
+never deletes it. The confirm dialog says so too.
