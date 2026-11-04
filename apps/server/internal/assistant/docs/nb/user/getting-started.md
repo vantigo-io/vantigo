@@ -236,8 +236,9 @@ siden. Det hilser deg med navn; når Kalender er på og du kan bruke den, åpner
 neste dagene ([agendaen](/nb/user/calendar/#dashbordet)). Under viser det et kort for hver app du har tilgang til, med
 nøkkeltallene for valgt datoperiode (**7d**, **30d**, **90d**, **12m** eller
 **Tilpasset**), listen **Trenger oppfølging** med det som venter på deg — hvert punkt
-åpner der det tas hånd om, som personens side i Ansatte, eller siden **Microsoft Entra
-ID** for en konto i leietakeren der overtakelsen venter på å bli bekreftet — og
+åpner der det tas hånd om, som personens side i Ansatte, eller siden til kontoens katalog
+(**Microsoft Entra ID** eller **Google Workspace**, som punktet nevner) for en konto
+der overtakelsen venter på å bli bekreftet — og
 **Hurtighandlinger** for det du gjør oftest. Kortene for Ansatte og Bemanning har tallene
 sine for dem som kan lese dem — `staff:view` eller `staff:manage`, og `planning:view`.
 Et nytt arbeidsområde viser også
