@@ -69,6 +69,7 @@ export const googleCatalog = {
     "action.google.account.adoption_confirmed": "An account's adoption was confirmed",
     "action.google.group.adoption_confirmed": "A group's adoption was confirmed",
     "action.google.personal.switched": "Connection for people was turned on or off",
+    "action.google.mail_channels.switched": "Mail channels were turned on or off",
     "action.google.personal.connected": "A person connected their Google account",
     "action.google.personal.disconnected": "A person disconnected their Google account",
     "action.google.personal.reconnect_needed": "Google refused a person's connection",
@@ -295,9 +296,29 @@ export const googleCatalog = {
     confirmGroupTitle: "Confirm the adoption of {{email}}?",
     confirmGroupBody:
       "Vantigo found the group {{email}} in the organisation holding a Staff group's address; it did not create it, and has written nothing to it. Confirming lets Vantigo manage it for Staff: its name, description and visibility are overwritten with Staff's, owners Staff does not name are made members, and members Staff's group does not list are removed. Vantigo never deletes a group it did not create. Confirm only if the group is meant to be this Staff group.",
-    calendarGmailComingTitle: "Calendar sync and Gmail are coming",
+    calendarGmailComingTitle: "Sending from Gmail is coming",
     calendarGmailComing:
-      "Calendar sync to Google Calendar, Gmail mail channels and sending from a person's Gmail address come in a later release, and will use each person's connection.",
+      "Sending from a person's own Gmail address comes in a later release, and will use each person's connection.",
+    "mail.title": "Mail channels",
+    "mail.intro":
+      "Let Communications' channels send from and read your organisation's licensed Gmail mailboxes, such as post@. Vantigo reaches them through domain-wide delegation.",
+    "mail.switch": "Mail channels",
+    "mail.switchDescription": "Let channels in Communications use Gmail mailboxes.",
+    "mail.warning":
+      "Domain-wide delegation cannot be limited to some mailboxes: these scopes reach every mailbox in your domain. Vantigo uses them only for the mailboxes that are channels.",
+    "mail.scopes": "Add these scopes to the service account's domain-wide delegation",
+    "mail.scopesCopy": "the Gmail scopes",
+    "mail.status_off": "Off",
+    "mail.status_ready": "Ready",
+    "mail.status_unavailable": "Not available",
+    "mail.reason.not_tested": "Test the connection, so Vantigo knows whether the Gmail scopes are delegated.",
+    "mail.reason.not_delegated":
+      "Google refused the Gmail scopes. Add them to the domain-wide delegation, then test again.",
+    "mail.reason.connection": "The connection is not working. See the Status tab.",
+    "mail.mailboxes": "Mailboxes in use by channels: {{n}}.",
+    "mail.switchedOn": "Mail channels are on",
+    "mail.switchedOff": "Mail channels are off",
+    "mail.couldNotSwitch": "Mail channels could not be changed",
     "people.title": "Connection for people",
     "people.intro":
       "Each person connects their own Google account to Vantigo once, under Settings › Connections. Calendar sync and sending from Gmail will use that connection.",
@@ -441,6 +462,7 @@ export const googleCatalog = {
     "action.google.account.adoption_confirmed": "Overtakelsen av en konto ble bekreftet",
     "action.google.group.adoption_confirmed": "Overtakelsen av en gruppe ble bekreftet",
     "action.google.personal.switched": "Tilkobling for personer ble slått på eller av",
+    "action.google.mail_channels.switched": "E-postkanaler ble slått på eller av",
     "action.google.personal.connected": "En person koblet til Google-kontoen sin",
     "action.google.personal.disconnected": "En person koblet fra Google-kontoen sin",
     "action.google.personal.reconnect_needed": "Google avviste en persons tilkobling",
@@ -668,9 +690,29 @@ export const googleCatalog = {
     confirmGroupTitle: "Bekrefte overtakelsen av {{email}}?",
     confirmGroupBody:
       "Vantigo fant gruppen {{email}} i organisasjonen med adressen til en gruppe i Ansatte; Vantigo opprettet den ikke og har ikke skrevet noe til den. Bekrefter du, forvalter Vantigo den for Ansatte: navnet, beskrivelsen og synligheten overskrives med dem fra Ansatte, eiere Ansatte ikke nevner, gjøres til medlemmer, og medlemmer gruppen i Ansatte ikke har, fjernes. Vantigo sletter aldri en gruppe den ikke har opprettet. Bekreft bare hvis gruppen skal være denne gruppen i Ansatte.",
-    calendarGmailComingTitle: "Kalendersynkronisering og Gmail kommer",
+    calendarGmailComingTitle: "Sending fra Gmail kommer",
     calendarGmailComing:
-      "Kalendersynkronisering med Google Kalender, e-postkanaler i Gmail og sending fra en persons Gmail-adresse kommer i en senere versjon, og vil bruke hver persons tilkobling.",
+      "Sending fra en persons egen Gmail-adresse kommer i en senere versjon, og vil bruke hver persons tilkobling.",
+    "mail.title": "E-postkanaler",
+    "mail.intro":
+      "La kanalene i Kommunikasjon sende fra og lese organisasjonens lisensierte Gmail-postbokser, som post@. Vantigo når dem gjennom domenedekkende delegering.",
+    "mail.switch": "E-postkanaler",
+    "mail.switchDescription": "La kanaler i Kommunikasjon bruke Gmail-postbokser.",
+    "mail.warning":
+      "Domenedekkende delegering kan ikke begrenses til noen postbokser: disse tilgangsområdene når alle postboksene i domenet ditt. Vantigo bruker dem bare for postboksene som er kanaler.",
+    "mail.scopes": "Legg disse tilgangsområdene til i tjenestekontoens domenedekkende delegering",
+    "mail.scopesCopy": "Gmail-tilgangsområdene",
+    "mail.status_off": "Av",
+    "mail.status_ready": "Klar",
+    "mail.status_unavailable": "Ikke tilgjengelig",
+    "mail.reason.not_tested": "Test tilkoblingen, så Vantigo vet om Gmail-tilgangsområdene er delegert.",
+    "mail.reason.not_delegated":
+      "Google avviste Gmail-tilgangsområdene. Legg dem til i den domenedekkende delegeringen, og test på nytt.",
+    "mail.reason.connection": "Tilkoblingen virker ikke. Se fanen Status.",
+    "mail.mailboxes": "Postbokser i bruk av kanaler: {{n}}.",
+    "mail.switchedOn": "E-postkanaler er på",
+    "mail.switchedOff": "E-postkanaler er av",
+    "mail.couldNotSwitch": "E-postkanaler kunne ikke endres",
     "people.title": "Tilkobling for personer",
     "people.intro":
       "Hver person kobler sin egen Google-konto til Vantigo én gang, under Innstillinger › Tilkoblinger. Kalendersynkronisering og sending fra Gmail vil bruke den tilkoblingen.",

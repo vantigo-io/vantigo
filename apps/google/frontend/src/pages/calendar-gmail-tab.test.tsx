@@ -2,6 +2,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it } from "vitest";
+import type { GoogleConnection } from "../api/connection";
+import { GMAIL_SCOPES } from "../components/mail-channels";
 import { sent, sentAll } from "../test/api";
 import { renderWithProviders } from "../test/render";
 import { connected, type GoogleServer, PERSONAL_REDIRECT_URI, personalSwitch, stubGoogleApi } from "../test/server";
@@ -29,7 +31,7 @@ describe("GoogleCalendarGmailTab — Connection for people", () => {
     expect(within(card).getByRole("button", { name: `Copy ${PERSONAL_REDIRECT_URI}` })).toBeInTheDocument();
     expect(within(card).getByText(/^Register this redirect URI on the Internal web client/)).toBeInTheDocument();
     expect(within(card).getByRole("status")).toHaveTextContent("Off");
-    expect(screen.getByText("Calendar sync and Gmail are coming")).toBeInTheDocument();
+    expect(screen.getByText("Sending from Gmail is coming")).toBeInTheDocument();
   });
 
   it("turns the switch on for an Owner", async () => {
@@ -114,6 +116,70 @@ describe("GoogleCalendarGmailTab — Connection for people", () => {
     expect(within(status).getByText("Ikke tilgjengelig")).toBeInTheDocument();
     expect(within(status).getByText(/^Test tilkoblingen først/)).toBeInTheDocument();
     expect(within(status).getByText("Personer tilkoblet: 3. Venter på ny tilkobling: 0.")).toBeInTheDocument();
-    expect(screen.getByText("Kalendersynkronisering og Gmail kommer")).toBeInTheDocument();
+    expect(screen.getByText("Sending fra Gmail kommer")).toBeInTheDocument();
+  });
+});
+
+const mailOn = (overrides: Partial<GoogleConnection["mailChannels"]> = {}) =>
+  connected({ mailChannels: { enabled: true, status: "ready", mailboxes: 2, ...overrides } });
+
+describe("GoogleCalendarGmailTab — Mail channels", () => {
+  it("says what it does, that the scopes reach every mailbox, and the scopes to delegate", async () => {
+    const { card } = await openPage({ connection: connected() }, "Mail channels");
+    expect(within(card).getByText(/^Let Communications' channels send from and read/)).toBeInTheDocument();
+    expect(within(card).getByText(/these scopes reach every mailbox in your domain/)).toBeInTheDocument();
+    expect(within(card).getByText(GMAIL_SCOPES.join(","))).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Copy the Gmail scopes" })).toBeInTheDocument();
+    expect(within(card).getByRole("status")).toHaveTextContent("Off");
+  });
+
+  it("turns the switch on for an Owner, and says to test", async () => {
+    const { fetchMock, card } = await openPage({ connection: connected() }, "Mail channels");
+    await userEvent.click(within(card).getByRole("switch", { name: /^Mail channels/ }));
+    await waitFor(() =>
+      expect(sent(fetchMock, "PUT")).toMatchObject({
+        url: "/api/v1/google/connection/mail-channels",
+        body: { enabled: true },
+      }),
+    );
+    const status = within(card).getByRole("status");
+    await waitFor(() => expect(within(status).getByText("Not available")).toBeInTheDocument());
+    expect(within(status).getByText(/^Test the connection, so Vantigo knows/)).toBeInTheDocument();
+  });
+
+  it("shows the switch read-only to someone who is not an Owner", async () => {
+    const { card } = await openPage({ connection: mailOn(), owner: false }, "Mail channels");
+    expect(within(card).getByRole("switch", { name: /^Mail channels/ })).toBeDisabled();
+    expect(within(card).getByText(/^An Owner does this step/)).toBeInTheDocument();
+  });
+
+  it("says ready and how many mailboxes channels use", async () => {
+    const { card } = await openPage({ connection: mailOn() }, "Mail channels");
+    const status = within(card).getByRole("status");
+    expect(within(status).getByText("Ready")).toBeInTheDocument();
+    expect(within(status).getByText("Mailboxes in use by channels: 2.")).toBeInTheDocument();
+  });
+
+  const reasons = [
+    ["not_delegated", /^Google refused the Gmail scopes/],
+    ["credential_invalid", /^The connection is not working/],
+  ] as const;
+  for (const [reason, sentence] of reasons)
+    it(`says why it is not available (${reason})`, async () => {
+      const { card } = await openPage({ connection: mailOn({ status: "unavailable", reason }) }, "Mail channels");
+      expect(within(within(card).getByRole("status")).getByText(sentence)).toBeInTheDocument();
+    });
+
+  it("speaks Norwegian", async () => {
+    setLanguagePreference("nb");
+    const { card } = await openPage(
+      { connection: mailOn({ status: "unavailable", reason: "not_delegated", mailboxes: 1 }) },
+      "E-postkanaler",
+    );
+    expect(within(card).getByRole("switch", { name: /^E-postkanaler/ })).toBeChecked();
+    const status = within(card).getByRole("status");
+    expect(within(status).getByText("Ikke tilgjengelig")).toBeInTheDocument();
+    expect(within(status).getByText(/^Google avviste Gmail-tilgangsområdene/)).toBeInTheDocument();
+    expect(within(status).getByText("Postbokser i bruk av kanaler: 1.")).toBeInTheDocument();
   });
 });

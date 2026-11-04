@@ -83,3 +83,7 @@ export const groupsQueryOptions = () =>
 /** Confirms the adoption of a group the module found rather than made; idempotent. */
 export const confirmGroupAdoption = (groupId: string) =>
   request<GoogleGroup>(`${base}/groups/${encodeURIComponent(groupId)}/confirm`, { method: "POST" });
+
+/** Turns Mail channels on or off, the Owner's; the scopes to delegate follow. */
+export const setMailChannels = (enabled: boolean) =>
+  request<GoogleConnection>(`${base}/connection/mail-channels`, json("PUT", { enabled }));
