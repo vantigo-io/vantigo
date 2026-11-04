@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it } from "vitest";
 import type { GoogleConnection } from "../api/connection";
-import { GMAIL_SCOPES } from "../components/mail-channels";
+import { GMAIL_SCOPES } from "../lib/gmail";
 import { sent, sentAll } from "../test/api";
 import { renderWithProviders } from "../test/render";
 import { connected, type GoogleServer, PERSONAL_REDIRECT_URI, personalSwitch, stubGoogleApi } from "../test/server";
