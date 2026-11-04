@@ -384,11 +384,12 @@ type createChannelInput struct {
 // stopping at the first — the same "report every failure together" style
 // this codebase's other validators use (e.g. energy's ReplaceMeter,
 // customers' validateLegalIdentity). provider is "smtp" (the default),
-// needing a valid smtp block, or the Key of a filled mail channels provider
-// (mailboxProvider answers which), which takes none (see this file's header
-// note): an smtp block on a mailbox provider, or any other provider, fails
-// with inventory §3.1's message for the SMTP-vs-selected-provider mismatch.
-func validateCreateChannel(body gen.CreateChannelRequest, mailboxProvider func(string) bool) (createChannelInput, map[string][]string) {
+// needing a valid smtp block, or a mail channels provider's Key, which takes
+// none (see this file's header note): an smtp block on any other provider
+// fails with inventory §3.1's message for the SMTP-vs-selected-provider
+// mismatch. Whether a provider is filled under the key is not validation's:
+// resolveSharedMailbox answers 409 mail_channels_off for one that is not.
+func validateCreateChannel(body gen.CreateChannelRequest) (createChannelInput, map[string][]string) {
 	errs := map[string][]string{}
 	var in createChannelInput
 
@@ -426,7 +427,7 @@ func validateCreateChannel(body gen.CreateChannelRequest, mailboxProvider func(s
 	}
 	in.provider = provider
 	switch {
-	case provider != providerSMTP && mailboxProvider(provider) && body.Smtp == nil:
+	case provider != providerSMTP && body.Smtp == nil:
 		in.importWindow, in.onClose, in.folder = validateMailboxChannelOptions(body.ImportWindow, body.OnClose, body.Folder, errs)
 	case provider != providerSMTP:
 		errs["smtp"] = []string{"SMTP credentials require the smtp provider."}
@@ -505,7 +506,7 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 		body = *req.Body
 	}
 
-	in, errs := validateCreateChannel(body, s.filledMailboxProvider)
+	in, errs := validateCreateChannel(body)
 	if len(errs) > 0 {
 		return gen.PostCommunicationsChannels400JSONResponse(validationErrorBody(errs)), nil
 	}
@@ -1259,11 +1260,12 @@ var (
 // (POST /api/v1/communications/channels/{id}/provider)
 //
 // The switch of an SMTP channel to a mailbox provider (M12, Google Workspace
-// design G4): (1) the body names no listed mailbox provider -> 400; (2) the
+// design G4): (1) the body names no provider, or smtp -> 400; (2) the
 // lookup -> 404 bare; (3) already on it -> 422 provider_unchanged; on
 // another mailbox provider -> 409 provider_switch_unsupported, the channel
 // goes back to SMTP first; (4) Status and Check of the channel's own address,
-// before the transaction -> the create's refusals; (5) under
+// before the transaction -> the create's refusals, 409 mail_channels_off for
+// a provider no module fills; (5) under
 // lockDefaultChannelSlot and a re-read, the provider and the mailbox written
 // and the credential row deleted in ONE transaction, so a failure leaves the
 // channel SMTP with its credential. The id, the address, the conversations
@@ -1276,7 +1278,7 @@ func (s *server) PostCommunicationsChannelsByIdProvider(ctx context.Context, req
 	if req.Body != nil {
 		provider = strings.ToLower(strings.TrimSpace(req.Body.Provider))
 	}
-	if provider == providerSMTP || !s.filledMailboxProvider(provider) {
+	if provider == "" || provider == providerSMTP {
 		errs["provider"] = []string{"A channel is switched to a listed mailbox provider only."}
 	}
 	var importWindow, onClose string

@@ -266,9 +266,9 @@ isDefault?, importWindow?, onClose?, folder?}` and no `smtp` block (one is a 400
 `none` (default), `read` or `move`, and when `onClose` is `move`, `folder` (1 to 120
 characters, no `/` or `\`, defaulting to `"Handled in Vantigo"`) is ensured in the shared
 mailbox by calling `EnsureFolder` before the transaction. A provider key no module fills
-is a 400 under `smtp`, as any other unknown provider. Before the transaction, the
-named provider's `Status`, then `Check(address)` (and `EnsureFolder` when `onClose` is
-`move`):
+is 409 `mail_channels_off`, named by its key, and nothing reaches a provider. Before the
+transaction, the named provider's `Status`, then `Check(address)` (and `EnsureFolder` when
+`onClose` is `move`):
 
 | What the provider answers | Result |
 | --- | --- |
@@ -297,7 +297,7 @@ channel holds is 409 `channel_exists` as for SMTP; a mailbox another channel use
 
 `POST /channels/{id}/provider` with `{provider: "<a listed key>", importWindow?, onClose?, folder?}` (`channels-manage`) moves an
 SMTP channel to a mailbox provider and keeps its **id, address, conversations and default
-flag**. `smtp`, or a key no module fills, in the body is a 400; an unknown channel a bare
+flag**. `smtp`, or no provider, in the body is a 400; an unknown channel a bare
 404; a channel already on that provider 422 `provider_unchanged` (*The channel already
 uses {provider}.*). **A channel on another mailbox provider is refused**, 409
 `provider_switch_unsupported` (*The channel uses another mailbox provider. Switch it back

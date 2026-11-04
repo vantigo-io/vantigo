@@ -164,10 +164,9 @@ func TestCreateChannel_EntraRefusals(t *testing.T) {
 }
 
 // TestCreateChannel_EntraWithoutTheProvider: no slot filled, or one under
-// another key, leaves "entra" a provider no channel can use: validation asks
-// the slice (Google Workspace design G4), and the request is a 400 before
-// anything reaches a provider — never a channel on a provider that cannot
-// send.
+// another key, leaves "entra" a provider no channel can use: the create is
+// 409 mail_channels_off, as before there were many providers, and nothing
+// reaches a provider — never a channel on a provider that cannot send.
 func TestCreateChannel_EntraWithoutTheProvider(t *testing.T) {
 	t.Parallel()
 	for name, opts := range map[string][]modtest.Option{
@@ -179,11 +178,30 @@ func TestCreateChannel_EntraWithoutTheProvider(t *testing.T) {
 			h := newHarness(t, opts...)
 			c := h.SignIn(t, "communications:channels-manage")
 			wantCode(t, c.Do(http.MethodPost, "/api/v1/communications/channels", entraChannelBody(channelAddress(t))),
-				http.StatusBadRequest, "invalid_request")
+				http.StatusConflict, "mail_channels_off")
 			if n := h.Count(t, `SELECT count(*) FROM communications.channels`); n != 0 {
 				t.Errorf("channels = %d, want none", n)
 			}
 		})
+	}
+}
+
+// TestSwitchChannelProvider_EntraWithoutTheProvider: an SMTP channel
+// switched to a provider no module fills is 409 mail_channels_off, the
+// channel left SMTP; smtp, or no provider, is a 400.
+func TestSwitchChannelProvider_EntraWithoutTheProvider(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, modtest.WithChannelMailbox(modtest.NewFakeChannelMailbox().WithKey("other")))
+	c := h.SignIn(t, "communications:channels-manage")
+	ch := createChannel(t, c, newChannelBody(channelAddress(t)))
+	switchTo := func(provider string) *modtest.Response {
+		return c.Do(http.MethodPost, "/api/v1/communications/channels/"+ch.Id+"/provider", map[string]any{"provider": provider})
+	}
+	wantCode(t, switchTo("entra"), http.StatusConflict, "mail_channels_off")
+	wantCode(t, switchTo("smtp"), http.StatusBadRequest, "invalid_request")
+	wantCode(t, switchTo(""), http.StatusBadRequest, "invalid_request")
+	if p := modtest.One[string](t, h, `SELECT provider FROM communications.channels WHERE id = $1`, ch.Id); p != "smtp" {
+		t.Errorf("provider = %q, want smtp", p)
 	}
 }
 
