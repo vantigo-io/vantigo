@@ -6,7 +6,7 @@ version: "2"
 sql:
   - engine: postgresql
     schema:
-      - ../db/migrations/00112_google_baseline.sql
+      - ../db/migrations/00114_google_baseline.sql
     queries: queries
     gen:
       go:

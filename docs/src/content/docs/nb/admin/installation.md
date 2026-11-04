@@ -859,7 +859,7 @@ varetellinger, tellingsbevegelsenes kobling til varetellingen og det som ble reg
 pakninger; bevegelsene og beholdningen blir stående. Se
 [Tell varer](/nb/user/inventory/#tell-varer) og [Pakninger](/nb/user/products/#pakninger).
 
-**Utgivelsen med Google Workspace.** Den har `00112_google_baseline.sql`, skjemaet
+**Utgivelsen med Google Workspace.** Den har `00114_google_baseline.sql`, skjemaet
 `google` med sin ene tilkoblingsrad, ikke satt opp. En installasjon som lar `MODULES`
 stå usatt, får modulen, og siden under **Integrasjoner** for eiere, ved oppgradering; en
 som lister `MODULES`, får den når `google` legges til ved siden av `staff`, som den

@@ -828,7 +828,7 @@ count, and what was entered in packagings; the movements and the stock stay. See
 [Count stock](/en/user/inventory/#count-stock) and
 [Packagings](/en/user/products/#packagings).
 
-**The release with Google Workspace.** It brings `00112_google_baseline.sql`, the
+**The release with Google Workspace.** It brings `00114_google_baseline.sql`, the
 `google` schema with its one connection row, not set up. An installation that leaves
 `MODULES` unset gets the module, and its page under **Integrations** for Owners, on
 upgrade; one that lists `MODULES` gets it once `google` is added beside `staff`, which it
