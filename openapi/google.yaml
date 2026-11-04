@@ -1,0 +1,620 @@
+components:
+    schemas:
+        GoogleConnection:
+            description: 'The installation''s one connection to a Google Workspace organisation (Google Workspace design G12–G16): the service account Vantigo signs in as through domain-wide delegation, the admin it impersonates, the Internal web client, and what the last connection test found. Sent whether or not anything is set, so the Connection tab can show every step before the first is done. No key and no client secret is ever answered.'
+            properties:
+                adminSubject:
+                    description: The super admin (or delegated admin) whose address the Admin SDK calls impersonate. Absent until set.
+                    type: string
+                credentialKind:
+                    description: How Vantigo obtains its tokens. service_account_key, the service account's JSON key the Owner uploads, is the only kind implemented; vantigo_hosted is reserved for a later delivery.
+                    enum:
+                        - service_account_key
+                        - vantigo_hosted
+                    type: string
+                credentials:
+                    description: Every key and client secret ever added, revoked ones included, newest first. The key and the secret themselves are sealed and never answered.
+                    items:
+                        $ref: '#/components/schemas/GoogleCredential'
+                    type: array
+                customerId:
+                    description: The organisation's customer id (C0…), as the last successful test read it.
+                    type: string
+                delegationClientId:
+                    description: The numeric client id of the service account whose key is in use — what the admin pastes into the Admin console's domain-wide delegation, beside the scopes. Absent until a key is uploaded.
+                    type: string
+                domains:
+                    description: The organisation's verified domains, lower-case and sorted, as the last successful test read them.
+                    items:
+                        type: string
+                    type: array
+                lastCheckedAt:
+                    description: When the connection was last tested. Absent until it has been, and again after the admin to impersonate changes.
+                    format: date-time
+                    type: string
+                oauthClientId:
+                    description: The Internal web client's id, ending .apps.googleusercontent.com — for the person's own Google connection and the sign-in with Google. Absent until set.
+                    type: string
+                oauthClientSecretAddedAt:
+                    description: When the web client's secret in use was added. The secret itself is never answered; absent while none is.
+                    format: date-time
+                    type: string
+                organisationName:
+                    description: The organisation's name, as the last successful test read it.
+                    type: string
+                primaryDomain:
+                    description: The organisation's primary domain, as the last successful test read it.
+                    type: string
+                redirectUris:
+                    description: The two redirect URIs to register on the Internal web client, built from APP_URL — the person's Google connection's callback and the sign-in's.
+                    items:
+                        type: string
+                    type: array
+                scopesGranted:
+                    description: The scopes the last test was granted, in full.
+                    items:
+                        type: string
+                    type: array
+                scopesMissing:
+                    description: The scopes Vantigo needs that the last test was refused — the features needing them are unavailable.
+                    items:
+                        type: string
+                    type: array
+                scopesToDelegate:
+                    description: The scopes to paste into the Admin console's domain-wide delegation, in full, in the order Vantigo needs them. A function of the features turned on.
+                    items:
+                        type: string
+                    type: array
+                scopesUnexpected:
+                    description: Scopes Vantigo never uses that the last test was granted anyway — a warning, never a status. Domain-wide delegation reaches every account of the organisation, so a scope nobody needs is better removed in the Admin console.
+                    items:
+                        type: string
+                    type: array
+                status:
+                    description: unconfigured while no key is uploaded or no admin is named, or until the first test; pending_delegation when every scope Vantigo needs was refused; connected when the organisation answered; failing otherwise, with its reason.
+                    enum:
+                        - unconfigured
+                        - pending_delegation
+                        - connected
+                        - failing
+                    type: string
+                statusReason:
+                    description: 'Why the status is what it is: not_delegated (pending_delegation), credential_invalid (Google refused every key, or does not know the admin to impersonate), admin_refused (the admin may not read the organisation), google_unreachable (Google did not answer). Absent otherwise.'
+                    type: string
+                version:
+                    description: The connection's version, the If-Match of PUT /connection.
+                    format: int32
+                    type: integer
+            required:
+                - status
+                - credentialKind
+                - domains
+                - credentials
+                - scopesToDelegate
+                - scopesGranted
+                - scopesMissing
+                - scopesUnexpected
+                - redirectUris
+                - version
+            type: object
+        GoogleConnectionRequest:
+            description: The connection's settings. Every field is optional and one left out keeps its value.
+            properties:
+                adminSubject:
+                    description: The address of the admin to impersonate. A change sends the status back to unconfigured until the next test.
+                    type: string
+                credentialKind:
+                    description: service_account_key; vantigo_hosted is refused 422 credential_kind_unsupported.
+                    type: string
+            type: object
+        GoogleConnectionTest:
+            description: What a connection test found (Google Workspace design G15).
+            properties:
+                customer:
+                    $ref: '#/components/schemas/GoogleCustomer'
+                domains:
+                    description: The organisation's verified domains, lower-case and sorted.
+                    items:
+                        type: string
+                    type: array
+                granted:
+                    description: The scopes Vantigo needs that were granted.
+                    items:
+                        type: string
+                    type: array
+                missing:
+                    description: The scopes Vantigo needs that were refused.
+                    items:
+                        type: string
+                    type: array
+                reason:
+                    description: The status's reason, as GoogleConnection's statusReason.
+                    type: string
+                status:
+                    enum:
+                        - unconfigured
+                        - pending_delegation
+                        - connected
+                        - failing
+                    type: string
+                unexpected:
+                    description: The scopes Vantigo never uses that were granted anyway.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - status
+                - granted
+                - missing
+                - unexpected
+                - domains
+            type: object
+        GoogleCredential:
+            description: 'One credential the module keeps (Google Workspace design G13): a service account''s key, by the four fields of its file kept in the clear, or the Internal web client''s secret. The key and the secret themselves are sealed and never answered.'
+            properties:
+                clientEmail:
+                    description: The service account's address. Present on a key.
+                    type: string
+                clientId:
+                    description: The service account's numeric client id — what domain-wide delegation is granted to. Present on a key.
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                inUse:
+                    description: The key the module signs with — the newest live one, unless Google refused it since it last worked — or the client secret in use.
+                    type: boolean
+                kind:
+                    enum:
+                        - service_account_key
+                        - oauth_client_secret
+                    type: string
+                lastFailedAt:
+                    description: When Google last refused this key. Absent until it has.
+                    format: date-time
+                    type: string
+                lastUsedAt:
+                    description: When a token was last minted with this key. Absent until one has.
+                    format: date-time
+                    type: string
+                privateKeyId:
+                    description: The key's id, as the Cloud console lists it. Present on a key.
+                    type: string
+                projectId:
+                    description: The Cloud project the service account belongs to. Present on a key.
+                    type: string
+                revokedAt:
+                    description: When it was revoked. Absent while it is live.
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - kind
+                - createdAt
+                - inUse
+            type: object
+        GoogleCredentialRequest:
+            description: A service account's JSON key, the file's text as the Owner pasted it or the page read it from a chosen file — at most 8 KiB.
+            properties:
+                json:
+                    type: string
+            required:
+                - json
+            type: object
+        GoogleCustomer:
+            description: The organisation, as customers.get(my_customer) answers it.
+            properties:
+                id:
+                    description: The customer id, C0….
+                    type: string
+                organisationName:
+                    type: string
+                primaryDomain:
+                    type: string
+            required:
+                - id
+            type: object
+        GoogleEvent:
+            description: One write the module made, to its own connection or in the organisation — the module's own append-only trail. It carries codes and Google's ids, never an address, a key, a secret or a token.
+            properties:
+                action:
+                    description: google.connection.changed, google.connection.tested, google.oauth_client.changed, google.credential.added, google.credential.revoked or google.credential.refused.
+                    type: string
+                actor:
+                    description: Who acted — the user's id, or the system's name.
+                    type: string
+                at:
+                    format: date-time
+                    type: string
+                codes:
+                    description: What the write reported, as codes.
+                    items:
+                        type: string
+                    type: array
+                id:
+                    format: int64
+                    type: integer
+                subjectId:
+                    description: The Google id the write concerned. Absent on a connection's event.
+                    type: string
+            required:
+                - id
+                - at
+                - actor
+                - action
+                - codes
+            type: object
+        GoogleOAuthClientRequest:
+            description: The Internal web client. A changed client id needs its secret; a secret alone rotates the current client's.
+            properties:
+                clientId:
+                    description: The web client's id, ending .apps.googleusercontent.com.
+                    type: string
+                clientSecret:
+                    description: The web client's secret, which Google shows once, at creation. Sealed at once and never answered.
+                    type: string
+            required:
+                - clientId
+            type: object
+        GoogleProblem:
+            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: version_mismatch (412: the connection has been written since the If-Match version), client_mismatch (422: a key for another service account while one of the current account''s is live), credential_kind_unsupported (422: a credential kind this version does not implement). errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither.'
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                detail:
+                    nullable: true
+                    type: string
+                errors:
+                    additionalProperties:
+                        items:
+                            type: string
+                        type: array
+                    type: object
+                instance:
+                    nullable: true
+                    type: string
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
+info:
+    title: Vantigo Google Workspace API
+    version: "1"
+openapi: 3.0.3
+paths:
+    /api/v1/google/connection:
+        get:
+            description: The connection, its credentials without their values, the scopes to delegate and what the last test found — the Status tab and every step of the Connection tab. Reads the module's own rows only; nothing reaches Google.
+            operationId: getGoogleConnection
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleConnection'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the connection
+            tags:
+                - Google
+            x-vantigo-access: permission:google:manage
+        put:
+            description: 'Sets the admin to impersonate and the credential kind, under If-Match on the connection''s version. A changed admin sends the status back to unconfigured and forgets what the last test found. vantigo_hosted is refused 422 credential_kind_unsupported. The Owner''s, as the single sign-on settings are. Audited google.connection.changed, never with the address. Rate limited to 30 per client address a minute, shared with every Owner operation of the module.'
+            operationId: putGoogleConnection
+            parameters:
+                - description: The version the connection was read at, bare (3) or quoted ("3"). A version that has moved on is a 412 version_mismatch.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GoogleConnectionRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleConnection'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleProblem'
+                    description: Bad Request — field errors on the body, or an If-Match that is not a version.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "412":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleProblem'
+                    description: Precondition Failed — version_mismatch, the connection has been written since the If-Match version.
+                "422":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleProblem'
+                    description: Unprocessable Entity — credential_kind_unsupported, a credential kind this version does not implement.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — google-owner's limit for this client address, shared with every Owner operation of the module.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Set the admin to impersonate
+            tags:
+                - Google
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/google/connection/credentials:
+        post:
+            description: 'Uploads a service account''s JSON key: type service_account, token_uri https://oauth2.googleapis.com/token, an RSA private key in PKCS #8 PEM, at most 8 KiB. The private key is sealed at once and never answered; the service account''s address, its numeric client id, the key''s id and the project are kept in the clear, nothing else of the file. Several keys may be stored — the newest live one is used — but a key for another service account is refused 422 client_mismatch while one of the current account''s is live. The Owner''s. Audited google.credential.added with the ids, never the key. Rate limited with every Owner operation of the module.'
+            operationId: postGoogleConnectionCredentials
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GoogleCredentialRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleCredential'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleProblem'
+                    description: Bad Request — field errors on the body, json naming what the file lacks.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "422":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleProblem'
+                    description: Unprocessable Entity — client_mismatch, a key for another service account while one of the current account's is live.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — google-owner's limit for this client address, shared with every Owner operation of the module.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Upload a service account key
+            tags:
+                - Google
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/google/connection/credentials/{id}:
+        delete:
+            description: Revokes a key or a client secret — it is kept, marked revoked, and never used again; nothing changes at Google, where the Owner deletes the key themselves. A credential already revoked answers as it is. The Owner's. Audited google.credential.revoked. Rate limited with every Owner operation of the module.
+            operationId: deleteGoogleConnectionCredentialsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleCredential'
+                    description: OK — the credential as revoked.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such credential. The body is empty.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — google-owner's limit for this client address, shared with every Owner operation of the module.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Revoke a key or a client secret
+            tags:
+                - Google
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/google/connection/oauth-client:
+        put:
+            description: Sets the Internal web client — its id, ending .apps.googleusercontent.com, and its secret, sealed at once and never answered. A changed client id needs its secret; a secret alone rotates the current client's, the older one revoked. The Owner's. Audited google.oauth_client.changed, never with the secret. Rate limited with every Owner operation of the module.
+            operationId: putGoogleConnectionOauthClient
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GoogleOAuthClientRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleConnection'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleProblem'
+                    description: Bad Request — field errors on the body.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — google-owner's limit for this client address, shared with every Owner operation of the module.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Set the Internal web client
+            tags:
+                - Google
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/google/connection/test:
+        post:
+            description: 'Tests the connection: a token for each scope Vantigo needs and for each scope it never uses, asked as the admin to impersonate with the newest live key, then the organisation and its verified domains read — and writes what it found to the connection. pending_delegation when every needed scope was refused, connected with the missing ones listed when some were, failing with credential_invalid, admin_refused or google_unreachable. 200 with the result whatever it found. The Owner''s. Audited google.connection.tested with the status and the scopes'' codes. Rate limited with every Owner operation of the module.'
+            operationId: postGoogleConnectionTest
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleConnectionTest'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — google-owner's limit for this client address, shared with every Owner operation of the module.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Test the connection
+            tags:
+                - Google
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/google/events:
+        get:
+            description: The module's recent writes, newest first — the Status tab's events.
+            operationId: getGoogleEvents
+            parameters:
+                - description: How many, 1 to 200; 50 when absent.
+                  in: query
+                  name: limit
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/GoogleEvent'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleProblem'
+                    description: Bad Request — a limit outside 1 to 200.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: The module's recent events
+            tags:
+                - Google
+            x-vantigo-access: permission:google:manage
+servers:
+    - url: /
