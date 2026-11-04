@@ -73,12 +73,13 @@ A2 may run beside B. S and C may run beside each other. D follows C.
     - `aggregate_id` (text, for ordering and lookup);
     - `payload` (jsonb);
     - `occurred_at`.
-  - **`events.Publish(ctx, tx, ev)`** inserts the event on the publisher's own
+  - **`events.Publish(ctx, tx, module, ev, occurredAt)`** inserts the event on the publisher's own
     transaction. It never begins, commits or takes a pool, as a holder does not (MB
     rule 10's discipline). An event commits together with the state change that caused
     it, or not at all.
-  - **Event types are DTOs in `srv/contracts/events_<module>.go`.** Each has a
-    `Name()`, a `Version()`, and JSON tags that are its wire form. A breaking change is
+  - **Event types are DTOs in `srv/contracts/events_<module>.go`.** Each implements
+    `contracts.Event`, with `EventName()`, `EventVersion()` and `AggregateID()`, and
+    has JSON tags that are its wire form. A breaking change is
     a new version, and handlers name the versions they accept.
 - **O2 — Handlers are a many-provider slot.**
   - `module.Module.EventHandlers` is a list of `events.Handler{Name, Events, Handle}`:
@@ -186,8 +187,10 @@ A2 may run beside B. S and C may run beside each other. D follows C.
   - `ForTaxCategories(ctx, ids, at)` returns `map[categoryID]VATCodeEntry`; an unmapped
     id is absent;
   - `Seller(ctx)` returns the seller block Invoices prints: name, organisation number
-    with MVA, address, e-mail, phone, bank account, logo key in storage. It is read
-    from Invoices' settings as its PDF reads it.
+    with MVA, address, e-mail, bank account, IBAN, BIC and footer text. It is read
+    from `invoices.settings`, the row Invoices' issue snapshots.
+    - Invoices stores no phone and no logo, so those fields stay empty.
+    - Orders' PDFs print what Invoices' print (spec Q2, answered by delivery 0's seam).
 - **O9 — Orders requires Invoices.**
   - `MODULES` dependencies become: **orders depends on products, customers and
     invoices** (`srv/config`).
@@ -1019,8 +1022,9 @@ growth (§13):
 - pickup planning;
 - checking freight invoices against booked costs.
 
-The carrier details below rest on the research in R §2.9. Where that research
-corrects a name or a limit, R wins and this section is revised.
+The carrier details below rest on the research in R §2.9 (2026-11-05). This section was
+revised from it: Bring has no cancel endpoint and no idempotency key, its labels are PDF
+only, its webhooks are unsigned, and a carrier like Porterbuddy sells delivery windows.
 
 - **O49 — The platform port `srv/shipping`, shaped like `srv/payments`.**
   - **What the package is:**
@@ -1029,27 +1033,59 @@ corrects a name or a limit, R wins and this section is revised.
     - an adapter lives beside it (`shipping/bring`), and its fake beside the adapter
       (`shipping/bring/bringtest`), for tests only.
   - **One interface, `Carrier`, one value per carrier account:**
-    - `Rates(ctx, RateRequest) ([]Rate, error)`: per service, the price, and the
-      delivery time when the carrier gives one. The price is the account's agreement
-      price when the carrier returns it, else the list price, and says which.
-    - `Book(ctx, BookRequest) (Booking, error)`: sender, recipient, service,
-      value-added services (SMS or e-mail notice), packages, references and the
-      caller's **idempotency key**. It answers the consignment number, a tracking
-      number per package, the booked cost when given, and the documents available.
-    - `Label(ctx, booking, format) (Document, error)`: the label, or the waybill
-      (*fraktbrev*), as PDF, or ZPL where the carrier offers it.
-    - `Track(ctx, trackingNumbers) ([]TrackingStatus, error)`: events folded onto
-      `booked`, `in_transit`, `ready_for_pickup`, `delivered`, `returned`,
-      `exception`, with the carrier's own code and text kept.
-    - `Cancel(ctx, booking, idempotencyKey) error`: "already cancelled" counts as
-      success. A booking past the carrier's cancel window answers `ErrTooLate`.
-    - `Services(ctx)`: the services this account may book, for the settings page and
-      the picker.
-    - `PickupPoints(ctx, postalCode, country)`: for services delivered to a pickup
-      point.
+    - `Capabilities()` declares what the carrier can do: rates, pickup points,
+      delivery windows, cancel, webhooks, label formats and a coverage check.
+      - The interface and the screens ask it.
+      - An absent capability is never found by an error.
+    - `Rates(ctx, RateRequest) ([]Option, error)`: one option per product or window.
+      Each option has:
+      - a price excluding VAT, the VAT and the currency;
+      - an `Estimate` flag, set when it is not the agreement price;
+      - an expected date, or a **delivery window** (start, end);
+      - `ExpiresAt` and an opaque `Token`, for a carrier whose quote must be booked as
+        given (Porterbuddy).
+      - A carrier with no rate call answers no options.
+    - `Book(ctx, BookRequest) (Booking, error)`:
+      - **It takes:** sender, recipient (with phone and e-mail, which drive the
+        carrier's notices), the product, value-added services, packages, the chosen
+        option's token if any, references, and the caller's **idempotency key**.
+      - **It answers:**
+        - the consignment number and a package number per package (Porterbuddy has
+          only an order id, which fills both);
+        - **the product actually booked**, which may differ after a carrier's
+          fallback;
+        - the booked cost when given;
+        - the tracking URL;
+        - the document references.
+      - **A carrier with no idempotency key (Bring).** The adapter sends the key as the
+        consignment's `correlationId` and reference. Before a retry after a timeout,
+        it looks the reference up through tracking, and answers the existing booking
+        if one is found.
+    - `Label(ctx, booking, format) (Document, error)`: the label or the waybill
+      (*fraktbrev*), as PDF, or ZPL where `Capabilities` lists it.
+      - Bring offers PDF only.
+      - The adapter follows Bring's label redirect.
+    - `Track(ctx, refs) ([]TrackingStatus, error)`: events folded onto `booked`,
+      `in_transit`, `ready_for_pickup`, `delivered`, `returned`, `exception` and
+      `cancelled`, with the carrier's own code and text kept.
+    - `ParseWebhook(r, secret) ([]TrackingStatus, error)`, for a carrier with the
+      capability. Bring's is unsigned, so a configured secret header guards it.
+      Porterbuddy's is signed with HMAC.
+    - `Cancel(ctx, booking, idempotencyKey) (CancelOutcome, error)` answers one of
+      three outcomes:
+      - `cancelled`;
+      - `not_supported`: the shipment is voided locally and its label discarded.
+        This is **Bring**, which has no cancel endpoint and charges on hand-in;
+      - `too_late`: the carrier has the parcel.
+    - `Services(ctx)`: the products this account may book. They are read from the
+      carrier, or from the adapter's data file, **never Go constants**, because Bring
+      withdraws products yearly.
+    - `PickupPoints(ctx, address)`: optional. Id, name, manned or locker, opening
+      hours, maximum dimensions.
     - `Verify(ctx)`: the cheapest authenticated call, for the settings page.
-  - **Money crosses in minor units.** Weights cross in grams and dimensions in
-    centimetres. Adapters convert.
+  - **Money crosses in minor units. Weights cross in grams, dimensions in
+    millimetres.** Adapters convert: Bring's booking takes kg, and its Shipping Guide
+    takes grams and cm.
   - **The adapter never retries on its own and never invents an idempotency key**, the
     payments port's rule.
 - **O50 — Shipments on a delivery.**
@@ -1058,8 +1094,10 @@ corrects a name or a limit, R wins and this section is revised.
     - the service, and value-added services;
     - the sender (the account's address, else the site's) and the recipient (the
       delivery address snapshot, with the contact's phone and e-mail for notices);
-    - packages, each with weight (g), length, width, height (cm), an optional content
-      text, and its own tracking number once booked;
+    - packages, each with weight (g), length, width, height (mm), an optional
+      content text, and its own package number once booked;
+    - `planned_window_start` and `planned_window_end`, null for Bring. They are kept
+      for a time-window carrier;
     - the consignment's tracking number and tracking URL;
     - **the booked cost** (exact decimal and currency) and whether it is an
       agreement price;
@@ -1086,16 +1124,27 @@ corrects a name or a limit, R wins and this section is revised.
     - publishes `orders.shipment.booked.v1`;
     - a carrier refusal is shown with the carrier's message
       (`carrier_refused`, 422), and the shipment stays `draft`.
-  - **Cancel** calls `Cancel`. `ErrTooLate` is refused with `shipment_past_cancel`.
+  - **Cancel** calls `Cancel`.
+    - `cancelled` and `not_supported` both move the shipment to `cancelled`.
+      `not_supported` says "voided in Vantigo; the label must not be used".
+    - `too_late` is refused with `shipment_past_cancel`.
   - **Tracking:**
     - a leased worker, `orders.shipment_tracking`, polls `Track` every 30 minutes
       for shipments in `booked`, `in_transit` or `exception` from the last 60 days;
     - it stores new events in `orders.shipment_events`, moves the status, and
       publishes `orders.shipment.delivered.v1` on delivery;
-    - **webhooks** are used instead where the carrier offers them and R §2.9 shows
-      they are reliable. Polling stays the fallback.
+    - **Bring is polled in D.** Its Event Cast webhooks are unsigned and retry
+      little. A webhook endpoint for carriers with the capability (Porterbuddy's HMAC)
+      comes with that adapter (§13).
+    - **Bring's test mode** sends `X-Bring-Test-Indicator: true` and refuses real-looking
+      contacts. Bring notifies real phone numbers and e-mails even in test, so the
+      booking dialog warns, and tests use dummy contacts.
   - **A shipment's booked cost is recorded, not invoiced.** It is the business's cost.
     What the customer pays is the `shipping` line (O53).
+    - The booked cost is the carrier's estimate (Bring's `netPrice` or `listPrice`),
+      marked so.
+    - The invoiced cost comes from the carrier's invoice reports. Reconciling the two
+      is the freight-invoice check that would make shipping its own app (§13).
 - **O51 — Carrier accounts under Integrations.**
   - **Where:** a new item in Workspace admin's *Integrations* section
     (integrations design T2), *Frakt / Shipping* at `/workspace/shipping`, gated on
@@ -1103,8 +1152,12 @@ corrects a name or a limit, R wins and this section is revised.
   - **An account has:**
     - the carrier (`bring` in this phase);
     - a name;
-    - the carrier's customer number;
-    - the API credentials for Bring: the Mybring user id and API key;
+    - the carrier's customer number or numbers (Bring often has one for parcels and
+      one for cargo);
+    - the API credentials for Bring:
+      - the Mybring user id and API key;
+      - prices need that user's *financial* role on the customer number, and
+        *Verify* says so when it is missing;
     - a **test flag**, which uses the carrier's test mode;
     - an optional sender address;
     - a default service;
@@ -1125,8 +1178,10 @@ corrects a name or a limit, R wins and this section is revised.
     issues it and printable from the delivery page.
     - For a service that needs no separate waybill, the label serves, and the page says
       so.
-  - **Labels** print from the delivery page as PDF (A6 or A4 with four per page, as the
-    carrier offers). ZPL printing is later, as Inventory's labels are (§13).
+  - **Labels** print from the delivery page as the carrier's PDF.
+    - A label printer format (PDF or ZPL) is a setting, used where the carrier's
+      capability allows. Bring is PDF only, so ZPL waits for a carrier that has it
+      (§13).
   - **The shipping e-mail.**
     - The setting `shipping_notice_on_book` (default on) queues a *Your order has
       shipped* e-mail through O25's mailings and worker when a shipment is booked.
@@ -1372,7 +1427,9 @@ The `platform` schema gains `events` and `event_deliveries` (0). Invoices gains
 | Gross-based rounding for consumer channels | Invoices, with eCommerce |
 | Incoterms on order and invoice | Phase 3 |
 | Kits and bundles | Products Later |
-| Carriers beyond Bring (PostNord, Helthjem, Porterbuddy, or nShift as an aggregator) | An adapter each on the `srv/shipping` port, in the order R §2.9 recommends |
+| Carriers beyond Bring | An adapter each on the `srv/shipping` port, in R §2.9's order:<br>• Helthjem (idempotency, ZPL);<br>• Porterbuddy, with a delivery-window picker in the booking dialog, token expiry and re-quote, verification options, its HMAC webhook, and not storing its labels as it advises;<br>• PostNord, after its certification;<br>• nShift (Go) as an aggregator, once partner terms are settled |
+| Bring Event Cast webhooks | A secret-header endpoint, if polling proves too slow |
+| Freight invoice check (booked vs invoiced cost, from Bring's Reports API) | Shipping as its own app |
 | ZPL label printing | Demand, with Inventory's thermal labels |
 | Shipping as its own app | Shipping growing beyond orders: shipments from no order, pickup planning, freight invoice checking. Until then it stays inside Orders (§7a) |
 | An orders tile on the customer 360 overview panel | A provider read for Customers' overview endpoint |
@@ -1463,6 +1520,13 @@ place.
   channels.
 - **O10.** Addresses carry their id.
 
-**Shipping** (owner, 2026-11-05) is delivery D, decisions O49–O53 (§7a). The carrier
-research of R §2.9 includes Porterbuddy.
+**Shipping** (owner, 2026-11-05) is delivery D, decisions O49–O53 (§7a). They were
+revised from the carrier research in R §2.9, which covers Porterbuddy in full:
+- `Capabilities`, and options with a window, an expiry and a token;
+- three cancel outcomes, since Bring has no cancel;
+- the reference lookup instead of an idempotency key for Bring;
+- PDF-only labels for Bring;
+- polling for Bring;
+- grams and millimetres;
+- products as data.
 
