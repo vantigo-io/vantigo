@@ -289,7 +289,8 @@ always, the invoices billing worker `invoices-billing`, always, the invoices pay
 subscriptions worker `calendar-subscriptions` unless `CALENDAR_SUBSCRIPTIONS_ENABLED=0`, and the
 calendar mailbox sync worker `calendar-mailbox-sync` unless `CALENDAR_MAILBOX_SYNC_ENABLED=0`, and the
 Microsoft Entra ID module's `entra-outlook-sweep`, always, which tidies the people's
-Outlook connections every hour, and the Assistant's `assistant-runs`, always, which fails a run
+Outlook connections every hour, the Google Workspace module's `google-sweep`, always,
+which does the same for the people's Google connections, and the Assistant's `assistant-runs`, always, which fails a run
 a restart left running, and `assistant-retention`, always, which deletes conversations past
 their retention once a day) inside the
 API process: `WORKERS_IN_PROCESS=1`, the default. Deployments that scale the API
@@ -320,7 +321,9 @@ you use, retention cleanup, the registry workers, the EHF events worker, the
 calendar cancellations worker, `entra-outlook-sweep` and `assistant-retention` take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
 the `invoices-ehf` worker, the `invoices-reminders` worker, the `invoices-billing` worker,
 the `invoices-payments` worker, `communications-mailbox-sync` and the calendar subscriptions and mailbox sync workers instead take one row at a time under a time-limited lease, so any number of
-instances share the work without sending anything twice. The reminder worker sends one letter at a time, at most one a
+instances share the work without sending anything twice. `google-sweep` takes neither:
+each of its steps claims its rows in one statement, so two instances never handle the
+same connection. The reminder worker sends one letter at a time, at most one a
 second per instance, and each send must finish well inside its 60-second lease
 ([The reminder worker and mail](/en/admin/payments/#the-reminder-worker-and-mail)).
 The payments worker polls every second and handles every Vipps payment that is due in
@@ -486,7 +489,11 @@ path, since the path prefix is `APP_BASE_PATH`, not part of `APP_URL`. Redirect 
 registered elsewhere follow both: the Microsoft Entra ID module's Outlook connection
 answers Microsoft at `APP_URL` + `APP_BASE_PATH` + `/api/v1/entra/outlook/callback` —
 never on `PUBLIC_BASE_URL` — so a change of either means adding the new URI to the app
-registration ([Microsoft Entra ID](/en/admin/entra/#outlook-connection)). The API
+registration ([Microsoft Entra ID](/en/admin/entra/#outlook-connection)). Likewise the
+Google Workspace module's Connection for people answers Google at `APP_URL` +
+`APP_BASE_PATH` + `/api/v1/google/connect/callback`, never on `PUBLIC_BASE_URL`, which
+must be registered on the Internal web client
+([Google Workspace](/en/admin/google-workspace/#connection-for-people)). The API
 prefixes remain `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
 `/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
@@ -838,6 +845,15 @@ Owner uploads a key and tests the connection. A least-privilege role needs the `
 schema granted ([Database roles](#database-roles)). It starts no worker. Rolling the
 migration back drops the schema with the sealed keys and secret, and touches nothing at
 Google. See [Google Workspace](/en/admin/google-workspace/).
+
+**The release with the personal Google connection.** It brings
+`00114_google_connections.sql`: the people's own Google connections, none yet, and
+**Connection for people**, off. It starts `google-sweep`, which has nothing to do until
+an Owner turns the switch on and people connect. Before turning it on, register
+`APP_URL` + `APP_BASE_PATH` + `/api/v1/google/connect/callback` on the Internal web
+client. Rolling the migration back drops every person's connection with its sealed
+token, unrevoked: Google lets an unused token lapse, and a person can remove Vantigo in
+their Google account. See [Google Workspace](/en/admin/google-workspace/#connection-for-people).
 
 **The release with Staff competence.** It brings `00066_staff_competence.sql`: the
 competence catalogue — five categories and fifteen Norwegian certificates seeded — and

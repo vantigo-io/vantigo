@@ -294,7 +294,8 @@ kalendermodulens avlysningsjobb `calendar-cancellations` med mindre
 `calendar-subscriptions` med mindre `CALENDAR_SUBSCRIPTIONS_ENABLED=0`, og kalendermodulens
 postbokssynkronisering `calendar-mailbox-sync` med mindre `CALENDAR_MAILBOX_SYNC_ENABLED=0`,
 og Microsoft Entra ID-modulens `entra-outlook-sweep`, alltid, som rydder i folks
-Outlook-tilkoblinger hver time, og Assistentens `assistant-runs`, alltid, som feiler en
+Outlook-tilkoblinger hver time, Google Workspace-modulens `google-sweep`, alltid, som gjør
+det samme for folks Google-tilkoblinger, og Assistentens `assistant-runs`, alltid, som feiler en
 kjøring en omstart etterlot som pågående, og `assistant-retention`, alltid, som sletter samtaler
 som er eldre enn oppbevaringstiden én gang i døgnet) inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
 skalerer API-et horisontalt bør flytte dem til én dedikert worker-container, slik at
@@ -326,7 +327,9 @@ kalenderens avlysningsjobb, `entra-outlook-sweep` og `assistant-retention` en r�
 instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben,
 `invoices-billing`-jobben, `invoices-payments`-jobben, `communications-mailbox-sync` og
 kalenderens abonnements- og postboksjobb tar i stedet én rad om gangen under en tidsbegrenset lås, så
-et hvilket som helst antall instanser deler arbeidet uten å sende noe to ganger. Purrejobben sender ett brev om
+et hvilket som helst antall instanser deler arbeidet uten å sende noe to ganger.
+`google-sweep` tar ingen av delene: hvert av stegene dens tar radene sine i én setning,
+så to instanser behandler aldri samme tilkobling. Purrejobben sender ett brev om
 gangen, høyst ett i sekundet per instans, og hver sending må bli ferdig godt innenfor
 låsen på 60 sekunder
 ([Purrejobben og e-post](/nb/admin/payments/#purrejobben-og-e-post)).
@@ -504,7 +507,10 @@ Omdirigerings-URI-er registrert andre steder følger begge: Microsoft Entra ID-m
 Outlook-tilkobling svarer Microsoft på `APP_URL` + `APP_BASE_PATH` +
 `/api/v1/entra/outlook/callback` — aldri på `PUBLIC_BASE_URL` — så endrer du en av dem,
 må den nye URI-en legges til appregistreringen
-([Microsoft Entra ID](/nb/admin/entra/#outlook-tilkobling)).
+([Microsoft Entra ID](/nb/admin/entra/#outlook-tilkobling)). Tilsvarende svarer
+Google Workspace-modulens tilkobling for personer Google på `APP_URL` + `APP_BASE_PATH` +
+`/api/v1/google/connect/callback`, aldri på `PUBLIC_BASE_URL`, og den må registreres på
+den interne nettklienten ([Google Workspace](/nb/admin/google-workspace/#tilkobling-for-personer)).
 API-prefiksene forblir `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
 `/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
@@ -870,6 +876,15 @@ trenger tilgang til skjemaet `google` ([Databaseroller](#databaseroller)). Den s
 ingen bakgrunnsjobb. Å rulle migreringen tilbake dropper skjemaet med de forseglede
 nøklene og hemmeligheten, og rører ingenting hos Google. Se
 [Google Workspace](/nb/admin/google-workspace/).
+
+**Utgivelsen med den personlige Google-tilkoblingen.** Den har
+`00114_google_connections.sql`: folks egne Google-tilkoblinger, ingen ennå, og
+**Tilkobling for personer**, av. Den starter `google-sweep`, som ikke har noe å gjøre før
+en eier slår bryteren på og folk kobler til. Før du slår den på, registrer `APP_URL` +
+`APP_BASE_PATH` + `/api/v1/google/connect/callback` på den interne nettklienten. Å rulle
+migreringen tilbake dropper hver persons tilkobling med det forseglede tokenet, uten å
+tilbakekalle det: Google lar et ubrukt token utløpe, og en person kan fjerne Vantigo i
+Google-kontoen sin. Se [Google Workspace](/nb/admin/google-workspace/#tilkobling-for-personer).
 
 **Utgivelsen med kompetanse i Ansatte.** Den har `00066_staff_competence.sql`:
 kompetansekatalogen — fem kategorier og femten norske sertifikater forhåndsdefinert — og
