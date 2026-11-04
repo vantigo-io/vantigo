@@ -103,9 +103,9 @@ screen you know the name of.
 
 The avatar menu at the top right leads to **Settings**, with your profile (name,
 language), your security (password, multi-factor authentication, passkeys) and, while
-your organisation runs a module you can connect an account of yours through — today
-Microsoft Entra ID — your **Connections**: your own Outlook, connected once
-([Connections](/en/user/connections/)).
+your organisation runs a module you can connect an account of yours through —
+Microsoft Entra ID or Google Workspace — your **Connections**: your own Outlook or
+Google account, connected once ([Connections](/en/user/connections/)).
 **Help** in the same menu opens this documentation, in your language, as the copy
 built into the Vantigo you are using, so it always describes the version you have.
 
