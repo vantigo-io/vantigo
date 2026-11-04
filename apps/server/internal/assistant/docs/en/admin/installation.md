@@ -617,7 +617,13 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   through, and `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` (default on; `0` for a public
   host Microsoft cannot reach) switches them off
   ([Microsoft Entra ID](/en/admin/entra/#change-notifications),
-  [Calendar](/en/admin/calendar/#the-mailbox-sync-worker)).
+  [Calendar](/en/admin/calendar/#the-mailbox-sync-worker)). It carries Google Calendar's
+  push notifications for the Google Calendar sync too,
+  `POST /api/v1/google/calendar-notifications`, which the proxy must pass through as
+  well: Google posts them over HTTPS to `PUBLIC_BASE_URL`, with a certificate it trusts,
+  and the same switch turns them off
+  ([Google Workspace](/en/admin/google-workspace/#calendar-sync),
+  [Calendar](/en/admin/calendar/#google-calendar)).
 - `vantigo.env.example` also documents `STAFF_IMPORT_MAX_ROWS`, how many people one
   Staff import takes and one Staff export writes
   ([Staff](/en/admin/staff/#import-and-export-the-register)), and the Staff retention

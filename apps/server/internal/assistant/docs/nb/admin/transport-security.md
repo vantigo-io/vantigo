@@ -177,8 +177,9 @@ når applikasjonen. Porten ignoreres i sammenligningen.
 
 Når `PUBLIC_BASE_URL` angir en egen vert, slippes også den offentlige verten for
 betalingssiden i Faktura inn — og på den serverer serveren bare den offentlige vertens
-tillatelsesliste (betalingssiden, svarsiden og strømmen i Kalender, og webhooken for
-endringsvarsler fra Microsoft til Outlook): alt annet svarer 404 før rutingen, et problemdokument under `/api/` og
+tillatelsesliste (betalingssiden, svarsiden og strømmen i Kalender, webhooken for
+endringsvarsler fra Microsoft til Outlook, og endepunktet for Google Kalenders
+push-varsler): alt annet svarer 404 før rutingen, et problemdokument under `/api/` og
 et tomt innhold ellers, mens den samme forespørselen på verten til `APP_URL` betjenes som
 før. Innloggingen, resten av API-et og dokumentasjonen kan derfor aldri nås gjennom den
 offentlige verten. Når `PUBLIC_BASE_URL` er opprinnelsen til `APP_URL` selv, finnes det

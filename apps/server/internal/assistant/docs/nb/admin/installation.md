@@ -638,7 +638,13 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   proxyen må slippe gjennom, og `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` (standard på; `0`
   for en offentlig vert Microsoft ikke kan nå) slår dem av
   ([Microsoft Entra ID](/nb/admin/entra/#endringsvarsler),
-  [Kalender](/nb/admin/calendar/#postbokssynkroniseringen)).
+  [Kalender](/nb/admin/calendar/#postbokssynkroniseringen)). Den bærer også Google
+  Kalenders push-varsler for synkroniseringen med Google Kalender,
+  `POST /api/v1/google/calendar-notifications`, som proxyen også må slippe gjennom:
+  Google poster dem over HTTPS til `PUBLIC_BASE_URL`, med et sertifikat Google stoler på,
+  og den samme bryteren slår dem av
+  ([Google Workspace](/nb/admin/google-workspace/#kalendersynkronisering),
+  [Kalender](/nb/admin/calendar/#google-kalender)).
 - `vantigo.env.example` dokumenterer også `STAFF_IMPORT_MAX_ROWS`, hvor mange personer
   én import i Ansatte tar og én eksport skriver
   ([Ansatte](/nb/admin/staff/#importer-og-eksporter-registeret)), og
