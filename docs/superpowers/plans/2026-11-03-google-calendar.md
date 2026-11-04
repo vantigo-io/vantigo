@@ -172,32 +172,41 @@ Checked against `0bae1d8c` (`main`, deliveries 0–D merged).
 
 ## Tasks
 
-- [ ] **1. Plan** — this file, `docs(google): the plan for calendar sync (Google E)`.
-- [ ] **2. The tables and the contract** — `feat(google): the calendar's tables and the notifications endpoint's contract (Google E)`.
+- [x] **1. Plan** — this file, `docs(google): the plan for calendar sync (Google E)`.
+- [x] **2. The tables and the contract** — `feat(google): the calendar's tables and the notifications endpoint's contract (Google E)`.
   `00117_google_calendar.sql`, `queries/calendar.sql`, sqlc, `schema_test`; the sweep's
   channel rule; `openapi/google.yaml` (the endpoint); `go generate`; the frontend schema
   (`bun run gen:client`).
-- [ ] **3. The provider** — `feat(google): calendar sync through the person's Google connection (Google E)`.
+- [x] **3. The provider** — `feat(google): calendar sync through the person's Google connection (Google E)`.
+  *As built:* one commit with task 4 — `contracts.MailboxCalendar` needs `Watch`,
+  `Unwatch`, `Notified` and `Connections` to compile, so the provider and its
+  notifications landed together; the endpoint's handler landed with task 2, its contract.
   The client's raw call; `mailbox.go`, `mailbox_batch.go`, `mailbox_delta.go`,
   `mailbox_writeback.go`; `MailboxCalendar` on the module; `googletest/calendar.go`
   (calendars insert/get/delete, events insert/patch/delete/get/list with sync tokens,
   pages, 410, `privateExtendedProperty`, the batch endpoint, `events.watch`,
   `channels.stop`); tests per call.
-- [ ] **4. Notifications** — `feat(google): Google Calendar change notifications (Google E)`.
+- [x] **4. Notifications** — `feat(google): Google Calendar change notifications (Google E)`.
   `mailbox_notifications.go`, the endpoint, its rate limit, `publichost.go`; tests: a
   channel opened and renewed, the forged token and the unknown channel ignored, `sync`
   ignored, a notification marking the row, `Unwatch` forgetting.
-- [ ] **5. Through the calendar's worker** — `test(integration): Google's calendar sync through the calendar's own worker (Google E)`.
+- [x] **5. Through the calendar's worker** — `test(integration): Google's calendar sync through the calendar's own worker (Google E)`.
   A push, a busy read, a write-back taken and one put back, the delta restarted on 410,
   the fallback without a token, a notification making the sync due, a disconnect
   cleaning up, a leaver's copies left.
-- [ ] **6. Documentation** — `docs(google): calendar sync with Google Calendar (Google E)`:
+- [x] **6. Documentation** — `docs(google): calendar sync with Google Calendar (Google E)`:
   `user/calendar.md`, `admin/calendar.md`, `admin/google-workspace.md`,
   `admin/installation.md` in `en` and `nb`; `reference/calendar.md`, `reference/google.md`.
-- [ ] **7. Embedded docs** — `go generate ./...`, `chore(assistant): regenerate the embedded documentation`.
-- [ ] **8. Gates** — `mise run server:check`, `mise run server:test`,
+  *As built:* `admin/payments.md` and `admin/transport-security.md` (both languages) list
+  the endpoint on the public host too, as they list Entra's webhook.
+- [x] **7. Embedded docs** — `go generate ./...`, `chore(assistant): regenerate the embedded documentation`.
+- [x] **8. Gates** — `mise run server:check`, `mise run server:test`,
   `mise run frontend:check` (its log read), `mise run docs:check`,
   `bun run tools/docs/check-coverage.ts --base origin/main --head HEAD`, serially.
+
+*As built besides:* `test(google): the mailbox calendar on a pool of one, and Calendar's
+403 usage limit (Google E)` — every call of the provider on a pool of one connection, and
+the guarded client waiting once on a 403 `rateLimitExceeded` as on a 429.
 
 ## Unverified items this delivery depends on
 
