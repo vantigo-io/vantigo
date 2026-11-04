@@ -9,7 +9,7 @@ sources:
   - openapi/google.yaml
   - apps/server/internal/openapi/specs/google.yaml
   - apps/server/internal/db/migrations/00114_google_baseline.sql
-  - apps/server/internal/db/migrations/00113_google_accounts.sql
+  - apps/server/internal/db/migrations/00115_google_accounts.sql
   - apps/server/internal/directoryaddress
 ---
 The Google Workspace module connects one installation to one Google Workspace
@@ -69,7 +69,7 @@ tables. No table references another schema; the user who acted is an opaque id.
 
 The migration's down step drops the schema whole; nothing at Google is touched.
 
-A second migration, `00113_google_accounts.sql` (delivery B), adds:
+A second migration, `00115_google_accounts.sql` (delivery B), adds:
 
 - **`accounts`** — the users the module made or found for Staff's people, keyed by
   `user_id` (32, the Directory id): `employee_number` (16, unique case-folded),
