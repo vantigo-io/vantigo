@@ -25,6 +25,15 @@ vi.mock("@vantigo/entra-ui", () => ({
   ),
 }));
 
+vi.mock("@vantigo/google-ui", () => ({
+  GoogleConnectionCard: () => null,
+  GoogleConnectButton: ({ feature, returnTo }: { feature: string; returnTo: string }) => (
+    <p>
+      Google's button for {feature}, back to {returnTo}
+    </p>
+  ),
+}));
+
 const renderPage = async (modules: string[]) => {
   window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules };
   const Page = CalendarSettingsRoute.options.component as (() => ReactNode) & { preload?: () => Promise<void> };
@@ -43,7 +52,17 @@ describe("My calendar's connection.button slot", () => {
     expect(await screen.findByText("Entra's button for calendar, back to /calendar/settings")).toBeInTheDocument();
   });
 
-  it("is left empty while the Entra module is off", async () => {
+  it("is filled with Google's button while the Google module is on, and with both beside Entra", async () => {
+    await renderPage(["calendar", "google"]);
+    expect(await screen.findByText("Google's button for calendar, back to /calendar/settings")).toBeInTheDocument();
+    expect(screen.queryByText(/Entra's button/)).not.toBeInTheDocument();
+    cleanup();
+    await renderPage(["calendar", "entra", "google"]);
+    expect(await screen.findByText("Entra's button for calendar, back to /calendar/settings")).toBeInTheDocument();
+    expect(screen.getByText("Google's button for calendar, back to /calendar/settings")).toBeInTheDocument();
+  });
+
+  it("is left empty while the Entra and Google modules are off", async () => {
     await renderPage(["calendar"]);
     expect(await screen.findByText("no slot")).toBeInTheDocument();
   });

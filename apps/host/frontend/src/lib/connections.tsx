@@ -1,4 +1,5 @@
 import { OutlookConnectButton } from "@vantigo/entra-ui";
+import { GoogleConnectButton, GoogleConnectionCard } from "@vantigo/google-ui";
 import type { ComponentType, ReactNode } from "react";
 import { EntraConnectionCard } from "../components/entra-connection-card";
 import type { ModuleKey } from "../navigation";
@@ -46,9 +47,14 @@ export interface ConnectionProvider {
   Button: ComponentType<ConnectionButtonProps>;
 }
 
-/** Every provider this build knows, in the order the page lists them. Google's joins in its delivery D. */
+/**
+ * Every provider this build knows, in the order the page lists them: Entra's
+ * Outlook, then Google's. Google's card takes the host's props as they are;
+ * Entra's speaks its own `outlook=` words through an adapter.
+ */
 export const connectionProviders: readonly ConnectionProvider[] = [
   { module: "entra", Card: EntraConnectionCard, Button: OutlookConnectButton },
+  { module: "google", Card: GoogleConnectionCard, Button: GoogleConnectButton },
 ];
 
 /** The providers whose module is on. */

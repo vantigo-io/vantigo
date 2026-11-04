@@ -910,9 +910,9 @@ describe("the administration areas", () => {
     expect(item?.module).toBeUndefined();
     // The entry names exactly the modules the host's list of providers holds.
     expect(item?.modules).toEqual(connectionProviders.map((provider) => provider.module));
-    const withoutEntra = allModules.filter((key) => key !== "entra");
+    const withoutEither = allModules.filter((key) => key !== "entra" && key !== "google");
     expect(
-      appNavSections(settings, withoutEntra, { ...visibility, enabledModules: withoutEntra }).flatMap((section) =>
+      appNavSections(settings, withoutEither, { ...visibility, enabledModules: withoutEither }).flatMap((section) =>
         section.items.map((one) => one.to),
       ),
     ).toEqual(["/settings/profile", "/settings/security"]);

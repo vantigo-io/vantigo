@@ -20,6 +20,7 @@ import {
   type ConnectionCardProps,
   type ConnectionProvider,
   connectionButtonFor,
+  connectionProviders,
   enabledConnectionProviders,
   outcomeFor,
   validateConnectionsSearch,
@@ -41,6 +42,18 @@ vi.mock("@vantigo/entra-ui", () => ({
     );
   },
   OutlookConnectButton: () => <p>Outlook button</p>,
+}));
+
+// Google's card takes the host's props as they are, without an adapter; its package tests it.
+vi.mock("@vantigo/google-ui", () => ({
+  GoogleConnectionCard: (props: { outcome?: { outcome: string; code?: string } }) => (
+    <section aria-label="Google card">
+      <p>
+        {props.outcome ? `google ${props.outcome.outcome} ${props.outcome.code ?? ""}`.trim() : "google no outcome"}
+      </p>
+    </section>
+  ),
+  GoogleConnectButton: () => <p>Google button</p>,
 }));
 
 const renderConnections = (path: string) =>
@@ -122,6 +135,11 @@ describe("the Connections route", () => {
     await renderConnections("/settings/connections");
     expect(await screen.findByRole("heading", { name: "Connections" })).toBeInTheDocument();
     expect(screen.getByText("no outcome")).toBeInTheDocument();
+    expect(screen.getByText("google no outcome")).toBeInTheDocument();
+  });
+
+  it("lists Google's card after Entra's, in the host's list", () => {
+    expect(connectionProviders.map((provider) => provider.module)).toEqual(["entra", "google"]);
   });
 
   it("names the page in Norwegian", async () => {
@@ -151,16 +169,43 @@ describe("the Connections route", () => {
       </MantineProvider>,
     );
     expect(await screen.findByText("failed tenant_mismatch")).toBeInTheDocument();
+    expect(screen.getByText("google no outcome")).toBeInTheDocument();
     const replace = vi.spyOn(history, "replace");
     await userEvent.click(screen.getByRole("button", { name: "return" }));
     expect(replace).toHaveBeenCalledWith("/calendar/settings");
     expect(history.length).toBe(1);
   });
 
+  it("hands Google's callback outcome to Google's card alone", async () => {
+    const history = createMemoryHistory({
+      initialEntries: ["/settings/connections?connection=google&outcome=failed&code=domain_mismatch"],
+    });
+    const root = createRootRoute({ component: Outlet });
+    const page = createRoute({
+      getParentRoute: () => root,
+      path: "/settings/connections",
+      validateSearch: validateConnectionsSearch,
+      component: ConnectionsRoute.options.component as RouteComponent,
+    });
+    const router = createRouter({ routeTree: root.addChildren([page]), history });
+    await router.load();
+    render(
+      <MantineProvider env="test">
+        <QueryClientProvider client={new QueryClient()}>
+          <RouterProvider router={router as never} />
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+    expect(await screen.findByText("google failed domain_mismatch")).toBeInTheDocument();
+    expect(screen.getByText("no outcome")).toBeInTheDocument();
+  });
+
   it("is not found while no connection provider's module is on", () => {
     window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules: ["calendar"] };
     expect(() => (ConnectionsRoute.options.beforeLoad as () => void)()).toThrow();
     window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules: ["entra"] };
+    expect(() => (ConnectionsRoute.options.beforeLoad as () => void)()).not.toThrow();
+    window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules: ["google"] };
     expect(() => (ConnectionsRoute.options.beforeLoad as () => void)()).not.toThrow();
   });
 });
