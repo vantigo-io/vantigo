@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"errors"
 	"slices"
+	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/google/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
@@ -36,4 +38,17 @@ func CachedScopes(sealed []byte) []string {
 	}
 	slices.Sort(out)
 	return out
+}
+
+// PersonalToken is the access token of the person's own connection gid for
+// feature (delivery D, personal_token.go), as the calendar (E) and personal
+// sending (G) will ask for it; removal asks as a removal would.
+func PersonalToken(ctx context.Context, d module.Deps, gid, feature string, removal bool) (string, error) {
+	return newPersonalTokens(d).source(gid, feature, removal).token(ctx)
+}
+
+// ConnectionChanges are the personal connections whose state moved after
+// since, as the calendar's Connections will answer them (delivery E).
+func ConnectionChanges(ctx context.Context, d module.Deps, since time.Time) ([]contracts.ConnectionChange, error) {
+	return connectionChanges(ctx, store.New(d.Pool), since)
 }

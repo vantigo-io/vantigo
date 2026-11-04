@@ -56,6 +56,10 @@ type GoogleConnection struct {
 	LeaverRemoveGroups   string
 	LeaverSignOut        bool
 	Skus                 []byte
+	PersonalConnection   bool
+	PersonalConnectionAt *time.Time
+	PersonalLastError    *string
+	PersonalLastErrorAt  *time.Time
 }
 
 type GoogleCredential struct {
@@ -92,4 +96,21 @@ type GoogleGroup struct {
 	AdoptionConfirmedByUserID *uuid.UUID
 	CreatedAt                 time.Time
 	UpdatedAt                 time.Time
+}
+
+type GooglePersonalConnection struct {
+	GoogleUserID     string
+	UserID           uuid.UUID
+	Scopes           []string
+	RefreshSealed    []byte
+	State            string
+	ErrorCode        *string
+	ConnectedAt      time.Time
+	RefreshedAt      *time.Time
+	UsedAt           *time.Time
+	AccountCheckedAt *time.Time
+	ChangedAt        time.Time
+	Revision         int64
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }

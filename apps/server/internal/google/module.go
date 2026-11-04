@@ -17,8 +17,15 @@
 // Delivery C (G23–G24, docs/superpowers/plans/2026-11-03-google-link-users.md)
 // fills contracts.DirectorySearch under the same key: identity's Owner
 // endpoints search the organisation's users and propose exact matches for
-// connecting existing users to Google sign-in. The person's connection, the calendar and Gmail come in the deliveries after
-// it. Every call to Google takes its token from tokenSource. MODULES refuses
+// connecting existing users to Google sign-in. Delivery D (G25–G29,
+// docs/superpowers/plans/2026-11-03-google-connection.md) adds the person's
+// own Google connection: behind the Owner's Connection for people switch, a
+// person whose Staff record names an account the module manages connects it
+// through the organisation's Internal web client, and the module keeps the
+// refresh token sealed; google-sweep, the module's one worker, deletes the
+// spent connections and revokes their tokens. The calendar and Gmail come in
+// the deliveries after it. Every call to Google takes its token from
+// tokenSource. MODULES refuses
 // google without staff. Nothing here imports another module — depguard
 // enforces it, tests included — and no SQL of this module crosses a schema.
 //
@@ -31,8 +38,10 @@
 // user as the Directory has it, lifecycle_*.go the account's lifecycle,
 // licences.go the licences, groups.go and groups_traits.go the groups,
 // photo.go the photo, accounts.go the Accounts tab's operations;
-// directory_search.go the directory search identity serves; and
-// googletest the fake Google its tests run against.
+// directory_search.go the directory search identity serves; personal*.go
+// the person's own connection (personal_token.go its token,
+// personal_sweep.go google-sweep); and googletest the fake Google its tests
+// run against.
 package google
 
 import (
@@ -77,7 +86,18 @@ var limits = map[string]ratelimit.Policy{
 	"putGoogleConnectionOauthClient":        ownerLimit,
 	"postGoogleConnectionTest":              ownerLimit,
 	"getGoogleConnectionSkus":               skusLimit,
+	"putGoogleConnectionPersonal":           ownerLimit,
+	"postGoogleConnect":                     connectLimit,
+	"postGoogleComplete":                    connectLimit,
+	"getGoogleConnectCallback":              callbackLimit,
 }
+
+// connectLimit is the person's connect and complete, one bucket between
+// them (G26, Entra's figures): 30 per client address a minute.
+var connectLimit = ratelimit.Policy{Name: "google-connect", Limit: 30, Window: time.Minute}
+
+// callbackLimit is the anonymous callback's: 60 per client address a minute.
+var callbackLimit = ratelimit.Policy{Name: "google-connect-callback", Limit: 60, Window: time.Minute}
 
 // skusLimit is GET /connection/skus's policy, a bucket of its own: each
 // read reaches Google once per product Vantigo knows.
@@ -88,7 +108,8 @@ var skusLimit = ratelimit.Policy{Name: "google-skus", Limit: 30, Window: time.Mi
 // contracts.IdentityProvisioner (provisioner.go), which Compose and Workers
 // collect into Deps.IdentityProvisioners for Staff's accounts worker, and its
 // contracts.DirectorySearch (directory_search.go), which Compose collects
-// into Deps.DirectorySearches for identity's directory endpoints.
+// into Deps.DirectorySearches for identity's directory endpoints; and its one
+// worker, google-sweep (personal_sweep.go).
 func Module() module.Module {
 	return module.Module{
 		Name:                "google",
@@ -96,6 +117,7 @@ func Module() module.Module {
 		Mount:               mount,
 		IdentityProvisioner: newProvisioner,
 		DirectorySearch:     newDirectorySearch,
+		Workers:             workers,
 	}
 }
 

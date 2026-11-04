@@ -186,6 +186,90 @@ func (e GoogleCredentialKind) Valid() bool {
 	}
 }
 
+// Defines values for GooglePersonalConnectRequestFeature.
+const (
+	Calendar GooglePersonalConnectRequestFeature = "calendar"
+	Mail     GooglePersonalConnectRequestFeature = "mail"
+)
+
+// Valid indicates whether the value is a known member of the GooglePersonalConnectRequestFeature enum.
+func (e GooglePersonalConnectRequestFeature) Valid() bool {
+	switch e {
+	case Calendar:
+		return true
+	case Mail:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GooglePersonalConnectionReason.
+const (
+	NoAccount GooglePersonalConnectionReason = "no_account"
+	SwitchOff GooglePersonalConnectionReason = "switch_off"
+)
+
+// Valid indicates whether the value is a known member of the GooglePersonalConnectionReason enum.
+func (e GooglePersonalConnectionReason) Valid() bool {
+	switch e {
+	case NoAccount:
+		return true
+	case SwitchOff:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GooglePersonalConnectionState.
+const (
+	Active       GooglePersonalConnectionState = "active"
+	Closing      GooglePersonalConnectionState = "closing"
+	NotConnected GooglePersonalConnectionState = "not_connected"
+	Reconnect    GooglePersonalConnectionState = "reconnect"
+)
+
+// Valid indicates whether the value is a known member of the GooglePersonalConnectionState enum.
+func (e GooglePersonalConnectionState) Valid() bool {
+	switch e {
+	case Active:
+		return true
+	case Closing:
+		return true
+	case NotConnected:
+		return true
+	case Reconnect:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GooglePersonalSwitchStatus.
+const (
+	ConsentMissing GooglePersonalSwitchStatus = "consent_missing"
+	Off            GooglePersonalSwitchStatus = "off"
+	Ready          GooglePersonalSwitchStatus = "ready"
+	Unavailable    GooglePersonalSwitchStatus = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the GooglePersonalSwitchStatus enum.
+func (e GooglePersonalSwitchStatus) Valid() bool {
+	switch e {
+	case ConsentMissing:
+		return true
+	case Off:
+		return true
+	case Ready:
+		return true
+	case Unavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GoogleSettingsRequestAddressPattern.
 const (
 	GoogleSettingsRequestAddressPatternGFamily     GoogleSettingsRequestAddressPattern = "g.family"
@@ -340,6 +424,9 @@ type GoogleConnection struct {
 
 	// PassLifetimeDays How many days, 1 to 30, the first password waits to be revealed before it is forgotten.
 	PassLifetimeDays int32 `json:"passLifetimeDays"`
+
+	// PersonalConnection Connection for people (Google Workspace design G29): whether people may connect their own Google account to Vantigo, and whether a connect can work. status is off while the switch is; unavailable when on but the web client is not ready, reason then being no_web_client (no client id or no secret), not_tested (no test has read the organisation's domains) or client_refused (Google refused the web client on a connect or a refresh); consent_missing when the last connect came back without the feature it asked; ready otherwise. connected and reconnect count the people connected and those whose connection Google refused, waiting for them to connect again. redirectUri is the redirect URI to register on the web client.
+	PersonalConnection GooglePersonalSwitch `json:"personalConnection"`
 
 	// PrimaryDomain The organisation's primary domain, as the last successful test read it.
 	PrimaryDomain *string `json:"primaryDomain,omitempty"`
@@ -510,7 +597,77 @@ type GoogleOAuthClientRequest struct {
 	ClientSecret *string `json:"clientSecret,omitempty"`
 }
 
-// GoogleProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: version_mismatch (412: the connection has been written since the If-Match version), client_mismatch (422: a key for another service account while one of the current account's is live), credential_kind_unsupported (422: a credential kind this version does not implement), adoption_confirmed (409: the account's adoption is confirmed already, or the module created it), credential_invalid and google_unreachable (503: Google could not be asked). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// GooglePersonalAuthorize Where to send the browser to connect Google — Google's authorization endpoint, with the state, nonce and PKCE challenge the answer's cookie holds sealed.
+type GooglePersonalAuthorize struct {
+	AuthorizeUrl string `json:"authorizeUrl"`
+}
+
+// GooglePersonalComplete A connect completed — the person's connection as it now stands, and the path in Vantigo to return to.
+type GooglePersonalComplete struct {
+	// Connection The caller's own Google connection (Google Workspace design G25–G29). offered says whether the caller may connect at all — false while Connection for people is off or the web client is not ready (reason switch_off), or Vantigo knows no Google account of theirs that it manages (reason no_account). state is not_connected with no connection, active while it works, reconnect when Google refused it (errorCode says why) and closing once disconnected, which reads as not connected.
+	Connection GooglePersonalConnection `json:"connection"`
+
+	// ReturnTo A path on this installation, never another origin; /settings/connections when the connect named none.
+	ReturnTo string `json:"returnTo"`
+}
+
+// GooglePersonalConnectRequest What a connect is for, and where to return once it completes.
+type GooglePersonalConnectRequest struct {
+	// Feature The feature the connect asks Google's consent for — calendar asks for calendar.events and calendar.app.created, mail for gmail.send — beside the features the person's connection already holds.
+	Feature GooglePersonalConnectRequestFeature `json:"feature"`
+
+	// ReturnTo A path on this installation to return to; anything that is not one becomes /settings/connections.
+	ReturnTo *string `json:"returnTo,omitempty"`
+}
+
+// GooglePersonalConnectRequestFeature The feature the connect asks Google's consent for — calendar asks for calendar.events and calendar.app.created, mail for gmail.send — beside the features the person's connection already holds.
+type GooglePersonalConnectRequestFeature string
+
+// GooglePersonalConnection The caller's own Google connection (Google Workspace design G25–G29). offered says whether the caller may connect at all — false while Connection for people is off or the web client is not ready (reason switch_off), or Vantigo knows no Google account of theirs that it manages (reason no_account). state is not_connected with no connection, active while it works, reconnect when Google refused it (errorCode says why) and closing once disconnected, which reads as not connected.
+type GooglePersonalConnection struct {
+	// Account The primary email of the Google account Vantigo knows the caller by. Absent when there is none.
+	Account     *string    `json:"account,omitempty"`
+	ConnectedAt *time.Time `json:"connectedAt,omitempty"`
+
+	// ErrorCode Why Google refused the connection, a code: expired, blocked, consent_missing or sign_in_again. Present while state is reconnect.
+	ErrorCode *string `json:"errorCode,omitempty"`
+
+	// Features The features the scopes Google granted allow — calendar, mail.
+	Features []string                        `json:"features"`
+	Offered  bool                            `json:"offered"`
+	Reason   *GooglePersonalConnectionReason `json:"reason,omitempty"`
+	State    GooglePersonalConnectionState   `json:"state"`
+}
+
+// GooglePersonalConnectionReason defines model for GooglePersonalConnection.Reason.
+type GooglePersonalConnectionReason string
+
+// GooglePersonalConnectionState defines model for GooglePersonalConnection.State.
+type GooglePersonalConnectionState string
+
+// GooglePersonalSwitch Connection for people (Google Workspace design G29): whether people may connect their own Google account to Vantigo, and whether a connect can work. status is off while the switch is; unavailable when on but the web client is not ready, reason then being no_web_client (no client id or no secret), not_tested (no test has read the organisation's domains) or client_refused (Google refused the web client on a connect or a refresh); consent_missing when the last connect came back without the feature it asked; ready otherwise. connected and reconnect count the people connected and those whose connection Google refused, waiting for them to connect again. redirectUri is the redirect URI to register on the web client.
+type GooglePersonalSwitch struct {
+	Connected int32 `json:"connected"`
+	Enabled   bool  `json:"enabled"`
+
+	// Reason A code, never Google's words; absent when there is nothing to say.
+	Reason    *string `json:"reason,omitempty"`
+	Reconnect int32   `json:"reconnect"`
+
+	// RedirectUri APP_URL with the base path and /api/v1/google/connect/callback.
+	RedirectUri string                     `json:"redirectUri"`
+	Status      GooglePersonalSwitchStatus `json:"status"`
+}
+
+// GooglePersonalSwitchStatus defines model for GooglePersonalSwitch.Status.
+type GooglePersonalSwitchStatus string
+
+// GooglePersonalSwitchRequest Connection for people, on or off.
+type GooglePersonalSwitchRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+// GoogleProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: version_mismatch (412: the connection has been written since the If-Match version), client_mismatch (422: a key for another service account while one of the current account's is live), credential_kind_unsupported (422: a credential kind this version does not implement), adoption_confirmed (409: the account's adoption is confirmed already, or the module created it), credential_invalid and google_unreachable (503: Google could not be asked); and those of the person's own Google connection: feature_unknown (422), switch_off, no_account, account_taken and account_mismatch (409), expired (410). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type GoogleProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -561,6 +718,31 @@ type GoogleSku struct {
 	Value string `json:"value"`
 }
 
+// GetGoogleConnectCallbackParams defines parameters for GetGoogleConnectCallback.
+type GetGoogleConnectCallbackParams struct {
+	Code  *string `form:"code,omitempty" json:"code,omitempty"`
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+	Error *string `form:"error,omitempty" json:"error,omitempty"`
+
+	// ErrorDescription Google's words, never read.
+	ErrorDescription *string `form:"error_description,omitempty" json:"error_description,omitempty"`
+
+	// Scope The scopes Google granted, as it echoes them; ignored — the token answer's scope is what is stored.
+	Scope *string `form:"scope,omitempty" json:"scope,omitempty"`
+
+	// Authuser Ignored.
+	Authuser *string `form:"authuser,omitempty" json:"authuser,omitempty"`
+
+	// Hd Ignored.
+	Hd *string `form:"hd,omitempty" json:"hd,omitempty"`
+
+	// Prompt Ignored.
+	Prompt *string `form:"prompt,omitempty" json:"prompt,omitempty"`
+
+	// Iss The authorization server's issuer (RFC 9207), ignored — the ID token's issuer is what is checked.
+	Iss *string `form:"iss,omitempty" json:"iss,omitempty"`
+}
+
 // PutGoogleConnectionParams defines parameters for PutGoogleConnection.
 type PutGoogleConnectionParams struct {
 	// IfMatch The version the connection was read at, bare (3) or quoted ("3"). A version that has moved on is a 412 version_mismatch.
@@ -579,6 +761,9 @@ type GetGoogleEventsParams struct {
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// PostGoogleConnectJSONRequestBody defines body for PostGoogleConnect for application/json ContentType.
+type PostGoogleConnectJSONRequestBody = GooglePersonalConnectRequest
+
 // PutGoogleConnectionJSONRequestBody defines body for PutGoogleConnection for application/json ContentType.
 type PutGoogleConnectionJSONRequestBody = GoogleConnectionRequest
 
@@ -587,6 +772,9 @@ type PostGoogleConnectionCredentialsJSONRequestBody = GoogleCredentialRequest
 
 // PutGoogleConnectionOauthClientJSONRequestBody defines body for PutGoogleConnectionOauthClient for application/json ContentType.
 type PutGoogleConnectionOauthClientJSONRequestBody = GoogleOAuthClientRequest
+
+// PutGoogleConnectionPersonalJSONRequestBody defines body for PutGoogleConnectionPersonal for application/json ContentType.
+type PutGoogleConnectionPersonalJSONRequestBody = GooglePersonalSwitchRequest
 
 // PutGoogleConnectionSettingsJSONRequestBody defines body for PutGoogleConnectionSettings for application/json ContentType.
 type PutGoogleConnectionSettingsJSONRequestBody = GoogleSettingsRequest
@@ -599,6 +787,15 @@ type ServerInterface interface {
 	// PostGoogleAccountsByUserIdConfirm Confirm an adopted account
 	// (POST /api/v1/google/accounts/{userId}/confirm)
 	PostGoogleAccountsByUserIdConfirm(w http.ResponseWriter, r *http.Request, userId string)
+	// PostGoogleComplete Complete connecting Google
+	// (POST /api/v1/google/complete)
+	PostGoogleComplete(w http.ResponseWriter, r *http.Request)
+	// PostGoogleConnect Start connecting Google
+	// (POST /api/v1/google/connect)
+	PostGoogleConnect(w http.ResponseWriter, r *http.Request)
+	// GetGoogleConnectCallback Google's answer to a connect
+	// (GET /api/v1/google/connect/callback)
+	GetGoogleConnectCallback(w http.ResponseWriter, r *http.Request, params GetGoogleConnectCallbackParams)
 	// GetGoogleConnection Get the connection
 	// (GET /api/v1/google/connection)
 	GetGoogleConnection(w http.ResponseWriter, r *http.Request)
@@ -611,9 +808,18 @@ type ServerInterface interface {
 	// DeleteGoogleConnectionCredentialsById Revoke a key or a client secret
 	// (DELETE /api/v1/google/connection/credentials/{id})
 	DeleteGoogleConnectionCredentialsById(w http.ResponseWriter, r *http.Request, id int64)
+	// DeleteGoogleConnectionMe Disconnect Google
+	// (DELETE /api/v1/google/connection/me)
+	DeleteGoogleConnectionMe(w http.ResponseWriter, r *http.Request)
+	// GetGoogleConnectionMe Get my Google connection
+	// (GET /api/v1/google/connection/me)
+	GetGoogleConnectionMe(w http.ResponseWriter, r *http.Request)
 	// PutGoogleConnectionOauthClient Set the Internal web client
 	// (PUT /api/v1/google/connection/oauth-client)
 	PutGoogleConnectionOauthClient(w http.ResponseWriter, r *http.Request)
+	// PutGoogleConnectionPersonal Turn Connection for people on or off
+	// (PUT /api/v1/google/connection/personal)
+	PutGoogleConnectionPersonal(w http.ResponseWriter, r *http.Request)
 	// PutGoogleConnectionSettings Set the account rules
 	// (PUT /api/v1/google/connection/settings)
 	PutGoogleConnectionSettings(w http.ResponseWriter, r *http.Request, params PutGoogleConnectionSettingsParams)
@@ -674,6 +880,171 @@ func (siw *ServerInterfaceWrapper) PostGoogleAccountsByUserIdConfirm(w http.Resp
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostGoogleAccountsByUserIdConfirm(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostGoogleComplete operation middleware
+func (siw *ServerInterfaceWrapper) PostGoogleComplete(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostGoogleComplete(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostGoogleConnect operation middleware
+func (siw *ServerInterfaceWrapper) PostGoogleConnect(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostGoogleConnect(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetGoogleConnectCallback operation middleware
+func (siw *ServerInterfaceWrapper) GetGoogleConnectCallback(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetGoogleConnectCallbackParams
+
+	// ------------- Optional query parameter "code" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "code", r.URL.Query(), &params.Code, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "code"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "error" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "error", r.URL.Query(), &params.Error, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "error"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "error", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "error_description" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "error_description", r.URL.Query(), &params.ErrorDescription, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "error_description"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "error_description", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "scope" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "scope", r.URL.Query(), &params.Scope, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "scope"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scope", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "authuser" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "authuser", r.URL.Query(), &params.Authuser, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "authuser"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "authuser", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "hd" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "hd", r.URL.Query(), &params.Hd, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "hd"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "hd", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "prompt" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "prompt", r.URL.Query(), &params.Prompt, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "prompt"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "prompt", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "iss" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "iss", r.URL.Query(), &params.Iss, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "iss"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "iss", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGoogleConnectCallback(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -782,11 +1153,53 @@ func (siw *ServerInterfaceWrapper) DeleteGoogleConnectionCredentialsById(w http.
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteGoogleConnectionMe operation middleware
+func (siw *ServerInterfaceWrapper) DeleteGoogleConnectionMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteGoogleConnectionMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetGoogleConnectionMe operation middleware
+func (siw *ServerInterfaceWrapper) GetGoogleConnectionMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGoogleConnectionMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutGoogleConnectionOauthClient operation middleware
 func (siw *ServerInterfaceWrapper) PutGoogleConnectionOauthClient(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutGoogleConnectionOauthClient(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutGoogleConnectionPersonal operation middleware
+func (siw *ServerInterfaceWrapper) PutGoogleConnectionPersonal(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutGoogleConnectionPersonal(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1064,11 +1477,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/google/accounts", wrapper.GetGoogleAccounts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/google/accounts/{userId}/confirm", wrapper.PostGoogleAccountsByUserIdConfirm)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/google/complete", wrapper.PostGoogleComplete)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/google/connect", wrapper.PostGoogleConnect)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/google/connect/callback", wrapper.GetGoogleConnectCallback)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/google/connection", wrapper.GetGoogleConnection)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/google/connection", wrapper.PutGoogleConnection)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/google/connection/credentials", wrapper.PostGoogleConnectionCredentials)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/google/connection/credentials/{id}", wrapper.DeleteGoogleConnectionCredentialsById)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/google/connection/me", wrapper.DeleteGoogleConnectionMe)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/google/connection/me", wrapper.GetGoogleConnectionMe)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/google/connection/oauth-client", wrapper.PutGoogleConnectionOauthClient)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/google/connection/personal", wrapper.PutGoogleConnectionPersonal)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/google/connection/settings", wrapper.PutGoogleConnectionSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/google/connection/skus", wrapper.GetGoogleConnectionSkus)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/google/connection/test", wrapper.PostGoogleConnectionTest)
@@ -1196,6 +1615,229 @@ func (response PostGoogleAccountsByUserIdConfirm409ApplicationProblemPlusJSONRes
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleCompleteRequestObject struct {
+}
+
+type PostGoogleCompleteResponseObject interface {
+	VisitPostGoogleCompleteResponse(w http.ResponseWriter) error
+}
+
+type PostGoogleComplete200JSONResponse GooglePersonalComplete
+
+func (response PostGoogleComplete200JSONResponse) VisitPostGoogleCompleteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleComplete401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostGoogleComplete401JSONResponse) VisitPostGoogleCompleteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleComplete409ApplicationProblemPlusJSONResponse GoogleProblem
+
+func (response PostGoogleComplete409ApplicationProblemPlusJSONResponse) VisitPostGoogleCompleteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleComplete410ApplicationProblemPlusJSONResponse GoogleProblem
+
+func (response PostGoogleComplete410ApplicationProblemPlusJSONResponse) VisitPostGoogleCompleteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(410)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleComplete429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostGoogleComplete429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostGoogleComplete429ResponseHeaders
+}
+
+func (response PostGoogleComplete429JSONResponse) VisitPostGoogleCompleteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleConnectRequestObject struct {
+	Body *PostGoogleConnectJSONRequestBody
+}
+
+type PostGoogleConnectResponseObject interface {
+	VisitPostGoogleConnectResponse(w http.ResponseWriter) error
+}
+
+type PostGoogleConnect200JSONResponse GooglePersonalAuthorize
+
+func (response PostGoogleConnect200JSONResponse) VisitPostGoogleConnectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleConnect401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostGoogleConnect401JSONResponse) VisitPostGoogleConnectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleConnect409ApplicationProblemPlusJSONResponse GoogleProblem
+
+func (response PostGoogleConnect409ApplicationProblemPlusJSONResponse) VisitPostGoogleConnectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleConnect422ApplicationProblemPlusJSONResponse GoogleProblem
+
+func (response PostGoogleConnect422ApplicationProblemPlusJSONResponse) VisitPostGoogleConnectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleConnect429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostGoogleConnect429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostGoogleConnect429ResponseHeaders
+}
+
+func (response PostGoogleConnect429JSONResponse) VisitPostGoogleConnectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGoogleConnectCallbackRequestObject struct {
+	Params GetGoogleConnectCallbackParams
+}
+
+type GetGoogleConnectCallbackResponseObject interface {
+	VisitGetGoogleConnectCallbackResponse(w http.ResponseWriter) error
+}
+
+type GetGoogleConnectCallback302ResponseHeaders struct {
+	Location *string
+}
+
+type GetGoogleConnectCallback302Response struct {
+	Headers GetGoogleConnectCallback302ResponseHeaders
+}
+
+func (response GetGoogleConnectCallback302Response) VisitGetGoogleConnectCallbackResponse(w http.ResponseWriter) error {
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(302)
+	return nil
+}
+
+type GetGoogleConnectCallback429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type GetGoogleConnectCallback429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers GetGoogleConnectCallback429ResponseHeaders
+}
+
+func (response GetGoogleConnectCallback429JSONResponse) VisitGetGoogleConnectCallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1550,6 +2192,70 @@ func (response DeleteGoogleConnectionCredentialsById429JSONResponse) VisitDelete
 	return err
 }
 
+type DeleteGoogleConnectionMeRequestObject struct {
+}
+
+type DeleteGoogleConnectionMeResponseObject interface {
+	VisitDeleteGoogleConnectionMeResponse(w http.ResponseWriter) error
+}
+
+type DeleteGoogleConnectionMe204Response struct {
+}
+
+func (response DeleteGoogleConnectionMe204Response) VisitDeleteGoogleConnectionMeResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteGoogleConnectionMe401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteGoogleConnectionMe401JSONResponse) VisitDeleteGoogleConnectionMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGoogleConnectionMeRequestObject struct {
+}
+
+type GetGoogleConnectionMeResponseObject interface {
+	VisitGetGoogleConnectionMeResponse(w http.ResponseWriter) error
+}
+
+type GetGoogleConnectionMe200JSONResponse GooglePersonalConnection
+
+func (response GetGoogleConnectionMe200JSONResponse) VisitGetGoogleConnectionMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGoogleConnectionMe401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetGoogleConnectionMe401JSONResponse) VisitGetGoogleConnectionMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutGoogleConnectionOauthClientRequestObject struct {
 	Body *PutGoogleConnectionOauthClientJSONRequestBody
 }
@@ -1624,6 +2330,80 @@ type PutGoogleConnectionOauthClient429JSONResponse struct {
 }
 
 func (response PutGoogleConnectionOauthClient429JSONResponse) VisitPutGoogleConnectionOauthClientResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutGoogleConnectionPersonalRequestObject struct {
+	Body *PutGoogleConnectionPersonalJSONRequestBody
+}
+
+type PutGoogleConnectionPersonalResponseObject interface {
+	VisitPutGoogleConnectionPersonalResponse(w http.ResponseWriter) error
+}
+
+type PutGoogleConnectionPersonal200JSONResponse GoogleConnection
+
+func (response PutGoogleConnectionPersonal200JSONResponse) VisitPutGoogleConnectionPersonalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutGoogleConnectionPersonal401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutGoogleConnectionPersonal401JSONResponse) VisitPutGoogleConnectionPersonalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutGoogleConnectionPersonal403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutGoogleConnectionPersonal403JSONResponse) VisitPutGoogleConnectionPersonalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutGoogleConnectionPersonal429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PutGoogleConnectionPersonal429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PutGoogleConnectionPersonal429ResponseHeaders
+}
+
+func (response PutGoogleConnectionPersonal429JSONResponse) VisitPutGoogleConnectionPersonalResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -2056,6 +2836,15 @@ type StrictServerInterface interface {
 	// PostGoogleAccountsByUserIdConfirm Confirm an adopted account
 	// (POST /api/v1/google/accounts/{userId}/confirm)
 	PostGoogleAccountsByUserIdConfirm(ctx context.Context, request PostGoogleAccountsByUserIdConfirmRequestObject) (PostGoogleAccountsByUserIdConfirmResponseObject, error)
+	// PostGoogleComplete Complete connecting Google
+	// (POST /api/v1/google/complete)
+	PostGoogleComplete(ctx context.Context, request PostGoogleCompleteRequestObject) (PostGoogleCompleteResponseObject, error)
+	// PostGoogleConnect Start connecting Google
+	// (POST /api/v1/google/connect)
+	PostGoogleConnect(ctx context.Context, request PostGoogleConnectRequestObject) (PostGoogleConnectResponseObject, error)
+	// GetGoogleConnectCallback Google's answer to a connect
+	// (GET /api/v1/google/connect/callback)
+	GetGoogleConnectCallback(ctx context.Context, request GetGoogleConnectCallbackRequestObject) (GetGoogleConnectCallbackResponseObject, error)
 	// GetGoogleConnection Get the connection
 	// (GET /api/v1/google/connection)
 	GetGoogleConnection(ctx context.Context, request GetGoogleConnectionRequestObject) (GetGoogleConnectionResponseObject, error)
@@ -2068,9 +2857,18 @@ type StrictServerInterface interface {
 	// DeleteGoogleConnectionCredentialsById Revoke a key or a client secret
 	// (DELETE /api/v1/google/connection/credentials/{id})
 	DeleteGoogleConnectionCredentialsById(ctx context.Context, request DeleteGoogleConnectionCredentialsByIdRequestObject) (DeleteGoogleConnectionCredentialsByIdResponseObject, error)
+	// DeleteGoogleConnectionMe Disconnect Google
+	// (DELETE /api/v1/google/connection/me)
+	DeleteGoogleConnectionMe(ctx context.Context, request DeleteGoogleConnectionMeRequestObject) (DeleteGoogleConnectionMeResponseObject, error)
+	// GetGoogleConnectionMe Get my Google connection
+	// (GET /api/v1/google/connection/me)
+	GetGoogleConnectionMe(ctx context.Context, request GetGoogleConnectionMeRequestObject) (GetGoogleConnectionMeResponseObject, error)
 	// PutGoogleConnectionOauthClient Set the Internal web client
 	// (PUT /api/v1/google/connection/oauth-client)
 	PutGoogleConnectionOauthClient(ctx context.Context, request PutGoogleConnectionOauthClientRequestObject) (PutGoogleConnectionOauthClientResponseObject, error)
+	// PutGoogleConnectionPersonal Turn Connection for people on or off
+	// (PUT /api/v1/google/connection/personal)
+	PutGoogleConnectionPersonal(ctx context.Context, request PutGoogleConnectionPersonalRequestObject) (PutGoogleConnectionPersonalResponseObject, error)
 	// PutGoogleConnectionSettings Set the account rules
 	// (PUT /api/v1/google/connection/settings)
 	PutGoogleConnectionSettings(ctx context.Context, request PutGoogleConnectionSettingsRequestObject) (PutGoogleConnectionSettingsResponseObject, error)
@@ -2173,6 +2971,87 @@ func (sh *strictHandler) PostGoogleAccountsByUserIdConfirm(w http.ResponseWriter
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostGoogleAccountsByUserIdConfirmResponseObject); ok {
 		if err := validResponse.VisitPostGoogleAccountsByUserIdConfirmResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostGoogleComplete operation middleware
+func (sh *strictHandler) PostGoogleComplete(w http.ResponseWriter, r *http.Request) {
+	var request PostGoogleCompleteRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostGoogleComplete(ctx, request.(PostGoogleCompleteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostGoogleComplete")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostGoogleCompleteResponseObject); ok {
+		if err := validResponse.VisitPostGoogleCompleteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostGoogleConnect operation middleware
+func (sh *strictHandler) PostGoogleConnect(w http.ResponseWriter, r *http.Request) {
+	var request PostGoogleConnectRequestObject
+
+	var body PostGoogleConnectJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostGoogleConnect(ctx, request.(PostGoogleConnectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostGoogleConnect")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostGoogleConnectResponseObject); ok {
+		if err := validResponse.VisitPostGoogleConnectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGoogleConnectCallback operation middleware
+func (sh *strictHandler) GetGoogleConnectCallback(w http.ResponseWriter, r *http.Request, params GetGoogleConnectCallbackParams) {
+	var request GetGoogleConnectCallbackRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGoogleConnectCallback(ctx, request.(GetGoogleConnectCallbackRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGoogleConnectCallback")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGoogleConnectCallbackResponseObject); ok {
+		if err := validResponse.VisitGetGoogleConnectCallbackResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2294,6 +3173,54 @@ func (sh *strictHandler) DeleteGoogleConnectionCredentialsById(w http.ResponseWr
 	}
 }
 
+// DeleteGoogleConnectionMe operation middleware
+func (sh *strictHandler) DeleteGoogleConnectionMe(w http.ResponseWriter, r *http.Request) {
+	var request DeleteGoogleConnectionMeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteGoogleConnectionMe(ctx, request.(DeleteGoogleConnectionMeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteGoogleConnectionMe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteGoogleConnectionMeResponseObject); ok {
+		if err := validResponse.VisitDeleteGoogleConnectionMeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGoogleConnectionMe operation middleware
+func (sh *strictHandler) GetGoogleConnectionMe(w http.ResponseWriter, r *http.Request) {
+	var request GetGoogleConnectionMeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGoogleConnectionMe(ctx, request.(GetGoogleConnectionMeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGoogleConnectionMe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGoogleConnectionMeResponseObject); ok {
+		if err := validResponse.VisitGetGoogleConnectionMeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PutGoogleConnectionOauthClient operation middleware
 func (sh *strictHandler) PutGoogleConnectionOauthClient(w http.ResponseWriter, r *http.Request) {
 	var request PutGoogleConnectionOauthClientRequestObject
@@ -2318,6 +3245,37 @@ func (sh *strictHandler) PutGoogleConnectionOauthClient(w http.ResponseWriter, r
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutGoogleConnectionOauthClientResponseObject); ok {
 		if err := validResponse.VisitPutGoogleConnectionOauthClientResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutGoogleConnectionPersonal operation middleware
+func (sh *strictHandler) PutGoogleConnectionPersonal(w http.ResponseWriter, r *http.Request) {
+	var request PutGoogleConnectionPersonalRequestObject
+
+	var body PutGoogleConnectionPersonalJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutGoogleConnectionPersonal(ctx, request.(PutGoogleConnectionPersonalRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutGoogleConnectionPersonal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutGoogleConnectionPersonalResponseObject); ok {
+		if err := validResponse.VisitPutGoogleConnectionPersonalResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
