@@ -618,3 +618,71 @@ func TestMailbox_TheFeatureIsNeeded(t *testing.T) {
 		t.Errorf("the row %s, want active still", state)
 	}
 }
+
+func TestMailbox_UsageLimitsAndRefusals(t *testing.T) {
+	t.Parallel()
+	f := newNoticesFixture(t)
+	_, gid := f.connected(t, "kari@nordlys.no")
+	ctx := context.Background()
+	start := day(f)
+	ops := func(n int) []contracts.MailboxOp {
+		out := make([]contracts.MailboxOp, n)
+		for i := range out {
+			out[i] = create("appointment:x", timedEvent("Plan", start, time.Hour))
+		}
+		return out
+	}
+	sent := func(from int, method, path string) int {
+		n := 0
+		for _, c := range f.calendarCalls(from) {
+			if c.Method == method && c.Path == path {
+				n++
+			}
+		}
+		return n
+	}
+
+	// A quota spent is a usage limit, not a refusal: each op throttled, sent
+	// once, and the next batch still sent.
+	f.g.RefuseOn("POST /calendar/v3/calendars/primary/events", 403, "quotaExceeded")
+	n := len(f.g.Calls())
+	results, err := f.p.Apply(ctx, gid, "", ops(60))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, r := range results {
+		if !google.Throttled(r.Err) || errors.Is(r.Err, contracts.ErrMailboxDenied) {
+			t.Fatalf("op %d: %v, want throttled", i, r.Err)
+		}
+	}
+	if got := sent(n, "POST", "/calendar/v3/calendars/primary/events"); got != 60 {
+		t.Errorf("%d creates sent, want 60: each once", got)
+	}
+	f.g.RefuseOn("POST /calendar/v3/calendars/primary/events", 0, "")
+	f.g.RefuseOn("GET /calendar/v3/calendars/primary/events", 403, "dailyLimitExceeded")
+	n = len(f.g.Calls())
+	if _, err := f.p.Delta(ctx, gid, start, start.Add(time.Hour), ""); !google.Throttled(err) || errors.Is(err, contracts.ErrMailboxDenied) {
+		t.Errorf("Delta on a day's limit spent: %v, want throttled", err)
+	}
+	if got := sent(n, "GET", "/calendar/v3/calendars/primary/events"); got != 1 {
+		t.Errorf("%d lists sent, want one: a quota spent is not waited", got)
+	}
+
+	// An event's own 403 is that op's refusal: the mailbox is not denied, and
+	// the ops after it — the next batch's too — are written.
+	made := apply(t, f.p, gid, "", create("appointment:1", timedEvent("Plan", start, time.Hour)))
+	f.g.RefuseOn("PATCH /calendar/v3/calendars/primary/events/"+made[0].EventID, 403, "forbiddenForNonOrganizer")
+	batch := append([]contracts.MailboxOp{{Kind: contracts.MailboxOpUpdate, EventID: made[0].EventID, Event: timedEvent("Plan, moved", start, time.Hour)}}, ops(59)...)
+	results, err = f.p.Apply(ctx, gid, "", batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].Err == nil || errors.Is(results[0].Err, contracts.ErrMailboxDenied) || google.Throttled(results[0].Err) {
+		t.Errorf("the refused update: %v, want its own refusal", results[0].Err)
+	}
+	for i, r := range results[1:] {
+		if r.Err != nil || r.EventID == "" {
+			t.Fatalf("op %d after an event's 403: %+v", i+1, r)
+		}
+	}
+}

@@ -218,8 +218,9 @@ func changeOf(ev readEvent, from, to time.Time) (contracts.MailboxChange, bool) 
 // this installation's marker with their keys, in the order asked (G30):
 // events.get of each in batches of fifty. 200 with the marker is answered;
 // 200 without it, with another installation's, or cancelled, and 404 or 410
-// are not; a usage limit is sent again once, then errThrottled; a 403 fails
-// the whole call (ErrMailboxDenied), and so does any other refusal. At most
+// are not; a usage limit is errThrottled (a rate limit sent again once
+// first); a 403 refusing the calendar fails the whole call
+// (ErrMailboxDenied), and so does any other refusal. At most
 // MailboxMarkedMax ids, each a valid id; refused under cleanup.
 func (m *mailboxCalendar) Marked(ctx context.Context, mailbox string, eventIDs []string) ([]contracts.MailboxEventRef, error) {
 	if len(eventIDs) > contracts.MailboxMarkedMax {
@@ -293,8 +294,9 @@ func (m *mailboxCalendar) readEach(ctx context.Context, s mailboxSession, calend
 }
 
 // partRefusal is a read's part refused as the whole call answers it: a usage
-// limit errThrottled, a 401 the person's connection, a 403 ErrMailboxDenied,
-// anything else Google's refusal — logged by its status and reason alone.
+// limit errThrottled, a 401 the person's connection, a 403 refusing the
+// calendar itself (mailboxDenied) ErrMailboxDenied, anything else Google's
+// refusal — logged by its status and reason alone.
 func (m *mailboxCalendar) partRefusal(ctx context.Context, s mailboxSession, r batchReply) error {
 	g := r.refusal()
 	m.c.logger.DebugContext(ctx, "google: Google refused a calendar read", "status", g.Status, "reason", g.Reason)
@@ -303,7 +305,7 @@ func (m *mailboxCalendar) partRefusal(ctx context.Context, s mailboxSession, r b
 		return errThrottled
 	case r.status == http.StatusUnauthorized:
 		return s.src.answer(m.unauthorized(ctx, s))
-	case r.status == http.StatusForbidden:
+	case mailboxDenied(g):
 		return fmt.Errorf("%w: %w", contracts.ErrMailboxDenied, g)
 	}
 	return g

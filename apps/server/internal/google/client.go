@@ -323,7 +323,9 @@ func noRetry() callOption { return func(o *callOptions) { o.once = true } }
 // answer decoded into into when not nil, read through limit. A 429 waits
 // Retry-After once (at most maxRetryAfter), then fails errThrottled; a 5xx is
 // retried once after serverErrorDelay, unless the call is made once
-// (noRetry); a 401 drops the token and is retried once with a fresh one. Any
+// (noRetry); a 401 drops the token and is retried once with a fresh one. A
+// 403 naming a rate limit waits once like a 429; one naming a quota spent is
+// errThrottled at once. Any
 // other answer is a *googleError, logged by its status and reason alone. The
 // log names the host and the path — the one shownAs gives, when given —
 // never the query.
@@ -384,6 +386,11 @@ func (c *googleClient) doRaw(ctx context.Context, src tokenSource, method, targe
 			if err := c.pause(ctx, attempt, wait); err != nil {
 				return nil, nil, shown, err
 			}
+		case status == http.StatusForbidden && quotaSpent(data):
+			// A quota spent — the project's or the day's — is a usage limit
+			// no wait in the call clears: throttled at once, never refused.
+			c.logger.DebugContext(ctx, "google: Google throttled a call", "method", method, "path", shown, "reason", reasonOf(data))
+			return nil, nil, shown, errThrottled
 		case status == http.StatusForbidden && rateLimited(data):
 			// Calendar answers its usage limits 403, rateLimitExceeded or
 			// userRateLimitExceeded: a throttle like a 429, waited once.
@@ -526,13 +533,26 @@ func reasonOf(data []byte) string {
 	return body.Error.Status
 }
 
-// rateLimitReasons are the reasons of a 403 that is a usage limit, not a
-// refusal: Calendar answers its limits so.
+// rateLimitReasons are the reasons of a 403 that is a rate limit, not a
+// refusal: Calendar answers its per-minute limits so, and one wait may clear
+// it.
 var rateLimitReasons = []string{"rateLimitExceeded", "userRateLimitExceeded"}
 
-// rateLimited reports whether a refusal's body names a usage limit.
+// quotaReasons are the reasons of a 403 that is a quota spent, not a
+// refusal: the project's (quotaExceeded) or the day's (dailyLimitExceeded).
+// No wait in the call clears it.
+var quotaReasons = []string{"quotaExceeded", "dailyLimitExceeded"}
+
+// rateLimited reports whether a refusal's body names a rate limit, waited
+// once.
 func rateLimited(data []byte) bool {
 	return slices.Contains(rateLimitReasons, reasonOf(data))
+}
+
+// quotaSpent reports whether a refusal's body names a quota spent, throttled
+// at once.
+func quotaSpent(data []byte) bool {
+	return slices.Contains(quotaReasons, reasonOf(data))
 }
 
 // refusal is the *googleError of a refused call, logged at debug level by

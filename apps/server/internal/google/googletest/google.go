@@ -182,6 +182,9 @@ type FakeGoogle struct {
 	throttle int
 	calls    []Call
 	failOn   map[string]int
+	// failReason is the reason RefuseOn gave a failOn entry; "forbidden"
+	// when none.
+	failReason map[string]string
 }
 
 // issued is a token the fake issued: for whom, which scopes, until when.
@@ -234,6 +237,7 @@ func (g *FakeGoogle) Delegate(clientID string, scopes ...string) {
 // until FailOn is called with status 0.
 func (g *FakeGoogle) FailOn(methodPath string, status int) {
 	g.Configure(func(g *FakeGoogle) {
+		delete(g.failReason, methodPath)
 		if g.failOn == nil {
 			g.failOn = map[string]int{}
 		}
@@ -245,15 +249,43 @@ func (g *FakeGoogle) FailOn(methodPath string, status int) {
 	})
 }
 
+// RefuseOn is FailOn answering Google's reason with the status: 403
+// quotaExceeded or dailyLimitExceeded as Calendar answers a quota spent, 403
+// forbiddenForNonOrganizer as it refuses one event, 404 notFound. Status 0
+// clears it.
+func (g *FakeGoogle) RefuseOn(methodPath string, status int, reason string) {
+	g.FailOn(methodPath, status)
+	if status == 0 {
+		return
+	}
+	g.Configure(func(g *FakeGoogle) {
+		if g.failReason == nil {
+			g.failReason = map[string]string{}
+		}
+		g.failReason[methodPath] = reason
+	})
+}
+
 // failing is the status FailOn set for req, 0 for none.
 func (g *FakeGoogle) failing(req *http.Request) int {
+	status, _ := g.failure(req)
+	return status
+}
+
+// failure is the status FailOn or RefuseOn set for req and its reason
+// ("forbidden" unless RefuseOn named one); 0 for none.
+func (g *FakeGoogle) failure(req *http.Request) (int, string) {
 	for key, status := range g.failOn {
 		method, path, _ := strings.Cut(key, " ")
 		if req.Method == method && strings.HasSuffix(req.URL.Path, path) {
-			return status
+			reason := g.failReason[key]
+			if reason == "" {
+				reason = "forbidden"
+			}
+			return status, reason
 		}
 	}
-	return 0
+	return 0, ""
 }
 
 // FailNext makes the next requests answer status, one each, in order.
@@ -296,8 +328,8 @@ func (g *FakeGoogle) RoundTrip(req *http.Request) (*http.Response, error) {
 	var a answer
 	switch {
 	case g.failing(req) > 0:
-		status := g.failing(req)
-		a = answer{status: status, body: g.apiError(status, "forbidden")}
+		status, reason := g.failure(req)
+		a = answer{status: status, body: g.apiError(status, reason)}
 	case g.throttle > 0:
 		g.throttle--
 		a = answer{status: http.StatusTooManyRequests, header: http.Header{"Retry-After": {"1"}}, body: g.apiError(http.StatusTooManyRequests, "rateLimitExceeded")}

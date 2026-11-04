@@ -57,8 +57,14 @@ type batchReply struct {
 func (r batchReply) reason() string { return reasonOf(r.body) }
 
 // throttled reports whether the reply is a usage limit: a 429, or a 403
-// naming one.
+// naming a rate limit or a quota spent.
 func (r batchReply) throttled() bool {
+	return r.waitable() || (r.status == http.StatusForbidden && quotaSpent(r.body))
+}
+
+// waitable reports whether the reply is a usage limit one wait may clear: a
+// 429, or a 403 naming a rate limit — never a quota spent.
+func (r batchReply) waitable() bool {
 	return r.status == http.StatusTooManyRequests || (r.status == http.StatusForbidden && rateLimited(r.body))
 }
 
@@ -67,9 +73,9 @@ func (r batchReply) refusal() *googleError { return &googleError{Status: r.statu
 
 // batch sends parts — at most calendarBatchSize — as one batch with src's
 // token, quota the quotaUser of the batch itself, and answers one reply per
-// part, in order. A part throttled is sent again once, alone with the others
-// throttled, after serverErrorDelay; throttled again, its reply stays the
-// throttle. once sends the batch once, a 5xx not retried (a batch holding a
+// part, in order. A part rate limited (waitable) is sent again once, alone
+// with the others so, after serverErrorDelay; limited again, its reply stays
+// the throttle. A part answered a quota spent is not sent again. once sends the batch once, a 5xx not retried (a batch holding a
 // create). The error is the batch failing whole: Google's refusal of the
 // batch, an answer that does not read, or the context ending.
 func (c *googleClient) batch(ctx context.Context, src tokenSource, quota string, parts []batchPart, once bool) ([]batchReply, error) {
@@ -89,7 +95,7 @@ func (c *googleClient) batch(ctx context.Context, src tokenSource, quota string,
 		var again []int
 		for n, i := range send {
 			replies[i] = got[n]
-			if got[n].throttled() && attempt == 1 {
+			if got[n].waitable() && attempt == 1 {
 				again = append(again, i)
 			}
 		}

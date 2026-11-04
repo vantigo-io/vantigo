@@ -323,8 +323,8 @@ func (g *FakeGoogle) calendarCall(req *http.Request, body []byte) answer {
 	if !ok || g.cal.refused[tok.subject] {
 		return answer{status: http.StatusUnauthorized, body: g.apiError(http.StatusUnauthorized, "authError")}
 	}
-	if status := g.failing(req); status > 0 {
-		return answer{status: status, body: g.apiError(status, "forbidden")}
+	if status, reason := g.failure(req); status > 0 {
+		return answer{status: status, body: g.apiError(status, reason)}
 	}
 	owner := tok.subject
 	has := func(scope string) bool { return slices.Contains(tok.scopes, scope) }
