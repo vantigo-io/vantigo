@@ -299,3 +299,47 @@ func TestSsoDirectory_OnlyAnOwnerWithMFA(t *testing.T) {
 		t.Errorf("the provider was asked %d times, want twice: only the Owner with MFA reaches it", n)
 	}
 }
+
+// A Google account picked from the directory and announced is fulfilled by
+// the person's first Google sign-in (Google Workspace design G24, on G7):
+// the pick names the Directory id as the object id and the primary email as
+// the principal name, and the ID token's sub — the same id — lands the
+// sign-in on the announced user. The picker's account is the provider's
+// answer, here a fake under the key google.
+func TestSsoDirectory_AGoogleSignInLandsOnTheUserAnnouncedFromAPick(t *testing.T) {
+	t.Parallel()
+	const googleUserID = "104857600000000000001"
+	f := newFakeGoogleOIDC(t)
+	f.set("sub", googleUserID)
+	fake := modtest.NewFakeDirectorySearch().WithKey("google", "Google Workspace")
+	fake.SetUsers(contracts.DirectoryUser{
+		ObjectID: googleUserID, PrincipalName: fakeGoogleEmail, DisplayName: "Kari Nordmann",
+		Mail: fakeGoogleEmail, Enabled: true,
+	})
+	h := newHarness(t, append(f.options(), withDirectorySearch(fake))...)
+	owner, _ := h.bootstrapOwner(t)
+	id := h.seedUser(t, "kari@example.test", userPassword, identity.RoleUserID)
+
+	r := owner.do(http.MethodGet, ssoDirectoryUsersPath+"?search=kari", nil)
+	var found struct {
+		Users []directoryUserBody `json:"users"`
+	}
+	r.json(&found)
+	if r.status != http.StatusOK || len(found.Users) != 1 {
+		t.Fatalf("search: %d %s", r.status, r.body)
+	}
+	pick := found.Users[0]
+	mustAnnounce(t, owner, id, map[string]any{"objectId": pick.ObjectID, "userPrincipalName": pick.UserPrincipalName})
+
+	c := h.client(t)
+	assertOIDCRedirect(t, h.oidcSignIn(t, c, f), "/")
+	if s := oidcSession(t, c); s.User.ID != id {
+		t.Errorf("signed in as %+v, want the user announced from the pick", s.User)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.oidc_links WHERE issuer = $1 AND subject = $2 AND user_id = $3`, fakeGoogleAuthority, googleUserID, id); n != 1 {
+		t.Error("the user is not linked by the sub")
+	}
+	if got := linkedFromProvider(t, h); len(got) != 1 || got[0] != `{"matchedBy":"oid"}` {
+		t.Errorf("account.linked-from-provider = %v, want matched by the object id", got)
+	}
+}
