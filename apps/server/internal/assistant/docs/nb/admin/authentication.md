@@ -517,7 +517,7 @@ Når enkel pålogging slås på i en installasjon som allerede har brukere, kobl
 adresse aldri en innlogging gjennom leverandøren til en eksisterende konto, så det første
 forsøket avvises med `oidc_email_conflict`. En eier **kunngjør** at brukeren har en
 katalogkonto; brukerens neste OIDC-innlogging (matchet på `oid` — Googles `sub` — under den satte
-utstederen, ellers på tokenets prinsipalnavn, Entras `preferred_username`, eller det verifiserte `email`-kravet for en leverandør uten et slikt) eller SCIM-push (matchet på `userName` mot prinsipalnavnet, så `externalId`
+utstederen, ellers på tokenets prinsipalnavn, Entras `preferred_username`, eller det verifiserte `email`-kravet for en leverandør uten et slikt, når kunngjøringen ikke navngir en annen objekt-ID) eller SCIM-push (matchet på `userName` mot prinsipalnavnet, så `externalId`
 mot objekt-ID-en) kobler eller tilordner da til den brukeren. Hvordan ankomsten matches,
 står under [den kunngjorte koblingen](/nb/admin/sso-scim/#den-kunngjorte-koblingen).
 
@@ -595,9 +595,10 @@ forslaget.
 **Med Google som leverandør.** Google Workspace-modulen betjener søket mens `google` er
 den valgte leverandøren: objekt-ID-en er kontoens bruker-ID i katalogen,
 prinsipalnavnet primæradressen, og et valg kunngjøres med begge. En Google-innlogging
-matches på `sub` mot objekt-ID-en, ellers på den verifiserte e-posten mot
-prinsipalnavnet, så koblingen holder også før U1 (`sub` er lik katalog-ID-en) er bekreftet
-i en testorganisasjon. Modulen leser høyst 10 000 kontoer til gjennomgangen; utover det er
+matches på `sub` mot objekt-ID-en; den verifiserte e-posten oppfyller ikke en kobling
+kunngjort med en annen objekt-ID, så skulle U1 (`sub` er lik katalog-ID-en, ennå ikke
+bekreftet i en testorganisasjon) vise seg ikke å holde, må koblinger kunngjøres med bare
+prinsipalnavnet. Modulen leser høyst 10 000 kontoer til gjennomgangen; utover det er
 svaret avkortet og den matcher bare på adresse, siden en adresse peker ut én konto i en
 Google-organisasjon og et ansattnummer kanskje ikke gjør det. Kortet for enkel pålogging
 fylles ut fra modulens tilkobling — Google, nettklientens ID og hvert verifiserte domene
