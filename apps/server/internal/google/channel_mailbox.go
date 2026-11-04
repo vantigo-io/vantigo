@@ -34,19 +34,25 @@ import (
 // domain (the channels page's warning); else unavailable with
 // mailChannelsState's reason.
 //
-// Check resolves an address as the admin to impersonate: a group's is
-// refused (ErrMailboxGroup, P2), an unknown one ErrMailboxUnknown, a
-// suspended or archived user ErrMailboxGone, an alias its user. A user the
-// module keeps an account for — a person Staff manages — is answered Shared
-// false and nothing more: no call ever reaches a person's own mailbox. Any
-// other user's mailbox is read once as itself (users.getProfile), which
-// proves the delegation reaches it and the user has Gmail, and is recorded in
-// google.channel_mailboxes. Send, Delta, Raw, Mark and EnsureFolder answer
-// only for a recorded mailbox (ErrMailboxUnknown with no call otherwise), so
-// Communications can never point the provider at a mailbox no Check
-// resolved. Every Gmail path is users/me — the token's subject names the
-// mailbox — and every Gmail URL carries quotaUser, the mailbox's Directory
-// id.
+// Check resolves an address as the admin to impersonate: one outside the
+// Workspace's verified domains is ErrMailboxUnknown with no call, a group's
+// is refused (ErrMailboxGroup, P2), an unknown one ErrMailboxUnknown, a
+// suspended or archived user ErrMailboxGone, an alias its user. A person's
+// own mailbox — a user the module keeps an account for (a person Staff
+// manages, by id or by address) or one who connected their own account — is
+// answered Shared false and nothing more, and any row of it deleted: no call
+// ever reaches a person's own mailbox. Any other user's mailbox is read once
+// as itself (users.getProfile), which proves the delegation reaches it and
+// the user has Gmail, and is recorded in google.channel_mailboxes. Send,
+// Delta, Raw, Mark and EnsureFolder answer only for a recorded mailbox
+// (ErrMailboxUnknown with no call otherwise) that is not, by now, a person's
+// own (ErrMailboxGone with no call), so Communications can never point the
+// provider at a mailbox no Check resolved. Before a fresh delta, and once a
+// day otherwise, the mailbox is resolved again as the admin
+// (users.get(<id>)): its primary address changed, or the user suspended or
+// archived, is ErrMailboxGone. Every Gmail path is users/me — the token's
+// subject names the mailbox — and every Gmail URL carries quotaUser, the
+// mailbox's Directory id.
 //
 // Google's words are never logged, nor is an address: the client logs a
 // refusal by its status and reason, a path carrying the typed address is
@@ -75,6 +81,12 @@ const (
 	// mailMaxMessageID bounds a Message-ID read back, RFC 5322's line; a
 	// longer one is answered as none.
 	mailMaxMessageID = 998
+	// channelRecheck is how long a recorded mailbox is trusted before a call
+	// resolves it again as the admin.
+	channelRecheck = 24 * time.Hour
+	// readBackBudget bounds Send's read-back of the Message-ID, on a context
+	// of its own: an upload that took its whole budget does not lose it.
+	readBackBudget = 10 * time.Second
 )
 
 // gmailIDPattern is a message's, a thread's or a label's id as Gmail answers
@@ -158,10 +170,14 @@ type gmailSession struct {
 }
 
 // open is a call's footing for mailbox: a row of google.channel_mailboxes
-// (ErrMailboxUnknown otherwise, with no call), then the provider ready
-// (ErrMailboxUnavailable otherwise). Both are read on the pool and released
-// before any call reaches Google.
-func (m *channelMailbox) open(ctx context.Context, mailbox string) (gmailSession, error) {
+// (ErrMailboxUnknown otherwise, with no call), not a person's own mailbox by
+// now — an account the module keeps for a person under its id or its
+// address, or a person's own connection (ErrMailboxGone, with no call, P2) —
+// then the provider ready (ErrMailboxUnavailable otherwise). All are read on
+// the pool and released before any call reaches Google. When resolve is set
+// (a fresh delta), or the row was last resolved channelRecheck ago, the
+// mailbox is resolved again as the admin (recheck).
+func (m *channelMailbox) open(ctx context.Context, mailbox string, resolve bool) (gmailSession, error) {
 	if !validUserID(mailbox) {
 		return gmailSession{}, fmt.Errorf("%w: not a mailbox id", contracts.ErrMailboxUnknown)
 	}
@@ -172,14 +188,57 @@ func (m *channelMailbox) open(ctx context.Context, mailbox string) (gmailSession
 	if err != nil {
 		return gmailSession{}, fmt.Errorf("google: read the channel mailbox: %w", err)
 	}
-	if _, err := m.ready(ctx); err != nil {
+	held, err := m.q.PersonalMailboxHeld(ctx, store.PersonalMailboxHeldParams{GoogleUserID: row.GoogleUserID, Address: row.Address})
+	if err != nil {
+		return gmailSession{}, fmt.Errorf("google: read the accounts: %w", err)
+	}
+	if held {
+		return gmailSession{}, fmt.Errorf("%w: the mailbox is a person's own", contracts.ErrMailboxGone)
+	}
+	conn, err := m.ready(ctx)
+	if err != nil {
 		return gmailSession{}, err
+	}
+	if resolve || !m.keys.c.now().Before(row.CheckedAt.Add(channelRecheck)) {
+		if err := m.recheck(ctx, conn, row); err != nil {
+			return gmailSession{}, err
+		}
 	}
 	return gmailSession{
 		gid:    row.GoogleUserID,
 		modify: m.keys.tokenSource([]string{scopeGmailModify}, row.Address),
 		send:   m.keys.tokenSource([]string{scopeGmailSend}, row.Address),
 	}, nil
+}
+
+// recheck resolves row's mailbox again as the admin (users.get by its
+// Directory id): a 404, a primary address other than the one recorded — the
+// user renamed, the address now another's — or the user suspended or
+// archived is ErrMailboxGone; the Directory's refusals are Check's. A
+// mailbox still the user Check recorded has its checked_at moved on.
+func (m *channelMailbox) recheck(ctx context.Context, conn store.GoogleConnection, row store.GoogleChannelMailbox) error {
+	var user channelUser
+	err := m.keys.c.get(ctx, m.keys.tokenSource([]string{scopeUsers}, deref(conn.AdminSubject)),
+		userURL(row.GoogleUserID)+"?"+url.Values{"projection": {"basic"}, "fields": {"id,primaryEmail,suspended,archived"}}.Encode(),
+		&user, shownAs("/admin/directory/v1/users/{user}"))
+	switch {
+	case isStatus(err, http.StatusNotFound):
+		return fmt.Errorf("%w: the Directory holds the user no more", contracts.ErrMailboxGone)
+	case err != nil:
+		return directoryRefusal(err)
+	}
+	if user.ID != row.GoogleUserID || strings.ToLower(strings.TrimSpace(user.PrimaryEmail)) != row.Address {
+		return fmt.Errorf("%w: the user's primary address is not the one recorded", contracts.ErrMailboxGone)
+	}
+	if user.Suspended || user.Archived {
+		return fmt.Errorf("%w: the user is suspended or archived", contracts.ErrMailboxGone)
+	}
+	if err := m.q.TouchChannelMailbox(ctx, store.TouchChannelMailboxParams{
+		GoogleUserID: row.GoogleUserID, CheckedAt: m.keys.c.now(),
+	}); err != nil {
+		return fmt.Errorf("google: record the channel mailbox checked: %w", err)
+	}
+	return nil
 }
 
 // gmailURL is a Gmail call's URL: gmailBase, path, the query and quotaUser
@@ -259,6 +318,13 @@ func channelAddress(address string) bool {
 	return err == nil && a.Name == "" && a.Address == address
 }
 
+// inDomains reports whether address's domain is one of the Workspace's
+// verified domains, as the last test read them, ignoring case.
+func inDomains(address string, domains []string) bool {
+	at := strings.LastIndexByte(address, '@')
+	return at > 0 && domainAllowed(address[at+1:], domains)
+}
+
 // channelUser is what Check reads of the user.
 type channelUser struct {
 	ID           string `json:"id"`
@@ -274,11 +340,14 @@ type channelUser struct {
 // P2): groups.get(address) found is ErrMailboxGroup — a 404, or the 400
 // Google may answer for a key that names no group, goes on —;
 // users.get(address) 404 is ErrMailboxUnknown, a suspended or archived user
-// ErrMailboxGone; a user the module keeps an account for is a person's own
-// mailbox, answered Shared false and not recorded, with no call to it; then
-// users.getProfile as the mailbox — refused as Send's are — and the row. An
-// address that is not a bare addr-spec is ErrMailboxUnknown with no call;
-// the provider not available ErrMailboxUnavailable. The typed address is
+// ErrMailboxGone; a person's own mailbox — a user the module keeps an
+// account for, by id or by primary address, or one with a connection of
+// their own — is answered Shared false, its row deleted if one was
+// recorded, with no call to it; then users.getProfile as the mailbox —
+// refused as Send's are — and the row. An address that is not a bare
+// addr-spec, or whose domain is none of the Workspace's verified domains, is
+// ErrMailboxUnknown with no call; the provider not available
+// ErrMailboxUnavailable. The typed address is
 // never in an error or a log line.
 func (m *channelMailbox) Check(ctx context.Context, address string) (contracts.ChannelMailboxInfo, error) {
 	if !channelAddress(address) {
@@ -287,6 +356,9 @@ func (m *channelMailbox) Check(ctx context.Context, address string) (contracts.C
 	conn, err := m.ready(ctx)
 	if err != nil {
 		return contracts.ChannelMailboxInfo{}, err
+	}
+	if !inDomains(address, conn.Domains) {
+		return contracts.ChannelMailboxInfo{}, fmt.Errorf("%w: not an address of the Workspace's domains", contracts.ErrMailboxUnknown)
 	}
 	admin := deref(conn.AdminSubject)
 	var group struct {
@@ -315,15 +387,21 @@ func (m *channelMailbox) Check(ctx context.Context, address string) (contracts.C
 	if !validUserID(user.ID) || !channelAddress(primary) {
 		return contracts.ChannelMailboxInfo{}, fmt.Errorf("%w: the user's id or address does not read", errGoogleUnreachable)
 	}
+	if !inDomains(primary, conn.Domains) {
+		return contracts.ChannelMailboxInfo{}, fmt.Errorf("%w: the user's address is not of the Workspace's domains", contracts.ErrMailboxUnknown)
+	}
 	if user.Suspended || user.Archived {
 		return contracts.ChannelMailboxInfo{}, fmt.Errorf("%w: the user is suspended or archived", contracts.ErrMailboxGone)
 	}
 	info := contracts.ChannelMailboxInfo{Mailbox: user.ID, Address: primary, DisplayName: strings.TrimSpace(user.Name.FullName)}
-	held, err := m.q.AccountExists(ctx, user.ID)
+	held, err := m.q.PersonalMailboxHeld(ctx, store.PersonalMailboxHeldParams{GoogleUserID: user.ID, Address: primary})
 	if err != nil {
 		return contracts.ChannelMailboxInfo{}, fmt.Errorf("google: read the accounts: %w", err)
 	}
 	if held {
+		if err := m.q.DeleteChannelMailbox(ctx, user.ID); err != nil {
+			return contracts.ChannelMailboxInfo{}, fmt.Errorf("google: forget the channel mailbox: %w", err)
+		}
 		m.keys.c.logger.InfoContext(ctx, "google: a channel mailbox checked", "mailbox", user.ID, "shared", false)
 		return info, nil
 	}
@@ -366,11 +444,13 @@ func (m *channelMailbox) Forget(ctx context.Context, mailbox string) error {
 // blind copies and strips it, so the header is the only way they travel.
 // The MIME is uploaded whole to messages.send as the mailbox, made once (a
 // 5xx is not retried: Gmail may have taken it, and the outbox's own retry is
-// the one). It answers Gmail's thread id and the Message-ID Gmail sent the
-// message with, read back (U6); a read-back that fails answers the thread
-// alone, the message being sent.
+// the one), under a budget scaled to its size (sizedBudget). It answers
+// Gmail's thread id and the Message-ID Gmail sent the message with, read
+// back (U6) on a context of its own (readBackBudget), so an upload that took
+// the caller's time does not lose it; a read-back that fails answers the
+// thread alone, the message being sent.
 func (m *channelMailbox) Send(ctx context.Context, mailbox string, mime []byte, bcc []string) (contracts.SentMessage, error) {
-	s, err := m.open(ctx, mailbox)
+	s, err := m.open(ctx, mailbox, false)
 	if err != nil {
 		return contracts.SentMessage{}, err
 	}
@@ -386,7 +466,7 @@ func (m *channelMailbox) Send(ctx context.Context, mailbox string, mime []byte, 
 	}
 	err = m.keys.c.do(ctx, s.send, http.MethodPost, gmailSendURL+"&"+url.Values{"quotaUser": {s.gid}}.Encode(),
 		&requestBody{contentType: "message/rfc822", data: mime}, &sent, maxBody,
-		noRetry(), shownAs("/upload"+gmailShownBase+"/messages/send"))
+		noRetry(), withBudget(sizedBudget(int64(len(mime)))), shownAs("/upload"+gmailShownBase+"/messages/send"))
 	if err != nil {
 		return contracts.SentMessage{}, gmailRefusal(err)
 	}
@@ -398,7 +478,9 @@ func (m *channelMailbox) Send(ctx context.Context, mailbox string, mime []byte, 
 		m.keys.c.logger.WarnContext(ctx, "google: Gmail answered a send without a message id", "mailbox", s.gid)
 		return out, nil
 	}
-	meta, err := m.metadata(ctx, s, sent.ID)
+	readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), readBackBudget)
+	defer cancel()
+	meta, err := m.metadata(readCtx, s, sent.ID)
 	if err != nil {
 		m.keys.c.logger.WarnContext(ctx, "google: the Message-ID of a sent message was not read back",
 			"mailbox", s.gid, "error", err.Error())

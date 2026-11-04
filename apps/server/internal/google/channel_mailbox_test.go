@@ -207,6 +207,146 @@ func TestChannelMailbox_Check(t *testing.T) {
 	}
 }
 
+func TestChannelMailbox_CheckRefusesAnAddressOutsideTheDomains(t *testing.T) {
+	t.Parallel()
+	f := newMailFixture(t)
+	ctx := context.Background()
+	f.g.AddUser(googletest.User{PrimaryEmail: "post@elsewhere.example"})
+	before := len(f.g.Calls())
+	for _, address := range []string{"post@elsewhere.example", "post@unverified.example", "post@nordlys.no.evil.example"} {
+		if _, err := f.p.Check(ctx, address); !errors.Is(err, contracts.ErrMailboxUnknown) {
+			t.Errorf("%s: %v, want ErrMailboxUnknown", address, err)
+		}
+	}
+	if n := len(f.g.Calls()) - before; n != 0 {
+		t.Errorf("%d calls for addresses outside the domains, want none", n)
+	}
+	// A verified domain matches whatever its case.
+	if info, err := f.p.Check(ctx, "POST@Nordlys.NO"); err != nil || !info.Shared {
+		t.Errorf("a verified domain in capitals: %+v %v", info, err)
+	}
+}
+
+// A person's own mailbox (P2) is refused however it became one after its
+// Check: Staff adopting the user, a person connecting their own account,
+// the address passed on to someone Staff manages, the user renamed.
+func TestChannelMailbox_NeverAPersonsOwnMailbox(t *testing.T) {
+	t.Parallel()
+	f := newMailFixture(t)
+	ctx := context.Background()
+	gid := f.checked(t)
+	sendGone := func(what string) {
+		t.Helper()
+		before := len(f.gmailCalls(0))
+		if _, err := f.p.Send(ctx, gid, mailFrom("<p2@vantigo.invalid>", "", "x"), nil); !errors.Is(err, contracts.ErrMailboxGone) {
+			t.Errorf("%s: Send %v, want ErrMailboxGone", what, err)
+		}
+		if _, err := f.p.EnsureFolder(ctx, gid, "Done"); !errors.Is(err, contracts.ErrMailboxGone) {
+			t.Errorf("%s: EnsureFolder %v, want ErrMailboxGone", what, err)
+		}
+		if n := len(f.gmailCalls(0)) - before; n != 0 {
+			t.Errorf("%s: %d Gmail calls, want none", what, n)
+		}
+	}
+
+	// Adopted after creation: Staff now keeps an account for the user.
+	f.h.Exec(t, `INSERT INTO google.accounts (user_id, employee_number, primary_email, state, created_by_us, created_at, updated_at)
+	             VALUES ($1, 'E-9', $2, 'enabled', false, now(), now())`, gid, postAddress)
+	sendGone("adopted")
+	f.h.Exec(t, `DELETE FROM google.accounts`)
+
+	// The address passed on to a person Staff manages under another id.
+	f.h.Exec(t, `INSERT INTO google.accounts (user_id, employee_number, primary_email, state, created_by_us, created_at, updated_at)
+	             VALUES ('999999999999999999999', 'E-10', 'Post@Nordlys.no', 'enabled', true, now(), now())`)
+	sendGone("an address now a person's")
+	f.h.Exec(t, `DELETE FROM google.accounts`)
+
+	// The user connected their own account: refused, and a Check answers
+	// not shared and forgets the row.
+	f.h.Exec(t, `INSERT INTO google.connections (google_user_id, user_id, scopes, state, connected_at, changed_at, created_at, updated_at)
+	             VALUES ($1, gen_random_uuid(), '{}', 'active', now(), now(), now(), now())`, gid)
+	sendGone("personally connected")
+	before := len(f.gmailCalls(0))
+	if info, err := f.p.Check(ctx, postAddress); err != nil || info.Shared {
+		t.Errorf("Check of a personally connected user: %+v %v, want not shared", info, err)
+	}
+	if n := len(f.gmailCalls(0)) - before; n != 0 {
+		t.Errorf("Check read a person's mailbox: %d Gmail calls", n)
+	}
+	if n := f.h.Count(t, `SELECT count(*) FROM google.channel_mailboxes`); n != 0 {
+		t.Errorf("rows = %d, want the person's forgotten", n)
+	}
+	if _, err := f.p.Send(ctx, gid, mailFrom("<p3@vantigo.invalid>", "", "x"), nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
+		t.Errorf("Send after the row was forgotten: %v, want ErrMailboxUnknown", err)
+	}
+	f.h.Exec(t, `DELETE FROM google.connections`)
+
+	// Renamed, its address recycled to a new user: a fresh delta resolves the
+	// mailbox again and finds it gone, and so does any call a day on.
+	gid = f.checked(t)
+	f.g.SetUser(gid, func(u *googletest.User) { u.PrimaryEmail = "old-post@nordlys.no" })
+	f.g.AddUser(googletest.User{PrimaryEmail: postAddress, GivenName: "New"})
+	if _, err := f.p.Send(ctx, gid, mailFrom("<p4@vantigo.invalid>", "", "x"), nil); err != nil {
+		t.Errorf("Send within the day: %v", err)
+	}
+	before = len(f.gmailCalls(0))
+	if _, err := f.p.Delta(ctx, gid, "inbox", "", f.h.Now()); !errors.Is(err, contracts.ErrMailboxGone) {
+		t.Errorf("a fresh delta after the rename: %v, want ErrMailboxGone", err)
+	}
+	if n := len(f.gmailCalls(0)) - before; n != 0 {
+		t.Errorf("a fresh delta after the rename: %d Gmail calls, want none", n)
+	}
+	f.h.Advance(25 * time.Hour)
+	if _, err := f.p.Send(ctx, gid, mailFrom("<p5@vantigo.invalid>", "", "x"), nil); !errors.Is(err, contracts.ErrMailboxGone) {
+		t.Errorf("Send a day after the rename: %v, want ErrMailboxGone", err)
+	}
+}
+
+func TestChannelMailbox_ARecordedMailboxIsResolvedAgainDaily(t *testing.T) {
+	t.Parallel()
+	f := newMailFixture(t)
+	ctx := context.Background()
+	gid := f.checked(t)
+	directory := func(from int) int {
+		n := 0
+		for _, c := range f.g.Calls()[from:] {
+			if c.Host == googletest.AdminHost && strings.HasSuffix(c.Path, "/users/"+gid) {
+				n++
+			}
+		}
+		return n
+	}
+	before := len(f.g.Calls())
+	if _, err := f.p.EnsureFolder(ctx, gid, "Done"); err != nil {
+		t.Fatal(err)
+	}
+	if n := directory(before); n != 0 {
+		t.Errorf("resolved again within the day: %d", n)
+	}
+	before = len(f.g.Calls())
+	if _, err := f.p.Delta(ctx, gid, "inbox", "", f.h.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if n := directory(before); n != 1 {
+		t.Errorf("a fresh delta resolved the mailbox %d times, want once", n)
+	}
+	f.h.Advance(25 * time.Hour)
+	before = len(f.g.Calls())
+	for range 2 {
+		if _, err := f.p.EnsureFolder(ctx, gid, "Done"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := directory(before); n != 1 {
+		t.Errorf("a day on, resolved %d times, want once", n)
+	}
+	// Suspended: gone at the next fresh delta, before any Gmail call.
+	f.g.SetUser(gid, func(u *googletest.User) { u.Suspended = true })
+	if _, err := f.p.Delta(ctx, gid, "inbox", "", f.h.Now()); !errors.Is(err, contracts.ErrMailboxGone) {
+		t.Errorf("suspended: %v, want ErrMailboxGone", err)
+	}
+}
+
 func TestChannelMailbox_SendReadsTheMessageIDBack(t *testing.T) {
 	t.Parallel()
 	f := newMailFixture(t)
@@ -429,6 +569,24 @@ func TestChannelMailbox_RawAndMarks(t *testing.T) {
 	}
 	if err := f.p.Mark(ctx, gid, msg.ID, contracts.MailMark{Kind: contracts.MailMarkMove, FolderID: "INBOX"}); err == nil {
 		t.Error("a move to INBOX was taken")
+	}
+	// A system label is never a folder, a category or a destination.
+	before := len(f.gmailCalls(0))
+	for _, name := range []string{"INBOX", "Inbox", "trash", "Spam", "Sent Mail", "drafts", "STARRED", "Important", "unread", "Chat"} {
+		if _, err := f.p.EnsureFolder(ctx, gid, name); !errors.Is(err, contracts.ErrMailboxDenied) {
+			t.Errorf("EnsureFolder(%q): %v, want ErrMailboxDenied", name, err)
+		}
+	}
+	if err := f.p.Mark(ctx, gid, msg.ID, contracts.MailMark{Kind: contracts.MailMarkCategory, Categories: []string{"Vantigo", "starred"}}); !errors.Is(err, contracts.ErrMailboxDenied) {
+		t.Errorf("a category named STARRED: %v, want ErrMailboxDenied", err)
+	}
+	for _, id := range []string{"TRASH", "SPAM", "CATEGORY_UPDATES", "Label"} {
+		if err := f.p.Mark(ctx, gid, msg.ID, contracts.MailMark{Kind: contracts.MailMarkMove, FolderID: id}); err == nil {
+			t.Errorf("a move to %s was taken", id)
+		}
+	}
+	if n := len(f.gmailCalls(0)) - before; n != 0 {
+		t.Errorf("%d Gmail calls for system labels, want none", n)
 	}
 
 	// The notices: none, v1 polls.

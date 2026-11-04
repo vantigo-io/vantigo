@@ -26,10 +26,11 @@ import (
 // G14), Entra's graph.go reshaped: one transport for the process, dialling
 // through netguard with no proxy and no redirects; every request — the token
 // exchange's included — refused unless its host is one of googleHosts; each
-// call under a 30-second budget; a 429 waits Retry-After once (at most ten
-// seconds), a 5xx is retried once after a second, a 401 fetches a fresh token
-// once; every answer read through a 1 MiB cap (a raw message, a later
-// delivery's, through 16 MiB). Google's error text is never logged, stored or
+// call under a 30-second budget — a call moving a message (a send's upload, a
+// raw read) under one scaled to its size (sizedBudget); a 429 waits
+// Retry-After once (at most ten seconds), a 5xx is retried once after a
+// second, a 401 fetches a fresh token once; every answer read through a 1 MiB
+// cap (a raw message through a cap made of the size its caller takes). Google's error text is never logged, stored or
 // answered: a refusal is a *googleError carrying the HTTP status and the
 // reason code of Google's error body. The hosts are constants: no setting
 // reaches them, and a test's fake comes in through Deps.HTTPTransport, never
@@ -75,6 +76,11 @@ const (
 	// headers and the body together. A wait between two attempts is not in
 	// it.
 	callBudget = 30 * time.Second
+	// budgetPerMB is what a call moving a message adds to callBudget for
+	// each megabyte it moves (sizedBudget), and maxCallBudget the most such
+	// a call is given.
+	budgetPerMB   = time.Second
+	maxCallBudget = 2 * time.Minute
 	// maxRetryAfter is the longest Retry-After a call waits; a longer one
 	// fails the call at once, errThrottled.
 	maxRetryAfter = 10 * time.Second
@@ -82,8 +88,8 @@ const (
 	// when it names no Retry-After.
 	serverErrorDelay = time.Second
 	// maxBody is the most of an answer read; a longer one is refused,
-	// errResponseTooLarge. A raw message (delivery F) will read through 16
-	// MiB, passed to do as its limit.
+	// errResponseTooLarge. A raw message reads through a cap made of the
+	// size its caller takes, passed to do as its limit.
 	maxBody = 1 << 20
 )
 
@@ -311,6 +317,9 @@ type callOptions struct {
 	// once is a write made once: a 5xx is not retried, as a second create
 	// could make a second user.
 	once bool
+	// budget is the exchange's budget in place of callBudget: a call moving
+	// a message (withBudget, sizedBudget). Zero is callBudget.
+	budget time.Duration
 }
 
 // shownAs names the call in the log by path, in place of the URL's path.
@@ -318,6 +327,19 @@ func shownAs(path string) callOption { return func(o *callOptions) { o.shown = p
 
 // noRetry makes a write once: its 5xx is the answer.
 func noRetry() callOption { return func(o *callOptions) { o.once = true } }
+
+// withBudget gives each exchange of the call d in place of callBudget.
+func withBudget(d time.Duration) callOption { return func(o *callOptions) { o.budget = d } }
+
+// sizedBudget is the budget of an exchange moving n bytes: callBudget and
+// budgetPerMB for each megabyte begun, at most maxCallBudget.
+func sizedBudget(n int64) time.Duration {
+	if n <= 0 {
+		return callBudget
+	}
+	mb := (n + 999_999) / 1_000_000
+	return min(callBudget+time.Duration(mb)*budgetPerMB, maxCallBudget)
+}
 
 // do is one call to Google with src's token: body sent when not nil, a 2xx
 // answer decoded into into when not nil, read through limit. A 429 waits
@@ -369,7 +391,7 @@ func (c *googleClient) doRaw(ctx context.Context, src tokenSource, method, targe
 		if err != nil {
 			return nil, nil, shown, err
 		}
-		status, header, data, err := c.exchange(ctx, method, u, shown, token, body, limit)
+		status, header, data, err := c.exchange(ctx, method, u, shown, token, body, limit, o.budget)
 		if err != nil {
 			return nil, nil, shown, err
 		}
@@ -419,8 +441,9 @@ func (c *googleClient) doRaw(ctx context.Context, src tokenSource, method, targe
 // exchange sends one request and answers the status, the headers and the
 // body read through limit. A request that could not be made, or was not
 // answered in time, is errGoogleUnreachable; the caller's own context
-// ending is its error.
-func (c *googleClient) exchange(ctx context.Context, method string, target *url.URL, shown, token string, body *requestBody, limit int64) (int, http.Header, []byte, error) {
+// ending is its error. budget, when not zero, is the exchange's in place of
+// the http.Client's callBudget.
+func (c *googleClient) exchange(ctx context.Context, method string, target *url.URL, shown, token string, body *requestBody, limit int64, budget time.Duration) (int, http.Header, []byte, error) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body.data)
@@ -434,7 +457,13 @@ func (c *googleClient) exchange(ctx context.Context, method string, target *url.
 	if body != nil {
 		req.Header.Set("Content-Type", body.contentType)
 	}
-	resp, err := c.http.Do(req)
+	hc := c.http
+	if budget > 0 {
+		sized := *c.http
+		sized.Timeout = budget
+		hc = &sized
+	}
+	resp, err := hc.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
 			return 0, nil, nil, ctx.Err()

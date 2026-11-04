@@ -32,8 +32,18 @@ ON CONFLICT (google_user_id) DO UPDATE SET address = EXCLUDED.address, checked_a
 -- until another Check.
 DELETE FROM google.channel_mailboxes WHERE google_user_id = @google_user_id;
 
--- name: AccountExists :one
--- AccountExists reports whether the Directory id is an account the module
--- keeps for a person Staff manages, in any state: its mailbox is that
--- person's own (P2).
-SELECT EXISTS (SELECT 1 FROM google.accounts WHERE user_id = @user_id) AS held;
+-- name: TouchChannelMailbox :exec
+-- TouchChannelMailbox records that the mailbox was resolved again as the
+-- admin and is still the user Check recorded.
+UPDATE google.channel_mailboxes SET checked_at = @checked_at WHERE google_user_id = @google_user_id;
+
+-- name: PersonalMailboxHeld :one
+-- PersonalMailboxHeld reports whether the Directory id, or the address (lower
+-- case), is a person's own mailbox (P2): an account the module keeps for a
+-- person Staff manages, in any state, under that id or that primary address,
+-- or a person's own connection under that id.
+SELECT (
+    EXISTS (SELECT 1 FROM google.accounts a
+            WHERE a.user_id = @google_user_id OR lower(a.primary_email) = @address::text)
+    OR EXISTS (SELECT 1 FROM google.connections c WHERE c.google_user_id = @google_user_id)
+)::boolean AS held;

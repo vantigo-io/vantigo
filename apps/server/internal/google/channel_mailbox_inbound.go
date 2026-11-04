@@ -29,9 +29,10 @@ import (
 // Removed, the last record of a message winning. Each new item is
 // completed by its metadata — Message-ID, internalDate, threadId — and a 404
 // there is Removed. A history page naming more messages than a page holds
-// keeps the rest in the link's queue, answered before the next page is read.
+// keeps the rest in the link's queue, answered before the next page is read;
+// a queue too long for a link is ErrMailboxDeltaExpired, a fresh read.
 // Raw reads a message's RFC 5322 bytes, format=raw, through a cap made of
-// the caller's.
+// the caller's, under a budget scaled to it.
 //
 // Neither reads, decodes or logs what a message says: the metadata asks for
 // the Message-ID header alone.
@@ -127,7 +128,7 @@ func (m *channelMailbox) Delta(ctx context.Context, mailbox, folder, link string
 	} else if since.IsZero() {
 		return contracts.MailDelta{}, errors.New("google: a fresh delta names no instant to start from")
 	}
-	s, err := m.open(ctx, mailbox)
+	s, err := m.open(ctx, mailbox, link == "")
 	if err != nil {
 		return contracts.MailDelta{}, err
 	}
@@ -315,11 +316,14 @@ func (m *channelMailbox) queuePage(ctx context.Context, s gmailSession, l mailLi
 	return m.page(append(items, removed...), next)
 }
 
-// page is a delta page of items whose link is next.
+// page is a delta page of items whose link is next. A link longer than
+// mailLinkMax — a history page naming more messages than its queue keeps —
+// is ErrMailboxDeltaExpired: the caller starts afresh, its receipts
+// de-duplicating what it had read.
 func (m *channelMailbox) page(items []contracts.MailItem, next mailLink) (contracts.MailDelta, error) {
 	link := next.encode()
 	if len(link) > mailLinkMax {
-		return contracts.MailDelta{}, fmt.Errorf("%w: a delta link longer than the provider keeps", errGoogleUnreachable)
+		return contracts.MailDelta{}, fmt.Errorf("%w: a delta link longer than the provider keeps", contracts.ErrMailboxDeltaExpired)
 	}
 	if items == nil {
 		items = []contracts.MailItem{}
@@ -376,7 +380,7 @@ func (m *channelMailbox) Raw(ctx context.Context, mailbox, messageID string, max
 	if max <= 0 {
 		return nil, errors.New("google: a raw read takes no byte")
 	}
-	s, err := m.open(ctx, mailbox)
+	s, err := m.open(ctx, mailbox, false)
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +390,7 @@ func (m *channelMailbox) Raw(ctx context.Context, mailbox, messageID string, max
 	}
 	err = m.keys.c.do(ctx, s.modify, http.MethodGet,
 		s.gmailURL("/messages/"+url.PathEscape(messageID), url.Values{"format": {"raw"}, "fields": {"raw"}}),
-		nil, &answer, limit, shownAs(gmailShownBase+"/messages/{id}"))
+		nil, &answer, limit, withBudget(sizedBudget(limit)), shownAs(gmailShownBase+"/messages/{id}"))
 	switch {
 	case errors.Is(err, errResponseTooLarge):
 		return nil, fmt.Errorf("%w: %w", contracts.ErrMailTooLarge, err)
