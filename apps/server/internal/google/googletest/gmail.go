@@ -143,6 +143,20 @@ func (g *FakeGoogle) Deliver(address string, raw []byte, at time.Time) GmailMess
 	return *msg
 }
 
+// DeliverInThread puts raw in address's Inbox as Deliver does, in thread
+// whatever its headers say, as Gmail threads by subject too.
+func (g *FakeGoogle) DeliverInThread(address string, raw []byte, at time.Time, thread string) GmailMessage {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	b := g.box(address)
+	msg := &GmailMessage{ID: g.nextGmailID(), Labels: []string{"INBOX", "UNREAD"}, InternalDate: at.UTC(), Raw: slices.Clone(raw), ThreadID: thread}
+	msg.MessageID, _ = g.threadOf(b, raw)
+	b.messages[msg.ID] = msg
+	b.order = append(b.order, msg.ID)
+	b.record("messageAdded", msg.ID, msg.Labels)
+	return *msg
+}
+
 // threadOf is the Message-ID raw carries and the thread it joins: the
 // thread of a message whose Message-ID its In-Reply-To or References names,
 // else a new one.
