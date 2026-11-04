@@ -10,7 +10,7 @@ sources:
   - apps/server/internal/openapi/specs/google.yaml
   - apps/server/internal/db/migrations/00114_google_baseline.sql
   - apps/server/internal/db/migrations/00115_google_accounts.sql
-  - apps/server/internal/db/migrations/00114_google_connections.sql
+  - apps/server/internal/db/migrations/00116_google_connections.sql
   - apps/server/internal/directoryaddress
 ---
 The Google Workspace module connects one installation to one Google Workspace
@@ -526,7 +526,7 @@ the files are `personal*.go`.
 
 ### The table and the switch
 
-`00114_google_connections.sql` creates **`connections`**, one row per Google account:
+`00116_google_connections.sql` creates **`connections`**, one row per Google account:
 
 - `google_user_id` (32, the primary key) — the account's Directory id, which the ID
   token's `sub` carries (U1);
