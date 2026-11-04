@@ -150,6 +150,18 @@ func TestClient_RetriesAndCaps(t *testing.T) {
 			t.Errorf("a refusal: %v, waits %v", err, waits)
 		}
 	})
+	t.Run("a 403 quota spent is throttled at once", func(t *testing.T) {
+		for _, reason := range []string{"quotaExceeded", "dailyLimitExceeded"} {
+			spent := `{"error":{"code":403,"errors":[{"reason":"` + reason + `"}]}}`
+			rt := &scripted{answers: []*http.Response{answerOf(403, spent), answerOf(200, `{}`)}}
+			var log bytes.Buffer
+			var waits []time.Duration
+			err := testClient(rt, &log, &waits).get(context.Background(), &staticSource{}, target, nil)
+			if !errors.Is(err, errThrottled) || errors.Is(err, errAdminRefused) || len(waits) != 0 || len(rt.seen) != 1 {
+				t.Errorf("%s: %v, waits %v, %d calls, want errThrottled at once", reason, err, waits, len(rt.seen))
+			}
+		}
+	})
 	t.Run("a Retry-After over ten seconds is not waited", func(t *testing.T) {
 		rt := &scripted{answers: []*http.Response{answerOf(429, "", "Retry-After", "11")}}
 		var log bytes.Buffer

@@ -20,6 +20,10 @@ func Token(ctx context.Context, d module.Deps, scopes []string, subject string) 
 	return newKeyring(store.New(d.Pool), newGoogleClient(d)).tokenSource(scopes, subject).token(ctx)
 }
 
+// Throttled reports whether err is the client's errThrottled: Google's usage
+// limit, never a refusal.
+func Throttled(err error) bool { return errors.Is(err, errThrottled) }
+
 // SubjectInvalid reports whether err is Google refusing the subject rather
 // than the key.
 func SubjectInvalid(err error) bool { return errors.Is(err, errSubjectInvalid) }

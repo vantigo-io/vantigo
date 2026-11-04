@@ -281,20 +281,35 @@ func (s *mailboxSource) lastRevision() int64 {
 //     revision the token came from, through D's guarded reconnect, and is
 //     contracts.ErrConnectionNeeded (ErrMailboxGone for a removal whose
 //     closing connection's token is forgotten so);
-//   - a 403 that is no usage limit is ErrMailboxDenied;
-//   - anything else is itself.
+//   - a 403 refusing the person's calendar itself (mailboxDenied) is
+//     ErrMailboxDenied;
+//   - anything else is itself — a usage limit is errThrottled already, and
+//     any other 403 Google's refusal of that one call.
 func (m *mailboxCalendar) refused(ctx context.Context, s mailboxSession, err error) error {
 	var g *googleError
 	if !errors.As(err, &g) {
 		return err
 	}
-	switch g.Status {
-	case http.StatusUnauthorized:
+	switch {
+	case g.Status == http.StatusUnauthorized:
 		return s.src.answer(m.unauthorized(ctx, s))
-	case http.StatusForbidden:
+	case mailboxDenied(g):
 		return fmt.Errorf("%w: %w", contracts.ErrMailboxDenied, err)
 	}
 	return err
+}
+
+// deniedReasons are the reasons of a 403 that refuses the person's calendar
+// itself: the grant or the account may not reach it, or the Calendar API is
+// off in the project. Any other 403 — forbiddenForNonOrganizer, say — is
+// Google's refusal of that one call; a usage limit (rateLimitReasons,
+// quotaReasons) is a throttle.
+var deniedReasons = []string{"forbidden", "insufficientPermissions", "accessNotConfigured"}
+
+// mailboxDenied reports whether g is a 403 refusing the person's calendar,
+// ErrMailboxDenied to the contract.
+func mailboxDenied(g *googleError) bool {
+	return g.Status == http.StatusForbidden && slices.Contains(deniedReasons, g.Reason)
 }
 
 // unauthorized records Google's refusal of the person's token: the row read
@@ -740,12 +755,14 @@ func (s mailboxSession) partOf(op contracts.MailboxOp, calendarID string) (batch
 // ErrMailboxUnavailable unsent. Each part's answer is judged on its own: 2xx
 // done (a create's id, the etag as the change key; an update Google answers
 // cancelled is Gone), 404 or 410 on an update or a delete Gone (a delete is
-// then done), a 403 that is no usage limit ErrMailboxDenied, a usage limit
-// sent again once then errThrottled, anything else Google's refusal. Once an
-// op is refused for its mailbox, the ops not yet sent answer the same,
-// unsent. A batch that fails whole — Google unreachable, a 5xx, the context
-// done — fails the call, and no result is answered; a batch holding a create
-// is sent once.
+// then done), a 403 refusing the calendar itself (mailboxDenied)
+// ErrMailboxDenied, a rate limit sent again once then errThrottled, a quota
+// spent errThrottled unsent again, anything else — an event's own 403, such
+// as forbiddenForNonOrganizer, included — that op's own refusal. Once an op
+// is refused for its mailbox, the ops not yet sent answer the same, unsent. A
+// batch that fails whole — Google unreachable, a 5xx, the context done —
+// fails the call, and no result is answered; a batch holding a create is sent
+// once.
 func (m *mailboxCalendar) Apply(ctx context.Context, mailbox, calendarID string, ops []contracts.MailboxOp) ([]contracts.MailboxResult, error) {
 	if calendarID != "" && !validCalendarID(calendarID) {
 		return nil, errors.New("google: a calendar id that is no id")
@@ -835,7 +852,7 @@ func (m *mailboxCalendar) result(ctx context.Context, s mailboxSession, op contr
 		return contracts.MailboxResult{Err: errThrottled}
 	case r.status == http.StatusUnauthorized:
 		return contracts.MailboxResult{Err: s.src.answer(m.unauthorized(ctx, s))}
-	case r.status == http.StatusForbidden:
+	case mailboxDenied(g):
 		return contracts.MailboxResult{Err: fmt.Errorf("%w: %w", contracts.ErrMailboxDenied, g)}
 	case (r.status == http.StatusNotFound || r.status == http.StatusGone) && op.Kind != contracts.MailboxOpCreate:
 		return contracts.MailboxResult{EventID: op.EventID, Gone: true}
