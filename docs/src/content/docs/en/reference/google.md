@@ -463,7 +463,8 @@ none), `EmployeeNumber` its first `organization`-typed external id, `Enabled` no
 suspended, and `Guest` false — Google's directory has no guests. A pick fills identity's
 announced link with the Directory id as `objectId` and the primary email as
 `userPrincipalName`; identity keys a Google sign-in by the ID token's `sub`
-([U1](#unverified-items)).
+([U1](#unverified-items)), and a sign-in whose `sub` is another id does not fulfil the
+link by its verified email.
 
 **`Users`** strips `'`, `"`, `\` and `*` from the search and asks nothing when nothing is
 left. It then asks `users.list(customer=my_customer, projection=basic, viewType=admin_view,
@@ -606,12 +607,13 @@ Three concern delivery C, built on the design's defensive path before they are s
 (P5); the check in a test organisation comes before its merge:
 
 - **U1 — the ID token's `sub` equals the Directory user id.** Announced links name the
-  Directory id and identity compares it with `sub` first. Should they differ, the object
-  id never matches and identity falls back to the link's other key: the primary email,
-  against the token's verified `email` — the same person's address, so the sign-in still
-  lands on the announced user (identity's test pins it), and nobody is linked to the wrong
-  user. A link announced with the object id alone would then never be fulfilled, and the
-  sign-in would go as it would have without it.
+  Directory id and identity compares it with `sub`. Should they differ, the object id
+  never matches, and the link's other key does not stand in for it: a primary email named
+  under another object id is no match, since the address may since have been given to
+  another account (identity's test pins it, for Google and for Entra). A link announced
+  from a pick would then never be fulfilled, and the sign-in would go as it would have
+  without it; links would have to be announced with the primary email alone, as the
+  user principal name, until the key is mended.
 - **U4 — `hd` for a user on a secondary domain.** Every verified domain is prefilled as
   allowed. Identity also requires `hd` to equal the address's domain: should Google answer
   the primary domain for a user whose address is on a secondary one, that user's sign-in

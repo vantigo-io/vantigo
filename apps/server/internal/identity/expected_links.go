@@ -350,20 +350,28 @@ const matchedByPrincipalName = "principalName"
 // on q, by the first key that names one: the object id (the oid claim, or
 // Google's sub: readExternalAccount),
 // then the principal name (readPrincipalName) normalised as emails are
-// against the announced one; nil for none.
-func oidcExpectedLink(ctx context.Context, q *store.Queries, a externalAccount) (*expectedLinkMatch, error) {
+// against the announced one; nil for none. A link the principal name names
+// but whose object id is another than a's is no match — the address may
+// since have been given to another account, and the object id is the
+// account — and contradicted is then its user (else uuid.Nil); a link
+// announced without an object id matches by the principal name alone.
+func oidcExpectedLink(ctx context.Context, q *store.Queries, a externalAccount) (m *expectedLinkMatch, contradicted uuid.UUID, err error) {
 	if a.objectID != "" {
 		row, err := q.GetExpectedLinkByObjectID(ctx, store.GetExpectedLinkByObjectIDParams{Issuer: a.issuer, ObjectID: &a.objectID})
 		if m, err := firstExpectedLink(row, err, matchedByOID); m != nil || err != nil {
-			return m, err
+			return m, uuid.Nil, err
 		}
 	}
 	if a.principalName == "" {
-		return nil, nil
+		return nil, uuid.Nil, nil
 	}
 	upn := normalizeEmail(a.principalName)
 	row, err := q.GetExpectedLinkByUPN(ctx, store.GetExpectedLinkByUPNParams{Issuer: a.issuer, UserPrincipalName: &upn})
-	return firstExpectedLink(row, err, matchedByPrincipalName)
+	m, err = firstExpectedLink(row, err, matchedByPrincipalName)
+	if m != nil && m.link.ObjectID != nil && *m.link.ObjectID != a.objectID {
+		return nil, m.link.UserID, nil
+	}
+	return m, uuid.Nil, err
 }
 
 // scimExpectedLink is the announced link the SCIM resource in matches, under
@@ -408,9 +416,16 @@ func consumeExpectedLink(ctx context.Context, q *store.Queries, r *http.Request,
 // not consulted, and the user's address, name and roles are kept. The
 // announcement is looked for outside the transaction first, so that a
 // sign-in nobody announced never waits for the owner lock; the
-// transaction reads it again.
+// transaction reads it again. A link the principal name names under
+// another object id is not fulfilled, and the refusal is logged with the
+// announced user's id.
 func (s *server) fulfilExpectedOIDCLink(ctx context.Context, r *http.Request, a externalAccount) (fulfilled bool, err error) {
-	if m, err := oidcExpectedLink(ctx, s.q, a); err != nil || m == nil {
+	m, contradicted, err := oidcExpectedLink(ctx, s.q, a)
+	if contradicted != uuid.Nil {
+		s.deps.Logger.WarnContext(ctx, "identity: an announced link was not fulfilled, since the signing-in identity's object id is not the announced one",
+			"user_id", contradicted)
+	}
+	if err != nil || m == nil {
 		return false, err
 	}
 	now := s.deps.Clock()
@@ -419,7 +434,7 @@ func (s *server) fulfilExpectedOIDCLink(ctx context.Context, r *http.Request, a 
 		if err := lockOwners(ctx, q); err != nil {
 			return err
 		}
-		m, err := oidcExpectedLink(ctx, q, a)
+		m, _, err := oidcExpectedLink(ctx, q, a)
 		if err != nil || m == nil {
 			return err
 		}

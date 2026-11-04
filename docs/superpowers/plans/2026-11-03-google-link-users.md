@@ -114,11 +114,14 @@ Checked against `280cd94a` (delivery B's branch, `feat/google-accounts`).
   otherwise arrive at their first sign-in. Both steps are hidden while the connection has
   no customer (no test has read the organisation).
 - **U1 is not settled (P5).** The links are keyed by the Directory id, compared with the
-  ID token's `sub`. Should they differ, identity falls back to the link's other key, the
-  primary email, against the token's verified email — the same person's address — so the
-  sign-in still lands on the announced user, and nothing is linked to the wrong user
-  (found while building: identity's test pins it). The pull request says the check in the
-  test tenant comes before the merge; `R/google.md` records it as unverified.
+  ID token's `sub`. Should they differ, the link is **not** fulfilled by its other key:
+  a principal name announced under an object id the token does not carry is no match,
+  for every provider, since the address may have been given to another account since
+  the announcement (changed in review: the fallback by address alone let a reassigned
+  address claim the link). If U1 turns out false, Google links must be announced
+  without the object id — the primary email alone, as the principal name — until the
+  key is mended. The pull request says the check in the test tenant comes before the
+  merge; `R/google.md` records it as unverified.
 
 ## Tasks
 
@@ -137,7 +140,8 @@ Checked against `280cd94a` (delivery B's branch, `feat/google-accounts`).
 - [ ] **3. A Google sign-in fulfils a pick** — `test(identity): a Google sign-in lands on the user announced from the directory (Google C)`.
   Identity's harness with the Google OIDC fake and a `FakeDirectorySearch` keyed
   `google`: search, announce the pick, sign in with `sub` the picked id, land on the
-  user; and a `sub` that differs landing by the primary email (U1's fallback).
+  user; and a `sub` that differs not landing on the announced user, though the primary
+  email is its principal name (U1 false; Entra's equivalent beside it).
 - [ ] **4. The SSO prefill** — `feat(host): the single sign-on card takes allowed domains as a default (Google C)`.
   `SsoDefaults.allowedDomains`; tests: applied to an empty form only, never over a saved
   value.
@@ -164,8 +168,9 @@ checks are unchanged; no match is fuzzy.
 ## Unverified items this delivery depends on
 
 - **U1** (the ID token's `sub` equals the Directory user id): not settled. A mismatch
-  falls back to the primary email against the verified email, the same person; nothing
-  linked wrongly. Settled in the test tenant before the merge (P5).
+  fulfils no link announced from a pick — the primary email does not stand in for the
+  object id — so nothing is linked wrongly, but if U1 is false Google links must be
+  announced without the object id. Settled in the test tenant before the merge (P5).
 - **U4** (`hd` for a user on a secondary domain): every verified domain is prefilled as
   allowed. Identity's check also needs `hd` to equal the email's domain (reading 7): if
   Google answers the primary domain for a user whose address is on a secondary one, that

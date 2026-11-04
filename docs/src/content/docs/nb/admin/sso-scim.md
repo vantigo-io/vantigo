@@ -281,9 +281,11 @@ samsvarer, avvises.
 bruker-ID i katalogen (21 sifre, beholdt nøyaktig) — objekt-ID-en en kunngjort kobling
 navngir når eieren velger kontoen fra katalogen, og ID-en Google Workspace-modulen kjenner
 kontoen på. At `sub` er lik katalog-ID-en, er Googles dokumenterte oppførsel, men ennå
-ikke bekreftet i en testorganisasjon (U1); skulle de være ulike, oppfylles en kunngjort
-kobling på prinsipalnavnet i stedet — primæradressen, mot tokenets verifiserte e-post —
-så personen havner likevel på sin egen bruker.
+ikke bekreftet i en testorganisasjon (U1). Skulle de være ulike, oppfylles ikke en
+kobling kunngjort fra et valg: prinsipalnavnet — primæradressen — peker også på den, men
+under en objekt-ID innloggingen ikke har, og det er ikke et treff (se
+[den kunngjorte koblingen](#den-kunngjorte-koblingen)). Koblinger måtte da kunngjøres med
+bare brukerprinsipalnavnet.
 
 **En bruker på et sekundærdomene.** Hvert verifiserte domene i organisasjonen fylles ut
 som tillatt, så domenelisten avviser aldri et av dem. Om Google svarer `hd` som
@@ -453,7 +455,12 @@ kontoen, og eierens handling går foran:
   `preferred_username`, som er brukerprinsipalnavnet; for en leverandør uten et slikt, det
   verifiserte `email`-kravet) mot det kunngjorte brukerprinsipalnavnet, sammenlignet slik
   e-postadresser sammenlignes. En kunngjøring med bare prinsipalnavn oppfylles derfor
-  også av en innlogging. Et treff oppretter
+  også av en innlogging. En kunngjøring som også navngir en objekt-ID, oppfylles **ikke**
+  av prinsipalnavnet når tokenets objekt-ID er en annen (eller tokenet ikke har noen):
+  adressen kan ha blitt gitt til en annen konto siden du kunngjorde den, og objekt-ID-en
+  er kontoen. Innloggingen går da som den ville gått uten kunngjøringen, som fortsatt
+  venter, og serveren logger avvisningen med den kunngjorte brukerens ID (ingen adresse).
+  Et treff oppretter
   koblingen, logger brukeren inn som en koblet konto (en deaktivert bruker får
   `account_locked`; en bruker med TOTP bes om den) og beholder brukerens adresse, navn og
   roller. **E-postkravet brukes ikke**: eieren pekte ut brukeren.
