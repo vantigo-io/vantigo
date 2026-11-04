@@ -169,14 +169,16 @@ first answers `revision_conflict`: the tab reloads and says so.
 
 ### The account kind
 
-Each person's account is held by one of three kinds, which Staff passes to identity on
-every call:
+Each person's account is held by one of these kinds — local, external, or the key of an
+identity provider an enabled module offers — which Staff passes to identity on every
+call:
 
 | Kind | Who holds the account | What Staff does |
 | --- | --- | --- |
 | `local` (*Local*) | Vantigo's identity module | Creates the user, invites them, gives the employee roles |
 | `external` (*External identity provider*) | The company's identity provider, by SSO or SCIM | Finds the user the provider made once an Owner has adopted it; re-enables what Staff disabled; disables |
 | `entra` (*Microsoft Entra ID*) | Microsoft Entra ID, through a provider module | Has Entra create, enable, update and disable the account; announces it so the user that arrives is adopted with no Owner; gives the employee roles once |
+| `google` (*Google Workspace*) | Google Workspace, through the [Google Workspace module](/en/admin/google-workspace/#the-accounts) | As for `entra`, in the Google Workspace organisation: the account is created suspended, its suspension lifted with a first password on the first day, and suspended when the person leaves |
 
 **On the upgrade** that brought the kinds, Staff set every person's kind and the
 default from the installation's authority mode, once, the first time it started —
@@ -209,6 +211,9 @@ Vantigo user has arrived yet; a link the person keeps under Entra is still disab
 a leaver or by **Disable now**, and nothing else is done to it. Moving a person from `local` to `entra` while their
 Vantigo user still waits for its invitation is allowed: the user Entra brings takes
 that one over.
+
+What follows for `entra` holds for `google` in the same way, with the Google Workspace
+page in place of the Microsoft Entra ID page.
 
 **The `entra` kind needs** the provider module installed and its connection working:
 the **Accounts** card reads *Microsoft Entra ID: connected.* Until then — *not
@@ -290,6 +295,19 @@ address Entra made for a person with no work email is written to the person
 the history); a second look, or one after it expired, is `pass_gone` (409): **Run now
 (new pass)** issues another.
 
+**The `google` kind** runs the same steps against the Google Workspace organisation:
+before the effective day the account is created **suspended**; on the day its
+suspension is lifted and Google gets a **first password** in place of a pass — 16
+characters the person changes at their first sign-in, shown once by HR the same way
+(*Show the password*), working for the lifetime the Google Workspace account rules set
+(seven days unless changed) — and a new one comes from **Run now** only while nobody has
+signed in to the account. The day after the last end the account is suspended with the
+leaver's steps the Google Workspace page sets ([what a leaver's steps
+do](/en/admin/google-workspace/#what-a-leavers-steps-do)); after **Delete an external
+account (days after the end)** it is deleted in Google, which keeps a deleted user
+restorable for 20 days. Google has no hire date, leave date, employee type, company name
+or division: of the directory profile, those fields are not sent.
+
 **Groups.** Each cycle also materialises the derived [groups](/en/user/staff/#groups) —
 the members a group's rule yields today, each who joins or leaves recorded on their
 history (`group_joined`, `group_left`) — before it works the accounts, skipped while
@@ -303,7 +321,9 @@ or one a provider was turned off for — deleted after **Delete an external acco
 after the end)** or, when that is empty, renamed `… (archived)` and kept. Entra deletes
 only a Microsoft 365 group it made: it empties and keeps a security group, and leaves a
 group it did not make ([Staff's groups in the
-tenant](/en/admin/entra/#staffs-groups-in-the-tenant)). A provider not connected is
+tenant](/en/admin/entra/#staffs-groups-in-the-tenant)). Google deletes a group it made
+and leaves one it found ([Staff's groups in Google
+Workspace](/en/admin/google-workspace/#staffs-groups-in-google-workspace)). A provider not connected is
 skipped, and tried again at the next poll. A group the provider found in its directory
 rather than made waits, with no item raised, until a holder of the provider's
 permission confirms it there. A group the provider refused, or whose calls failed three

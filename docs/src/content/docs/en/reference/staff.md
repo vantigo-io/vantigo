@@ -5558,8 +5558,12 @@ answers its `provider`, `announced_at`, `pass_issued_at` and `reported_codes` to
 and from `settings.provider_status`, what the worker last saw of each provider, never
 by asking the provider at read time. Their names name no provider, as their codes do
 not (Google Workspace design G6; until its delivery 0 they were named for Entra —
-`accountAmbiguousInEntra`, `managerNotInEntra`, `entraNotConnected` and so on). One per
-person, as above, unless said:
+`accountAmbiguousInEntra`, `managerNotInEntra`, `entraNotConnected` and so on). Each
+carries the provider instead: `provider`, its key (`entra`, `google`), and
+`providerName`, its name as the worker last recorded it (its key when none is) — so the
+host words `hireDateNotWritten` and `photoNotWritten` with the name and opens
+`/workspace/<provider>` for `accountUnconfirmedInDirectory`. One per person, as above,
+unless said:
 
 | `type` | Source | Trigger |
 | --- | --- | --- |
@@ -5568,7 +5572,7 @@ person, as above, unless said:
 | `accountAddressTakenInDirectory` | `external_address_taken` | The person's work email is another account's in the directory. |
 | `accountSyncedOnPremises` | `external_synced_on_premises` | The account is synchronised from an on-premises directory, whose attributes the provider cannot write. |
 | `accountPrivilegedInDirectory` | `external_privileged`, or the reported `privileged` | The account holds an administrative role in the directory; an administrator handles it by hand. |
-| `accountUnconfirmedInDirectory` | `external_unconfirmed` | The directory holds an account under the person's employee number the provider did not create, and nobody with the provider's manage permission (`entra:manage`) has confirmed its adoption; it is confirmed on the provider's page under Integrations, which the dashboard's sentence links to (`/workspace/entra`, the one provider there is today). |
+| `accountUnconfirmedInDirectory` | `external_unconfirmed` | The directory holds an account under the person's employee number the provider did not create, and nobody with the provider's manage permission (`entra:manage`, `google:manage`) has confirmed its adoption; it is confirmed on the provider's page under Integrations, which the dashboard's sentence links to (`/workspace/<provider>`). |
 | `hireDateNotWritten` | the reported `hire_date_not_written` | The directory refused the hire date. |
 | `licenceUnavailable` | the reported `licence_unavailable:<SKU>` | A licence could not be assigned, none being left — one per person whatever the licences; no title names the licence. |
 | `passUnrevealed` | `pass_issued_at` | A pass issued a day ago or more that nobody has shown; `occurredAt` when it was issued. |

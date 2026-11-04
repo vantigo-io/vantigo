@@ -604,12 +604,19 @@ på hvilken adresse og hvem som har kontoen. HR endrer det:
    - **Microsoft Entra ID** — tilbys bare så lenge en aktivert modul tilbyr den: Ansatte lar
      Entra opprette personens konto, aktiverer og deaktiverer den der, og ber Vantigo
      vente den, så brukeren den bringer, er personens uten en eier imellom.
+   - **Google Workspace** — tilbys bare mens Google Workspace-modulen er slått på: det
+     samme som Microsoft Entra ID, i selskapets Google Workspace-organisasjon. Ansatte lar
+     Google opprette personens konto (suspendert til den første dagen), opphever
+     suspenderingen på dagen med et første passord HR viser én gang, og suspenderer den
+     når personen slutter ([En Google Workspace-konto](#en-google-workspace-konto)).
 
-   En ny person får **Standard kontotype** fra [Kontoer](#kontoer). Å flytte en person bort
+   En ny person får **Standard kontotype** fra [Kontoer](#kontoer). Det som følger for
+   Microsoft Entra ID, gjelder for Google Workspace på samme måte. Å flytte en person bort
    fra Microsoft Entra ID mens Entra har en konto for dem — aktivert, deaktivert eller
-   stoppet, til Entra har slettet den eller meldt den borte — avvises — *Kontotypen kan ikke forlate Microsoft Entra ID mens Microsoft Entra ID har en
-   konto for personen. Personen forlater katalogen med Deaktiver nå eller når
-   arbeidsforholdet slutter.* En person med en
+   stoppet, til Entra har slettet den eller meldt den borte — avvises — *Kontotypen kan
+   ikke forlate identitetsleverandøren mens leverandøren har en konto for personen.
+   Personen forlater katalogen med Deaktiver nå eller når arbeidsforholdet slutter.* En
+   person med en
    Vantigo-bruker som fortsatt venter på invitasjonen, kan flyttes fra Lokal til
    Microsoft Entra ID: kontoen som kommer fra Entra, overtar den brukeren. Til Ansatte
    har satt alles type ved oppgraderingen som innførte typene, lagres ikke en endring av
@@ -702,6 +709,39 @@ ikke endret — under [steget **Sett kontoreglene**](/nb/user/entra/#4-sett-kont
 e-post. Et pass som har gått ut, eller som allerede er vist, er borte — fanen sier
 *Passet er allerede vist, har utløpt, eller ble aldri utstedt. Kjør nå (nytt pass)
 utsteder et nytt.* — så bruk **Kjør nå (nytt pass)**.
+
+### En Google Workspace-konto
+
+For en person av typen **Google Workspace** heter kortet **Google Workspace**, og det
+leses som kortet for Microsoft Entra ID, med Googles ord:
+
+- Kontoens adresse er dens **primære e-postadresse** i Google Workspace — e-posten på
+  jobb når den er på et av organisasjonens bekreftede domener, ellers en laget av
+  navnene etter kontoreglene (*kari.nordmann@…*, så *kari.nordmann2@…* når den er tatt).
+  Ansatte gir den aldri nytt navn.
+- *Deaktivert* er Googles **suspendert**: kontoen finnes, og ingen kan logge inn på den.
+  Ansatte lager kontoen suspendert, og opphever suspenderingen den første dagen i
+  arbeidsforholdet.
+- I stedet for et midlertidig tilgangspass får Google et **første passord** når
+  suspenderingen oppheves: 16 tegn, som personen skriver inn ved første innlogging hos
+  Google og så bytter ut med sitt eget. **Vis passordet** (HR) viser det én gang, i et
+  vindu med tittelen **Første passord**, med **Kopier** og når det slutter å virke — sju
+  dager med mindre kontoreglene på [fanen Kontoer](/nb/user/google-workspace/#fanen-kontoer)
+  på siden for Google Workspace sier noe annet. Etter det glemmes det; **Kjør nå (nytt
+  passord)** setter et nytt bare så lenge ingen har logget inn på kontoen ennå, aldri over
+  en konto noen bruker. Gi det til personen selv; det sendes aldri på e-post.
+- Hva Google ikke fikk gjort, sies i én setning hver, som for Entra: kontoen funnet i
+  Google, men ikke opprettet av Vantigo og ikke bekreftet ennå (en med `google:manage`
+  bekrefter den på fanen Kontoer), en konto med en administratorrolle, ingen lisens
+  igjen, passordet avvist av organisasjonens passordregler, bildet ikke skrevet, personen
+  som sluttet, ikke logget ut (*kontoen er suspendert likevel*), eller et avslutningssteg
+  ikke fullført.
+- Google holder færre felt enn Entra: av [Katalogprofil](#katalogprofil) skriver den
+  stillingstittelen, avdelingen, kostnadsstedet, jobbtelefonen og mobilen, kontorstedet,
+  lederen og det foretrukne språket. Ansettelsesdatoen, sluttdatoen, ansattypen,
+  selskapsnavnet og divisjonen har ingen plass i Google og sendes ikke; ingenting
+  meldes for dem.
+- Bildet skrives i 96 × 96 piksler, kvadratet i midten, slik Google holder det.
 
 **Kjør nå** (HR, mens flagget er på) gjør kontoens neste steg med en gang, med en ny
 invitasjon til en ventende bruker hvis siste invitasjon ikke kan godtas. Fanen sier
@@ -1015,6 +1055,19 @@ kjøring, og gruppen følger ved kjøringen etter bekreftelsen. Et team lages n�
 gammel, så det kommer en kjøring etter gruppen. Når katalogen ikke kunne si hva en
 gruppe kan ha, sier kortet *Microsoft Entra ID kunne ikke si hva en gruppe kan ha der.
 Prøv igjen senere.*
+
+**En gruppe i Google Workspace.** Mens Google Workspace-modulen er slått på, har en gruppe
+også et kort **Google Workspace**. Innstillingene er **Gruppeadresse** — gruppens
+e-postadresse, på et av organisasjonens bekreftede domener; står den tom, gruppens nøkkel
+på domenet i kontoreglene; den kan ikke endres når gruppen er laget — **Hvem ser
+gruppen** — *Alle i organisasjonen*, som også finner den i katalogen, eller *Bare
+medlemmene* — og **Lisenser** medlemmene får, organisasjonens lisenser slik siden for
+Google Workspace sist leste dem. Gruppens eiere er medlemmer med rollen *Owner* i
+Google. En gruppe Google allerede har på adressen, og som Vantigo ikke laget, venter til
+en med `google:manage` bekrefter den på [fanen
+Kontoer](/nb/user/google-workspace/#fanen-kontoer) på siden for Google Workspace. Å slippe
+gruppen sletter den i Google når Vantigo laget den, og overlater en den fant, til
+organisasjonen.
 
 **Å slå av bryteren** spør *Slå av Microsoft Entra ID for …?* og sier hva som skjer, etter
 **Slett en ekstern konto (dager etter slutt)** under [Kontoer](#kontoer): *Ansatte
@@ -1512,7 +1565,7 @@ bare for `staff:personal-data`:
 | Kompetansesamtalen med … er forfalt | En som er i arbeid, har ingen kompetansesamtale registrert innen intervallet som er satt under [Kompetansesamtaler](#kompetansesamtaler) — regnet fra siste gjennomgang, eller fra starten på det nåværende arbeidsforholdet når det er senere. En leder ser sine egne folks; HR alles. Gå gjennom fanen sammen og trykk **Gjennomgått i dag**. | Personens kompetansefane |
 | … oppfyller ikke kompetanseprofilen sin (2 punkter) | En kompetanseprofil som gjelder for en som er aktiv i dag, krever kompetanse hen ikke oppfyller — den mangler, er under nivået, er et sertifikat som er egenerklært, men ikke bekreftet, eller er utløpt — talt opp. Ett per person, for lederen og HR, aldri for personen selv eller for bare `staff:approve`. Det forsvinner når hvert punkt er oppfylt eller utløper snart. | Personens kompetansefane |
 | Gruppen … er ikke synkronisert med katalogen | En gruppe kunne ikke holdes i katalogen — en innstilling katalogen avviste, en gruppe der med nøkkelen som Vantigo ikke får endre, eller en katalog som ikke kunne nås tre ganger på rad; gruppesiden forteller hvorfor. Én per gruppe og katalog, for HR. | Gruppen |
-| Microsoft Entra ID avviste bildet av … | Entra ID ville ikke ta imot personens bilde — HRs bilde, eller personens eget når HR ikke har lagt inn noe. Ingenting trengs for innloggingen; legg inn et annet bilde for å prøve igjen. For HR. | Personens kontofane |
+| Microsoft Entra ID avviste bildet av … (eller Google Workspace …) | Personens katalog — navngitt i setningen — ville ikke ta imot personens bilde: HRs bilde, eller personens eget når HR ikke har lagt inn noe. Ingenting trengs for innloggingen; legg inn et annet bilde for å prøve igjen. For HR. | Personens kontofane |
 
 **Kontoer som står fast i katalogen.** For HR sier oversikten også fra når en persons
 konto i selskapets katalog står fast, med personens navn, og åpner fanen Konto: *To
