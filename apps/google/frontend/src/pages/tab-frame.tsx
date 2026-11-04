@@ -7,7 +7,7 @@ import { callerIsOwnerQueryOptions } from "../api/session";
 import "../i18n";
 
 /**
- * What the Status and Connection tabs share: the connection and whether the
+ * What the tabs share: the connection and whether the
  * caller is an Owner (cached under one key, so the tabs ask once), the
  * skeleton while they load and the retry when the connection cannot be read.
  */

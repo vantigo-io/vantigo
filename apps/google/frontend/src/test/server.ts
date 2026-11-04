@@ -8,6 +8,7 @@ import type {
   GoogleSettingsRequest,
   GoogleSku,
 } from "../api/connection";
+import type { GooglePersonalComplete, GooglePersonalConnection, GooglePersonalSwitch } from "../api/personal";
 import { jsonResponse, problemResponse } from "./api";
 import { type StubbedFetch, stubFetch, TEST_SESSION } from "./fetch";
 
@@ -21,6 +22,32 @@ export const NUMERIC_CLIENT_ID = "112233445566778899001";
 export const KEY_ID = "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567";
 export const PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY-----\n";
 export const WEB_CLIENT_ID = "123456789012-abcdefg.apps.googleusercontent.com";
+export const PERSONAL_REDIRECT_URI = "https://vantigo.example/api/v1/google/connect/callback";
+export const AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth?client_id=x&state=y";
+
+/** Connection for people, as the connection answers it: off, nobody connected. */
+export const personalSwitch = (overrides: Partial<GooglePersonalSwitch> = {}): GooglePersonalSwitch => ({
+  enabled: false,
+  status: "off",
+  connected: 0,
+  reconnect: 0,
+  redirectUri: PERSONAL_REDIRECT_URI,
+  ...overrides,
+});
+
+/** The caller's own connection as `GET /connection/me` answers it: offered, not connected. */
+export const personalConnection = (overrides: Partial<GooglePersonalConnection> = {}): GooglePersonalConnection => ({
+  offered: true,
+  state: "not_connected",
+  features: [],
+  account: "kari.nordmann@contoso.no",
+  ...overrides,
+});
+
+/** A live connection for the calendar. */
+export const activePersonal = (overrides: Partial<GooglePersonalConnection> = {}): GooglePersonalConnection =>
+  personalConnection({ state: "active", features: ["calendar"], connectedAt: "2026-11-03T08:00:00Z", ...overrides });
+
 export const REDIRECT_URIS = [
   "https://vantigo.example/api/v1/google/oauth/callback",
   "https://vantigo.example/api/v1/identity/oidc/callback",
@@ -58,6 +85,7 @@ export const unconfigured = (overrides: Partial<GoogleConnection> = {}): GoogleC
   leaverRemoveGroups: "managed",
   leaverSignOut: true,
   skus: [],
+  personalConnection: personalSwitch(),
   version: 1,
   ...overrides,
 });
@@ -138,12 +166,23 @@ export interface GoogleServer {
   groups?: GoogleGroup[];
   /** What `GET /connection/skus` reads from Google, kept on the connection; the connection's own by default. */
   skus?: GoogleSku[];
+  /** What `GET /connection/me` answers; offered and not connected by default. */
+  personal?: GooglePersonalConnection;
+  /** What `POST /connect` answers: Google's address by default, or a refusal. */
+  connect?: Response;
+  /** What `POST /complete` answers: an active connection returning to the Connections page by default, or a refusal. */
+  complete?: GooglePersonalComplete | Response;
   /** Answers a request instead of the fake's own; undefined falls through to it. */
   handle?: (method: string, path: string, body: unknown) => Response | undefined;
 }
 
 export type GoogleStub = StubbedFetch & {
-  state: { connection: GoogleConnection; accounts: GoogleAccount[]; groups: GoogleGroup[] };
+  state: {
+    connection: GoogleConnection;
+    accounts: GoogleAccount[];
+    groups: GoogleGroup[];
+    personal: GooglePersonalConnection;
+  };
 };
 
 const googleProblem = (status: number, code: string) => problemResponse(status, `refused: ${code}`, { code });
@@ -161,6 +200,7 @@ export const stubGoogleApi = (server: GoogleServer = {}): GoogleStub => {
     connection: server.connection ?? unconfigured(),
     accounts: server.accounts ?? [],
     groups: server.groups ?? [],
+    personal: server.personal ?? personalConnection(),
   };
   let nextCredential = 100;
   const owner = server.owner ?? true;
@@ -263,6 +303,29 @@ export const stubGoogleApi = (server: GoogleServer = {}): GoogleStub => {
       const skus = server.skus ?? c.skus;
       state.connection = { ...c, skus };
       return jsonResponse(200, skus);
+    }
+    if (method === "GET" && path === "/api/v1/google/connection/me") return jsonResponse(200, state.personal);
+    if (method === "DELETE" && path === "/api/v1/google/connection/me") {
+      state.personal = { ...state.personal, state: "not_connected", features: [], connectedAt: undefined };
+      return new Response(null, { status: 204 });
+    }
+    if (method === "POST" && path === "/api/v1/google/connect")
+      return server.connect?.clone() ?? jsonResponse(200, { authorizeUrl: AUTHORIZE_URL });
+    if (method === "POST" && path === "/api/v1/google/complete") {
+      if (server.complete instanceof Response) return server.complete.clone();
+      const answer = server.complete ?? { connection: activePersonal(), returnTo: "/settings/connections" };
+      state.personal = answer.connection;
+      return jsonResponse(200, answer);
+    }
+    if (method === "PUT" && path === "/api/v1/google/connection/personal") {
+      const { enabled } = body as { enabled: boolean };
+      state.connection = {
+        ...c,
+        personalConnection: enabled
+          ? { ...c.personalConnection, enabled, status: "ready" }
+          : { ...c.personalConnection, enabled, status: "off", connected: 0, reconnect: 0 },
+      };
+      return jsonResponse(200, state.connection);
     }
     if (method === "GET" && path === "/api/v1/google/accounts") return jsonResponse(200, state.accounts);
     if (method === "GET" && path === "/api/v1/google/groups") return jsonResponse(200, state.groups);

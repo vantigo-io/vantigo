@@ -85,3 +85,19 @@ export const reportedText = (code: string, t: Translate): string => {
 /** An account's last refusal (`privileged`, `ambiguous`, `address_taken`, `enabled`) in words; an unknown one as it came. */
 export const lastErrorText = (code: string, t: Translate): string =>
   t("lastError", { reason: known(`lastError.${code}`) ? t(`lastError.${code}`) : code });
+
+/** Why a connect failed — the callback's `code` or complete's refusal — in words; an unknown one as a plain failure. */
+export const personalFailedText = (code: string | undefined, t: Translate): string =>
+  t(code && known(`personal.failed_${code}`) ? `personal.failed_${code}` : "personal.failed_failed");
+
+/** Why Google refused a person's connection, in words; an unknown one asks them to sign in again. */
+export const personalReasonText = (code: string | undefined, t: Translate): string =>
+  t(code && known(`personal.reason_${code}`) ? `personal.reason_${code}` : "personal.reason_sign_in_again");
+
+/** A feature a connection serves (`calendar`, `mail`) in words; an unknown one as it came. */
+export const personalFeatureText = (feature: string, t: Translate): string =>
+  known(`personal.feature_${feature}`) ? t(`personal.feature_${feature}`) : feature;
+
+/** Why Connection for people cannot work (`no_web_client`, …) in words; an unknown one as it came. */
+export const peopleReasonText = (reason: string, t: Translate): string =>
+  known(`people.reason.${reason}`) ? t(`people.reason.${reason}`) : reason;
