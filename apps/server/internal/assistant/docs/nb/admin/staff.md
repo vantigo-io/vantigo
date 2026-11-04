@@ -169,14 +169,16 @@ forespørselen `revision_conflict`: fanen lastes inn på nytt og sier det.
 
 ### Kontotypen
 
-Hver persons konto holdes av én av tre typer, som Ansatte gir identitetsmodulen ved hvert
-kall:
+Hver persons konto holdes av én av disse typene — lokal, ekstern, eller nøkkelen til en
+identitetsleverandør en aktivert modul tilbyr — som Ansatte gir identitetsmodulen ved
+hvert kall:
 
 | Type | Hvem som har kontoen | Hva Ansatte gjør |
 | --- | --- | --- |
 | `local` (*Lokal*) | Vantigos identitetsmodul | Oppretter brukeren, inviterer dem, gir ansattrollene |
 | `external` (*Ekstern identitetsleverandør*) | Selskapets identitetsleverandør, med SSO eller SCIM | Finner brukeren leverandøren laget når en Owner har tatt den inn; aktiverer igjen det Ansatte deaktiverte; deaktiverer |
 | `entra` (*Microsoft Entra ID*) | Microsoft Entra ID, gjennom en leverandørmodul | Lar Entra opprette, aktivere, oppdatere og deaktivere kontoen; kunngjør den, så brukeren som kommer, tas inn uten en Owner; gir ansattrollene én gang |
+| `google` (*Google Workspace*) | Google Workspace, gjennom [Google Workspace-modulen](/nb/admin/google-workspace/#kontoene) | Som for `entra`, i Google Workspace-organisasjonen: kontoen opprettes suspendert, suspenderingen oppheves med et første passord den første dagen, og den suspenderes når personen slutter |
 
 **Ved oppgraderingen** som innførte typene, satte Ansatte hver persons type og
 standarden ut fra installasjonens autoritetsmodus, én gang, første gang den startet —
@@ -211,6 +213,9 @@ fortsatt for en som slutter eller med **Deaktiver nå**, og ingenting annet gjø
 den. Å flytte en person fra `local` til `entra` mens
 Vantigo-brukeren deres fortsatt venter på invitasjonen, er tillatt: brukeren Entra
 bringer, tar over den.
+
+Det som følger for `entra`, gjelder for `google` på samme måte, med siden for Google
+Workspace i stedet for siden for Microsoft Entra ID.
 
 **Typen `entra` krever** at leverandørmodulen er installert og at tilkoblingen virker:
 kortet **Kontoer** viser *Microsoft Entra ID: tilkoblet.* Til da — *ikke tilkoblet
@@ -292,6 +297,19 @@ passet**, `POST /api/v1/staff/people/{id}/account/pass`, `pass_revealed` i histo
 et nytt forsøk, eller et etter at det gikk ut, er `pass_gone` (409): **Kjør nå (nytt
 pass)** utsteder et nytt.
 
+**Typen `google`** kjører de samme stegene mot Google Workspace-organisasjonen: før
+virkningsdagen opprettes kontoen **suspendert**; på dagen oppheves suspenderingen, og
+Google får et **første passord** i stedet for et pass — 16 tegn personen bytter ved
+første innlogging, vist én gang av HR på samme måte (*Vis passordet*), og som virker så
+lenge kontoreglene for Google Workspace sier (sju dager om ikke endret) — og et nytt
+kommer fra **Kjør nå** bare så lenge ingen har logget inn på kontoen. Dagen etter siste
+slutt suspenderes kontoen med stegene for en som slutter, som siden for Google Workspace
+setter ([hva stegene for en som slutter
+gjør](/nb/admin/google-workspace/#hva-stegene-for-en-som-slutter-gjør)); etter **Slett en
+ekstern konto (dager etter slutt)** slettes den i Google, som holder en slettet bruker
+gjenopprettbar i 20 dager. Google har ingen ansettelsesdato, sluttdato, ansattype,
+firmanavn eller divisjon: av katalogprofilen sendes ikke de feltene.
+
 **Grupper.** Hver runde henter også de avledede [gruppene](/nb/user/staff/#grupper) —
 medlemmene en gruppes regel gir i dag, hver som kommer inn eller går ut, registrert i
 historikken deres (`group_joined`, `group_left`) — før den arbeider med kontoene, men
@@ -305,7 +323,9 @@ gruppe — eller en en leverandør er slått av for — slettes etter **Slett en
 (dager etter slutt)** eller, når den står tom, får `… (archived)` etter navnet og
 beholdes. Entra sletter bare en Microsoft 365-gruppe den laget: en sikkerhetsgruppe
 tømmes og beholdes, og en gruppe den ikke laget, blir stående ([Ansattes grupper i
-leietakeren](/nb/admin/entra/#ansattes-grupper-i-leietakeren)). En leverandør som ikke
+leietakeren](/nb/admin/entra/#ansattes-grupper-i-leietakeren)). Google sletter en gruppe
+den laget, og lar en den fant, stå ([Ansattes grupper i Google
+Workspace](/nb/admin/google-workspace/#ansattes-grupper-i-google-workspace)). En leverandør som ikke
 er tilkoblet, hoppes over og prøves igjen ved neste kjøring. En gruppe leverandøren fant
 i katalogen sin i stedet for å lage den, venter, uten noe varsel, til en med
 leverandørens rettighet bekrefter den der. En gruppe leverandøren avviste, eller der

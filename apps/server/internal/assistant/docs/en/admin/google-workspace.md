@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Connecting Vantigo to a Google Workspace organisation through a service account with domain-wide delegation — the Google Cloud project and the Admin SDK API, the service account and its JSON key, lifting iam.disableServiceAccountKeyCreation for the project, uploading the key, delegating the scopes in the Admin console and waiting for them, the admin to impersonate, the Internal web client and its two redirect URIs, verifying with Test connection, rotating a key, changing the service account, and what can go wrong.
+description: Connecting Vantigo to a Google Workspace organisation through a service account with domain-wide delegation — the Google Cloud project and the Admin SDK API, the service account and its JSON key, lifting iam.disableServiceAccountKeyCreation for the project, uploading the key, delegating the scopes in the Admin console and waiting for them, the admin to impersonate, the Internal web client and its two redirect URIs, verifying with Test connection — then the accounts Staff keeps in Google, the account rules (the address, the organisational unit, the first password and its lifetime), licences, Staff's groups and their three settings, photos at 96 px, what a leaver's steps do, delete after N days, confirming an account or a group Vantigo did not create, rotating a key, changing the service account, and what can go wrong.
 sidebar:
   order: 47
 sources:
@@ -11,16 +11,28 @@ sources:
   - apps/server/internal/google/connection.go
   - apps/server/internal/google/test.go
   - apps/server/internal/google/status.go
+  - apps/server/internal/google/provisioner.go
+  - apps/server/internal/google/directory.go
+  - apps/server/internal/google/lifecycle_prepare.go
+  - apps/server/internal/google/lifecycle_activate.go
+  - apps/server/internal/google/lifecycle_deactivate.go
+  - apps/server/internal/google/licences.go
+  - apps/server/internal/google/groups.go
+  - apps/server/internal/google/groups_traits.go
+  - apps/server/internal/google/photo.go
+  - apps/server/internal/google/accounts.go
 ---
 
 The Google Workspace module connects Vantigo to your company's Google Workspace
 organisation. It signs in as a **service account** with **domain-wide delegation**:
 Google lets the service account act as an admin of the organisation, for the scopes a
-super admin delegates to it, and nothing else. This release is the foundation: the
-connection, its key, its test and the Internal web client. Vantigo reads the
-organisation and its verified domains; it keeps no accounts yet. Keeping your people's
-accounts and groups, each person's own Google connection, calendar sync and Gmail come
-in later releases, on the same connection.
+super admin delegates to it, and nothing else. On that connection Staff keeps your
+people's Google accounts and its groups in the organisation: it creates a person's
+account before their first day, opens it on the day with a first password HR hands
+over, keeps their profile and manager in step, assigns the licences of their groups,
+writes their photo, and suspends the account when they leave
+([The accounts](#the-accounts)). Each person's own Google connection, calendar sync and
+Gmail come in later releases, on the same connection.
 
 This page is the operator's side: what Google needs, the steps in the Google Cloud
 console and the Admin console, and what to do when something fails. The page in Vantigo
@@ -46,7 +58,7 @@ is **Google Workspace** under **Integrations** in Workspace admin; its screens a
   hosts — `oauth2.googleapis.com`, `admin.googleapis.com`, `licensing.googleapis.com`,
   `www.googleapis.com`, `gmail.googleapis.com`, `groupssettings.googleapis.com` and
   `accounts.google.com` — without a proxy: the module uses none and follows no
-  redirect. This release calls only the first two.
+  redirect. This release calls the first four.
 - The migrations create the `google` schema whether or not the module is enabled; a
   least-privilege application role needs it granted like every other
   ([Installation](/en/admin/installation/#database-roles)).
@@ -117,9 +129,16 @@ under **Service account keys** as **In use**. Delete the downloaded file now.
 ## Delegate the scopes
 
 1. Step **3 Delegate the scopes** shows the service account's numeric **Client ID** and
-   the **OAuth scopes (comma-separated)**; copy both. This release needs two:
-   - `https://www.googleapis.com/auth/admin.directory.customer.readonly`
-   - `https://www.googleapis.com/auth/admin.directory.domain.readonly`
+   the **OAuth scopes (comma-separated)**; copy both. This release needs six:
+   - `https://www.googleapis.com/auth/admin.directory.customer.readonly` — the
+     organisation;
+   - `https://www.googleapis.com/auth/admin.directory.domain.readonly` — its domains;
+   - `https://www.googleapis.com/auth/admin.directory.user` — the accounts, their
+     photos, and signing a leaver out;
+   - `https://www.googleapis.com/auth/admin.directory.group` — Staff's groups and their
+     members;
+   - `https://www.googleapis.com/auth/apps.groups.settings` — who sees a group;
+   - `https://www.googleapis.com/auth/apps.licensing` — the licences.
 2. As a super admin, in the **Google Admin console**, open **Security** › **Access and
    data control** › **API controls** › **Manage domain-wide delegation**, and choose
    **Add new**.
@@ -158,7 +177,11 @@ scopes the last test found, until it is tested again.
 
 **Waiting for delegation** means Google refused every scope: the delegation is not
 entered, or not applied yet. Wait, and test again. **Connected** with *Scopes Vantigo
-needs that Google refused* lists the ones to add to the delegation.
+needs that Google refused* lists the ones to add to the delegation. Staff keeps no
+account in Google until the last test was granted the four scopes of the accounts, the
+groups, the group settings and the licences: until then Staff's **Accounts** card reads
+Google Workspace as failing (`scopes_missing`). An installation upgraded from the release
+before needs the four added to the delegation and a new test.
 
 **Scopes Vantigo does not use.** The test also asks for scopes Vantigo never uses but a
 delegation copied from another product often carries — `https://mail.google.com/`,
@@ -191,6 +214,148 @@ sitting; nothing uses it yet.
 To rotate the secret, add a new one to the client in the console, enter it in step 6
 with the same client id, and **Save**: the older one is revoked in Vantigo. Then delete
 the old one in the console. A new client id always needs its secret.
+
+## The accounts
+
+People reach Google through Staff. HR gives a person the **Google Workspace** account
+kind on their Account tab in Staff, or makes it the default for new people
+([Staff](/en/admin/staff/#the-account-kind)); Staff's accounts worker then drives the
+person's account in Google, through this module, as it drives Microsoft Entra ID's:
+
+1. **Before the first day** (Staff's *create before* days), the account is found or
+   created **suspended**: Google holds it, and nobody can sign in. Vantigo finds a
+   person's account by their **employee number**, kept as the account's external ID of
+   the type *Organization* — the same field to fill in for existing accounts, under
+   **User information** › **Employee information** › **Employee ID** in the Admin console.
+2. **On the first day** the suspension is lifted, Google gets a first password, and the
+   licences of the person's groups are assigned.
+3. **While they work**, a change to their name, job title, department, cost centre,
+   phones, office location, manager or language reaches Google at the next run.
+4. **The day after they leave**, the account is suspended and the leaver's steps run.
+5. **After Staff's delete days**, the account is deleted.
+
+The module runs nothing of its own: Staff's worker reads each account from Google at
+every run, which is how a suspension or a delete made in the Admin console is seen.
+
+### Set the account rules
+
+On the **Accounts** tab of the Google Workspace page, a holder of `google:manage` sets
+the **Account rules**, then **Save the account rules**:
+
+- **Address domain** — one of the organisation's verified domains, which the test read;
+  empty for the primary domain.
+- **Address pattern** — for a person whose work email cannot be their address:
+  `given.family`, `g.family` or `given`. A work email on a verified domain is used as it
+  is. Letters are folded (`ø` → `o`, `æ` → `ae`, `å` → `a`, accents dropped); a taken
+  address gets 2, 3, … 99 after it. A work email another account already holds is not
+  suffixed: the person's account is held up, *address taken*. The address is the
+  account's **primary email** in Google, and Vantigo never renames it.
+- **Organisational unit** — where new accounts are made, `/` for the top, such as
+  `/Ansatte`. The unit must exist in the Admin console; an account the module found
+  stays where it is.
+- **First password** — its lifetime in days (1 to 30, seven unless changed) and who
+  hands it over. HR shows it once on the person's Account tab in Staff; the hand-over
+  setting is kept for a later release and does not yet send the manager anything.
+- **The leaver's steps** — remove the licences, which groups to leave (*all*, *the groups
+  Vantigo made* or *none*), and sign out of every session; each is on unless turned off
+  ([what they do](#what-a-leavers-steps-do)).
+
+The **Accounts** tab also lists the accounts and the groups Vantigo keeps, and the
+organisation's **Licences**.
+
+### The first password
+
+Google has no Temporary Access Pass. When the suspension is lifted on the first day,
+Vantigo sets a fresh password of 16 characters — without the letters and digits easily
+mistaken for each other — which the person **must change** at their first sign-in. It is
+kept sealed until HR shows it, **once**, on the person's Account tab in Staff, and is
+forgotten when its lifetime ends. HR's **Run now** sets a new one, but only while nobody
+has signed in to the account yet: Vantigo never sets a password over an account someone
+uses. If the organisation's password policy refuses it, the account is opened without
+one and the person's Account tab says so (`pass_not_allowed`): reset the password in
+the Admin console, or relax the policy for the organisational unit.
+
+### Licences
+
+A licence is a Google Workspace SKU, written `productId/skuId` (such as
+`Google-Apps/1010020028`). On the **Accounts** tab, **Read the licences** asks Google
+which licences the organisation holds — for Google Workspace, Cloud Identity, Google
+Voice and archived-user licences, those at least one user holds — and keeps them: they
+are the choices of a Staff group's **Licences**. A person is assigned every licence their
+groups name on their first day, and later when their groups change; one no group names
+any more is removed — but only one Vantigo assigned itself. A licence an administrator
+assigned in the Admin console is left. When none is left to assign, the person's
+Account tab says so (`licence_unavailable`, with the SKU), and Staff tries again at the
+next run.
+
+### Staff's groups in Google Workspace
+
+HR turns a Staff group on for Google Workspace on the group's page, with three settings:
+
+| Setting | Rule |
+| --- | --- |
+| **Group address** | The group's email address, on one of the verified domains; empty for the group's key at the address domain. It cannot change once the group exists. |
+| **Who sees the group** | *Everyone in the organisation* — anyone in the organisation sees the group and its members, and finds it in the directory — or *Members only*. Written through Groups Settings. |
+| **Licences** | The licences every member with a Google account gets, as long as they are in the group. |
+
+The group is made at the next run, with Staff's name and description; its owners are
+Staff's owners of the group, as members with the role *Owner*; its members are the
+group's people whose Google account is active. A member somebody adds in the Admin
+console is removed at the next daily sync. When Staff lets the group go, a group Vantigo
+made is deleted in Google; a group it found is left to the organisation.
+
+### Photos
+
+Staff's photo of a person — HR's, or the person's own — is written to the account,
+cropped to its centre square and scaled to **96 × 96 pixels**, the size Google keeps. A
+photo Google refuses, or one that cannot be read, is not an error: the person's Account
+tab says *The directory refused the photo.* and the dashboard tells HR, until another
+photo is written.
+
+## What a leaver's steps do
+
+The day after a person's last employment ends, Staff's worker has Vantigo **suspend**
+the account first — always, whatever the account rules say — and forget a first password
+nobody has shown. Then, in order, each step the account rules turn on:
+
+1. **Remove the licences** — every licence Vantigo assigned, and every licence of the
+   organisation's (as last read) the person holds. Google bills a suspended user's
+   licence, so this is on unless turned off.
+2. **Leave the groups** — *the groups Vantigo made* (the default), *all* the person's
+   groups, or *none*.
+3. **Sign out of every session** — Google's *sign out*. If Google refuses it, the person's
+   Account tab says the leaver was not signed out; the suspension already keeps them out.
+
+A step that fails leaves the rest to the next run, and the person's Account tab names
+it. A rehire later opens the same account again.
+
+## Delete after N days
+
+Vantigo deletes a leaver's Google account only when Staff's **Delete an external account
+(days after the end)** says so — the same setting as for Microsoft Entra ID, under
+`staff:manage` in Staff's settings › **Accounts**, empty for never
+([Staff](/en/admin/staff/#the-accounts-worker)). The account must be suspended. Google
+keeps a deleted user restorable from the Admin console for 20 days. The module has no
+delete setting of its own.
+
+## Accounts and groups Vantigo did not create
+
+An account Google already holds under a person's employee number that Vantigo did not
+create — a person who had Google before Vantigo — is linked to the person but **not
+written to**: no profile, no password, no suspension, no delete. Its row on the
+**Accounts** tab says *Found — confirm*, and Staff's dashboard says *The directory
+holds an account under …'s employee number that Vantigo did not create*.
+
+1. On the **Accounts** tab, check the address and the employee number are the person's.
+2. Choose **Confirm** beside the account, and confirm.
+
+From then on Vantigo manages the account as one it made, and Staff's next run brings it
+to the person. An account with an administrator role in Google is never written to,
+confirmed or not: give the person an account of their own, or handle theirs by hand.
+
+A group Google already holds at the address a Staff group would get, not made by
+Vantigo, waits the same way: **Confirm** it beside the group on the **Accounts** tab. A
+confirmed group is written to, but never deleted.
 
 ## Rotate a key
 
@@ -239,6 +404,24 @@ done, and by whom.
 | *This key is for another service account* (`client_mismatch`) | The uploaded key belongs to another service account than the live keys. | Upload a key of the current account, or [change the service account](#change-the-service-account). |
 | *Scopes Vantigo does not use* | The delegation carries scopes Vantigo never asks for. | Remove them from the delegation unless another product needs them. |
 | The console says key creation is disabled | The organisation enforces `iam.disableServiceAccountKeyCreation`. | [Lift it for this project](#create-the-service-account-and-its-key). |
+| Staff's **Accounts** card: Google Workspace failing (`scopes_missing`) | The last test was refused one of the scopes of the accounts, the groups, the group settings or the licences, or was made before they were needed. | Add them to the delegation, and test again. |
+
+**The reasons on a person's account.** Staff's Account tab and dashboard say what Google
+could not do, by these codes:
+
+| Code | Means | Do |
+| --- | --- | --- |
+| `external_ambiguous` | Two accounts in Google hold the person's employee number. | Remove the number from the one that is not theirs, in the Admin console. |
+| `external_address_taken` | The person's work email is another account's, or a group's. | Change the work email in Staff, or free the address. |
+| `external_unconfirmed`, `adoption_unconfirmed` | An account Vantigo did not create holds the number. | [Confirm it](#accounts-and-groups-vantigo-did-not-create). |
+| `external_privileged`, `privileged` | The account holds an administrator role in Google. | Handle it by hand, or give the person another account. |
+| `external_enabled` | A delete was asked of an account that is not suspended. | Nothing: the leaver's suspension comes first, and the delete follows. |
+| `pass_not_allowed` | The organisation's password policy refused the first password. | Reset the password in the Admin console, or relax the policy. |
+| `licence_unavailable` | No licence of that SKU is left to assign. | Buy more, or free one; Staff tries again. |
+| `manager_not_found` | The manager Staff names has no account in Google. | Give the manager the Google Workspace kind. |
+| `photo_not_written` | Google refused the photo, or it could not be read. | Set another photo. |
+| `sign_out_refused` | Google refused to sign the leaver out. | Nothing for the suspension; sign them out in the Admin console if needed. |
+| `leaver_step_failed` | A leaver's step did not finish (`remove_licences`, `remove_groups`, `sign_out`). | Staff tries it again; check the connection if it keeps failing. |
 
 Vantigo never records Google's own error text, only the status and Google's reason
 code; the reason on the **Status** tab is Vantigo's reading of them.

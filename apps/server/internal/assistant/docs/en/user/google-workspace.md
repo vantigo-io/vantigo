@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Connecting the company's Google Workspace organisation on the Google Workspace page under Integrations in Workspace admin — its four tabs, Status, Connection, Accounts and Calendar and Gmail, where the page is, the six steps on Connection and what Done means on each, the key shown never again, the client ID and the scopes to copy, the admin to impersonate, Test connection, the Internal web client and its redirect URIs, the Status tab with its scopes and events, the warning for scopes Vantigo does not use — and who sees what.
+description: Connecting the company's Google Workspace organisation on the Google Workspace page under Integrations in Workspace admin — its four tabs, Status, Connection, Accounts and Calendar and Gmail, where the page is, the six steps on Connection and what Done means on each, the key shown never again, the client ID and the scopes to copy, the admin to impersonate, Test connection, the Internal web client and its redirect URIs, the Status tab with its scopes and events, the warning for scopes Vantigo does not use, the Accounts tab with the account rules, the licences, the accounts and the groups Vantigo keeps and Confirm for those it did not create — and who sees what.
 sidebar:
   order: 48
 sources:
@@ -11,10 +11,9 @@ sources:
 
 The **Google Workspace** page, under **Integrations** in Workspace admin, connects
 Vantigo to your company's Google Workspace organisation through a service account with
-domain-wide delegation. In this release Vantigo reads the organisation and its verified
-domains through the connection; keeping your people's Google accounts and groups, each
-person's own Google connection, calendar sync and Gmail come later, on the same
-connection. The operator's procedure, with what to do in the Google consoles, is in
+domain-wide delegation. Through it Staff keeps your people's Google accounts and its
+groups in the organisation, by the account rules on the **Accounts** tab; each person's
+own Google connection, calendar sync and Gmail come later, on the same connection. The operator's procedure, with what to do in the Google consoles, is in
 [the administration guide](/en/admin/google-workspace/); the rules are in [the
 reference](/en/reference/google/).
 
@@ -23,6 +22,7 @@ reference](/en/reference/google/).
 | What | Who |
 | --- | --- |
 | **Google Workspace** under **Workspace admin** › **Integrations**, the **Status** tab with its scopes and **Recent events**, and every step read-only | `google:manage` |
+| The **Accounts** tab: saving the account rules, reading the licences, and **Confirm** for an account or a group Vantigo did not create | `google:manage` |
 | **Upload key**, **Revoke**, saving the admin to impersonate, **Test connection** and saving the web client | an **Owner**, signed in with a second factor when Owners must use one; to anyone else with `google:manage` the steps are shown with *An Owner does this step. You can see what is set, but not change it.* |
 
 `google:manage` (*Manage Google Workspace*) is in the category Administration and cannot
@@ -44,7 +44,7 @@ The page has four tabs, each with an address of its own, so a tab can be linked 
 | --- | --- |
 | **Status** | The **Status** card — the status, the organisation, the scopes — and **Recent events** |
 | **Connection** | The six steps that set up the connection |
-| **Accounts** | *Accounts are coming*: Staff will create and keep your people's Google accounts and groups here, and connect existing users to their Google sign-in |
+| **Accounts** | The account rules, the organisation's licences, and the accounts and groups Vantigo keeps for Staff |
 | **Calendar and Gmail** | *Calendar and Gmail are coming*: each person's own Google connection, calendar sync, Gmail mail channels and sending from a person's Gmail address will be set up here |
 
 While nothing is set up and no key is uploaded, the page opens on **Connection**. From
@@ -118,3 +118,49 @@ While nothing is set up a notice, *Not connected yet*, points to the **Connectio
 **Recent events** lists what was done, newest first, and by whom — *by Vantigo* for what
 Vantigo did itself: the admin changed, the connection tested, the web client changed, a
 key uploaded, a key or a client secret revoked, and Google refusing a key.
+
+## The Accounts tab
+
+Staff decides who has a Google account and when: HR gives a person the **Google
+Workspace** account kind in Staff ([Staff](/en/user/staff/#a-google-workspace-account)).
+This tab sets how Vantigo makes and ends those accounts, and shows what it keeps. It has
+four cards.
+
+**Account rules.** Choose, then **Save the account rules**:
+
+- **Address domain** — the verified domain new addresses are made at; empty for the
+  primary domain.
+- **Address pattern** — how an address is made from the names when the person's work
+  email cannot be used: *kari.nordmann*, *k.nordmann* or *kari*.
+- **Organisational unit** — where new accounts are made, such as `/Ansatte`; `/` for the
+  top.
+- **The first password's lifetime, in days** — 1 to 30: how long the password the person
+  gets on their first day can be shown before it is forgotten; and **Who hands over the
+  first password** — kept for a later release; HR shows it on the person's Account tab in
+  Staff.
+- **When someone leaves** — **Remove the licences**, **Take them out of groups**
+  (*Every group*, *The groups Vantigo made* or *No group*) and **Sign them out of every
+  session**. The account is always suspended first.
+
+If somebody else saved the connection while you had the tab open, the tab says so; reload
+it and make your change again.
+
+**Licences.** The licences the organisation holds, each with its name and how many hold
+it, as Vantigo last read them — the choices of a Staff group's **Licences**. **Read the
+licences** asks Google again. When Google cannot be asked, the card says why: no key
+fetched a token for the licences (check the delegation and test the connection), or
+Google did not answer.
+
+**Accounts.** Every Google account Vantigo keeps for a person: the address, the employee
+number, the state (*Active*, *Suspended* or *Deleted*), the licences Vantigo assigned,
+whether a first password waits to be shown, and what Google could not do, in a sentence
+each. An account Vantigo found in Google rather than created is marked *Found — confirm* and
+has **Confirm**: Vantigo
+writes nothing to it until you confirm it is the person's
+([why](/en/admin/google-workspace/#accounts-and-groups-vantigo-did-not-create)).
+
+**Groups.** Every Google group Vantigo keeps for a Staff group: its address, the Staff
+group, and whether Vantigo made it (*Created by Vantigo*, *Found and adopted*). A group
+Vantigo found at the address rather than made is marked *Found — confirm* and has
+**Confirm**, for the same reason; once confirmed, Vantigo writes Staff's name,
+members and settings to it, but never deletes it.
