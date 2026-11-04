@@ -140,6 +140,27 @@ describe("GoogleConnectionTab — the key", () => {
     expect(await within(step).findByText("The key is not a service account's.")).toBeInTheDocument();
   });
 
+  it("says a key was refused only while it has not worked since", async () => {
+    await openPage({
+      connection: connected({
+        credentials: [
+          key({ id: 1, lastFailedAt: "2026-11-03T09:00:00Z", lastUsedAt: "2026-11-03T08:00:00Z" }),
+          key({
+            id: 3,
+            privateKeyId: "b".repeat(40),
+            lastFailedAt: "2026-11-02T09:00:00Z",
+            lastUsedAt: "2026-11-03T10:00:00Z",
+          }),
+          key({ id: 4, privateKeyId: "c".repeat(40), lastFailedAt: "2026-11-01T09:00:00Z" }),
+        ],
+      }),
+    });
+    const table = within(region("Upload the key")).getByRole("table", { name: "Service account keys" });
+    expect(within(table).getByText("Google refused it Nov 3, 2026")).toBeInTheDocument();
+    expect(within(table).getByText("Google refused it Nov 1, 2026")).toBeInTheDocument();
+    expect(within(table).queryByText("Google refused it Nov 2, 2026")).not.toBeInTheDocument();
+  });
+
   it("revokes a key after asking", async () => {
     const { fetchMock, user } = await openPage({ connection: connected() });
     const table = within(region("Upload the key")).getByRole("table", { name: "Service account keys" });
