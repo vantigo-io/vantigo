@@ -28,8 +28,13 @@
 // contracts.MailboxCalendar under the key google: the calendar's copies
 // written to a person's Google Calendar, their busy time and their edits read
 // back, all on their own connection, and a push channel per person whose
-// messages the anonymous calendar notifications endpoint records. Gmail comes
-// in the deliveries after it. Every call to Google takes its token from
+// messages the anonymous calendar notifications endpoint records. Delivery F
+// (G33–G34, docs/superpowers/plans/2026-11-03-google-mail-channels.md) fills
+// contracts.ChannelMailbox under the key google: behind the Owner's Mail
+// channels switch, Communications' channels send from, read and label the
+// organisation's licensed Gmail mailboxes through domain-wide delegation,
+// polled, never pushed. Sending from a person's own Gmail comes in the
+// delivery after it. Every call to Google takes its token from
 // tokenSource. MODULES refuses
 // google without staff. Nothing here imports another module — depguard
 // enforces it, tests included — and no SQL of this module crosses a schema.
@@ -48,8 +53,10 @@
 // personal_sweep.go google-sweep); mailbox*.go the mailbox calendar
 // (mailbox_batch.go the batch endpoint, mailbox_delta.go the delta,
 // mailbox_writeback.go the write-back's reads, mailbox_notifications*.go the
-// push channels and their endpoint); and googletest the fake Google its tests
-// run against.
+// push channels and their endpoint); mail_channels.go the Mail channels
+// switch, channel_mailbox*.go the channel mailboxes (channel_mailbox_inbound.go
+// the delta and the raw read, channel_mailbox_marks.go the labels); and
+// googletest the fake Google its tests run against.
 package google
 
 import (
@@ -125,8 +132,10 @@ var skusLimit = ratelimit.Policy{Name: "google-skus", Limit: 30, Window: time.Mi
 // contracts.DirectorySearch (directory_search.go), which Compose collects
 // into Deps.DirectorySearches for identity's directory endpoints; its
 // contracts.MailboxCalendar (mailbox.go), which Compose and Workers collect
-// into Deps.MailboxCalendars for the calendar; and its one worker,
-// google-sweep (personal_sweep.go).
+// into Deps.MailboxCalendars for the calendar; its contracts.ChannelMailbox
+// (channel_mailbox.go), which they collect into Deps.ChannelMailboxes for
+// Communications' channels; and its one worker, google-sweep
+// (personal_sweep.go).
 func Module() module.Module {
 	return module.Module{
 		Name:                "google",
@@ -135,6 +144,7 @@ func Module() module.Module {
 		IdentityProvisioner: newProvisioner,
 		DirectorySearch:     newDirectorySearch,
 		MailboxCalendar:     newMailboxCalendar,
+		ChannelMailbox:      newChannelMailbox,
 		Workers:             workers,
 	}
 }
