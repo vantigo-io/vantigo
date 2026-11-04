@@ -409,6 +409,10 @@ func TestAccountAttention_TheProviderItems(t *testing.T) {
 				if i.Title != p.DisplayName {
 					t.Errorf("%s's title = %q, want the person's name alone", kind, i.Title)
 				}
+				// The item names its provider, for the host's sentence and link.
+				if i.Provider == nil || *i.Provider != "entra" || i.ProviderName == nil || *i.ProviderName != "Microsoft Entra ID" {
+					t.Errorf("%s's provider = %v %v, want entra and its name", kind, i.Provider, i.ProviderName)
+				}
 			}
 		}
 		if n != 1 {
@@ -810,6 +814,11 @@ func TestAccountsWorker_AnUnconfirmedAdoptionBlocksThePrepare(t *testing.T) {
 	if !hasItemOfType(attentionItems(t, w.hr), gen.AccountUnconfirmedInDirectory) {
 		t.Errorf("attention = %+v, want accountUnconfirmedInDirectory", attentionItems(t, w.hr))
 	}
+	for _, i := range attentionItems(t, w.hr) {
+		if i.Type == gen.AccountUnconfirmedInDirectory && (i.Provider == nil || *i.Provider != "entra") {
+			t.Errorf("accountUnconfirmedInDirectory names no provider: %+v", i)
+		}
+	}
 
 	w.prov.SetUnconfirmed(p.EmployeeNumber, false)
 	w.h.Advance(time.Minute)
@@ -850,6 +859,11 @@ func TestAccountsWorker_AnUnconfirmedAdoptionIsNotDeactivatedUntilConfirmed(t *t
 	}
 	if !hasItemOfType(attentionItems(t, w.hr), gen.AccountUnconfirmedInDirectory) {
 		t.Errorf("attention = %+v, want accountUnconfirmedInDirectory", attentionItems(t, w.hr))
+	}
+	for _, i := range attentionItems(t, w.hr) {
+		if i.Type == gen.AccountUnconfirmedInDirectory && (i.Provider == nil || *i.Provider != "entra") {
+			t.Errorf("accountUnconfirmedInDirectory names no provider: %+v", i)
+		}
 	}
 
 	w.prov.SetUnconfirmed(p.EmployeeNumber, false)

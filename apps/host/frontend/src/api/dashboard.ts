@@ -151,6 +151,13 @@ export interface AttentionItem {
    * this count instead of the server's English fallback.
    */
   count?: number;
+  /**
+   * Optional, added by Staff on the items an identity provider's account
+   * raises: the provider's key ("entra", "google") and its display name, so
+   * the sentence names the provider and the link opens its page.
+   */
+  provider?: string;
+  providerName?: string;
 }
 
 export const presetDays: Record<Exclude<DashboardPreset, "custom">, number> = {

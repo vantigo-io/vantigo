@@ -116,13 +116,13 @@ const en = {
   "dashboard.staffAccountAmbiguousInDirectory": "Two accounts in the directory hold {{name}}'s employee number",
   "dashboard.staffAccountAddressTakenInDirectory": "{{name}}'s work email is another account's in the directory",
   "dashboard.staffAccountUnconfirmedInDirectory":
-    "The directory holds an account under {{name}}'s employee number that Vantigo did not create; confirm it on the provider's page under Integrations",
+    "The directory holds an account under {{name}}'s employee number that Vantigo did not create; confirm it on {{provider}}'s page under Integrations",
   "dashboard.staffAccountSyncedOnPremises":
     "{{name}}'s account is synchronised from an on-premises directory, which Staff cannot write",
   "dashboard.staffAccountPrivilegedInDirectory":
     "{{name}}'s account holds an administrative role in the directory, which an administrator handles",
-  "dashboard.staffHireDateNotWritten": "Microsoft Entra ID refused {{name}}'s hire date",
-  "dashboard.staffPhotoNotWritten": "Microsoft Entra ID refused the photo of {{name}}",
+  "dashboard.staffHireDateNotWritten": "{{provider}} refused {{name}}'s hire date",
+  "dashboard.staffPhotoNotWritten": "{{provider}} refused the photo of {{name}}",
   "dashboard.staffLicenceUnavailable": "A licence for {{name}} could not be assigned: none is left",
   "dashboard.staffPassUnrevealed": "{{name}}'s pass has waited a day or more without being shown",
   "dashboard.staffManagerNotInDirectory": "{{name}}'s manager has no account in the directory",
@@ -366,13 +366,13 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.staffAccountAmbiguousInDirectory": "To kontoer i katalogen har ansattnummeret til {{name}}",
   "dashboard.staffAccountAddressTakenInDirectory": "Jobb-e-posten til {{name}} tilhører en annen konto i katalogen",
   "dashboard.staffAccountUnconfirmedInDirectory":
-    "Katalogen har en konto under ansattnummeret til {{name}} som Vantigo ikke opprettet; bekreft den på leverandørens side under Integrasjoner",
+    "Katalogen har en konto under ansattnummeret til {{name}} som Vantigo ikke opprettet; bekreft den på siden for {{provider}} under Integrasjoner",
   "dashboard.staffAccountSyncedOnPremises":
     "Kontoen til {{name}} synkroniseres fra en lokal katalog, som Ansatte ikke kan skrive til",
   "dashboard.staffAccountPrivilegedInDirectory":
     "Kontoen til {{name}} har en administratorrolle i katalogen, som en administrator tar seg av",
-  "dashboard.staffHireDateNotWritten": "Microsoft Entra ID avviste ansettelsesdatoen til {{name}}",
-  "dashboard.staffPhotoNotWritten": "Microsoft Entra ID avviste bildet av {{name}}",
+  "dashboard.staffHireDateNotWritten": "{{provider}} avviste ansettelsesdatoen til {{name}}",
+  "dashboard.staffPhotoNotWritten": "{{provider}} avviste bildet av {{name}}",
   "dashboard.staffLicenceUnavailable": "En lisens til {{name}} kunne ikke tildeles: det er ingen igjen",
   "dashboard.staffPassUnrevealed": "Passet til {{name}} har ventet en dag eller mer uten å bli vist",
   "dashboard.staffManagerNotInDirectory": "Lederen til {{name}} har ingen konto i katalogen",
