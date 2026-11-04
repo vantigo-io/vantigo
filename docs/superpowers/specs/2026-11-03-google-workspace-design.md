@@ -107,12 +107,12 @@ to it:
 | | Delivery | Module(s) | Migrations |
 | --- | --- | --- | --- |
 | **0** | Neutral seams: many-provider mailbox slots, Communications and the calendar provider-neutral, the account kind, `sub`, directory search, the host's lists | contracts, module, communications, calendar, identity, staff, entra, host | 00109–00111 |
-| **A** | The module: connection, service-account key, guarded client, *Test connection*, four tabs | google, host | 00112 |
-| **B** | Accounts, groups, licences, photos through `IdentityProvisioner` | google, entra (address package), staff docs | 00113 |
+| **A** | The module: connection, service-account key, guarded client, *Test connection*, four tabs | google, host | 00114 |
+| **B** | Accounts, groups, licences, photos through `IdentityProvisioner` | google, entra (address package), staff docs | 00115 |
 | **C** | Connect existing users: directory search, matches, announced links, the SSO card | google, host | — |
-| **D** | The personal Google connection | google, host | 00114 |
-| **E** | Calendar sync on the connection | google | 00115 |
-| **F** | Gmail mail channels | google | 00116 |
+| **D** | The personal Google connection | google, host | 00116 |
+| **E** | Calendar sync on the connection | google | 00117 |
+| **F** | Gmail mail channels | google | 00118 |
 | **G** | Personal sending through Gmail | google | — |
 
 Each is a pull request against `main` once the one before it has landed; 0 may land
@@ -999,7 +999,7 @@ id `""` is `primary`.
 - **`Notified`** answers rows with `notified_at` after `since`.
 - Notifications are not 100 % reliable; the calendar's poll stands.
 
-The migration is `00115_google_calendar.sql` (`google.calendars`,
+The migration is `00117_google_calendar.sql` (`google.calendars`,
 `google.calendar_channels`, `connection.marker`). **E's operations:** the notifications endpoint.
 **E's pages:** `U/calendar.md` (Sync with Google Calendar under the neutral section,
 Google's busy kinds), `A/calendar.md` (Google as a provider, notifications need
