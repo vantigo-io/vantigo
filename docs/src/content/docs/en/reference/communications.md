@@ -1,6 +1,6 @@
 ---
 title: "Communications module"
-description: "Business email from shared mailboxes: the channels' providers — SMTP, and the shared mailboxes of every mailbox provider (Microsoft 365 through the Microsoft Entra ID module today), named by key, created by address or switched from SMTP, with an optional import window and Outlook on-close behavior — the outbox and its delivery through either, the size a mailbox channel takes; the OutboundMail slot, through which Invoices and Calendar send customer mail from a channel an Owner chose, and the end of any fall-back to the installation's SMTP; receiving into a mailbox channel — the mailbox sync, change notifications, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all, and Outlook state on close —; sending from one's own address through the provider that answers for the person; retention and the operator's configuration."
+description: "Business email from shared mailboxes: the channels' providers — SMTP, and the shared mailboxes of every mailbox provider (Microsoft 365 through the Microsoft Entra ID module, and Google Workspace's licensed Gmail mailboxes through the Google Workspace module), named by key, created by address or switched from SMTP, with an optional import window and Outlook on-close behavior — the outbox and its delivery through either, the size a mailbox channel takes; the OutboundMail slot, through which Invoices and Calendar send customer mail from a channel an Owner chose, and the end of any fall-back to the installation's SMTP; receiving into a mailbox channel — the mailbox sync, change notifications, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all, and Outlook state on close —; sending from one's own address through the provider that answers for the person; retention and the operator's configuration."
 sources:
   - apps/server/internal/communications
   - apps/communications/frontend
@@ -130,10 +130,12 @@ A channel is an address replies are sent from, and its `provider` says how they 
 shared mailbox reached through the `contracts.ChannelMailbox` filled under that key
 (Google Workspace design G4). Communications names no mailbox provider: a channel's
 provider is `smtp` or the `Key()` of a filled `ChannelMailbox`, and validation asks the
-slot which keys are filled. Today one module fills it, the [Microsoft Entra ID
+slot which keys are filled. Two modules fill it: the [Microsoft Entra ID
 module](/en/reference/entra/#mail-channels), under `entra` (**Microsoft 365**, an Exchange
-Online shared mailbox reached through Microsoft Graph); a Google Workspace module is
-designed to fill it under `google`. Mailbox providers are called a *mailbox channel*'s
+Online shared mailbox reached through Microsoft Graph), and the [Google Workspace
+module](/en/reference/google/#mail-channels), under `google` (**Google Workspace**, a
+licensed Gmail mailbox reached through the service account's domain-wide delegation).
+Mailbox providers are called a *mailbox channel*'s
 below. Mailgun, which this port never created, has left the contract; a create or update
 naming a provider that is neither `smtp` nor a filled key is a 400 under `smtp` (*SMTP
 credentials require the smtp provider.*).
@@ -154,7 +156,8 @@ use, so the channels page reads Communications' own API and never a provider's:
   `available` is its status. Not available, `reason` is the provider's — `switch_off`,
   the connection's reason — or `status_unavailable` when the status did not answer.
   Available, `warning` is `tenant_wide` while the provider's grant reaches every mailbox
-  in the tenant. `maxMessageBytes` is that provider's `MaxMessage`
+  in the tenant — always for Google Workspace, whose domain-wide delegation cannot be
+  limited to some mailboxes. `maxMessageBytes` is that provider's `MaxMessage`
   ([attachments](#attachments)).
 
 The page's provider select lists SMTP, then every listed provider by its `displayName`
@@ -215,12 +218,16 @@ with `channelMailboxFor(provider)`, which calls nobody. Communications is the au
 on which mailboxes are channels; a provider sends only from a mailbox its `Check`
 resolved and recorded — a shared one. For Microsoft 365, someone with `entra:manage`
 turns it on in the Entra module and an Exchange administrator scopes it ([Mail
-channels](/en/admin/entra/#mail-channels)).
+channels](/en/admin/entra/#mail-channels)); for Google Workspace, an Owner turns on
+Mail channels in the Google module and a super admin delegates the two Gmail scopes
+([Mail channels](/en/admin/google-workspace/#mail-channels)). Google has no shared mailbox:
+its "shared" mailbox is a licensed user that is no person's account in Staff.
 
 - **The row.** `provider` is the provider's key; `channels.settings` (migration
   `00091_communications_channel_settings.sql`, `jsonb`, `{}` by default) is
   `{"mailbox": "<mailbox id>", "onClose"?: "read"|"move", "folder"?: "<name>"}`, the
-  provider's id of the mailbox (Entra's object id, in lower case) and the optional
+  provider's id of the mailbox (Entra's object id, in lower case; Google's Directory user
+  id, digits) and the optional
   [state on close](#outlook-state-on-close); and there is **no `channel_credentials`
   row** — no secret to seal. **One channel per mailbox, per provider**:
   `ux_channels_provider_mailbox` on `(provider, settings->>'mailbox')` `WHERE settings ?
@@ -273,10 +280,10 @@ transaction, the named provider's `Status`, then `Check(address)` (and `EnsureFo
 | What the provider answers | Result |
 | --- | --- |
 | its `Status` not available | 409 `mail_channels_off` |
-| a shared mailbox it reaches | 201, the channel **active**; its address is the mailbox's primary SMTP address as `Check` read it, in lower case, so an alias typed becomes the mailbox's own |
+| a shared mailbox it reaches | 201, the channel **active**; its address is the mailbox's primary SMTP address as `Check` read it, in lower case, so an alias typed becomes the mailbox's own (Google's too: an alias resolves to its user) |
 | a mailbox it reaches, not shared | 422 `personal_mailbox` (*The address is a person's own mailbox. Only a shared mailbox can be a channel.*) — `Check` does not record a personal mailbox, so the provider would refuse to send from it anyway |
-| `ErrMailboxGroup` | 422 `group_address` (*The address is a group. A group has no mailbox Vantigo can read; use a licensed mailbox.*) — a provider whose groups have addresses of their own answers it; Entra never does |
-| `ErrMailboxDenied` | 422 `mailbox_denied` — outside the application's RBAC scope, or a role missing |
+| `ErrMailboxGroup` | 422 `group_address` (*The address is a group. A group has no mailbox Vantigo can read; use a licensed mailbox.*) — a provider whose groups have addresses of their own answers it: Google for a Google Group's address, a Collaborative Inbox included; Entra never does |
+| `ErrMailboxDenied` | 422 `mailbox_denied` — outside the application's RBAC scope, or a role missing; for Google, a 403 on the mailbox that is not the delegation |
 | `ErrMailboxUnknown`, `ErrMailboxGone` | 422 `mailbox_unknown` — no such mailbox, or an address that is not a bare address (a display name, white space, one of `/ \ ? # %`, over 320 bytes) |
 | `ErrMailboxUnavailable` | 409 `mail_channels_off` |
 | anything else — throttled, the provider not answering, the status unreadable | 503 `provider_unreachable` (*{provider} did not answer. Try again.*), logged |
@@ -286,7 +293,8 @@ channels through {provider} are not available. An administrator turns them on un
 Integrations.*, `mailbox_unknown` *No mailbox with this address was found in
 {provider}.* A channel whose provider is no longer filled (verify) is named by its key.
 The address a person typed is never in an error or a log line: Entra names the lookup's
-path `/v1.0/users/{address}`.
+path `/v1.0/users/{address}`, Google its `/admin/directory/v1/groups/{group}` and
+`/admin/directory/v1/users/{user}`.
 
 The insert then runs as an SMTP channel's does — the default slot's lock, the first
 channel made the default — with `settings` and no credential row. An address another
@@ -439,17 +447,21 @@ the deliveries, and the attachments — and branches on the channel's provider, 
   to `Send` with the blind copies beside it, under the SMTP send's own 30-second budget.
   Entra posts it to Graph's `sendMail` as base64 MIME, or, with blind copies, creates it
   as a MIME draft in the shared mailbox, checks the draft kept every blind copy, and sends
-  the draft ([Entra's Send](/en/reference/entra/#send)). Neither is retried by Entra's
-  client on a 5xx. Graph's **202 is acceptance**, as SMTP's 250: the deliveries become
+  the draft ([Entra's Send](/en/reference/entra/#send)). Google uploads the MIME whole to
+  Gmail's `messages.send` as the mailbox, blind copies in its `Bcc:` header, which Gmail
+  delivers and strips ([Google's Send](/en/reference/google/#send)). None is retried by
+  the provider's client on a 5xx. Graph's **202 is acceptance**, as SMTP's 250: the deliveries become
   `relay_accepted`, and the at-least-once rule, the stamp and the possible-duplicate
   metric are unchanged. Exchange saves the sent message in the shared mailbox's **Sent
-  Items**.
+  Items**, Gmail in the mailbox's **Sent**.
 
 **What the provider answers of a sent message** (Google Workspace design G5). A
 provider's `Send` — a channel's and a [personal one](#sending-from-ones-own-address) —
 answers `contracts.SentMessage{MessageID, ThreadID}`: the Message-ID the message left
 with as the provider sent it, and the provider's thread id, each empty when the provider
-does not know it. Entra answers the zero value (Graph's `sendMail` answers no body). The
+does not know it. Entra answers the zero value (Graph's `sendMail` answers no body);
+Google answers Gmail's `threadId` and the Message-ID Gmail sent the message with, read back
+after the send, which may not be ours (U6 in the Google Workspace design). The
 outbox records a non-empty answer on the message in the completion's own transaction:
 `ThreadID` as `channel_metadata_json->>'providerThreadId'`, and a `MessageID` that differs
 from the message's own (bracketed, as `rfc_message_id` is) as
@@ -474,9 +486,9 @@ mend it — `provider_unavailable` aside, which ends a day's hold (below).
 | Code | From |
 | --- | --- |
 | `mailbox_denied` | `ErrMailboxDenied`: the mailbox is outside the application's scope, or a role is missing |
-| `mailbox_gone` | `ErrMailboxGone`: the mailbox no longer exists |
-| `mailbox_unknown` | `ErrMailboxUnknown`: no `Check` recorded the mailbox on Entra's side (forgotten, say) |
-| `too_large` | `ErrMailTooLarge`: over `MaxMessage`, Graph's 413, or Exchange's 400 `ErrorMessageSizeExceeded`, `MessageSizeExceeded` or `ErrorMessageTooBig` (the mailbox's own send limit below Graph's) |
+| `mailbox_gone` | `ErrMailboxGone`: the mailbox no longer exists — for Google, also a user suspended or without Gmail since |
+| `mailbox_unknown` | `ErrMailboxUnknown`: no `Check` recorded the mailbox on the provider's side (forgotten, say) |
+| `too_large` | `ErrMailTooLarge`: over `MaxMessage`, Graph's or Gmail's 413, or Exchange's 400 `ErrorMessageSizeExceeded`, `MessageSizeExceeded` or `ErrorMessageTooBig` (the mailbox's own send limit below Graph's) |
 | `bcc_unsupported` | `contracts.ErrBccUnsupported`: the draft did not keep every blind copy, so nothing was sent — a retry would build the same draft |
 | `channel_misconfigured` | the channel's `settings` name no mailbox |
 | `channel_unavailable` | an SMTP channel with no credential row: nothing to send with, and no fall-back to the installation's SMTP |
@@ -603,7 +615,7 @@ The uploader must hold ConversationsView and the upload must belong to the suppl
 conversation. Other users, other conversations, expired uploads and unknown IDs
 return 404 without storage details.
 
-**A Microsoft 365 channel's size.** Graph takes a message posted whole up to about 4 MB
+**A mailbox channel's size.** Graph takes a message posted whole up to about 4 MB
 of request body, far below the per-file staging limit, so a Microsoft 365 channel holds
 its mail to the provider's `MaxMessage` — **3 000 000 bytes of MIME** for Entra, 4 000 000
 once base64-encoded for Graph — and refuses what is too large **when it is written, not
@@ -623,6 +635,10 @@ when it is sent**:
   and the HTML bodies each × 3 (quoted-printable at its worst, every byte `=XX`), plus
   16 KiB — over the budget is **422** `too_large`, *The message and its attachments are
   larger than this channel can send.*, before anything is written.
+
+A **Google Workspace** channel's budget is Gmail's 25 MB, **25 000 000 bytes of MIME**
+(the upload endpoint takes up to 35 MB, U10), so its attachments are **18 200 000** bytes
+and the composer says about 18.2 MB; the same staging and reply checks apply.
 
 The provider's `ErrMailTooLarge` at send time stays the last guard, and fails the job
 (`too_large`). A larger message would need a draft with upload sessions, which is not
@@ -671,7 +687,7 @@ M15, M16, M17): mail arriving in its shared mailbox's **Inbox** becomes an inbou
 conversation, threaded onto the one it answers or starting one, its sender linked to a
 customer when the address belongs to exactly one. Vantigo reads the mailbox with the
 application's credential through the two reads of the `ChannelMailbox` filled under its provider, `Delta` and `Raw`
-([Entra's inbound reads](/en/reference/entra/#delta-and-raw)), subscribes the Inbox to
+([Entra's inbound reads](/en/reference/entra/#delta-and-raw), [Google's](/en/reference/google/#delta-and-raw)), subscribes the Inbox to
 change notifications when configured (`Watch`, `Unwatch`, `Notified`), and leaves the
 messages in the Inbox untouched until a conversation is closed on a channel configured to
 mark or move them ([Outlook state on close](#outlook-state-on-close)). An SMTP channel does not receive.
@@ -723,8 +739,10 @@ next due [on-close mark job](#outlook-state-on-close) — until none is due.
   `attempts` 0 and `last_synced_at` now. When change notifications are active
   (`PUBLIC_BASE_URL` is set and `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` is on) and
   `Watch(mailbox, "inbox")` succeeds after the pass, `next_sync_at` is set **one hour**
-  ahead as a safety net; otherwise — notifications off, `PUBLIC_BASE_URL` unset, or
-  `Watch` failing (logged at warn) — `next_sync_at` is **five minutes** ahead. Every
+  ahead as a safety net; otherwise — notifications off, `PUBLIC_BASE_URL` unset, `Watch`
+  answering `contracts.ErrWatchUnsupported` (a provider that offers no notifications,
+  Google's; quietly), or `Watch` failing otherwise (logged at warn) — `next_sync_at` is
+  **five minutes** ahead. Every
   stored page forgets the count of failed tries (below). A page with more to come stores the **next
   page's link** with `next_sync_at` now, so the same drain claims the channel again at
   once. A cycle that stops half-way stores nothing, reads the same page next time, and the
@@ -925,7 +943,7 @@ A message is threaded within its channel, never across channels, in this order:
 2. Else the conversation of a message its **`References`** name, the newest reference
    first, matched the same way.
 3. Else the conversation of the newest message **of either direction** in the same
-   **provider thread** (`providerThreadId`: Graph's `conversationId` on a received message,
+   **provider thread** (`providerThreadId`: Graph's `conversationId` or Gmail's `threadId` on a received message,
    the `ThreadID` a provider answered on a sent one) in the last **90 days**, through
    `ix_conversation_messages_provider_thread` (00111, replacing 00092's inbound-only
    index).
@@ -942,7 +960,8 @@ holds a message of the same provider thread — an inbound one of the same Outlo
 conversation, the usual case, a reply to a customer who wrote first, or a sent one whose
 provider answered its thread. Entra answers none, so a customer's first answer to a
 conversation **Vantigo began** (`POST /conversations`) through Microsoft 365 has no such
-message, and starts a new conversation.
+message, and starts a new conversation. Google answers its thread and the Message-ID Gmail
+sent with, so a Gmail channel's conversation threads by step 1 or step 3 either way.
 
 ### The customer linker
 
@@ -1013,6 +1032,10 @@ Outlook when a conversation on the channel transitions to `closed`
 - `move`: every inbound message of the conversation is moved to the channel's configured
   top-level folder (`settings.folder`, `"Handled in Vantigo"` by default), ensured by
   `EnsureFolder`.
+
+On a Google Workspace channel the same settings act on Gmail's labels: `read` removes the
+`UNREAD` label; `move` adds the user label named by `settings.folder`, created by
+`EnsureFolder` if missing, and removes `INBOX` ([Google's marks](/en/reference/google/#marks)).
 
 In the close's own transaction, when the channel is a mailbox channel whose `onClose` is
 `read` or `move`, `UpsertMailboxMark` writes or resets the conversation's row in
