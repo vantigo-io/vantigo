@@ -595,15 +595,18 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 	}
 	// A mailbox of another provider than the row's is a changed mailbox
 	// (design O8, G3): the clean-up runs on the row's provider, then the row
-	// takes the new one.
+	// takes the new one. A row with a mailbox and no provider was written by
+	// a replica older than the column (migration 00110) and is the same
+	// mailbox: it only records the provider — a clean-up on no provider
+	// could never succeed.
 	mailbox := acct.ExternalID
-	changed := r.Mailbox == nil || *r.Mailbox != mailbox || rowProvider(r) != key
+	changed := r.Mailbox == nil || *r.Mailbox != mailbox || (r.Provider != nil && *r.Provider != key)
 	if r.Mailbox != nil && changed {
 		if err := w.cleanup(ctx, call, &r, now, true); err != nil {
 			return w.failed(ctx, r, now, "clean up the previous mailbox", err)
 		}
 	}
-	if changed {
+	if changed || r.Provider == nil {
 		r.Mailbox, r.Provider = &mailbox, &key
 		if err := w.setMailbox(ctx, r, now); err != nil {
 			return err
