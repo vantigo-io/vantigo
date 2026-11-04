@@ -2084,6 +2084,8 @@ person:
    external id than the one stored — or the same id under another provider — cleans the
    old mailbox up first, on the row's provider, then starts over on the new one. The
    mailbox is recorded with its provider as soon as it is known, whatever the revision.
+   A stored mailbox with no provider — written by a replica older than 00110 — is the
+   same mailbox: nothing is cleaned up, and the row records the account's provider.
 4. **The *Vantigo* calendar**, for target `own`: `EnsureCalendar` with the stored id; a
    changed id empties the map and makes the sync a reconcile.
 5. **The desired set** ([above](#what-is-pushed)).
