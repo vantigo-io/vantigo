@@ -22,7 +22,8 @@ SELECT id, credential_kind, customer_id, primary_domain, domains, organisation_n
 // kind (PUT /connection) are written under If-Match, under the row's lock
 // (LockConnection), and move version on; so does the Internal web client.
 // What a connection test finds is written with SetConnectionTest, which
-// leaves version alone so a test never turns a person's open form into a 412.
+// leaves version alone so a test never turns a person's open form into a 412,
+// and writes only over the version the test read.
 func (q *Queries) GetConnection(ctx context.Context) (GoogleConnection, error) {
 	row := q.db.QueryRow(ctx, getConnection)
 	var i GoogleConnection
@@ -105,7 +106,7 @@ UPDATE google.connection SET
     domains = COALESCE($8::text[], domains),
     organisation_name = COALESCE($9, organisation_name),
     last_checked_at = $10::timestamptz
-WHERE id = 1
+WHERE id = 1 AND version = $11
 RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id
 `
 
@@ -120,11 +121,14 @@ type SetConnectionTestParams struct {
 	Domains          []string
 	OrganisationName *string
 	Now              time.Time
+	Version          int32
 }
 
 // SetConnectionTest records what a connection test found: the status, its
 // reason and the scopes, always; the customer, its domains and its name
-// when the organisation answered (null keeps them).
+// when the organisation answered (null keeps them). Only while the row is at
+// the version the test read it at: a test of an admin since changed writes
+// nothing (no row is returned).
 func (q *Queries) SetConnectionTest(ctx context.Context, arg SetConnectionTestParams) (GoogleConnection, error) {
 	row := q.db.QueryRow(ctx, setConnectionTest,
 		arg.Status,
@@ -137,6 +141,7 @@ func (q *Queries) SetConnectionTest(ctx context.Context, arg SetConnectionTestPa
 		arg.Domains,
 		arg.OrganisationName,
 		arg.Now,
+		arg.Version,
 	)
 	var i GoogleConnection
 	err := row.Scan(

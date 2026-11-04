@@ -1,12 +1,16 @@
 package google_test
 
 import (
+	"context"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/google"
 	"github.com/vantigo-io/vantigo/server/internal/google/gen"
 	"github.com/vantigo-io/vantigo/server/internal/google/googletest"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -121,6 +125,12 @@ func TestTest_TheFailures(t *testing.T) {
 		if conn := getConnection(t, o); conn.Status != gen.GoogleConnectionStatusFailing || conn.Credentials[0].LastFailedAt == nil {
 			t.Errorf("the connection: %+v", conn)
 		}
+		// Refused again before it worked: recorded once.
+		h.Advance(time.Minute)
+		testConnection(t, o)
+		if n := h.Count(t, `SELECT count(*) FROM google.events WHERE action = 'google.credential.refused'`); n != 1 {
+			t.Errorf("%d google.credential.refused events, want 1", n)
+		}
 	})
 	t.Run("an admin Google does not know", func(t *testing.T) {
 		t.Parallel()
@@ -128,8 +138,16 @@ func TestTest_TheFailures(t *testing.T) {
 		o, _ := configured(t, h)
 		h.g.Delegate(saClientID, everyScope...)
 		setAdmin(t, o, "nobody@nordlys.no")
-		if result := testConnection(t, o); result.Status != gen.GoogleConnectionTestStatusFailing || *result.Reason != "credential_invalid" {
+		if result := testConnection(t, o); result.Status != gen.GoogleConnectionTestStatusFailing || *result.Reason != "admin_refused" {
 			t.Errorf("the test: %+v", result)
+		}
+		// The subject was refused, not the key: nothing marks it.
+		conn := getConnection(t, o)
+		if conn.Status != gen.GoogleConnectionStatusFailing || conn.StatusReason == nil || *conn.StatusReason != "admin_refused" || conn.Credentials[0].LastFailedAt != nil {
+			t.Errorf("the connection: %+v", conn)
+		}
+		if n := h.Count(t, `SELECT count(*) FROM google.events WHERE action = 'google.credential.refused'`); n != 0 {
+			t.Errorf("%d google.credential.refused events, want none", n)
 		}
 	})
 	t.Run("the admin refused", func(t *testing.T) {
@@ -162,6 +180,83 @@ func TestTest_TheFailures(t *testing.T) {
 			t.Errorf("the test: %+v", result)
 		}
 	})
+}
+
+func TestTest_AnotherSubjectGoogleDoesNotKnowMarksNothing(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	o, _ := configured(t, h)
+	h.g.Delegate(saClientID, everyScope...)
+	if result := testConnection(t, o); result.Status != gen.GoogleConnectionTestStatusConnected {
+		t.Fatalf("the test: %+v", result)
+	}
+	// A person's call, as a later delivery makes, for an address Google
+	// does not know: that person's problem, not the key's or the connection's.
+	_, err := google.Token(context.Background(), h.Deps(), everyScope, "gone@nordlys.no")
+	if !google.SubjectInvalid(err) {
+		t.Fatalf("the token for an unknown person: %v, want the subject refused", err)
+	}
+	conn := getConnection(t, o)
+	if conn.Status != gen.GoogleConnectionStatusConnected || conn.Credentials[0].LastFailedAt != nil {
+		t.Errorf("the connection: %+v", conn)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM google.events WHERE action = 'google.credential.refused'`); n != 0 {
+		t.Errorf("%d google.credential.refused events, want none", n)
+	}
+}
+
+func TestTest_TheProbesTokensAreNotKept(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	o, _ := configured(t, h)
+	drive := "https://www.googleapis.com/auth/drive"
+	h.g.Delegate(saClientID, append(slices.Clone(everyScope), drive)...)
+	if result := testConnection(t, o); !slices.Equal(result.Unexpected, []string{drive}) {
+		t.Fatalf("the test: %+v", result)
+	}
+	sealed := modtest.One[[]byte](t, h.Harness, `SELECT sealed FROM google.credentials WHERE kind = 'service_account_key'`)
+	if cached := google.CachedScopes(sealed); !slices.Equal(cached, everyScope) {
+		t.Errorf("the tokens kept: %v, want the needed scopes' alone", cached)
+	}
+}
+
+func TestTest_AnAdminChangedDuringTheTestIsNotWritten(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	o, _ := configured(t, h)
+	h.g.Delegate(saClientID, everyScope...)
+	// The admin changes while the test asks Google, as a PUT by another
+	// Owner would.
+	var once sync.Once
+	h.g.Configure(func(g *googletest.FakeGoogle) {
+		g.OnCall = func(googletest.Call) {
+			once.Do(func() {
+				h.Exec(t, `UPDATE google.connection SET admin_subject = 'other.admin@nordlys.no', status = 'unconfigured', version = version + 1 WHERE id = 1`)
+			})
+		}
+	})
+	if result := testConnection(t, o); result.Status != gen.GoogleConnectionTestStatusConnected || result.Customer == nil {
+		t.Errorf("the test's answer: %+v, want what it found", result)
+	}
+	conn := getConnection(t, o)
+	if conn.Status != gen.GoogleConnectionStatusUnconfigured || conn.LastCheckedAt != nil || len(conn.ScopesGranted) != 0 || conn.CustomerId != nil {
+		t.Errorf("the connection: %+v, want the other admin's untouched", conn)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM google.events WHERE action = 'google.connection.tested'`); n != 0 {
+		t.Errorf("%d google.connection.tested events, want none", n)
+	}
+}
+
+func TestTest_ALongOrganisationNameIsCut(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	o, _ := configured(t, h)
+	h.g.Delegate(saClientID, everyScope...)
+	h.g.Configure(func(g *googletest.FakeGoogle) { g.Organisation = strings.Repeat("Ø", 300) })
+	result := testConnection(t, o)
+	if result.Customer == nil || result.Customer.OrganisationName == nil || *result.Customer.OrganisationName != strings.Repeat("Ø", 256) {
+		t.Errorf("the organisation: %+v", result.Customer)
+	}
 }
 
 func TestTest_GooglesWordsAreNeverKept(t *testing.T) {

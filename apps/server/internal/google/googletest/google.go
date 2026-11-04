@@ -131,7 +131,8 @@ type FakeGoogle struct {
 	// client_email.
 	ClientIDs map[string]string
 	// Admins are the users the organisation has, lower-case: a subject not
-	// among them is refused invalid_grant, as Google does.
+	// among them is refused invalid_grant, "Invalid email or User ID", as
+	// Google does.
 	Admins []string
 	// AdminRefused is the admin to impersonate not allowed the Directory's
 	// reads: each answers 403.
@@ -149,6 +150,9 @@ type FakeGoogle struct {
 	// An assertion's iat and exp are checked against the wall clock, which
 	// golang.org/x/oauth2 signs them with.
 	Now func() time.Time
+	// OnCall, when set, runs after each request is answered, outside the
+	// fake's lock: a test's way into the middle of a flow.
+	OnCall func(Call)
 
 	mu       sync.Mutex
 	tokens   map[string]issued
@@ -235,7 +239,6 @@ func (g *FakeGoogle) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	g.mu.Lock()
-	defer g.mu.Unlock()
 	call := Call{Host: req.URL.Host, Method: req.Method, Path: req.URL.Path}
 	var a answer
 	switch {
@@ -253,6 +256,11 @@ func (g *FakeGoogle) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	call.Status = a.status
 	g.calls = append(g.calls, call)
+	hook := g.OnCall
+	g.mu.Unlock()
+	if hook != nil {
+		hook(call)
+	}
 	return a.response(req), nil
 }
 
@@ -351,7 +359,9 @@ func (g *FakeGoogle) token(req *http.Request, body []byte, call *Call) answer {
 		return g.oauthError(http.StatusBadRequest, "invalid_grant")
 	}
 	if c.Sub == "" || !slices.Contains(g.Admins, strings.ToLower(c.Sub)) {
-		return g.oauthError(http.StatusBadRequest, "invalid_grant")
+		// Google's own description of an unknown or suspended subject,
+		// which the module reads to tell it from a refused key.
+		return answer{status: http.StatusBadRequest, body: map[string]any{"error": "invalid_grant", "error_description": "Invalid email or User ID"}}
 	}
 	scopes := strings.Fields(c.Scope)
 	delegated := g.Delegated[g.ClientIDs[c.Iss]]

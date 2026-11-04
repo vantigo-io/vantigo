@@ -3,7 +3,8 @@
 -- kind (PUT /connection) are written under If-Match, under the row's lock
 -- (LockConnection), and move version on; so does the Internal web client.
 -- What a connection test finds is written with SetConnectionTest, which
--- leaves version alone so a test never turns a person's open form into a 412.
+-- leaves version alone so a test never turns a person's open form into a 412,
+-- and writes only over the version the test read.
 
 -- name: GetConnection :one
 SELECT * FROM google.connection WHERE id = 1;
@@ -47,7 +48,9 @@ RETURNING *;
 -- name: SetConnectionTest :one
 -- SetConnectionTest records what a connection test found: the status, its
 -- reason and the scopes, always; the customer, its domains and its name
--- when the organisation answered (null keeps them).
+-- when the organisation answered (null keeps them). Only while the row is at
+-- the version the test read it at: a test of an admin since changed writes
+-- nothing (no row is returned).
 UPDATE google.connection SET
     status = @status,
     status_reason = @status_reason,
@@ -59,7 +62,7 @@ UPDATE google.connection SET
     domains = COALESCE(@domains::text[], domains),
     organisation_name = COALESCE(@organisation_name, organisation_name),
     last_checked_at = @now::timestamptz
-WHERE id = 1
+WHERE id = 1 AND version = @version
 RETURNING *;
 
 -- name: SetConnectionFailing :exec

@@ -148,7 +148,7 @@ func (q *Queries) MarkCredentialFailed(ctx context.Context, arg MarkCredentialFa
 
 const markCredentialUsed = `-- name: MarkCredentialUsed :exec
 UPDATE google.credentials SET last_used_at = $1::timestamptz
-WHERE id = $2 AND (last_used_at IS NULL OR last_used_at < $3::timestamptz)
+WHERE id = $2 AND (last_used_at IS NULL OR last_used_at < $3::timestamptz OR last_failed_at >= last_used_at)
 `
 
 type MarkCredentialUsedParams struct {
@@ -158,7 +158,8 @@ type MarkCredentialUsedParams struct {
 }
 
 // MarkCredentialUsed records a token minted with the key, at most once a
-// minute (used_before is now less a minute).
+// minute (used_before is now less a minute) — and always when the key was
+// refused since it was last used, so a key working again is seen to.
 func (q *Queries) MarkCredentialUsed(ctx context.Context, arg MarkCredentialUsedParams) error {
 	_, err := q.db.Exec(ctx, markCredentialUsed, arg.Now, arg.ID, arg.UsedBefore)
 	return err

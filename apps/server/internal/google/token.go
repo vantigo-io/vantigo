@@ -31,7 +31,8 @@ import (
 // tokenSource(scopes, subject) is the one seam every caller takes its token
 // from. The key used is the newest live one; an older one only when the
 // newer is refused (invalid_grant on its JWT), which marks it failed and is
-// an event. A later credential kind, vantigo_hosted, fills the same seam
+// an event. A subject Google does not know is not a refused key: it marks
+// nothing and is errSubjectInvalid. A later credential kind, vantigo_hosted, fills the same seam
 // without a key.
 
 const (
@@ -45,6 +46,23 @@ const (
 	// credentialUsedInterval is how often, at most, a key's last_used_at is
 	// written.
 	credentialUsedInterval = time.Minute
+)
+
+// fetchMode is whether a token may come from the cache and whether a
+// fetched one is kept there.
+type fetchMode int
+
+const (
+	// tokenCached answers a cached token while it is good, and keeps the
+	// one it fetches.
+	tokenCached fetchMode = iota
+	// tokenFresh asks Google even when a token is cached, as the connection
+	// test does for a needed scope, so a delegation granted since is read;
+	// the token is kept for the test's own reads.
+	tokenFresh
+	// tokenProbe asks Google and keeps nothing: the test's probe of a scope
+	// Vantigo never uses, whose token must not outlive the probe.
+	tokenProbe
 )
 
 // tokenSource is where a call's bearer token comes from: token answers the
@@ -87,16 +105,13 @@ type delegatedSource struct {
 	k       *keyring
 	scopes  []string
 	subject string
-	// fresh asks a new token of Google even when one is cached, as the
-	// connection test does, so a delegation granted since is read.
-	fresh bool
 
 	mu  sync.Mutex
 	key *tokenKey
 }
 
 func (s *delegatedSource) token(ctx context.Context) (string, error) {
-	tok, key, err := s.k.token(ctx, s.scopes, s.subject, s.fresh)
+	tok, key, err := s.k.token(ctx, s.scopes, s.subject, tokenCached)
 	if err != nil {
 		return "", err
 	}
@@ -146,15 +161,17 @@ func failedSinceUsed(r store.GoogleCredential) bool {
 }
 
 // token is the token for scopes as subject, and the cache key it is kept
-// under: the first live key (liveKeys) a token is found or fetched for. A
-// key Google refuses is marked failed, audited, and the next is tried; when
-// none is left the connection is set failing/credential_invalid and the
-// answer is errNoCredential. A scope refused is errNotDelegated at once —
-// the next key is the same service account's and would be refused too.
+// under: the first live key (liveKeys) a token is found or fetched for, as
+// mode says. A key Google refuses is marked failed, audited once until it
+// works again, and the next is tried; when none is left the connection is
+// set failing/credential_invalid and the answer is errNoCredential. A scope
+// refused is errNotDelegated at once, and a subject refused errSubjectInvalid
+// at once, marking nothing — the next key is the same service account's and
+// would be refused too.
 // errGoogleUnreachable (wrapped) when the token endpoint could not be
 // asked, which marks nothing. The rows are read on the pool, never in a
 // transaction: Google is asked between them.
-func (k *keyring) token(ctx context.Context, scopes []string, subject string, fresh bool) (string, tokenKey, error) {
+func (k *keyring) token(ctx context.Context, scopes []string, subject string, mode fetchMode) (string, tokenKey, error) {
 	if subject == "" {
 		return "", tokenKey{}, errNotConfigured
 	}
@@ -168,7 +185,7 @@ func (k *keyring) token(ctx context.Context, scopes []string, subject string, fr
 	}
 	for _, row := range keys {
 		key := keyOf(row, subject, scopes)
-		if !fresh {
+		if mode == tokenCached {
 			if tok, ok := k.c.tokens.get(key, k.c.now()); ok {
 				return tok, key, nil
 			}
@@ -180,7 +197,7 @@ func (k *keyring) token(ctx context.Context, scopes []string, subject string, fr
 			if err := k.q.MarkCredentialUsed(ctx, store.MarkCredentialUsedParams{Now: now, ID: row.ID, UsedBefore: now.Add(-credentialUsedInterval)}); err != nil {
 				return "", tokenKey{}, fmt.Errorf("google: mark the key used: %w", err)
 			}
-			if now.Before(tok.until) {
+			if mode != tokenProbe && now.Before(tok.until) {
 				k.c.tokens.put(key, tok, now)
 			}
 			return tok.value, key, nil
@@ -207,11 +224,15 @@ func (k *keyring) token(ctx context.Context, scopes []string, subject string, fr
 }
 
 // refused marks row failed and audits it, by the module's system actor:
-// whatever call found it, Google refused the key itself.
+// whatever call found it, Google refused the key itself. A key already
+// failed since it last worked is not audited again.
 func (k *keyring) refused(ctx context.Context, row store.GoogleCredential) error {
 	now := k.c.now()
 	if err := k.q.MarkCredentialFailed(ctx, store.MarkCredentialFailedParams{Now: now, ID: row.ID}); err != nil {
 		return fmt.Errorf("google: mark the key failed: %w", err)
+	}
+	if failedSinceUsed(row) {
+		return nil
 	}
 	return recordEvent(ctx, k.q, now, contracts.Actor{System: systemActor}, actionCredentialRefused, deref(row.ClientID), credentialCodes(row))
 }
@@ -302,16 +323,37 @@ func (t *tokenCache) dropKey(id int64, sealed []byte) {
 }
 
 // tokenRefusal is the token endpoint's OAuth refusal: { "error",
-// "error_description" }. The description is never decoded.
+// "error_description" }. The description is read only to tell a refused
+// subject from a refused key (subjectRefused), and never logged, wrapped or
+// kept.
 type tokenRefusal struct {
-	Error string `json:"error"`
+	Error       string `json:"error"`
+	Description string `json:"error_description"`
+}
+
+// subjectDescriptions are the invalid_grant descriptions, lower-cased, of a
+// subject Google refuses — an address it does not know, a suspended user, a
+// subject not an address — rather than the key.
+var subjectDescriptions = []string{
+	"invalid email or user id",
+	"not a valid email",
+	"invalid impersonation",
+}
+
+// subjectRefused reports whether an invalid_grant's description names the
+// subject, not the key.
+func subjectRefused(description string) bool {
+	d := strings.ToLower(description)
+	return slices.ContainsFunc(subjectDescriptions, func(s string) bool { return strings.Contains(d, s) })
 }
 
 // fetchToken asks the token endpoint for a token signed with row's key, for
 // scopes as subject, through the guarded client, retrying a 429 or a 5xx
 // once. The key is opened for this one request and never held open.
 // golang.org/x/oauth2's own errors carry Google's words: they are read for
-// the OAuth error code and the status, and never logged, wrapped or kept.
+// the OAuth error code, the status and whether an invalid_grant names the
+// subject (errSubjectInvalid) or the key (errCredentialInvalid), and never
+// logged, wrapped or kept.
 func (c *googleClient) fetchToken(ctx context.Context, row store.GoogleCredential, subject string, scopes []string) (cachedToken, error) {
 	if c.box == nil {
 		return cachedToken{}, errors.New("google: no secrets box to open the key with")
@@ -358,6 +400,8 @@ func (c *googleClient) fetchToken(ctx context.Context, row store.GoogleCredentia
 		}
 		c.logger.DebugContext(ctx, "google: the token endpoint refused a token", "status", status, "error", code, "credential", row.ID)
 		switch {
+		case code == "invalid_grant" && subjectRefused(body.Description):
+			return cachedToken{}, errSubjectInvalid
 		case code == "invalid_grant" || code == "invalid_client":
 			return cachedToken{}, errCredentialInvalid
 		case code == "unauthorized_client" || code == "access_denied":

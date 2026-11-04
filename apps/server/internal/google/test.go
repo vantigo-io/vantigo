@@ -7,6 +7,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
+
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/google/gen"
 	"github.com/vantigo-io/vantigo/server/internal/google/store"
 )
@@ -16,10 +19,15 @@ import (
 // per scope it never uses but an over-wide admin is likely to delegate, then
 // the organisation (customers.get) and its verified domains (domains.list).
 // What it found is written to the connection beside its settings, leaving
-// the version alone.
+// the version alone — unless the version moved on during the test (another
+// admin named), when nothing is written.
 
 // scopePrefix starts every scope but https://mail.google.com/.
 const scopePrefix = "https://www.googleapis.com/auth/"
+
+// maxOrganisationName is the most of Google's organizationName kept, in
+// characters: organisation_name is varchar(256).
+const maxOrganisationName = 256
 
 // The scopes delivery A needs: the customer and its domains.
 const (
@@ -80,10 +88,11 @@ type testOutcome struct {
 	primaryDomain, organisation string
 }
 
-// probe asks a fresh token for scope as subject: true when Google issued
-// it, false when it refused the scope; any other failure is its error.
-func (s *server) probe(ctx context.Context, scope, subject string) (bool, error) {
-	_, _, err := s.keys.token(ctx, []string{scope}, subject, true)
+// probe asks a fresh token for scope as subject, as mode says: true when
+// Google issued it, false when it refused the scope; any other failure is
+// its error.
+func (s *server) probe(ctx context.Context, scope, subject string, mode fetchMode) (bool, error) {
+	_, _, err := s.keys.token(ctx, []string{scope}, subject, mode)
 	switch {
 	case err == nil:
 		return true, nil
@@ -99,7 +108,7 @@ func failure(err error) string {
 	switch {
 	case errors.Is(err, errNoCredential), errors.Is(err, errCredentialInvalid), errors.Is(err, errNotConfigured):
 		return reasonCredentialInvalid
-	case errors.Is(err, errAdminRefused):
+	case errors.Is(err, errAdminRefused), errors.Is(err, errSubjectInvalid):
 		return reasonAdminRefused
 	default:
 		return reasonGoogleUnreachable
@@ -111,7 +120,7 @@ func failure(err error) string {
 func (s *server) run(ctx context.Context, subject string) (testOutcome, error) {
 	out := testOutcome{status: statusConnected, granted: []string{}, missing: []string{}, unexpect: []string{}}
 	for _, scope := range neededScopes() {
-		ok, err := s.probe(ctx, scope, subject)
+		ok, err := s.probe(ctx, scope, subject, tokenFresh)
 		switch {
 		case ctx.Err() != nil:
 			return testOutcome{}, ctx.Err()
@@ -125,7 +134,7 @@ func (s *server) run(ctx context.Context, subject string) (testOutcome, error) {
 		}
 	}
 	for _, scope := range unexpectedProbes {
-		ok, err := s.probe(ctx, scope, subject)
+		ok, err := s.probe(ctx, scope, subject, tokenProbe)
 		switch {
 		case ctx.Err() != nil:
 			return testOutcome{}, ctx.Err()
@@ -151,6 +160,9 @@ func (s *server) run(ctx context.Context, subject string) (testOutcome, error) {
 		}
 		out.customer = &c
 		out.organisation = strings.TrimSpace(c.PostalAddress.OrganizationName)
+		if r := []rune(out.organisation); len(r) > maxOrganisationName {
+			out.organisation = strings.TrimSpace(string(r[:maxOrganisationName]))
+		}
 	}
 	if slices.Contains(out.granted, scopeDomains) {
 		var d domainsAnswer
@@ -185,9 +197,10 @@ func (s *server) run(ctx context.Context, subject string) (testOutcome, error) {
 // impersonate with the newest live key, writes what it found and answers it,
 // 200 whatever it found: pending_delegation/not_delegated when every needed
 // scope was refused; connected, the refused ones listed missing, when some
-// were; failing with credential_invalid (no key fetched a token, or the
-// admin is unknown), admin_refused (an Admin SDK call answered 403) or
-// google_unreachable. Without a live key or an admin it is unconfigured and
+// were; failing with credential_invalid (no key fetched a token),
+// admin_refused (Google does not know the admin, or an Admin SDK call
+// answered 403) or google_unreachable. A test whose connection changed
+// version meanwhile is answered and neither written nor audited. Without a live key or an admin it is unconfigured and
 // asks Google nothing. Audited google.connection.tested with the status,
 // the reason and the scopes, as codes. (POST /api/v1/google/connection/test)
 func (s *server) PostGoogleConnectionTest(ctx context.Context, _ gen.PostGoogleConnectionTestRequestObject) (gen.PostGoogleConnectionTestResponseObject, error) {
@@ -220,6 +233,7 @@ func (s *server) PostGoogleConnectionTest(ctx context.Context, _ gen.PostGoogleC
 	now := s.deps.Clock()
 	write := store.SetConnectionTestParams{
 		Status: out.status, ScopesGranted: out.granted, ScopesMissing: out.missing, ScopesUnexpected: out.unexpect, Now: now,
+		Version: conn.Version,
 	}
 	if out.reason != "" {
 		write.StatusReason = &out.reason
@@ -236,10 +250,6 @@ func (s *server) PostGoogleConnectionTest(ctx context.Context, _ gen.PostGoogleC
 	if out.domains != nil {
 		write.Domains = out.domains
 	}
-	updated, err := s.q.SetConnectionTest(ctx, write)
-	if err != nil {
-		return nil, fmt.Errorf("google: record the test: %w", err)
-	}
 	codes := []string{out.status}
 	if out.reason != "" {
 		codes = append(codes, out.reason)
@@ -250,7 +260,23 @@ func (s *server) PostGoogleConnectionTest(ctx context.Context, _ gen.PostGoogleC
 	for _, u := range out.unexpect {
 		codes = append(codes, "unexpected:"+u)
 	}
-	if err := recordEvent(ctx, s.q, now, actor, actionConnectionTested, deref(updated.CustomerID), codes); err != nil {
+	// The test is written, and audited, only over the row it read: when the
+	// admin changed meanwhile, it tested the one no longer named, and is
+	// answered without being kept.
+	updated := store.GoogleConnection{CustomerID: write.CustomerID, OrganisationName: write.OrganisationName, PrimaryDomain: write.PrimaryDomain, Domains: out.domains}
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		row, err := q.SetConnectionTest(ctx, write)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("google: record the test: %w", err)
+		}
+		updated = row
+		return recordEvent(ctx, q, now, actor, actionConnectionTested, deref(row.CustomerID), codes)
+	})
+	if err != nil {
 		return nil, err
 	}
 	answer := gen.GoogleConnectionTest{
