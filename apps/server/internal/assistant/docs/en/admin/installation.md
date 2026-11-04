@@ -847,7 +847,7 @@ migration back drops the schema with the sealed keys and secret, and touches not
 Google. See [Google Workspace](/en/admin/google-workspace/).
 
 **The release with the personal Google connection.** It brings
-`00114_google_connections.sql`: the people's own Google connections, none yet, and
+`00116_google_connections.sql`: the people's own Google connections, none yet, and
 **Connection for people**, off. It starts `google-sweep`, which has nothing to do until
 an Owner turns the switch on and people connect. Before turning it on, register
 `APP_URL` + `APP_BASE_PATH` + `/api/v1/google/connect/callback` on the Internal web

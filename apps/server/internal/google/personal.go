@@ -101,7 +101,7 @@ const (
 	personalFailed         = "failed"
 )
 
-// The connection's states (00114).
+// The connection's states (00116).
 const (
 	personalActive    = "active"
 	personalReconnect = "reconnect"

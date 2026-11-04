@@ -8,7 +8,7 @@ sql:
     schema:
       - ../db/migrations/00114_google_baseline.sql
       - ../db/migrations/00115_google_accounts.sql
-      - ../db/migrations/00114_google_connections.sql
+      - ../db/migrations/00116_google_connections.sql
     queries: queries
     gen:
       go:

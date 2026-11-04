@@ -878,7 +878,7 @@ nøklene og hemmeligheten, og rører ingenting hos Google. Se
 [Google Workspace](/nb/admin/google-workspace/).
 
 **Utgivelsen med den personlige Google-tilkoblingen.** Den har
-`00114_google_connections.sql`: folks egne Google-tilkoblinger, ingen ennå, og
+`00116_google_connections.sql`: folks egne Google-tilkoblinger, ingen ennå, og
 **Tilkobling for personer**, av. Den starter `google-sweep`, som ikke har noe å gjøre før
 en eier slår bryteren på og folk kobler til. Før du slår den på, registrer `APP_URL` +
 `APP_BASE_PATH` + `/api/v1/google/connect/callback` på den interne nettklienten. Å rulle
