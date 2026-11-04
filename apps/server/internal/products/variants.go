@@ -303,9 +303,16 @@ func (s *server) DeleteProductsByIdVariantsByVariantId(ctx context.Context, req 
 			return nil
 		}
 
-		hold, err := s.variantHeld(ctx, tx, variant.ID)
+		hold, err := s.variantHeld(ctx, tx, variant.ID, contracts.VariantHoldDelete)
 		if err != nil {
 			return err
+		}
+		if hold != nil && hold.Kind == contracts.VariantHoldKindOpenDocuments {
+			refused = gen.DeleteProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
+				"Variant is on open documents",
+				fmt.Sprintf("This variant is on %s. Finish or cancel them before you delete the variant.", documentsText(hold)),
+				http.StatusConflict))
+			return nil
 		}
 		if hold != nil {
 			refused = gen.DeleteProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
@@ -345,11 +352,12 @@ func duplicateVariantBarcode(ctx context.Context, txq *store.Queries, barcode st
 
 // variantHeld asks every Deps.VariantReferenceHolders, in order, what it
 // keeps of the variant, inside the caller's transaction (inventory design
-// I23), and answers the first hold, nil when none holds it. The caller has
-// locked the variant FOR UPDATE.
-func (s *server) variantHeld(ctx context.Context, tx pgx.Tx, variantID int32) (*contracts.VariantHold, error) {
+// I23) for the write purpose names (orders design O30), and answers the
+// first hold, nil when none holds it. The caller has locked the variant FOR
+// UPDATE.
+func (s *server) variantHeld(ctx context.Context, tx pgx.Tx, variantID int32, purpose contracts.VariantHoldPurpose) (*contracts.VariantHold, error) {
 	for _, holder := range s.deps.VariantReferenceHolders {
-		hold, err := holder.VariantHeld(ctx, tx, variantID)
+		hold, err := holder.VariantHeld(ctx, tx, variantID, purpose)
 		if err != nil {
 			return nil, fmt.Errorf("ask variant holder: %w", err)
 		}
@@ -373,4 +381,13 @@ func holdText(hold *contracts.VariantHold, unit string) string {
 		places = "location"
 	}
 	return fmt.Sprintf("%s %s in stock at %d %s", quantity, unit, hold.Locations, places)
+}
+
+// documentsText is an open-documents hold as a refusal's detail says it:
+// "3 open quotes or orders" (orders design O30).
+func documentsText(hold *contracts.VariantHold) string {
+	if hold.Documents == 1 {
+		return "1 open quote or order"
+	}
+	return fmt.Sprintf("%d open quotes or orders", hold.Documents)
 }

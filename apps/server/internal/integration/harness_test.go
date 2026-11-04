@@ -226,7 +226,7 @@ func (fakeCustomers) CustomersByLegalID(context.Context, string, []string) (map[
 	return map[string][]contracts.CustomerEntry{}, nil
 }
 
-func (fakeCustomers) BillingProfile(_ context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
+func (fakeCustomers) BillingProfile(_ context.Context, id int32, _ contracts.BillingProfileOptions) (*contracts.CustomerBillingProfile, error) {
 	if id == customerKraftVerket {
 		return &contracts.CustomerBillingProfile{ID: id, Name: customerKraftVerketName}, nil
 	}

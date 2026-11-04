@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/inventory"
 	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -361,11 +362,11 @@ func TestVariantHeld(t *testing.T) {
 		t.Fatalf("begin: %v", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	held, err := holder.VariantHeld(ctx, tx, varBolt)
-	if err != nil || held == nil || held.Quantity != "34" || held.Locations != 2 {
+	held, err := holder.VariantHeld(ctx, tx, varBolt, contracts.VariantHoldDelete)
+	if err != nil || held == nil || held.Kind != contracts.VariantHoldKindStock || held.Quantity != "34" || held.Locations != 2 {
 		t.Errorf("VariantHeld(bolt) = %+v, %v; want 34 at 2 locations", held, err)
 	}
-	if held, err := holder.VariantHeld(ctx, tx, varNut); err != nil || held != nil {
+	if held, err := holder.VariantHeld(ctx, tx, varNut, contracts.VariantHoldTypeChange); err != nil || held != nil {
 		t.Errorf("VariantHeld(nut) = %+v, %v; want nil", held, err)
 	}
 }

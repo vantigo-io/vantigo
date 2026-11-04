@@ -102,7 +102,8 @@ func (s *server) catalogSearchVariants(ctx context.Context, q string, limit int)
 	if s.deps.Products == nil {
 		return nil, errDependencyUnavailable
 	}
-	return s.deps.Products.SearchVariants(ctx, q, limit)
+	// Goods only, of every status, as the picker has always answered.
+	return s.deps.Products.SearchVariants(ctx, q, contracts.VariantSearch{Types: []string{"Goods"}, Limit: limit, IncludeInactive: true})
 }
 
 // lockVariants takes FOR SHARE on the variants and their products ON tx, in

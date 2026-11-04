@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/jackc/pgx/v5"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -41,7 +42,7 @@ func (p *priceList) ListPrice(_ context.Context, _ int32, currency string, at ti
 	if !ok {
 		return nil, nil
 	}
-	return &contracts.Money{Amount: amount, Currency: currency}, nil
+	return &contracts.Money{Amount: strconv.FormatFloat(amount, 'f', 2, 64), Currency: currency}, nil
 }
 
 // The catalog methods Inventory reads; the rate chain asks none.
@@ -57,7 +58,7 @@ func (*priceList) LookupSKUs(context.Context, []string) (map[string][]contracts.
 	return nil, nil
 }
 
-func (*priceList) SearchVariants(context.Context, string, int) ([]contracts.VariantEntry, error) {
+func (*priceList) SearchVariants(context.Context, string, contracts.VariantSearch) ([]contracts.VariantEntry, error) {
 	return nil, nil
 }
 
@@ -107,7 +108,7 @@ func (*customerRates) CustomersByLegalID(context.Context, string, []string) (map
 	return map[string][]contracts.CustomerEntry{}, nil
 }
 
-func (c *customerRates) BillingProfile(_ context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
+func (c *customerRates) BillingProfile(_ context.Context, id int32, _ contracts.BillingProfileOptions) (*contracts.CustomerBillingProfile, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.asked = append(c.asked, id)
@@ -455,7 +456,7 @@ func TestDiscounted(t *testing.T) {
 		{1600, 100, 0},
 		{0.01, 50, 0.01}, // 0.005
 	} {
-		if got := discounted(tc.list, tc.percent); got != tc.want {
+		if got := discounted(exactDecimal(tc.list), tc.percent); got != tc.want {
 			t.Errorf("discounted(%v, %v) = %v, want %v", tc.list, tc.percent, got, tc.want)
 		}
 	}

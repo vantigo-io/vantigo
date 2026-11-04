@@ -151,6 +151,24 @@ WHERE cc.customer_id = @customer_id
   AND btrim(c.email) <> ''
 ORDER BY c.last_name, c.first_name, c.id;
 
+-- name: DirectoryBillingContacts :many
+-- DirectoryBillingContacts is contracts.CustomerDirectory.BillingProfile's
+-- contacts, read only when the caller asks (orders design O10): every contact
+-- associated with the customer, by last name, then first name, with the
+-- association's own phone and e-mail where it has them, else the contact's,
+-- and its typed roles on this customer, sorted; "" when it has none. Contacts have no archived
+-- state, so none is left out.
+SELECT c.id, c.first_name, c.middle_name, c.last_name,
+       coalesce(nullif(btrim(cc.email), ''), c.email, '')::text AS email,
+       coalesce(nullif(btrim(cc.phone), ''), c.phone, '')::text AS phone,
+       coalesce((SELECT array_agg(r.role ORDER BY r.role)
+                 FROM customers.customer_contact_roles r
+                 WHERE r.customer_id = cc.customer_id AND r.contact_id = cc.contact_id), '{}')::text[] AS roles
+FROM customers.customers_contacts cc
+JOIN customers.contacts c ON c.id = cc.contact_id
+WHERE cc.customer_id = @customer_id
+ORDER BY c.last_name, c.first_name, c.id;
+
 -- name: ListCustomerAssociationsForContact :many
 -- ListCustomerAssociationsForContact is GetContactCustomersEndpoint's
 -- listing, sorted by the customer's name (GetContactCustomersEndpoint.cs:29-33).

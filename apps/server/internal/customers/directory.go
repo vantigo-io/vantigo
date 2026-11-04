@@ -190,7 +190,7 @@ func (d *directory) ContactsForCustomer(ctx context.Context, customerID int32) (
 // (DirectoryInvoiceAddress) — then resolveBillingProfile, one pure function
 // that applies every resolution rule. The first query also carries the
 // customer's group's default payment term (customer groups design D4).
-func (d *directory) BillingProfile(ctx context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
+func (d *directory) BillingProfile(ctx context.Context, id int32, opts contracts.BillingProfileOptions) (*contracts.CustomerBillingProfile, error) {
 	row, err := d.q.DirectoryBillingProfile(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -228,6 +228,38 @@ func (d *directory) BillingProfile(ctx context.Context, id int32) (*contracts.Cu
 	// design D10): nothing to resolve, so they pass straight through.
 	resolved.Status = row.Status
 	resolved.MergedInto = row.MergedIntoCustomerID
+
+	// The delivery addresses and the contacts, only for a caller that asks
+	// (orders design O10): an invoice pays nothing for them.
+	if opts.WithDelivery {
+		rows, err := d.q.DirectoryDeliveryAddresses(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("customers: directory delivery addresses: %w", err)
+		}
+		resolved.DeliveryAddresses = make([]contracts.CustomerAddressEntry, 0, len(rows))
+		for _, a := range rows {
+			resolved.DeliveryAddresses = append(resolved.DeliveryAddresses, contracts.CustomerAddressEntry{
+				ID: a.ID, Label: deref(a.Label), Line1: a.Line1, Line2: deref(a.Line2),
+				PostalCode: deref(a.PostalCode), City: deref(a.City), Region: deref(a.Region), Country: a.Country,
+			})
+		}
+	}
+	if opts.WithContacts {
+		rows, err := d.q.DirectoryBillingContacts(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("customers: directory billing contacts: %w", err)
+		}
+		resolved.Contacts = make([]contracts.CustomerContactEntry, 0, len(rows))
+		for _, c := range rows {
+			name := c.FirstName
+			if m := deref(c.MiddleName); m != "" {
+				name += " " + m
+			}
+			resolved.Contacts = append(resolved.Contacts, contracts.CustomerContactEntry{
+				ID: c.ID, Name: name + " " + c.LastName, Email: c.Email, Phone: c.Phone, Roles: c.Roles,
+			})
+		}
+	}
 	return resolved, nil
 }
 

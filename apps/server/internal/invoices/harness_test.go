@@ -435,7 +435,7 @@ func (*fakeCustomers) CustomersByLegalID(context.Context, string, []string) (map
 	return map[string][]contracts.CustomerEntry{}, nil
 }
 
-func (f *fakeCustomers) BillingProfile(_ context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
+func (f *fakeCustomers) BillingProfile(_ context.Context, id int32, _ contracts.BillingProfileOptions) (*contracts.CustomerBillingProfile, error) {
 	f.mu.Lock()
 	p, ok := f.profiles[id]
 	after, failure := f.onProfile, f.profileErr

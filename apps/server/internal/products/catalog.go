@@ -41,7 +41,7 @@ func (c *catalog) Variant(ctx context.Context, id int32) (*contracts.VariantEntr
 	if err != nil {
 		return nil, fmt.Errorf("products: catalog variant: %w", err)
 	}
-	entries := []contracts.VariantEntry{variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus)}
+	entries := []contracts.VariantEntry{variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description)}
 	if err := withPackagings(ctx, c.q, entries); err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func (c *catalog) Variants(ctx context.Context, ids []int32) ([]contracts.Varian
 	}
 	entries := make([]contracts.VariantEntry, 0, len(rows))
 	for _, row := range rows {
-		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus))
+		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description))
 	}
 	if err := withPackagings(ctx, c.q, entries); err != nil {
 		return nil, err
@@ -76,7 +76,8 @@ func (c *catalog) Variants(ctx context.Context, ids []int32) ([]contracts.Varian
 // domainPriceFromRow the same way responses.go's variantResponse does, and
 // reuses pricing.go's getEffectivePrice — the single source of the
 // campaign-beats-base, currency-case-insensitive rule — rather than
-// restating it here.
+// restating it here. The amount is the chosen row's numeric as exact decimal
+// text (orders design O6), never the float the rule compares with.
 func (c *catalog) ListPrice(ctx context.Context, variantID int32, currency string, at time.Time) (*contracts.Money, error) {
 	rows, err := c.q.ListPricesByVariant(ctx, variantID)
 	if err != nil {
@@ -90,16 +91,27 @@ func (c *catalog) ListPrice(ctx context.Context, variantID int32, currency strin
 	if !ok {
 		return nil, nil
 	}
-	return &contracts.Money{Amount: price.Amount, Currency: price.Currency}, nil
+	for _, r := range rows {
+		if r.ID == price.ID {
+			return &contracts.Money{Amount: ratFromNumeric(r.Amount).FloatString(2), Currency: r.Currency}, nil
+		}
+	}
+	return nil, fmt.Errorf("products: catalog list price: price %d is not among the variant's rows", price.ID)
 }
 
 // variantEntry is a catalog row as the contract answers it; every catalog
 // query selects the same columns, each into its own sqlc row type.
-func variantEntry(id, productID int32, productName, sku string, barcode *string, unit, productType, productStatus string) contracts.VariantEntry {
-	return contracts.VariantEntry{
+func variantEntry(id, productID int32, productName, sku string, barcode *string, unit, productType, productStatus string,
+	taxCategoryID int32, description *string,
+) contracts.VariantEntry {
+	entry := contracts.VariantEntry{
 		ID: id, ProductID: productID, ProductName: productName, SKU: sku, Barcode: barcode,
-		Unit: unit, ProductType: productType, ProductStatus: productStatus,
+		Unit: unit, ProductType: productType, ProductStatus: productStatus, TaxCategoryID: taxCategoryID,
 	}
+	if description != nil {
+		entry.Description = *description
+	}
+	return entry
 }
 
 // withPackagings fills every entry's Packagings, by sort order then id, in
@@ -142,7 +154,7 @@ func (c *catalog) VariantsOfProduct(ctx context.Context, productID int32) ([]con
 	}
 	entries := make([]contracts.VariantEntry, 0, len(rows))
 	for _, row := range rows {
-		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus))
+		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description))
 	}
 	if err := withPackagings(ctx, c.q, entries); err != nil {
 		return nil, err
@@ -168,10 +180,10 @@ func (c *catalog) LookupCode(ctx context.Context, code string) ([]contracts.Code
 	}
 	entries := make([]contracts.VariantEntry, 0, len(rows)+len(packagingRows))
 	for _, row := range rows {
-		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus))
+		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description))
 	}
 	for _, row := range packagingRows {
-		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus))
+		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description))
 	}
 	if err := withPackagings(ctx, c.q, entries); err != nil {
 		return nil, err
@@ -216,7 +228,7 @@ func (c *catalog) LookupSKUs(ctx context.Context, skus []string) (map[string][]c
 			return nil, fmt.Errorf("products: catalog lookup SKUs: %w", err)
 		}
 		for _, row := range rows {
-			entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus))
+			entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description))
 		}
 	}
 	if err := withPackagings(ctx, c.q, entries); err != nil {
@@ -241,22 +253,26 @@ func (c *catalog) LookupSKUs(ctx context.Context, skus []string) (map[string][]c
 // searchVariantsMax bounds SearchVariants whatever limit the caller asks.
 const searchVariantsMax = 50
 
-// SearchVariants answers at most limit goods variants whose SKU, product
-// name or barcode contains q, ignoring case, by SKU, through the product
-// list's own likePattern, so LIKE's wildcards in q match literally.
-func (c *catalog) SearchVariants(ctx context.Context, q string, limit int) ([]contracts.VariantEntry, error) {
+// SearchVariants answers at most s.Limit variants of products of s.Types
+// (every type when empty), of active products unless s.IncludeInactive,
+// whose SKU, product name or barcode contains q, ignoring case, by SKU,
+// through the product list's own likePattern, so LIKE's wildcards in q match
+// literally.
+func (c *catalog) SearchVariants(ctx context.Context, q string, s contracts.VariantSearch) ([]contracts.VariantEntry, error) {
 	q = strings.TrimSpace(q)
-	if q == "" || limit <= 0 {
+	if q == "" || s.Limit <= 0 {
 		return nil, nil
 	}
-	limit = min(limit, searchVariantsMax)
-	rows, err := c.q.CatalogSearchVariants(ctx, store.CatalogSearchVariantsParams{Pattern: likePattern(q), MaxRows: int32(limit)})
+	limit := min(s.Limit, searchVariantsMax)
+	rows, err := c.q.CatalogSearchVariants(ctx, store.CatalogSearchVariantsParams{
+		Types: s.Types, IncludeInactive: s.IncludeInactive, Pattern: likePattern(q), MaxRows: int32(limit),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("products: catalog search variants: %w", err)
 	}
 	entries := make([]contracts.VariantEntry, 0, len(rows))
 	for _, row := range rows {
-		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus))
+		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description))
 	}
 	if err := withPackagings(ctx, c.q, entries); err != nil {
 		return nil, err
@@ -278,7 +294,7 @@ func (c *catalog) LockVariants(ctx context.Context, tx pgx.Tx, ids []int32) ([]c
 	}
 	entries := make([]contracts.VariantEntry, 0, len(rows))
 	for _, row := range rows {
-		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus))
+		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description))
 	}
 	if err := withPackagings(ctx, txq, entries); err != nil {
 		return nil, err

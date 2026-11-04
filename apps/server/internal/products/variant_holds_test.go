@@ -31,10 +31,13 @@ type fakeHolder struct {
 	// asked counts the questions, so a test can prove the holder was asked
 	// inside the delete at all.
 	asked atomic.Int32
+	// purpose is the last purpose it was asked for.
+	purpose atomic.Value
 }
 
-func (f *fakeHolder) VariantHeld(_ context.Context, tx pgx.Tx, variantID int32) (*contracts.VariantHold, error) {
+func (f *fakeHolder) VariantHeld(_ context.Context, tx pgx.Tx, variantID int32, purpose contracts.VariantHoldPurpose) (*contracts.VariantHold, error) {
 	f.asked.Add(1)
+	f.purpose.Store(purpose)
 	if tx == nil {
 		return nil, fmt.Errorf("fakeHolder: asked without a transaction")
 	}
@@ -85,6 +88,33 @@ func TestDeleteVariant_HeldByAHolder_IsRefusedWithVariantHasStock(t *testing.T) 
 	}
 	if n := h.Count(t, `SELECT count(*) FROM products.product_variants WHERE id = $1`, second.Id); n != 1 {
 		t.Errorf("the held variant is gone (%d rows), want it kept", n)
+	}
+}
+
+// TestDeleteVariant_OnOpenDocuments_IsRefusedNamingTheKind pins orders design
+// O30 on Products' side: the holder is asked for the delete, and an
+// open-documents hold is refused in its own words.
+func TestDeleteVariant_OnOpenDocuments_IsRefusedNamingTheKind(t *testing.T) {
+	t.Parallel()
+	holder := &fakeHolder{hold: contracts.VariantHold{Kind: contracts.VariantHoldKindOpenDocuments, Documents: 3}}
+	h := newHarness(t, modtest.WithVariantReferenceHolders(holder))
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+	created, _, second := productWithTwoVariants(t, c, taxCategoryID, "Ordered Widget")
+	holder.held.Store(second.Id)
+
+	r := c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/products/%d/variants/%d", created.Id, second.Id), nil)
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
+	}
+	var problem problemJSON
+	r.JSON(&problem)
+	want := "This variant is on 3 open quotes or orders. Finish or cancel them before you delete the variant."
+	if problem.Title != "Variant is on open documents" || problem.Detail != want {
+		t.Errorf("problem = %q: %q, want %q: %q", problem.Title, problem.Detail, "Variant is on open documents", want)
+	}
+	if got := holder.purpose.Load(); got != contracts.VariantHoldDelete {
+		t.Errorf("purpose = %v, want %v", got, contracts.VariantHoldDelete)
 	}
 }
 
@@ -170,7 +200,7 @@ func TestDeleteVariant_OfAnotherProduct_IsNotFound(t *testing.T) {
 // what the posting committed, not what it saw before it waited.
 type pricedHolder struct{}
 
-func (pricedHolder) VariantHeld(ctx context.Context, tx pgx.Tx, variantID int32) (*contracts.VariantHold, error) {
+func (pricedHolder) VariantHeld(ctx context.Context, tx pgx.Tx, variantID int32, _ contracts.VariantHoldPurpose) (*contracts.VariantHold, error) {
 	var n int
 	if err := tx.QueryRow(ctx, `SELECT count(*) FROM products.product_prices WHERE variant_id = $1`, variantID).Scan(&n); err != nil {
 		return nil, err
@@ -299,7 +329,7 @@ type lateVariantHolder struct {
 	asked     atomic.Int32
 }
 
-func (f *lateVariantHolder) VariantHeld(ctx context.Context, _ pgx.Tx, variantID int32) (*contracts.VariantHold, error) {
+func (f *lateVariantHolder) VariantHeld(ctx context.Context, _ pgx.Tx, variantID int32, _ contracts.VariantHoldPurpose) (*contracts.VariantHold, error) {
 	if f.asked.Add(1) == 1 {
 		var id int32
 		if err := f.pool.QueryRow(ctx, `INSERT INTO products.product_variants (product_id, sku, unit, created_at, updated_at)

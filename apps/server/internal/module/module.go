@@ -18,6 +18,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/ai"
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/events"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/operations"
 	"github.com/vantigo-io/vantigo/server/internal/peppol"
@@ -137,6 +138,12 @@ type Deps struct {
 	// Module.Receivables; it is nil when invoices is disabled, which a caller
 	// reads as "invoicing is off".
 	Receivables contracts.CustomerReceivables
+	// SalesTax is Invoices' VAT codes, the mapping from Products' tax
+	// categories to them, and the seller (contracts.SalesTax, orders design
+	// O8). Compose sets it, on every module's Deps copy, from whichever
+	// enabled module declares Module.SalesTax, beside Receivables; it is nil
+	// when invoices is disabled.
+	SalesTax contracts.SalesTax
 	// CustomerReferenceHolders are every given module's
 	// contracts.CustomerReferenceHolder (customers merge design D1), enabled
 	// or not, in the order the modules were given to Compose — the one
@@ -469,6 +476,20 @@ type Module struct {
 	// has resolved Directory — and puts the result on every module's Deps,
 	// including the provider's own, the same way it resolves Expenses.
 	Receivables func(Deps) contracts.CustomerReceivables
+	// SalesTax builds this module's contracts.SalesTax implementation, if it
+	// provides one (invoices, orders design O8). At most one enabled module
+	// may set it; Compose calls it before any Mount runs, right after
+	// Receivables, and puts the result on every module's Deps, including the
+	// provider's own.
+	SalesTax func(Deps) contracts.SalesTax
+	// EventHandlers builds this module's handlers of the domain-events outbox
+	// (events.Handler, orders design O2), if it has any — a many-provider
+	// slot. Like CustomerReferences it is called for a module MODULES leaves
+	// out too: a handler of a disabled module that needs its module on checks
+	// the setting itself and does nothing. So it must need nothing of Deps a
+	// disabled module would lack. A handler's Name is unique across the
+	// composition.
+	EventHandlers func(Deps) []events.Handler
 	// Workers builds this module's background workers (worker.Worker), if
 	// it has any. Unlike Directory, any number of enabled modules may set
 	// it; Workers (workers.go) resolves it from deps the same way — before

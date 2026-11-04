@@ -309,6 +309,16 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.Receivables = receivablesProvider.Receivables(deps)
 	}
 
+	// Sales tax (contracts.SalesTax, orders design O8) resolves right after
+	// receivables: the same module provides both, from its own tables only.
+	salesTaxProvider, err := soleProvider(mods, "sales tax", func(m Module) bool { return m.SalesTax != nil })
+	if err != nil {
+		return nil, err
+	}
+	if salesTaxProvider != nil {
+		deps.SalesTax = salesTaxProvider.SalesTax(deps)
+	}
+
 	// The three billable reads and consumption resolve beside actuals and
 	// expenses, after the project directory (withBillables says why); Workers
 	// resolves them the same way.

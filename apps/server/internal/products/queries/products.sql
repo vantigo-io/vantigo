@@ -482,7 +482,8 @@ ORDER BY day;
 
 -- name: CatalogVariant :one
 -- CatalogVariant is contracts.ProductCatalog.Variant's lookup.
-SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
+       p.tax_category_id, p.description
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 WHERE v.id = @id;
@@ -490,7 +491,8 @@ WHERE v.id = @id;
 -- name: CatalogVariants :many
 -- CatalogVariants batch-loads the same fields as CatalogVariant for a set of
 -- ids; an id that does not exist is simply absent from the result.
-SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
+       p.tax_category_id, p.description
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 WHERE v.id = ANY(@ids::int[]);
@@ -498,7 +500,8 @@ WHERE v.id = ANY(@ids::int[]);
 -- name: CatalogVariantsOfProduct :many
 -- CatalogVariantsOfProduct is contracts.ProductCatalog.VariantsOfProduct:
 -- every variant of a product in the order the product page lists them.
-SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
+       p.tax_category_id, p.description
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 WHERE v.product_id = @product_id
@@ -507,7 +510,8 @@ ORDER BY v.id;
 -- name: CatalogLookupCode :many
 -- CatalogLookupCode is contracts.ProductCatalog.LookupCode's variant half: a
 -- SKU equal to the code ignoring case, or a barcode equal to it exactly.
-SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
+       p.tax_category_id, p.description
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 WHERE lower(v.sku) = lower(@code::text) OR v.barcode = @code::text
@@ -516,19 +520,24 @@ ORDER BY v.id;
 -- name: CatalogLookupSKUs :many
 -- CatalogLookupSKUs is contracts.ProductCatalog.LookupSKUs: every variant
 -- whose SKU, lowercased, is one of the given lowercased SKUs.
-SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
+       p.tax_category_id, p.description
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 WHERE lower(v.sku) = ANY(@skus::text[])
 ORDER BY v.id;
 
 -- name: CatalogSearchVariants :many
--- CatalogSearchVariants is contracts.ProductCatalog.SearchVariants: goods
--- variants whose SKU, product name or barcode matches the pattern, by SKU.
-SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+-- CatalogSearchVariants is contracts.ProductCatalog.SearchVariants: variants
+-- of products of the given types (every type when none is given), of active
+-- products unless include_inactive, whose SKU, product name or barcode
+-- matches the pattern, by SKU.
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
+       p.tax_category_id, p.description
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
-WHERE p.type = 'Goods'
+WHERE (coalesce(cardinality(@types::text[]), 0) = 0 OR p.type = ANY(@types::text[]))
+  AND (@include_inactive::boolean OR p.status = 'Active')
   AND (v.sku ILIKE @pattern::text OR p.name ILIKE @pattern::text OR v.barcode ILIKE @pattern::text)
 ORDER BY v.sku
 LIMIT @max_rows::int;
@@ -537,7 +546,8 @@ LIMIT @max_rows::int;
 -- CatalogLockVariants is contracts.ProductCatalog.LockVariants: FOR SHARE on
 -- the variants and their products, in variant id order, on the caller's
 -- transaction (inventory design I22).
-SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
+       p.tax_category_id, p.description
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 WHERE v.id = ANY(@ids::int[])

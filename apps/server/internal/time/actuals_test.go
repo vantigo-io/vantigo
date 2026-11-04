@@ -148,7 +148,7 @@ func (f *forbiddenCatalog) LookupSKUs(context.Context, []string) (map[string][]c
 	return nil, nil
 }
 
-func (f *forbiddenCatalog) SearchVariants(context.Context, string, int) ([]contracts.VariantEntry, error) {
+func (f *forbiddenCatalog) SearchVariants(context.Context, string, contracts.VariantSearch) ([]contracts.VariantEntry, error) {
 	f.deny("SearchVariants")
 	return nil, nil
 }

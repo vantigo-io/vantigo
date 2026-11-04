@@ -135,6 +135,63 @@ func (q *Queries) DeleteContact(ctx context.Context, id int32) error {
 	return err
 }
 
+const directoryBillingContacts = `-- name: DirectoryBillingContacts :many
+SELECT c.id, c.first_name, c.middle_name, c.last_name,
+       coalesce(nullif(btrim(cc.email), ''), c.email, '')::text AS email,
+       coalesce(nullif(btrim(cc.phone), ''), c.phone, '')::text AS phone,
+       coalesce((SELECT array_agg(r.role ORDER BY r.role)
+                 FROM customers.customer_contact_roles r
+                 WHERE r.customer_id = cc.customer_id AND r.contact_id = cc.contact_id), '{}')::text[] AS roles
+FROM customers.customers_contacts cc
+JOIN customers.contacts c ON c.id = cc.contact_id
+WHERE cc.customer_id = $1
+ORDER BY c.last_name, c.first_name, c.id
+`
+
+type DirectoryBillingContactsRow struct {
+	ID         int32
+	FirstName  string
+	MiddleName *string
+	LastName   string
+	Email      string
+	Phone      string
+	Roles      []string
+}
+
+// DirectoryBillingContacts is contracts.CustomerDirectory.BillingProfile's
+// contacts, read only when the caller asks (orders design O10): every contact
+// associated with the customer, by last name, then first name, with the
+// association's own phone and e-mail where it has them, else the contact's,
+// and its typed roles on this customer, sorted; "" when it has none. Contacts have no archived
+// state, so none is left out.
+func (q *Queries) DirectoryBillingContacts(ctx context.Context, customerID int32) ([]DirectoryBillingContactsRow, error) {
+	rows, err := q.db.Query(ctx, directoryBillingContacts, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DirectoryBillingContactsRow
+	for rows.Next() {
+		var i DirectoryBillingContactsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.FirstName,
+			&i.MiddleName,
+			&i.LastName,
+			&i.Email,
+			&i.Phone,
+			&i.Roles,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const directoryContactsForCustomer = `-- name: DirectoryContactsForCustomer :many
 SELECT c.id, c.first_name, c.last_name, c.email
 FROM customers.customers_contacts cc

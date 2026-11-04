@@ -137,7 +137,7 @@ func (s *server) customerRate(ctx context.Context, project contracts.ProjectEntr
 	if project.CustomerID == nil || s.deps.Directory == nil {
 		return nil, nil, nil
 	}
-	profile, err := s.deps.Directory.BillingProfile(ctx, *project.CustomerID)
+	profile, err := s.deps.Directory.BillingProfile(ctx, *project.CustomerID, contracts.BillingProfileOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("time: look up the customer's default bill rate: %w", err)
 	}
@@ -183,10 +183,15 @@ func (s *server) lineRate(ctx context.Context, req rateRequest) (*float64, error
 		if price == nil {
 			return nil, nil
 		}
-		amount := price.Amount
-		if line.PricingMode == pricingDiscount && line.DiscountPercent != nil {
-			amount = discounted(amount, *line.DiscountPercent)
+		list, err := exactAmount(price.Amount)
+		if err != nil {
+			return nil, fmt.Errorf("time: read a billing line's list price: %w", err)
 		}
+		if line.PricingMode == pricingDiscount && line.DiscountPercent != nil {
+			amount := discounted(list, *line.DiscountPercent)
+			return &amount, nil
+		}
+		amount := roundHalfUpCents(list)
 		return &amount, nil
 	default:
 		return nil, nil
@@ -209,12 +214,13 @@ func personRate(ctx context.Context, q *store.Queries, userID uuid.UUID, date ti
 
 // discounted is a discount line's arithmetic (D3): the list price less
 // percent, rounded half up to cents, the columns' scale. It is done in exact
-// decimal — each number read from its shortest decimal text, the same text
-// the numeric columns store — because in float64 a half-cent result can land
+// decimal — the list price as the catalog's decimal text answers it, the
+// percent read from its shortest decimal text, the same text the numeric
+// columns store — because in float64 a half-cent result can land
 // a hair under the half and round the wrong way (101.10 at 15 % is 85.935,
 // which float arithmetic rounds to 85.93).
-func discounted(list, percent float64) float64 {
-	amount := exactDecimal(list)
+func discounted(list *big.Rat, percent float64) float64 {
+	amount := new(big.Rat).Set(list)
 	remaining := new(big.Rat).Sub(big.NewRat(100, 1), exactDecimal(percent))
 	amount.Mul(amount, remaining)
 	amount.Quo(amount, big.NewRat(100, 1))

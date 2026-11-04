@@ -179,7 +179,7 @@ func (c *fakeCatalog) LookupSKUs(ctx context.Context, skus []string) (map[string
 	return out, nil
 }
 
-func (c *fakeCatalog) SearchVariants(ctx context.Context, q string, limit int) ([]contracts.VariantEntry, error) {
+func (c *fakeCatalog) SearchVariants(ctx context.Context, q string, search contracts.VariantSearch) ([]contracts.VariantEntry, error) {
 	lockedContractCalls.note(ctx, "fake Products.SearchVariants")
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -189,7 +189,7 @@ func (c *fakeCatalog) SearchVariants(ctx context.Context, q string, limit int) (
 	q = strings.ToLower(q)
 	var out []contracts.VariantEntry
 	for _, v := range c.sorted() {
-		if v.ProductType != "Goods" {
+		if len(search.Types) > 0 && !slices.Contains(search.Types, v.ProductType) {
 			continue
 		}
 		if strings.Contains(strings.ToLower(v.SKU), q) || strings.Contains(strings.ToLower(v.ProductName), q) ||
@@ -198,8 +198,8 @@ func (c *fakeCatalog) SearchVariants(ctx context.Context, q string, limit int) (
 		}
 	}
 	slices.SortFunc(out, func(a, b contracts.VariantEntry) int { return cmp.Compare(a.SKU, b.SKU) })
-	if len(out) > limit {
-		out = out[:limit]
+	if len(out) > search.Limit {
+		out = out[:search.Limit]
 	}
 	return out, nil
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -77,6 +78,7 @@ func TestCatalog_VariantResolvesProductFields(t *testing.T) {
 	want := contracts.VariantEntry{
 		ID: variant.Id, ProductID: created.Id, ProductName: "Catalog Widget",
 		SKU: variant.Sku, Unit: variant.Unit, ProductType: "Goods", ProductStatus: "Draft",
+		TaxCategoryID: taxCategoryID,
 	}
 	if got == nil || !reflect.DeepEqual(*got, want) {
 		t.Errorf("Variant = %+v, want %+v", got, want)
@@ -158,7 +160,7 @@ func TestCatalog_ListPrice_BaseOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListPrice: %v", err)
 	}
-	if got == nil || *got != (contracts.Money{Amount: 599, Currency: "NOK"}) {
+	if got == nil || *got != (contracts.Money{Amount: "599.00", Currency: "NOK"}) {
 		t.Errorf("ListPrice = %+v, want {599 NOK}", got)
 	}
 }
@@ -186,12 +188,12 @@ func TestCatalog_ListPrice_CampaignBeatsBase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListPrice: %v", err)
 	}
-	if got == nil || *got != (contracts.Money{Amount: 499, Currency: "NOK"}) {
+	if got == nil || *got != (contracts.Money{Amount: "499.00", Currency: "NOK"}) {
 		t.Errorf("ListPrice = %+v, want {499 NOK} (the campaign price)", got)
 	}
 
 	oracle := effectivePriceInCurrency(t, c, created.Id, variant.Id, "NOK")
-	if oracle == nil || got.Amount != oracle.Amount || got.Currency != oracle.Currency {
+	if oracle == nil || got.Amount != strconv.FormatFloat(oracle.Amount, 'f', 2, 64) || got.Currency != oracle.Currency {
 		t.Errorf("ListPrice = %+v, disagrees with the module's own variant response %+v", got, oracle)
 	}
 }
@@ -216,7 +218,7 @@ func TestCatalog_ListPrice_ExpiredCampaignFallsBackToBase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListPrice: %v", err)
 	}
-	if got == nil || *got != (contracts.Money{Amount: 599, Currency: "NOK"}) {
+	if got == nil || *got != (contracts.Money{Amount: "599.00", Currency: "NOK"}) {
 		t.Errorf("ListPrice = %+v, want {599 NOK} (the expired campaign no longer applies)", got)
 	}
 }
@@ -255,7 +257,7 @@ func TestCatalog_ListPrice_CurrencyIsCaseInsensitive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListPrice: %v", err)
 	}
-	if got == nil || *got != (contracts.Money{Amount: 599, Currency: "NOK"}) {
+	if got == nil || *got != (contracts.Money{Amount: "599.00", Currency: "NOK"}) {
 		t.Errorf("ListPrice(nok) = %+v, want {599 NOK}", got)
 	}
 }
@@ -355,7 +357,7 @@ func TestCatalog_SearchVariants_GoodsOnlyBySkuWithinTheLimit(t *testing.T) {
 	catalog := products.Module().Products(h.Deps())
 	ctx := context.Background()
 
-	byName, err := catalog.SearchVariants(ctx, "brass hinge", 50)
+	byName, err := catalog.SearchVariants(ctx, "brass hinge", contracts.VariantSearch{Types: []string{"Goods"}, Limit: 50, IncludeInactive: true})
 	if err != nil {
 		t.Fatalf("SearchVariants(name): %v", err)
 	}
@@ -363,7 +365,7 @@ func TestCatalog_SearchVariants_GoodsOnlyBySkuWithinTheLimit(t *testing.T) {
 		t.Errorf("SearchVariants(name) = %+v, want both Brass Hinge variants by SKU", byName)
 	}
 
-	bySku, err := catalog.SearchVariants(ctx, "hinge-", 50)
+	bySku, err := catalog.SearchVariants(ctx, "hinge-", contracts.VariantSearch{Types: []string{"Goods"}, Limit: 50, IncludeInactive: true})
 	if err != nil {
 		t.Fatalf("SearchVariants(sku): %v", err)
 	}
@@ -371,19 +373,57 @@ func TestCatalog_SearchVariants_GoodsOnlyBySkuWithinTheLimit(t *testing.T) {
 		t.Errorf("SearchVariants(sku) = %+v, want the two goods variants, never the service's", bySku)
 	}
 
-	limited, err := catalog.SearchVariants(ctx, "hinge", 1)
+	limited, err := catalog.SearchVariants(ctx, "hinge", contracts.VariantSearch{Types: []string{"Goods"}, Limit: 1, IncludeInactive: true})
 	if err != nil || len(limited) != 1 || !strings.HasPrefix(limited[0].SKU, "HINGE-A-") {
 		t.Errorf("SearchVariants(limit 1) = %+v, %v, want the first by SKU only", limited, err)
 	}
 
-	byBarcode, err := catalog.SearchVariants(ctx, barcode[2:9], 50)
+	byBarcode, err := catalog.SearchVariants(ctx, barcode[2:9], contracts.VariantSearch{Types: []string{"Goods"}, Limit: 50, IncludeInactive: true})
 	if err != nil || len(byBarcode) != 1 || byBarcode[0].Barcode == nil || *byBarcode[0].Barcode != barcode {
 		t.Errorf("SearchVariants(barcode part) = %+v, %v, want the barcoded variant", byBarcode, err)
 	}
 
-	literal, err := catalog.SearchVariants(ctx, "100%", 50)
+	literal, err := catalog.SearchVariants(ctx, "100%", contracts.VariantSearch{Types: []string{"Goods"}, Limit: 50, IncludeInactive: true})
 	if err != nil || len(literal) != 1 || literal[0].ProductName != "100% wool" {
 		t.Errorf("SearchVariants(100%%) = %+v, %v, want only 100%% wool: %% must match literally", literal, err)
+	}
+}
+
+// TestCatalog_SearchVariants_TypesAndActive pins VariantSearch's filter
+// (orders design O6): no types answers every type, and only active products
+// are answered unless IncludeInactive.
+func TestCatalog_SearchVariants_TypesAndActive(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+	marker := sku(t, "filter")
+	createProduct(t, c, newProductBody(taxCategoryID, "Filter goods", "FG-"+marker, "Active"))
+	service := newProductBody(taxCategoryID, "Filter service", "FS-"+marker, "Active")
+	service["type"] = "Service"
+	createProduct(t, c, service)
+	createProduct(t, c, newProductBody(taxCategoryID, "Filter draft", "FD-"+marker))
+	catalog := products.Module().Products(h.Deps())
+	ctx := context.Background()
+
+	skus := func(entries []contracts.VariantEntry) []string {
+		out := make([]string, 0, len(entries))
+		for _, e := range entries {
+			out = append(out, e.SKU)
+		}
+		return out
+	}
+	active, err := catalog.SearchVariants(ctx, marker, contracts.VariantSearch{Limit: 50})
+	if err != nil || !reflect.DeepEqual(skus(active), []string{"FG-" + marker, "FS-" + marker}) {
+		t.Errorf("SearchVariants(every type, active) = %v, %v, want the goods and the service", skus(active), err)
+	}
+	services, err := catalog.SearchVariants(ctx, marker, contracts.VariantSearch{Types: []string{"Service"}, Limit: 50})
+	if err != nil || !reflect.DeepEqual(skus(services), []string{"FS-" + marker}) {
+		t.Errorf("SearchVariants(Service) = %v, %v, want the service only", skus(services), err)
+	}
+	all, err := catalog.SearchVariants(ctx, marker, contracts.VariantSearch{Limit: 50, IncludeInactive: true})
+	if err != nil || len(all) != 3 {
+		t.Errorf("SearchVariants(include inactive) = %v, %v, want all three", skus(all), err)
 	}
 }
 
