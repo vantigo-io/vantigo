@@ -204,8 +204,10 @@ Service account keys do not expire. Rotate yearly, and at once if a key may have
 
 Every key Vantigo has stored stays live until revoked. When Google refuses the newest
 (deleted in the console, for instance), Vantigo marks it *Google refused it* and the
-event *Google refused a key*, by Vantigo, and uses the older one; when Google refuses
-them all, the connection is **Failing**.
+event *Google refused a key*, by Vantigo — once, until the key works again — and uses
+the older one; when Google refuses them all, the connection is **Failing**. A key that
+works again loses the mark. An address Google does not know is not held against the
+keys.
 
 ## Change the service account
 
@@ -231,8 +233,8 @@ done, and by whom.
 | **Not set up** | No live key, or no admin to impersonate — or the admin was just changed. | Finish steps 2 and 4, and test. |
 | **Waiting for delegation** (`not_delegated`) | Google refused every scope: the delegation is not entered, is entered for another client id, or is not applied yet. | Check the **Client ID** and the scopes in the Admin console; wait up to 24 hours, and for a second super admin's approval under multi-party approval; test again. |
 | **Connected**, with scopes listed as refused | Some of the scopes are delegated and some are not. | Add the missing scopes to the client's delegation, and test again. |
-| **Failing** (`credential_invalid`) | Google refused every key — deleted or disabled in the Cloud console — or does not know the admin to impersonate: the address is mistyped or not in the organisation. A key sealed under another `APP_SECRET` cannot be opened either. | Check the address in step 4; upload a new key if the old one is gone; test again. |
-| **Failing** (`admin_refused`) | The token was issued, but the Admin SDK answered 403: the admin may not read the organisation, or the Admin SDK API is not enabled on the project. | Name a super admin, or give the admin's role the right to read users and domains; enable the **Admin SDK API**; test again. |
+| **Failing** (`credential_invalid`) | Google refused every key — deleted or disabled in the Cloud console. A key sealed under another `APP_SECRET` cannot be opened either. | Upload a new key if the old one is gone; test again. |
+| **Failing** (`admin_refused`) | Google does not know the admin to impersonate — the address is mistyped, not in the organisation, or the user is suspended — or the token was issued but the Admin SDK answered 403: the admin may not read the organisation, or the Admin SDK API is not enabled on the project. The keys are not marked. | Check the address in step 4; name a super admin, or give the admin's role the right to read users and domains; enable the **Admin SDK API**; test again. |
 | **Failing** (`google_unreachable`) | Google did not answer, or answered errors twice. | Check outbound https to the hosts [above](#before-you-start) from every process, then test again. |
 | *This key is for another service account* (`client_mismatch`) | The uploaded key belongs to another service account than the live keys. | Upload a key of the current account, or [change the service account](#change-the-service-account). |
 | *Scopes Vantigo does not use* | The delegation carries scopes Vantigo never asks for. | Remove them from the delegation unless another product needs them. |

@@ -169,10 +169,13 @@ key Google refused since it last fetched a token (or that never fetched one) goe
 every other. A key is opened for each token request and never held open. When Google
 refuses a key (`invalid_grant` or `invalid_client` on its JWT, or the sealed key does not
 open under this `APP_SECRET`), it is marked `last_failed_at`, recorded as
-`google.credential.refused` by the system actor `system:google`, and the next is tried.
+`google.credential.refused` by the system actor `system:google` — once: a key already
+refused since it last worked is not recorded again — and the next is tried.
 **When every key is refused** the connection is set `failing`, `credential_invalid`. A
-refused scope is not a refused key: the next key is the same service account's and is
-not tried. `last_used_at` is written when a key fetches a token, at most once a minute.
+refused scope is not a refused key, and neither is a refused subject (below): the next
+key is the same service account's and is not tried, nothing is marked and the
+connection's status is left alone. `last_used_at` is written when a key fetches a token,
+at most once a minute — and at once when the key was refused since it was last used.
 
 **`DELETE /connection/credentials/{id}`** revokes a key or a client secret: kept, marked
 `revoked_at`, never used again, a key's cached tokens forgotten. Nothing changes at
@@ -220,11 +223,15 @@ key and its id, the scopes, the subject — at `https://oauth2.googleapis.com/to
 the guarded client handed in the context as `oauth2.HTTPClient`, so the exchange goes
 through the host guard and netguard too. Tokens are cached in the process per (key — its
 row and a digest of its sealed value —, subject, scope set) until five minutes before
-they expire; the test always asks a fresh one. A later credential kind, `vantigo_hosted`,
+they expire; the test always asks a fresh one, and keeps none of its probes' tokens for
+scopes Vantigo never uses. A later credential kind, `vantigo_hosted`,
 fills the same seam without a key.
 
-The token endpoint's answers map to: `invalid_grant` or `invalid_client` — the key
-refused, or the subject an admin Google does not know; `unauthorized_client` or
+The token endpoint's answers map to: `invalid_grant` whose description names the subject
+(*Invalid email or User ID* and the like: an address Google does not know, or a suspended
+user) — the subject refused, the admin's problem in a test and that person's in a later
+delivery's call; the description is read for this alone and never logged or kept; any other
+`invalid_grant`, or `invalid_client` — the key refused; `unauthorized_client` or
 `access_denied` — the scope not delegated to the client id ([U14](#unverified-items));
 a 429 or a 5xx retried once; anything else Google unreachable.
 
@@ -246,11 +253,14 @@ a 429 or a 5xx retried once; anything else Google unreachable.
    reported.
 3. **The organisation**: `customers.get(my_customer)` and `domains.list` on the
    Directory, each with the token of its scope when it was granted. It stores
-   `customer_id`, `organisation_name`, the verified domains (lower-cased, sorted) and the
-   primary one (the customer's domain when none is marked primary).
+   `customer_id`, `organisation_name` (cut to 256 characters), the verified domains
+   (lower-cased, sorted) and the primary one (the customer's domain when none is marked
+   primary).
 
 What it found is written beside the connection's settings and leaves the version alone,
-so an open form is not refused for it. It answers 200 whatever it found
+so an open form is not refused for it — and only over the version the test read, in one
+transaction with its event: when the admin changed during the test, the test is answered
+but neither written nor audited. It answers 200 whatever it found
 (`{status, reason?, granted, missing, unexpected, customer?, domains}`). Without a live
 key or an admin it is `unconfigured` and asks Google nothing.
 
@@ -261,8 +271,8 @@ key or an admin it is `unconfigured` and asks Google nothing.
 | `unconfigured` | — | No live key, or no admin named; also right after the admin changes. |
 | `pending_delegation` | `not_delegated` | Every needed scope was refused: the delegation is not entered, or not applied — it can take up to 24 hours, and with multi-party approval a second super admin must approve it. |
 | `connected` | — | At least one needed scope granted; the refused ones are listed in `scopesMissing`, and what needs them is unavailable. Unexpected scopes do not change it. |
-| `failing` | `credential_invalid` | No key fetched a token: every key refused, or the admin unknown to Google. Also set by any call that finds every key refused. |
-| `failing` | `admin_refused` | The Directory answered 403: the admin may not read the organisation, or the Admin SDK API is off in the project. |
+| `failing` | `credential_invalid` | No key fetched a token: every key refused. Also set by any call that finds every key refused. |
+| `failing` | `admin_refused` | Google does not know the admin (the subject refused), or the Directory answered 403: the admin may not read the organisation, or the Admin SDK API is off in the project. |
 | `failing` | `google_unreachable` | Google did not answer, answered nonsense, or a 5xx twice. |
 
 The event is `google.connection.tested`, with the customer id as its subject.
