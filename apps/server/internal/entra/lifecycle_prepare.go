@@ -223,7 +223,7 @@ func (p *provisioner) create(ctx context.Context, s session, actor contracts.Act
 			}
 			created = made
 		case isCode(err, "ObjectConflict"):
-			if addr.fromEmail {
+			if addr.fromEmail() {
 				return contracts.ExternalAccount{}, p.refused(ctx, s, actor, actionUserPrepared, nil, upn,
 					&refusedError{code: refusedAddressTaken, sentinel: contracts.ErrExternalAddressTaken})
 			}
