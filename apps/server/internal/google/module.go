@@ -13,8 +13,11 @@
 // contracts.IdentityProvisioner under the key google: Staff's accounts
 // worker prepares, activates, updates, suspends and deletes a person's
 // Google account, keeps Staff's groups as Google groups with their
-// licences, and pushes the photo; the module runs no worker of its own. The
-// person's connection, the calendar and Gmail come in the deliveries after
+// licences, and pushes the photo; the module runs no worker of its own.
+// Delivery C (G23–G24, docs/superpowers/plans/2026-11-03-google-link-users.md)
+// fills contracts.DirectorySearch under the same key: identity's Owner
+// endpoints search the organisation's users and propose exact matches for
+// connecting existing users to Google sign-in. The person's connection, the calendar and Gmail come in the deliveries after
 // it. Every call to Google takes its token from tokenSource. MODULES refuses
 // google without staff. Nothing here imports another module — depguard
 // enforces it, tests included — and no SQL of this module crosses a schema.
@@ -27,7 +30,8 @@
 // trail; provisioner.go the provisioner and its status, directory.go the
 // user as the Directory has it, lifecycle_*.go the account's lifecycle,
 // licences.go the licences, groups.go and groups_traits.go the groups,
-// photo.go the photo, accounts.go the Accounts tab's operations; and
+// photo.go the photo, accounts.go the Accounts tab's operations;
+// directory_search.go the directory search identity serves; and
 // googletest the fake Google its tests run against.
 package google
 
@@ -82,13 +86,16 @@ var skusLimit = ratelimit.Policy{Name: "google-skus", Limit: 30, Window: time.Mi
 // Module is google as a platform module: its contract mounted under
 // /api/v1/google/, its one permission in the composed catalog, and its
 // contracts.IdentityProvisioner (provisioner.go), which Compose and Workers
-// collect into Deps.IdentityProvisioners for Staff's accounts worker.
+// collect into Deps.IdentityProvisioners for Staff's accounts worker, and its
+// contracts.DirectorySearch (directory_search.go), which Compose collects
+// into Deps.DirectorySearches for identity's directory endpoints.
 func Module() module.Module {
 	return module.Module{
 		Name:                "google",
 		Permissions:         permissions,
 		Mount:               mount,
 		IdentityProvisioner: newProvisioner,
+		DirectorySearch:     newDirectorySearch,
 	}
 }
 
