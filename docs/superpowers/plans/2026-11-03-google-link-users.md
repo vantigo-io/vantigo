@@ -114,10 +114,11 @@ Checked against `280cd94a` (delivery B's branch, `feat/google-accounts`).
   otherwise arrive at their first sign-in. Both steps are hidden while the connection has
   no customer (no test has read the organisation).
 - **U1 is not settled (P5).** The links are keyed by the Directory id, compared with the
-  ID token's `sub`. Should they differ, an announced link is never fulfilled: the
-  person's sign-in is refused `oidc_email_conflict` as it would have been without the
-  announcement, and nothing is linked to the wrong user. The pull request says the check
-  in the test tenant comes before the merge; `R/google.md` records it as unverified.
+  ID token's `sub`. Should they differ, identity falls back to the link's other key, the
+  primary email, against the token's verified email — the same person's address — so the
+  sign-in still lands on the announced user, and nothing is linked to the wrong user
+  (found while building: identity's test pins it). The pull request says the check in the
+  test tenant comes before the merge; `R/google.md` records it as unverified.
 
 ## Tasks
 
@@ -136,7 +137,7 @@ Checked against `280cd94a` (delivery B's branch, `feat/google-accounts`).
 - [ ] **3. A Google sign-in fulfils a pick** — `test(identity): a Google sign-in lands on the user announced from the directory (Google C)`.
   Identity's harness with the Google OIDC fake and a `FakeDirectorySearch` keyed
   `google`: search, announce the pick, sign in with `sub` the picked id, land on the
-  user.
+  user; and a `sub` that differs landing by the primary email (U1's fallback).
 - [ ] **4. The SSO prefill** — `feat(host): the single sign-on card takes allowed domains as a default (Google C)`.
   `SsoDefaults.allowedDomains`; tests: applied to an empty form only, never over a saved
   value.
@@ -163,7 +164,7 @@ checks are unchanged; no match is fuzzy.
 ## Unverified items this delivery depends on
 
 - **U1** (the ID token's `sub` equals the Directory user id): not settled. A mismatch
-  leaves every announced link unfulfilled and the sign-in refused as before — nothing
+  falls back to the primary email against the verified email, the same person; nothing
   linked wrongly. Settled in the test tenant before the merge (P5).
 - **U4** (`hd` for a user on a secondary domain): every verified domain is prefilled as
   allowed. Identity's check also needs `hd` to equal the email's domain (reading 7): if

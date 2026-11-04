@@ -1,6 +1,6 @@
 ---
 title: "Google Workspace module"
-description: "Google Workspace as a connection to one organisation through a service account's domain-wide delegation — the foundation: the module and why it requires Staff; the schema; the page and its four tabs; the permission and the Owner policy; the connection, the admin to impersonate and the credential kind under If-Match; the key file's rules, the keys in the plural, their try order and a refused key; the Internal web client and its secret; the guarded client, its fixed hosts and its limits; the delegated token, its cache and the one seam; Test connection, the needed and the unexpected scopes, and the statuses and their reasons; the events; the refusals and the endpoints; and the unverified items U2 and U14 — and the accounts (delivery B): the provisioner google and its status, the accounts and groups tables and the account rules, the correlation on the organization external id and the adoption, the address, the mapping, the first password, the licences, the leaver's steps, the delete, the groups' three traits, the photo at 96 px, and the unverified items U11, U12, U13, U16 and U19."
+description: "Google Workspace as a connection to one organisation through a service account's domain-wide delegation — the foundation: the module and why it requires Staff; the schema; the page and its four tabs; the permission and the Owner policy; the connection, the admin to impersonate and the credential kind under If-Match; the key file's rules, the keys in the plural, their try order and a refused key; the Internal web client and its secret; the guarded client, its fixed hosts and its limits; the delegated token, its cache and the one seam; Test connection, the needed and the unexpected scopes, and the statuses and their reasons; the events; the refusals and the endpoints; and the unverified items U2 and U14 — and the accounts (delivery B): the provisioner google and its status, the accounts and groups tables and the account rules, the correlation on the organization external id and the adoption, the address, the mapping, the first password, the licences, the leaver's steps, the delete, the groups' three traits, the photo at 96 px, and the unverified items U11, U12, U13, U16 and U19 — and connecting existing users (delivery C): the directory search identity serves, its two prefix queries, the exact matches by primary email, alias and employee number, their bounds, the announced link keyed by the Directory id, the Sign-in and Provisioning steps, and the unverified items U1 and U4."
 sources:
   - apps/server/internal/google
   - apps/google/frontend
@@ -23,11 +23,15 @@ owns the `google` schema in the shared PostgreSQL database, and serves
 and its page is **Google Workspace** under **Integrations** in Workspace admin
 ([the page](#the-page)).
 
-**Deliveries A and B.** The module holds the connection — the service account's keys,
+**Deliveries A, B and C.** The module holds the connection — the service account's keys,
 the admin to impersonate, the Internal web client — tests it, and reads the organisation
 and its verified domains (A). It fills `contracts.IdentityProvisioner` under the key
 `google` ([the provisioner](#the-provisioner)): Staff's accounts worker drives a person's
-account and Staff's groups in the organisation through it (B). The person's own Google
+account and Staff's groups in the organisation through it (B). It fills
+`contracts.DirectorySearch` under the same key ([the directory
+search](#the-directory-search)): identity's Owner endpoints search the organisation's
+users and propose exact matches for connecting existing users to Google sign-in (C). The
+person's own Google
 connection, the calendar and Gmail come in later deliveries, each taking its token from
 the one seam [`tokenSource`](#the-delegated-token). `MODULES` refuses `google` without
 `staff` (`google requires staff`): Staff's accounts worker is the provisioner's only
@@ -100,7 +104,7 @@ as tabs under one header, each tab a link (`googleTabs` in `@vantigo/google-ui`)
 | --- | --- | --- | --- |
 | `/workspace/google` | Status | `GoogleStatusTab` | A *Not connected yet* notice while unconfigured, the **Status** card — status and reason, organisation, customer id, primary and verified domains, last test, the scopes granted, missing and unexpected — and **Recent events** |
 | `/workspace/google/connection` | Connection | `GoogleConnectionTab` | The six steps: the project, the service account and its key; upload the key; delegate the scopes; the admin to impersonate; **Test connection**; the Internal web client |
-| `/workspace/google/accounts` | Accounts | a placeholder | One sentence: accounts are coming |
+| `/workspace/google/accounts` | Accounts | `GoogleAccountsTab` | The account rules; once a test has read the organisation, **Sign-in** and **Provisioning**, identity's single sign-on card handed in by the host ([the prefill](#the-sign-in-prefill)); the licences; the accounts and the groups |
 | `/workspace/google/calendar-gmail` | Calendar and Gmail | a placeholder | One sentence: Calendar and Gmail are coming |
 
 - **The gate.** The workspace layout admits a holder of `google:manage` while `google` is
@@ -431,6 +435,81 @@ be decoded, reports `photo_not_written` and answers nil ([U13](#unverified-items
 `ClearPhoto` is `users.photos.delete`, a 404 done. Both refuse an administrator
 (`ErrExternalPrivileged`, nothing written), as every write does.
 
+## The directory search
+
+`directory_search.go` fills `contracts.DirectorySearch` under `Key() = "google"`,
+`DisplayName()` "Google Workspace", registered as the module's `DirectorySearch`; Compose
+collects it into `Deps.DirectorySearches` (Workers does not). Identity serves it — the
+module adds no endpoint — while `google` is the configured OIDC provider:
+`GET /api/v1/identity/owner/sso/directory/users?search=` and
+`GET /api/v1/identity/owner/sso/directory/matches`, under identity's rules (an Owner,
+60 searches and 6 reviews a minute, 409 `no_directory`, 503 `provider_unreachable`;
+[the announced link](/en/admin/sso-scim/#the-announced-link)).
+
+**The footing.** Each read takes the connection's row on the pool: the admin to
+impersonate and the verified domains. A connection naming no admin or holding no live key
+fails `contracts.ErrDirectoryUnavailable`, as does a token Google will not issue (the key,
+the admin, or `admin.directory.user` not delegated), a timeout, throttling or a 5xx;
+identity answers it 503. The calls go as the admin with `admin.directory.user`, on no
+transaction. What the reads need of identity — the users not yet connected and who holds
+an account — comes through `contracts.SSOConnections` with the request's context, so
+identity's own gate applies. A search, an address or an employee number never reaches a
+log line (the client logs host and path, never the query), an event or an error; the reads
+write no event.
+
+**The keys.** An account answers `ObjectID` its Directory id (digits), `PrincipalName`
+and `Mail` its primary email, `DisplayName` its full name (the primary email when it has
+none), `EmployeeNumber` its first `organization`-typed external id, `Enabled` not
+suspended, and `Guest` false — Google's directory has no guests. A pick fills identity's
+announced link with the Directory id as `objectId` and the primary email as
+`userPrincipalName`; identity keys a Google sign-in by the ID token's `sub`
+([U1](#unverified-items)).
+
+**`Users`** strips `'`, `"`, `\` and `*` from the search and asks nothing when nothing is
+left. It then asks `users.list(customer=my_customer, projection=basic, viewType=admin_view,
+maxResults=20)` twice, with `query=name:'<s>*'` and with `query=email:'<s>*'` — the full
+name and the primary email or an alias starting with the search. Google documents no `OR`
+between clauses, so the two are always asked apart. The answers are merged by id,
+ordered by full name then id, cut to the limit (20 at most; identity asks 25), and each
+marked with its holder from `SSOConnections.KeyHolders`.
+
+**`Matches`** reads `SSOConnections.Unconnected(1001)` — `truncated` past 1000, as
+Entra's — then the organisation's users once, `users.list(customer=my_customer,
+projection=basic)` in pages of 500, at most 20 pages (10,000 accounts). An account's
+addresses are its primary email, its `aliases`, its `nonEditableAliases`, and the
+`emails[]` entries on one of the connection's verified domains; an address an
+administrator typed for the person elsewhere (a home address) is not the account's own
+and matches nobody. A candidate's key matches an account when:
+
+| Key | Rule | `matchedBy` |
+| --- | --- | --- |
+| The address | equals the primary email, trimmed, ignoring case | `mail`, `principalName` |
+| The address | equals an alias, the same way | `mail` |
+| The employee number | equals the organization external id, trimmed, ignoring case | `employeeNumber` |
+
+The rule is Entra's, exact only: a candidate is proposed when their keys hit exactly one
+account that no other candidate's key hit and that nobody else holds (the candidate's own
+SCIM mapping does not block it); two accounts, or one account two candidates hit, is
+ambiguous and counted. An address identity made up and an empty number match nothing.
+Past 10,000 accounts the answer is `truncated` and **the employee number is not used**:
+an address belongs to one user in a Google organisation, so an address match stays exact
+over a partial read, while a second account holding the same number could be in the pages
+not read. The whole read is bounded by two minutes, past which it fails
+`ErrDirectoryUnavailable`; a second request of the same Owner while the first reads
+shares its answer.
+
+### The sign-in prefill
+
+The Accounts tab's **Sign-in** step, an Owner's and shown once the connection has a
+customer id, renders the host's `SsoSettingsCard` (`sections: ["oidc"]`) with
+`defaults: {provider: "google", authority: "https://accounts.google.com", clientId:
+oauthClientId, allowedDomains: domains}`; without a web client id it asks for one on the
+Connection tab. `SsoDefaults.allowedDomains` is applied with the rest, and only to a form
+with OIDC off and no authority or client id saved — never over a saved value. The Owner
+types the web client's secret into identity's card; identity seals its own copy, and no
+secret crosses modules. **Provisioning** renders the card's SCIM half, says Google sends
+no users to Vantigo, and links to Staff's default account kind.
+
 ## The events
 
 Every write the module makes is a row in `google.events`, read newest first by
@@ -486,6 +565,9 @@ All under `/api/v1/google`.
 | `GET /accounts`, `POST /accounts/{userId}/confirm` | `google:manage` |
 | `GET /groups`, `POST /groups/{groupId}/confirm` | `google:manage` |
 
+The directory search adds none: identity serves it ([the directory
+search](#the-directory-search)).
+
 The request and response shapes are in the contract,
 [`openapi/google.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/google.yaml),
 and in the API reference generated from it.
@@ -519,6 +601,24 @@ settled in a test organisation yet:
   `leaver_remove_licences` defaults on and can be turned off.
 - **U19 — `users.signOut` under the delegated scope.** A refusal is reported
   `sign_out_refused`; the suspension is already done.
+
+Three concern delivery C, built on the design's defensive path before they are settled
+(P5); the check in a test organisation comes before its merge:
+
+- **U1 — the ID token's `sub` equals the Directory user id.** Announced links name the
+  Directory id and identity compares it with `sub` first. Should they differ, the object
+  id never matches and identity falls back to the link's other key: the primary email,
+  against the token's verified `email` — the same person's address, so the sign-in still
+  lands on the announced user (identity's test pins it), and nobody is linked to the wrong
+  user. A link announced with the object id alone would then never be fulfilled, and the
+  sign-in would go as it would have without it.
+- **U4 — `hd` for a user on a secondary domain.** Every verified domain is prefilled as
+  allowed. Identity also requires `hd` to equal the address's domain: should Google answer
+  the primary domain for a user whose address is on a secondary one, that user's sign-in
+  is refused, never linked wrongly.
+- **The search's prefixes.** `name:'<s>*'` and `email:'<s>*'` are taken as prefix
+  matches over the full name and the addresses; a query that finds less shows fewer
+  accounts, never a wrong one.
 
 Besides: `licenseAssignments` is addressed by the user's primary email, as its
 reference documents; and the language codes written are `no` and `en-GB`.
