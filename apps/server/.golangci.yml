@@ -82,6 +82,10 @@ linters:
               desc: "internal/identity may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
               desc: "internal/identity may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "internal/identity may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
+              desc: "internal/identity may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning$
               desc: "internal/identity may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning/
@@ -141,6 +145,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra$
               desc: "internal/customers may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
+              desc: "internal/customers may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "internal/customers may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
               desc: "internal/customers may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning$
               desc: "internal/customers may not import another business module"
@@ -202,6 +210,10 @@ linters:
               desc: "internal/products may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
               desc: "internal/products may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "internal/products may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
+              desc: "internal/products may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning$
               desc: "internal/products may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning/
@@ -261,6 +273,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra$
               desc: "internal/energy may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
+              desc: "internal/energy may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "internal/energy may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
               desc: "internal/energy may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning$
               desc: "internal/energy may not import another business module"
@@ -322,6 +338,10 @@ linters:
               desc: "internal/communications may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
               desc: "internal/communications may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "internal/communications may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
+              desc: "internal/communications may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning$
               desc: "internal/communications may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning/
@@ -381,6 +401,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra$
               desc: "internal/projects may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
+              desc: "internal/projects may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "internal/projects may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
               desc: "internal/projects may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning$
               desc: "internal/projects may not import another business module"
@@ -442,6 +466,10 @@ linters:
               desc: "internal/time may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
               desc: "internal/time may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "internal/time may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
+              desc: "internal/time may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning$
               desc: "internal/time may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning/
@@ -501,6 +529,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra$
               desc: "internal/expenses may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
+              desc: "internal/expenses may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "internal/expenses may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
               desc: "internal/expenses may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning$
               desc: "internal/expenses may not import another business module"
@@ -562,6 +594,10 @@ linters:
               desc: "internal/invoices may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
               desc: "internal/invoices may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "internal/invoices may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
+              desc: "internal/invoices may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning$
               desc: "internal/invoices may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning/
@@ -622,6 +658,10 @@ linters:
               desc: "internal/staff may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
               desc: "internal/staff may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "internal/staff may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
+              desc: "internal/staff may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning$
               desc: "internal/staff may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning/
@@ -681,6 +721,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra$
               desc: "internal/calendar may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
+              desc: "internal/calendar may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "internal/calendar may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
               desc: "internal/calendar may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning$
               desc: "internal/calendar may not import another business module"
@@ -754,6 +798,70 @@ linters:
               desc: "internal/entra may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/inventory/
               desc: "internal/entra may not import another business module"
+        google:
+          files:
+            - "**/internal/google/**"
+          deny:
+            - pkg: github.com/vantigo-io/vantigo/server/internal/identity$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/identity/
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/customers$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/customers/
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/products$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/products/
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/energy$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/energy/
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/communications$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/communications/
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/projects$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/projects/
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/time$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/time/
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/expenses$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/expenses/
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/invoices$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/invoices/
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/staff$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/staff/
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/calendar$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/calendar/
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/entra$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/planning$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/planning/
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/assistant$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/assistant/
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/inventory$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/inventory/
+              desc: "internal/google may not import another business module"
         planning:
           files:
             - "**/internal/planning/**"
@@ -805,6 +913,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra$
               desc: "internal/planning may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
+              desc: "internal/planning may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "internal/planning may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
               desc: "internal/planning may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/inventory$
               desc: "internal/planning may not import another business module"
@@ -861,6 +973,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra$
               desc: "internal/inventory may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
+              desc: "internal/inventory may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "internal/inventory may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
               desc: "internal/inventory may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning$
               desc: "internal/inventory may not import another business module"
@@ -926,6 +1042,10 @@ linters:
               desc: "internal/assistant may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
               desc: "internal/assistant may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "internal/assistant may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
+              desc: "internal/assistant may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/inventory$
               desc: "internal/assistant may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/inventory/
@@ -942,6 +1062,8 @@ linters:
               desc: "vippstest is a test fake: only _test.go files may import it"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/graphtest
               desc: "graphtest is a test fake: only _test.go files may import it"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/googletest
+              desc: "googletest is a test fake: only _test.go files may import it"
         operations:
           # The Assistant's dispatcher calls any operation of the merged
           # contract in-process, through the router, as the person (module
@@ -1052,6 +1174,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra$
               desc: "platform packages may not import any business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
+              desc: "platform packages may not import any business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "platform packages may not import any business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
               desc: "platform packages may not import any business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/planning$
               desc: "platform packages may not import any business module"

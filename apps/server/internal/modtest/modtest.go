@@ -621,10 +621,10 @@ func WithEnv(key, value string) Option {
 // config.go rejects "inventory" without "products", and inventory's own tests
 // stand in a fake catalog (WithProducts) rather than compose products.
 //
-// "staff" is likewise included whenever "entra" is among mods: config.go
-// rejects "entra" without "staff" (Staff's accounts worker is the provider's
-// only caller), and entra's own tests drive the provider and its endpoints
-// without Staff — listed as enabled, staff is mounted only when a harness
+// "staff" is likewise included whenever "entra" or "google" is among mods:
+// config.go rejects either without "staff" (Staff's accounts worker is the
+// provider's only caller), and their own tests drive the provider and its
+// endpoints without Staff — listed as enabled, staff is mounted only when a harness
 // composes it too.
 //
 // stubbed names the modules a harness stands in for with a fake contract
@@ -642,7 +642,7 @@ func modulesEnv(mods []module.Module, stubbed ...string) string {
 	for _, m := range mods {
 		moduleSet[m.Name] = true
 	}
-	if moduleSet["entra"] {
+	if moduleSet["entra"] || moduleSet["google"] {
 		moduleSet["staff"] = true
 	}
 	if moduleSet["inventory"] {
