@@ -1066,7 +1066,10 @@ feature — today the Microsoft 365 Outlook connection (`Mail.Send` delegated) �
   `'entra'` for every earlier personal message), written with `from_address`; the
   outbox sends through `personalMailboxFor(send_provider)` and answers
   `connection_needed` when no provider is filled under it any more — **never through
-  another provider**, even one that could send.
+  another provider**, even one that could send. A message with no `send_provider` —
+  queued by a replica older than the column, during a rolling upgrade — goes through the
+  only provider filled, or, with several, the one the author's status above names (asked
+  as the author); the retry below resolves it the same way.
 
 - **Channel continuity**: The conversation always belongs to its channel (`channels.address`), regardless
   of whether an individual message was sent from the channel's shared mailbox or from an author's personal mailbox.
