@@ -129,6 +129,27 @@ func TestClient_RetriesAndCaps(t *testing.T) {
 			t.Errorf("waits = %v", waits)
 		}
 	})
+	t.Run("a 403 usage limit waits once like a 429", func(t *testing.T) {
+		limit := `{"error":{"code":403,"errors":[{"reason":"rateLimitExceeded"}]}}`
+		rt := &scripted{answers: []*http.Response{answerOf(403, limit), answerOf(200, `{"id":"C1"}`)}}
+		var log bytes.Buffer
+		var waits []time.Duration
+		var into struct{ ID string }
+		if err := testClient(rt, &log, &waits).get(context.Background(), &staticSource{}, target, &into); err != nil || into.ID != "C1" {
+			t.Errorf("get: %v %+v", err, into)
+		}
+		rt = &scripted{answers: []*http.Response{answerOf(403, limit), answerOf(403, limit)}}
+		waits = nil
+		if err := testClient(rt, &log, &waits).get(context.Background(), &staticSource{}, target, nil); !errors.Is(err, errThrottled) || len(waits) != 1 {
+			t.Errorf("twice: %v, waits %v, want errThrottled after one wait", err, waits)
+		}
+		// A 403 that is no usage limit is the refusal, at once.
+		rt = &scripted{answers: []*http.Response{answerOf(403, refusal)}}
+		waits = nil
+		if err := testClient(rt, &log, &waits).get(context.Background(), &staticSource{}, target, nil); !errors.Is(err, errAdminRefused) || len(waits) != 0 {
+			t.Errorf("a refusal: %v, waits %v", err, waits)
+		}
+	})
 	t.Run("a Retry-After over ten seconds is not waited", func(t *testing.T) {
 		rt := &scripted{answers: []*http.Response{answerOf(429, "", "Retry-After", "11")}}
 		var log bytes.Buffer

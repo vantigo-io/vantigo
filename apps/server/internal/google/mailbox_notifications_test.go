@@ -267,3 +267,56 @@ func TestSweep_KeepsAClosingConnectionWhileItHoldsAChannel(t *testing.T) {
 	}
 	_ = googletest.APIsHost
 }
+
+// Every call of the mailbox calendar runs on a pool of one connection: none
+// holds the pool while it waits for Google (the 00087 lesson).
+func TestMailbox_OnAPoolOfOne(t *testing.T) {
+	t.Parallel()
+	f := newNoticesFixture(t, modtest.WithPoolMaxConns(1))
+	_, gid := f.connected(t, "kari@nordlys.no")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	start := day(f)
+	if _, err := f.p.Status(ctx); err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	cal, err := f.p.EnsureCalendar(ctx, gid, "", "Vantigo")
+	if err != nil {
+		t.Fatalf("EnsureCalendar: %v", err)
+	}
+	results, err := f.p.Apply(ctx, gid, "", []contracts.MailboxOp{create("appointment:1", timedEvent("Plan", start, time.Hour))})
+	if err != nil || results[0].Err != nil {
+		t.Fatalf("Apply: %v %+v", err, results)
+	}
+	d, err := f.p.Delta(ctx, gid, start.Add(-time.Hour), start.Add(time.Hour), "")
+	if err != nil {
+		t.Fatalf("Delta: %v", err)
+	}
+	if _, err := f.p.Delta(ctx, gid, time.Time{}, time.Time{}, d.Link); err != nil {
+		t.Fatalf("Delta continued: %v", err)
+	}
+	if _, err := f.p.Marked(ctx, gid, []string{results[0].EventID}); err != nil {
+		t.Fatalf("Marked: %v", err)
+	}
+	if _, err := f.p.Events(ctx, gid, "", []string{results[0].EventID}); err != nil {
+		t.Fatalf("Events: %v", err)
+	}
+	if _, err := f.p.Versions(ctx, gid, "", time.Time{}, time.Time{}); err != nil {
+		t.Fatalf("Versions: %v", err)
+	}
+	if _, err := f.p.Find(ctx, gid, "", time.Time{}); err != nil {
+		t.Fatalf("Find: %v", err)
+	}
+	if err := f.p.Watch(ctx, gid); err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+	if _, err := f.p.Notified(ctx, time.Time{}); err != nil {
+		t.Fatalf("Notified: %v", err)
+	}
+	if err := f.p.Unwatch(ctx, gid); err != nil {
+		t.Fatalf("Unwatch: %v", err)
+	}
+	if err := f.p.DeleteCalendar(ctx, gid, cal); err != nil {
+		t.Fatalf("DeleteCalendar: %v", err)
+	}
+}
