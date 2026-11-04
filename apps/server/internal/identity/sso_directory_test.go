@@ -345,10 +345,12 @@ func TestSsoDirectory_AGoogleSignInLandsOnTheUserAnnouncedFromAPick(t *testing.T
 }
 
 // Should a Google ID token's sub not be the Directory id the pick named
-// (U1, not yet settled in a test organisation), the announced link is still
-// fulfilled by its other key — the primary email, against the token's
-// verified email — and lands on the announced user; nobody else is linked.
-func TestSsoDirectory_AGoogleSignInWhoseSubDiffersLandsByThePrimaryEmail(t *testing.T) {
+// (U1, not yet settled in a test organisation), the announced link is not
+// fulfilled by its other key: a primary email under another id may have
+// been given to another account since the pick, so the sign-in does not
+// land on the announced user — the address, which nobody holds here, is
+// provisioned as a new account — and the announcement stays pending.
+func TestSsoDirectory_AGoogleSignInWhoseSubDiffersDoesNotLandOnTheAnnouncedUser(t *testing.T) {
 	t.Parallel()
 	f := newFakeGoogleOIDC(t)
 	f.set("sub", "999999999999999999999")
@@ -359,10 +361,16 @@ func TestSsoDirectory_AGoogleSignInWhoseSubDiffersLandsByThePrimaryEmail(t *test
 
 	c := h.client(t)
 	assertOIDCRedirect(t, h.oidcSignIn(t, c, f), "/")
-	if s := oidcSession(t, c); s.User.ID != id {
-		t.Errorf("signed in as %+v, want the announced user", s.User)
+	if s := oidcSession(t, c); s.User.ID == id {
+		t.Errorf("signed in as the announced user %+v, whose object id is another", s.User)
 	}
-	if got := linkedFromProvider(t, h); len(got) != 1 || got[0] != `{"matchedBy":"principalName"}` {
-		t.Errorf("account.linked-from-provider = %v, want matched by the principal name", got)
+	if n := h.count(t, `SELECT count(*) FROM identity.oidc_links WHERE user_id = $1`, id); n != 0 {
+		t.Error("the announced user was linked")
+	}
+	if announcedLinks(t, h) != 1 {
+		t.Error("the announcement was consumed")
+	}
+	if got := linkedFromProvider(t, h); len(got) != 0 {
+		t.Errorf("account.linked-from-provider = %v, want none", got)
 	}
 }

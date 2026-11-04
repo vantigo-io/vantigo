@@ -357,7 +357,8 @@ func TestExpectedLinks_GoogleFulfilsOnTheSub(t *testing.T) {
 
 // A disabled user is linked but not signed in; an announcement by the
 // principal name alone is fulfilled by the token's preferred_username, or
-// by its verified email when the provider sends no principal name; an
+// by its verified email when the provider sends no principal name, while
+// one naming another object id beside the principal name is not; an
 // announcement under another issuer, or for a user linked meanwhile,
 // fulfils nothing and the arrival is what it was; an announced link
 // outranks an announced account for the same oid.
@@ -386,6 +387,27 @@ func TestExpectedLinks_OIDCEdges(t *testing.T) {
 					t.Errorf("account.linked-from-provider = %v", got)
 				}
 			})
+		}
+	})
+	t.Run("the principal name under another object id", func(t *testing.T) {
+		t.Parallel()
+		f := newFakeOIDC(t)
+		f.set("preferred_username", "kari.n@tenant.example")
+		f.set("email", "kari.n@tenant.example")
+		h := newHarness(t, f.options()...)
+		owner, _ := h.bootstrapOwner(t)
+		id := h.createUser(t, owner, "kari@example.test", identity.RoleUser)
+		mustAnnounce(t, owner, id, map[string]any{"objectId": fakeOtherTenantID, "userPrincipalName": "kari.n@tenant.example"})
+		c := h.client(t)
+		assertOIDCRedirect(t, h.oidcSignIn(t, c, f), "/")
+		if s := oidcSession(t, c); s.User.ID == id {
+			t.Errorf("signed in as the announced user %+v, whose object id is another", s.User)
+		}
+		if h.count(t, `SELECT count(*) FROM identity.oidc_links WHERE user_id = $1`, id) != 0 || announcedLinks(t, h) != 1 {
+			t.Error("the announcement was fulfilled by a principal name under another object id")
+		}
+		if got := linkedFromProvider(t, h); len(got) != 0 {
+			t.Errorf("account.linked-from-provider = %v, want none", got)
 		}
 	})
 	t.Run("a disabled user is linked and account_locked", func(t *testing.T) {

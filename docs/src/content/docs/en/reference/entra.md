@@ -1341,7 +1341,10 @@ there may be more, and the picker asks the Owner to narrow the search. An accoun
 another user or Staff holds is shown but cannot be picked; one the user being connected
 holds already can. A pick hands the host both keys as one unit: in the connect dialog,
 editing the principal name away from the picked account's clears the object id, and
-changing the search after a pick clears both.
+changing the search after a pick clears both. A link announced with both keys is
+fulfilled by a sign-in whose `oid` is the object id; one whose `oid` is another does not
+fulfil it by its `preferred_username`, since the address may since belong to another
+account ([the announced link](/en/admin/sso-scim/#the-announced-link)).
 
 ### The exact matches
 
