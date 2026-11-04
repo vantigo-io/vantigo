@@ -541,7 +541,8 @@ ingen kobling under den satte utstederen.
 
 Brukerprinsipalnavnet lagres normalisert som adresser (høyst 254 tegn); objekt-ID-en
 slik SCIMs `externalId` er, en GUID med små bokstaver og bindestreker (høyst 200 tegn,
-ingen kontrolltegn). En SCIM-ankomst erstatter brukerens adresse med ressursens jobb-e-post og lar
+ingen kontrolltegn) — en bruker-ID fra Googles katalog, 21 sifre, beholdes nøyaktig, og er
+det en Google-innloggings `sub` sammenlignes med. En SCIM-ankomst erstatter brukerens adresse med ressursens jobb-e-post og lar
 `email_confirmed` være som den var; en bruker som var eier, beholder rollen. Den samme
 kunngjøringen på nytt endrer ingenting; enhver endring
 erstatter den helt. En katalogkonto kunngjøres for høyst én bruker. Brukerens
@@ -565,13 +566,14 @@ den lokale MFA-regelen gjelder. En kunngjort kobling går foran en kunngjort kon
 samme ankomst, og en ankomst oppfyller aldri begge.
 
 **Med en katalog å søke i.** Mens katalogen til den valgte leverandøren kan søkes i —
-OIDC er på, og en påslått modul betjener leverandørens `contracts.DirectorySearch`, i
-dag `entra` — velger brukerskjermen katalogkontoen gjennom
+OIDC er på, og en påslått modul betjener leverandørens `contracts.DirectorySearch`,
+`entra` eller `google` — velger brukerskjermen katalogkontoen gjennom
 `GET /api/v1/identity/owner/sso/directory/users` i stedet for at den skrives inn, og
 tilbyr en gjennomgang av alle brukere som passer nøyaktig med én konto gjennom
 `GET /api/v1/identity/owner/sso/directory/matches` (se
 [SSO- og SCIM-drift](/nb/admin/sso-scim/) og, for Entra,
-[koble til eksisterende brukere](/en/reference/entra/#connecting-existing-users));
+[koble til eksisterende brukere](/en/reference/entra/#connecting-existing-users), og for
+Google [katalogsøket](/en/reference/google/#the-directory-search));
 hvert valgte par kunngjøres gjennom dette samme endepunktet. Begge er under
 `policy:Owner+OwnerManagement`, høyst 60 søk og 6 gjennomganger i minuttet per
 klientadresse, 409 `no_directory` mens det ikke finnes noen katalog å søke i, og 503
@@ -584,11 +586,23 @@ eier under `policy:Owner+OwnerManagement`, med en andre faktor når eiere må br
 (`OWNERS_REQUIRE_MFA`), som på alle eierendepunkter: en forespørsel fra noen andre får
 ingenting,
 og mens OIDC er av, finnes det ingenting å koble til under (`sso_not_configured`).
-Adressene sammenlignes inne i Entra-modulen og blir aldri svart ut, logget eller
+Adressene sammenlignes inne i leverandørens modul og blir aldri svart ut, logget eller
 registrert. Gjennomgangen leser høyst 1000 brukere som ikke er koblet til
 (identitetsmodulen blir spurt om én til, for å se om flere venter), foreslår aldri en
 gjestekonto, og lar ikke en brukers egen SCIM-tilordning av en konto stå i veien for
 forslaget.
+
+**Med Google som leverandør.** Google Workspace-modulen betjener søket mens `google` er
+den valgte leverandøren: objekt-ID-en er kontoens bruker-ID i katalogen,
+prinsipalnavnet primæradressen, og et valg kunngjøres med begge. En Google-innlogging
+matches på `sub` mot objekt-ID-en, ellers på den verifiserte e-posten mot
+prinsipalnavnet, så koblingen holder også før U1 (`sub` er lik katalog-ID-en) er bekreftet
+i en testorganisasjon. Modulen leser høyst 10 000 kontoer til gjennomgangen; utover det er
+svaret avkortet og den matcher bare på adresse, siden en adresse peker ut én konto i en
+Google-organisasjon og et ansattnummer kanskje ikke gjør det. Kortet for enkel pålogging
+fylles ut fra modulens tilkobling — Google, nettklientens ID og hvert verifiserte domene
+som tillatte domener; en bruker med primæradresse på et sekundærdomene er beskrevet i
+[SSO og SCIM](/nb/admin/sso-scim/#google-workspace).
 
 ### Koble fra en bruker
 

@@ -250,6 +250,16 @@ Roter det projiserte tokenet gjennom plattformen; Vantigo mellomlagrer det ikke.
 
 ### Google Workspace
 
+Når Google Workspace-modulen er koblet til og testet
+([Google Workspace](/nb/admin/google-workspace/)), er steget **Innlogging** på fanen
+**Kontoer** dette kortet ferdig utfylt: leverandøren Google, autoriteten, klient-ID-en til
+den interne nettklienten og hvert verifiserte domene i organisasjonen, slik den siste
+testen leste dem, under **Domener**. Registrer kortets **Tilbakekalls-URL** på den
+nettklienten (fanen Tilkobling viser den sammen med modulens egen), skriv inn
+klienthemmeligheten, kontroller domenene og velg **Lagre**. Kortet fyller bare ut et
+skjema som ikke har noe i seg ennå, aldri over en lagret verdi; hemmeligheten er
+identitetsmodulens egen forseglede kopi, skrevet inn av deg. Uten modulen, eller for hånd:
+
 1. Opprett en Google OAuth-webklient og kopier hemmeligheten. Google støtter bare
    klienthemmelighet — workload identity godtas ikke.
 2. Registrer kortets **Tilbakekalls-URL** som en autorisert omdirigerings-URI.
@@ -266,6 +276,21 @@ Vantigo krever `email_verified`, en syntaktisk gyldig e-postadresse og et ikke-t
 `hd`-krav som samsvarer med e-postdomenet og finnes i **Domener**. Personlige
 Gmail-kontoer og identiteter som er uverifiserte eller har et domene som ikke
 samsvarer, avvises.
+
+**Nøkkelen.** Vantigo kjenner en Google-konto på ID-tokenets `sub`, som er kontoens
+bruker-ID i katalogen (21 sifre, beholdt nøyaktig) — objekt-ID-en en kunngjort kobling
+navngir når eieren velger kontoen fra katalogen, og ID-en Google Workspace-modulen kjenner
+kontoen på. At `sub` er lik katalog-ID-en, er Googles dokumenterte oppførsel, men ennå
+ikke bekreftet i en testorganisasjon (U1); skulle de være ulike, oppfylles en kunngjort
+kobling på prinsipalnavnet i stedet — primæradressen, mot tokenets verifiserte e-post —
+så personen havner likevel på sin egen bruker.
+
+**En bruker på et sekundærdomene.** Hvert verifiserte domene i organisasjonen fylles ut
+som tillatt, så domenelisten avviser aldri et av dem. Om Google svarer `hd` som
+adressens eget domene for en bruker med primæradresse på et sekundærdomene, er ennå ikke
+bekreftet (U4): svarer den primærdomenet, avviser kontrollen ovenfor den brukerens
+innlogging (den kobler dem aldri til noen andre). Prøv én slik bruker i organisasjonen
+etter at du har lagret; en slik person logger inn med en lokal pålogging så lenge.
 
 ### Endre autoriteten, eller slå leverandøren av
 
@@ -386,25 +411,28 @@ hele tatt mens en annen brukers SCIM-tilordning peker den ut (`sso_link_taken`).
 
 **Koble til eksisterende brukere gjennom den valgte leverandøren.** Eieren trenger ikke
 skrive inn kontoen når katalogen til den valgte leverandøren kan søkes i: identitetsmodulen
-spør den påslåtte modulen hvis katalogsøk betjener den valgte leverandøren (`entra` i dag,
-Entra-modulen) — eierens innstillinger for enkel pålogging navngir den som `directory`,
+spør den påslåtte modulen hvis katalogsøk betjener den valgte leverandøren (`entra`,
+Entra-modulen, eller `google`, Google Workspace-modulen) — eierens innstillinger for enkel pålogging navngir den som `directory`,
 ellers null. Tilkoblingsdialogen søker da i den katalogen
 (`GET /api/v1/identity/owner/sso/directory/users?search=`) og fyller ut begge nøklene
 fra kontoen som velges, og *Finn treff i katalogen…* på brukerskjermen
 (`GET /api/v1/identity/owner/sso/directory/matches`) foreslår, for hver bruker som ikke
 er koblet til, den ene kontoen der e-post eller brukerprinsipalnavn er lik adressen
-deres, eller der ansattnummeret er likt deres — bare nøyaktige treff, aldri en
+deres, eller der ansattnummeret er likt deres (for Google: primæradressen eller et alias, og
+organisasjonens eksterne ID) — bare nøyaktige treff, aldri en
 gjestekonto, krysset av fra start bare når brukerprinsipalnavnet traff på en aktiv konto
 for en bruker som ikke er eier — og **Koble til valgte** kunngjør hvert valgte par
 gjennom det samme endepunktet
 ([slå opp kontoene i katalogen](/nb/user/workspace-administration/#slå-opp-kontoene-i-katalogen);
-regelen i [referansen](/en/reference/entra/#the-exact-matches)). Begge lesingene er en
+regelen i referansen, [Entras](/en/reference/entra/#the-exact-matches) og
+[Googles](/en/reference/google/#the-directory-search)). Begge lesingene er en
 eiers (`policy:Owner+OwnerManagement`), begrenset til 60 søk og 6 gjennomganger i
 minuttet per klientadresse, og svarer 409 `no_directory` mens OIDC er av eller ingen
 påslått modul betjener katalogen til den valgte leverandøren, og 503
 `provider_unreachable` når katalogen ikke kunne spørres. For å tilby dem slår du på
 leverandørens modul og kobler den til katalogen (for Entra
-[steg 1 til 3 på Entra-siden](/nb/admin/entra/)). Ellers endres ingenting: hver
+[steg 1 til 3 på Entra-siden](/nb/admin/entra/); for Google nøkkelen, delegeringen av
+`admin.directory.user` og en test, på [Google Workspace-siden](/nb/admin/google-workspace/)). Ellers endres ingenting: hver
 kunngjøring oppfylles, som nedenfor, ved personens neste ankomst.
 
 **Treffet.** På begge ankomstveier leses den kunngjorte koblingen før den kunngjorte
@@ -419,7 +447,8 @@ kontoen, og eierens handling går foran:
   enhver opprettelse; ingen lar adressen stå); `email_confirmed` blir som den var, og en
   bruker som var eier, beholder rollen. Ressursens `active` blir tilordningens
   `upstream_active`, som for enhver tilordnet bruker.
-- **En OIDC-innlogging** uten kobling ennå matches på tokenets `oid`-krav mot den
+- **En OIDC-innlogging** uten kobling ennå matches på tokenets `oid`-krav (for
+  Google dets `sub`, bruker-ID-en i katalogen) mot den
   kunngjorte objekt-ID-en under utstederen, ellers på tokenets prinsipalnavn (Entras
   `preferred_username`, som er brukerprinsipalnavnet; for en leverandør uten et slikt, det
   verifiserte `email`-kravet) mot det kunngjorte brukerprinsipalnavnet, sammenlignet slik
