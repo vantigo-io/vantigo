@@ -79,8 +79,11 @@ export function ChannelsPage() {
   const refresh = () => client.invalidateQueries({ queryKey: ["channels"] });
   // The badge and the select name a provider as the provider names itself;
   // a channel whose provider is not offered now still reads as a name.
+  // A provider no longer listed is named by its key — Entra's, the one key
+  // channels had before the providers became many, by its catalog name.
   const providerLabel = (key: string) =>
-    providers.find((provider) => provider.key === key)?.displayName ?? (isMailboxProvider(key) ? key : t("smtp"));
+    providers.find((provider) => provider.key === key)?.displayName ??
+    (key === "entra" ? t("microsoft365") : isMailboxProvider(key) ? key : t("smtp"));
   const update = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => updateChannel(id, { isActive }),
     onSuccess: () => void refresh(),

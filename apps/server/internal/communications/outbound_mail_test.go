@@ -96,6 +96,29 @@ func TestOutboundMail_ChannelsListsTheActiveMailChannelsWithWhetherTheyCanSend(t
 	}
 }
 
+// TestOutboundMail_NamesAnEntraChannelWhoseProviderIsGone: an Entra channel
+// whose provider no module fills any more is named Microsoft 365, not by its
+// key, and cannot send.
+func TestOutboundMail_NamesAnEntraChannelWhoseProviderIsGone(t *testing.T) {
+	t.Parallel()
+	fake := modtest.NewFakeChannelMailbox()
+	h := newHarness(t, modtest.WithChannelMailbox(fake))
+	admin := h.SignIn(t, "communications:channels-manage")
+	post := channelAddress(t)
+	sharedMailbox(fake, post, "")
+	m365 := createChannel(t, admin, entraChannelBody(post))
+
+	deps := h.Deps()
+	deps.ChannelMailboxes = nil
+	c, err := communications.Module().OutboundMail(deps).Channel(context.Background(), uuid.MustParse(m365.Id))
+	if err != nil {
+		t.Fatalf("Channel: %v", err)
+	}
+	if c.Available || c.Provider != "entra" || c.ProviderDisplayName != "Microsoft 365" {
+		t.Errorf("the channel = %+v, want Unavailable, named Microsoft 365", c)
+	}
+}
+
 // TestOutboundMail_SendFromAnSMTPChannelUsesTheChannelsOwnCredentials: the
 // message goes through the SMTP seam with the channel's host, From the
 // channel's address, and the consumer's Reply-To, name and Message-ID as they

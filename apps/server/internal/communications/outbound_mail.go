@@ -33,6 +33,12 @@ import (
 // GET /channel-providers answers.
 const providerNameSMTP = "SMTP"
 
+// knownProviderNames names a mail channels provider no module fills now by
+// the name its module gave it, rather than by its key: Entra's, the one
+// provider channels had before the providers became many (Google Workspace
+// design G4).
+var knownProviderNames = map[string]string{"entra": "Microsoft 365"}
+
 // channelTypeEmail is the channel type OutboundMail lists: the mail type.
 const channelTypeEmail = "email"
 
@@ -130,6 +136,9 @@ func outboundChannelOf(row channelRow, cred *string, providers map[string]mailbo
 	}
 	p, filled := providers[row.Provider]
 	out.ProviderDisplayName = row.Provider
+	if name, known := knownProviderNames[row.Provider]; known {
+		out.ProviderDisplayName = name
+	}
 	if filled && p.name != "" {
 		out.ProviderDisplayName = p.name
 	}
