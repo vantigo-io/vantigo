@@ -566,6 +566,8 @@ done, and by whom.
 | People see *Reconnect needed* — *blocked* | The Admin console restricts the web client, or the account is outside the organisation. | Mark the web client **Trusted** under API controls. |
 | People see *You signed in with an account outside your organisation's Google Workspace* | The ID token named no verified domain of the organisation — a personal account, or a domain added since the last test. | Test the connection again after adding a domain. |
 | Staff's **Accounts** card: Google Workspace failing (`scopes_missing`) | The last test was refused one of the scopes of the accounts, the groups, the group settings or the licences, or was made before they were needed. | Add them to the delegation, and test again. |
+| A person's Google Calendar holds two calendars called *Vantigo*, one of them empty | Vantigo asked Google to make the calendar and the answer was lost — a timeout, an error at Google, or Vantigo stopping at that moment. Google made it anyway; Vantigo only ever uses a calendar it has a record of, so it made another, and never touches the first. | The person can delete the empty *Vantigo* calendar in Google Calendar. Vantigo does not delete it for them. |
+| Calendar sync fails for many people at once | The Google Cloud project's Calendar API quota is spent (`quotaExceeded`, `dailyLimitExceeded`). Vantigo tries again later; it does not mark anyone's calendar as refused. | Check the Calendar API's quotas under **APIs & Services** in the Cloud console, and ask for more if the organisation needs it. |
 
 **The reasons on a person's account.** Staff's Account tab and dashboard say what Google
 could not do, by these codes:

@@ -255,7 +255,10 @@ Every call to Google — the token exchange included — goes through one client
 - **Google's words are never read.** A refusal is the HTTP status and the reason code of
   Google's error body (`error.errors[0].reason`, else `error.status`, else the OAuth
   error); its message is never logged, stored or answered. A 403 reads as the admin
-  refused, a 404 as not found, a 429 as throttled, a 5xx as Google unreachable.
+  refused, a 404 as not found, a 429 as throttled, a 5xx as Google unreachable. A 403
+  naming a rate limit (`rateLimitExceeded`, `userRateLimitExceeded`) is waited once like
+  a 429; one naming a quota spent (`quotaExceeded`, `dailyLimitExceeded`) is throttled at
+  once, with no wait — neither is a refusal.
 - **No `google.golang.org/api` dependency.** The calls are few and JSON.
 
 ## The delegated token
@@ -748,7 +751,11 @@ never on the service account: no calendar scope is delegated (Q3).
   `consent_missing` (the calendar's scopes not granted — the row is not moved) or the
   reconnect's code. A **401** after the client's one fresh token moves the row to
   `reconnect`, `sign_in_again`, at the revision the token came from (a row moved on
-  since is a failure to retry). A **403** that is no usage limit is `ErrMailboxDenied`.
+  since is a failure to retry). A **403** refusing the calendar itself — `forbidden`,
+  `insufficientPermissions`, `accessNotConfigured` — is `ErrMailboxDenied`; any other 403
+  is Google's refusal of that one call, and a usage limit a failure to retry. A **404 of
+  the primary calendar** — its list in `Delta`, `Find` and `Versions`, its `events.watch` —
+  is `ErrMailboxUnknown`; an event's 404 or 410 is that event gone.
   The web client not set up or refused is `ErrMailboxUnavailable`.
 - **`quotaUser`** is the Google id on every call — the batch's and each part's.
 
@@ -775,10 +782,13 @@ people's Google Calendars, and the channels lapse.
   (`www.googleapis.com/batch/calendar/v3`, `multipart/mixed`), fifty a batch, one batch
   after another, and asks Google to answer `id,etag,status` alone. The `etag` is the change
   key. Each part is judged alone: 2xx done (an update answered `cancelled` is `Gone`), 404
-  or 410 on an update or a delete `Gone`, a 403 `ErrMailboxDenied`, a usage limit (429, or
-  403 `rateLimitExceeded`/`userRateLimitExceeded`) sent again once after a second and then
-  a failure. Once one op is refused for the mailbox, the rest answer the same, unsent. A
-  batch holding a create is sent once.
+  or 410 on an update or a delete `Gone`, a 403 refusing the calendar `ErrMailboxDenied`
+  and any other 403 (an event's own, such as `forbiddenForNonOrganizer`) that op's
+  refusal alone, a rate limit (429, or 403 `rateLimitExceeded`/`userRateLimitExceeded`)
+  sent again once after a second and then a failure, a quota spent (403
+  `quotaExceeded`/`dailyLimitExceeded`) a failure, not sent again. A 401 on several parts
+  of a batch moves the connection once, its answer given to each. Once one op is refused
+  for the mailbox, the rest answer the same, unsent. A batch holding a create is sent once.
 - **The event written**: `summary`, `description`, `location` (an update always writes
   it), a timed event's `start.dateTime`/`end.dateTime` in RFC 3339 with the event's IANA
   zone (else UTC), an all-day event's `start.date`/`end.date` (the end the day after the
@@ -798,6 +808,13 @@ people's Google Calendars, and the channels lapse.
   calendar is gone (404, 410) is dropped. A 403 on the insert is `ErrMailboxDenied` (U8):
   the calendar's *own* target is then unavailable. `DeleteCalendar` of `primary`, or of a
   calendar no row names that still exists, is `ErrCalendarNotOurs`; one gone is done.
+- **A calendar made with its answer lost.** `calendars.insert` is sent once. When its
+  answer is lost — a timeout, a 5xx, the process stopping before the row is written —
+  Google may still have made the calendar, which no row then names. A calendar without a
+  row is never adopted (Google keeps no property to tell it from one the person made), so
+  the next `EnsureCalendar` makes another, and the first stays in the person's Google
+  Calendar — empty, named as the second — until they delete it. Nothing deletes it for
+  them.
 
 ### Reads
 
@@ -805,11 +822,20 @@ people's Google Calendars, and the channels lapse.
   `showDeleted=true`, `timeMin` and `timeMax`, pages of 250; the last page's
   `nextSyncToken` is the link answered `Done`. A continuing link lists with `syncToken`.
   At most 40 pages a call; a cut answer's link carries the next page's token. The link is
-  `g1.` and the base64url of `{m, f, t, s, p, w}` — the mailbox, the window, the sync
-  token, the page token and whether the listing paged is the windowed one; a link whose
+  `g1.` and the base64url of `{m, f, t, s, p, w, r, o}` — the mailbox, the window, the
+  sync token, the page token, whether the listing paged is the windowed one, the series
+  the delta answered instances of and whether it forgot some (below); a link whose
   `m` is not the mailbox asked, or not the provider's at all, is refused with a failure,
   unsent. **410 is `ErrMailboxDeltaExpired`.** Increments are not windowed (U7), so the
   provider enforces the window: an event outside it, deleted or cancelled is `Removed`.
+  **A series deleted whole**: with `singleEvents`, Google may answer a recurring series
+  deleted as one cancelled item with the series' own id — no `_<time>` instance suffix —
+  and not its instances, whose ids only the calendar holds. So the link remembers the
+  series the delta has answered an instance of (`r`: eight characters of the SHA-256 of
+  each series id, at most 300; `o` once more were seen), and a cancelled item of an
+  increment whose id has no `_` and is such a series — any such id, once `o` is set — is
+  `ErrMailboxDeltaExpired`: the calendar's fresh read of the window drops the instances.
+  A cancelled id the link never saw as a series (a single event deleted) is `Removed`.
   A windowed list that answers no `nextSyncToken` leaves a link with no token, whose next
   read is `ErrMailboxDeltaExpired` at once — every sync then re-reads the window, logged
   once per mailbox in the process. The fields asked are `id`, `status`, `start`, `end`,
@@ -823,7 +849,9 @@ people's Google Calendars, and the channels lapse.
   a batch. `Marked` answers the ids carrying the marker; `Events` reads the event whole —
   `TextBody` is a description with no HTML tag (Google's editor writes HTML), `Private` a
   `private` or `confidential` visibility — and answers 404, 410 and a cancelled event in
-  `Gone`, skipping a 403 of one event. A usage limit is waited once, then a failure.
+  `Gone`, skipping a 403 of one event. A rate limit is waited once, then a failure; a
+  quota spent is a failure at once. In `Marked`, a 403 refusing the calendar is
+  `ErrMailboxDenied` and any other refusal fails the call.
 - **`Versions`**: the default calendar is `Find`'s list with the `etag`; a secondary
   calendar is `events.list(timeMin, timeMax, singleEvents=true)` with
   `fields=items(id,etag,status,recurringEventId)`; at most 5000, `Complete` false past
