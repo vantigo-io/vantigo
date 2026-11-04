@@ -725,7 +725,9 @@ with the conversation, and so [retention and erasure](#retention) cover them.
 
 The pending action stays `confirmed` with no outcome for as long as the job lasts (the sweep that closes a
 claimed single change leaves a bulk action alone) and ends `confirmed` with `outcome.ok` true for `done`, false
-with the `reason` for `stopped`, `failed` for `failed`. The run stays `awaiting_confirmation` for the whole job,
+with the `reason` for `stopped`, `failed` for `failed`. The job's end, the action's outcome and the waiting
+tool result commit in one transaction, so no reader sees an ended job whose card has no outcome, and a replica
+that dies between them leaves the job to the next claim to end again. The run stays `awaiting_confirmation` for the whole job,
 which is what keeps the person's next message `409 run_in_progress`.
 
 ### Running a job

@@ -594,7 +594,9 @@ func bulkSummary(job store.AssistantBulkJob, failures []store.AssistantBulkJobIt
 // endBulk ends a job once: its row (redacted), its pending action, the waiting
 // tool result (replaced by the summary), its grant, and the run, which resumes
 // to tell the person in one short message. A job ended by someone else, or
-// already over, is left alone.
+// already over, is left alone. The job's end, the card's outcome and the tool
+// result commit together: nobody reads a finished job whose card has no
+// outcome, and a replica that dies between them leaves neither.
 func (s *server) endBulk(ctx context.Context, job store.AssistantBulkJob, state, code string) {
 	ctx = context.WithoutCancel(ctx)
 	q := store.New(s.deps.Pool)
@@ -603,14 +605,6 @@ func (s *server) endBulk(ctx context.Context, job store.AssistantBulkJob, state,
 		errorCode = &code
 	}
 	now := s.deps.Clock()
-	ended, err := q.EndBulkJob(ctx, store.EndBulkJobParams{ID: job.ID, State: state, ErrorCode: errorCode, Now: now, ClaimedBy: s.claimedBy()})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return
-	}
-	if err != nil {
-		s.deps.Logger.Error("assistant: end a job", "job", job.ID, "error", err)
-		return
-	}
 
 	// The card: confirmed once it started, failed when it broke.
 	status, ok := "confirmed", state == jobDone
@@ -622,9 +616,46 @@ func (s *server) endBulk(ctx context.Context, job store.AssistantBulkJob, state,
 		status = "failed"
 	}
 	outcomeJSON, _ := json.Marshal(outcome)
-	finished, err := q.FinishPendingAction(ctx, store.FinishPendingActionParams{ID: ended.PendingActionID, Status: status, Outcome: outcomeJSON, Now: now})
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		s.deps.Logger.Error("assistant: record a job's end", "job", job.ID, "error", err)
+
+	var ended store.AssistantBulkJob
+	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		tq := store.New(tx)
+		var err error
+		if ended, err = tq.EndBulkJob(ctx, store.EndBulkJobParams{ID: job.ID, State: state, ErrorCode: errorCode, Now: now, ClaimedBy: s.claimedBy()}); err != nil {
+			return err
+		}
+		finished, err := tq.FinishPendingAction(ctx, store.FinishPendingActionParams{ID: ended.PendingActionID, Status: status, Outcome: outcomeJSON, Now: now})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil // the card was settled already
+		}
+		if err != nil {
+			return fmt.Errorf("record the card's outcome: %w", err)
+		}
+		// The waiting tool result becomes the outcome, so the model's transcript
+		// reads what happened where it asked for it.
+		if finished.ToolMessageID == nil {
+			return nil
+		}
+		failures, err := tq.ListBulkFailures(ctx, store.ListBulkFailuresParams{JobID: ended.ID, BatchSize: maxBulkFailuresShown})
+		if err != nil {
+			return fmt.Errorf("read the job's failures: %w", err)
+		}
+		callID, name, st, content := finished.CallID, toolProposeBulk, gen.AssistantPartStatus("ok"), bulkSummary(ended, failures)
+		if state == jobFailed {
+			st = gen.AssistantPartStatus("error")
+		}
+		part := gen.AssistantPart{Type: gen.AssistantPartType("tool_result"), CallId: &callID, Name: &name, Status: &st, Content: &content}
+		if err := tq.UpdateMessageContent(ctx, store.UpdateMessageContentParams{ID: *finished.ToolMessageID, Content: marshalParts([]gen.AssistantPart{part})}); err != nil {
+			return fmt.Errorf("settle the tool result: %w", err)
+		}
+		return nil
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return
+	}
+	if err != nil {
+		s.deps.Logger.Error("assistant: end a job", "job", job.ID, "error", err)
+		return
 	}
 	if ended.GrantID != nil && s.deps.AssistantGrants != nil {
 		revoke, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -632,20 +663,6 @@ func (s *server) endBulk(ctx context.Context, job store.AssistantBulkJob, state,
 		cancel()
 	}
 	s.countChange(ctx, ended.UserID, ok)
-
-	// The waiting tool result becomes the outcome, so the model's transcript
-	// reads what happened where it asked for it.
-	failures, _ := q.ListBulkFailures(ctx, store.ListBulkFailuresParams{JobID: ended.ID, BatchSize: maxBulkFailuresShown})
-	if finished.ToolMessageID != nil {
-		callID, name, st, content := finished.CallID, toolProposeBulk, gen.AssistantPartStatus("ok"), bulkSummary(ended, failures)
-		if state == jobFailed {
-			st = gen.AssistantPartStatus("error")
-		}
-		part := gen.AssistantPart{Type: gen.AssistantPartType("tool_result"), CallId: &callID, Name: &name, Status: &st, Content: &content}
-		if err := q.UpdateMessageContent(ctx, store.UpdateMessageContentParams{ID: *finished.ToolMessageID, Content: marshalParts([]gen.AssistantPart{part})}); err != nil {
-			s.deps.Logger.Error("assistant: settle a job's tool result", "job", job.ID, "error", err)
-		}
-	}
 
 	// The run that waited goes on: the model sums the outcome up, without tools.
 	if _, err := q.ResumeRun(ctx, store.ResumeRunParams{ID: ended.RunID, UserID: ended.UserID, Now: now}); err != nil {

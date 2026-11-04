@@ -267,6 +267,43 @@ func TestAssistantBulk_StartRunsFiveAndContinueRunsTheRestOfTheFrozenItems(t *te
 	}
 }
 
+func TestAssistantBulk_AJobEndsInTheSameCommitAsItsCardsOutcome(t *testing.T) {
+	t.Parallel()
+	w := newWritesInstall(t)
+	// A check deferred to each commit notes any that leaves an ended job whose
+	// card has no outcome: a reader between two such commits would see the job
+	// finished and the card still running.
+	w.h.Exec(t, `CREATE TABLE public.ended_without_outcome (job_id uuid NOT NULL)`)
+	w.h.Exec(t, `CREATE FUNCTION public.note_ended_without_outcome() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.ended_at IS NOT NULL AND EXISTS (
+        SELECT 1 FROM assistant.pending_actions WHERE id = NEW.pending_action_id AND outcome IS NULL
+    ) THEN
+        INSERT INTO public.ended_without_outcome (job_id) VALUES (NEW.id);
+    END IF;
+    RETURN NULL;
+END $$`)
+	w.h.Exec(t, `CREATE CONSTRAINT TRIGGER ended_without_outcome AFTER UPDATE ON assistant.bulk_jobs
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.note_ended_without_outcome()`)
+
+	c := w.h.SignIn(t, "projects:access", "projects:create")
+	w.bulkProjects(t, c, 0, 3) // fewer than the canary's five: Start runs them all and ends the job
+	conv := w.begin(t, c, reviewAll())
+	k := w.bulkView(t, c, conv)
+	if r := w.decide(c, k.ID, "confirm"); r.Status != http.StatusOK {
+		t.Fatalf("start: %d %s", r.Status, r.Body)
+	}
+	w.waitFor(t, "the job to end", func() bool {
+		return modtest.One[string](t, w.h, `SELECT state FROM assistant.bulk_jobs`) == "done"
+	})
+	if n := w.h.Count(t, `SELECT count(*) FROM public.ended_without_outcome`); n != 0 {
+		t.Errorf("%d commits ended the job before its card had an outcome", n)
+	}
+	if done := w.bulkView(t, c, conv); done.Outcome == nil || !done.Outcome.Ok || done.Bulk.Succeeded != 3 {
+		t.Errorf("card at the end = %+v %+v, want an ok outcome, 3 succeeded", done, done.Bulk)
+	}
+}
+
 func TestAssistantBulk_ARowTheOwnerOfTheRecordRefusesFailsOnlyThatItem(t *testing.T) {
 	t.Parallel()
 	w := newWritesInstall(t)
