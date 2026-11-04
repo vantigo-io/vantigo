@@ -23,8 +23,13 @@
 // person whose Staff record names an account the module manages connects it
 // through the organisation's Internal web client, and the module keeps the
 // refresh token sealed; google-sweep, the module's one worker, deletes the
-// spent connections and revokes their tokens. The calendar and Gmail come in
-// the deliveries after it. Every call to Google takes its token from
+// spent connections and revokes their tokens. Delivery E (G30–G32,
+// docs/superpowers/plans/2026-11-03-google-calendar.md) fills
+// contracts.MailboxCalendar under the key google: the calendar's copies
+// written to a person's Google Calendar, their busy time and their edits read
+// back, all on their own connection, and a push channel per person whose
+// messages the anonymous calendar notifications endpoint records. Gmail comes
+// in the deliveries after it. Every call to Google takes its token from
 // tokenSource. MODULES refuses
 // google without staff. Nothing here imports another module — depguard
 // enforces it, tests included — and no SQL of this module crosses a schema.
@@ -40,7 +45,10 @@
 // photo.go the photo, accounts.go the Accounts tab's operations;
 // directory_search.go the directory search identity serves; personal*.go
 // the person's own connection (personal_token.go its token,
-// personal_sweep.go google-sweep); and googletest the fake Google its tests
+// personal_sweep.go google-sweep); mailbox*.go the mailbox calendar
+// (mailbox_batch.go the batch endpoint, mailbox_delta.go the delta,
+// mailbox_writeback.go the write-back's reads, mailbox_notifications*.go the
+// push channels and their endpoint); and googletest the fake Google its tests
 // run against.
 package google
 
@@ -114,8 +122,10 @@ var skusLimit = ratelimit.Policy{Name: "google-skus", Limit: 30, Window: time.Mi
 // contracts.IdentityProvisioner (provisioner.go), which Compose and Workers
 // collect into Deps.IdentityProvisioners for Staff's accounts worker, and its
 // contracts.DirectorySearch (directory_search.go), which Compose collects
-// into Deps.DirectorySearches for identity's directory endpoints; and its one
-// worker, google-sweep (personal_sweep.go).
+// into Deps.DirectorySearches for identity's directory endpoints; its
+// contracts.MailboxCalendar (mailbox.go), which Compose and Workers collect
+// into Deps.MailboxCalendars for the calendar; and its one worker,
+// google-sweep (personal_sweep.go).
 func Module() module.Module {
 	return module.Module{
 		Name:                "google",
@@ -123,6 +133,7 @@ func Module() module.Module {
 		Mount:               mount,
 		IdentityProvisioner: newProvisioner,
 		DirectorySearch:     newDirectorySearch,
+		MailboxCalendar:     newMailboxCalendar,
 		Workers:             workers,
 	}
 }
