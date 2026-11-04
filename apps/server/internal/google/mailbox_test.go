@@ -619,6 +619,67 @@ func TestMailbox_TheFeatureIsNeeded(t *testing.T) {
 	}
 }
 
+// instanceOf is an instance of the recurring series at start, its id the
+// series' and the start as Google writes it.
+func instanceOf(series string, start time.Time) googletest.Event {
+	return own(start, time.Hour, func(e *googletest.Event) {
+		e.ID = series + "_" + start.UTC().Format("20060102T150405Z")
+		e.RecurringEventID = series
+	})
+}
+
+func TestMailbox_DeltaASeriesDeletedWhole(t *testing.T) {
+	t.Parallel()
+	f := newCalendarFixture(t)
+	_, gid := f.connected(t, "kari@nordlys.no")
+	ctx := context.Background()
+	start := day(f)
+	from, to := start.Add(-48*time.Hour), start.Add(30*24*time.Hour)
+	first := f.g.PutEvent(gid, "", instanceOf("series1", start))
+	second := f.g.PutEvent(gid, "", instanceOf("series1", start.Add(24*time.Hour)))
+	single := f.g.PutEvent(gid, "", own(start.Add(2*time.Hour), time.Hour, nil))
+	d, err := f.p.Delta(ctx, gid, from, to, "")
+	if err != nil || !d.Done || !changesByID(d)[first.ID].Series || !changesByID(d)[second.ID].Series {
+		t.Fatalf("Delta: %+v %v", d, err)
+	}
+
+	// A single event deleted is one cancelled item with its own id: Removed.
+	f.g.EditEvent(gid, "", single.ID, func(e *googletest.Event) { e.Status = "cancelled" })
+	d, err = f.p.Delta(ctx, gid, time.Time{}, time.Time{}, d.Link)
+	if err != nil || !d.Done || !changesByID(d)[single.ID].Removed {
+		t.Fatalf("a single event deleted: %+v %v, want it Removed", d, err)
+	}
+
+	// A series the window answered, deleted whole: one cancelled item with the
+	// series' id, which no instance's id is — the delta starts again.
+	link := d.Link
+	f.g.DeleteSeries(gid, "", "series1")
+	if _, err := f.p.Delta(ctx, gid, time.Time{}, time.Time{}, link); !errors.Is(err, contracts.ErrMailboxDeltaExpired) {
+		t.Fatalf("a series deleted whole: %v, want ErrMailboxDeltaExpired", err)
+	}
+	// The fresh read answers neither instance but Removed.
+	d, err = f.p.Delta(ctx, gid, from, to, "")
+	if err != nil || !d.Done {
+		t.Fatalf("the fresh read: %+v %v", d, err)
+	}
+	for _, id := range []string{first.ID, second.ID} {
+		if c, ok := changesByID(d)[id]; ok && !c.Removed {
+			t.Errorf("an instance of the deleted series answered %+v", c)
+		}
+	}
+
+	// A series first seen in an increment is remembered too.
+	added := f.g.PutEvent(gid, "", instanceOf("series2", start.Add(3*time.Hour)))
+	d, err = f.p.Delta(ctx, gid, time.Time{}, time.Time{}, d.Link)
+	if err != nil || !changesByID(d)[added.ID].Series {
+		t.Fatalf("an increment with a new series: %+v %v", d, err)
+	}
+	f.g.DeleteSeries(gid, "", "series2")
+	if _, err := f.p.Delta(ctx, gid, time.Time{}, time.Time{}, d.Link); !errors.Is(err, contracts.ErrMailboxDeltaExpired) {
+		t.Errorf("a series of an increment deleted whole: %v, want ErrMailboxDeltaExpired", err)
+	}
+}
+
 func TestMailbox_UsageLimitsAndRefusals(t *testing.T) {
 	t.Parallel()
 	f := newNoticesFixture(t)
