@@ -10,7 +10,7 @@ sources:
   - apps/server/internal/db/migrations/00092_communications_inbound.sql
   - apps/server/internal/db/migrations/00094_communications_mailbox_marks.sql
   - apps/server/internal/db/migrations/00095_communications_personal_sending.sql
-  - apps/server/internal/db/migrations/00109_communications_provider_neutral.sql
+  - apps/server/internal/db/migrations/00111_communications_provider_neutral.sql
   - apps/server/internal/contracts/outbound_mail.go
   - apps/server/internal/contracts/channel_mailbox.go
   - apps/server/internal/contracts/personal_mailbox.go
@@ -224,7 +224,7 @@ channels](/en/admin/entra/#mail-channels)).
   [state on close](#outlook-state-on-close); and there is **no `channel_credentials`
   row** — no secret to seal. **One channel per mailbox, per provider**:
   `ux_channels_provider_mailbox` on `(provider, settings->>'mailbox')` `WHERE settings ?
-  'mailbox'` (migration `00109_communications_provider_neutral.sql`, replacing 00091's
+  'mailbox'` (migration `00111_communications_provider_neutral.sql`, replacing 00091's
   `ux_channels_entra_mailbox`), so two aliases of one mailbox cannot make two channels,
   while the same id under two providers names two mailboxes; its violation is 409
   `mailbox_exists` (*Another channel already uses this mailbox.*), apart from
@@ -453,7 +453,7 @@ does not know it. Entra answers the zero value (Graph's `sendMail` answers no bo
 outbox records a non-empty answer on the message in the completion's own transaction:
 `ThreadID` as `channel_metadata_json->>'providerThreadId'`, and a `MessageID` that differs
 from the message's own (bracketed, as `rfc_message_id` is) as
-`conversation_messages.sent_message_id` (`varchar(998)`, indexed, migration 00109). Both
+`conversation_messages.sent_message_id` (`varchar(998)`, indexed, migration 00111). Both
 are what [threading](#threading) reads, so a reply to a message whose Message-ID the
 provider replaced still threads. SMTP answers nothing beyond its 250.
 
@@ -812,7 +812,7 @@ For each item without a receipt, in this order:
 The message's `channel_metadata_json` is `{from, to[], cc[], inReplyTo, references[],
 autoSubmitted, providerThreadId}`, plus `unreadable` and `htmlDropped` when set: the
 provider's thread id (`MailItem.ConversationID`, Graph's `conversationId`) under a
-neutral key — migration 00109 rewrote `graphConversationId` to `providerThreadId` in
+neutral key — migration 00111 rewrote `graphConversationId` to `providerThreadId` in
 every existing row —, the
 addresses bare and in lower case, the ids bracketed, references oldest first. Reply and
 reply-all read `cc` and `references` back; the detail reads `autoSubmitted` and
@@ -927,7 +927,7 @@ A message is threaded within its channel, never across channels, in this order:
 3. Else the conversation of the newest message **of either direction** in the same
    **provider thread** (`providerThreadId`: Graph's `conversationId` on a received message,
    the `ThreadID` a provider answered on a sent one) in the last **90 days**, through
-   `ix_conversation_messages_provider_thread` (00109, replacing 00092's inbound-only
+   `ix_conversation_messages_provider_thread` (00111, replacing 00092's inbound-only
    index).
 4. Else a new conversation.
 
@@ -1064,7 +1064,7 @@ feature — today the Microsoft 365 Outlook connection (`Mail.Send` delegated) �
   (`PersonalMailStatus.Provider`, `ProviderDisplayName`). `GET /personal-sender`, and a
   conversation's `personalSender`, answer `providerDisplayName` (*Outlook*), which the
   composer's **Send from my {provider} address** names. The chosen key is recorded as
-  `conversation_messages.send_provider` (`varchar(20)`, migration 00109, backfilled
+  `conversation_messages.send_provider` (`varchar(20)`, migration 00111, backfilled
   `'entra'` for every earlier personal message), written with `from_address`; the
   outbox sends through `personalMailboxFor(send_provider)` and answers
   `connection_needed` when no provider is filled under it any more — **never through

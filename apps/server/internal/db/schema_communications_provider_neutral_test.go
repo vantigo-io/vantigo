@@ -12,10 +12,10 @@ import (
 )
 
 // communicationsProviderNeutralVersion is
-// 00109_communications_provider_neutral.sql: one channel per mailbox per
+// 00111_communications_provider_neutral.sql: one channel per mailbox per
 // provider, the provider's thread under a neutral key in either direction,
 // send_provider and sent_message_id (Google Workspace design G3, G4, G5).
-const communicationsProviderNeutralVersion = 109
+const communicationsProviderNeutralVersion = 111
 
 // TestCommunicationsProviderNeutral_AppliesAndIsIdempotent proves the
 // migration applies, rolls back and re-applies cleanly: the mailbox index is

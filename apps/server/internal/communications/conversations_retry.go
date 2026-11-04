@@ -50,7 +50,7 @@ func (s *server) PostCommunicationsConversationsByIdMessagesByMessageIdRetry(ctx
 			return resp, nil
 		}
 		// The provider the message was recorded with (G3), never another;
-		// one recorded without (pre-00109) resolves as the worker does.
+		// one recorded without (pre-00111) resolves as the worker does.
 		provider, err := personalMailboxOfMessage(ctx, s.deps, msg.SendProvider, caller)
 		if err != nil {
 			return nil, err

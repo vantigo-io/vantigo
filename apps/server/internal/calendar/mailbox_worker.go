@@ -596,7 +596,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 	// A mailbox of another provider than the row's is a changed mailbox
 	// (design O8, G3): the clean-up runs on the row's provider, then the row
 	// takes the new one. A row with a mailbox and no provider was written by
-	// a replica older than the column (migration 00110) and is the same
+	// a replica older than the column (migration 00112) and is the same
 	// mailbox: it only records the provider — a clean-up on no provider
 	// could never succeed.
 	mailbox := acct.ExternalID

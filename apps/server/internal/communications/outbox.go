@@ -543,7 +543,7 @@ func (w *OutboxWorker) sendThroughMailbox(ctx context.Context, message store.Get
 // recorded with (send_provider, Google Workspace design G3) under the
 // author's user ID. A provider no longer filled is connection_needed, never
 // another provider (Outlook connection design Q7); a message recorded without
-// one (queued before migration 00109) is resolved by personalMailboxOfMessage.
+// one (queued before migration 00111) is resolved by personalMailboxOfMessage.
 func (w *OutboxWorker) sendThroughPersonalMailbox(ctx context.Context, message store.GetOutboundMessageForSendRow, envelope mail.Outbound) (contracts.SentMessage, error) {
 	if message.AuthorUserID == nil {
 		return contracts.SentMessage{}, fmt.Errorf("communications: personal send lacks author_user_id: %w", contracts.ErrConnectionNeeded)

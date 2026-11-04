@@ -338,7 +338,7 @@ func (s *server) appointmentLinkOn(a store.CalendarAppointment, day time.Time) s
 }
 
 // legacyShowAs is showAs in the words the hashes stored before migration
-// 00110 were made of (Graph's "oof" and "workingElsewhere"), for the hash
+// 00112 were made of (Graph's "oof" and "workingElsewhere"), for the hash
 // alone: an absence's copy hashes as it did, so the deploy that renamed the
 // values does not rewrite every pushed absence once.
 func legacyShowAs(showAs string) string {

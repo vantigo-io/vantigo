@@ -220,7 +220,7 @@ func TestMailboxProviders_AProviderChangeCleansUpOnTheOldOne(t *testing.T) {
 }
 
 // A row with a mailbox and no provider — written by a replica older than
-// migration 00110 — is the same mailbox, not a changed one: nothing is
+// migration 00112 — is the same mailbox, not a changed one: nothing is
 // cleaned up on no provider, the sync goes on, and the row records the
 // provider.
 func TestMailboxProviders_ARowWithoutAProviderTakesTheAccounts(t *testing.T) {

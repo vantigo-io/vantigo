@@ -396,7 +396,7 @@ func TestOutbox_RecordsNothingOfTheMessagesOwnID(t *testing.T) {
 }
 
 // TestPersonalSending_SendsAMessageRecordedWithoutAProvider: a personal
-// message queued by a replica older than send_provider (migration 00109)
+// message queued by a replica older than send_provider (migration 00111)
 // goes through the only provider filled, or, with two, the one the author's
 // status names — never failing connection_needed for the missing column.
 func TestPersonalSending_SendsAMessageRecordedWithoutAProvider(t *testing.T) {
