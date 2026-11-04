@@ -364,8 +364,12 @@ to the person. An account with an administrator role in Google is never written 
 confirmed or not: give the person an account of their own, or handle theirs by hand.
 
 A group Google already holds at the address a Staff group would get, not made by
-Vantigo, waits the same way: **Confirm** it beside the group on the **Accounts** tab. A
-confirmed group is written to, but never deleted.
+Vantigo, waits the same way: **Confirm** it beside the group on the **Accounts** tab.
+Confirming hands the group to Staff, and Vantigo **reconciles** it at the next run: its
+name, description and visibility are overwritten with Staff's, owners Staff does not name
+are made members, and members Staff's group does not list are removed. Confirm only a
+group that is meant to be that Staff group. A confirmed group is written to, but never
+deleted.
 
 ## Rotate a key
 

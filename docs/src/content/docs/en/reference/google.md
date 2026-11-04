@@ -412,7 +412,9 @@ is `users.get`: `suspended` is `disabled`, a 404 is `nil`.
 
 `EnsureGroup` updates the group its row names (`groups.patch` for the name and the
 description, Groups Settings, the owners), or adopts the group Google holds at the
-address — `ErrGroupUnconfirmed`, nothing written, until `POST /groups/{groupId}/confirm`;
+address — `ErrGroupUnconfirmed`, nothing written, until `POST /groups/{groupId}/confirm`,
+after which it is reconciled like the module's own (the name, description and visibility
+overwritten, unnamed owners lowered, unlisted members removed);
 `ErrGroupNotManageable` when another Staff group's row names it — or creates it with
 `groups.insert` (a 409 is `ErrGroupNotManageable`). Owners are members with the role
 `OWNER`: one missing is added or raised, one no longer named lowered to `MEMBER`.
