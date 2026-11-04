@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Connecting the company's Google Workspace organisation on the Google Workspace page under Integrations in Workspace admin — its four tabs, Status, Connection, Accounts and Calendar and Gmail, where the page is, the six steps on Connection and what Done means on each, the key shown never again, the client ID and the scopes to copy, the admin to impersonate, Test connection, the Internal web client and its redirect URIs, the Status tab with its scopes and events, the warning for scopes Vantigo does not use, the Accounts tab with the account rules, the licences, the accounts and the groups Vantigo keeps and Confirm for those it did not create — and who sees what.
+description: Connecting the company's Google Workspace organisation on the Google Workspace page under Integrations in Workspace admin — its four tabs, Status, Connection, Accounts and Calendar and Gmail, where the page is, the six steps on Connection and what Done means on each, the key shown never again, the client ID and the scopes to copy, the admin to impersonate, Test connection, the Internal web client and its redirect URIs, the Status tab with its scopes and events, the warning for scopes Vantigo does not use, the Accounts tab with the account rules, the Sign-in and Provisioning steps, the licences, the accounts and the groups Vantigo keeps and Confirm for those it did not create, connecting the people who already have a Vantigo user to their Google account — and who sees what.
 sidebar:
   order: 48
 sources:
@@ -23,7 +23,7 @@ reference](/en/reference/google/).
 | --- | --- |
 | **Google Workspace** under **Workspace admin** › **Integrations**, the **Status** tab with its scopes and **Recent events**, and every step read-only | `google:manage` |
 | The **Accounts** tab: saving the account rules, reading the licences, and **Confirm** for an account or a group Vantigo did not create | `google:manage` |
-| **Upload key**, **Revoke**, saving the admin to impersonate, **Test connection** and saving the web client | an **Owner**, signed in with a second factor when Owners must use one; to anyone else with `google:manage` the steps are shown with *An Owner does this step. You can see what is set, but not change it.* |
+| **Upload key**, **Revoke**, saving the admin to impersonate, **Test connection**, saving the web client, and the **Sign-in** and **Provisioning** steps on **Accounts** | an **Owner**, signed in with a second factor when Owners must use one; to anyone else with `google:manage` the steps are shown with *An Owner does this step. You can see what is set, but not change it.* |
 
 `google:manage` (*Manage Google Workspace*) is in the category Administration and cannot
 be delegated: only an Owner gives it to a role. The Owner holds it already. A holder who
@@ -44,7 +44,7 @@ The page has four tabs, each with an address of its own, so a tab can be linked 
 | --- | --- |
 | **Status** | The **Status** card — the status, the organisation, the scopes — and **Recent events** |
 | **Connection** | The six steps that set up the connection |
-| **Accounts** | The account rules, the organisation's licences, and the accounts and groups Vantigo keeps for Staff |
+| **Accounts** | The account rules, the **Sign-in** and **Provisioning** steps, the organisation's licences, and the accounts and groups Vantigo keeps for Staff |
 | **Calendar and Gmail** | *Calendar and Gmail are coming*: each person's own Google connection, calendar sync, Gmail mail channels and sending from a person's Gmail address will be set up here |
 
 While nothing is set up and no key is uploaded, the page opens on **Connection**. From
@@ -123,8 +123,9 @@ key uploaded, a key or a client secret revoked, and Google refusing a key.
 
 Staff decides who has a Google account and when: HR gives a person the **Google
 Workspace** account kind in Staff ([Staff](/en/user/staff/#a-google-workspace-account)).
-This tab sets how Vantigo makes and ends those accounts, and shows what it keeps. It has
-four cards.
+This tab sets how Vantigo makes and ends those accounts, lets people sign in with them,
+and shows what it keeps. **Sign-in** and **Provisioning** appear once a test has read the
+organisation.
 
 **Account rules.** Choose, then **Save the account rules**:
 
@@ -144,6 +145,23 @@ four cards.
 
 If somebody else saved the connection while you had the tab open, the tab says so; reload
 it and make your change again.
+
+**Sign-in.** An Owner's step: it lets people sign in to Vantigo with their Google account.
+It holds the **OIDC** half of the **Single sign-on** card, filled in with **Google
+Workspace**, the **Authority** `https://accounts.google.com`, the Internal web client's
+**Client ID**, and every verified domain of the organisation under **Domains**. Enter the
+web client's **Client secret** and choose **Save**. The card fills in only a form that
+holds nothing yet; when single sign-on is already set, it shows what is saved. Without a
+web client it says *Enter the Internal web client on the Connection tab first.* Without
+this step Staff still makes the Google accounts, but nobody signs in to Vantigo with them.
+Then connect the people who already have a Vantigo user
+([below](#connect-existing-users)).
+
+**Provisioning.** An Owner's step, with the **SCIM** half of the same card. Google
+Workspace does not send users to Vantigo: Staff makes the Google accounts, and a person's
+Vantigo user appears at their first Google sign-in. The SCIM token is only for a
+provisioning tool of your own. **Open Staff's settings** is where Google Workspace is made
+the account kind new people get by default.
 
 **Licences.** The licences the organisation holds, each with its name and how many hold
 it, as Vantigo last read them — the choices of a Staff group's **Licences**. **Read the
@@ -166,3 +184,36 @@ Vantigo found at the address rather than made is marked *Found — confirm* and 
 group: its name, description and visibility are overwritten with Staff's, owners Staff
 does not name are made members, and members Staff's group does not list are removed. It
 never deletes it. The confirm dialog says so too.
+
+## Connect existing users
+
+People who had a Vantigo user before single sign-on was set to Google keep it. Their first
+Google sign-in is refused until you, as an Owner, say which Google account is theirs; then
+that sign-in lands on their own user, with their name, address and roles as they were.
+While Google Workspace is the single sign-on provider, **Workspace admin › Users** looks
+the accounts up in the organisation for you
+([Look the accounts up in the directory](/en/user/workspace-administration/#look-the-accounts-up-in-the-directory)):
+
+- **One person.** **Connect…** in their row opens **Search the directory**. Type two
+  characters or more of their name or address: the list shows the Google accounts whose
+  name or address starts with it, at most 20, each with its primary email and employee
+  number, and *Disabled* for a suspended one. Pick theirs and choose **Connect**.
+- **Everyone at once.** **Find matches in the directory…** pairs each user not yet
+  connected with the one Google account that matches them exactly: their address is the
+  account's primary email or one of its aliases, or their employee number is the
+  account's employee number in Google. **Matched by** says which — **Mail** and **Principal
+  name** for the primary email, **Mail** alone for an alias, **Employee number** — and a
+  row starts ticked only when the primary email matched, the account is not suspended
+  and the user is not an Owner. A user who matches two accounts, or whose account
+  also matches another user, is left out and counted; connect them one at a time.
+  Vantigo compares the first 1,000 users and reads at most 10,000 Google accounts; past
+  that it says not every user was compared, and matches by address alone.
+
+Each connection reads **Awaiting first sign-in** until the person signs in with Google.
+The search and the matches need the connection working: when Google cannot be asked —
+no key, the admin's delegation missing `admin.directory.user`, or Google not answering —
+they say so in words; check the **Status** tab and try again in a minute.
+
+A person whose address is on another of the organisation's verified domains than the
+primary one may be refused at sign-in; see [the administration
+guide](/en/admin/sso-scim/#google-workspace).

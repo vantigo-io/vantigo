@@ -261,10 +261,12 @@ erstatter den gamle kunngjøringen.
 ### Slå opp kontoene i katalogen
 
 Du trenger ikke skrive inn kontoene når katalogen til den valgte leverandøren kan søkes
-i: enkel pålogging er på, og modulen som betjener leverandørens katalog, er slått på — i
-dag **Microsoft Entra ID**, koblet til leietakeren i steg 1 til 3
-([Microsoft Entra ID](/nb/user/entra/#koble-til-eksisterende-brukere)). Vantigo slår da
-opp kontoene i den katalogen. Begge måtene nedenfor er for en **eier**, innlogget med en
+i: enkel pålogging er på, og modulen som betjener leverandørens katalog, er slått på —
+**Microsoft Entra ID**, koblet til leietakeren i steg 1 til 3
+([Microsoft Entra ID](/nb/user/entra/#koble-til-eksisterende-brukere)), eller **Google
+Workspace**, koblet til organisasjonen og testet
+([Google Workspace](/nb/user/google-workspace/#koble-til-eksisterende-brukere)). Vantigo
+slår da opp kontoene i katalogen til leverandøren enkel pålogging er satt til. Begge måtene nedenfor er for en **eier**, innlogget med en
 andre faktor når eiere må bruke en; mens det ikke finnes noen katalog å søke i, tilbys
 de ikke, og feltene du skriver i, er alt som finnes.
 
@@ -277,7 +279,10 @@ visningsnavn, hver med brukerprinsipalnavn, ansattnummer, *Gjest* for en gjest i
 fra en annen organisasjon, og *Deaktivert* når kontoen er det. En konto noen allerede
 har, viser *Venter på* og brukerens navn (eller *Venter på en annen bruker*),
 *Klargjort for en annen bruker* eller *Kunngjort av Ansatte*, og kan ikke velges. Høyst
-25 kontoer vises; når det er så mange, ber den deg snevre inn søket.
+25 kontoer vises (20 fra Google Workspace); når det er så mange, ber den deg snevre inn
+søket. Fra Google Workspace viser listen kontoene der fullt navn eller adresse —
+primæradressen eller et alias — begynner med det du skrev; brukerprinsipalnavnet er
+primæradressen, og det finnes ingen gjester.
 
 Å velge en konto fyller ut **Brukerprinsipalnavn** og, under **Mer**, **Objekt-ID**.
 De to hører sammen: endrer du brukerprinsipalnavnet, tømmes objekt-ID-en; søker du på
@@ -308,7 +313,10 @@ finnes mens katalogen ikke kan leses.
 
 En bruker foreslås bare når treffet er **nøyaktig**: adressen deres er kontoens e-post
 eller brukerprinsipalnavn, uten hensyn til store og små bokstaver, eller
-ansattnummeret deres er kontoens — og alt som traff, peker på den samme kontoen. Det
+ansattnummeret deres er kontoens — og alt som traff, peker på den samme kontoen. I
+Google Workspace er primæradressen både e-posten og brukerprinsipalnavnet, et alias
+teller som **E-post**, og ansattnummeret er det Google har som kontoens
+organisasjons-ID. Det
 gjettes ikke på navn eller lignende adresser. Utelatt blir:
 
 - en bruker som passer med mer enn én konto, eller der kontoen også passer med en annen
@@ -323,8 +331,9 @@ gjettes ikke på navn eller lignende adresser. Utelatt blir:
   **Venter**, og deg selv — du kobler deg selv til ved å logge inn gjennom leverandøren.
 
 Når ingen passer, sier vinduet det, og at du kobler dem til én om gangen fra kolonnen
-**Enkel pålogging**. Når ikke alle brukerne ble sammenlignet (Microsoft Entra ID
-sammenligner de 1 000 første), sier det fra — koble til disse, og se så etter igjen. Å
+**Enkel pålogging**. Når ikke alle brukerne ble sammenlignet (begge
+leverandørene sammenligner de 1 000 første; Google Workspace leser også høyst 10 000 av
+kontoene sine, og matcher utover det bare på adresse), sier det fra — koble til disse, og se så etter igjen. Å
 finne treffene kan ta litt tid i en stor katalog; åpner du vinduet igjen i mellomtiden,
 venter det på det samme svaret.
 
@@ -748,6 +757,13 @@ Slik lar du folk logge inn gjennom en leverandør:
 
 Innen 20 sekunder tilbyr innloggingssiden **Fortsett med** og visningsnavnet, på hver
 server, uten omstart.
+
+Det samme kortet finnes på en leverandørs egen side, ferdig utfylt: fanen **Kontoer** for
+**Microsoft Entra ID** fyller inn leietakerens autoritet og applikasjonens klient-ID, og
+fanen **Kontoer** for **Google Workspace** fyller i steget **Innlogging** inn Google,
+klient-ID-en til den interne nettklienten og hvert verifiserte domene i organisasjonen som
+**Domener** ([Google Workspace](/nb/user/google-workspace/#fanen-kontoer)). Det fyller bare
+ut et skjema som ikke har noe i seg ennå, aldri over det som er lagret.
 
 Endrer du **Autoritet** mens folk allerede logger inn gjennom leverandøren, spør
 Vantigo først — «Endre leverandørens autoritet?» — fordi folk som er koblet under den
