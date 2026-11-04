@@ -1,6 +1,6 @@
 ---
 title: Calendar
-description: Your appointments and what the other apps have put in your days, inviting colleagues, customers' contacts and anyone with an address, what an invitee receives and how they answer, cancelling, colleagues' busy times, repeating appointments, the dashboard's agenda, your calendar on your phone, calendars from elsewhere beside your own, a copy of your calendar in Outlook, changing your own appointments from Outlook, and your Outlook busy time in Vantigo.
+description: Your appointments and what the other apps have put in your days, inviting colleagues, customers' contacts and anyone with an address, what an invitee receives and how they answer, cancelling, colleagues' busy times, repeating appointments, the dashboard's agenda, your calendar on your phone, calendars from elsewhere beside your own, a copy of your calendar in Outlook or Google Calendar, changing your own appointments from there, and your busy time there shown in Vantigo.
 sidebar:
   order: 35
 sources:
@@ -647,10 +647,62 @@ place, times, **Show as** and **Private** — and from then on it is a copy like
 others. A repeating event, or one with attendees, is left in Outlook alone. Events you
 create in your main calendar stay yours in Outlook and are never taken.
 
+## Sync with Google Calendar
+
+When your organisation uses Google Workspace, the same card is called **Google
+Calendar**, and it keeps the copy in your Google Calendar instead. Everything [Sync
+with Outlook](#sync-with-outlook) says holds, with Google's names: you connect your own
+Google account once, choose **Where**, **What** and **Titles** in the same way, and the
+changes you make to your own appointments in Google Calendar come back to Vantigo under
+the same rules ([Change your appointments in
+Outlook](#change-your-appointments-in-outlook)).
+
+1. Open **Calendar → My calendar**. The **Google Calendar** card is under your calendar
+   addresses.
+2. Under the card's description, choose **Connect Google** and sign in to Google with
+   your work account. Google asks you to let Vantigo see and change the events in your
+   calendars and make its own calendar; you come back to this page, the card saying
+   **Connected as** and your account ([Connections](/en/user/connections/)).
+3. Turn on **Sync with Google Calendar**, and choose as for Outlook.
+
+**Where.** **My main calendar** is your own Google Calendar, which colleagues booking
+meetings in Google see you busy in. **A separate Vantigo calendar** is a calendar called
+*Vantigo* that Vantigo makes in your Google Calendar; you can hide it in Google Calendar's
+list of calendars. If your organisation does not let Vantigo make a calendar for you,
+the card says **Your organisation has not allowed Vantigo to reach your mailbox.**:
+choose **My main calendar** instead, or ask your administrator.
+
+**How the copies show in Google Calendar.** An appointment marked free is free
+(*Show as available*), and a private one is private. Google Calendar has no
+*tentative* and no *out of office* for an event Vantigo writes, so an appointment you
+answered tentative, and an absence, show as busy there. There are no guests and no
+notifications on the copies.
+
+**Your Google busy time in Vantigo.** While the sync is on, Vantigo reads the times of
+your main Google Calendar — never the titles — and shows them as hatched blocks under
+the **Google Calendar** chip:
+
+- **Busy in Google Calendar** — an event that shows you as busy;
+- **Tentative in Google Calendar** — an invitation you answered *Maybe*;
+- **Out of office** — an out-of-office event you made in Google Calendar;
+- **Working elsewhere** — a working location you set to show you as busy.
+
+An event that shows you as available, an invitation you declined, and Vantigo's own
+copies are left out. A change in Google Calendar shows after the next sync — usually
+within a minute, as Google tells Vantigo of it; otherwise at the quarter-hour sync.
+
+**Reconnect.** When Google no longer takes your connection — you removed Vantigo from
+your Google account's security page, your password changed, or your administrator
+blocked the app — the card says **Google Calendar wants you to sign in again: choose
+Reconnect Google Calendar above.** Choose **Reconnect Google** on the card. If you turn
+the sync off or disconnect Google on **Settings → Connections**, Vantigo removes what it
+put in your Google Calendar. If you leave, the copies stay in your Google account, which
+is suspended with your employment.
+
 ## What comes next
 
 The calendar address for your phone, calendars from elsewhere and the copy in Outlook
-are built, your Outlook busy time shows in Vantigo, and the changes you make to your
-own appointments in Outlook come back. Next for Outlook: faster updates. Further
-off: sync with Google, booking pages, rooms and resources, reminders in the app and by
-mail, CalDAV, and team calendars.
+or Google Calendar are built, your busy time there shows in Vantigo, and the changes you
+make to your own appointments there come back. Next for Outlook: faster updates. Further
+off: booking pages, rooms and resources, reminders in the app and by mail, CalDAV, and
+team calendars.
