@@ -169,8 +169,10 @@ func addressDomain(conn store.GoogleConnection) string {
 // mapped attributes, the employee number as the organization external id, a
 // random password nobody sees that must be changed at the first sign-in,
 // and the organisational unit. The create is made once (noRetry): when its
-// answer is lost, the user it may have made all the same is read back
-// (madeAnyway) and taken as this call's.
+// answer is lost, or an address is answered taken (409) — an earlier
+// create's answer lost while the search still lags it — the user it may
+// have made all the same is read back by its address (madeAnyway) and taken
+// as this call's, so a lost answer never makes a second user.
 func (p *provisioner) create(ctx context.Context, s session, actor contracts.Actor, spec contracts.ExternalSpec, number string) (contracts.ExternalAccount, error) {
 	addr, err := directoryaddress.Mailbox.For(spec, s.conn.AddressPattern, addressDomain(s.conn), s.conn.Domains)
 	if errors.Is(err, directoryaddress.ErrNoDomain) {
@@ -213,6 +215,17 @@ func (p *provisioner) create(ctx context.Context, s session, actor contracts.Act
 			}
 			created = made
 		case isStatus(err, http.StatusConflict):
+			// The address may be taken by this module's own create whose
+			// answer was lost, which the number's search does not yet
+			// find: read it back before taking the next address.
+			made, ok, readErr := p.madeAnyway(ctx, s, number, email)
+			if readErr != nil {
+				return contracts.ExternalAccount{}, readErr
+			}
+			if ok {
+				created = made
+				break
+			}
 			if addr.FromEmail {
 				return contracts.ExternalAccount{}, p.refused(ctx, s, actor, actionUserPrepared, "",
 					&refusedError{code: refusedAddressTaken, sentinel: contracts.ErrExternalAddressTaken})
@@ -252,17 +265,23 @@ func (p *provisioner) create(ctx context.Context, s session, actor contracts.Act
 }
 
 // madeAnyway reads back the user a create whose answer was lost may have
-// made: the one user the number's search finds that holds email — the
-// address this create asked for — suspended, as the create made it.
+// made: the user at email — the address this create asked for, read by
+// users.get, which is strongly consistent where the number's search may lag
+// a create — taken as made by this module when it holds the number, is
+// suspended and nobody has signed in to it, as the create made it.
 func (p *provisioner) madeAnyway(ctx context.Context, s session, number, email string) (directoryUser, bool, error) {
-	found, err := p.findByNumber(ctx, s, number)
-	if err != nil {
+	var u directoryUser
+	err := p.keys.c.get(ctx, s.users, userURL(email, "?projection=basic"), &u)
+	switch {
+	case errors.Is(err, errNotFound):
+		return directoryUser{}, false, nil
+	case err != nil:
 		return directoryUser{}, false, err
 	}
-	if len(found) != 1 || !strings.EqualFold(found[0].PrimaryEmail, email) || !found[0].Suspended {
+	if !validUserID(u.ID) || !strings.EqualFold(u.PrimaryEmail, email) || !u.holdsNumber(number) || !u.Suspended || !u.neverSignedIn() {
 		return directoryUser{}, false, nil
 	}
-	return found[0], true, nil
+	return u, true, nil
 }
 
 // Update writes the attributes of the spec that differ and the manager —

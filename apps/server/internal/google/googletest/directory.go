@@ -19,7 +19,9 @@ import (
 // The user search answers as loosely as Google may (U11): externalId:<n>
 // matches any external id of any type whose value starts with n, ignoring
 // case, so the module's own filter to an organization id equal to the
-// number is what decides.
+// number is what decides. With SearchLag it lags a create, as Google's
+// index does: a user users.insert made is not found by the search until
+// CatchUp, while users.get answers it at once by its id or its address.
 
 // User is a user in the fake's Directory. The list-valued attributes are
 // Google's objects, as a test sets them and as the module wrote them.
@@ -82,6 +84,17 @@ type directory struct {
 	// RefusePassword makes a write carrying a password answer 400, as an
 	// organisation's password policy may.
 	RefusePassword bool
+	// SearchLag makes the users users.insert makes unfound by users.list
+	// until CatchUp (lagging holds their ids).
+	SearchLag bool
+	lagging   map[string]bool
+}
+
+// CatchUp makes the search find every user it lagged.
+func (g *FakeGoogle) CatchUp() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.lagging = nil
 }
 
 // AddUser puts u in the Directory, its id made when empty, and answers it.
@@ -379,6 +392,9 @@ func (g *FakeGoogle) listUsers(q url.Values) answer {
 	var out []map[string]any
 	for _, id := range ids {
 		u := g.users[id]
+		if g.lagging[id] {
+			continue
+		}
 		if slices.ContainsFunc(u.ExternalIDs, func(e map[string]any) bool {
 			v, _ := e["value"].(string)
 			return strings.HasPrefix(strings.ToLower(v), strings.ToLower(number))
@@ -462,11 +478,26 @@ func (g *FakeGoogle) insertUser(body []byte) answer {
 	}
 	u := g.addUser(User{PrimaryEmail: email})
 	applyUser(u, in)
+	if g.SearchLag {
+		if g.lagging == nil {
+			g.lagging = map[string]bool{}
+		}
+		g.lagging[u.ID] = true
+	}
 	return answer{status: http.StatusOK, body: userBody(u)}
 }
 
-func (g *FakeGoogle) getUser(id string) answer {
-	u, ok := g.users[id]
+// getUser is users.get: the userKey an id, a primary email or an alias.
+func (g *FakeGoogle) getUser(key string) answer {
+	u, ok := g.users[key]
+	if !ok {
+		for _, one := range g.users {
+			if strings.EqualFold(one.PrimaryEmail, key) || slices.ContainsFunc(one.Aliases, func(a string) bool { return strings.EqualFold(a, key) }) {
+				u, ok = one, true
+				break
+			}
+		}
+	}
 	if !ok {
 		return g.notFound()
 	}
