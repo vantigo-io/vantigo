@@ -312,6 +312,17 @@ func mailboxDenied(g *googleError) bool {
 	return g.Status == http.StatusForbidden && slices.Contains(deniedReasons, g.Reason)
 }
 
+// primaryRefused is err, a call's failure on the person's primary calendar
+// itself (a list of it, its watch), as the contract answers it: Google's 404
+// of the primary calendar is ErrMailboxUnknown (G30) — the account has no
+// calendar the module can reach —, anything else as refused answers it.
+func (m *mailboxCalendar) primaryRefused(ctx context.Context, s mailboxSession, err error) error {
+	if errors.Is(err, errNotFound) {
+		return fmt.Errorf("google: Google has no primary calendar for the account: %w: %w", contracts.ErrMailboxUnknown, err)
+	}
+	return m.refused(ctx, s, err)
+}
+
 // unauthorized records Google's refusal of the person's token: the row read
 // now, moved to reconnect when it is still at the revision the token came
 // from (or its closing token forgotten); a row moved on since is a failure
@@ -881,7 +892,8 @@ type eventsPage struct {
 // marker (privateExtendedProperty=vantigo=<marker>) that start at or after
 // from when it is set, fields asking what the caller decodes; each page
 // handed to each, at most limit events in all. false from each stops it.
-// A secondary calendar that is gone answers no events.
+// A secondary calendar that is gone answers no events; the primary calendar
+// missing (404) is ErrMailboxUnknown.
 func (m *mailboxCalendar) markedList(ctx context.Context, s mailboxSession, calendarID string, from time.Time, fields string, each func(readEvent) bool) error {
 	params := listParams("items("+fields+"),nextPageToken", url.Values{
 		"privateExtendedProperty": {markerProperty + "=" + s.marker},
@@ -900,6 +912,9 @@ func (m *mailboxCalendar) markedList(ctx context.Context, s mailboxSession, cale
 		if err := m.get(ctx, s, s.withQuota(eventsPath(calendarID), params), &page); err != nil {
 			if calendarID != "" && first && itemMissing(err) {
 				return nil
+			}
+			if calendarID == "" {
+				return m.primaryRefused(ctx, s, err)
 			}
 			return m.refused(ctx, s, err)
 		}

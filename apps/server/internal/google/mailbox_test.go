@@ -668,6 +668,28 @@ func TestMailbox_UsageLimitsAndRefusals(t *testing.T) {
 		t.Errorf("%d lists sent, want one: a quota spent is not waited", got)
 	}
 
+	// The primary calendar missing (404) is ErrMailboxUnknown; a secondary
+	// calendar gone answers no events.
+	f.g.RefuseOn("GET /calendar/v3/calendars/primary/events", 404, "notFound")
+	if _, err := f.p.Delta(ctx, gid, start, start.Add(time.Hour), ""); !errors.Is(err, contracts.ErrMailboxUnknown) {
+		t.Errorf("Delta with no primary calendar: %v, want ErrMailboxUnknown", err)
+	}
+	if _, err := f.p.Find(ctx, gid, "", time.Time{}); !errors.Is(err, contracts.ErrMailboxUnknown) {
+		t.Errorf("Find with no primary calendar: %v, want ErrMailboxUnknown", err)
+	}
+	if _, err := f.p.Versions(ctx, gid, "", time.Time{}, time.Time{}); !errors.Is(err, contracts.ErrMailboxUnknown) {
+		t.Errorf("Versions with no primary calendar: %v, want ErrMailboxUnknown", err)
+	}
+	if found, err := f.p.Find(ctx, gid, "nosuch@group.calendar.google.com", time.Time{}); err != nil || len(found) != 0 {
+		t.Errorf("Find on a secondary calendar gone: %+v %v, want none", found, err)
+	}
+	f.g.RefuseOn("GET /calendar/v3/calendars/primary/events", 0, "")
+	f.g.RefuseOn("POST /calendar/v3/calendars/primary/events/watch", 404, "notFound")
+	if err := f.p.Watch(ctx, gid); !errors.Is(err, contracts.ErrMailboxUnknown) {
+		t.Errorf("Watch with no primary calendar: %v, want ErrMailboxUnknown", err)
+	}
+	f.g.RefuseOn("POST /calendar/v3/calendars/primary/events/watch", 0, "")
+
 	// An event's own 403 is that op's refusal: the mailbox is not denied, and
 	// the ops after it — the next batch's too — are written.
 	made := apply(t, f.p, gid, "", create("appointment:1", timedEvent("Plan", start, time.Hour)))
