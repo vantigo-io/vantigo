@@ -99,6 +99,11 @@ const (
 	// the account is suspended all the same, which ends the sessions at
 	// their next check.
 	reportedSignOutRefused = "sign_out_refused"
+	// reportedPassNotSetUsed: Activate wanted a first password for a user
+	// someone has signed in to, and set none — a new password there would
+	// be a way into an account in use; the suspension is lifted all the
+	// same, and HR or an admin resets the password by hand if it is needed.
+	reportedPassNotSetUsed = "pass_not_set_used"
 )
 
 // userIDPattern is a Google user id: digits (21 of them, in practice).
@@ -402,7 +407,7 @@ func licenceJudges(c string) bool {
 // activateJudges are the codes Activate judges: the password, the licences,
 // the role, and a leaver's steps a rehire leaves behind.
 func activateJudges(c string) bool {
-	return c == contracts.ReportedPassNotAllowed || c == contracts.ReportedPrivileged || licenceJudges(c) ||
+	return c == contracts.ReportedPassNotAllowed || c == reportedPassNotSetUsed || c == contracts.ReportedPrivileged || licenceJudges(c) ||
 		c == reportedSignOutRefused || strings.HasPrefix(c, reportedLeaverStepFailed+":")
 }
 
