@@ -21,6 +21,7 @@ export const targets = [
   { module: "inventory", output: "apps/inventory/frontend/src/api-schema.d.ts" },
   { module: "calendar", output: "apps/calendar/frontend/src/api-schema.d.ts" },
   { module: "entra", output: "apps/entra/frontend/src/api-schema.d.ts" },
+  { module: "google", output: "apps/google/frontend/src/api-schema.d.ts" },
   { module: "assistant", output: "apps/assistant/frontend/src/api-schema.d.ts" },
 ] as const;
 
