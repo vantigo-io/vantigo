@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Å koble Vantigo til en Google Workspace-organisasjon gjennom en tjenestekonto med domenedekkende delegering — Google Cloud-prosjektet og Admin SDK API, tjenestekontoen og JSON-nøkkelen, å oppheve iam.disableServiceAccountKeyCreation for prosjektet, å laste opp nøkkelen, å delegere tilgangsområdene i administrasjonskonsollen og vente på dem, administratoren som skal etterlignes, den interne nettklienten og de to omdirigerings-URI-ene, å verifisere med Test tilkoblingen — deretter kontoene Ansatte holder i Google, kontoreglene (adressen, organisasjonsenheten, det første passordet og levetiden til det), lisenser, Ansattes grupper og de tre innstillingene deres, bilder i 96 px, hva stegene for en som slutter gjør, slett etter N dager, å bekrefte en konto eller en gruppe Vantigo ikke opprettet, å rotere en nøkkel, å bytte tjenestekonto, og hva som kan gå galt.
+description: Å koble Vantigo til en Google Workspace-organisasjon gjennom en tjenestekonto med domenedekkende delegering — Google Cloud-prosjektet og Admin SDK API, tjenestekontoen og JSON-nøkkelen, å oppheve iam.disableServiceAccountKeyCreation for prosjektet, å laste opp nøkkelen, å delegere tilgangsområdene i administrasjonskonsollen og vente på dem, administratoren som skal etterlignes, den interne nettklienten og de to omdirigerings-URI-ene, å verifisere med Test tilkoblingen — deretter Tilkobling for personer (hver persons egen Google-tilkobling: bryteren, nettklienten som intern, å verifisere ved å koble til selv, å slå den av, hva som skjer med en persons tilkobling, google-sweep), kontoene Ansatte holder i Google, kontoreglene (adressen, organisasjonsenheten, det første passordet og levetiden til det), lisenser, Ansattes grupper og de tre innstillingene deres, bilder i 96 px, hva stegene for en som slutter gjør, slett etter N dager, å bekrefte en konto eller en gruppe Vantigo ikke opprettet, å rotere en nøkkel, å bytte tjenestekonto, og hva som kan gå galt.
 sidebar:
   order: 47
 sources:
@@ -21,6 +21,13 @@ sources:
   - apps/server/internal/google/groups_traits.go
   - apps/server/internal/google/photo.go
   - apps/server/internal/google/accounts.go
+  - apps/server/internal/google/personal.go
+  - apps/server/internal/google/personal_connect.go
+  - apps/server/internal/google/personal_redeem.go
+  - apps/server/internal/google/personal_complete.go
+  - apps/server/internal/google/personal_close.go
+  - apps/server/internal/google/personal_token.go
+  - apps/server/internal/google/personal_sweep.go
 ---
 
 Google Workspace-modulen kobler Vantigo til selskapets Google Workspace-organisasjon.
@@ -31,8 +38,9 @@ holder Ansatte personenes Google-kontoer og gruppene sine i organisasjonen: den
 oppretter en persons konto før den første dagen, åpner den på dagen med et første
 passord HR gir videre, holder profilen og lederen i samsvar, tildeler lisensene til
 gruppene deres, skriver bildet deres, og suspenderer kontoen når de slutter
-([Kontoene](#kontoene)). Hver persons egen Google-tilkobling, kalendersynkronisering og
-Gmail kommer i senere versjoner, på den samme tilkoblingen.
+([Kontoene](#kontoene)). Hver person kan koble til sin egen Google-konto
+([Tilkobling for personer](#tilkobling-for-personer)), som kalendersynkronisering og
+Gmail, i senere versjoner, skal bruke.
 
 Denne siden er driftssiden: hva Google trenger, stegene i Google Cloud-konsollen og i
 administrasjonskonsollen, og hva du gjør når noe feiler. Siden i Vantigo er **Google
@@ -203,9 +211,9 @@ annet produkt bruker den samme tjenestekontoen.
 
 ## Sett opp den interne nettklienten
 
-Hver persons egen Google-tilkobling og innloggingen med Google, i senere versjoner,
-bruker en OAuth-nettklient i det samme prosjektet. Legg den inn nå, slik at prosjektet
-settes opp i én omgang; ingenting bruker den ennå.
+Hver persons egen Google-tilkobling ([Tilkobling for personer](#tilkobling-for-personer))
+og innloggingen med Google bruker en OAuth-nettklient i det samme prosjektet. Legg den
+inn nå, slik at prosjektet settes opp i én omgang.
 
 1. I prosjektet åpner du **Google Auth Platform** › **Branding** (samtykkeskjermen for
    OAuth) og setter den opp med **Audience** *Internal*, slik at bare kontoer i
@@ -225,6 +233,80 @@ For å rotere hemmeligheten legger du til en ny på klienten i konsollen, skrive
 i steg 6 med den samme klient-ID-en og velger **Lagre**: den eldre trekkes tilbake i
 Vantigo. Slett så den gamle i konsollen. En ny klient-ID trenger alltid hemmeligheten
 sin.
+
+## Tilkobling for personer
+
+**Tilkobling for personer** lar hver person koble sin egen Google-konto til Vantigo én
+gang, under **Innstillinger → Tilkoblinger**, slik at kalendersynkronisering til Google
+Kalender og sending fra egen Gmail-adresse — senere versjoner — handler som den personen
+med personens eget samtykke, aldri gjennom tjenestekontoen: ingen kalendertilgang
+delegeres noen gang. Vantigo holder hver persons oppdateringstoken (refresh token)
+forseglet, og ingenting annet fra Google.
+
+### Før du slår den på
+
+- Modulen er tilkoblet og testet: Vantigo sjekker at kontoen en person logger inn med,
+  tilhører et av organisasjonens **verifiserte domener**, som testen leser.
+- Den **interne nettklienten** er lagt inn med hemmeligheten ([over](#sett-opp-den-interne-nettklienten)),
+  med samtykkeskjermens målgruppe **Internal**, og omdirigerings-URI-en
+  `APP_URL` + `APP_BASE_PATH` + `/api/v1/google/connect/callback` registrert på den.
+  Tilbakekallet er på `APP_URL`, aldri på `PUBLIC_BASE_URL`
+  ([Installasjon](/nb/admin/installation/)).
+- De som skal koble til, har en Google-konto Vantigo administrerer: HR ga dem
+  kontotypen Google Workspace i Ansatte, og kontoen ble opprettet av Vantigo eller
+  overtakelsen ble bekreftet. Ingen andre får tilbud om tilkoblingen.
+- Begrenser administrasjonskonsollen tilgang for tredjepartsapper (**Security › Access and
+  data control › API controls › App access control**), merk nettklienten som **Trusted**,
+  ellers avvises folk med *blocked*.
+
+### Slå den på
+
+1. Åpne **Administrer arbeidsområde › Integrasjoner › Google Workspace**, fanen
+   **Kalender og Gmail**. Dette steget gjør en eier.
+2. Sjekk at **omdirigerings-URI-en** som vises, er den som er registrert på
+   nettklienten; kopier den hvis ikke.
+3. Slå på **Tilkobling for personer**. Statusen sier *Klar* når nettklienten er satt opp
+   og domenene er lest; ellers *Ikke tilgjengelig* med hva som mangler.
+
+### Verifiser
+
+Koble til selv: åpne **Innstillinger → Tilkoblinger** og velg **Koble til Google** på
+kortet **Google**. Google viser samtykkesiden sin — alltid, fordi Vantigo ber om den hver
+gang slik at Google utsteder det langvarige tokenet — og sender deg tilbake; kortet sier
+**Tilkoblet som** og adressen din. Fanen teller deg blant dem som er tilkoblet, og
+**Siste hendelser** på fanen **Status** viser at en person koblet til Google-kontoen sin.
+Sjekk så den andre veien: fjern Vantigo på Google-kontoens sikkerhetsside, under
+tredjepartsapper med tilgang til kontoen; neste gang Vantigo bruker tilkoblingen, sier
+kortet **Må kobles til på nytt**.
+
+### Slå den av
+
+Slå av **Tilkobling for personer** på den samme fanen. Mens noen er tilkoblet, spør
+siden først: å slå den av lukker **hver** persons tilkobling, og hver må koble til på
+nytt når den er på igjen. Tokenene beholdes, i noen dager på det meste, bare for det en
+senere versjons kalendersynkronisering må fjerne; så slettes de og tilbakekalles hos
+Google.
+
+### Hva som skjer med en persons tilkobling
+
+| Når | Hva skjer |
+| --- | --- |
+| Personen velger **Koble fra** | Tilkoblingen lukkes; tokenet beholdes bare for fjerninger, og slettes — og tilbakekalles hos Google — når det har vært ubrukt i et døgn, senest etter sju dager. |
+| Google avviser tokenet (tilbakekalt, ubrukt i seks måneder, et passordbytte, en policy) | Personen ser **Må kobles til på nytt** med årsaken; bare de kan rette det, ved å koble til på nytt. |
+| Personen slutter | Kontoen suspenderes, og tilkoblingen lukkes med tokenet glemt. |
+| Kontoen suspenderes eller slettes i administrasjonskonsollen, eller er ikke lenger en Vantigo administrerer | Tilkoblingen lukkes med tokenet glemt — ved neste bruk, eller innen et døgn av `google-sweep` for en som venter på å kobles til på nytt. |
+| Ansatte peker personen på en annen konto | Den gamle tilkoblingen lukkes når de kobler til den nye. |
+| En eier slår av bryteren | Hver tilkobling lukkes, tokenene beholdes for fjerninger. |
+
+### google-sweep
+
+Modulens ene bakgrunnsjobb, `google-sweep`, kjører hver time i API-prosessen og i
+worker-modus likt. Den sletter lukkede tilkoblinger ingenting trenger lenger, og
+tilbakekaller tokenene deres på `oauth2.googleapis.com/revoke`, og leser, høyst én gang i
+døgnet og høyst 100 om gangen, kontoene til tilkoblinger som venter på å kobles til på
+nytt — i Vantigo først, så hos Google som administratoren som etterlignes — og lukker dem
+der kontoen er suspendert eller borte. Den har ingen innstilling, tar ingen lås på tvers
+av instanser, og holder aldri en databasetilkobling mens den venter på Google.
 
 ## Kontoene
 
@@ -248,9 +330,10 @@ konto i Google, gjennom denne modulen, slik den styrer kontoene i Microsoft Entr
    kjøres.
 5. **Etter Ansattes slettedager** slettes kontoen.
 
-Modulen kjører ingenting selv: kontoarbeideren i Ansatte leser hver konto fra Google ved
-hver kjøring, og det er slik en suspendering eller sletting gjort i
-administrasjonskonsollen blir sett.
+For kontoene kjører modulen ingenting selv: kontoarbeideren i Ansatte leser hver konto
+fra Google ved hver kjøring, og det er slik en suspendering eller sletting gjort i
+administrasjonskonsollen blir sett. (Modulens ene bakgrunnsjobb, `google-sweep`, tjener
+folks egne tilkoblinger.)
 
 ### Sett kontoreglene
 
@@ -359,6 +442,11 @@ på:
 Et steg som feiler, overlater resten til neste kjøring, og personens Konto-fane
 navngir det. En som ansettes på nytt senere, åpner den samme kontoen igjen.
 
+Med suspenderingen lukkes personens egen Google-tilkobling, og tokenet glemmes
+([Tilkobling for personer](#hva-som-skjer-med-en-persons-tilkobling)); det en senere
+versjons kalendersynkronisering la i kalenderen deres, blir liggende i den suspenderte
+kontoen.
+
 ## Slett etter N dager
 
 Vantigo sletter Google-kontoen til en som har sluttet, bare når Ansattes **Slett en
@@ -441,6 +529,13 @@ og av hvem.
 | *Denne nøkkelen tilhører en annen tjenestekonto* (`client_mismatch`) | Den opplastede nøkkelen tilhører en annen tjenestekonto enn de aktive nøklene. | Last opp en nøkkel til den nåværende kontoen, eller [bytt tjenestekonto](#bytt-tjenestekonto). |
 | *Tilgangsområder Vantigo ikke bruker* | Delegeringen har tilgangsområder Vantigo aldri ber om. | Fjern dem fra delegeringen med mindre et annet produkt trenger dem. |
 | Konsollen sier at det er slått av å lage nøkler | Organisasjonen håndhever `iam.disableServiceAccountKeyCreation`. | [Opphev den for dette prosjektet](#opprett-tjenestekontoen-og-nøkkelen). |
+| **Tilkobling for personer**: *Ikke tilgjengelig* (`no_web_client`) | Nettklientens ID eller hemmelighet mangler. | [Legg inn nettklienten](#sett-opp-den-interne-nettklienten). |
+| **Tilkobling for personer**: *Ikke tilgjengelig* (`not_tested`) | Ingen test har lest organisasjonens verifiserte domener ennå. | Test tilkoblingen. |
+| **Tilkobling for personer**: *Ikke tilgjengelig* (`client_refused`) | Google avviste nettklienten (`invalid_client`, `unauthorized_client`) ved en tilkobling eller en oppdatering: hemmeligheten ble slettet eller klienten fjernet. | Legg til en ny hemmelighet på klienten og legg den inn; en ny nettklient nullstiller det. |
+| **Tilkobling for personer**: *Samtykke mangler* | Den siste tilkoblingen kom tilbake uten det funksjonen trenger: personen fjernet et kryss på Googles side. | Be dem koble til på nytt og tillate alt. |
+| Googles side sier `redirect_uri_mismatch` | Tilbakekallets adresse er ikke registrert på nettklienten, eller `APP_URL` er endret. | Registrer omdirigerings-URI-en fanen viser. |
+| Folk ser *Må kobles til på nytt* — *blocked* | Administrasjonskonsollen begrenser nettklienten, eller kontoen er utenfor organisasjonen. | Merk nettklienten som **Trusted** under API controls. |
+| Folk får beskjed om at de logget inn med en konto utenfor organisasjonens Google Workspace | ID-tokenet navnga ikke noe verifisert domene i organisasjonen — en privat konto, eller et domene lagt til etter siste test. | Test tilkoblingen igjen etter å ha lagt til et domene. |
 | Kortet **Kontoer** i Ansatte: Google Workspace feiler (`scopes_missing`) | Den siste testen ble nektet et av tilgangsområdene for kontoene, gruppene, gruppeinnstillingene eller lisensene, eller ble gjort før de trengtes. | Legg dem til i delegeringen, og test igjen. |
 
 **Årsakene på en persons konto.** Ansattes Konto-fane og dashbord sier hva Google ikke

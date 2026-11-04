@@ -1,6 +1,6 @@
 ---
 title: Tilkoblinger
-description: Å koble din egen Outlook til Vantigo under Innstillinger → Tilkoblinger — hvem som ser det, hvordan påloggingen hos Microsoft ser ut, Tilkoblet som, å koble fra, Må kobles til på nytt og årsakene, og hva hver melding betyr når en tilkobling feiler.
+description: Å koble din egen Outlook eller Google-konto til Vantigo under Innstillinger → Tilkoblinger — hvem som ser hvert kort, hvordan påloggingen hos Microsoft eller Google ser ut, funksjonene, Tilkoblet som, å koble fra, Må kobles til på nytt og årsakene, og hva hver melding betyr når en tilkobling feiler.
 sidebar:
   order: 2
 sources:
@@ -9,11 +9,13 @@ sources:
   - apps/host/frontend/src/components/connection-cards.tsx
   - apps/host/frontend/src/components/entra-connection-card.tsx
   - apps/entra/frontend/src/components/outlook-connection.tsx
+  - apps/google/frontend/src/components/google-connection.tsx
 ---
 
 **Innstillinger → Tilkoblinger** viser kontoene andre steder som du kobler til Vantigo,
-ett kort for hver leverandør organisasjonen din kjører. I dag er det **Outlook**-en din,
-fra Microsoft Entra ID-modulen: du kobler den til én gang ved å logge på Microsoft, og
+ett kort for hver leverandør organisasjonen din kjører: **Outlook**-en din, fra Microsoft
+Entra ID-modulen, og **Google**-kontoen din, fra Google Workspace-modulen
+([Koble til Google-kontoen din](#koble-til-google-kontoen-din)). Outlook kobler du til én gang ved å logge på Microsoft, og
 Vantigo beholder tilkoblingen til du kobler den fra, slutter, eller administratoren din
 slår den av. Kalenderens
 [Outlook-synkronisering](/nb/user/calendar/#synkroniser-med-outlook) bruker den: Vantigo
@@ -26,7 +28,8 @@ mens kundens svar havner i den delte kanalen.
 
 **Tilkoblinger** står under **Innstillinger** i avatar-menyen, ved siden av **Profil**
 og **Sikkerhet**, så lenge organisasjonen kjører minst én modul som tilbyr en tilkobling —
-i dag Microsoft Entra ID-modulen; uten en slik finnes ikke siden. Siden viser ett kort for
+Microsoft Entra ID-modulen eller Google Workspace-modulen; uten en slik finnes ikke
+siden. Siden viser ett kort for
 hver slik modul som er slått på, i samme rekkefølge hver gang. Alle som er pålogget, ser
 sine egne tilkoblinger og ingen andres; ingen tillatelse trengs.
 
@@ -118,3 +121,80 @@ hvorfor:
 Viser Microsoft sin egen feilside i stedet for å komme tilbake — for eksempel en som
 nevner `AADSTS50011` eller sier at godkjenning kreves — er ikke Vantigos registrering i
 organisasjonen ferdig: si fra til administratoren.
+
+## Koble til Google-kontoen din
+
+Kortet **Google** er det samme for et selskap på Google Workspace: du kobler din egen
+Google-konto til én gang, og Vantigo beholder tilkoblingen til du kobler den fra,
+slutter, eller administratoren din slår den av. Ingenting bruker den ennå:
+kalendersynkronisering med Google Kalender og sending fra Gmail-adressen din kommer i
+senere versjoner, hver på denne ene tilkoblingen.
+
+Kortet **Google** tilbyr en tilkobling bare når to ting stemmer:
+
+- en eier har slått på **Tilkobling for personer** på fanen **Kalender og Gmail** på
+  Google Workspace-siden ([Google Workspace](/nb/user/google-workspace/#fanen-kalender-og-gmail)),
+  og organisasjonens nettklient er satt opp; og
+- HR har koblet personen din i Ansatte til en Google-konto Vantigo forvalter — en den
+  opprettet, eller som noen har bekreftet adoptert — og den kontoen er ikke suspendert.
+
+Ellers vises ikke kortet **Google**.
+
+1. Åpne **Innstillinger → Tilkoblinger**. Kortet **Google** sier **Ikke tilkoblet**.
+2. Velg **Koble til Google**. Nettleseren går til Google, med jobbkontoen din fylt inn.
+   Logg på hvis Google ber om det, og tillat det Vantigo ber om på Googles side. Google
+   viser alltid denne siden, også når du har koblet til før; for organisasjonens egen app
+   er det ett klikk. Lister Google punktene ett for ett, **tillat hvert av dem**: Vantigo
+   ber bare om det funksjonen trenger.
+3. Tilbake i Vantigo fullfører kortet tilkoblingen og sender deg tilbake dit du startet.
+
+Du kan også koble til fra komponisten eller kalenderen der en **Koble til Google**-knapp
+står ved siden av **Koble til Outlook**; den bringer deg tilbake dit.
+
+Logg på med **kontoen Vantigo kjenner deg som**: den HR koblet til personen din. Logger
+du på som noen annen — en annen konto i organisasjonen, en privat Gmail-konto, en konto
+fra en annen organisasjon — avvises det, og ingenting kobles til.
+
+### Tilkoblet til Google
+
+Kortet sier **Tilkoblet som** og adressen til kontoen din, **Siden** dagen du koblet til,
+og **Brukes av:** funksjonene tilkoblingen tjener: *Kalender* i dag, *Gmail* når
+organisasjonen bruker den til å sende. Velg **Koble fra** og bekreft for å stoppe:
+Vantigo slutter å bruke Google-kontoen din til du kobler til igjen, og ber senere, når
+ingenting trenger den, Google glemme tilkoblingen. Å koble fra logger deg ikke ut av
+Google eller Vantigo. Du kan også avslutte tilkoblingen selv på Google-kontoens
+sikkerhetsside, under appene med tilgang til kontoen; Vantigo viser da **Må kobles til
+på nytt** neste gang den bruker tilkoblingen.
+
+### Må kobles til på nytt (Google)
+
+| Kortet sier | Hvorfor |
+| --- | --- |
+| *Google godtar ikke lenger tilkoblingen: den ble trukket tilbake, den utløp, eller du byttet passord. Koble til på nytt.* | Du fjernet Vantigos tilgang i Google-kontoen din, tilkoblingen var ubrukt i seks måneder, eller et passordbytte avsluttet den. |
+| *Organisasjonens Google-regler blokkerer tilkoblingen. Spør Google Workspace-administratoren din.* | En administrator begrenset Vantigos nettklient i administrasjonskonsollen, eller kontoen din er utenfor organisasjonen appen er for. |
+| *Google ga ikke alt Vantigo ba om. Koble til på nytt og tillat hvert punkt på Googles side.* | Du, eller en endring hos Google, fjernet en del av det tilkoblingen trenger. |
+| *Logg på Google igjen for å beholde tilkoblingen.* | Google avviste tilkoblingen av en annen grunn. |
+
+Bare du ser dette. Administratoren din ser hvor mange som venter på å koble til på nytt
+på Google Workspace-siden. Slutter du, eller blir Google-kontoen din suspendert eller
+slettet, lukkes tilkoblingen for deg og glemmes.
+
+### Når tilkoblingen til Google feiler
+
+Kortet sier **Google kunne ikke kobles til** og hvorfor:
+
+| Kortet sier | Gjør |
+| --- | --- |
+| *Du avbrøt på Googles side.* | Koble til på nytt, og tillat på Googles side. |
+| *Du logget på med en konto utenfor organisasjonens Google Workspace.* | Velg jobbkontoen din på Googles side, ikke en privat Gmail-konto. |
+| *Google ga ikke alt Vantigo ba om. Koble til på nytt og tillat hvert punkt på Googles side.* | Koble til på nytt og la alle punktene være krysset av. |
+| *Tilkoblingen tok for lang tid, eller ble startet i en annen økt. Koble til på nytt.* | Koble til på nytt, og bli ferdig innen ti minutter i samme nettleser. |
+| *Svaret fra Google kunne ikke brukes. Prøv igjen om litt.* | Prøv igjen; skjer det igjen, si fra til administratoren din. |
+| *Du logget på Google med en annen konto enn den Vantigo kjenner deg som. Koble til på nytt og velg den kontoen.* | Velg jobbkontoen din på Googles side; spør HR om Vantigo kjenner deg som feil konto. |
+| *En annen person i Vantigo har allerede koblet til denne Google-kontoen.* | Si fra til administratoren din: kontoen er koblet til en annens bruker. |
+| *Vantigo kjenner ingen Google-konto av deg som den forvalter, så det er ingenting å koble til.* | Be HR koble personen din i Ansatte til Google-kontoen din. |
+| *Tilkobling til Google er slått av for dette arbeidsområdet.* | Be en eier slå på **Tilkobling for personer**. |
+
+Viser Google sin egen feilside i stedet for å komme tilbake — for eksempel
+`redirect_uri_mismatch` eller *Access blocked* — er organisasjonens nettklient ikke satt
+opp for Vantigo: si fra til administratoren din.

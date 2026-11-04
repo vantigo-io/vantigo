@@ -1,6 +1,6 @@
 ---
 title: "Google Workspace module"
-description: "Google Workspace as a connection to one organisation through a service account's domain-wide delegation — the foundation: the module and why it requires Staff; the schema; the page and its four tabs; the permission and the Owner policy; the connection, the admin to impersonate and the credential kind under If-Match; the key file's rules, the keys in the plural, their try order and a refused key; the Internal web client and its secret; the guarded client, its fixed hosts and its limits; the delegated token, its cache and the one seam; Test connection, the needed and the unexpected scopes, and the statuses and their reasons; the events; the refusals and the endpoints; and the unverified items U2 and U14 — and the accounts (delivery B): the provisioner google and its status, the accounts and groups tables and the account rules, the correlation on the organization external id and the adoption, the address, the mapping, the first password, the licences, the leaver's steps, the delete, the groups' three traits, the photo at 96 px, and the unverified items U11, U12, U13, U16 and U19 — and connecting existing users (delivery C): the directory search identity serves, its two prefix queries, the exact matches by primary email, alias and employee number, their bounds, the announced link keyed by the Directory id, the Sign-in and Provisioning steps, and the unverified items U1 and U4."
+description: "Google Workspace as a connection to one organisation through a service account's domain-wide delegation — the foundation: the module and why it requires Staff; the schema; the page and its four tabs; the permission and the Owner policy; the connection, the admin to impersonate and the credential kind under If-Match; the key file's rules, the keys in the plural, their try order and a refused key; the Internal web client and its secret; the guarded client, its fixed hosts and its limits; the delegated token, its cache and the one seam; Test connection, the needed and the unexpected scopes, and the statuses and their reasons; the events; the refusals and the endpoints; and the unverified items U2 and U14 — and the accounts (delivery B): the provisioner google and its status, the accounts and groups tables and the account rules, the correlation on the organization external id and the adoption, the address, the mapping, the first password, the licences, the leaver's steps, the delete, the groups' three traits, the photo at 96 px, and the unverified items U11, U12, U13, U16 and U19 — and connecting existing users (delivery C): the directory search identity serves, its two prefix queries, the exact matches by primary email, alias and employee number, their bounds, the announced link keyed by the Directory id, the Sign-in and Provisioning steps, and the unverified items U1 and U4 — and the person's own Google connection (delivery D): the connections table and the switch, the flow with its two cookies, PKCE and the ID token's checks, the features and the scopes as answered, the certain account checked three times, the states, the refresh and its failures, the closes, google-sweep, the codes, the endpoints and their limits, and the unverified items U1 and U9."
 sources:
   - apps/server/internal/google
   - apps/google/frontend
@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/openapi/specs/google.yaml
   - apps/server/internal/db/migrations/00114_google_baseline.sql
   - apps/server/internal/db/migrations/00115_google_accounts.sql
+  - apps/server/internal/db/migrations/00114_google_connections.sql
   - apps/server/internal/directoryaddress
 ---
 The Google Workspace module connects one installation to one Google Workspace
@@ -23,22 +24,25 @@ owns the `google` schema in the shared PostgreSQL database, and serves
 and its page is **Google Workspace** under **Integrations** in Workspace admin
 ([the page](#the-page)).
 
-**Deliveries A, B and C.** The module holds the connection — the service account's keys,
+**Deliveries A, B, C and D.** The module holds the connection — the service account's keys,
 the admin to impersonate, the Internal web client — tests it, and reads the organisation
 and its verified domains (A). It fills `contracts.IdentityProvisioner` under the key
 `google` ([the provisioner](#the-provisioner)): Staff's accounts worker drives a person's
 account and Staff's groups in the organisation through it (B). It fills
 `contracts.DirectorySearch` under the same key ([the directory
 search](#the-directory-search)): identity's Owner endpoints search the organisation's
-users and propose exact matches for connecting existing users to Google sign-in (C). The
-person's own Google
-connection, the calendar and Gmail come in later deliveries, each taking its token from
-the one seam [`tokenSource`](#the-delegated-token). `MODULES` refuses `google` without
+users and propose exact matches for connecting existing users to Google sign-in (C). It
+keeps each person's own Google connection, behind the Owner's Connection for people
+switch ([the personal connection](#the-personal-connection)) (D). The calendar and Gmail
+come in later deliveries, each taking its token from the one seam
+[`tokenSource`](#the-delegated-token) — the person's own token through the same
+interface. `MODULES` refuses `google` without
 `staff` (`google requires staff`): Staff's accounts worker is the provisioner's only
 caller.
 
 Nothing in the module imports another module — depguard enforces it, tests included —
-and no SQL of it crosses a schema. It has no background worker. It reaches the internet
+and no SQL of it crosses a schema. Its one background worker is
+[`google-sweep`](#google-sweep). It reaches the internet
 in one place, the [guarded client](#the-guarded-client), and only fixed hosts there. The
 design is [`docs/superpowers/specs/2026-11-03-google-workspace-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-03-google-workspace-design.md),
 G12 to G16.
@@ -105,7 +109,7 @@ as tabs under one header, each tab a link (`googleTabs` in `@vantigo/google-ui`)
 | `/workspace/google` | Status | `GoogleStatusTab` | A *Not connected yet* notice while unconfigured, the **Status** card — status and reason, organisation, customer id, primary and verified domains, last test, the scopes granted, missing and unexpected — and **Recent events** |
 | `/workspace/google/connection` | Connection | `GoogleConnectionTab` | The six steps: the project, the service account and its key; upload the key; delegate the scopes; the admin to impersonate; **Test connection**; the Internal web client |
 | `/workspace/google/accounts` | Accounts | `GoogleAccountsTab` | The account rules; once a test has read the organisation, **Sign-in** and **Provisioning**, identity's single sign-on card handed in by the host ([the prefill](#the-sign-in-prefill)); the licences; the accounts and the groups |
-| `/workspace/google/calendar-gmail` | Calendar and Gmail | a placeholder | One sentence: Calendar and Gmail are coming |
+| `/workspace/google/calendar-gmail` | Calendar and Gmail | `GoogleCalendarGmailTab` | **Connection for people**: the switch (the Owner's; confirmed before it turns off while anyone is connected), its status and reason, the counts of people connected and waiting to reconnect, and the redirect URI to copy |
 
 - **The gate.** The workspace layout admits a holder of `google:manage` while `google` is
   in `MODULES`; the layout route asks again: the module on, otherwise the not-enabled
@@ -136,7 +140,7 @@ delegable, only an Owner can grant it.
 client — and the test are under `policy:Owner+OwnerManagement`, as identity's single
 sign-on settings and Entra's connection are: an Owner, signed in with a second factor
 while `OWNERS_REQUIRE_MFA` is on; anyone else, an Owner without the factor included, is
-refused 403. The five share one rate limit, `google-owner`: 30 requests a minute per
+refused 403. They share one rate limit, `google-owner`: 30 requests a minute per
 client address, identity's user-management figures. The page decides what to show from
 identity's session: anyone but an Owner sees the steps read-only.
 
@@ -512,6 +516,206 @@ types the web client's secret into identity's card; identity seals its own copy,
 secret crosses modules. **Provisioning** renders the card's SCIM half, says Google sends
 no users to Vantigo, and links to Staff's default account kind.
 
+## The personal connection
+
+Each person may connect their own Google account, once, through the organisation's
+Internal web client ([the web client](#the-credentials)) — the authorization code flow
+with PKCE and a nonce, Entra's Outlook connection reshaped. The service account plays no
+part: no calendar or Gmail scope is ever delegated. Design G25–G29;
+the files are `personal*.go`.
+
+### The table and the switch
+
+`00114_google_connections.sql` creates **`connections`**, one row per Google account:
+
+- `google_user_id` (32, the primary key) — the account's Directory id, which the ID
+  token's `sub` carries (U1);
+- `user_id` — identity's user, no foreign key;
+- `scopes` — what Google answered in the token response's `scope`, sorted, spelled as
+  Google spells them (full URLs, `openid`); never what was asked;
+- `refresh_sealed` — the refresh token sealed under `google/connection-refresh`; `NULL`
+  once forgotten;
+- `state` — `active`, `reconnect` or `closing` (`CHECK`ed), with `error_code` (40) for
+  `reconnect`;
+- `connected_at`, `refreshed_at`, `used_at` (written at most hourly),
+  `account_checked_at` (the sweep's daily read), `changed_at` (the last move between
+  states, indexed: what the calendar's `Connections` will read), `revision`,
+  `created_at`, `updated_at`.
+
+A partial unique index keeps **one live row per person** (`user_id WHERE state <>
+'closing'`); any number of closing rows may stand beside it, so a person re-pointed to
+another account does not overwrite the token the old account's removals still need.
+Every write that moves a row bumps `revision`, and every write decided on an earlier read
+is guarded by the revision read: a refresh that loses a race keeps the winner's token; a
+refusal of a token a newer connect replaced changes nothing.
+
+`connection` gains `personal_connection` (the switch, off by default),
+`personal_connection_at` (when it was last turned on), and `personal_last_error` with
+its instant — a failure of the web client itself an Owner must act on:
+`consent_missing`, `invalid_client` or `unauthorized_client`. A connect that works, or a
+new web client or secret, clears it.
+
+`GET /connection` answers `personalConnection`: `enabled`; `status` `off` while the
+switch is, `unavailable` with `reason` `no_web_client` (no client id or no live secret),
+`not_tested` (no test has read the verified domains) or `client_refused`
+(`personal_last_error` is the client's), `consent_missing`, else `ready`; `connected`
+and `reconnect`, the rows `active` and in `reconnect`; and `redirectUri`, `APP_URL` +
+the base path + `/api/v1/google/connect/callback`. **`PUT /connection/personal`**
+`{enabled}` is the Owner's (`policy:Owner+OwnerManagement`, `google-owner`); turning it
+off closes every live row, tokens kept, one `google.personal.closed` (`switch_off`)
+each; the same value again writes nothing. The page asks before turning it off while
+anyone is connected.
+
+### The features
+
+A connect names a **feature**, never a scope:
+
+| Feature | Scopes asked |
+| --- | --- |
+| `calendar` | `https://www.googleapis.com/auth/calendar.events`, `https://www.googleapis.com/auth/calendar.app.created` |
+| `mail` | `https://www.googleapis.com/auth/gmail.send` |
+
+Every connect also asks `openid email profile`, and the scopes of every feature the
+person's live row already holds, so the answer never depends on Google returning the
+union of an incremental grant. A row's features are those whose every scope is in
+`scopes`. In this release the host's card and button ask for `calendar`; `mail` is in the
+contract for delivery G.
+
+### The flow
+
+1. **`POST /connect`** `{feature, returnTo?}` (`session`): `feature_unknown` (422) for
+   another feature; `switch_off` (409) while the switch is off or the web client is not
+   ready; `no_account` (409) without a [certain account](#the-certain-account);
+   `account_taken` (409) when another person's live row holds it. Otherwise it seals a
+   fresh `state` and `nonce` (256 random bits each), a PKCE verifier, the user, a MAC of
+   the session id under `google/connect-session`, the feature, the scopes and `returnTo`
+   into **`vantigo.google.connect`** (purpose `google/connect-state`, ten minutes,
+   HttpOnly, SameSite=Lax, path `/api/v1/google` under the base path), clears a
+   connected cookie an abandoned connect left, and answers `authorizeUrl`:
+   `https://accounts.google.com/o/oauth2/v2/auth` with `client_id`, `redirect_uri`,
+   `response_type=code`, `scope`, `state`, `nonce`, `code_challenge` (S256),
+   `access_type=offline`, **`prompt=consent`** (Google issues a refresh token only on a
+   consent), `include_granted_scopes=true`, `login_hint` (the account's primary email)
+   and `hd` (its domain — a hint; the check is the ID token's).
+2. **`GET /connect/callback`** (`anonymous`, on `APP_URL`, `Cache-Control: no-store`):
+   the state cookie and `state` (constant time) first — without a valid pair nothing is
+   redeemed or written, anywhere, and the answer is `expired`. Then Google's `error`
+   (`access_denied`, else `failed`); the switch and the web client again; the code
+   redeemed at `oauth2.googleapis.com/token` through the guarded client with the client
+   secret and the verifier (`invalid_grant` → `expired`; the client's own refusal is
+   recorded as `personal_last_error`); the ID token verified with go-oidc against
+   `https://accounts.google.com`, its discovery document and keys fetched through the
+   same client — signature (RS256), audience the client id, expiry, the issuer — then
+   the nonce in constant time, then `hd` among the connection's `domains`, ignoring case
+   (`domain_mismatch`, a consumer account carrying no `hd` included); then the asked
+   feature's scopes among the answered `scope` (`consent_missing`, recorded as
+   `personal_last_error`). Only then is **`vantigo.google.connected`** sealed (purpose
+   `google/connected`, five minutes): the user and session MAC, `sub`, the address, the
+   scopes, the refresh token, the feature and `returnTo`. Every answer is a 302 to
+   `/settings/connections?connection=google&outcome=complete`, or
+   `&outcome=failed&code=` one of `expired`, `access_denied`, `domain_mismatch`,
+   `consent_missing`, `failed`; every answer clears the state cookie. Google's
+   `error_description` is never read; `scope`, `authuser`, `hd`, `prompt` and `iss` on
+   the redirect are ignored.
+3. **`POST /complete`** (`session`): the connected cookie must open, be unexpired, name
+   the caller and carry the MAC of the caller's session, else 410 `expired`; the cookie
+   is cleared on every answer. The switch and the certain account again (409
+   `switch_off`, `no_account`); the token's `sub` must equal the account's Directory id
+   (409 `account_mismatch`, whose detail names no address). Then, in one transaction,
+   the connection row `FOR UPDATE` (a switch-off runs wholly before or after) and the
+   account row `FOR SHARE` (so does a leaver's suspension), checked again; the account's
+   row, when another person's and live, is `account_taken`; the caller's live row on
+   another account is closed (`repointed`), its token kept; the row is inserted, or a
+   closing one taken over, `active`, with the answered scopes and the refresh token
+   sealed. A connect submitted twice is the caller's own row both times. It answers the
+   connection and `returnTo`.
+
+**`returnTo`** is kept only as a path on this installation — at most 512 bytes, a
+single leading `/`, never `//` or `/\`, no backslash or control character, no scheme or
+host once parsed — else `/settings/connections`; the browser checks it again before it
+navigates.
+
+**`GET /connection/me`** (`session`, always 200) answers `{offered, reason?, state,
+features, account?, connectedAt?, errorCode?}`: `offered` false with `reason`
+`switch_off` (the switch off or the web client not ready) or `no_account`; `account` the
+primary email Vantigo knows the caller by; `state` `not_connected`, `active`,
+`reconnect` (with `errorCode`) or `closing`. **`DELETE /connection/me`** (`session`)
+closes the caller's live row, its token kept for removals; 204 whether or not there was
+one.
+
+### The certain account
+
+A person's certain account is Staff's `Workforce.DirectoryAccount` with `Provider`
+`google`, enabled, whose `ExternalID` names a row in `accounts` that Vantigo created or
+whose adoption is confirmed, in state `enabled`. It is checked:
+
+- **at connect** (`no_account`);
+- **at complete** — again, and the token's `sub` against its id (`account_mismatch`);
+- **on use** — every token asked: a row `active` whose account is no longer such closes
+  with its token forgotten (`deleted` or `disabled`), and the call needs the person.
+
+### The token and its failures
+
+The access token is cached in the process per `(google_user_id, revision, client id,
+digest of the sealed refresh token)` until five minutes before it expires; a cache hit
+records `used_at`, at most hourly. A miss refreshes at the token endpoint with the
+client secret; Google usually answers no new refresh token, and the stored one stays.
+The answered `scope` replaces `scopes` (none answered keeps them); a refresh that keeps
+no feature the row held moves it to `reconnect`, `consent_missing`. A call for a feature
+the row's scopes lack needs the person (`consent_missing`) without moving the row.
+
+| Google answers | The row | The call |
+| --- | --- | --- |
+| `invalid_grant` (revoked, expired, unused six months, a password change) | `reconnect`, `expired` | `ErrConnectionNeeded` |
+| `admin_policy_enforced`, `org_internal` | `reconnect`, `blocked` | `ErrConnectionNeeded` |
+| `invalid_scope` | `reconnect`, `consent_missing` | `ErrConnectionNeeded` |
+| another refusal | `reconnect`, `sign_in_again` | `ErrConnectionNeeded` |
+| `invalid_client`, `unauthorized_client` | untouched; `personal_last_error` set | fails, not the person's |
+| a 5xx, 429, `temporarily_unavailable`, no answer | untouched | fails, transient |
+
+A row in `reconnect` is never refreshed again until the person connects; the call
+answers its code. A closing row, or any row while the switch is off, serves removals
+alone while it holds its token; its token refused is forgotten. Every move to
+`reconnect` is a `google.personal.reconnect_needed` event. Nothing in this delivery
+calls it: the calendar (E) and personal sending (G) will.
+
+### Closes
+
+| Cause | Token | Code |
+| --- | --- | --- |
+| The person's **Disconnect** | kept for removals | event `google.personal.disconnected` |
+| The switch off | kept | `switch_off` |
+| Re-pointed to another account at complete | kept | `repointed` |
+| The leaver's `Deactivate`, in the transaction that records the suspension | forgotten | `leaver` |
+| `Delete`, or the user gone at Google | forgotten | `deleted` |
+| On use, the account not usable | forgotten | `deleted`, `disabled` |
+| The sweep finds the account suspended or gone | forgotten | `suspended`, `deleted` |
+
+### google-sweep
+
+The module's one worker, hourly, in the API and in worker mode. It takes no advisory
+lease and holds no pooled connection across a call to Google:
+
+1. One `DELETE … RETURNING` takes the spent closing rows — seven days after closing, or
+   once a day has passed since their last use and their closing — then each token they
+   held is revoked at `oauth2.googleapis.com/revoke` (a token Google no longer knows is
+   revoked already), and each is a `google.personal.deleted` event with `revoked` or
+   `revoke_failed`. A failed revocation is not retried: the row is gone, and Google lets
+   an unused token lapse.
+2. One `UPDATE … FOR UPDATE SKIP LOCKED` claims at most 100 rows in `reconnect` not read
+   for a day, stamping `account_checked_at`; each account is read in `accounts` first
+   (gone, deleted, untrusted or not enabled closes it), then by `users.get` as the admin
+   to impersonate — 404 closes it `deleted`, `suspended` closes it `suspended` — each
+   close guarded by the revision claimed. A failure at Google ends the step; the rest
+   wait for their next claim.
+
+### The changes reader
+
+`connectionChanges(since)` answers the rows whose state moved after `since`, oldest
+first, at most `contracts.ConnectionChangesMax`, each as a `contracts.ConnectionChange`
+whose mailbox is the Google id: what the calendar's `MailboxCalendar.Connections` will
+answer in delivery E.
+
 ## The events
 
 Every write the module makes is a row in `google.events`, read newest first by
@@ -529,6 +733,12 @@ Every write the module makes is a row in `google.events`, read newest first by
 | `google.user.photo_set`, `google.user.photo_cleared` | `SetPhoto`, `ClearPhoto` | `photo_written`, `photo_cleared`, `refused:photo_not_written` |
 | `google.pass.issued`, `google.pass.revealed` | `Activate`, `RevealPass` | `expires_at:<instant>` — never the password |
 | `google.account.adoption_confirmed` | `POST /accounts/{userId}/confirm` | — |
+| `google.personal.switched` | `PUT /connection/personal` | `on`, `off` |
+| `google.personal.connected` | `POST /complete` | `feature:<feature>`; subject the Google id |
+| `google.personal.disconnected` | `DELETE /connection/me` | — |
+| `google.personal.reconnect_needed` | a refused refresh, by `system:google` | the error code |
+| `google.personal.closed` | the closes | `leaver`, `deleted`, `disabled`, `suspended`, `switch_off`, `repointed` |
+| `google.personal.deleted` | `google-sweep`, by `system:google` | `revoked`, `revoke_failed` |
 | `google.group.created`, `.adopted`, `.updated`, `.members_set`, `.deleted`, `.adoption_confirmed` | the groups' calls and `POST /groups/{groupId}/confirm` | `visibility:<v>`, `owners_added:<n>`, `owners_removed:<n>`, `added:<n>`, `removed:<n>`, `failed:<n>`, `kept_not_ours`, `gone`, `refused:<code>`; subject the group id |
 
 An event names a user or a system, exactly one. It never carries an address, a key, a
@@ -546,6 +756,12 @@ A refusal is an RFC 9457 problem, `GoogleProblem`, whose `code` names the rule:
 | `version_mismatch` | 412 | `PUT /connection` and `PUT /connection/settings`: the connection was written since the `If-Match` version; the detail names both. |
 | `adoption_confirmed` | 409 | `POST /accounts/{userId}/confirm`: the adoption is confirmed already, or the module created the user. |
 | `credential_invalid`, `google_unreachable` | 503 | `GET /connection/skus`: no token for the licences' scope, or Google did not answer. |
+| `feature_unknown` | 422 | `POST /connect`: a feature Vantigo does not offer. |
+| `switch_off` | 409 | `POST /connect`, `POST /complete`: Connection for people is off, or the web client is not ready. |
+| `no_account` | 409 | `POST /connect`, `POST /complete`: no certain account. |
+| `account_taken` | 409 | `POST /connect`, `POST /complete`: another person's live connection holds the account. |
+| `account_mismatch` | 409 | `POST /complete`: the token's `sub` is not the account's Directory id. |
+| `expired` | 410 | `POST /complete`: the connected cookie is missing, expired, or another person's or session's. |
 
 An unknown credential is a bare 404. The 401, the 403 and the 429 are the router's.
 
@@ -556,7 +772,7 @@ All under `/api/v1/google`.
 | Operation | Access |
 | --- | --- |
 | `GET /connection` | `google:manage` |
-| `PUT /connection` | `policy:Owner+OwnerManagement`; `If-Match`; `google-owner` (30 a minute per client address, shared by the five Owner operations) |
+| `PUT /connection` | `policy:Owner+OwnerManagement`; `If-Match`; `google-owner` (30 a minute per client address, shared by the Owner operations) |
 | `POST /connection/credentials` | `policy:Owner+OwnerManagement`; `google-owner` |
 | `DELETE /connection/credentials/{id}` | `policy:Owner+OwnerManagement`; `google-owner` |
 | `PUT /connection/oauth-client` | `policy:Owner+OwnerManagement`; `google-owner` |
@@ -566,6 +782,10 @@ All under `/api/v1/google`.
 | `GET /connection/skus` | `google:manage`; `google-skus` (30 a minute per client address) |
 | `GET /accounts`, `POST /accounts/{userId}/confirm` | `google:manage` |
 | `GET /groups`, `POST /groups/{groupId}/confirm` | `google:manage` |
+| `PUT /connection/personal` | `policy:Owner+OwnerManagement`; `google-owner` |
+| `POST /connect`, `POST /complete` | `session`; `google-connect` (30 a minute per client address, shared) |
+| `GET /connect/callback` | `anonymous`; `google-connect-callback` (60 a minute per client address) |
+| `GET /connection/me`, `DELETE /connection/me` | `session` |
 
 The directory search adds none: identity serves it ([the directory
 search](#the-directory-search)).
@@ -623,6 +843,21 @@ Three concern delivery C, built on the design's defensive path before they are s
   matches over the full name and the addresses; a query that finds less shows fewer
   accounts, never a wrong one.
 
+Two concern delivery D, built on the design's defensive path before they are settled
+(P5); the check in a test organisation comes before its merge:
+
+- **U1** again: complete compares the ID token's `sub` with the Directory id. Should they
+  differ, every connect ends `account_mismatch` and nothing is stored — visible, never
+  wrong.
+- **U9 — incremental consent with `include_granted_scopes` and `prompt=consent`
+  answers the union in `scope`.** Only the answered `scope` is stored, and every connect
+  asks again for the features the row holds; should Google answer less, a feature held
+  before is dropped from the row, never assumed, and the asked one missing ends
+  `consent_missing`.
+- Besides: Google answering `scope` on a refresh (none keeps the stored scopes), and
+  `admin_policy_enforced` and `org_internal` as the refusals of a blocked web client
+  (any other refusal is `sign_in_again`, never a loop).
+
 Besides: `licenseAssignments` is addressed by the user's primary email, as its
 reference documents; and the language codes written are `no` and `en-GB`.
 
@@ -631,5 +866,11 @@ reference documents; and the language codes written are `no` and `en-GB`.
 The module's tests run against `googletest`, a fake Google: its token endpoint checks the
 JWT — the RS256 signature against the registered key, the issuer, the audience, the expiry,
 the subject and the scope — and issues a token only for a scope the test delegated; the Directory's `customers.get` and
-`domains.list` answer from its state. It comes in through `Deps.HTTPTransport`, so the
+`domains.list` answer from its state. For the personal connection it serves Google's
+discovery document and a JWK set, stands in for the authorization endpoint with
+`IssueCode` (the person's consent, granular: the test says what is granted), checks the
+authorization code grant (the web client and secret, the redirect URI, PKCE, single
+use, a minute's life), signs the ID token (its claims changeable to prove each check),
+answers refreshes as Google does (no new refresh token; `RefuseRefresh`,
+`NarrowRefresh`) and revokes. The sweep's tests run on a pool of one connection. It comes in through `Deps.HTTPTransport`, so the
 host guard runs in every test.

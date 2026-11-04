@@ -1583,9 +1583,12 @@ no redirect, to two fixed hosts no setting changes; the client's transport and i
 token cache are built once per process, and `Deps.HTTPTransport` is the test seam. See [Microsoft Entra
 ID](/en/reference/entra/#the-graph-client).
 
-**Google imports nothing and reads no other module.** It writes nothing outside the
-`google` schema, fills no slot yet, and has no worker; the Owner's and
-`google:manage`'s checks are the router's. It reaches the network in one place, its
+**Google imports nothing.** It writes nothing outside the `google` schema; it fills
+`IdentityProvisioner` and `DirectorySearch` under the key `google`, reads identity's
+`SSOConnections` for the directory search and Staff's `Workforce.DirectoryAccount` for a
+person's own connection, never inside one of its transactions; and its one worker,
+`google-sweep`, claims its rows in one statement each and holds no pooled connection
+across a call to Google. The Owner's and `google:manage`'s checks are the router's. It reaches the network in one place, its
 guarded Google client, through `internal/netguard` with no proxy and no redirect, to
 fixed Google hosts no setting changes; the token exchange goes through the same
 client, the transport and the token cache are built once per process, and
