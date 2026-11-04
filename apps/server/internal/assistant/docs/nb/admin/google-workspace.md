@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Å koble Vantigo til en Google Workspace-organisasjon gjennom en tjenestekonto med domenedekkende delegering — Google Cloud-prosjektet og Admin SDK API, tjenestekontoen og JSON-nøkkelen, å oppheve iam.disableServiceAccountKeyCreation for prosjektet, å laste opp nøkkelen, å delegere tilgangsområdene i administrasjonskonsollen og vente på dem, administratoren som skal etterlignes, den interne nettklienten og de to omdirigerings-URI-ene, å verifisere med Test tilkoblingen, å rotere en nøkkel, å bytte tjenestekonto, og hva som kan gå galt.
+description: Å koble Vantigo til en Google Workspace-organisasjon gjennom en tjenestekonto med domenedekkende delegering — Google Cloud-prosjektet og Admin SDK API, tjenestekontoen og JSON-nøkkelen, å oppheve iam.disableServiceAccountKeyCreation for prosjektet, å laste opp nøkkelen, å delegere tilgangsområdene i administrasjonskonsollen og vente på dem, administratoren som skal etterlignes, den interne nettklienten og de to omdirigerings-URI-ene, å verifisere med Test tilkoblingen — deretter kontoene Ansatte holder i Google, kontoreglene (adressen, organisasjonsenheten, det første passordet og levetiden til det), lisenser, Ansattes grupper og de tre innstillingene deres, bilder i 96 px, hva stegene for en som slutter gjør, slett etter N dager, å bekrefte en konto eller en gruppe Vantigo ikke opprettet, å rotere en nøkkel, å bytte tjenestekonto, og hva som kan gå galt.
 sidebar:
   order: 47
 sources:
@@ -11,16 +11,28 @@ sources:
   - apps/server/internal/google/connection.go
   - apps/server/internal/google/test.go
   - apps/server/internal/google/status.go
+  - apps/server/internal/google/provisioner.go
+  - apps/server/internal/google/directory.go
+  - apps/server/internal/google/lifecycle_prepare.go
+  - apps/server/internal/google/lifecycle_activate.go
+  - apps/server/internal/google/lifecycle_deactivate.go
+  - apps/server/internal/google/licences.go
+  - apps/server/internal/google/groups.go
+  - apps/server/internal/google/groups_traits.go
+  - apps/server/internal/google/photo.go
+  - apps/server/internal/google/accounts.go
 ---
 
 Google Workspace-modulen kobler Vantigo til selskapets Google Workspace-organisasjon.
 Den logger inn som en **tjenestekonto** med **domenedekkende delegering**: Google lar
 tjenestekontoen opptre som en administrator i organisasjonen, for de tilgangsområdene
-en superadministrator delegerer til den, og ingenting annet. Denne versjonen er
-grunnmuren: tilkoblingen, nøkkelen, testen og den interne nettklienten. Vantigo leser
-organisasjonen og de bekreftede domenene; den holder ingen kontoer ennå. Å holde
-personenes kontoer og grupper, hver persons egen Google-tilkobling,
-kalendersynkronisering og Gmail kommer i senere versjoner, på den samme tilkoblingen.
+en superadministrator delegerer til den, og ingenting annet. Gjennom den tilkoblingen
+holder Ansatte personenes Google-kontoer og gruppene sine i organisasjonen: den
+oppretter en persons konto før den første dagen, åpner den på dagen med et første
+passord HR gir videre, holder profilen og lederen i samsvar, tildeler lisensene til
+gruppene deres, skriver bildet deres, og suspenderer kontoen når de slutter
+([Kontoene](#kontoene)). Hver persons egen Google-tilkobling, kalendersynkronisering og
+Gmail kommer i senere versjoner, på den samme tilkoblingen.
 
 Denne siden er driftssiden: hva Google trenger, stegene i Google Cloud-konsollen og i
 administrasjonskonsollen, og hva du gjør når noe feiler. Siden i Vantigo er **Google
@@ -47,7 +59,7 @@ Workspace** under **Integrasjoner** i Administrer arbeidsområde; skjermbildene 
   Googles verter — `oauth2.googleapis.com`, `admin.googleapis.com`,
   `licensing.googleapis.com`, `www.googleapis.com`, `gmail.googleapis.com`,
   `groupssettings.googleapis.com` og `accounts.google.com` — uten proxy: modulen bruker
-  ingen og følger ingen omdirigering. Denne versjonen kaller bare de to første.
+  ingen og følger ingen omdirigering. Denne versjonen kaller de fire første.
 - Migreringene lager skjemaet `google` enten modulen er slått på eller ikke; en
   applikasjonsrolle med minste privilegium trenger tilgang til det som til alle andre
   ([Installasjon](/nb/admin/installation/#databaseroller)).
@@ -124,9 +136,16 @@ den nedlastede filen nå.
 ## Deleger tilgangsområdene
 
 1. Steg **3 Deleger tilgangsområdene** viser tjenestekontoens numeriske **Klient-ID** og
-   **OAuth-tilgangsområder (kommadelt)**; kopier begge. Denne versjonen trenger to:
-   - `https://www.googleapis.com/auth/admin.directory.customer.readonly`
-   - `https://www.googleapis.com/auth/admin.directory.domain.readonly`
+   **OAuth-tilgangsområder (kommadelt)**; kopier begge. Denne versjonen trenger seks:
+   - `https://www.googleapis.com/auth/admin.directory.customer.readonly` —
+     organisasjonen;
+   - `https://www.googleapis.com/auth/admin.directory.domain.readonly` — domenene;
+   - `https://www.googleapis.com/auth/admin.directory.user` — kontoene, bildene deres,
+     og å logge ut en som slutter;
+   - `https://www.googleapis.com/auth/admin.directory.group` — Ansattes grupper og
+     medlemmene deres;
+   - `https://www.googleapis.com/auth/apps.groups.settings` — hvem som ser en gruppe;
+   - `https://www.googleapis.com/auth/apps.licensing` — lisensene.
 2. Som superadministrator åpner du **Security** › **Access and data control** › **API
    controls** › **Manage domain-wide delegation** i **Google Admin console**, og velger
    **Add new**.
@@ -167,7 +186,11 @@ tilgangsområdene den siste testen fant, glemmes, til den testes igjen.
 **Venter på delegering** betyr at Google avviste alle tilgangsområdene: delegeringen er
 ikke lagt inn, eller ikke tatt i bruk ennå. Vent, og test igjen. **Tilkoblet** med
 *Tilgangsområder Vantigo trenger som Google avviste* viser dem som må legges til i
-delegeringen.
+delegeringen. Ansatte holder ingen konto i Google før den siste testen fikk de fire
+tilgangsområdene for kontoene, gruppene, gruppeinnstillingene og lisensene: til da viser
+kortet **Kontoer** i Ansatte at Google Workspace feiler (`scopes_missing`). En
+installasjon oppgradert fra versjonen før trenger de fire lagt til i delegeringen og en
+ny test.
 
 **Tilgangsområder Vantigo ikke bruker.** Testen ber også om tilgangsområder Vantigo
 aldri bruker, men som en delegering kopiert fra et annet produkt ofte har med —
@@ -202,6 +225,158 @@ For å rotere hemmeligheten legger du til en ny på klienten i konsollen, skrive
 i steg 6 med den samme klient-ID-en og velger **Lagre**: den eldre trekkes tilbake i
 Vantigo. Slett så den gamle i konsollen. En ny klient-ID trenger alltid hemmeligheten
 sin.
+
+## Kontoene
+
+Folk kommer til Google gjennom Ansatte. HR gir en person kontotypen **Google
+Workspace** på Konto-fanen deres i Ansatte, eller gjør den til standard for nye personer
+([Ansatte](/nb/admin/staff/#kontotypen)); kontoarbeideren i Ansatte styrer så personens
+konto i Google, gjennom denne modulen, slik den styrer kontoene i Microsoft Entra ID:
+
+1. **Før den første dagen** (Ansattes *Forbered kontoen (dager før)*), finnes eller
+   opprettes kontoen **suspendert**: Google holder den, og ingen kan logge inn. Vantigo finner en persons
+   konto etter **ansattnummeret**, som holdes som kontoens eksterne ID av typen
+   *Organization* — det samme feltet som fylles ut for eksisterende kontoer, under
+   **User information** › **Employee information** › **Employee ID** i
+   administrasjonskonsollen.
+2. **Den første dagen** oppheves suspenderingen, Google får et første passord, og
+   lisensene til personens grupper tildeles.
+3. **Mens de jobber**, når en endring av navnet, stillingstittelen, avdelingen,
+   kostnadsstedet, telefonene, kontorstedet, lederen eller språket Google ved neste
+   kjøring.
+4. **Dagen etter at de slutter**, suspenderes kontoen, og stegene for en som slutter,
+   kjøres.
+5. **Etter Ansattes slettedager** slettes kontoen.
+
+Modulen kjører ingenting selv: kontoarbeideren i Ansatte leser hver konto fra Google ved
+hver kjøring, og det er slik en suspendering eller sletting gjort i
+administrasjonskonsollen blir sett.
+
+### Sett kontoreglene
+
+På fanen **Kontoer** på siden for Google Workspace setter en med `google:manage`
+**Kontoregler**, og velger så **Lagre kontoreglene**:
+
+- **Adressedomene** — et av organisasjonens bekreftede domener, som testen leste; tomt
+  for primærdomenet.
+- **Adressemønster** — for en person hvis e-post på jobb ikke kan være adressen:
+  `given.family`, `g.family` eller `given`. En e-post på jobb på et bekreftet domene
+  brukes som den er. Bokstaver foldes (`ø` → `o`, `æ` → `ae`, `å` → `a`, aksenter
+  fjernes); en adresse som er tatt, får 2, 3, … 99 etter seg. En e-post på jobb en annen
+  konto allerede har, får ikke tall etter seg: personens konto holdes igjen, *adressen er
+  tatt*. Adressen er kontoens **primære e-postadresse** i Google, og Vantigo gir den
+  aldri nytt navn.
+- **Organisasjonsenhet** — der nye kontoer lages, `/` for toppen, for eksempel
+  `/Ansatte`. Enheten må finnes i administrasjonskonsollen; en konto modulen fant, blir
+  stående der den er.
+- **Første passord** — levetiden i dager (1 til 30, sju om ikke endret) og hvem som gir
+  det videre. HR viser det én gang på personens Konto-fane i Ansatte; innstillingen for
+  hvem som gir det videre, tas vare på til en senere versjon og sender ikke lederen noe
+  ennå.
+- **Når noen slutter** — fjern lisensene, hvilke grupper de tas ut av (*alle*, *gruppene
+  Vantigo har laget* eller *ingen*), og logg dem ut av alle økter; hvert steg er på med
+  mindre det slås av ([hva de gjør](#hva-stegene-for-en-som-slutter-gjør)).
+
+Fanen **Kontoer** viser også kontoene og gruppene Vantigo holder, og organisasjonens
+**Lisenser**.
+
+### Det første passordet
+
+Google har ikke noe midlertidig tilgangspass. Når suspenderingen oppheves den første
+dagen, setter Vantigo et nytt passord på 16 tegn — uten bokstavene og sifrene som lett
+forveksles — som personen **må bytte** ved første innlogging. Det holdes forseglet til
+HR viser det, **én gang**, på personens Konto-fane i Ansatte, og glemmes når levetiden
+er ute. HRs **Kjør nå** setter et nytt, men bare så lenge ingen har logget inn på kontoen
+ennå: Vantigo setter aldri et passord over en konto noen bruker. Avviser organisasjonens
+passordregler det, åpnes kontoen uten et, og personens Konto-fane sier det
+(`pass_not_allowed`): tilbakestill passordet i administrasjonskonsollen, eller lemp på
+reglene for organisasjonsenheten.
+
+### Lisenser
+
+En lisens er en SKU i Google Workspace, skrevet `productId/skuId` (for eksempel
+`Google-Apps/1010020028`). På fanen **Kontoer** spør **Les lisensene** Google hvilke
+lisenser organisasjonen har — for Google Workspace, Cloud Identity, Google Voice og
+lisenser for arkiverte brukere, dem minst én bruker har — og tar vare på dem: de er
+valgene i en Ansatte-gruppes **Lisenser**. En person tildeles alle lisensene gruppene
+deres navngir, den første dagen, og senere når gruppene deres endres; en ingen gruppe
+navngir lenger, fjernes — men bare en Vantigo tildelte selv. En lisens en administrator
+tildelte i administrasjonskonsollen, blir stående. Når det ikke er noen igjen å tildele,
+sier personens Konto-fane det (`licence_unavailable`, med SKU-en), og Ansatte prøver
+igjen ved neste kjøring.
+
+### Ansattes grupper i Google Workspace
+
+HR slår på Google Workspace for en gruppe i Ansatte på gruppens side, med tre
+innstillinger:
+
+| Innstilling | Regel |
+| --- | --- |
+| **Gruppeadresse** | Gruppens e-postadresse, på et av de bekreftede domenene; tom for gruppens nøkkel på adressedomenet. Den kan ikke endres når gruppen finnes. |
+| **Hvem ser gruppen** | *Alle i organisasjonen* — alle i organisasjonen ser gruppen og medlemmene, og finner den i katalogen — eller *Bare medlemmene*. Skrives gjennom Groups Settings. |
+| **Lisenser** | Lisensene hvert medlem med en Google-konto får, så lenge de er i gruppen. |
+
+Gruppen lages ved neste kjøring, med navnet og beskrivelsen fra Ansatte; eierne er
+gruppens eiere i Ansatte, som medlemmer med rollen *Owner*; medlemmene er gruppens
+personer som har en aktiv Google-konto. Et medlem noen legger til i
+administrasjonskonsollen, fjernes ved neste daglige synkronisering. Når Ansatte slipper
+gruppen, slettes en gruppe Vantigo laget, i Google; en gruppe den fant, overlates til
+organisasjonen.
+
+### Bilder
+
+Ansattes bilde av en person — HRs, eller personens eget — skrives til kontoen, beskåret
+til kvadratet i midten og skalert til **96 × 96 piksler**, størrelsen Google beholder. Et
+bilde Google avviser, eller et som ikke kan leses, er ingen feil: personens Konto-fane
+sier *Katalogen avviste bildet.* og dashbordet sier fra til HR, til et annet bilde er
+skrevet.
+
+## Hva stegene for en som slutter gjør
+
+Dagen etter at en persons siste arbeidsforhold slutter, lar kontoarbeideren i Ansatte
+Vantigo **suspendere** kontoen først — alltid, uansett hva kontoreglene sier — og glemme
+et første passord ingen har vist. Deretter, i rekkefølge, hvert steg kontoreglene slår
+på:
+
+1. **Fjern lisensene** — hver lisens Vantigo tildelte, og hver av organisasjonens
+   lisenser (slik de sist ble lest) personen har. Google fakturerer lisensen til en
+   suspendert bruker, så dette er på med mindre det slås av.
+2. **Ta dem ut av grupper** — *Gruppene Vantigo har laget* (standard), *Alle grupper*
+   personen er i, eller *Ingen grupper*.
+3. **Logg dem ut av alle økter** — Googles *sign out*. Avviser Google det, sier
+   personens Konto-fane at personen som sluttet, ikke ble logget ut; suspenderingen
+   holder dem ute allerede.
+
+Et steg som feiler, overlater resten til neste kjøring, og personens Konto-fane
+navngir det. En som ansettes på nytt senere, åpner den samme kontoen igjen.
+
+## Slett etter N dager
+
+Vantigo sletter Google-kontoen til en som har sluttet, bare når Ansattes **Slett en
+ekstern konto (dager etter slutt)** sier det — den samme innstillingen som for Microsoft
+Entra ID, under `staff:manage` i Ansattes innstillinger › **Kontoer**, tom for aldri
+([Ansatte](/nb/admin/staff/#kontoarbeideren)). Kontoen må være suspendert. Google holder
+en slettet bruker gjenopprettbar fra administrasjonskonsollen i 20 dager. Modulen har
+ingen egen sletteinnstilling.
+
+## Kontoer og grupper Vantigo ikke opprettet
+
+En konto Google allerede har under en persons ansattnummer, og som Vantigo ikke
+opprettet — en person som hadde Google før Vantigo — kobles til personen, men **skrives
+ikke til**: ingen profil, intet passord, ingen suspendering, ingen sletting. Raden på
+fanen **Kontoer** sier *Funnet – bekreft*, og dashbordet i Ansatte sier *Katalogen har en
+konto under ansattnummeret til … som Vantigo ikke opprettet*.
+
+1. På fanen **Kontoer** sjekker du at adressen og ansattnummeret er personens.
+2. Velg **Bekreft** ved siden av kontoen, og bekreft.
+
+Fra da av forvalter Vantigo kontoen som en den laget, og Ansattes neste kjøring bringer
+den i samsvar med personen. En konto med en administratorrolle i Google skrives aldri
+til, bekreftet eller ikke: gi personen en egen konto, eller håndter deres for hånd.
+
+En gruppe Google allerede har på adressen en gruppe i Ansatte ville fått, og som Vantigo
+ikke laget, venter på samme måte: **Bekreft** den ved siden av gruppen på fanen
+**Kontoer**. En bekreftet gruppe skrives til, men slettes aldri.
 
 ## Roter en nøkkel
 
@@ -253,6 +428,24 @@ og av hvem.
 | *Denne nøkkelen tilhører en annen tjenestekonto* (`client_mismatch`) | Den opplastede nøkkelen tilhører en annen tjenestekonto enn de aktive nøklene. | Last opp en nøkkel til den nåværende kontoen, eller [bytt tjenestekonto](#bytt-tjenestekonto). |
 | *Tilgangsområder Vantigo ikke bruker* | Delegeringen har tilgangsområder Vantigo aldri ber om. | Fjern dem fra delegeringen med mindre et annet produkt trenger dem. |
 | Konsollen sier at det er slått av å lage nøkler | Organisasjonen håndhever `iam.disableServiceAccountKeyCreation`. | [Opphev den for dette prosjektet](#opprett-tjenestekontoen-og-nøkkelen). |
+| Kortet **Kontoer** i Ansatte: Google Workspace feiler (`scopes_missing`) | Den siste testen ble nektet et av tilgangsområdene for kontoene, gruppene, gruppeinnstillingene eller lisensene, eller ble gjort før de trengtes. | Legg dem til i delegeringen, og test igjen. |
+
+**Årsakene på en persons konto.** Ansattes Konto-fane og dashbord sier hva Google ikke
+fikk gjort, med disse kodene:
+
+| Kode | Betyr | Gjør |
+| --- | --- | --- |
+| `external_ambiguous` | To kontoer i Google har personens ansattnummer. | Fjern nummeret fra den som ikke er deres, i administrasjonskonsollen. |
+| `external_address_taken` | Personens e-post på jobb er en annen kontos, eller en gruppes. | Endre e-posten på jobb i Ansatte, eller frigjør adressen. |
+| `external_unconfirmed`, `adoption_unconfirmed` | En konto Vantigo ikke opprettet, har nummeret. | [Bekreft den](#kontoer-og-grupper-vantigo-ikke-opprettet). |
+| `external_privileged`, `privileged` | Kontoen har en administratorrolle i Google. | Håndter den for hånd, eller gi personen en annen konto. |
+| `external_enabled` | En sletting ble bedt om for en konto som ikke er suspendert. | Ingenting: suspenderingen av en som slutter, kommer først, og slettingen følger. |
+| `pass_not_allowed` | Organisasjonens passordregler avviste det første passordet. | Tilbakestill passordet i administrasjonskonsollen, eller lemp på reglene. |
+| `licence_unavailable` | Det er ingen lisens igjen av den SKU-en å tildele. | Kjøp flere, eller frigjør en; Ansatte prøver igjen. |
+| `manager_not_found` | Lederen Ansatte navngir, har ingen konto i Google. | Gi lederen typen Google Workspace. |
+| `photo_not_written` | Google avviste bildet, eller det kunne ikke leses. | Legg inn et annet bilde. |
+| `sign_out_refused` | Google nektet å logge ut personen som sluttet. | Ingenting for suspenderingen; logg dem ut i administrasjonskonsollen om nødvendig. |
+| `leaver_step_failed` | Et steg for en som slutter, ble ikke fullført (`remove_licences`, `remove_groups`, `sign_out`). | Ansatte prøver det igjen; sjekk tilkoblingen hvis det fortsetter å feile. |
 
 Vantigo tar aldri vare på Googles egen feiltekst, bare statusen og Googles årsakskode;
 årsaken på fanen **Status** er Vantigos tolkning av dem.
