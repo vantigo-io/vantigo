@@ -88,9 +88,13 @@ var (
 	// errNoCredential: no live key fetched a token.
 	errNoCredential = errors.New("google: no service account key fetched a token")
 	// errCredentialInvalid: the token endpoint refused the key
-	// (invalid_grant, invalid_client) — also an admin Google does not know —
-	// or the sealed key cannot be opened on this server.
+	// (invalid_grant, invalid_client) or the sealed key cannot be opened on
+	// this server.
 	errCredentialInvalid = errors.New("google: Google refused the service account key")
+	// errSubjectInvalid: the token endpoint refused the subject, not the key
+	// (invalid_grant for an address Google does not know, or a suspended
+	// user): the admin's problem in a test, that person's in a later call.
+	errSubjectInvalid = errors.New("google: Google does not know the subject")
 	// errNotDelegated: the token endpoint refused a scope (unauthorized_client
 	// or access_denied, U14): the scope is not delegated to the service
 	// account's client id.

@@ -33,9 +33,10 @@ RETURNING *;
 
 -- name: MarkCredentialUsed :exec
 -- MarkCredentialUsed records a token minted with the key, at most once a
--- minute (used_before is now less a minute).
+-- minute (used_before is now less a minute) — and always when the key was
+-- refused since it was last used, so a key working again is seen to.
 UPDATE google.credentials SET last_used_at = @now::timestamptz
-WHERE id = @id AND (last_used_at IS NULL OR last_used_at < @used_before::timestamptz);
+WHERE id = @id AND (last_used_at IS NULL OR last_used_at < @used_before::timestamptz OR last_failed_at >= last_used_at);
 
 -- name: MarkCredentialFailed :exec
 -- MarkCredentialFailed records Google refusing the key (invalid_grant).

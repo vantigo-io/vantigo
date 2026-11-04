@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/google/gen"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -149,7 +150,29 @@ func TestCredentials_RotationFallsBackToAnOlderKeyWhenTheNewestIsRefused(t *test
 			t.Errorf("the older key: %+v, want in use", c)
 		}
 	}
-	if n := h.Count(t, `SELECT count(*) FROM google.events WHERE action = 'google.credential.refused' AND actor_system = 'system:google' AND subject_id = $1`, saClientID); n == 0 {
-		t.Errorf("no event for the refused key")
+	if n := h.Count(t, `SELECT count(*) FROM google.events WHERE action = 'google.credential.refused' AND actor_system = 'system:google' AND subject_id = $1`, saClientID); n != 1 {
+		t.Errorf("%d events for the refused key, want 1", n)
+	}
+}
+
+func TestCredentials_AKeyWorkingAgainIsSeenUsedAtOnce(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.g.Delegate(saClientID, everyScope...)
+	o, _ := configured(t, h)
+	first, _, _ := accounts()
+	testConnection(t, o) // used now
+	h.Advance(10 * time.Second)
+	h.g.DeleteKey(first)
+	testConnection(t, o) // refused ten seconds later
+	h.Advance(10 * time.Second)
+	h.g.AddKey(first)
+	if result := testConnection(t, o); result.Status != gen.GoogleConnectionTestStatusConnected {
+		t.Fatalf("the test with the key back: %+v", result)
+	}
+	// Within the minute, yet written: the key worked since it was refused.
+	key := getConnection(t, o).Credentials[0]
+	if key.LastUsedAt == nil || !key.LastUsedAt.Equal(h.Now()) || key.LastFailedAt == nil || !key.LastUsedAt.After(*key.LastFailedAt) {
+		t.Errorf("the key: %+v, want used after it was refused", key)
 	}
 }
