@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
@@ -70,6 +71,35 @@ func personalMailboxFor(deps module.Deps, key string) contracts.PersonalMailbox 
 		}
 	}
 	return nil
+}
+
+// personalMailboxOfMessage is the PersonalMailbox a personal message is sent
+// through: the one under its recorded send_provider (G3), nil when that one
+// is no longer filled. A message with no send_provider was queued by a
+// replica older than the column (migration 00109): it goes through the only
+// filled provider, or, with several, the one the author's status names —
+// asked as the author. nil when none is filled.
+func personalMailboxOfMessage(ctx context.Context, deps module.Deps, sendProvider *string, author uuid.UUID) (contracts.PersonalMailbox, error) {
+	if sendProvider != nil && *sendProvider != "" {
+		return personalMailboxFor(deps, *sendProvider), nil
+	}
+	var filled []contracts.PersonalMailbox
+	for _, m := range deps.PersonalMailboxes {
+		if m != nil {
+			filled = append(filled, m)
+		}
+	}
+	switch len(filled) {
+	case 0:
+		return nil, nil
+	case 1:
+		return filled[0], nil
+	}
+	status, err := personalMailStatus(contracts.AsUser(ctx, author), deps)
+	if err != nil {
+		return nil, err
+	}
+	return personalMailboxFor(deps, status.Provider), nil
 }
 
 // errCallInsideTransaction is every accessor's answer to a call made inside

@@ -542,7 +542,8 @@ func (w *OutboxWorker) sendThroughMailbox(ctx context.Context, message store.Get
 // name, dispatched via the Send of the PersonalMailbox the message was
 // recorded with (send_provider, Google Workspace design G3) under the
 // author's user ID. A provider no longer filled is connection_needed, never
-// another provider (Outlook connection design Q7).
+// another provider (Outlook connection design Q7); a message recorded without
+// one (queued before migration 00109) is resolved by personalMailboxOfMessage.
 func (w *OutboxWorker) sendThroughPersonalMailbox(ctx context.Context, message store.GetOutboundMessageForSendRow, envelope mail.Outbound) (contracts.SentMessage, error) {
 	if message.AuthorUserID == nil {
 		return contracts.SentMessage{}, fmt.Errorf("communications: personal send lacks author_user_id: %w", contracts.ErrConnectionNeeded)
@@ -550,13 +551,17 @@ func (w *OutboxWorker) sendThroughPersonalMailbox(ctx context.Context, message s
 	if message.FromAddress == nil || *message.FromAddress == "" {
 		return contracts.SentMessage{}, fmt.Errorf("communications: personal send lacks from_address: %w", contracts.ErrConnectionNeeded)
 	}
-	if message.SendProvider == nil || *message.SendProvider == "" {
-		return contracts.SentMessage{}, fmt.Errorf("communications: personal send lacks send_provider: %w", contracts.ErrConnectionNeeded)
+	provider, err := personalMailboxOfMessage(ctx, w.deps, message.SendProvider, *message.AuthorUserID)
+	if err != nil {
+		return contracts.SentMessage{}, fmt.Errorf("communications: resolve the personal mailbox provider: %w", err)
 	}
-	provider := personalMailboxFor(w.deps, *message.SendProvider)
 	if provider == nil {
+		recorded := ""
+		if message.SendProvider != nil {
+			recorded = *message.SendProvider
+		}
 		return contracts.SentMessage{}, fmt.Errorf("communications: no personal mailbox provider under %q: %w",
-			*message.SendProvider, contracts.ErrConnectionNeeded)
+			recorded, contracts.ErrConnectionNeeded)
 	}
 	fromAddress := *message.FromAddress
 	var opts []mail.RenderOption

@@ -49,12 +49,13 @@ func (s *server) PostCommunicationsConversationsByIdMessagesByMessageIdRetry(ctx
 			resp.Error.Message = "Only the author of a message sent from their own address can retry it."
 			return resp, nil
 		}
-		// The provider the message was recorded with (G3), never another.
-		provider := ""
-		if msg.SendProvider != nil {
-			provider = *msg.SendProvider
+		// The provider the message was recorded with (G3), never another;
+		// one recorded without (pre-00109) resolves as the worker does.
+		provider, err := personalMailboxOfMessage(ctx, s.deps, msg.SendProvider, caller)
+		if err != nil {
+			return nil, err
 		}
-		status, err := personalMailStatusOf(ctx, personalMailboxFor(s.deps, provider))
+		status, err := personalMailStatusOf(ctx, provider)
 		if err != nil {
 			return nil, err
 		}

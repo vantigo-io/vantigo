@@ -394,3 +394,88 @@ func TestOutbox_RecordsNothingOfTheMessagesOwnID(t *testing.T) {
 		t.Errorf("recorded = %q, want nothing", got)
 	}
 }
+
+// TestPersonalSending_SendsAMessageRecordedWithoutAProvider: a personal
+// message queued by a replica older than send_provider (migration 00109)
+// goes through the only provider filled, or, with two, the one the author's
+// status names — never failing connection_needed for the missing column.
+func TestPersonalSending_SendsAMessageRecordedWithoutAProvider(t *testing.T) {
+	t.Parallel()
+	queue := func(t *testing.T, h *modtest.Harness, c *modtest.Client, channelID string) uuid.UUID {
+		t.Helper()
+		res := c.Do(http.MethodPost, "/api/v1/communications/conversations", map[string]any{
+			"channelId": channelID, "subject": "Subject", "textBody": "Hello", "sendFromPersonal": true,
+			"to": []map[string]any{{"email": "customer@example.test"}},
+		}, modtest.Header("Idempotency-Key", uuid.NewString()))
+		if res.Status != http.StatusCreated {
+			t.Fatalf("create: %d %s", res.Status, res.Body)
+		}
+		var mut conversationMutationJSON
+		res.JSON(&mut)
+		id := uuid.MustParse(*mut.MessageId)
+		h.Exec(t, `UPDATE communications.conversation_messages SET send_provider = NULL WHERE id = $1`, id)
+		return id
+	}
+	process := func(t *testing.T, h *modtest.Harness) {
+		t.Helper()
+		if processed, err := communications.NewOutboxWorker(h.Deps()).ProcessOne(context.Background()); err != nil || !processed {
+			t.Fatalf("ProcessOne = %v, %v", processed, err)
+		}
+	}
+
+	t.Run("the only provider", func(t *testing.T) {
+		t.Parallel()
+		fake := modtest.NewFakePersonalMailbox()
+		h := newHarness(t, modtest.WithPersonalMailbox(fake))
+		channelID := setupChannel(t, h)
+		c, user := h.SignInUser(t, "communications:conversations-reply", "communications:conversations-view")
+		fake.SetUser(user, contracts.PersonalMailStatus{Available: true, Address: "kari@example.com", Mailbox: "e"})
+		id := queue(t, h, c, channelID)
+		process(t, h)
+		if job := readOutboxJob(t, h, id); job.status != "completed" {
+			t.Errorf("job = %s, want completed", job.status)
+		}
+		if n := len(fake.Sent()); n != 1 {
+			t.Errorf("sends = %d, want 1", n)
+		}
+	})
+
+	t.Run("two providers, the one the author's status names", func(t *testing.T) {
+		t.Parallel()
+		h, entra, google, channelID := twoPersonalMailboxes(t)
+		c, user := h.SignInUser(t, "communications:conversations-reply", "communications:conversations-view")
+		google.SetUser(user, contracts.PersonalMailStatus{Available: true, Address: "kari@example.no", Mailbox: "g"})
+		id := queue(t, h, c, channelID)
+		process(t, h)
+		if job := readOutboxJob(t, h, id); job.status != "completed" {
+			t.Errorf("job = %s, want completed", job.status)
+		}
+		if n := len(google.Sent()); n != 1 {
+			t.Errorf("google sends = %d, want 1", n)
+		}
+		if n := len(entra.Sent()); n != 0 {
+			t.Errorf("entra sends = %d, want none", n)
+		}
+	})
+
+	t.Run("a failed one is retried", func(t *testing.T) {
+		t.Parallel()
+		fake := modtest.NewFakePersonalMailbox()
+		h := newHarness(t, modtest.WithPersonalMailbox(fake))
+		channelID := setupChannel(t, h)
+		c, user := h.SignInUser(t, "communications:conversations-reply", "communications:conversations-view")
+		fake.SetUser(user, contracts.PersonalMailStatus{Available: true, Address: "kari@example.com", Mailbox: "e"})
+		id := queue(t, h, c, channelID)
+		fake.FailWith("Send", contracts.ErrConnectionNeeded)
+		process(t, h)
+		if job := readOutboxJob(t, h, id); job.status != "failed" {
+			t.Fatalf("job = %s, want failed", job.status)
+		}
+		fake.FailWith("Send", nil)
+		conv := modtest.One[uuid.UUID](t, h, `SELECT conversation_id FROM communications.conversation_messages WHERE id = $1`, id)
+		res := c.Do(http.MethodPost, "/api/v1/communications/conversations/"+conv.String()+"/messages/"+id.String()+"/retry", nil)
+		if res.Status != http.StatusOK {
+			t.Fatalf("retry: %d %s, want 200", res.Status, res.Body)
+		}
+	})
+}
