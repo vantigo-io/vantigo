@@ -249,8 +249,8 @@ or Calendar as a place to send from.
 
 A channel sends through its **Provider**: SMTP, or a mailbox service Vantigo is connected
 to. The **Provider** list in the **Add email channel** dialog shows **SMTP** first, then
-every mailbox service the administrator has turned on, by its name — today
-**Microsoft 365** — and a service that is turned on but cannot be used right now is
+every mailbox service the administrator has turned on, by its name — **Microsoft 365**
+and **Google Workspace** — and a service that is turned on but cannot be used right now is
 greyed, with *Not available now* and the reason beside it:
 
 - **SMTP** — through a mail server, with an SMTP account. The administrator must have the
@@ -273,6 +273,16 @@ greyed, with *Not available now* and the reason beside it:
   RBAC for Applications and remove the tenant-wide consent. While this shows, anyone who
   manages channels in Communications can send as any shared mailbox in the tenant.* The
   channels still work.
+- **Google Workspace** — from a licensed Gmail mailbox of your organisation, such as
+  `post@`, through Google Workspace, with no password to enter. It also **receives**, as
+  Microsoft 365 does. It is listed once the Google Workspace app is on, and can be chosen
+  once an Owner has turned on **Mail channels** on the Google Workspace page and a Google
+  super admin has delegated the Gmail scopes ([the administration
+  guide](/en/admin/google-workspace/#mail-channels)). Google cannot limit Vantigo's access
+  to some mailboxes, so the orange notice *Mail access reaches every mailbox* shows above
+  the table whenever Google Workspace can be used; its sentence is written for
+  Microsoft 365, but holds for Google too: Vantigo uses only the mailboxes that are
+  channels, and refuses a person's own.
 
 The provider list in the **Add email channel** dialog ends with **Vantigo hosted mail**,
 greyed, with *Not yet available*: it is not offered yet, and cannot be chosen.
@@ -330,12 +340,56 @@ the mailbox's own primary address, and can send at once. The check can refuse it
 Each message names the provider you chose. Adding, switching and verifying channels are limited to 30 a minute; past that,
 *Too many attempts. Wait a minute and try again.*
 
+### Add a Google Workspace channel
+
+Click **Add channel**, and choose **Google Workspace** as the **Provider**. The dialog
+asks for the same as for Microsoft 365: the **Email address** of the mailbox, a **Display
+name**, **Import history** and **When a conversation is closed**. Its note, *The mailbox
+must be a shared mailbox in the application's scope.*, is Microsoft 365's wording; for
+Google Workspace, the mailbox is a **licensed user** of the organisation made for the
+purpose, such as `post@` — Google Workspace has no shared mailbox of its own, so it takes
+a licence.
+
+**Create channel** checks the address with Google Workspace first. An alias is taken as
+its mailbox, and the channel is created active with the mailbox's primary address. The
+check refuses, with the messages in the table above:
+
+- **A group's address** — *The address is a group. A group has no mailbox Vantigo can
+  read; use a licensed mailbox.* A Google Group, a Collaborative Inbox included, receives
+  mail for its members but has no mailbox of its own. Use a licensed user's address, and
+  let the group forward to it if you need both.
+- **A person's own mailbox** — *This is a person's own mailbox. Only a shared mailbox can be
+  a channel.* when the address belongs to someone whose Google account Vantigo keeps
+  through Staff. A channel must never read or send from a colleague's own mail.
+- **An address Google Workspace does not know** — *Google Workspace has no mailbox with
+  this address.*: no user has it, or the user is suspended, archived, or has no Gmail
+  licence.
+- *Mail channels through Google Workspace are not available…* while **Mail channels** is
+  off on the Google Workspace page, or the Gmail scopes are not delegated yet.
+
+What differs from Microsoft 365, once the channel works:
+
+- **Size.** A message on the channel can be up to 25 MB — Gmail's limit — so the composer
+  takes attachments up to about **18.2 MB** in total.
+- **Receiving** is fetched, not pushed: Vantigo looks for new mail about **every five
+  minutes**, and a message arrives within that.
+- **Sent mail** is in the mailbox's **Sent** in Gmail. Gmail may give a sent message its
+  own Message-ID; Vantigo keeps both, and Gmail's thread, so a customer's answer still
+  joins its conversation.
+- **When a conversation is closed**: Gmail has labels, not folders. **Mark as read in the
+  mailbox** takes the message's *Unread* off; **Move to a folder in the mailbox** gives it
+  the label named in **Mailbox folder** (`Handled in Vantigo` unless you change it),
+  created if it does not exist, and takes it out of the **Inbox**.
+- **Archiving or deleting** a message in Gmail after Vantigo read it changes nothing in
+  Vantigo; mail a Gmail filter keeps out of the Inbox is never read.
+
 ### Switch an SMTP channel to a mailbox service
 
 When the mailbox an SMTP channel sends from is a shared mailbox in Exchange Online, the
 channel can send through Microsoft 365 instead, keeping its conversations, its address
 and its **Default** mark. On its row, choose **Switch to Microsoft 365** — there is one
-**Switch to …** for each mailbox service that can be used now; the dialog
+**Switch to …** for each mailbox service that can be used now, **Switch to Google
+Workspace** for a Gmail mailbox; the dialog
 warns *The SMTP settings are deleted. To go back you enter them again.*, and offers the
 same **Import history** and **When a conversation is closed** choices as when adding a
 Microsoft 365 channel — choose
@@ -347,7 +401,7 @@ available. A channel already on one mailbox service cannot be switched to anothe
 directly: *The channel uses another mailbox provider. Switch it back to SMTP first, then
 to the new provider.*
 
-On any Microsoft 365 channel's row, **Mailbox on close** opens a dialog to change **When a
+On any Microsoft 365 or Google Workspace channel's row, **Mailbox on close** opens a dialog to change **When a
 conversation is closed** (*Leave as-is in the mailbox*, *Mark as read in the mailbox*, or
 *Move to a folder in the mailbox* with its **Mailbox folder**).
 
@@ -363,7 +417,7 @@ again with the password ([Switching provider](/en/reference/communications/#swit
 ### Verify and deactivate
 
 Per channel, **Verify** checks that the channel can send: for SMTP it connects to the
-server with the stored credentials, for Microsoft 365 it checks the mailbox again, and
+server with the stored credentials, for Microsoft 365 and Google Workspace it checks the mailbox again, and
 it reports "Channel verified — The channel connection is valid." When it fails,
 *Channel not verified* says why — for Microsoft 365 with the messages above, or *The
 address now belongs to another mailbox in Microsoft 365.* **Deactivate** keeps the

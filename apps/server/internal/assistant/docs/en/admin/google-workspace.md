@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Connecting Vantigo to a Google Workspace organisation through a service account with domain-wide delegation — the Google Cloud project and the Admin SDK API, the service account and its JSON key, lifting iam.disableServiceAccountKeyCreation for the project, uploading the key, delegating the scopes in the Admin console and waiting for them, the admin to impersonate, the Internal web client and its two redirect URIs, verifying with Test connection — then Connection for people (each person's own Google connection — the switch, the web client as Internal, verifying by connecting yourself, turning it off, what happens to a person's connection, google-sweep), calendar sync on each person's connection (change notifications, verifying, a leaver's copies), the accounts Staff keeps in Google, the account rules (the address, the organisational unit, the first password and its lifetime), licences, Staff's groups and their three settings, photos at 96 px, what a leaver's steps do, delete after N days, confirming an account or a group Vantigo did not create, rotating a key, changing the service account, and what can go wrong.
+description: Connecting Vantigo to a Google Workspace organisation through a service account with domain-wide delegation — the Google Cloud project and the Admin SDK API, the service account and its JSON key, lifting iam.disableServiceAccountKeyCreation for the project, uploading the key, delegating the scopes in the Admin console and waiting for them, the admin to impersonate, the Internal web client and its two redirect URIs, verifying with Test connection — then Connection for people (each person's own Google connection — the switch, the web client as Internal, verifying by connecting yourself, turning it off, what happens to a person's connection, google-sweep), calendar sync on each person's connection (change notifications, verifying, a leaver's copies), Mail channels (the switch, the two Gmail scopes and what they reach, a licensed mailbox, verifying, turning it off, what can go wrong), the accounts Staff keeps in Google, the account rules (the address, the organisational unit, the first password and its lifetime), licences, Staff's groups and their three settings, photos at 96 px, what a leaver's steps do, delete after N days, confirming an account or a group Vantigo did not create, rotating a key, changing the service account, and what can go wrong.
 sidebar:
   order: 47
 sources:
@@ -31,6 +31,10 @@ sources:
   - apps/server/internal/google/mailbox.go
   - apps/server/internal/google/mailbox_notifications.go
   - apps/server/internal/google/mailbox_notifications_endpoint.go
+  - apps/server/internal/google/mail_channels.go
+  - apps/server/internal/google/channel_mailbox.go
+  - apps/server/internal/google/channel_mailbox_inbound.go
+  - apps/server/internal/google/channel_mailbox_marks.go
 ---
 
 The Google Workspace module connects Vantigo to your company's Google Workspace
@@ -43,7 +47,9 @@ over, keeps their profile and manager in step, assigns the licences of their gro
 writes their photo, and suspends the account when they leave
 ([The accounts](#the-accounts)). Each person can connect their own Google account
 ([Connection for people](#connection-for-people)), which [calendar sync](#calendar-sync)
-uses, and sending from Gmail will in a later release.
+uses, and sending from their own Gmail will in a later release. Communications' channels
+can send from and read the organisation's licensed Gmail mailboxes, such as `post@`
+([Mail channels](#mail-channels)).
 
 This page is the operator's side: what Google needs, the steps in the Google Cloud
 console and the Admin console, and what to do when something fails. The page in Vantigo
@@ -69,7 +75,7 @@ is **Google Workspace** under **Integrations** in Workspace admin; its screens a
   hosts — `oauth2.googleapis.com`, `admin.googleapis.com`, `licensing.googleapis.com`,
   `www.googleapis.com`, `gmail.googleapis.com`, `groupssettings.googleapis.com` and
   `accounts.google.com` — without a proxy: the module uses none and follows no
-  redirect. This release calls the first four.
+  redirect. This release calls the first five.
 - The migrations create the `google` schema whether or not the module is enabled; a
   least-privilege application role needs it granted like every other
   ([Installation](/en/admin/installation/#database-roles)).
@@ -140,7 +146,8 @@ under **Service account keys** as **In use**. Delete the downloaded file now.
 ## Delegate the scopes
 
 1. Step **3 Delegate the scopes** shows the service account's numeric **Client ID** and
-   the **OAuth scopes (comma-separated)**; copy both. This release needs six:
+   the **OAuth scopes (comma-separated)**; copy both. This release needs six, and two
+   more while [Mail channels](#mail-channels) is on:
    - `https://www.googleapis.com/auth/admin.directory.customer.readonly` — the
      organisation;
    - `https://www.googleapis.com/auth/admin.directory.domain.readonly` — its domains;
@@ -149,7 +156,10 @@ under **Service account keys** as **In use**. Delete the downloaded file now.
    - `https://www.googleapis.com/auth/admin.directory.group` — Staff's groups and their
      members;
    - `https://www.googleapis.com/auth/apps.groups.settings` — who sees a group;
-   - `https://www.googleapis.com/auth/apps.licensing` — the licences.
+   - `https://www.googleapis.com/auth/apps.licensing` — the licences;
+   - only while Mail channels is on, `https://www.googleapis.com/auth/gmail.modify` and
+     `https://www.googleapis.com/auth/gmail.send` — reading, labelling and sending a
+     channel's mail.
 2. As a super admin, in the **Google Admin console**, open **Security** › **Access and
    data control** › **API controls** › **Manage domain-wide delegation**, and choose
    **Add new**.
@@ -196,9 +206,9 @@ before needs the four added to the delegation and a new test.
 
 **Scopes Vantigo does not use.** The test also asks for scopes Vantigo never uses but a
 delegation copied from another product often carries — `https://mail.google.com/`,
-`gmail.readonly`, `gmail.modify`, `gmail.send`, `calendar`, `calendar.events`,
-`admin.directory.user.security`, `drive` and `cloud-platform` (each under
-`https://www.googleapis.com/auth/` but the first). Any Google grants is listed in an
+`gmail.readonly`, `gmail.modify` and `gmail.send` (these two only while Mail channels is
+off), `calendar`, `calendar.events`, `admin.directory.user.security`, `drive` and
+`cloud-platform` (each under `https://www.googleapis.com/auth/` but the first). Any Google grants is listed in an
 orange notice on the **Status** tab. The connection stays **Connected**; remove those
 scopes from the client's delegation in the Admin console unless another product uses
 the same service account.
@@ -348,6 +358,130 @@ their closing connection and stops the channel; the connection is kept until its
 is stopped, at the latest seven days. When a person leaves, their connection closes with
 its token forgotten at the suspension, so nothing can remove the copies: **they stay in
 the suspended account**, as everything else in it does.
+
+## Mail channels
+
+**Mail channels** let Communications send a team's mail from a Gmail mailbox of the
+organisation — `post@`, `support@`, `faktura@` — as a channel ([the user
+guide](/en/user/communications/#add-a-google-workspace-channel)). Vantigo reaches those
+mailboxes through the service account's **domain-wide delegation**, as each mailbox, with
+two Gmail scopes; never through a person's own connection. It is off by default.
+
+A channel **sends and receives**: its replies are sent from the mailbox and kept in its
+**Sent** folder in Gmail, and the mail arriving in its **Inbox** from the chosen import
+window is read into Communications' Inbox, polled about every five minutes — Gmail does
+not push to Vantigo. When a conversation is closed, the channel leaves the messages as they
+are, marks them read, or labels them and takes them out of the Inbox, as the channel's
+setting says: Gmail has labels where Exchange has folders. How the module sends and reads
+is in [the reference](/en/reference/google/#mail-channels).
+
+**What the scopes reach.** Domain-wide delegation cannot be limited to some mailboxes:
+`gmail.modify` and `gmail.send` reach **every mailbox in the domain**, people's own
+included. Vantigo asks for them only while the switch is on, and uses them only for the
+mailboxes that are channels; it refuses a person's own mailbox as a channel. Communications'
+**Channels** page says so in an orange notice, *Mail access reaches every mailbox*, as long
+as Mail channels is available. Turn the switch off, and remove the two scopes, when no
+channel needs them.
+
+### Preconditions for mail channels
+
+- The connection is **Connected** ([Verify](#verify)), and the Communications module is
+  enabled.
+- The mailbox is a **licensed Google Workspace user** of the organisation, such as
+  `post@` — a user with Gmail, made in the Admin console for the purpose. Google Workspace
+  has no free shared mailbox like Exchange's, so each channel mailbox takes a licence.
+  Not a person Staff keeps an account for: a person's own mailbox is refused.
+- Not a **Google Group** or a **Collaborative Inbox**: a group has no mailbox Vantigo can
+  read, and its address is refused.
+- **An Owner** in Vantigo turns the switch on; a super admin in the Admin console adds
+  the scopes.
+
+### Turn on mail channels
+
+1. Open **Workspace admin › Integrations › Google Workspace**, the **Calendar and Gmail**
+   tab, and turn on **Mail channels** on its card. An Owner does this step. The status
+   reads *Not available*: *Test the connection, so Vantigo knows whether the Gmail scopes
+   are delegated.*
+2. The card lists the two scopes to add, each with a copy button:
+   `https://www.googleapis.com/auth/gmail.modify` and
+   `https://www.googleapis.com/auth/gmail.send`. They are now also among the **OAuth
+   scopes (comma-separated)** in step **3 Delegate the scopes** on the **Connection** tab.
+3. As a super admin, in the **Google Admin console**, open **Security** › **Access and
+   data control** › **API controls** › **Manage domain-wide delegation**, choose
+   **Edit** on the service account's client id, add the two scopes to the list, and
+   choose **Authorise**. As for any delegation, Google can take **up to 24 hours** to
+   apply it, and a second super admin's approval under multi-party approval.
+4. On the **Connection** tab, choose **Test connection** in step 5. The Gmail scopes are
+   asked as the first channel mailbox when one is recorded, else as the admin to
+   impersonate.
+5. The card's status reads **Ready**.
+
+### Verify mail channels
+
+1. In Communications, add the mailbox as a channel: **Channels** › **Add channel**, the
+   provider **Google Workspace**, the mailbox's address ([the user
+   guide](/en/user/communications/#add-a-google-workspace-channel)). Vantigo checks it then
+   — the address is a user's, not a group's, the user is not suspended, and its Gmail
+   answers as itself — and the channel is created active, with the mailbox's primary
+   address. The card's **Mailboxes in use by channels** counts it.
+2. Reply to a conversation on the channel, or send from it. Signed in to Gmail as the
+   mailbox, the message is under **Sent**.
+3. Send a mail to the mailbox from outside. Within about five minutes it is a
+   conversation in Communications' Inbox, and the channel's **Receive status** reads
+   **Receiving**. Answer it from the outside mailbox: the answer joins the same
+   conversation.
+
+### Turn mail channels off
+
+Turn **Mail channels** off on the card. Nothing is deleted: the channels and the
+mailboxes Vantigo checked stay, Google Workspace is no longer offered for new channels,
+and every Gmail channel is unavailable. Its mail waiting to be sent is **held** — it is
+tried again at most five minutes apart and given up as `provider_unavailable` 24 hours
+after it was queued — and no mail is read; turn the switch on again within the day and
+nothing is lost. The same holds while the connection is not **Connected**, or the last
+test was refused a Gmail scope. Remove the two scopes from the delegation in the Admin
+console: while the switch is off, a Gmail scope still delegated is listed under *Scopes
+Vantigo does not use*.
+
+### What can go wrong with mail channels
+
+- **The card reads *Not available*: *Test the connection, so Vantigo knows whether the
+  Gmail scopes are delegated.*** (`not_tested`). No test has run since the switch was
+  turned on. Test the connection.
+- **The card reads *Not available*: *Google refused the Gmail scopes. Add them to the
+  domain-wide delegation, then test again.*** (`not_delegated`). The scopes are not in the
+  client's delegation, or not applied yet. Add them, wait, and test again.
+- **The card reads *Not available* with the connection's reason** — *Not set up*,
+  *Waiting for delegation*, *Failing*. Mend the connection first ([What can go
+  wrong](#what-can-go-wrong)).
+- **Adding a channel says *The address is a group…*** (`group_address`). The address is
+  a Google Group's, a Collaborative Inbox included. Groups are not supported: make a
+  licensed user for the mailbox, and point the group's mail at it if needed.
+- **Adding a channel says it is a person's own mailbox** (`personal_mailbox`). Staff keeps
+  a Google account for the address's person. Only a mailbox of no person can be a
+  channel.
+- **Adding a channel says Google Workspace has no mailbox with this address**
+  (`mailbox_unknown`). No user has the address, or an alias of it; or the user is
+  suspended or archived, or has no Gmail because it holds no licence. An alias is taken
+  as its user.
+- **Google Workspace is not offered, or adding says *Mail channels through Google
+  Workspace are not available…*** (`mail_channels_off`). The switch is off, the card is
+  not **Ready**, or the Google Workspace module is not enabled.
+- **A channel fails later with *The mailbox no longer exists in Google Workspace.***
+  (`mailbox_gone`). The user was suspended, deleted or lost its Gmail licence since. Its
+  mail is given up after one attempt, and the sync tries again every hour. Restore the
+  user in the Admin console, or add another mailbox as a channel.
+- **A channel fails with `mailbox_denied`.** Google refused the mailbox (403) for another
+  reason than the delegation — a policy on the user. Check the user in the Admin console.
+- **A message was given up as `too_large`.** Gmail takes at most 25 MB a message; the
+  composer keeps a channel's attachments below it.
+- **Sending slows down.** Gmail charges each mailbox's sending against its own quota: a
+  channel sends at most about **60 messages a minute**. Vantigo waits and tries again on
+  its own.
+- **A message is missing.** Vantigo reads the **Inbox** only — mail a filter archived or
+  labelled away from the Inbox first is never read — and skips a message larger than
+  `COMMUNICATIONS_INBOUND_MAX_BYTES` (25 MiB by default). Archiving or deleting a message
+  in Gmail after it was read changes nothing in Vantigo.
 
 ## The accounts
 
