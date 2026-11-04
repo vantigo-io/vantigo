@@ -655,6 +655,8 @@ export const staffCatalog = {
     accountReason_pass_not_allowed: "The directory does not allow a Temporary Access Pass for this account.",
     accountReason_pass_not_allowed_google:
       "Google's password policy refused the generated password; the account is active without one.",
+    accountReason_pass_not_set_used:
+      "Someone has signed in to this account, so no new password was set; it is active with the password it had. An administrator resets it by hand in the directory if the person needs a new one.",
     accountReason_manager_not_found: "The directory could not find the manager's account.",
     accountReason_photo_not_written: "The directory refused the photo.",
     accountReason_photo_pushed: "Photo written",
@@ -2757,6 +2759,8 @@ export const staffCatalog = {
     accountReason_pass_not_allowed: "Katalogen tillater ikke et midlertidig tilgangspass for denne kontoen.",
     accountReason_pass_not_allowed_google:
       "Googles passordregler avviste det genererte passordet; kontoen er aktiv uten et.",
+    accountReason_pass_not_set_used:
+      "Noen har logget på denne kontoen, så det ble ikke satt noe nytt passord; den er aktiv med passordet den hadde. En administrator tilbakestiller det for hånd i katalogen hvis personen trenger et nytt.",
     accountReason_manager_not_found: "Katalogen fant ikke lederens konto.",
     accountReason_photo_not_written: "Katalogen avviste bildet.",
     accountReason_photo_pushed: "Bildet er skrevet",

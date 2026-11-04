@@ -3,6 +3,7 @@ import staffYaml from "../../../../openapi/staff.yaml?raw";
 import identityProvisionerGo from "../../../server/internal/contracts/identity_provisioner.go?raw";
 import entraDeactivateGo from "../../../server/internal/entra/lifecycle_deactivate.go?raw";
 import entraUserGo from "../../../server/internal/entra/lifecycle_user.go?raw";
+import googleProvisionerGo from "../../../server/internal/google/provisioner.go?raw";
 import accountFlagGo from "../../../server/internal/staff/account_flag.go?raw";
 import accountsDecideGo from "../../../server/internal/staff/accounts_decide.go?raw";
 import accountsProviderGo from "../../../server/internal/staff/accounts_provider.go?raw";
@@ -226,6 +227,22 @@ describe("the staff catalog", () => {
       expect(words.accountReason_leaver_step_failed_step, `${language} the named step`).toContain("{{step}}");
       for (const step of steps) expect(words[`leaverStep_${step}`], `${language} leaverStep_${step}`).toBeDefined();
     }
+  });
+
+  it("words every code Google Workspace reports beside the contract's, in both languages", () => {
+    const reported = [...googleProvisionerGo.matchAll(/^\s*reported\w+\s*=\s*"(\w+)"/gm)].map((m) => m[1]);
+    expect(reported.sort()).toEqual([
+      "adoption_unconfirmed",
+      "leaver_step_failed",
+      "pass_not_set_used",
+      "sign_out_refused",
+    ]);
+    for (const [language, catalog] of Object.entries(staffCatalog))
+      for (const code of reported)
+        expect(
+          (catalog as Record<string, string>)[`accountReason_${code}`],
+          `${language} accountReason_${code}`,
+        ).toBeDefined();
   });
 
   it("words every state, reason and reported code of a provider link, in both languages", () => {

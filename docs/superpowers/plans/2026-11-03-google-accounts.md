@@ -84,11 +84,15 @@ Checked against `fb13cc10` (delivery A's branch, `feat/google-foundation`).
   Prepare's find answers `ErrExternalPrivileged` (reported `privileged`), so does every
   write.
 - **The password.** Prepare's create sets a 32-character password nobody sees. Activate,
-  when it lifts the suspension — or on HR's *Run now* (`Flags.Fresh`) for an account
-  never signed in to (`lastLoginTime` at the epoch) — sets a 16-character password from
-  an unambiguous alphabet with `changePasswordAtNextLogin`, sealed under `google/pass`
-  for `pass_lifetime_days` (1–30, default 7). Never on an account someone has signed in
-  to: a new password over a working account is a way into it.
+  when it lifts the suspension or on HR's *Run now* (`Flags.Fresh`), sets a 16-character
+  password from an unambiguous alphabet with `changePasswordAtNextLogin`, sealed under
+  `google/pass` for `pass_lifetime_days` (1–30, default 7) — **only on an account never
+  signed in to** (`lastLoginTime` at the epoch). Never on an account someone has signed
+  in to, even when Activate lifts its suspension (an admin's suspension, a rehire's old
+  account, a confirmed adoption): a new password over a working account is a way into
+  it. There the suspension is lifted alone and `pass_not_set_used` reported, for HR or an
+  admin to reset it by hand. The password is sealed and stored before Google is asked to
+  set it, and forgotten when Google does not.
 - **Licences** are `productId/skuId`. The module assigns the wanted ones the user does not
   hold (`licenseAssignments.get` 404 → `insert`) and removes only those it assigned
   itself (`accounts.licences_assigned`) that are no longer wanted. Any refusal of an

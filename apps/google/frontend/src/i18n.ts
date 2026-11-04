@@ -256,6 +256,8 @@ export const googleCatalog = {
     "reported.photo_not_written": "The photo could not be written",
     "reported.pass_not_allowed": "Google did not allow the first password to be set",
     "reported.sign_out_refused": "Google refused to sign the user out",
+    "reported.pass_not_set_used":
+      "Someone has signed in to the user, so no new password was set: reset it by hand in the Admin console if the person needs one",
     "reported.leaver_step_failed": "A leaver's step failed: {{detail}}",
     "reported.leaver_step_failed.alone": "A leaver's step failed",
 
@@ -544,6 +546,8 @@ export const googleCatalog = {
     "reported.photo_not_written": "Bildet kunne ikke skrives",
     "reported.pass_not_allowed": "Google tillot ikke at det første passordet ble satt",
     "reported.sign_out_refused": "Google nektet å logge brukeren ut",
+    "reported.pass_not_set_used":
+      "Noen har logget på brukeren, så det ble ikke satt noe nytt passord: tilbakestill det for hånd i administrasjonskonsollen hvis personen trenger et",
     "reported.leaver_step_failed": "Et steg for en som slutter, feilet: {{detail}}",
     "reported.leaver_step_failed.alone": "Et steg for en som slutter, feilet",
 

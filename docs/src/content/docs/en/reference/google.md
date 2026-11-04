@@ -362,13 +362,20 @@ back as they were. `employeeHireDate`, `employeeLeaveDateTime`, `employeeType`,
 attributes that differ, never the external id or the primary email, and on an active
 user reconciles the licences.
 
-**Activate** lifts the suspension (`suspended: false`). With it — when no password waits
-unrevealed, or on HR's *Run now* (`Flags.Fresh`) — and on *Run now* for an active user
-whose `lastLoginTime` is still the epoch, it sets a fresh 16-character password
-(`directoryaddress.ReadablePassword`) with `changePasswordAtNextLogin: true`, sealed under
-**`google/pass`** with `pass_expires_at = now + pass_lifetime_days`; never on an account
-someone has signed in to. A 400 on the password is `pass_not_allowed`, the suspension
-lifted without it. **`RevealPass`** answers it once, taken and cleared in one statement,
+**Activate** lifts the suspension (`suspended: false`). A password is wanted with it —
+when no password waits unrevealed, or on HR's *Run now* (`Flags.Fresh`) — and on *Run
+now* for an active user; it is set **only when the user's `lastLoginTime` is still the
+epoch**: a fresh 16-character password (`directoryaddress.ReadablePassword`) with
+`changePasswordAtNextLogin: true`, sealed under **`google/pass`** with
+`pass_expires_at = now + pass_lifetime_days`. On a user someone has signed in to — an
+administrator's suspension, a rehire's old account, a confirmed adoption — none is set,
+whatever Staff asked: the suspension is lifted alone and `pass_not_set_used` reported
+(Activate judges it, so the next Activate that wants no password clears it), for HR or an
+administrator to reset the password by hand. The password is sealed and stored **before**
+the `users.patch` that sets it; when Google does not set it the row is put back — the
+earlier unrevealed password kept, or the new one cleared — and `google.pass.issued` is
+recorded only after Google accepted it. A 400 on the password is `pass_not_allowed`, the
+suspension lifted without it. **`RevealPass`** answers it once, taken and cleared in one statement,
 audited `google.pass.revealed` with no value; a second reveal, or one after the lifetime
 (every expired password is cleared first), is `ErrPassGone`.
 

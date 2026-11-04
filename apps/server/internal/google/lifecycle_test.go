@@ -431,6 +431,108 @@ func TestActivate_ALicenceNoneIsLeftOfIsReported(t *testing.T) {
 	}
 }
 
+func TestActivate_ASuspendedAccountSomeoneUsedGetsNoPassword(t *testing.T) {
+	t.Parallel()
+	for name, fresh := range map[string]bool{"the suspension lifted": false, "Run now": true} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			l := newLifecycle(t)
+			acc := l.prepare(t, joiner("E1042"))
+			l.activate(t, acc.ExternalID, joiner("E1042"))
+			if _, err := l.p.RevealPass(context.Background(), staffActor, acc.ExternalID); err != nil {
+				t.Fatal(err)
+			}
+			// The person works in it; then an admin suspends it.
+			l.g.SetUser(acc.ExternalID, func(u *googletest.User) {
+				u.LastLoginTime = "2026-09-13T08:00:00.000Z"
+				u.Password = "the person's own"
+				u.ChangePasswordAtNextLogin = false
+				u.Suspended = true
+			})
+			spec := joiner("E1042")
+			spec.Flags.Fresh = fresh
+			got := l.activate(t, acc.ExternalID, spec)
+			if got.State != "enabled" || got.HasPass || !slices.Contains(got.Reported, "pass_not_set_used") {
+				t.Errorf("Activate answered %+v", got)
+			}
+			u := l.user(t, acc.ExternalID)
+			if u.Suspended || u.Password != "the person's own" || u.ChangePasswordAtNextLogin {
+				t.Errorf("the user after Activate: suspended %v, password changed %v", u.Suspended, u.Password != "the person's own")
+			}
+			if n := l.h.Count(t, `SELECT count(*) FROM google.accounts WHERE pass_sealed IS NOT NULL`); n != 0 {
+				t.Error("a password is kept for an account someone uses")
+			}
+			if ev := l.events(t, "google.user.activated"); !slices.Contains(ev[len(ev)-1], "pass_not_set_used") || slices.Contains(ev[len(ev)-1], "pass_issued") {
+				t.Errorf("the activation's event: %v", ev[len(ev)-1])
+			}
+		})
+	}
+}
+
+func TestActivate_ASuspendedAccountNobodySignedInToGetsAPassword(t *testing.T) {
+	t.Parallel()
+	l := newLifecycle(t)
+	acc := l.prepare(t, joiner("E1042"))
+	l.activate(t, acc.ExternalID, joiner("E1042"))
+	if _, err := l.p.RevealPass(context.Background(), staffActor, acc.ExternalID); err != nil {
+		t.Fatal(err)
+	}
+	first := l.user(t, acc.ExternalID).Password
+	l.g.SetUser(acc.ExternalID, func(u *googletest.User) { u.Suspended = true })
+	got := l.activate(t, acc.ExternalID, joiner("E1042"))
+	if got.State != "enabled" || !got.HasPass || slices.Contains(got.Reported, "pass_not_set_used") {
+		t.Errorf("Activate answered %+v", got)
+	}
+	if u := l.user(t, acc.ExternalID); u.Suspended || u.Password == first || !u.ChangePasswordAtNextLogin {
+		t.Error("the never-used account was not lifted with a fresh password")
+	}
+}
+
+func TestActivate_ThePasswordIsKeptBeforeGoogleSetsItAndForgottenWhenItDoesNot(t *testing.T) {
+	t.Parallel()
+	var (
+		failing   atomic.Bool
+		keptFirst atomic.Int32
+	)
+	w := &flaky{}
+	h := newHarness(t, modtest.WithTransport(w))
+	w.inner = h.g
+	w.fail = func(req *http.Request, body string) (bool, bool) {
+		if req.Method != http.MethodPatch || !strings.Contains(body, `"password"`) {
+			return false, false
+		}
+		var n int
+		if err := h.Pool().QueryRow(context.Background(), `SELECT count(*) FROM google.accounts WHERE pass_sealed IS NOT NULL`).Scan(&n); err == nil && n == 1 {
+			keptFirst.Add(1)
+		}
+		return failing.Load(), false
+	}
+	l := lifecycleOn(t, h)
+	acc := l.prepare(t, joiner("E1042"))
+	failing.Store(true)
+	if _, err := l.p.Activate(context.Background(), staffActor, acc.ExternalID, joiner("E1042")); err == nil {
+		t.Fatal("Activate answered no error when Google set no password")
+	}
+	if keptFirst.Load() == 0 {
+		t.Error("the password was not kept before Google was asked to set it")
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM google.accounts WHERE pass_sealed IS NOT NULL`); n != 0 {
+		t.Error("a password Google did not set is kept")
+	}
+	if ev := l.events(t, "google.pass.issued"); len(ev) != 0 {
+		t.Errorf("a password Google did not set was recorded issued: %v", ev)
+	}
+	if u := l.user(t, acc.ExternalID); !u.Suspended {
+		t.Error("the user was enabled")
+	}
+	failing.Store(false)
+	got := l.activate(t, acc.ExternalID, joiner("E1042"))
+	pass, err := l.p.RevealPass(context.Background(), staffActor, acc.ExternalID)
+	if !got.HasPass || err != nil || pass.Value != l.user(t, acc.ExternalID).Password {
+		t.Errorf("the retry: %+v, reveal %v", got, err)
+	}
+}
+
 func TestRevealPass_GoneAfterItsLifetime(t *testing.T) {
 	t.Parallel()
 	l := newLifecycle(t)

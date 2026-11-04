@@ -28,13 +28,18 @@ const passPurpose = "google/pass"
 // Activate): suspended false with a fresh password and
 // changePasswordAtNextLogin, the password sealed for pass_lifetime_days,
 // then the licences brought to the spec's (reconcileLicences). A password is
-// set when this call lifts the suspension and none waits unrevealed (or HR
-// asked for a fresh one), and on HR's Run now (Flags.Fresh) for a user
-// nobody has signed in as yet — never over an account someone uses: a new
-// password there would be a way into it. A password Google's policy refuses
-// is reported pass_not_allowed and the suspension lifted without it.
-// Idempotent. An unconfirmed adoption is ErrExternalUnconfirmed, nothing
-// written.
+// wanted when this call lifts the suspension and none waits unrevealed (or HR
+// asked for a fresh one), and on HR's Run now (Flags.Fresh); it is set only
+// on a user nobody has signed in as yet — never over an account someone has
+// used (an admin's suspension, a rehire's old account, a confirmed
+// adoption): a new password there would be a way into it. There the
+// suspension is lifted without one and pass_not_set_used reported, for HR or
+// an admin to reset it by hand. The password is sealed and kept before
+// Google is asked to set it, and forgotten again when Google does not, so a
+// password Google holds is never one nobody can reveal. A password Google's
+// policy refuses is reported pass_not_allowed and the suspension lifted
+// without it. Idempotent. An unconfirmed adoption is ErrExternalUnconfirmed,
+// nothing written.
 func (p *provisioner) Activate(ctx context.Context, actor contracts.Actor, externalID string, spec contracts.ExternalSpec) (contracts.ExternalAccount, error) {
 	if !actor.Valid() {
 		return contracts.ExternalAccount{}, contracts.ErrInvalidActor
@@ -56,24 +61,41 @@ func (p *provisioner) activate(ctx context.Context, s session, actor contracts.A
 	}
 	wasSuspended := u.Suspended
 	now := p.now()
-	issue := (wasSuspended && (spec.Flags.Fresh || !livePass(row, now))) || (!wasSuspended && spec.Flags.Fresh && u.neverSignedIn())
+	wanted := (wasSuspended && (spec.Flags.Fresh || !livePass(row, now))) || (!wasSuspended && spec.Flags.Fresh)
+	issue := wanted && u.neverSignedIn()
 	var reported, codes []string
+	if wanted && !issue {
+		reported = append(reported, reportedPassNotSetUsed)
+	}
 
 	body := map[string]any{}
 	if wasSuspended {
 		body["suspended"] = false
 	}
-	var password string
+	var (
+		password string
+		expires  time.Time
+	)
 	if issue {
 		var err error
 		if password, err = directoryaddress.ReadablePassword(); err != nil {
 			return contracts.ExternalAccount{}, fmt.Errorf("google: make the password: %w", err)
+		}
+		// Kept before Google sets it: a password Google holds and nobody
+		// can reveal would leave the person locked out unknown to HR.
+		if expires, err = p.keepPass(ctx, s, u.ID, password); err != nil {
+			return contracts.ExternalAccount{}, err
 		}
 		body["password"] = password
 		body["changePasswordAtNextLogin"] = true
 	}
 	if len(body) > 0 {
 		err := p.keys.c.send(ctx, s.users, http.MethodPatch, userURL(u.ID), body, nil)
+		if issue && err != nil {
+			if ferr := p.forgetPass(ctx, s, u.ID, row); ferr != nil {
+				return contracts.ExternalAccount{}, errors.Join(err, ferr)
+			}
+		}
 		if issue && isStatus(err, http.StatusBadRequest) {
 			// The organisation's password policy refused it: the
 			// suspension is lifted without it, and HR is told.
@@ -103,7 +125,8 @@ func (p *provisioner) activate(ctx context.Context, s session, actor contracts.A
 		u.Suspended = false
 	}
 	if issue {
-		if err := p.keepPass(ctx, s, actor, u.ID, password); err != nil {
+		if err := recordEvent(ctx, s.q, p.now(), actor, actionPassIssued, u.ID,
+			[]string{"expires_at:" + expires.UTC().Format(time.RFC3339)}); err != nil {
 			return contracts.ExternalAccount{}, err
 		}
 		codes = append(codes, "pass_issued")
@@ -123,26 +146,43 @@ func (p *provisioner) activate(ctx context.Context, s session, actor contracts.A
 	return account(u, &row, p.now()), nil
 }
 
-// keepPass seals the password Google accepted under google/pass with its
-// expiry, now plus the connection's pass_lifetime_days, until RevealPass.
-// It is never logged, and never written anywhere but the sealed column.
-func (p *provisioner) keepPass(ctx context.Context, s session, actor contracts.Actor, userID, password string) error {
+// keepPass seals the password about to be set under google/pass with its
+// expiry, now plus the connection's pass_lifetime_days, until RevealPass,
+// and answers the expiry. It is never logged, and never written anywhere but
+// the sealed column.
+func (p *provisioner) keepPass(ctx context.Context, s session, userID, password string) (time.Time, error) {
 	if p.deps.Secrets == nil {
-		return errors.New("google: no secrets box to seal the password with")
+		return time.Time{}, errors.New("google: no secrets box to seal the password with")
 	}
 	sealed, err := p.deps.Secrets.Seal(passPurpose, []byte(password))
 	if err != nil {
-		return fmt.Errorf("google: seal the password: %w", err)
+		return time.Time{}, fmt.Errorf("google: seal the password: %w", err)
 	}
 	now := p.now()
 	expires := now.Add(time.Duration(s.conn.PassLifetimeDays) * 24 * time.Hour)
-	return db.WithTx(ctx, p.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		q := s.q.WithTx(tx)
-		if err := q.SetAccountPass(ctx, store.SetAccountPassParams{PassSealed: sealed, PassExpiresAt: &expires, Now: now, UserID: userID}); err != nil {
-			return fmt.Errorf("google: keep the password: %w", err)
+	if err := s.q.SetAccountPass(ctx, store.SetAccountPassParams{PassSealed: sealed, PassExpiresAt: &expires, Now: now, UserID: userID}); err != nil {
+		return time.Time{}, fmt.Errorf("google: keep the password: %w", err)
+	}
+	return expires, nil
+}
+
+// forgetPass undoes keepPass when Google did not set the password: the one
+// row held before, still unrevealed and alive, is kept again (Google still
+// has it), else the sealed password is cleared.
+func (p *provisioner) forgetPass(ctx context.Context, s session, userID string, before store.GoogleAccount) error {
+	now := p.now()
+	if livePass(before, now) {
+		if err := s.q.SetAccountPass(ctx, store.SetAccountPassParams{
+			PassSealed: before.PassSealed, PassExpiresAt: before.PassExpiresAt, Now: now, UserID: userID,
+		}); err != nil {
+			return fmt.Errorf("google: keep the earlier password: %w", err)
 		}
-		return recordEvent(ctx, q, now, actor, actionPassIssued, userID, []string{"expires_at:" + expires.UTC().Format(time.RFC3339)})
-	})
+		return nil
+	}
+	if err := s.q.ClearAccountPass(ctx, store.ClearAccountPassParams{Now: now, UserID: userID}); err != nil {
+		return fmt.Errorf("google: forget the password Google did not set: %w", err)
+	}
+	return nil
 }
 
 // RevealPass answers the user's first password once (contracts.
