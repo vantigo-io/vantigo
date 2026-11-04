@@ -769,11 +769,12 @@ func (s mailboxSession) partOf(op contracts.MailboxOp, calendarID string) (batch
 // then done), a 403 refusing the calendar itself (mailboxDenied)
 // ErrMailboxDenied, a rate limit sent again once then errThrottled, a quota
 // spent errThrottled unsent again, anything else — an event's own 403, such
-// as forbiddenForNonOrganizer, included — that op's own refusal. Once an op
-// is refused for its mailbox, the ops not yet sent answer the same, unsent. A
-// batch that fails whole — Google unreachable, a 5xx, the context done —
-// fails the call, and no result is answered; a batch holding a create is sent
-// once.
+// as forbiddenForNonOrganizer, included — that op's own refusal. A 401 on
+// several parts of a batch asks the person's connection once, its answer
+// given to each. Once an op is refused for its mailbox, the ops not yet sent
+// answer the same, unsent. A batch that fails whole — Google unreachable, a
+// 5xx, the context done — fails the call, and no result is answered; a batch
+// holding a create is sent once.
 func (m *mailboxCalendar) Apply(ctx context.Context, mailbox, calendarID string, ops []contracts.MailboxOp) ([]contracts.MailboxResult, error) {
 	if calendarID != "" && !validCalendarID(calendarID) {
 		return nil, errors.New("google: a calendar id that is no id")
@@ -822,8 +823,17 @@ func (m *mailboxCalendar) Apply(ctx context.Context, mailbox, calendarID string,
 		if err != nil {
 			return nil, m.refused(ctx, s, err)
 		}
+		// The first 401's answer, given to every part answered 401: the
+		// reconnect moves the row once, and a second ask would read it moved.
+		var lost error
+		unauthorized := func() error {
+			if lost == nil {
+				lost = s.src.answer(m.unauthorized(ctx, s))
+			}
+			return lost
+		}
 		for n, i := range chunk {
-			results[i] = m.result(ctx, s, ops[i], replies[n])
+			results[i] = m.result(ctx, ops[i], replies[n], unauthorized)
 			if errors.Is(results[i].Err, contracts.ErrMailboxDenied) || errors.Is(results[i].Err, contracts.ErrConnectionNeeded) ||
 				errors.Is(results[i].Err, contracts.ErrMailboxGone) {
 				refused = results[i].Err
@@ -833,8 +843,8 @@ func (m *mailboxCalendar) Apply(ctx context.Context, mailbox, calendarID string,
 	return results, nil
 }
 
-// result is the result of op answered r.
-func (m *mailboxCalendar) result(ctx context.Context, s mailboxSession, op contracts.MailboxOp, r batchReply) contracts.MailboxResult {
+// result is the result of op answered r; unauthorized answers a 401.
+func (m *mailboxCalendar) result(ctx context.Context, op contracts.MailboxOp, r batchReply, unauthorized func() error) contracts.MailboxResult {
 	if r.status >= http.StatusOK && r.status < http.StatusMultipleChoices {
 		var ev readEvent
 		if len(r.body) > 0 {
@@ -862,7 +872,7 @@ func (m *mailboxCalendar) result(ctx context.Context, s mailboxSession, op contr
 	case r.throttled():
 		return contracts.MailboxResult{Err: errThrottled}
 	case r.status == http.StatusUnauthorized:
-		return contracts.MailboxResult{Err: s.src.answer(m.unauthorized(ctx, s))}
+		return contracts.MailboxResult{Err: unauthorized()}
 	case mailboxDenied(g):
 		return contracts.MailboxResult{Err: fmt.Errorf("%w: %w", contracts.ErrMailboxDenied, g)}
 	case (r.status == http.StatusNotFound || r.status == http.StatusGone) && op.Kind != contracts.MailboxOpCreate:
