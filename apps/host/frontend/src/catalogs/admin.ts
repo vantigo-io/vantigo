@@ -513,6 +513,12 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.entraManage",
     descriptionKey: "admin.permission.entraManageDescription",
   },
+  "google:manage": {
+    moduleKey: "admin.permission.module.google",
+    categoryKey: "admin.permission.category.administration",
+    displayNameKey: "admin.permission.googleManage",
+    descriptionKey: "admin.permission.googleManageDescription",
+  },
 } as const;
 
 export const getHostPermissionTranslation = (permissionKey: string) =>
@@ -729,6 +735,7 @@ const en = {
   "admin.permission.module.invoices": "Invoices",
   "admin.permission.module.calendar": "Calendar",
   "admin.permission.module.entra": "Microsoft Entra ID",
+  "admin.permission.module.google": "Google Workspace",
   "admin.permission.module.staff": "Staff",
   "admin.permission.module.planning": "Planning",
   "admin.permission.module.inventory": "Inventory",
@@ -958,6 +965,9 @@ const en = {
   "admin.permission.entraManage": "Manage Microsoft Entra ID",
   "admin.permission.entraManageDescription":
     "See the Microsoft Entra ID connection's status, accounts and events, and set the account rules: the address pattern, the usage location, what a leaver loses and the Temporary Access Pass.",
+  "admin.permission.googleManage": "Manage Google Workspace",
+  "admin.permission.googleManageDescription":
+    "See the Google Workspace connection's status, accounts and events, and set the account rules.",
   "admin.accountExists": "An account already exists for this email address.",
   "admin.filterUsers": "Filter users by {{label}}",
   "admin.searchUsers": "Search users",
@@ -1415,6 +1425,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.module.invoices": "Fakturaer",
   "admin.permission.module.calendar": "Kalender",
   "admin.permission.module.entra": "Microsoft Entra ID",
+  "admin.permission.module.google": "Google Workspace",
   "admin.permission.module.staff": "Ansatte",
   "admin.permission.module.planning": "Bemanning",
   "admin.permission.module.inventory": "Lager",
@@ -1648,6 +1659,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.entraManage": "Administrere Microsoft Entra ID",
   "admin.permission.entraManageDescription":
     "Se status, kontoer og hendelser for tilkoblingen til Microsoft Entra ID, og angi kontoreglene: adressemønsteret, bruksstedet, hva en som slutter mister, og det midlertidige tilgangspasset.",
+  "admin.permission.googleManage": "Administrere Google Workspace",
+  "admin.permission.googleManageDescription":
+    "Se status, kontoer og hendelser for tilkoblingen til Google Workspace, og angi kontoreglene.",
   "admin.accountExists": "Det finnes allerede en konto for denne e-postadressen.",
   "admin.filterUsers": "Filtrer brukere etter {{label}}",
   "admin.searchUsers": "Søk etter brukere",

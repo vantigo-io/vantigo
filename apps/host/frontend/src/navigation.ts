@@ -11,6 +11,7 @@ export const moduleKeys = [
   "energy",
   "entra",
   "expenses",
+  "google",
   "inventory",
   "invoices",
   "planning",

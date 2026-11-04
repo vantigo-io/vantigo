@@ -101,6 +101,7 @@ import { Route as WorkspaceIndexRouteImport } from './routes/workspace/index'
 import { Route as WorkspaceAiRouteImport } from './routes/workspace/ai'
 import { Route as WorkspaceAssistantRouteImport } from './routes/workspace/assistant'
 import { Route as WorkspaceEntraRouteImport } from './routes/workspace/entra'
+import { Route as WorkspaceGoogleRouteImport } from './routes/workspace/google'
 import { Route as WorkspaceInvitationsRouteImport } from './routes/workspace/invitations'
 import { Route as WorkspaceOverviewRouteImport } from './routes/workspace/overview'
 import { Route as WorkspaceRolesRouteImport } from './routes/workspace/roles'
@@ -148,6 +149,10 @@ import { Route as WorkspaceEntraIndexRouteImport } from './routes/workspace/entr
 import { Route as WorkspaceEntraAccountsRouteImport } from './routes/workspace/entra/accounts'
 import { Route as WorkspaceEntraConnectionRouteImport } from './routes/workspace/entra/connection'
 import { Route as WorkspaceEntraOutlookRouteImport } from './routes/workspace/entra/outlook'
+import { Route as WorkspaceGoogleIndexRouteImport } from './routes/workspace/google/index'
+import { Route as WorkspaceGoogleAccountsRouteImport } from './routes/workspace/google/accounts'
+import { Route as WorkspaceGoogleCalendarGmailRouteImport } from './routes/workspace/google/calendar-gmail'
+import { Route as WorkspaceGoogleConnectionRouteImport } from './routes/workspace/google/connection'
 import { Route as EnergyMeteringPointsImportIndexRouteImport } from './routes/energy/metering-points/import.index'
 import { Route as EnergyMeteringPointsImportImportIdRouteImport } from './routes/energy/metering-points/import.$importId'
 import { Route as InventoryMovementsNewAdjustmentRouteImport } from './routes/inventory/movements.new.adjustment'
@@ -616,6 +621,11 @@ const WorkspaceEntraRoute = WorkspaceEntraRouteImport.update({
   path: '/entra',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const WorkspaceGoogleRoute = WorkspaceGoogleRouteImport.update({
+  id: '/google',
+  path: '/google',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
 const WorkspaceInvitationsRoute = WorkspaceInvitationsRouteImport.update({
   id: '/invitations',
   path: '/invitations',
@@ -871,6 +881,28 @@ const WorkspaceEntraOutlookRoute = WorkspaceEntraOutlookRouteImport.update({
   path: '/outlook',
   getParentRoute: () => WorkspaceEntraRoute,
 } as any)
+const WorkspaceGoogleIndexRoute = WorkspaceGoogleIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => WorkspaceGoogleRoute,
+} as any)
+const WorkspaceGoogleAccountsRoute = WorkspaceGoogleAccountsRouteImport.update({
+  id: '/accounts',
+  path: '/accounts',
+  getParentRoute: () => WorkspaceGoogleRoute,
+} as any)
+const WorkspaceGoogleCalendarGmailRoute =
+  WorkspaceGoogleCalendarGmailRouteImport.update({
+    id: '/calendar-gmail',
+    path: '/calendar-gmail',
+    getParentRoute: () => WorkspaceGoogleRoute,
+  } as any)
+const WorkspaceGoogleConnectionRoute =
+  WorkspaceGoogleConnectionRouteImport.update({
+    id: '/connection',
+    path: '/connection',
+    getParentRoute: () => WorkspaceGoogleRoute,
+  } as any)
 const EnergyMeteringPointsImportIndexRoute =
   EnergyMeteringPointsImportIndexRouteImport.update({
     id: '/metering-points/import/',
@@ -984,6 +1016,7 @@ export interface FileRoutesByFullPath {
   '/workspace/ai': typeof WorkspaceAiRoute
   '/workspace/assistant': typeof WorkspaceAssistantRoute
   '/workspace/entra': typeof WorkspaceEntraRouteWithChildren
+  '/workspace/google': typeof WorkspaceGoogleRouteWithChildren
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
@@ -1036,6 +1069,9 @@ export interface FileRoutesByFullPath {
   '/workspace/entra/accounts': typeof WorkspaceEntraAccountsRoute
   '/workspace/entra/connection': typeof WorkspaceEntraConnectionRoute
   '/workspace/entra/outlook': typeof WorkspaceEntraOutlookRoute
+  '/workspace/google/accounts': typeof WorkspaceGoogleAccountsRoute
+  '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
+  '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/customers/import/': typeof CustomersImportIndexRoute
@@ -1048,6 +1084,7 @@ export interface FileRoutesByFullPath {
   '/staff/groups/': typeof StaffGroupsIndexRoute
   '/staff/people/': typeof StaffPeopleIndexRoute
   '/workspace/entra/': typeof WorkspaceEntraIndexRoute
+  '/workspace/google/': typeof WorkspaceGoogleIndexRoute
   '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
   '/inventory/movements/new/adjustment': typeof InventoryMovementsNewAdjustmentRoute
   '/inventory/movements/new/move': typeof InventoryMovementsNewMoveRoute
@@ -1163,6 +1200,9 @@ export interface FileRoutesByTo {
   '/workspace/entra/accounts': typeof WorkspaceEntraAccountsRoute
   '/workspace/entra/connection': typeof WorkspaceEntraConnectionRoute
   '/workspace/entra/outlook': typeof WorkspaceEntraOutlookRoute
+  '/workspace/google/accounts': typeof WorkspaceGoogleAccountsRoute
+  '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
+  '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
   '/customers/$customerId': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts': typeof CustomersContactsIndexRoute
   '/customers/import': typeof CustomersImportIndexRoute
@@ -1175,6 +1215,7 @@ export interface FileRoutesByTo {
   '/staff/groups': typeof StaffGroupsIndexRoute
   '/staff/people': typeof StaffPeopleIndexRoute
   '/workspace/entra': typeof WorkspaceEntraIndexRoute
+  '/workspace/google': typeof WorkspaceGoogleIndexRoute
   '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
   '/inventory/movements/new/adjustment': typeof InventoryMovementsNewAdjustmentRoute
   '/inventory/movements/new/move': typeof InventoryMovementsNewMoveRoute
@@ -1259,6 +1300,7 @@ export interface FileRoutesById {
   '/workspace/ai': typeof WorkspaceAiRoute
   '/workspace/assistant': typeof WorkspaceAssistantRoute
   '/workspace/entra': typeof WorkspaceEntraRouteWithChildren
+  '/workspace/google': typeof WorkspaceGoogleRouteWithChildren
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
@@ -1311,6 +1353,9 @@ export interface FileRoutesById {
   '/workspace/entra/accounts': typeof WorkspaceEntraAccountsRoute
   '/workspace/entra/connection': typeof WorkspaceEntraConnectionRoute
   '/workspace/entra/outlook': typeof WorkspaceEntraOutlookRoute
+  '/workspace/google/accounts': typeof WorkspaceGoogleAccountsRoute
+  '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
+  '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/customers/import/': typeof CustomersImportIndexRoute
@@ -1323,6 +1368,7 @@ export interface FileRoutesById {
   '/staff/groups/': typeof StaffGroupsIndexRoute
   '/staff/people/': typeof StaffPeopleIndexRoute
   '/workspace/entra/': typeof WorkspaceEntraIndexRoute
+  '/workspace/google/': typeof WorkspaceGoogleIndexRoute
   '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
   '/inventory/movements/new/adjustment': typeof InventoryMovementsNewAdjustmentRoute
   '/inventory/movements/new/move': typeof InventoryMovementsNewMoveRoute
@@ -1408,6 +1454,7 @@ export interface FileRouteTypes {
     | '/workspace/ai'
     | '/workspace/assistant'
     | '/workspace/entra'
+    | '/workspace/google'
     | '/workspace/invitations'
     | '/workspace/overview'
     | '/workspace/roles'
@@ -1460,6 +1507,9 @@ export interface FileRouteTypes {
     | '/workspace/entra/accounts'
     | '/workspace/entra/connection'
     | '/workspace/entra/outlook'
+    | '/workspace/google/accounts'
+    | '/workspace/google/calendar-gmail'
+    | '/workspace/google/connection'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/customers/import/'
@@ -1472,6 +1522,7 @@ export interface FileRouteTypes {
     | '/staff/groups/'
     | '/staff/people/'
     | '/workspace/entra/'
+    | '/workspace/google/'
     | '/energy/metering-points/import/$importId'
     | '/inventory/movements/new/adjustment'
     | '/inventory/movements/new/move'
@@ -1587,6 +1638,9 @@ export interface FileRouteTypes {
     | '/workspace/entra/accounts'
     | '/workspace/entra/connection'
     | '/workspace/entra/outlook'
+    | '/workspace/google/accounts'
+    | '/workspace/google/calendar-gmail'
+    | '/workspace/google/connection'
     | '/customers/$customerId'
     | '/customers/contacts'
     | '/customers/import'
@@ -1599,6 +1653,7 @@ export interface FileRouteTypes {
     | '/staff/groups'
     | '/staff/people'
     | '/workspace/entra'
+    | '/workspace/google'
     | '/energy/metering-points/import/$importId'
     | '/inventory/movements/new/adjustment'
     | '/inventory/movements/new/move'
@@ -1682,6 +1737,7 @@ export interface FileRouteTypes {
     | '/workspace/ai'
     | '/workspace/assistant'
     | '/workspace/entra'
+    | '/workspace/google'
     | '/workspace/invitations'
     | '/workspace/overview'
     | '/workspace/roles'
@@ -1734,6 +1790,9 @@ export interface FileRouteTypes {
     | '/workspace/entra/accounts'
     | '/workspace/entra/connection'
     | '/workspace/entra/outlook'
+    | '/workspace/google/accounts'
+    | '/workspace/google/calendar-gmail'
+    | '/workspace/google/connection'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/customers/import/'
@@ -1746,6 +1805,7 @@ export interface FileRouteTypes {
     | '/staff/groups/'
     | '/staff/people/'
     | '/workspace/entra/'
+    | '/workspace/google/'
     | '/energy/metering-points/import/$importId'
     | '/inventory/movements/new/adjustment'
     | '/inventory/movements/new/move'
@@ -2432,6 +2492,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceEntraRouteImport
       parentRoute: typeof WorkspaceRoute
     }
+    '/workspace/google': {
+      id: '/workspace/google'
+      path: '/google'
+      fullPath: '/workspace/google'
+      preLoaderRoute: typeof WorkspaceGoogleRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
     '/workspace/invitations': {
       id: '/workspace/invitations'
       path: '/invitations'
@@ -2760,6 +2827,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/workspace/entra/outlook'
       preLoaderRoute: typeof WorkspaceEntraOutlookRouteImport
       parentRoute: typeof WorkspaceEntraRoute
+    }
+    '/workspace/google/': {
+      id: '/workspace/google/'
+      path: '/'
+      fullPath: '/workspace/google/'
+      preLoaderRoute: typeof WorkspaceGoogleIndexRouteImport
+      parentRoute: typeof WorkspaceGoogleRoute
+    }
+    '/workspace/google/accounts': {
+      id: '/workspace/google/accounts'
+      path: '/accounts'
+      fullPath: '/workspace/google/accounts'
+      preLoaderRoute: typeof WorkspaceGoogleAccountsRouteImport
+      parentRoute: typeof WorkspaceGoogleRoute
+    }
+    '/workspace/google/calendar-gmail': {
+      id: '/workspace/google/calendar-gmail'
+      path: '/calendar-gmail'
+      fullPath: '/workspace/google/calendar-gmail'
+      preLoaderRoute: typeof WorkspaceGoogleCalendarGmailRouteImport
+      parentRoute: typeof WorkspaceGoogleRoute
+    }
+    '/workspace/google/connection': {
+      id: '/workspace/google/connection'
+      path: '/connection'
+      fullPath: '/workspace/google/connection'
+      preLoaderRoute: typeof WorkspaceGoogleConnectionRouteImport
+      parentRoute: typeof WorkspaceGoogleRoute
     }
     '/energy/metering-points/import/': {
       id: '/energy/metering-points/import/'
@@ -3203,10 +3298,29 @@ const WorkspaceEntraRouteWithChildren = WorkspaceEntraRoute._addFileChildren(
   WorkspaceEntraRouteChildren,
 )
 
+interface WorkspaceGoogleRouteChildren {
+  WorkspaceGoogleAccountsRoute: typeof WorkspaceGoogleAccountsRoute
+  WorkspaceGoogleCalendarGmailRoute: typeof WorkspaceGoogleCalendarGmailRoute
+  WorkspaceGoogleConnectionRoute: typeof WorkspaceGoogleConnectionRoute
+  WorkspaceGoogleIndexRoute: typeof WorkspaceGoogleIndexRoute
+}
+
+const WorkspaceGoogleRouteChildren: WorkspaceGoogleRouteChildren = {
+  WorkspaceGoogleAccountsRoute: WorkspaceGoogleAccountsRoute,
+  WorkspaceGoogleCalendarGmailRoute: WorkspaceGoogleCalendarGmailRoute,
+  WorkspaceGoogleConnectionRoute: WorkspaceGoogleConnectionRoute,
+  WorkspaceGoogleIndexRoute: WorkspaceGoogleIndexRoute,
+}
+
+const WorkspaceGoogleRouteWithChildren = WorkspaceGoogleRoute._addFileChildren(
+  WorkspaceGoogleRouteChildren,
+)
+
 interface WorkspaceRouteChildren {
   WorkspaceAiRoute: typeof WorkspaceAiRoute
   WorkspaceAssistantRoute: typeof WorkspaceAssistantRoute
   WorkspaceEntraRoute: typeof WorkspaceEntraRouteWithChildren
+  WorkspaceGoogleRoute: typeof WorkspaceGoogleRouteWithChildren
   WorkspaceInvitationsRoute: typeof WorkspaceInvitationsRoute
   WorkspaceOverviewRoute: typeof WorkspaceOverviewRoute
   WorkspaceRolesRoute: typeof WorkspaceRolesRoute
@@ -3218,6 +3332,7 @@ const WorkspaceRouteChildren: WorkspaceRouteChildren = {
   WorkspaceAiRoute: WorkspaceAiRoute,
   WorkspaceAssistantRoute: WorkspaceAssistantRoute,
   WorkspaceEntraRoute: WorkspaceEntraRouteWithChildren,
+  WorkspaceGoogleRoute: WorkspaceGoogleRouteWithChildren,
   WorkspaceInvitationsRoute: WorkspaceInvitationsRoute,
   WorkspaceOverviewRoute: WorkspaceOverviewRoute,
   WorkspaceRolesRoute: WorkspaceRolesRoute,

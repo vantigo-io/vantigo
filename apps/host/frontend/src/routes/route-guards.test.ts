@@ -1,6 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import { isNotFound, isRedirect } from "@tanstack/react-router";
 import { connectionQueryOptions, type EntraConnection } from "@vantigo/entra-ui";
+import { type GoogleConnection, connectionQueryOptions as googleConnectionQueryOptions } from "@vantigo/google-ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route as RootRoute } from "./__root";
 import { Route as CommunicationsIndexRoute } from "./communications/index";
@@ -26,6 +27,11 @@ import { Route as WorkspaceEntraAccountsRoute } from "./workspace/entra/accounts
 import { Route as WorkspaceEntraConnectionRoute } from "./workspace/entra/connection";
 import { Route as WorkspaceEntraIndexRoute } from "./workspace/entra/index";
 import { Route as WorkspaceEntraOutlookRoute } from "./workspace/entra/outlook";
+import { Route as WorkspaceGoogleRoute } from "./workspace/google";
+import { Route as WorkspaceGoogleAccountsRoute } from "./workspace/google/accounts";
+import { Route as WorkspaceGoogleCalendarGmailRoute } from "./workspace/google/calendar-gmail";
+import { Route as WorkspaceGoogleConnectionRoute } from "./workspace/google/connection";
+import { Route as WorkspaceGoogleIndexRoute } from "./workspace/google/index";
 import { Route as WorkspaceIndexRoute } from "./workspace/index";
 import { Route as WorkspaceInvitationsRoute } from "./workspace/invitations";
 import { Route as WorkspaceOverviewRoute } from "./workspace/overview";
@@ -389,6 +395,130 @@ describe("the Integrations routes", () => {
       const thrown = await runGuard(route, "/entra");
       expect((thrown as { options?: { replace?: boolean } }).options?.replace).toBe(true);
     }
+  });
+});
+
+// Integrations › Google Workspace (Google Workspace design G16): the workspace
+// layout admits a holder of google:manage while the module is on, and the
+// page's own route asks the module and the permission again, as Entra's does.
+describe("the Google Workspace routes", () => {
+  const injectModules = (modules: string[]) => {
+    window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules };
+  };
+  const withGoogle = ["staff", "google"];
+  const withoutGoogle = ["staff", "entra"];
+
+  beforeEach(() => injectModules(withGoogle));
+  afterEach(() => {
+    delete window.__VANTIGO_APP__;
+  });
+
+  const googleManager = { permissions: ["google:manage"], canManageAuthorization: false };
+
+  it("admits a Google manager who is not an Owner to the /workspace layout while the module is on", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+    getAuthorizationMe.mockResolvedValue(googleManager);
+
+    await expectAdmitted(WorkspaceRoute);
+  });
+
+  it("sends that same person home when the Google module is off, and a member without the permission always", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+    getAuthorizationMe.mockResolvedValue(googleManager);
+    injectModules(withoutGoogle);
+    await expectRedirectTo(WorkspaceRoute, "/");
+
+    injectModules(withGoogle);
+    getAuthorizationMe.mockResolvedValue({ permissions: ["entra:manage"], canManageAuthorization: false });
+    await expectRedirectTo(WorkspaceRoute, "/");
+  });
+
+  it("admits an Owner and a Google manager to /workspace/google, and an authorization manager without google:manage not", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"]));
+    getAuthorizationMe.mockResolvedValue({ permissions: ["*"], canManageAuthorization: true });
+    await expectAdmitted(WorkspaceGoogleRoute);
+
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+    getAuthorizationMe.mockResolvedValue(googleManager);
+    await expectAdmitted(WorkspaceGoogleRoute);
+
+    getAuthorizationMe.mockResolvedValue({ permissions: ["entra:manage"], canManageAuthorization: true });
+    await expectRedirectTo(WorkspaceGoogleRoute, "/");
+  });
+
+  it("answers the not-enabled page in place for /workspace/google while the Google module is off", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"]));
+    getAuthorizationMe.mockResolvedValue({ permissions: ["*"], canManageAuthorization: true });
+    injectModules(withoutGoogle);
+
+    const thrown = await runGuard(WorkspaceGoogleRoute, "/workspace/google");
+    expect(isNotFound(thrown)).toBe(true);
+    expect((thrown as { data?: unknown }).data).toEqual({ moduleDisabled: "google" });
+  });
+
+  it("keeps the four tabs plain children of that gate", () => {
+    for (const route of [
+      WorkspaceGoogleIndexRoute,
+      WorkspaceGoogleConnectionRoute,
+      WorkspaceGoogleAccountsRoute,
+      WorkspaceGoogleCalendarGmailRoute,
+    ]) {
+      expect(route.options.component).toBeDefined();
+    }
+    for (const route of [
+      WorkspaceGoogleConnectionRoute,
+      WorkspaceGoogleAccountsRoute,
+      WorkspaceGoogleCalendarGmailRoute,
+    ]) {
+      expect(route.options.beforeLoad).toBeUndefined();
+    }
+  });
+
+  describe("the Status tab as the way in", () => {
+    // What opensOnConnection reads of a connection: its status and its keys.
+    const connection = (status: GoogleConnection["status"], keys: number) =>
+      ({
+        status,
+        credentials: Array.from({ length: keys }, (_, index) => ({
+          id: index + 1,
+          kind: "service_account_key",
+          createdAt: "2026-11-01T08:00:00Z",
+          inUse: true,
+        })),
+      }) as unknown as GoogleConnection;
+
+    const runIndexGuard = async (seed: GoogleConnection | undefined) => {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      if (seed) queryClient.setQueryData(googleConnectionQueryOptions().queryKey, seed);
+      try {
+        await (WorkspaceGoogleIndexRoute.options.beforeLoad as (context: unknown) => unknown)({
+          context: { queryClient },
+        });
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    };
+
+    it("opens on Connection while unconfigured with no key", async () => {
+      const thrown = await runIndexGuard(connection("unconfigured", 0));
+      expect(isRedirect(thrown)).toBe(true);
+      expect((thrown as { options?: { to?: string } }).options?.to).toBe("/workspace/google/connection");
+    });
+
+    it("opens on Status once a key is uploaded, or once the connection is anything but unconfigured", async () => {
+      expect(await runIndexGuard(connection("unconfigured", 1))).toBeUndefined();
+      expect(await runIndexGuard(connection("failing", 0))).toBeUndefined();
+    });
+
+    it("opens on Status, which says so, when the connection cannot be read", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+      try {
+        expect(await runIndexGuard(undefined)).toBeUndefined();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
   });
 });
 
