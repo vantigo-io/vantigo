@@ -156,7 +156,6 @@ const UsersPage = () => {
   // editing either away from it, or searching again, forgets the pick.
   const [connectPick, setConnectPick] = useState<DirectoryPick | null>(null);
   const [matchesOpen, setMatchesOpen] = useState(false);
-  // The Entra module's directory picker and review, while the module is enabled (plan reading 7).
   // The configured provider's directory, when a turned-on module serves it (Google Workspace design G8): the picker
   // and the matches are offered only then. A settings read that fails offers neither; the typed fields stay.
   const ssoSettings = useQuery({ queryKey: ssoSettingsQueryKey, queryFn: fetchSsoSettings, retry: false });
