@@ -292,7 +292,7 @@ const projectEconomyAttentionTypes = ["budgetWarning", "budgetExceeded", "milest
  * carries its Monday, and a waiting approval carries the queue's group key
  * `<userId>/<Monday>`, which is not addressable — the queue is.
  */
-export const attentionHref = (item: { module: ModuleKey; type: string; entityId: string }) => {
+export const attentionHref = (item: { module: ModuleKey; type: string; entityId: string; provider?: string }) => {
   if (item.module === "communications" && item.type === "conversationNoReply") {
     return `/communications/inbox?conversationId=${encodeURIComponent(item.entityId)}`;
   }
@@ -374,9 +374,11 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     // the Absence page's approvals; the deletion ledger, the thresholds and
     // the accounts' installation items are dealt with in Settings. An
     // adoption nobody confirmed is confirmed on the provider's page under
-    // Integrations; the item names no provider, and Microsoft Entra ID's
-    // (its Status tab lists the accounts) is the one there is today.
-    if (item.type === "accountUnconfirmedInDirectory") return "/workspace/entra";
+    // Integrations, /workspace/<provider key>; an item from a server that
+    // names no provider is Microsoft Entra ID's, the one there was.
+    if (item.type === "accountUnconfirmedInDirectory") {
+      return `/workspace/${encodeURIComponent(item.provider ?? "entra")}`;
+    }
     const person = `/staff/people/${encodeURIComponent(item.entityId)}`;
     if (staffPersonAttentionTypes.includes(item.type)) return person;
     if (staffAccountAttentionTypes.includes(item.type)) return `${person}?tab=account`;
@@ -635,7 +637,15 @@ export const attentionWeek = (entityId: string) => entityId.slice(entityId.index
  * title would then name a different week from the one the link opens.
  */
 export const attentionTitle = (
-  item: { module: ModuleKey; type: string; entityId: string; title: string; count?: number },
+  item: {
+    module: ModuleKey;
+    type: string;
+    entityId: string;
+    title: string;
+    count?: number;
+    provider?: string;
+    providerName?: string;
+  },
   t: (key: string, values?: Record<string, unknown>) => string,
   formatDate: (value: string, options: Intl.DateTimeFormatOptions) => string,
 ) => {
@@ -654,7 +664,10 @@ export const attentionTitle = (
     item.module === "staff" ||
     item.module === "planning"
   ) {
-    return t(key, { name: item.title, count: item.count });
+    // A provider's item names the provider (Staff sends its name); one from
+    // a server that names none is Microsoft Entra ID's, the one there was.
+    const provider = item.providerName ?? item.provider ?? "Microsoft Entra ID";
+    return t(key, { name: item.title, count: item.count, provider });
   }
   if (item.module === "invoices") {
     // The title is a buyer's name, or a day or two — a file's first and last

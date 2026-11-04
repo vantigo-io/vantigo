@@ -822,11 +822,15 @@ describe("the dashboard's staff account attention items", () => {
     expect(attentionHref({ module: "staff", type: "accountUnconfirmedInDirectory", entityId: "1042" })).toBe(
       "/workspace/entra",
     );
+    expect(
+      attentionHref({ module: "staff", type: "accountUnconfirmedInDirectory", entityId: "1042", provider: "google" }),
+    ).toBe("/workspace/google");
     const key = attentionTitleKey({ module: "staff", type: "accountUnconfirmedInDirectory" }) as string;
     for (const lng of ["en", "nb"]) {
-      const sentence = i18n.t(key, { ns: "host", lng, name: "Kari Nordmann" });
+      const sentence = i18n.t(key, { ns: "host", lng, name: "Kari Nordmann", provider: "Google Workspace" });
       expect(sentence, lng).not.toBe(key);
       expect(sentence, lng).toContain("Kari Nordmann");
+      expect(sentence, lng).toContain("Google Workspace");
     }
   });
 
@@ -857,14 +861,31 @@ describe("the dashboard's staff account attention items", () => {
     ).toBe("1 person's account waits: Microsoft Entra ID's last check failed");
   });
 
-  it("names Microsoft Entra ID and the person for a photo the directory refused, as its siblings do", () => {
+  it("names the account's provider and the person for a photo or a hire date the directory refused", () => {
     const key = attentionTitleKey({ module: "staff", type: "photoNotWritten" }) as string;
     expect(key).toBe("dashboard.staffPhotoNotWritten");
-    expect(i18n.t(key, { ns: "host", lng: "en", name: "Kari Nordmann" })).toBe(
-      "Microsoft Entra ID refused the photo of Kari Nordmann",
+    const title = (lng: string, item: { type: string; provider?: string; providerName?: string }) =>
+      attentionTitle(
+        { module: "staff", entityId: "1042", title: "Kari Nordmann", ...item },
+        (k, values) => i18n.t(k, { ns: "host", lng, ...values }),
+        () => "",
+      );
+    expect(title("en", { type: "photoNotWritten", provider: "google", providerName: "Google Workspace" })).toBe(
+      "Google Workspace refused the photo of Kari Nordmann",
     );
-    expect(i18n.t(key, { ns: "host", lng: "nb", name: "Kari Nordmann" })).toBe(
-      "Microsoft Entra ID avviste bildet av Kari Nordmann",
+    expect(title("nb", { type: "photoNotWritten", provider: "google", providerName: "Google Workspace" })).toBe(
+      "Google Workspace avviste bildet av Kari Nordmann",
+    );
+    expect(title("en", { type: "hireDateNotWritten", provider: "google", providerName: "Google Workspace" })).toBe(
+      "Google Workspace refused Kari Nordmann's hire date",
+    );
+    expect(title("nb", { type: "hireDateNotWritten", provider: "google", providerName: "Google Workspace" })).toBe(
+      "Google Workspace avviste ansettelsesdatoen til Kari Nordmann",
+    );
+    // An item from a server that names no provider is Microsoft Entra ID's.
+    expect(title("en", { type: "photoNotWritten" })).toBe("Microsoft Entra ID refused the photo of Kari Nordmann");
+    expect(title("nb", { type: "hireDateNotWritten" })).toBe(
+      "Microsoft Entra ID avviste ansettelsesdatoen til Kari Nordmann",
     );
   });
 
@@ -943,7 +964,12 @@ describe("the dashboard's staff account attention items", () => {
       const key = attentionTitleKey({ module: "staff", type });
       expect(key, type).toBeDefined();
       for (const lng of ["en", "nb"]) {
-        const sentence = i18n.t(key as string, { ns: "host", lng, name: "Kari Nordmann" });
+        const sentence = i18n.t(key as string, {
+          ns: "host",
+          lng,
+          name: "Kari Nordmann",
+          provider: "Google Workspace",
+        });
         expect(sentence, `${type} ${lng}`).not.toBe(key);
         expect(sentence, `${type} ${lng}`).toContain("Kari Nordmann");
       }

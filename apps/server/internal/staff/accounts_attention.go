@@ -32,7 +32,9 @@ import (
 // provider (id <type>/<provider key>, titled with the provider's name),
 // counted over the people of that kind whose flag is on and raised only
 // while someone has the kind. The item types name no provider, as the codes
-// and the slot do not (Google design G6). A group section the worker left
+// and the slot do not (Google design G6); each provider item carries the
+// provider's key and name instead (withProvider), so the host words it with
+// the name and opens the provider's page. A group section the worker left
 // failed raises groupSyncFailed, one per section, naming the group
 // (delivery D).
 
@@ -247,7 +249,7 @@ func (a accountAttention) items() []gen.StaffStatsAttentionItem {
 			out = append(out, personItem(gen.AccountFailing, l.PersonID, l.PersonID, title, l.UpdatedAt))
 		}
 		if l.Provider != linkProviderIdentity && !l.Erased && l.ProvisionAccount {
-			out = append(out, a.providerLinkItems(l)...)
+			out = append(out, a.withProvider(l.Provider, a.providerLinkItems(l)...)...)
 		}
 		reason := deref(l.BlockedReason)
 		kind, ok := accountReasonItems[reason]
@@ -269,7 +271,11 @@ func (a accountAttention) items() []gen.StaffStatsAttentionItem {
 			if l.Erased {
 				name = erasedPersonTitle
 			}
-			out = append(out, personItem(kind, l.PersonID, l.PersonID, name, l.UpdatedAt))
+			item := personItem(kind, l.PersonID, l.PersonID, name, l.UpdatedAt)
+			if l.Provider != linkProviderIdentity {
+				item = a.withProvider(l.Provider, item)[0]
+			}
+			out = append(out, item)
 			continue
 		}
 		item := installation[kind]
@@ -346,12 +352,27 @@ func (a accountAttention) providerItems() []gen.StaffStatsAttentionItem {
 		if title == "" {
 			title = key
 		}
-		out = append(out, gen.StaffStatsAttentionItem{
+		out = append(out, a.withProvider(key, gen.StaffStatsAttentionItem{
 			Id: string(kind) + "/" + key, Type: kind, Title: title, OccurredAt: seen.CheckedAt,
 			EntityId: settingsEntity, Count: &count,
-		})
+		})...)
 	}
 	return out
+}
+
+// withProvider is items naming the provider whose key is key: its key and
+// the name the worker last recorded for it (providerItems' rule), so the
+// host words an item with the provider's name and opens its page.
+func (a accountAttention) withProvider(key string, items ...gen.StaffStatsAttentionItem) []gen.StaffStatsAttentionItem {
+	name := a.providers[key].Name
+	if name == "" {
+		name = key
+	}
+	for i := range items {
+		k, n := key, name
+		items[i].Provider, items[i].ProviderName = &k, &n
+	}
+	return items
 }
 
 // groupItems is one groupSyncFailed per group section the worker left
