@@ -89,7 +89,8 @@ func photoRefused(err error) bool {
 // or that Google refuses, answers nil: the account reports
 // photo_not_written and the event carries refused:photo_not_written. A
 // photo written clears the code; the event carries photo_written. An
-// unconfirmed adoption is ErrExternalUnconfirmed, nothing written.
+// unconfirmed adoption is ErrExternalUnconfirmed, and an administrator
+// ErrExternalPrivileged, nothing written.
 func (p *provisioner) SetPhoto(ctx context.Context, actor contracts.Actor, externalID string, photo contracts.Photo) error {
 	if !actor.Valid() {
 		return contracts.ErrInvalidActor
@@ -100,6 +101,9 @@ func (p *provisioner) SetPhoto(ctx context.Context, actor contracts.Actor, exter
 	}
 	if !trusted(row) {
 		return p.unconfirmed(ctx, s, actor, actionUserPhotoSet, u, row)
+	}
+	if u.privileged() {
+		return p.refused(ctx, s, actor, actionUserPhotoSet, u.ID, privilegedRefusal())
 	}
 	data, err := convertPhoto(photo)
 	if err == nil {
@@ -125,7 +129,8 @@ func (p *provisioner) SetPhoto(ctx context.Context, actor contracts.Actor, exter
 // ClearPhoto removes the account's photo (contracts.IdentityProvisioner.
 // ClearPhoto): a user with none (404) is done. A clear Google refuses
 // answers nil, reported photo_not_written as SetPhoto's refusal is. An
-// unconfirmed adoption is ErrExternalUnconfirmed, nothing written.
+// unconfirmed adoption is ErrExternalUnconfirmed, and an administrator
+// ErrExternalPrivileged, nothing written.
 func (p *provisioner) ClearPhoto(ctx context.Context, actor contracts.Actor, externalID string) error {
 	if !actor.Valid() {
 		return contracts.ErrInvalidActor
@@ -136,6 +141,9 @@ func (p *provisioner) ClearPhoto(ctx context.Context, actor contracts.Actor, ext
 	}
 	if !trusted(row) {
 		return p.unconfirmed(ctx, s, actor, actionUserPhotoCleared, u, row)
+	}
+	if u.privileged() {
+		return p.refused(ctx, s, actor, actionUserPhotoCleared, u.ID, privilegedRefusal())
 	}
 	var reported []string
 	codes := []string{"photo_cleared"}

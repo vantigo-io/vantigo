@@ -259,3 +259,23 @@ func TestPhoto_WrittenAt96PixelsAndClearedAndRefused(t *testing.T) {
 		t.Errorf("an undecodable photo: %v", got.Reported)
 	}
 }
+
+func TestPhoto_AnAdministratorIsRefusedNothingWritten(t *testing.T) {
+	t.Parallel()
+	l := newLifecycle(t)
+	acc := l.prepare(t, joiner("E1042"))
+	l.g.SetUser(acc.ExternalID, func(u *googletest.User) { u.IsAdmin = true })
+	from := len(l.g.Calls())
+	if err := l.p.SetPhoto(context.Background(), staffActor, acc.ExternalID, photo(t, 50, 50, "jpeg")); !errors.Is(err, contracts.ErrExternalPrivileged) {
+		t.Errorf("SetPhoto of an administrator: %v", err)
+	}
+	if err := l.p.ClearPhoto(context.Background(), staffActor, acc.ExternalID); !errors.Is(err, contracts.ErrExternalPrivileged) {
+		t.Errorf("ClearPhoto of an administrator: %v", err)
+	}
+	if w := l.writes(from); len(w) != 0 {
+		t.Errorf("an administrator's photo was written: %v", w)
+	}
+	if u := l.user(t, acc.ExternalID); u.Photo != nil {
+		t.Error("an administrator carries a photo")
+	}
+}
