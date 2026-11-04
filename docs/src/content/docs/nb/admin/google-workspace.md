@@ -385,7 +385,11 @@ til, bekreftet eller ikke: gi personen en egen konto, eller håndter deres for h
 
 En gruppe Google allerede har på adressen en gruppe i Ansatte ville fått, og som Vantigo
 ikke laget, venter på samme måte: **Bekreft** den ved siden av gruppen på fanen
-**Kontoer**. En bekreftet gruppe skrives til, men slettes aldri.
+**Kontoer**. Å bekrefte gir gruppen til Ansatte, og Vantigo **avstemmer** den ved neste
+kjøring: navnet, beskrivelsen og synligheten overskrives med dem fra Ansatte, eiere
+Ansatte ikke nevner, gjøres til medlemmer, og medlemmer gruppen i Ansatte ikke har,
+fjernes. Bekreft bare en gruppe som skal være denne gruppen i Ansatte. En bekreftet
+gruppe skrives til, men slettes aldri.
 
 ## Roter en nøkkel
 

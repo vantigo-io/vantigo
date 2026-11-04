@@ -170,5 +170,7 @@ konto Vantigo fant i Google i stedet for å opprette, er merket *Funnet – bekr
 **Grupper.** Hver Google-gruppe Vantigo holder for en gruppe i Ansatte: adressen,
 gruppen i Ansatte, og om Vantigo laget den (*Opprettet av Vantigo*, *Funnet og
 overtatt*). En gruppe Vantigo fant på adressen i stedet for å lage, er merket *Funnet –
-bekreft* og har **Bekreft**, av samme grunn; når den er bekreftet, skriver Vantigo navnet,
-medlemmene og innstillingene fra Ansatte til den, men sletter den aldri.
+bekreft* og har **Bekreft**, av samme grunn. Når den er bekreftet, avstemmer Vantigo den
+med gruppen i Ansatte: navnet, beskrivelsen og synligheten overskrives med dem fra
+Ansatte, eiere Ansatte ikke nevner, gjøres til medlemmer, og medlemmer gruppen i Ansatte
+ikke har, fjernes. Den slettes aldri. Bekreftelsesdialogen sier det samme.

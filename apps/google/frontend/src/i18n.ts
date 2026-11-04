@@ -274,7 +274,7 @@ export const googleCatalog = {
     confirmGroupNamed: "Confirm {{email}}",
     confirmGroupTitle: "Confirm the adoption of {{email}}?",
     confirmGroupBody:
-      "Vantigo found the group {{email}} in the organisation holding a Staff group's address; it did not create it, and has written nothing to it. Confirming lets Vantigo manage it for Staff: write Staff's name and settings to it and make its members Staff's, removing everyone else. Vantigo never deletes a group it did not create. Confirm only if the group is meant to be this Staff group.",
+      "Vantigo found the group {{email}} in the organisation holding a Staff group's address; it did not create it, and has written nothing to it. Confirming lets Vantigo manage it for Staff: its name, description and visibility are overwritten with Staff's, owners Staff does not name are made members, and members Staff's group does not list are removed. Vantigo never deletes a group it did not create. Confirm only if the group is meant to be this Staff group.",
     calendarGmailComingTitle: "Calendar and Gmail are coming",
     calendarGmailComing:
       "Each person's own Google connection, calendar sync to Google Calendar, Gmail mail channels and sending from a person's Gmail address will be set up here.",
@@ -564,7 +564,7 @@ export const googleCatalog = {
     confirmGroupNamed: "Bekreft {{email}}",
     confirmGroupTitle: "Bekrefte overtakelsen av {{email}}?",
     confirmGroupBody:
-      "Vantigo fant gruppen {{email}} i organisasjonen med adressen til en gruppe i Ansatte; Vantigo opprettet den ikke og har ikke skrevet noe til den. Bekrefter du, forvalter Vantigo den for Ansatte: skriver navnet og innstillingene fra Ansatte til den og gjør medlemmene til gruppens i Ansatte, og fjerner alle andre. Vantigo sletter aldri en gruppe den ikke har opprettet. Bekreft bare hvis gruppen skal være denne gruppen i Ansatte.",
+      "Vantigo fant gruppen {{email}} i organisasjonen med adressen til en gruppe i Ansatte; Vantigo opprettet den ikke og har ikke skrevet noe til den. Bekrefter du, forvalter Vantigo den for Ansatte: navnet, beskrivelsen og synligheten overskrives med dem fra Ansatte, eiere Ansatte ikke nevner, gjøres til medlemmer, og medlemmer gruppen i Ansatte ikke har, fjernes. Vantigo sletter aldri en gruppe den ikke har opprettet. Bekreft bare hvis gruppen skal være denne gruppen i Ansatte.",
     calendarGmailComingTitle: "Kalender og Gmail kommer",
     calendarGmailComing:
       "Hver persons egen Google-tilkobling, kalendersynkronisering med Google Kalender, e-postkanaler i Gmail og sending fra en persons Gmail-adresse skal settes opp her.",
