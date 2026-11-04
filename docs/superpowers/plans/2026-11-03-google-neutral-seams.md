@@ -56,16 +56,16 @@ Checked against `f0eb86a2` (the design's branch).
 
 ## Tasks
 
-- [ ] **1. Slots (G2)** — `refactor(module): the three mailbox slots hold many providers`.
+- [x] **1. Slots (G2)** — `refactor(module): the three mailbox slots hold many providers`.
   `Deps.MailboxCalendars`, `ChannelMailboxes`, `PersonalMailboxes`; the keyed collector in
   Compose and Workers; `MailboxCalendar.DisplayName()`, `PersonalMailbox.Key()` and
   `DisplayName()` (Entra: "Outlook"); `modtest` options append; `FakePersonalMailbox`
   takes a key (default `entra`); consumers read by key (`entra` until tasks 3 and 4);
   compose and workers tests: two providers, a duplicate refused, a reserved key refused.
-- [ ] **2. `SentMessage` (G5)** — `refactor(module): a provider answers what it knows of a sent message`.
+- [x] **2. `SentMessage` (G5)** — `refactor(module): a provider answers what it knows of a sent message`.
   `ChannelMailbox.Send` and `PersonalMailbox.Send` answer `(contracts.SentMessage, error)`;
   Entra the zero value; the fakes can be told one.
-- [ ] **3. Communications (G3, G4, G5)** — `feat(communications): channels and personal sending on any mailbox provider`.
+- [x] **3. Communications (G3, G4, G5)** — `feat(communications): channels and personal sending on any mailbox provider`.
   Accessors by provider; `providerEntra` gone; `/channel-providers` lists every provider;
   the switch, `provider_switch_unsupported`; the sentences with `DisplayName()`;
   `group_address`; `outboundChannelOf`; personal sending's selection and `send_provider`;
@@ -73,36 +73,36 @@ Checked against `f0eb86a2` (the design's branch).
   `00109_communications_provider_neutral.sql`. `ChannelForm.tsx` driven by the list; no
   `"entra"` literal in `apps/communications/frontend/src`; the composer names
   `providerDisplayName`. Tests with two `ChannelMailbox` and two `PersonalMailbox` fakes.
-- [ ] **4. Calendar (G3, G10)** — `feat(calendar): mailbox sync on any provider, in neutral words`.
+- [x] **4. Calendar (G3, G10)** — `feat(calendar): mailbox sync on any provider, in neutral words`.
   Provider by `DirectoryAccount.Provider`, the availability order,
   `mailbox_sync.provider`, a provider change cleaning up on the old one, cursors per
   provider, rows marked by `(provider, lower(mailbox))`; `out_of_office`,
   `working_elsewhere`; kind `calendar.mailbox`, the `mailbox` field, `provider` on
   `GET /mailbox-sync`. Migration `00110_calendar_mailbox_neutral.sql`. Frontend labels in
   both languages; an old kind in a saved filter dropped. Tests with two fakes.
-- [ ] **5. Account kind and Staff's items (G6)** — `feat(staff): the account kind and the attention items name no provider`.
+- [x] **5. Account kind and Staff's items (G6)** — `feat(staff): the account kind and the attention items name no provider`.
   `ValidAccountKind`, `IsProviderKind`; `AccountKindEntra` gone; identity's `kindOf` and
   `:527`; Staff's enums patterned; `ENTRA_KIND` gone; the attention items renamed and per
   provider; `manager_not_in_directory`; migration `00111_staff_provider_neutral.sql`;
   `deleteExternalAfterDays`'s description.
-- [ ] **6. Identity's `sub` (G7)** — `feat(identity): a Google sign-in is keyed by sub`.
+- [x] **6. Identity's `sub` (G7)** — `feat(identity): a Google sign-in is keyed by sub`.
   `readExternalAccount`; tests for an announced link by `sub` and a 21-digit id;
   `DirectoryKey`'s doc.
-- [ ] **7. Directory search (G8)** — `feat(identity): directory search behind a contract identity serves`.
+- [x] **7. Directory search (G8)** — `feat(identity): directory search behind a contract identity serves`.
   `contracts.DirectorySearch` (Compose only); Entra fills it; identity's two endpoints
   and `directory` on the Owner SSO settings; Entra's two endpoints removed; the picker and
   matches moved to `apps/host/frontend/src/components/directory/`; `users.tsx` gated on
   `directory`; `@vantigo/entra-ui` stops exporting them.
-- [ ] **8. Host lists (G9)** — `feat(host): the connections page and button list every provider`.
+- [x] **8. Host lists (G9)** — `feat(host): the connections page and button list every provider`.
   `lib/connections.tsx`; the Connections page renders the list and is not found with no
   listed module on; `connection=<module>&outcome=`; the composite `connectionButton`;
   `NavItem.modules`.
-- [ ] **9. Documentation** — `docs(…): …` per section, `en` and `nb` for `user/` and
+- [x] **9. Documentation** — `docs(…): …` per section, `en` and `nb` for `user/` and
   `admin/`: `reference/{communications,calendar,staff,entra}.md`;
   `user/{calendar,staff,connections,communications,workspace-administration,entra}.md`;
   `admin/sso-scim.md`; `contributing/module-boundaries.md` (rules 14–16, rule 22, the slot
   list, *Adding a module*). Every moved file covered by a page's `sources`.
-- [ ] **10. Embedded docs** — `go generate ./...` in `apps/server`,
+- [x] **10. Embedded docs** — `go generate ./...` in `apps/server`,
   `chore(assistant): regenerate the embedded documentation`.
-- [ ] **11. Gates** — `mise run server:check`, `mise run server:test`,
+- [x] **11. Gates** — `mise run server:check`, `mise run server:test`,
   `mise run frontend:check` (its log read), `mise run docs:check`.
