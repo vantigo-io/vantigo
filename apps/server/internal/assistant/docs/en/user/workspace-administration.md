@@ -255,9 +255,11 @@ again replaces the old announcement.
 
 You need not type the accounts when the configured provider's directory can be
 searched: single sign-on is on, and the module that serves the provider's directory is
-enabled — today **Microsoft Entra ID**, connected to the tenant in its steps 1 to 3
-([Microsoft Entra ID](/en/user/entra/#connect-existing-users)). Vantigo then looks the
-accounts up in that directory. Both ways below are an **Owner**'s, signed in with a
+enabled — **Microsoft Entra ID**, connected to the tenant in its steps 1 to 3
+([Microsoft Entra ID](/en/user/entra/#connect-existing-users)), or **Google Workspace**,
+connected to the organisation and tested
+([Google Workspace](/en/user/google-workspace/#connect-existing-users)). Vantigo then
+looks the accounts up in the directory of the provider single sign-on is set to. Both ways below are an **Owner**'s, signed in with a
 second factor when Owners must use one; while there is no directory to search, they are
 not offered and the typed fields are all there is.
 
@@ -270,7 +272,10 @@ by display name, each with its principal name, its employee number, *Guest* for 
 invited from another organisation, and *Disabled* when the account is. An account
 somebody already holds reads *Awaiting* and the user's name (or *Awaiting another
 user*), *Provisioned to another user* or *Announced by Staff*, and cannot be picked. At
-most 25 accounts are shown; when there are that many, it asks you to narrow the search.
+most 25 accounts are shown (20 from Google Workspace); when there are that many, it asks
+you to narrow the search. From Google Workspace the list shows the accounts whose full
+name or address — the primary email or an alias — starts with what you typed; the
+principal name is the primary email, and there are no guests.
 
 Picking an account fills in **User principal name** and, under **More**, **Object id**.
 The two belong together: change the principal name and the object id is cleared;
@@ -301,7 +306,10 @@ there is while the directory cannot be read.
 
 A user is proposed only when the match is **exact**: their address is the account's
 mail or principal name, ignoring upper and lower case, or their employee number is
-the account's — and every one of those that matched points to the same account. There
+the account's — and every one of those that matched points to the same account. In
+Google Workspace the primary email is both the mail and the principal name, an alias
+counts as **Mail**, and the employee number is the one Google keeps as the account's
+organization id. There
 is no guessing on names or similar addresses. Left out are:
 
 - a user who matches more than one account, or whose account also matches another
@@ -317,8 +325,9 @@ is no guessing on names or similar addresses. Left out are:
   — you connect yourself by signing in through the provider.
 
 When no one matches, the window says so and that you connect them one at a time from
-the **Single sign-on** column. When not every user was compared (Microsoft Entra ID
-compares the first 1,000), it says so — connect these, then look again. Finding the
+the **Single sign-on** column. When not every user was compared (both providers
+compare the first 1,000; Google Workspace also reads at most 10,000 of its accounts, and
+past that matches by address alone), it says so — connect these, then look again. Finding the
 matches can take a while in a large directory; opening the window again meanwhile waits
 for the same answer.
 
@@ -740,6 +749,13 @@ To let people sign in through a provider:
 
 Within 20 seconds the sign-in page offers **Continue with** and the display name, on
 every server, with no restart.
+
+The same card is on a provider's own page, filled in for you: **Microsoft Entra ID**'s
+**Accounts** tab fills in the tenant's authority and the application's client ID, and
+**Google Workspace**'s **Accounts** tab, in its **Sign-in** step, fills in Google, the
+Internal web client's ID and every verified domain of the organisation as the
+**Domains** ([Google Workspace](/en/user/google-workspace/#the-accounts-tab)). It fills in
+only a form that holds nothing yet, never over what is saved.
 
 If you change the **Authority** while people already sign in through the provider,
 Vantigo asks first — "Change the provider's authority?" — because people linked

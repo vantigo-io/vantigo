@@ -520,7 +520,8 @@ under the configured issuer.
 
 The user principal name is stored normalised as addresses are (at most 254 characters);
 the object id as SCIM's `externalId` is, a GUID in lower-case dashed form (at most 200
-characters, no control character). A SCIM arrival replaces the user's address with the resource's work email and leaves
+characters, no control character) — a Google Directory user id, 21 digits, is kept
+exactly, and is what a Google sign-in's `sub` is compared with. A SCIM arrival replaces the user's address with the resource's work email and leaves
 `email_confirmed` as it was; a user who was an Owner keeps their role. The same
 announcement again changes nothing; any
 change replaces it whole. A directory account is announced for at most one user. The
@@ -545,12 +546,13 @@ account for the same arrival, and an arrival never fulfils both.
 
 **With a directory to search.** While the configured provider's directory can be
 searched — OIDC is on and an enabled module serves that provider's
-`contracts.DirectorySearch`, today `entra` — the Users screen picks the directory
+`contracts.DirectorySearch`, `entra` or `google` — the Users screen picks the directory
 account through `GET /api/v1/identity/owner/sso/directory/users` instead of having it
 typed, and offers a review of every user who matches exactly one account through
 `GET /api/v1/identity/owner/sso/directory/matches` (see
 [the announced link](/en/admin/sso-scim/#the-announced-link) and, for Entra,
-[connecting existing users](/en/reference/entra/#connecting-existing-users)); each
+[connecting existing users](/en/reference/entra/#connecting-existing-users), and for
+Google [the directory search](/en/reference/google/#the-directory-search)); each
 chosen pair is announced through this same endpoint. Both are under
 `policy:Owner+OwnerManagement`, at most 60 searches and 6 reviews a minute per client
 address, 409 `no_directory` while there is no directory to search and 503
@@ -562,11 +564,22 @@ the port `contracts.SSOConnections`, and only to an Owner under
 `policy:Owner+OwnerManagement`, with a second factor when Owners must use one
 (`OWNERS_REQUIRE_MFA`), as on every Owner endpoint: a request from anyone else gets
 nothing, and while OIDC
-is off there is nothing to connect under (`sso_not_configured`). The addresses are
-compared inside the Entra module and never answered, logged or recorded. The review
-reads at most 1000 users not yet connected (identity is asked for one more, to tell
+is off there is nothing to connect under (`sso_not_configured`). The addresses are compared inside the provider's module and never answered, logged or
+recorded. The review reads at most 1000 users not yet connected (identity is asked for one more, to tell
 whether more wait), never proposes a guest account, and does not let a user's own SCIM
 mapping of an account block its proposal.
+
+**With Google as the provider.** The Google Workspace module serves the search while
+`google` is the configured provider: the object id is the account's Directory user id,
+the principal name its primary email, and a pick is announced with both. A Google
+sign-in is matched on its `sub` against the object id, else on its verified email against
+the principal name, so the link holds even before U1 (`sub` equals the Directory id) is
+confirmed in a test organisation. The module reads at most 10,000 accounts for the review;
+past that the answer is truncated and it matches by address alone, as an address names
+one account in a Google organisation and an employee number may not. The single sign-on
+card is filled in from the module's connection — Google, the web client's ID and every
+verified domain as the allowed domains; a user whose primary email is on a secondary
+domain is covered in [SSO and SCIM](/en/admin/sso-scim/#google-workspace).
 
 ### Disconnect a user
 
