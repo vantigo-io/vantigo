@@ -37,10 +37,11 @@ const (
 
 // neededScopes are the scopes the admin is asked to delegate, in the order
 // the page lists them, written in full (G15's table). Each delivery adds
-// its rows here — B the accounts', groups', group settings' and licences';
-// F the two Gmail scopes while Mail channels is on.
+// its rows here — A the customer's and the domains', B the accounts',
+// groups', group settings' and licences' (accountScopes); F will add the two
+// Gmail scopes while Mail channels is on.
 func neededScopes() []string {
-	return []string{scopeCustomer, scopeDomains}
+	return append([]string{scopeCustomer, scopeDomains}, accountScopes...)
 }
 
 // unexpectedProbes are the scopes the module never uses that the test asks a

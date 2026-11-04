@@ -70,3 +70,27 @@ RETURNING *;
 -- test — every key refused on a call — and keeps the rest.
 UPDATE google.connection SET status = 'failing', status_reason = @status_reason
 WHERE id = 1;
+
+-- name: UpdateAccountRules :one
+-- UpdateAccountRules sets the account rules (Google Workspace design G17,
+-- G19) and moves version on.
+UPDATE google.connection SET
+    address_domain = @address_domain,
+    address_pattern = @address_pattern,
+    org_unit_path = @org_unit_path,
+    pass_lifetime_days = @pass_lifetime_days,
+    pass_delivery = @pass_delivery,
+    leaver_remove_licences = @leaver_remove_licences,
+    leaver_remove_groups = @leaver_remove_groups,
+    leaver_sign_out = @leaver_sign_out,
+    version = version + 1,
+    updated_at = @now::timestamptz,
+    updated_by_user_id = @updated_by_user_id
+WHERE id = 1
+RETURNING *;
+
+-- name: SetSkus :exec
+-- SetSkus caches the licences the organisation holds, which the licences
+-- trait is declared from with no network. It leaves version alone: a read
+-- of the licences never turns an open form into a 412.
+UPDATE google.connection SET skus = @skus WHERE id = 1;

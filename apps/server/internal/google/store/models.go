@@ -10,24 +10,52 @@ import (
 	"github.com/google/uuid"
 )
 
+type GoogleAccount struct {
+	UserID                    string
+	EmployeeNumber            string
+	PrimaryEmail              string
+	State                     string
+	PassSealed                []byte
+	PassExpiresAt             *time.Time
+	PassRevealedAt            *time.Time
+	CreatedByUs               bool
+	LicencesAssigned          []string
+	Reported                  []string
+	LastError                 *string
+	LastSyncedAt              *time.Time
+	AdoptionConfirmedAt       *time.Time
+	AdoptionConfirmedByUserID *uuid.UUID
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
+}
+
 type GoogleConnection struct {
-	ID               int16
-	CredentialKind   string
-	CustomerID       *string
-	PrimaryDomain    *string
-	Domains          []string
-	OrganisationName *string
-	AdminSubject     *string
-	OauthClientID    *string
-	ScopesGranted    []string
-	ScopesMissing    []string
-	ScopesUnexpected []string
-	Status           string
-	StatusReason     *string
-	LastCheckedAt    *time.Time
-	Version          int32
-	UpdatedAt        time.Time
-	UpdatedByUserID  *uuid.UUID
+	ID                   int16
+	CredentialKind       string
+	CustomerID           *string
+	PrimaryDomain        *string
+	Domains              []string
+	OrganisationName     *string
+	AdminSubject         *string
+	OauthClientID        *string
+	ScopesGranted        []string
+	ScopesMissing        []string
+	ScopesUnexpected     []string
+	Status               string
+	StatusReason         *string
+	LastCheckedAt        *time.Time
+	Version              int32
+	UpdatedAt            time.Time
+	UpdatedByUserID      *uuid.UUID
+	AddressDomain        *string
+	AddressPattern       string
+	OrgUnitPath          string
+	PassLifetimeDays     int32
+	PassDelivery         string
+	LeaverRemoveLicences bool
+	LeaverRemoveGroups   string
+	LeaverSignOut        bool
+	Skus                 []byte
 }
 
 type GoogleCredential struct {
@@ -53,4 +81,15 @@ type GoogleEvent struct {
 	Action      string
 	SubjectID   *string
 	Codes       []string
+}
+
+type GoogleGroup struct {
+	GroupID                   string
+	StaffGroupID              string
+	Email                     string
+	CreatedByUs               bool
+	AdoptionConfirmedAt       *time.Time
+	AdoptionConfirmedByUserID *uuid.UUID
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
 }

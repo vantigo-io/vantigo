@@ -2,6 +2,46 @@
 // CI regenerates this file and fails when it is stale.
 
 export interface paths {
+    "/api/v1/google/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The module's accounts
+         * @description Every user the module keeps in the organisation, by address, with its state — the Accounts tab's table. From the module's own rows; nothing asked of Google. The password is never answered.
+         */
+        get: operations["getGoogleAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/accounts/{userId}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm an adopted account
+         * @description Confirms the adoption of a user the module found holding a person's employee number rather than created. Until it is confirmed the module writes nothing to that user — no profile, no password, no suspension, no delete — and reports adoption_unconfirmed; from then on it manages the user as one it created, and Staff's next cycle brings it to the person. Audited google.account.adoption_confirmed. 404 for an account the module does not keep, 409 adoption_confirmed for one confirmed already or one the module created.
+         */
+        post: operations["postGoogleAccountsByUserIdConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/connection": {
         parameters: {
             query?: never;
@@ -86,6 +126,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/connection/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the account rules
+         * @description The account rules — the address domain and pattern, the organisational unit, the first password's lifetime and who hands it over, and the leaver's steps — under If-Match on the connection's version. Every field is optional and one left out keeps its value; each refusal is a field error. Audited google.settings.changed with the names of what changed.
+         */
+        put: operations["putGoogleConnectionSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/connection/skus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organisation's licences
+         * @description The licences the organisation holds — for each Google Workspace product Vantigo knows, the SKUs licenseAssignments.listForProduct finds assigned — read from Google as the admin to impersonate and cached on the connection, the choices for a Staff group's licences. A product Google refuses counts as none held. 503 when Google cannot be asked. Rate limited to 30 per client address a minute, a bucket of its own.
+         */
+        get: operations["getGoogleConnectionSkus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/connection/test": {
         parameters: {
             query?: never;
@@ -126,12 +206,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The module's groups
+         * @description Every group the module keeps in the organisation for Staff's groups, by address — the Accounts tab's groups. From the module's own rows; nothing asked of Google.
+         */
+        get: operations["getGoogleGroups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/groups/{groupId}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm an adopted group
+         * @description Confirms the adoption of a group the module found holding a Staff group's address rather than made. Until it is confirmed the module writes nothing to it — no name, no settings, no member — and Staff's sync waits with group_unconfirmed; from then on it writes to it as to one it made, though it never deletes it. Idempotent: a group confirmed already, or one the module made, is answered as it is. Audited google.group.adoption_confirmed, once. 404 for a group the module does not keep.
+         */
+        post: operations["postGoogleGroupsByGroupIdConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description One user the module made or found in the organisation for a person in Staff (Google Workspace design G17), as the module last recorded it — read from its own rows, nothing asked of Google. The password is never answered. */
+        GoogleAccount: {
+            /**
+             * Format: date-time
+             * @description When a holder of google:manage confirmed the adoption of a user the module found rather than made. Absent on a user the module created, and on one not yet confirmed.
+             */
+            adoptionConfirmedAt?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description Whether the module created the user. A user it found holding the employee number is written to only once its adoption is confirmed. */
+            createdByUs: boolean;
+            employeeNumber: string;
+            /** @description The last refusal's code — privileged, ambiguous, address_taken, enabled. Absent when the last write succeeded. */
+            lastError?: string;
+            /** Format: date-time */
+            lastSyncedAt?: string;
+            /** @description The licences the module assigned the user, each productId/skuId — the only ones it removes. */
+            licences: string[];
+            /** @description Whether a password the module set waits to be revealed once, in Staff, before its lifetime ends. */
+            passWaiting: boolean;
+            /** @description The user's address, as the module made or found it; never renamed. */
+            primaryEmail: string;
+            /** @description What the module could not act on, as codes — adoption_unconfirmed, privileged, manager_not_found, licence_unavailable:<skuId>, photo_not_written, sign_out_refused, leaver_step_failed:<step>. */
+            reported: string[];
+            /**
+             * @description disabled (suspended), enabled, or deleted.
+             * @enum {string}
+             */
+            state: "disabled" | "enabled" | "deleted";
+            /** @description The user's Directory id. */
+            userId: string;
+        };
         /** @description The installation's one connection to a Google Workspace organisation (Google Workspace design G12–G16): the service account Vantigo signs in as through domain-wide delegation, the admin it impersonates, the Internal web client, and what the last connection test found. Sent whether or not anything is set, so the Connection tab can show every step before the first is done. No key and no client secret is ever answered. */
         GoogleConnection: {
+            /** @description The domain new users' addresses are made at, one of the verified domains. Absent until set; the primary domain is used then. */
+            addressDomain?: string;
+            /**
+             * @description How an address is made for a person whose work email cannot be theirs — given.family, g.family or given.
+             * @enum {string}
+             */
+            addressPattern: "given.family" | "g.family" | "given";
             /** @description The super admin (or delegated admin) whose address the Admin SDK calls impersonate. Absent until set. */
             adminSubject?: string;
             /**
@@ -152,6 +311,15 @@ export interface components {
              * @description When the connection was last tested. Absent until it has been, and again after the admin to impersonate changes.
              */
             lastCheckedAt?: string;
+            /**
+             * @description Which groups a leaver is taken out of — all, managed (the groups the module made) or none.
+             * @enum {string}
+             */
+            leaverRemoveGroups: "all" | "managed" | "none";
+            /** @description Whether a leaver's licences are removed when the account is suspended. Google bills a suspended user's licence. */
+            leaverRemoveLicences: boolean;
+            /** @description Whether a leaver is signed out of every session when the account is suspended. */
+            leaverSignOut: boolean;
             /** @description The Internal web client's id, ending .apps.googleusercontent.com — for the person's own Google connection and the sign-in with Google. Absent until set. */
             oauthClientId?: string;
             /**
@@ -161,6 +329,18 @@ export interface components {
             oauthClientSecretAddedAt?: string;
             /** @description The organisation's name, as the last successful test read it. */
             organisationName?: string;
+            /** @description The organisational unit new users are made in, / for the top. */
+            orgUnitPath: string;
+            /**
+             * @description Who is meant to hand the person their first password — hr, manager or both. HR shows it once on the person's Account tab in Staff; the setting is kept for a later release.
+             * @enum {string}
+             */
+            passDelivery: "hr" | "manager" | "both";
+            /**
+             * Format: int32
+             * @description How many days, 1 to 30, the first password waits to be revealed before it is forgotten.
+             */
+            passLifetimeDays: number;
             /** @description The organisation's primary domain, as the last successful test read it. */
             primaryDomain?: string;
             /** @description The two redirect URIs to register on the Internal web client, built from APP_URL — the person's Google connection's callback and the sign-in's. */
@@ -171,6 +351,8 @@ export interface components {
             scopesMissing: string[];
             /** @description The scopes to paste into the Admin console's domain-wide delegation, in full, in the order Vantigo needs them. A function of the features turned on. */
             scopesToDelegate: string[];
+            /** @description The licences the organisation holds, as the last read of them (GET /connection/skus) found them — the choices of a Staff group's licences. */
+            skus: components["schemas"]["GoogleSku"][];
             /** @description Scopes Vantigo never uses that the last test was granted anyway — a warning, never a status. Domain-wide delegation reaches every account of the organisation, so a scope nobody needs is better removed in the Admin console. */
             scopesUnexpected: string[];
             /**
@@ -256,7 +438,7 @@ export interface components {
         };
         /** @description One write the module made, to its own connection or in the organisation — the module's own append-only trail. It carries codes and Google's ids, never an address, a key, a secret or a token. */
         GoogleEvent: {
-            /** @description google.connection.changed, google.connection.tested, google.oauth_client.changed, google.credential.added, google.credential.revoked or google.credential.refused. */
+            /** @description google.connection.changed, google.connection.tested, google.oauth_client.changed, google.credential.added, google.credential.revoked, google.credential.refused, google.settings.changed; the accounts' google.user.prepared, google.user.activated, google.user.updated, google.user.deactivated, google.user.deleted, google.user.photo_set, google.user.photo_cleared, google.pass.issued, google.pass.revealed, google.account.adoption_confirmed; the groups' google.group.created, google.group.adopted, google.group.updated, google.group.members_set, google.group.deleted, google.group.adoption_confirmed. */
             action: string;
             /** @description Who acted — the user's id, or the system's name. */
             actor: string;
@@ -269,6 +451,23 @@ export interface components {
             /** @description The Google id the write concerned. Absent on a connection's event. */
             subjectId?: string;
         };
+        /** @description One group the module made or found in the organisation for a group in Staff (Google Workspace design G20), from its own rows. */
+        GoogleGroup: {
+            /**
+             * Format: date-time
+             * @description When a holder of google:manage confirmed the adoption of a group the module found rather than made. Absent on a group the module created, and on one not yet confirmed.
+             */
+            adoptionConfirmedAt?: string;
+            /** Format: date-time */
+            createdAt: string;
+            createdByUs: boolean;
+            /** @description The group's address, which never changes once the group exists. */
+            email: string;
+            /** @description The group's Directory id. */
+            groupId: string;
+            /** @description The Staff group's id. */
+            staffGroupId: string;
+        };
         /** @description The Internal web client. A changed client id needs its secret; a secret alone rotates the current client's. */
         GoogleOAuthClientRequest: {
             /** @description The web client's id, ending .apps.googleusercontent.com. */
@@ -276,7 +475,7 @@ export interface components {
             /** @description The web client's secret, which Google shows once, at creation. Sealed at once and never answered. */
             clientSecret?: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: version_mismatch (412: the connection has been written since the If-Match version), client_mismatch (422: a key for another service account while one of the current account's is live), credential_kind_unsupported (422: a credential kind this version does not implement). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: version_mismatch (412: the connection has been written since the If-Match version), client_mismatch (422: a key for another service account while one of the current account's is live), credential_kind_unsupported (422: a credential kind this version does not implement), adoption_confirmed (409: the account's adoption is confirmed already, or the module created it), credential_invalid and google_unreachable (503: Google could not be asked). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         GoogleProblem: {
             code?: string | null;
             detail?: string | null;
@@ -288,6 +487,40 @@ export interface components {
             status?: number | null;
             title?: string | null;
             type?: string | null;
+        };
+        /** @description The account rules (Google Workspace design G17, G19). Every field is optional and one left out keeps its value. */
+        GoogleSettingsRequest: {
+            /** @description One of the verified domains, or empty to use the primary domain. */
+            addressDomain?: string;
+            /** @enum {string} */
+            addressPattern?: "given.family" | "g.family" | "given";
+            /** @enum {string} */
+            leaverRemoveGroups?: "all" | "managed" | "none";
+            leaverRemoveLicences?: boolean;
+            leaverSignOut?: boolean;
+            /** @description An organisational unit's path, starting with /, at most 400 characters. */
+            orgUnitPath?: string;
+            /** @enum {string} */
+            passDelivery?: "hr" | "manager" | "both";
+            /**
+             * Format: int32
+             * @description 1 to 30.
+             */
+            passLifetimeDays?: number;
+        };
+        /** @description One licence the organisation holds, as licenseAssignments.listForProduct answers it. */
+        GoogleSku: {
+            /**
+             * Format: int32
+             * @description How many users hold it, as the read counted them.
+             */
+            assigned: number;
+            /** @description The licence's name, as Google answers it; the SKU id when it answers none. */
+            name: string;
+            productId: string;
+            skuId: string;
+            /** @description productId/skuId, the value a Staff group's licences name. */
+            value: string;
         };
         AuthErrorResponse: {
             error: {
@@ -307,6 +540,100 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getGoogleAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAccount"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postGoogleAccountsByUserIdConfirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the module keeps no account by that id. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — adoption_confirmed, the adoption is confirmed already, or the module created the user. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["GoogleProblem"];
+                };
+            };
+        };
+    };
     getGoogleConnection: {
         parameters: {
             query?: never;
@@ -615,6 +942,126 @@ export interface operations {
             };
         };
     };
+    putGoogleConnectionSettings: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The version the connection was read at, bare (3) or quoted ("3"). A version that has moved on is a 412 version_mismatch. */
+                "If-Match": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleConnection"];
+                };
+            };
+            /** @description Bad Request — field errors on the body, or an If-Match that is not a version. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["GoogleProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed — version_mismatch, the connection has been written since the If-Match version. */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["GoogleProblem"];
+                };
+            };
+        };
+    };
+    getGoogleConnectionSkus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSku"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests — google-skus's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — credential_invalid, no key fetched a token or the scope is not delegated; or google_unreachable, Google did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["GoogleProblem"];
+                };
+            };
+        };
+    };
     postGoogleConnectionTest: {
         parameters: {
             query?: never;
@@ -710,6 +1157,91 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
+            };
+        };
+    };
+    getGoogleGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleGroup"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postGoogleGroupsByGroupIdConfirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleGroup"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the module keeps no group by that id. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

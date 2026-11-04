@@ -14,7 +14,7 @@ import (
 
 const getConnection = `-- name: GetConnection :one
 
-SELECT id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id FROM google.connection WHERE id = 1
+SELECT id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus FROM google.connection WHERE id = 1
 `
 
 // The connection (Google Workspace design G12): the installation's one row,
@@ -45,12 +45,21 @@ func (q *Queries) GetConnection(ctx context.Context) (GoogleConnection, error) {
 		&i.Version,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.AddressDomain,
+		&i.AddressPattern,
+		&i.OrgUnitPath,
+		&i.PassLifetimeDays,
+		&i.PassDelivery,
+		&i.LeaverRemoveLicences,
+		&i.LeaverRemoveGroups,
+		&i.LeaverSignOut,
+		&i.Skus,
 	)
 	return i, err
 }
 
 const lockConnection = `-- name: LockConnection :one
-SELECT id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id FROM google.connection WHERE id = 1 FOR UPDATE
+SELECT id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus FROM google.connection WHERE id = 1 FOR UPDATE
 `
 
 // LockConnection takes the row's lock for a write of the settings or the web
@@ -78,6 +87,15 @@ func (q *Queries) LockConnection(ctx context.Context) (GoogleConnection, error) 
 		&i.Version,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.AddressDomain,
+		&i.AddressPattern,
+		&i.OrgUnitPath,
+		&i.PassLifetimeDays,
+		&i.PassDelivery,
+		&i.LeaverRemoveLicences,
+		&i.LeaverRemoveGroups,
+		&i.LeaverSignOut,
+		&i.Skus,
 	)
 	return i, err
 }
@@ -107,7 +125,7 @@ UPDATE google.connection SET
     organisation_name = COALESCE($9, organisation_name),
     last_checked_at = $10::timestamptz
 WHERE id = 1 AND version = $11
-RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id
+RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus
 `
 
 type SetConnectionTestParams struct {
@@ -162,6 +180,104 @@ func (q *Queries) SetConnectionTest(ctx context.Context, arg SetConnectionTestPa
 		&i.Version,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.AddressDomain,
+		&i.AddressPattern,
+		&i.OrgUnitPath,
+		&i.PassLifetimeDays,
+		&i.PassDelivery,
+		&i.LeaverRemoveLicences,
+		&i.LeaverRemoveGroups,
+		&i.LeaverSignOut,
+		&i.Skus,
+	)
+	return i, err
+}
+
+const setSkus = `-- name: SetSkus :exec
+UPDATE google.connection SET skus = $1 WHERE id = 1
+`
+
+// SetSkus caches the licences the organisation holds, which the licences
+// trait is declared from with no network. It leaves version alone: a read
+// of the licences never turns an open form into a 412.
+func (q *Queries) SetSkus(ctx context.Context, skus []byte) error {
+	_, err := q.db.Exec(ctx, setSkus, skus)
+	return err
+}
+
+const updateAccountRules = `-- name: UpdateAccountRules :one
+UPDATE google.connection SET
+    address_domain = $1,
+    address_pattern = $2,
+    org_unit_path = $3,
+    pass_lifetime_days = $4,
+    pass_delivery = $5,
+    leaver_remove_licences = $6,
+    leaver_remove_groups = $7,
+    leaver_sign_out = $8,
+    version = version + 1,
+    updated_at = $9::timestamptz,
+    updated_by_user_id = $10
+WHERE id = 1
+RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus
+`
+
+type UpdateAccountRulesParams struct {
+	AddressDomain        *string
+	AddressPattern       string
+	OrgUnitPath          string
+	PassLifetimeDays     int32
+	PassDelivery         string
+	LeaverRemoveLicences bool
+	LeaverRemoveGroups   string
+	LeaverSignOut        bool
+	Now                  time.Time
+	UpdatedByUserID      *uuid.UUID
+}
+
+// UpdateAccountRules sets the account rules (Google Workspace design G17,
+// G19) and moves version on.
+func (q *Queries) UpdateAccountRules(ctx context.Context, arg UpdateAccountRulesParams) (GoogleConnection, error) {
+	row := q.db.QueryRow(ctx, updateAccountRules,
+		arg.AddressDomain,
+		arg.AddressPattern,
+		arg.OrgUnitPath,
+		arg.PassLifetimeDays,
+		arg.PassDelivery,
+		arg.LeaverRemoveLicences,
+		arg.LeaverRemoveGroups,
+		arg.LeaverSignOut,
+		arg.Now,
+		arg.UpdatedByUserID,
+	)
+	var i GoogleConnection
+	err := row.Scan(
+		&i.ID,
+		&i.CredentialKind,
+		&i.CustomerID,
+		&i.PrimaryDomain,
+		&i.Domains,
+		&i.OrganisationName,
+		&i.AdminSubject,
+		&i.OauthClientID,
+		&i.ScopesGranted,
+		&i.ScopesMissing,
+		&i.ScopesUnexpected,
+		&i.Status,
+		&i.StatusReason,
+		&i.LastCheckedAt,
+		&i.Version,
+		&i.UpdatedAt,
+		&i.UpdatedByUserID,
+		&i.AddressDomain,
+		&i.AddressPattern,
+		&i.OrgUnitPath,
+		&i.PassLifetimeDays,
+		&i.PassDelivery,
+		&i.LeaverRemoveLicences,
+		&i.LeaverRemoveGroups,
+		&i.LeaverSignOut,
+		&i.Skus,
 	)
 	return i, err
 }
@@ -180,7 +296,7 @@ UPDATE google.connection SET
     updated_at = $4::timestamptz,
     updated_by_user_id = $5
 WHERE id = 1
-RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id
+RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus
 `
 
 type UpdateConnectionSettingsParams struct {
@@ -221,6 +337,15 @@ func (q *Queries) UpdateConnectionSettings(ctx context.Context, arg UpdateConnec
 		&i.Version,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.AddressDomain,
+		&i.AddressPattern,
+		&i.OrgUnitPath,
+		&i.PassLifetimeDays,
+		&i.PassDelivery,
+		&i.LeaverRemoveLicences,
+		&i.LeaverRemoveGroups,
+		&i.LeaverSignOut,
+		&i.Skus,
 	)
 	return i, err
 }
@@ -232,7 +357,7 @@ UPDATE google.connection SET
     updated_at = $2::timestamptz,
     updated_by_user_id = $3
 WHERE id = 1
-RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id
+RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus
 `
 
 type UpdateOAuthClientParams struct {
@@ -263,6 +388,15 @@ func (q *Queries) UpdateOAuthClient(ctx context.Context, arg UpdateOAuthClientPa
 		&i.Version,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.AddressDomain,
+		&i.AddressPattern,
+		&i.OrgUnitPath,
+		&i.PassLifetimeDays,
+		&i.PassDelivery,
+		&i.LeaverRemoveLicences,
+		&i.LeaverRemoveGroups,
+		&i.LeaverSignOut,
+		&i.Skus,
 	)
 	return i, err
 }

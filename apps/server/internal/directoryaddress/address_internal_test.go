@@ -225,3 +225,22 @@ func TestTemporaryPassword(t *testing.T) {
 		seen[p] = true
 	}
 }
+
+func TestReadablePassword(t *testing.T) {
+	t.Parallel()
+	for range 50 {
+		p, err := ReadablePassword()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(p) != 16 {
+			t.Fatalf("a password of %d characters", len(p))
+		}
+		if strings.ContainsAny(p, "0O1lI") {
+			t.Fatalf("a character easily mistaken: %q", p)
+		}
+		if !strings.ContainsAny(p, readableClasses[0]) || !strings.ContainsAny(p, readableClasses[1]) || !strings.ContainsAny(p, readableClasses[2]) {
+			t.Fatalf("a password missing a class: %q", p)
+		}
+	}
+}

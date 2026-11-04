@@ -49,8 +49,12 @@ const (
 	webSecret    = "GOCSPX-fake_client-secret_0123456789"
 )
 
-// everyScope is what delivery A asks the admin to delegate.
-var everyScope = []string{googletest.ScopeCustomer, googletest.ScopeDomains}
+// everyScope is what the module asks the admin to delegate: delivery A's
+// two scopes, then delivery B's four.
+var everyScope = []string{
+	googletest.ScopeCustomer, googletest.ScopeDomains,
+	googletest.ScopeUsers, googletest.ScopeGroups, googletest.ScopeGroupsSettings, googletest.ScopeLicensing,
+}
 
 // The service accounts, made once: a 2048-bit key takes a while.
 var (
