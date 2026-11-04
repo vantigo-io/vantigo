@@ -1108,6 +1108,7 @@ linters:
             - "**/internal/holidays/**"
             - "**/internal/config/**"
             - "**/internal/db/**"
+            - "**/internal/events/**"
             - "**/internal/fileimport/**"
             - "**/internal/health/**"
             - "**/internal/httpx/**"

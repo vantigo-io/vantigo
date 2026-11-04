@@ -69,7 +69,7 @@ func noteTxCommand(ctx context.Context, name string) {
 // its buyer snapshot are made from (D4, D10).
 func (s *server) customerProfile(ctx context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
 	noteContractCall(ctx, "Directory.BillingProfile")
-	return s.deps.Directory.BillingProfile(ctx, id)
+	return s.deps.Directory.BillingProfile(ctx, id, contracts.BillingProfileOptions{})
 }
 
 // projectEntries is the projects a draft's held work belongs to, read before

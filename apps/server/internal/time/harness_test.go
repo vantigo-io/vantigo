@@ -8,6 +8,7 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -559,7 +560,7 @@ func (f *fakeCustomers) CustomersByLegalID(ctx context.Context, _ string, _ []st
 	return map[string][]contracts.CustomerEntry{}, nil
 }
 
-func (f *fakeCustomers) BillingProfile(ctx context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
+func (f *fakeCustomers) BillingProfile(ctx context.Context, id int32, _ contracts.BillingProfileOptions) (*contracts.CustomerBillingProfile, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.locked.note(ctx, "BillingProfile")
@@ -610,7 +611,7 @@ func (c *fakeCatalog) ListPrice(ctx context.Context, variantID int32, currency s
 	if variantID != variantProjectManagerHour || !ok {
 		return nil, nil
 	}
-	return &contracts.Money{Amount: price, Currency: currency}, nil
+	return &contracts.Money{Amount: strconv.FormatFloat(price, 'f', 2, 64), Currency: currency}, nil
 }
 
 // The catalog methods Inventory reads; Time asks none.
@@ -626,7 +627,7 @@ func (c *fakeCatalog) LookupSKUs(context.Context, []string) (map[string][]contra
 	return nil, nil
 }
 
-func (c *fakeCatalog) SearchVariants(context.Context, string, int) ([]contracts.VariantEntry, error) {
+func (c *fakeCatalog) SearchVariants(context.Context, string, contracts.VariantSearch) ([]contracts.VariantEntry, error) {
 	return nil, nil
 }
 

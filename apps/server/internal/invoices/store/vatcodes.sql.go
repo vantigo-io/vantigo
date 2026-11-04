@@ -334,6 +334,66 @@ func (q *Queries) VatCodeRates(ctx context.Context, vatCodeID int32) ([]Invoices
 	return items, nil
 }
 
+const vatCodesForTaxCategories = `-- name: VatCodesForTaxCategories :many
+SELECT m.tax_category_id, c.id, c.code, c.name, c.saf_t_code, c.ehf_category, r.rate_percent
+FROM invoices.tax_category_vat_codes m
+JOIN invoices.vat_codes c ON c.id = m.vat_code_id
+JOIN invoices.vat_code_rates r ON r.vat_code_id = c.id
+WHERE m.tax_category_id = ANY($1::int[])
+  AND c.active
+  AND r.valid_from <= $2::date
+  AND (r.valid_to IS NULL OR r.valid_to >= $2::date)
+ORDER BY m.tax_category_id
+`
+
+type VatCodesForTaxCategoriesParams struct {
+	TaxCategoryIds []int32
+	Day            pgtype.Date
+}
+
+type VatCodesForTaxCategoriesRow struct {
+	TaxCategoryID int32
+	ID            int32
+	Code          string
+	Name          string
+	SafTCode      string
+	EhfCategory   string
+	RatePercent   pgtype.Numeric
+}
+
+// VatCodesForTaxCategories is contracts.SalesTax.ForTaxCategories (orders
+// design O7, O8): each of the given Products tax categories with the VAT code
+// it maps to and that code's rate on day. A category with no mapping, or
+// whose code is inactive or has no period covering day, is left out — there
+// is no default.
+func (q *Queries) VatCodesForTaxCategories(ctx context.Context, arg VatCodesForTaxCategoriesParams) ([]VatCodesForTaxCategoriesRow, error) {
+	rows, err := q.db.Query(ctx, vatCodesForTaxCategories, arg.TaxCategoryIds, arg.Day)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []VatCodesForTaxCategoriesRow
+	for rows.Next() {
+		var i VatCodesForTaxCategoriesRow
+		if err := rows.Scan(
+			&i.TaxCategoryID,
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.SafTCode,
+			&i.EhfCategory,
+			&i.RatePercent,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const vatCodesInForce = `-- name: VatCodesInForce :many
 SELECT c.id, c.code, c.name, c.saf_t_code, c.ehf_category, c.exemption_reason, r.rate_percent
 FROM invoices.vat_codes c

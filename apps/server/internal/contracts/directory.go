@@ -60,14 +60,19 @@ type ContactMatch struct {
 }
 
 // CustomerAddressEntry is one resolved address, embedded in
-// CustomerBillingProfile.InvoiceAddress: enough to print on a document,
-// never the address's own id or type — the profile has already picked which
-// one applies, and a consumer never needs to ask the directory for another.
+// CustomerBillingProfile.InvoiceAddress and listed in its DeliveryAddresses:
+// enough to print on a document, never the address's type — the profile has
+// already picked which ones apply.
+//
+// ID is the address's own id in a DeliveryAddresses entry, so a document's
+// chosen delivery address is found again on refresh (orders design O10), and
+// 0 on the resolved InvoiceAddress, which a consumer never asks for again.
 //
 // Country is an ISO 3166-1 alpha-2 code in lower case, as customers stores
 // it; a consumer compares it case-insensitively and prints it in whatever
 // case its own format wants.
 type CustomerAddressEntry struct {
+	ID                                                     int32
 	Label, Line1, Line2, PostalCode, City, Region, Country string
 }
 
@@ -131,6 +136,33 @@ type CustomerBillingProfile struct {
 	// tier, so nil means this customer decided nothing, and a consumer pricing
 	// hours (Time's rate chain) falls through to its next step.
 	DefaultBillRate *float64
+	// DeliveryAddresses are the customer's delivery addresses, the primary
+	// one first, then the others, each with its ID (orders design O10); empty
+	// when the customer has none. Filled only when the caller asks
+	// (BillingProfileOptions.WithDelivery), nil otherwise.
+	DeliveryAddresses []CustomerAddressEntry
+	// Contacts are the customer's contacts, archived ones left out (orders
+	// design O10). Filled only when the caller asks
+	// (BillingProfileOptions.WithContacts), nil otherwise.
+	Contacts []CustomerContactEntry
+}
+
+// CustomerContactEntry is one contact of a customer, as
+// CustomerBillingProfile.Contacts lists it: enough to name the buyer's
+// contact on a document. Email and Phone are "" when the contact has none;
+// Roles are the contact's roles on this customer, empty when it has none.
+type CustomerContactEntry struct {
+	ID                 int32
+	Name, Email, Phone string
+	Roles              []string
+}
+
+// BillingProfileOptions are what a BillingProfile caller asks for beyond the
+// profile itself (orders design O10), so a caller that needs neither — every
+// invoice — pays nothing for them.
+type BillingProfileOptions struct {
+	WithDelivery bool
+	WithContacts bool
 }
 
 // CustomerDirectory is the one sanctioned way a module reads another
@@ -217,6 +249,6 @@ type CustomerDirectory interface {
 	// BillingProfile is what an invoice needs to know about a customer, and
 	// the default bill rate Time's rate chain prices hours with, already
 	// resolved (see the rules above). It returns (nil, nil) if id does not
-	// exist.
-	BillingProfile(ctx context.Context, id int32) (*CustomerBillingProfile, error)
+	// exist. opts says whether DeliveryAddresses and Contacts are filled.
+	BillingProfile(ctx context.Context, id int32, opts BillingProfileOptions) (*CustomerBillingProfile, error)
 }

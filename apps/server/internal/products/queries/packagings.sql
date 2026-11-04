@@ -88,7 +88,8 @@ SELECT EXISTS(SELECT 1 FROM products.variant_packagings WHERE barcode = ANY(@bar
 -- CatalogLookupPackagingCode is contracts.ProductCatalog.LookupCode's
 -- packaging half: a packaging whose barcode equals the code exactly, with
 -- its variant's catalog fields.
-SELECT k.id AS packaging_id, v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+SELECT k.id AS packaging_id, v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
+       p.tax_category_id, p.description
 FROM products.variant_packagings k
 JOIN products.product_variants v ON v.id = k.variant_id
 JOIN products.products p ON p.id = v.product_id

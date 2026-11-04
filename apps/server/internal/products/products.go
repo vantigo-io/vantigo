@@ -635,7 +635,7 @@ func (s *server) PutProductsById(ctx context.Context, req gen.PutProductsByIdReq
 			asked := make(map[int32]bool, len(variants))
 			for _, v := range variants {
 				asked[v.ID] = true
-				hold, err := s.variantHeld(ctx, tx, v.ID)
+				hold, err := s.variantHeld(ctx, tx, v.ID, contracts.VariantHoldTypeChange)
 				if err != nil {
 					return err
 				}
@@ -656,7 +656,7 @@ func (s *server) PutProductsById(ctx context.Context, req gen.PutProductsByIdReq
 				if asked[v.ID] {
 					continue
 				}
-				hold, err := s.variantHeld(ctx, tx, v.ID)
+				hold, err := s.variantHeld(ctx, tx, v.ID, contracts.VariantHoldTypeChange)
 				if err != nil {
 					return err
 				}
@@ -697,6 +697,12 @@ var errRefusedProductHasStock = errors.New("products: product has stock")
 // productHasStock is the 409 refusing a change from Goods to Service while a
 // variant is held (inventory design §9).
 func productHasStock(sku string, hold *contracts.VariantHold, unit string) gen.PutProductsByIdResponseObject {
+	if hold.Kind == contracts.VariantHoldKindOpenDocuments {
+		return gen.PutProductsById409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
+			"Product is on open documents",
+			fmt.Sprintf("Variant %s is on %s. Finish or cancel them before you make the product a service.", sku, documentsText(hold)),
+			http.StatusConflict))
+	}
 	return gen.PutProductsById409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 		"Product has stock",
 		fmt.Sprintf("Variant %s still has %s. Move the stock or adjust it to zero before you make the product a service.", sku, holdText(hold, unit)),

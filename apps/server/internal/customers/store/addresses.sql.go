@@ -88,6 +88,56 @@ func (q *Queries) DeleteCustomerAddress(ctx context.Context, arg DeleteCustomerA
 	return err
 }
 
+const directoryDeliveryAddresses = `-- name: DirectoryDeliveryAddresses :many
+SELECT id, label, line1, line2, postal_code, city, region, country
+FROM customers.customer_addresses
+WHERE customer_id = $1 AND type = 'delivery'
+ORDER BY is_primary DESC, id
+`
+
+type DirectoryDeliveryAddressesRow struct {
+	ID         int32
+	Label      *string
+	Line1      string
+	Line2      *string
+	PostalCode *string
+	City       *string
+	Region     *string
+	Country    string
+}
+
+// DirectoryDeliveryAddresses is contracts.CustomerDirectory.BillingProfile's
+// delivery addresses, read only when the caller asks (orders design O10): the
+// primary one first, then the others by id, each with its id.
+func (q *Queries) DirectoryDeliveryAddresses(ctx context.Context, customerID int32) ([]DirectoryDeliveryAddressesRow, error) {
+	rows, err := q.db.Query(ctx, directoryDeliveryAddresses, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DirectoryDeliveryAddressesRow
+	for rows.Next() {
+		var i DirectoryDeliveryAddressesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Label,
+			&i.Line1,
+			&i.Line2,
+			&i.PostalCode,
+			&i.City,
+			&i.Region,
+			&i.Country,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const directoryInvoiceAddress = `-- name: DirectoryInvoiceAddress :one
 SELECT label, line1, line2, postal_code, city, region, country
 FROM customers.customer_addresses

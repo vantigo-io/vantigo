@@ -73,14 +73,37 @@ type RepointedReferences struct {
 //   - It runs whether or not its module is enabled: every schema is migrated
 //     whatever MODULES says, and stock in the schema is still stock.
 type VariantReferenceHolder interface {
-	// VariantHeld answers what the holder keeps of the variant, nil when it
-	// keeps nothing that should stop the write.
-	VariantHeld(ctx context.Context, tx pgx.Tx, variantID int32) (*VariantHold, error)
+	// VariantHeld answers what the holder keeps of the variant that should
+	// stop the write purpose names, nil when it keeps nothing that should.
+	// A holder may answer for one purpose and not the other: open orders
+	// stop a delete, never a change to Service (orders design O30).
+	VariantHeld(ctx context.Context, tx pgx.Tx, variantID int32, purpose VariantHoldPurpose) (*VariantHold, error)
 }
 
-// VariantHold is what a holder keeps of a variant: a quantity in the
-// variant's own unit, as a decimal, and the number of places it lies in.
+// VariantHoldPurpose is the write Products asks a VariantReferenceHolder
+// about.
+type VariantHoldPurpose string
+
+const (
+	// VariantHoldDelete is the variant's delete.
+	VariantHoldDelete VariantHoldPurpose = "delete"
+	// VariantHoldTypeChange is its product's change from Goods to Service.
+	VariantHoldTypeChange VariantHoldPurpose = "type_change"
+)
+
+// The kinds of VariantHold.
+const (
+	VariantHoldKindStock         = "stock"
+	VariantHoldKindOpenDocuments = "open_documents"
+)
+
+// VariantHold is what a holder keeps of a variant. Kind says which: "stock"
+// is a quantity in the variant's own unit, as a decimal, and the number of
+// places it lies in; "open_documents" is the number of open documents
+// (quotes, orders, subscriptions) that name it (orders design O30).
 type VariantHold struct {
+	Kind      string
 	Quantity  string
 	Locations int
+	Documents int
 }

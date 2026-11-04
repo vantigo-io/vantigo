@@ -54,7 +54,7 @@ func (*countingDirectory) CustomersByLegalID(context.Context, string, []string) 
 	return map[string][]contracts.CustomerEntry{}, nil
 }
 
-func (d *countingDirectory) BillingProfile(context.Context, int32) (*contracts.CustomerBillingProfile, error) {
+func (d *countingDirectory) BillingProfile(context.Context, int32, contracts.BillingProfileOptions) (*contracts.CustomerBillingProfile, error) {
 	return nil, nil
 }
 

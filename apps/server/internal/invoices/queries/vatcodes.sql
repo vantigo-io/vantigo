@@ -88,3 +88,19 @@ FROM invoices.vat_codes c
 LEFT JOIN invoices.vat_code_rates r
     ON r.vat_code_id = c.id AND r.valid_from <= @day::date AND (r.valid_to IS NULL OR r.valid_to >= @day::date)
 ORDER BY c.id;
+
+-- name: VatCodesForTaxCategories :many
+-- VatCodesForTaxCategories is contracts.SalesTax.ForTaxCategories (orders
+-- design O7, O8): each of the given Products tax categories with the VAT code
+-- it maps to and that code's rate on day. A category with no mapping, or
+-- whose code is inactive or has no period covering day, is left out — there
+-- is no default.
+SELECT m.tax_category_id, c.id, c.code, c.name, c.saf_t_code, c.ehf_category, r.rate_percent
+FROM invoices.tax_category_vat_codes m
+JOIN invoices.vat_codes c ON c.id = m.vat_code_id
+JOIN invoices.vat_code_rates r ON r.vat_code_id = c.id
+WHERE m.tax_category_id = ANY(@tax_category_ids::int[])
+  AND c.active
+  AND r.valid_from <= @day::date
+  AND (r.valid_to IS NULL OR r.valid_to >= @day::date)
+ORDER BY m.tax_category_id;

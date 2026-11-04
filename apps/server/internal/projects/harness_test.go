@@ -11,6 +11,7 @@ import (
 	"runtime/debug"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -250,7 +251,7 @@ func (fakeDirectory) CustomersByLegalID(context.Context, string, []string) (map[
 	return map[string][]contracts.CustomerEntry{}, nil
 }
 
-func (fakeDirectory) BillingProfile(context.Context, int32) (*contracts.CustomerBillingProfile, error) {
+func (fakeDirectory) BillingProfile(context.Context, int32, contracts.BillingProfileOptions) (*contracts.CustomerBillingProfile, error) {
 	return nil, nil
 }
 
@@ -372,7 +373,7 @@ func (c *fakeCatalog) ListPrice(_ context.Context, variantID int32, currency str
 	if !ok || currency != catalogCurrency {
 		return nil, nil
 	}
-	return &contracts.Money{Amount: price, Currency: currency}, nil
+	return &contracts.Money{Amount: strconv.FormatFloat(price, 'f', 2, 64), Currency: currency}, nil
 }
 
 // The catalog methods Inventory reads; Projects asks none.
@@ -388,7 +389,7 @@ func (*fakeCatalog) LookupSKUs(context.Context, []string) (map[string][]contract
 	return nil, nil
 }
 
-func (*fakeCatalog) SearchVariants(context.Context, string, int) ([]contracts.VariantEntry, error) {
+func (*fakeCatalog) SearchVariants(context.Context, string, contracts.VariantSearch) ([]contracts.VariantEntry, error) {
 	return nil, nil
 }
 

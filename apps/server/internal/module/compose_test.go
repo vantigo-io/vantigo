@@ -719,7 +719,7 @@ func (*fakeDirectory) CustomersByLegalID(context.Context, string, []string) (map
 	return map[string][]contracts.CustomerEntry{}, nil
 }
 
-func (*fakeDirectory) BillingProfile(context.Context, int32) (*contracts.CustomerBillingProfile, error) {
+func (*fakeDirectory) BillingProfile(context.Context, int32, contracts.BillingProfileOptions) (*contracts.CustomerBillingProfile, error) {
 	return nil, nil
 }
 
@@ -921,7 +921,7 @@ func (*fakeProductCatalog) LookupSKUs(context.Context, []string) (map[string][]c
 	return nil, nil
 }
 
-func (*fakeProductCatalog) SearchVariants(context.Context, string, int) ([]contracts.VariantEntry, error) {
+func (*fakeProductCatalog) SearchVariants(context.Context, string, contracts.VariantSearch) ([]contracts.VariantEntry, error) {
 	return nil, nil
 }
 

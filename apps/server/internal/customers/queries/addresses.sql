@@ -178,6 +178,15 @@ WHERE customer_id = @customer_id AND is_primary AND type IN ('invoice', 'postal'
 ORDER BY CASE type WHEN 'invoice' THEN 0 WHEN 'postal' THEN 1 END
 LIMIT 1;
 
+-- name: DirectoryDeliveryAddresses :many
+-- DirectoryDeliveryAddresses is contracts.CustomerDirectory.BillingProfile's
+-- delivery addresses, read only when the caller asks (orders design O10): the
+-- primary one first, then the others by id, each with its id.
+SELECT id, label, line1, line2, postal_code, city, region, country
+FROM customers.customer_addresses
+WHERE customer_id = @customer_id AND type = 'delivery'
+ORDER BY is_primary DESC, id;
+
 -- name: DeleteCustomerAddress :exec
 -- DeleteCustomerAddress is DeleteCustomersByIdAddressesByAddressId's write,
 -- scoped to the customer the same way GetCustomerAddress is.

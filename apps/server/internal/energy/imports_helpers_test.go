@@ -164,7 +164,7 @@ func (*importDirectory) ContactsForCustomer(context.Context, int32) ([]contracts
 	return nil, nil
 }
 
-func (*importDirectory) BillingProfile(context.Context, int32) (*contracts.CustomerBillingProfile, error) {
+func (*importDirectory) BillingProfile(context.Context, int32, contracts.BillingProfileOptions) (*contracts.CustomerBillingProfile, error) {
 	return nil, nil
 }
 

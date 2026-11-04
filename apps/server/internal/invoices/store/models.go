@@ -582,6 +582,13 @@ type InvoicesSetting struct {
 	SendChannel             *uuid.UUID
 }
 
+type InvoicesTaxCategoryVatCode struct {
+	TaxCategoryID int32
+	VatCodeID     int32
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
 type InvoicesTimesheetRow struct {
 	ID          int64
 	InvoiceID   int64

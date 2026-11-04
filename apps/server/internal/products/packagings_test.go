@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/products"
 )
@@ -480,7 +481,7 @@ func TestCatalog_PackagingsOnEveryRead_AndLookupByPackagingBarcode(t *testing.T)
 	if err != nil || len(ofProduct) != 1 || len(ofProduct[0].Packagings) != 2 {
 		t.Errorf("VariantsOfProduct = %+v, %v", ofProduct, err)
 	}
-	found, err := catalog.SearchVariants(ctx, variant.Sku, 10)
+	found, err := catalog.SearchVariants(ctx, variant.Sku, contracts.VariantSearch{Types: []string{"Goods"}, Limit: 10, IncludeInactive: true})
 	if err != nil || len(found) != 1 || len(found[0].Packagings) != 2 {
 		t.Errorf("SearchVariants = %+v, %v", found, err)
 	}

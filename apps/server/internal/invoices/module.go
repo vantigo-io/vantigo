@@ -134,6 +134,7 @@ func Module() module.Module {
 		Mount:                mount,
 		Workers:              workers,
 		Receivables:          newCustomerReceivables,
+		SalesTax:             newSalesTax,
 		CustomerReferences:   newCustomerReferenceHolder,
 		CustomerPersonalData: newCustomerPersonalData,
 	}

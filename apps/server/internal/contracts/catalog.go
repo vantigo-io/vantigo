@@ -18,6 +18,12 @@ type VariantEntry struct {
 	Unit          string
 	ProductType   string // "Goods" | "Service"
 	ProductStatus string
+	// TaxCategoryID is the product's tax category in Products (orders design
+	// O6). The category's kind and rate are not here: VAT comes from
+	// Invoices' dated codes, through contracts.SalesTax.ForTaxCategories.
+	TaxCategoryID int32
+	// Description is the product's description, "" when it has none.
+	Description string
 	// Barcode is the variant's own GTIN, nil when it has none.
 	Barcode *string
 	// Packagings are the variant's packagings (inventory design I24), by sort
@@ -49,10 +55,22 @@ type CodeMatch struct {
 }
 
 // Money is an amount in a currency, the shape ListPrice answers a variant's
-// effective price in.
+// effective price in. Amount is exact decimal text ("1234.50"), the house
+// form WorkSource.Amount uses (orders design O6): no float carries money
+// across a new contract.
 type Money struct {
-	Amount   float64
+	Amount   string
 	Currency string
+}
+
+// VariantSearch is SearchVariants' filter (orders design O6). Types are the
+// product types answered ("Goods", "Service"), every type when empty; Limit
+// is the most variants answered; IncludeInactive also answers variants of
+// products that are not active.
+type VariantSearch struct {
+	Types           []string
+	Limit           int
+	IncludeInactive bool
 }
 
 // ProductCatalog is the one sanctioned way a module reads products' catalog
@@ -103,9 +121,11 @@ type ProductCatalog interface {
 	// equals it ignoring case, by id. An sku no variant has — or a blank
 	// one — is absent from the map, not an error. Barcodes are not matched.
 	LookupSKUs(ctx context.Context, skus []string) (map[string][]VariantEntry, error)
-	// SearchVariants answers at most limit variants of Goods products whose
-	// SKU, product name or barcode contains q, ignoring case, by SKU.
-	SearchVariants(ctx context.Context, q string, limit int) ([]VariantEntry, error)
+	// SearchVariants answers at most s.Limit variants of products of s.Types
+	// (every type when empty) whose SKU, product name or barcode contains q,
+	// ignoring case, by SKU — only of active products unless
+	// s.IncludeInactive.
+	SearchVariants(ctx context.Context, q string, s VariantSearch) ([]VariantEntry, error)
 	// LockVariants takes FOR SHARE on the variants' rows and their products'
 	// rows, in variant id order, inside tx, and answers the entries. An id
 	// that does not exist is absent from the answer. It never begins, commits

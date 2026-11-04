@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -568,13 +569,53 @@ func insertFullAddress(t *testing.T, h *modtest.Harness, customerID int32, addrT
 		RETURNING id`, customerID, addrType, isPrimary, h.Now())
 }
 
+// TestDirectory_BillingProfile_DeliveryAndContactsOnlyWhenAsked pins orders
+// design O10: the delivery addresses, primary first and each with its id, and
+// the contacts with the association's own e-mail and their roles, are filled
+// only for a caller that asks; the resolved invoice address carries id 0.
+func TestDirectory_BillingProfile_DeliveryAndContactsOnlyWhenAsked(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	ctx := context.Background()
+	id := insertCustomer(t, h, "Levering AS", "active")
+	insertFullAddress(t, h, id, "invoice", true)
+	other := insertFullAddress(t, h, id, "delivery", false)
+	primary := insertFullAddress(t, h, id, "delivery", true)
+	contact := insertContact(t, h, "Kari", "Nordmann", ptr("kari@example.com"))
+	associate(t, h, id, contact, ptr("kari.levering@example.com"))
+	h.Exec(t, `INSERT INTO customers.customer_contact_roles (customer_id, contact_id, role, is_primary, created_at)
+		VALUES ($1, $2, 'billing', true, $3)`, id, contact, h.Now())
+	dir := newDirectory(t, h)
+
+	plain, err := dir.BillingProfile(ctx, id, contracts.BillingProfileOptions{})
+	if err != nil || plain == nil || plain.DeliveryAddresses != nil || plain.Contacts != nil {
+		t.Fatalf("BillingProfile(no options) = %+v, %v, want neither list", plain, err)
+	}
+	if plain.InvoiceAddress == nil || plain.InvoiceAddress.ID != 0 {
+		t.Errorf("InvoiceAddress = %+v, want one with id 0", plain.InvoiceAddress)
+	}
+
+	got, err := dir.BillingProfile(ctx, id, contracts.BillingProfileOptions{WithDelivery: true, WithContacts: true})
+	if err != nil || got == nil {
+		t.Fatalf("BillingProfile(both) = %+v, %v", got, err)
+	}
+	if len(got.DeliveryAddresses) != 2 || got.DeliveryAddresses[0].ID != primary || got.DeliveryAddresses[1].ID != other ||
+		got.DeliveryAddresses[0].City != "Oslo" {
+		t.Errorf("DeliveryAddresses = %+v, want %d (primary) then %d", got.DeliveryAddresses, primary, other)
+	}
+	want := contracts.CustomerContactEntry{ID: contact, Name: "Kari Nordmann", Email: "kari.levering@example.com", Roles: []string{"billing"}}
+	if len(got.Contacts) != 1 || !reflect.DeepEqual(got.Contacts[0], want) {
+		t.Errorf("Contacts = %+v, want [%+v]", got.Contacts, want)
+	}
+}
+
 // TestDirectory_BillingProfile_UnknownIdIsNilWithoutAnError proves a missing
 // customer is (nil, nil), the same rule every other lookup here follows.
 func TestDirectory_BillingProfile_UnknownIdIsNilWithoutAnError(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 
-	got, err := newDirectory(t, h).BillingProfile(context.Background(), 999_999)
+	got, err := newDirectory(t, h).BillingProfile(context.Background(), 999_999, contracts.BillingProfileOptions{})
 	if got != nil || err != nil {
 		t.Errorf("BillingProfile(unknown) = %+v, %v, want nil, nil", got, err)
 	}
@@ -589,7 +630,7 @@ func TestDirectory_BillingProfile_ArchivedResolves(t *testing.T) {
 	h := newHarness(t)
 	id := insertCustomer(t, h, "Nedlagt Handel AS", "archived")
 
-	got, err := newDirectory(t, h).BillingProfile(context.Background(), id)
+	got, err := newDirectory(t, h).BillingProfile(context.Background(), id, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile: %v", err)
 	}
@@ -610,7 +651,7 @@ func TestDirectory_BillingProfile_CarriesStatusAndMergedInto(t *testing.T) {
 	ctx := context.Background()
 	for _, status := range []string{"active", "disabled", "archived"} {
 		id := insertCustomer(t, h, "Status "+status+" AS", status)
-		got, err := dir.BillingProfile(ctx, id)
+		got, err := dir.BillingProfile(ctx, id, contracts.BillingProfileOptions{})
 		if err != nil {
 			t.Fatalf("BillingProfile(%s): %v", status, err)
 		}
@@ -622,7 +663,7 @@ func TestDirectory_BillingProfile_CarriesStatusAndMergedInto(t *testing.T) {
 	survivor := insertCustomer(t, h, "Overlever AS", "active")
 	absorbed := insertCustomer(t, h, "Slått sammen AS", "active")
 	h.Exec(t, `UPDATE customers.customers SET status = 'archived', merged_into_customer_id = $1 WHERE id = $2`, survivor, absorbed)
-	got, err := dir.BillingProfile(ctx, absorbed)
+	got, err := dir.BillingProfile(ctx, absorbed, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile(merged): %v", err)
 	}
@@ -643,7 +684,7 @@ func TestDirectory_BillingProfile_DefaultBillRate_IsTheCustomersOwn(t *testing.T
 	h.Exec(t, `UPDATE customers.customers SET currency = 'NOK', default_bill_rate = 1250.50 WHERE id = $1`, priced)
 	unpriced := insertCustomer(t, h, "Uten Pris AS", "active")
 
-	got, err := dir.BillingProfile(context.Background(), priced)
+	got, err := dir.BillingProfile(context.Background(), priced, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile(priced): %v", err)
 	}
@@ -651,7 +692,7 @@ func TestDirectory_BillingProfile_DefaultBillRate_IsTheCustomersOwn(t *testing.T
 		t.Errorf("DefaultBillRate/Currency = %v/%q, want 1250.5 in NOK", got.DefaultBillRate, got.Currency)
 	}
 
-	got, err = dir.BillingProfile(context.Background(), unpriced)
+	got, err = dir.BillingProfile(context.Background(), unpriced, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile(unpriced): %v", err)
 	}
@@ -678,7 +719,7 @@ func TestDirectory_BillingProfile_InvoiceEmail_FallsBackToContactEmail(t *testin
 
 	dir := newDirectory(t, h)
 
-	got, err := dir.BillingProfile(context.Background(), withBoth)
+	got, err := dir.BillingProfile(context.Background(), withBoth, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile(withBoth): %v", err)
 	}
@@ -686,7 +727,7 @@ func TestDirectory_BillingProfile_InvoiceEmail_FallsBackToContactEmail(t *testin
 		t.Errorf("InvoiceEmail = %q, want the billing profile's own address, not the contact one", got.InvoiceEmail)
 	}
 
-	got, err = dir.BillingProfile(context.Background(), withOnlyContact)
+	got, err = dir.BillingProfile(context.Background(), withOnlyContact, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile(withOnlyContact): %v", err)
 	}
@@ -694,7 +735,7 @@ func TestDirectory_BillingProfile_InvoiceEmail_FallsBackToContactEmail(t *testin
 		t.Errorf("InvoiceEmail = %q, want the contact-info email as fallback", got.InvoiceEmail)
 	}
 
-	got, err = dir.BillingProfile(context.Background(), withNeither)
+	got, err = dir.BillingProfile(context.Background(), withNeither, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile(withNeither): %v", err)
 	}
@@ -718,7 +759,7 @@ func TestDirectory_BillingProfile_ReminderEmail_FallsBackToResolvedInvoiceEmail(
 
 	dir := newDirectory(t, h)
 
-	got, err := dir.BillingProfile(context.Background(), withOwnReminder)
+	got, err := dir.BillingProfile(context.Background(), withOwnReminder, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile(withOwnReminder): %v", err)
 	}
@@ -726,7 +767,7 @@ func TestDirectory_BillingProfile_ReminderEmail_FallsBackToResolvedInvoiceEmail(
 		t.Errorf("ReminderEmail = %q, want the billing profile's own reminder address", got.ReminderEmail)
 	}
 
-	got, err = dir.BillingProfile(context.Background(), fallsBack)
+	got, err = dir.BillingProfile(context.Background(), fallsBack, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile(fallsBack): %v", err)
 	}
@@ -746,7 +787,7 @@ func TestDirectory_BillingProfile_PeppolID_ExplicitWinsOverDerived(t *testing.T)
 	setLegalIdentity(t, h, id, "no", "923609016", "Eksplisitt Peppol AS")
 	setBillingFields(t, h, id, nil, nil, ptr("9908:999999999"))
 
-	got, err := newDirectory(t, h).BillingProfile(context.Background(), id)
+	got, err := newDirectory(t, h).BillingProfile(context.Background(), id, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile: %v", err)
 	}
@@ -769,7 +810,7 @@ func TestDirectory_BillingProfile_PeppolID_DerivedForNorwegianBusinessIdentity(t
 	setCustomerType(t, h, derived, "business")
 	setLegalIdentity(t, h, derived, "no", "974760673", "Avledet Peppol AS")
 
-	got, err := dir.BillingProfile(context.Background(), derived)
+	got, err := dir.BillingProfile(context.Background(), derived, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile(derived): %v", err)
 	}
@@ -780,7 +821,7 @@ func TestDirectory_BillingProfile_PeppolID_DerivedForNorwegianBusinessIdentity(t
 	notNorwegian := insertCustomer(t, h, "Utenlandsk AS", "active")
 	setCustomerType(t, h, notNorwegian, "business")
 	setLegalIdentity(t, h, notNorwegian, "se", "5560360793", "Utenlandsk AS")
-	got, err = dir.BillingProfile(context.Background(), notNorwegian)
+	got, err = dir.BillingProfile(context.Background(), notNorwegian, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile(notNorwegian): %v", err)
 	}
@@ -791,7 +832,7 @@ func TestDirectory_BillingProfile_PeppolID_DerivedForNorwegianBusinessIdentity(t
 	person := insertCustomer(t, h, "Ola Privatperson", "active")
 	setCustomerType(t, h, person, "person")
 	setLegalIdentity(t, h, person, "no", "01019012345", "Ola Privatperson")
-	got, err = dir.BillingProfile(context.Background(), person)
+	got, err = dir.BillingProfile(context.Background(), person, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile(person): %v", err)
 	}
@@ -801,7 +842,7 @@ func TestDirectory_BillingProfile_PeppolID_DerivedForNorwegianBusinessIdentity(t
 
 	noIdentity := insertCustomer(t, h, "Uten Identitet AS", "active")
 	setCustomerType(t, h, noIdentity, "business")
-	got, err = dir.BillingProfile(context.Background(), noIdentity)
+	got, err = dir.BillingProfile(context.Background(), noIdentity, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile(noIdentity): %v", err)
 	}
@@ -823,7 +864,7 @@ func TestDirectory_BillingProfile_InvoiceAddress_PrefersPrimaryInvoiceOverPostal
 	insertAddress(t, h, both, "postal", true)
 	insertFullAddress(t, h, both, "invoice", true)
 
-	got, err := dir.BillingProfile(context.Background(), both)
+	got, err := dir.BillingProfile(context.Background(), both, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile(both): %v", err)
 	}
@@ -833,7 +874,7 @@ func TestDirectory_BillingProfile_InvoiceAddress_PrefersPrimaryInvoiceOverPostal
 
 	postalOnly := insertCustomer(t, h, "Kun Postadresse AS", "active")
 	insertFullAddress(t, h, postalOnly, "postal", true)
-	got, err = dir.BillingProfile(context.Background(), postalOnly)
+	got, err = dir.BillingProfile(context.Background(), postalOnly, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile(postalOnly): %v", err)
 	}
@@ -843,7 +884,7 @@ func TestDirectory_BillingProfile_InvoiceAddress_PrefersPrimaryInvoiceOverPostal
 
 	neither := insertCustomer(t, h, "Ingen Adresse AS", "active")
 	insertAddress(t, h, neither, "delivery", true)
-	got, err = dir.BillingProfile(context.Background(), neither)
+	got, err = dir.BillingProfile(context.Background(), neither, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile(neither): %v", err)
 	}
@@ -870,7 +911,7 @@ func TestDirectory_BillingProfile_MalformedLegacyLegalId_DerivesNothing_AndEHFWa
 	setCustomerType(t, h, created.Id, "business")
 	setLegalIdentity(t, h, created.Id, "no", "NO 923 609 016 MVA", "Legacy Malformed Id AS")
 
-	got, err := newDirectory(t, h).BillingProfile(context.Background(), created.Id)
+	got, err := newDirectory(t, h).BillingProfile(context.Background(), created.Id, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile: %v", err)
 	}
@@ -907,7 +948,7 @@ func TestDirectory_BillingProfile_NullLegalTypeLegacyRow_BothFunctionsAgree(t *t
 	h.Exec(t, `UPDATE customers.customers SET legal_country = $2, legal_id = $3, legal_name = $4, legal_source = 'manual', legal_type = NULL WHERE id = $1`,
 		created.Id, "no", "974760673", "Legacy Null Type AS")
 
-	got, err := newDirectory(t, h).BillingProfile(context.Background(), created.Id)
+	got, err := newDirectory(t, h).BillingProfile(context.Background(), created.Id, contracts.BillingProfileOptions{})
 	if err != nil {
 		t.Fatalf("BillingProfile: %v", err)
 	}
@@ -948,14 +989,14 @@ func TestDirectory_BillingProfileAndCustomersSeeTheGroup(t *testing.T) {
 	}
 
 	dir := newDirectory(t, h)
-	profile, err := dir.BillingProfile(context.Background(), inherits.Id)
+	profile, err := dir.BillingProfile(context.Background(), inherits.Id, contracts.BillingProfileOptions{})
 	if err != nil || profile == nil {
 		t.Fatalf("BillingProfile(%d) = %v, %v", inherits.Id, profile, err)
 	}
 	if profile.PaymentTermsDays == nil || *profile.PaymentTermsDays != 30 {
 		t.Errorf("PaymentTermsDays = %v, want 30 from the group", profile.PaymentTermsDays)
 	}
-	own, err := dir.BillingProfile(context.Background(), decides.Id)
+	own, err := dir.BillingProfile(context.Background(), decides.Id, contracts.BillingProfileOptions{})
 	if err != nil || own == nil {
 		t.Fatalf("BillingProfile(%d) = %v, %v", decides.Id, own, err)
 	}

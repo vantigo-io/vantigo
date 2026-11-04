@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -334,7 +335,14 @@ func (s *server) linePricing(ctx context.Context, project store.ProjectsProject,
 		return pricing, false, nil
 	}
 	if price != nil {
-		pricing.ListPrice = &gen.BillingLineListPrice{Amount: price.Amount, Currency: price.Currency}
+		// The catalog answers exact decimal text; the response's amount is a
+		// JSON number, which a two-decimal price survives exactly.
+		amount, err := strconv.ParseFloat(price.Amount, 64)
+		if err != nil {
+			outage.note(fmt.Errorf("projects: read a variant's list price %q: %w", price.Amount, err))
+			return pricing, false, nil
+		}
+		pricing.ListPrice = &gen.BillingLineListPrice{Amount: amount, Currency: price.Currency}
 	}
 	return pricing, true, nil
 }
