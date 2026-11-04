@@ -439,8 +439,147 @@ Sources:
 
 ### 2.9 Carriers — Bring, PostNord, Helthjem, nShift, Porterbuddy
 
-*Being researched (2026-11-05). This section is filled from that pass before delivery D's
-plan is written.*
+Read 2026-11-05 from the carriers' developer documentation.
+
+**Bring** (<https://developer.bring.com/api/>)
+- **Authentication.**
+  - Three headers: `X-Mybring-API-Uid` (the Mybring login), `X-Mybring-API-Key` and
+    `X-Bring-Client-URL`.
+  - The key is a user's, not a company's. Customer numbers hang on that user.
+  - Prices need the user's *financial* role on the customer number.
+  - Every call must come from the backend: since 2024, Bring refuses a browser call
+    with a customer number.
+  - Do not pin certificates; Bring moved to Let's Encrypt in October 2025.
+- **Test mode.**
+  - Test customer numbers: 5 (parcel Norway), 6 (Nordic) and 7 (cargo), requested
+    from Bring.
+  - On a real customer number, the header `X-Bring-Test-Indicator: true` marks a
+    test. From 12 October 2026 the header is the only way.
+  - **Real phone numbers and e-mails still get notices in test mode**, so tests use
+    dummy contacts.
+- **Shipping Guide API v2** (`POST /shippingguide/api/v2/products`).
+  - Inputs: postal codes, date, packages in grams and cm, and products with a
+    customer number.
+  - It answers `listPrice`, and `netPrice` when the user has financial rights, each
+    with and without VAT. `netPrice` is an estimate, not the invoice.
+  - 120 requests per second.
+- **Booking API** (`POST /booking/api/create`).
+  - The consignment carries a `correlationId`, the parties, the product and its
+    additional services, and packages **in kg**.
+  - It answers a consignment number, a package number per package, and links to the
+    labels (PDF, behind a redirect), the waybill and tracking.
+  - **Labels are PDF only.** ZPL exists only for 3570 with an RFID printer.
+  - **There is no cancel endpoint** and **no idempotency key**.
+    - Modify Delivery can stop a shipment in transit, which is a return, not a
+      cancel.
+    - An unused label appears not to be charged: billing follows hand-in (inferred,
+      unverified).
+  - 18 requests per second.
+  - The API changes in place, with no v2, so the adapter tolerates unknown fields.
+- **Domestic products:**
+
+  | Code | Product | Segment |
+  | --- | --- | --- |
+  | 5800 | Pakke til hentested | B2C |
+  | 5600 | Pakke levert hjem | B2C |
+  | 3584 | Pakke i postkassen | B2C |
+  | 5801 | Pakkeboks | B2C |
+  | 5000 | Pakke til bedrift | B2B |
+  | 4850 | Bedrift ekspress | B2B |
+  | 5100 / 5300 / 5400 | Stykkgods, partigods, pall | Cargo |
+  | 9300 / 9350 / 9000 | Returns | — |
+
+  - Products are withdrawn yearly (9650 in 2025, 0335 in 2026), so the list is data,
+    not constants.
+- **Tracking API** (`/tracking/api/v2/tracking.json?q=`).
+  - It takes a consignment number, a package number **or a reference**.
+  - Statuses: PRE_NOTIFIED … IN_TRANSIT … READY_FOR_PICKUP … DELIVERED, DEVIATION,
+    RETURN, DELIVERED_SENDER.
+- **Event Cast webhooks.**
+  - Per customer number (365 days) or per tracking number (30 days).
+  - **Unsigned**: a secret header is configured.
+  - Few retries, and no history.
+- **Pickup Point API:** by postal code and street. It answers opening hours, manned or
+  locker, and maximum dimensions.
+- **Invoice and Reports APIs:** the invoiced cost per shipment comes from the reports.
+  That is the later freight-invoice check.
+
+**PostNord Norway** (<https://developer.postnord.no>)
+- Two portals: the Norwegian one with client id and secret, and the group one with an
+  API key and a separate sandbox key.
+- `transport-booking-v2` offers products with prices, validation, booking with a
+  label (ZPL or PDF), and pickups.
+- PostNord certifies an integration before production. There is no fee per label.
+- Product codes: 19 (service point), 92 (locker), 17 (home), 18 (business), 52 and 83.
+  Home delivery was reshaped in 2026.
+
+**Helthjem** (<https://developer.helthjem.no>; public docs of good quality)
+- **Authentication:** OAuth2 client credentials, with a 23-hour token. Preprod
+  credentials come from Helthjem.
+- **Coverage:** a check per address.
+- **Booking:**
+  - an ordered list of transport solutions with fallback (1 home, 62 service point),
+    and `freightProductId` says which one was used;
+  - an **`idempotency-key` header**;
+  - a tracking reference per item.
+- **Labels:** PDF, PNG, SVG or **ZPL**, chosen by `Accept`.
+- **Tracking:** polling only, with numeric event codes.
+- Cancel is mentioned but not documented. No rate API: prices come from the agreement.
+
+**Porterbuddy** (<https://developer.porterbuddy.com>; owned by Instabee)
+- **Coverage:** evening home delivery (17:30–21:30, two windows, every day) in greater
+  Oslo, Vestfold, Østfold, Bergen, Stavanger, Trondheim and Kristiansand, about
+  2.5 million people.
+  - Same evening in Oslo for an order before 12:00, otherwise next evening.
+  - Coverage is decided per address by the availability call.
+- **Access:** an `x-api-key` header. The test host is `api.porterbuddy-test.com`.
+  Production is by invitation.
+- **`POST /availability` is the rate call.**
+  - It answers delivery windows, each with start, end, product, **price in øre**,
+    `expiresAt` and a **token**.
+  - The answer is empty when the address is not covered or capacity is full.
+- **`POST /order`:**
+  - takes a window token, a consolidated window, or `bestAvailableWindow`;
+  - takes verification options (PIN, ID, age);
+  - takes an **`Idempotency-Key` header**.
+- **Labels:** PDF, PNG or **ZPL**, through tokenised, unauthenticated URLs. Porterbuddy
+  advises not to store them.
+- **Tracking:** polling, or a per-order webhook **signed with HMAC-SHA256** (keyed
+  with the API key). No cancel endpoint is documented.
+- **Through nShift:** reachable via nShift Delivery and Ship, but slot choice usually
+  goes directly to Porterbuddy.
+
+**nShift** (Delivery, Ship, Checkout, Track, Go)
+- **What it is:** one label and print flow for 380+ carriers in Norway. The customer
+  keeps their own carrier agreements.
+- **Price:** a paid subscription per tenant, quote-based, from about €31 to €54 a
+  month plus volume tiers. Onboarding is through sales or partners.
+- **For a platform,** nShift Go (a headless API with self-service activation of
+  carriers) is the likely fit. Partner terms need confirming.
+
+**What one interface must cover:**
+- **Rates:** options with a price excluding VAT plus the VAT, an *estimate* flag, an
+  expected date **or a time window**, an expiry and an opaque token. Helthjem has no
+  rate call, so it answers with none.
+- **Booking:**
+  - one consignment and many packages, or one order id (Porterbuddy);
+  - the product actually booked (Helthjem's fallback);
+  - an idempotency key where the carrier takes one. Where it does not (Bring), a
+    reference to look up before a retry.
+- **Labels:** in a format per carrier capability, PDF everywhere and ZPL where offered.
+- **Tracking:** polling everywhere, plus an optional parsed webhook. Bring's has a
+  secret header; Porterbuddy's an HMAC.
+- **Cancel:** three outcomes, not one. *cancelled*, *not supported* (void locally) or
+  *too late*.
+- **Optional capabilities:** pickup points, a coverage check and delivery windows,
+  declared through `Capabilities()`, not discovered by errors.
+- **Units:** grams and millimetres inside. Adapters convert, since Bring's booking
+  takes kg.
+
+**Recommendation:** Bring direct first. It is public, self-serve, and tenants already
+hold Mybring credentials. Then Helthjem, then Porterbuddy (which adds the delivery
+window). nShift comes after as an aggregator adapter for tenants who already pay for
+it, with partner terms to settle.
 
 ## 3. Sales, purchasing, or both
 
