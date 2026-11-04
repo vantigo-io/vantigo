@@ -432,8 +432,8 @@ func TestChannelMailbox_RawAndMarks(t *testing.T) {
 	}
 
 	// The notices: none, v1 polls.
-	if err := f.p.Watch(ctx, gid, "inbox"); err != nil {
-		t.Error(err)
+	if err := f.p.Watch(ctx, gid, "inbox"); !errors.Is(err, contracts.ErrWatchUnsupported) {
+		t.Errorf("Watch: %v, want ErrWatchUnsupported", err)
 	}
 	if err := f.p.Unwatch(ctx, gid, "inbox"); err != nil {
 		t.Error(err)

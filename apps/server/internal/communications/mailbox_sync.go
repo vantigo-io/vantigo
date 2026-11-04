@@ -406,11 +406,16 @@ func (w *MailboxSyncWorker) cycle(ctx context.Context, c *syncCycle) error {
 	if page.Done {
 		next = now.Add(mailboxSyncEvery)
 		if w.notificationsActive() {
-			if werr := mailboxWatch(ctx, provider, c.mailbox, mailboxSyncFolder); werr != nil {
+			werr := mailboxWatch(ctx, provider, c.mailbox, mailboxSyncFolder)
+			switch {
+			case errors.Is(werr, contracts.ErrWatchUnsupported):
+				// The provider has no push (Google, Q7): the normal poll
+				// is the cadence, quietly.
+			case werr != nil:
 				code, _ := syncFailureCode(werr)
 				w.logger().Warn("mailbox sync could not watch the channel's mailbox; the 5-minute poll continues",
 					"worker", mailboxSyncWorkerName, "channel", c.channelID, "code", code)
-			} else {
+			default:
 				next = now.Add(mailboxSyncSafetyEvery)
 			}
 		}

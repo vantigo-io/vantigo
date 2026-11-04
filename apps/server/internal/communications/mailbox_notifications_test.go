@@ -3,9 +3,11 @@ package communications_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -34,6 +36,35 @@ func TestMailboxSync_NotificationsActiveWatchesAndSetsSafetyInterval(t *testing.
 	s = readSync(t, in.h, in.channelID)
 	if !s.nextSyncAt.Equal(in.h.Now().Add(5 * time.Minute)) {
 		t.Errorf("nextSyncAt when Watch fails = %v, want %v (now + 5m)", s.nextSyncAt, in.h.Now().Add(5*time.Minute))
+	}
+}
+
+// A provider with no push answers Watch ErrWatchUnsupported (Google, Q7):
+// the channel stays on the 5-minute poll, quietly — no warning — while
+// notifications are active; a provider whose Watch succeeds still goes to
+// the hour's safety interval.
+func TestMailboxSync_WatchUnsupportedKeepsTheNormalPoll(t *testing.T) {
+	t.Parallel()
+	in := newInbox(t, nil, nil, modtest.WithEnv("PUBLIC_BASE_URL", "https://vantigo.example"))
+	in.fake.FailWith("Watch", contracts.ErrWatchUnsupported)
+	in.sync(t)
+	s := readSync(t, in.h, in.channelID)
+	if !s.nextSyncAt.Equal(in.h.Now().Add(5 * time.Minute)) {
+		t.Errorf("nextSyncAt with no push = %v, want %v (now + 5m)", s.nextSyncAt, in.h.Now().Add(5*time.Minute))
+	}
+	if s.state == "failed" || s.errorCode != nil {
+		t.Errorf("sync = %s %v, want no failure", s.state, s.errorCode)
+	}
+	if strings.Contains(in.h.Logs(), "could not watch") {
+		t.Error("a provider with no push was logged as a failed watch")
+	}
+
+	// The same installation's other provider, whose Watch works: the hour.
+	in.h.Advance(5 * time.Minute)
+	in.fake.FailWith("Watch", nil)
+	in.sync(t)
+	if s = readSync(t, in.h, in.channelID); !s.nextSyncAt.Equal(in.h.Now().Add(time.Hour)) {
+		t.Errorf("nextSyncAt after a successful Watch = %v, want now + 1h", s.nextSyncAt)
 	}
 }
 
