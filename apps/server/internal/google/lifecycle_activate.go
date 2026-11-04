@@ -101,7 +101,7 @@ func (p *provisioner) activate(ctx context.Context, s session, actor contracts.A
 			// suspension is lifted without it, and HR is told.
 			delete(body, "password")
 			delete(body, "changePasswordAtNextLogin")
-			issue, password = false, ""
+			issue = false
 			reported = append(reported, contracts.ReportedPassNotAllowed)
 			err = nil
 			if len(body) > 0 {
