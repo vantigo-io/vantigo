@@ -1,6 +1,6 @@
 ---
 title: Platform packages
-description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam and its chat, the operations dispatcher the assistant calls the API through, the payments port with its Vipps MobilePay adapter, and the public-holiday calendar.
+description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam and its chat, the operations dispatcher the assistant calls the API through, the payments port with its Vipps MobilePay adapter, the public-holiday calendar, the image metadata stripper, and the address rule a directory provider makes an account's address by.
 sidebar:
   order: 5
 sources:
@@ -11,13 +11,14 @@ sources:
   - apps/server/internal/payments
   - apps/server/internal/holidays
   - apps/server/internal/imagemeta
+  - apps/server/internal/directoryaddress
 ---
 
 A module may import the platform but never another module (see
 [Module boundaries](/en/contributing/module-boundaries/)). This page describes the
 platform packages a module reaches for when it holds something it must not store in
 clear, when it sends a mail of its own, when it asks an AI model for something, when it takes a payment, when it counts days
-around the public holidays, and when it stores a picture people will see.
+around the public holidays, when it stores a picture people will see, and when it makes an address for an account in a directory.
 
 ## The secrets box
 
@@ -487,3 +488,22 @@ The pixels are never decoded, so a decompression bomb costs the caller nothing h
 judging the type and the dimensions is the caller's (`image.DecodeConfig`, which reads
 the header alone). The package imports the standard library only, and any module may
 import it.
+
+## The directory address rule
+
+`internal/directoryaddress` is the address a directory provider gives an account it
+creates: Microsoft Entra ID's user principal name and Google Workspace's primary email
+follow one rule, so a person's address is the same whichever directory the company
+uses.
+
+| Name | What it does |
+| --- | --- |
+| `Rules` | a directory's alphabet for a local part: the ASCII letters and digits and its `Specials`. `UPN` admits `'.-_!#^~` (Entra); `Mailbox` admits `'.-_` (Google). |
+| `Fold(s)` | the Norwegian letters and the few Latin letters NFD leaves whole replaced from a table (`ø` → `o`, `æ` → `ae`, `å` → `a`, `ß` → `ss`, …), then every other letter decomposed and its combining marks stripped; nothing dropped. |
+| `Rules.CleanName(s)` | a name folded with everything outside the alphabet dropped, the dot and the space included, so a part of a pattern never holds a dot of its own. |
+| `Rules.For(spec, pattern, domain, verified)` | the person's work email, lower-cased and folded, when its domain is one of `verified` and its local part is in the alphabet, tried once; else `pattern` — `given.family`, `g.family` or `given` — over the cleaned names at `domain`, at most 62 characters before a suffix, `user` when the names clean to nothing. `ErrNoDomain` when the work email cannot be used and `domain` is empty: which domain to use is the provider's choice. |
+| `Address.Attempt(n)` | the `n`-th address to try: the local part as it is, then with 2 to 99 appended when a pattern made it; none past 99, and none after the first for a work email. |
+| `TemporaryPassword()` | 32 random characters with an upper-case letter, a lower-case one, a digit and one of `!#%+-`: the password a create must carry and nobody uses. |
+
+The package is pure — no context, no network, no database — and any module may import
+it.
