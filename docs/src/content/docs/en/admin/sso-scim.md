@@ -249,6 +249,16 @@ Rotate the projected token through the platform; Vantigo does not cache it.
 
 ### Google Workspace
 
+With the Google Workspace module connected and tested
+([Google Workspace](/en/admin/google-workspace/)), its **Accounts** tab's **Sign-in**
+step is this card filled in for you: the provider Google, the authority, the Internal web
+client's client ID, and every verified domain of the organisation, read by the last test,
+under **Domains**. Register the card's **Callback URL** on that web client (the
+Connection tab lists it with the module's own), enter the client secret, check the
+domains and choose **Save**. The card fills in only a form that holds nothing yet, never
+over a saved value; the secret is identity's own sealed copy, typed by you. Without the
+module, or by hand:
+
 1. Create a Google OAuth web client and copy its secret. Google is client-secret only
    — workload identity is not accepted.
 2. Register the card's **Callback URL** as an authorised redirect URI.
@@ -264,6 +274,21 @@ Rotate the projected token through the platform; Vantigo does not cache it.
 Vantigo requires `email_verified`, a syntactically valid email, and a non-empty `hd`
 claim that matches the email domain and appears in **Domains**. Personal Gmail
 accounts and unverified or mismatched-domain identities are rejected.
+
+**The key.** Vantigo keys a Google account by the ID token's `sub`, which is the
+account's Directory user id (21 digits, kept exactly) — the object id an announced link
+names when the Owner picks the account from the directory, and the id the Google
+Workspace module knows the account by. That `sub` equals the Directory id is Google's
+documented behaviour, not yet confirmed in a test organisation (U1); should it differ,
+an announced link is fulfilled by its principal name instead — the primary email,
+against the token's verified email — so the person still lands on their own user.
+
+**A user on a secondary domain.** Every verified domain of the organisation is prefilled
+as allowed, so the domain list never refuses one. Whether Google answers `hd` as the
+address's own domain for a user whose primary email is on a secondary domain is not yet
+confirmed (U4): if it answers the primary domain, the check above refuses that user's
+sign-in (it never links them to anyone else). Check one such user in your organisation
+after saving; such a person signs in with a local credential meanwhile.
 
 ### Change the authority, or turn the provider off
 
@@ -382,24 +407,27 @@ at all while another user's SCIM mapping names it (`sso_link_taken`).
 
 **Connecting existing users through the configured provider.** The Owner need not type
 the account when the configured provider's directory can be searched: identity asks the
-enabled module whose directory search serves the configured provider (`entra` today,
-the Entra module) — the Owner single sign-on settings name it as `directory`, null
-otherwise. The connect dialog then searches that directory
+enabled module whose directory search serves the configured provider (`entra`, the
+Entra module, or `google`, the Google Workspace module) — the Owner single sign-on
+settings name it as `directory`, null otherwise. The connect dialog then searches that directory
 (`GET /api/v1/identity/owner/sso/directory/users?search=`) and fills in both keys from
 the account picked, and *Find matches in the directory…* on the Users screen
 (`GET /api/v1/identity/owner/sso/directory/matches`) proposes, for every user not yet
 connected, the one account whose mail or principal name equals their address or whose
-employee number equals theirs — exact matches only, never a guest account, pre-ticked
+employee number equals theirs (for Google: the primary email or an alias, and the
+organization external id) — exact matches only, never a guest account, pre-ticked
 only when the principal name matched on an enabled account of a user who is not an
 Owner — and **Connect selected** announces each chosen pair through the same endpoint
 ([look the accounts up in the directory](/en/user/workspace-administration/#look-the-accounts-up-in-the-directory);
-the rule in [the reference](/en/reference/entra/#the-exact-matches)). Both reads are
+the rule in the reference, [Entra's](/en/reference/entra/#the-exact-matches) and
+[Google's](/en/reference/google/#the-directory-search)). Both reads are
 an Owner's (`policy:Owner+OwnerManagement`), limited to 60 searches and 6 reviews a
 minute per client address, and answer 409 `no_directory` while OIDC is off or no
 enabled module serves the configured provider's directory, and 503
 `provider_unreachable` when the directory could not be asked. To offer them, enable the
 provider's module and connect it to the directory (for Entra, the
-[Entra page's steps 1 to 3](/en/admin/entra/)). Nothing else changes: each
+[Entra page's steps 1 to 3](/en/admin/entra/); for Google, the key, the delegation of
+`admin.directory.user` and a test, on [the Google Workspace page](/en/admin/google-workspace/)). Nothing else changes: each
 announcement is fulfilled, as below, at the person's next arrival.
 
 **The match.** On both arrivals the announced link is read before the announced
@@ -414,7 +442,8 @@ account, and the Owner's act wins:
   create; none leaves the address as it is); `email_confirmed` is left as it was, and a
   user who was an Owner keeps their role. The resource's `active` becomes the
   mapping's `upstream_active`, as for any mapped user.
-- **An OIDC sign-in** with no link yet is matched on the token's `oid` claim against
+- **An OIDC sign-in** with no link yet is matched on the token's `oid` claim (for
+  Google, its `sub`, the Directory user id) against
   the announced object id under the issuer, else on the token's principal name
   (Entra's `preferred_username`, which is the user principal name; for a provider
   without one, the verified `email` claim) against the announced user principal name,
