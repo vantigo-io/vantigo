@@ -125,3 +125,6 @@ const (
 	actionPersonalClosed          = "google.personal.closed"
 	actionPersonalDeleted         = "google.personal.deleted"
 )
+
+// Mail channels' action (delivery F, G33): the switch.
+const actionMailChannelsSwitched = "google.mail_channels.switched"

@@ -559,7 +559,7 @@ UPDATE google.connection SET
     personal_connection = $1,
     personal_connection_at = CASE WHEN $1::boolean AND NOT personal_connection THEN $2::timestamptz ELSE personal_connection_at END
 WHERE id = 1
-RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus, personal_connection, personal_connection_at, personal_last_error, personal_last_error_at, marker
+RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus, personal_connection, personal_connection_at, personal_last_error, personal_last_error_at, marker, mail_channels
 `
 
 type SetPersonalSwitchParams struct {
@@ -605,6 +605,7 @@ func (q *Queries) SetPersonalSwitch(ctx context.Context, arg SetPersonalSwitchPa
 		&i.PersonalLastError,
 		&i.PersonalLastErrorAt,
 		&i.Marker,
+		&i.MailChannels,
 	)
 	return i, err
 }

@@ -47,6 +47,12 @@ type GoogleCalendarChannel struct {
 	CreatedAt      time.Time
 }
 
+type GoogleChannelMailbox struct {
+	GoogleUserID string
+	Address      string
+	CheckedAt    time.Time
+}
+
 type GoogleConnection struct {
 	ID                   int16
 	CredentialKind       string
@@ -79,6 +85,7 @@ type GoogleConnection struct {
 	PersonalLastError    *string
 	PersonalLastErrorAt  *time.Time
 	Marker               string
+	MailChannels         bool
 }
 
 type GoogleCredential struct {

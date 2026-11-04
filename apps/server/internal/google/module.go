@@ -95,6 +95,7 @@ var limits = map[string]ratelimit.Policy{
 	"postGoogleConnectionTest":              ownerLimit,
 	"getGoogleConnectionSkus":               skusLimit,
 	"putGoogleConnectionPersonal":           ownerLimit,
+	"putGoogleConnectionMailChannels":       ownerLimit,
 	"postGoogleConnect":                     connectLimit,
 	"postGoogleComplete":                    connectLimit,
 	"getGoogleConnectCallback":              callbackLimit,

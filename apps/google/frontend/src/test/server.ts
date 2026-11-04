@@ -86,6 +86,7 @@ export const unconfigured = (overrides: Partial<GoogleConnection> = {}): GoogleC
   leaverSignOut: true,
   skus: [],
   personalConnection: personalSwitch(),
+  mailChannels: { enabled: false, status: "off", mailboxes: 0 },
   version: 1,
   ...overrides,
 });

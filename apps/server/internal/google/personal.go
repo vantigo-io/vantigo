@@ -423,7 +423,7 @@ func webClientReason(conn store.GoogleConnection, creds []store.GoogleCredential
 func personalSwitchBody(conn store.GoogleConnection, creds []store.GoogleCredential, counts store.CountPersonalRow, cfg *config.Config) gen.GooglePersonalSwitch {
 	body := gen.GooglePersonalSwitch{
 		Enabled:     conn.PersonalConnection,
-		Status:      gen.Off,
+		Status:      gen.GooglePersonalSwitchStatusOff,
 		Connected:   int32(counts.Connected),
 		Reconnect:   int32(counts.Reconnect),
 		RedirectUri: personalRedirectURI(cfg),
@@ -436,12 +436,12 @@ func personalSwitchBody(conn store.GoogleConnection, creds []store.GoogleCredent
 	switch {
 	case !conn.PersonalConnection:
 	case reason != "":
-		body.Status = gen.Unavailable
+		body.Status = gen.GooglePersonalSwitchStatusUnavailable
 		body.Reason = &reason
 	case last == personalConsentMissing:
-		body.Status = gen.ConsentMissing
+		body.Status = gen.GooglePersonalSwitchStatusConsentMissing
 	default:
-		body.Status = gen.Ready
+		body.Status = gen.GooglePersonalSwitchStatusReady
 	}
 	return body
 }

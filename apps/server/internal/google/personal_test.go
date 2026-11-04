@@ -569,7 +569,7 @@ func TestPersonalCallback_Failures(t *testing.T) {
 	if strings.Contains(r.Header("Set-Cookie"), "vantigo.google.connected=") && !strings.Contains(r.Header("Set-Cookie"), "vantigo.google.connected=;") {
 		t.Error("consent_missing sealed a connected cookie")
 	}
-	if conn := getConnection(t, f.o); conn.PersonalConnection.Status != gen.ConsentMissing {
+	if conn := getConnection(t, f.o); conn.PersonalConnection.Status != gen.GooglePersonalSwitchStatusConsentMissing {
 		t.Errorf("status %s, want consent_missing", conn.PersonalConnection.Status)
 	}
 
@@ -578,7 +578,7 @@ func TestPersonalCallback_Failures(t *testing.T) {
 	if got := failedCode(t, f.authorizeAs(t, c, "calendar", gid, email, nil)); got != "failed" {
 		t.Errorf("the web client refused: %s, want failed", got)
 	}
-	if conn := getConnection(t, f.o); conn.PersonalConnection.Status != gen.Unavailable || deref(conn.PersonalConnection.Reason) != "client_refused" {
+	if conn := getConnection(t, f.o); conn.PersonalConnection.Status != gen.GooglePersonalSwitchStatusUnavailable || deref(conn.PersonalConnection.Reason) != "client_refused" {
 		t.Errorf("status %s %v, want unavailable client_refused", conn.PersonalConnection.Status, conn.PersonalConnection.Reason)
 	}
 
@@ -648,7 +648,7 @@ func TestPersonalComplete_Connects(t *testing.T) {
 		t.Errorf("after: %+v", me)
 	}
 	conn := getConnection(t, f.o)
-	if p := conn.PersonalConnection; p.Status != gen.Ready || p.Connected != 1 || p.Reconnect != 0 || p.RedirectUri != "http://modules.example.com/api/v1/google/connect/callback" {
+	if p := conn.PersonalConnection; p.Status != gen.GooglePersonalSwitchStatusReady || p.Connected != 1 || p.Reconnect != 0 || p.RedirectUri != "http://modules.example.com/api/v1/google/connect/callback" {
 		t.Errorf("the switch: %+v", p)
 	}
 	f.noSecretsLeaked(t, gid)
@@ -816,7 +816,7 @@ func TestPersonalSwitch(t *testing.T) {
 	}
 
 	conn := setPersonal(t, f.o, false)
-	if p := conn.PersonalConnection; p.Enabled || p.Status != gen.Off || p.Connected != 0 {
+	if p := conn.PersonalConnection; p.Enabled || p.Status != gen.GooglePersonalSwitchStatusOff || p.Connected != 0 {
 		t.Errorf("off: %+v", p)
 	}
 	if state, _ := f.rowState(t, gid); state != "closing" {
@@ -837,12 +837,12 @@ func TestPersonalSwitch(t *testing.T) {
 	// The web client not ready: unavailable with the reason.
 	setPersonal(t, f.o, true)
 	f.h.Exec(t, `UPDATE google.credentials SET revoked_at = now() WHERE kind = 'oauth_client_secret'`)
-	if p := getConnection(t, f.o).PersonalConnection; p.Status != gen.Unavailable || deref(p.Reason) != "no_web_client" {
+	if p := getConnection(t, f.o).PersonalConnection; p.Status != gen.GooglePersonalSwitchStatusUnavailable || deref(p.Reason) != "no_web_client" {
 		t.Errorf("no secret: %+v", p)
 	}
 	f.h.Exec(t, `UPDATE google.credentials SET revoked_at = NULL WHERE kind = 'oauth_client_secret'`)
 	f.h.Exec(t, `UPDATE google.connection SET domains = '{}'`)
-	if p := getConnection(t, f.o).PersonalConnection; p.Status != gen.Unavailable || deref(p.Reason) != "not_tested" {
+	if p := getConnection(t, f.o).PersonalConnection; p.Status != gen.GooglePersonalSwitchStatusUnavailable || deref(p.Reason) != "not_tested" {
 		t.Errorf("no domains: %+v", p)
 	}
 }
@@ -958,7 +958,7 @@ func TestPersonalToken_RefusalsMoveTheRowOrTheClient(t *testing.T) {
 	if state, _ := f.rowState(t, gid); state != "active" {
 		t.Errorf("after the client was refused: %s, want active", state)
 	}
-	if p := getConnection(t, f.o).PersonalConnection; p.Status != gen.Unavailable || deref(p.Reason) != "client_refused" {
+	if p := getConnection(t, f.o).PersonalConnection; p.Status != gen.GooglePersonalSwitchStatusUnavailable || deref(p.Reason) != "client_refused" {
 		t.Errorf("the switch after the client was refused: %+v", p)
 	}
 	f.noSecretsLeaked(t)
