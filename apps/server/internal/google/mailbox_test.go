@@ -707,4 +707,21 @@ func TestMailbox_UsageLimitsAndRefusals(t *testing.T) {
 			t.Fatalf("op %d after an event's 403: %+v", i+1, r)
 		}
 	}
+
+	// A 401 on every part asks the person's connection once: each op needs
+	// the person, sign_in_again.
+	_, ola := f.connected(t, "ola@nordlys.no")
+	f.g.RefuseCalendar(ola, true)
+	results, err = f.p.Apply(ctx, ola, "", ops(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, r := range results {
+		if needs(r.Err) != "sign_in_again" {
+			t.Errorf("op %d on a refused token: %v, want sign_in_again", i, r.Err)
+		}
+	}
+	if state, code := f.rowState(t, ola); state != "reconnect" || code != "sign_in_again" {
+		t.Errorf("the row %s %s, want reconnect sign_in_again", state, code)
+	}
 }
