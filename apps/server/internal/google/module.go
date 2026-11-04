@@ -90,6 +90,7 @@ var limits = map[string]ratelimit.Policy{
 	"postGoogleConnect":                     connectLimit,
 	"postGoogleComplete":                    connectLimit,
 	"getGoogleConnectCallback":              callbackLimit,
+	"postGoogleCalendarNotifications":       notificationsLimit,
 }
 
 // connectLimit is the person's connect and complete, one bucket between
@@ -98,6 +99,11 @@ var connectLimit = ratelimit.Policy{Name: "google-connect", Limit: 30, Window: t
 
 // callbackLimit is the anonymous callback's: 60 per client address a minute.
 var callbackLimit = ratelimit.Policy{Name: "google-connect-callback", Limit: 60, Window: time.Minute}
+
+// notificationsLimit is the anonymous calendar notifications endpoint's
+// (G32, Entra's webhook's figure): 600 per client address a minute, a bucket
+// of its own, so Google's messages never spend a person's.
+var notificationsLimit = ratelimit.Policy{Name: "google-calendar-notifications", Limit: 600, Window: time.Minute}
 
 // skusLimit is GET /connection/skus's policy, a bucket of its own: each
 // read reaches Google once per product Vantigo knows.

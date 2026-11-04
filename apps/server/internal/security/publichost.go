@@ -49,11 +49,12 @@ func (rt Route) matches(method, p string) bool {
 // and the health probes. The feed is the one anonymous GET with its token in
 // the path (calendar feed design D2): a calendar program takes one address
 // and asks it with nothing of ours, so it is admitted under GET alone, as one
-// segment, with no page beside it. The notifications' webhook is the one
-// anonymous operation of a module that serves neither the payer nor the
-// invitee (calendar Outlook sync design O11.5): Graph posts its handshake and
-// its notifications to PUBLIC_BASE_URL, so Entra's one path is admitted, under
-// POST alone and exactly. No maintenance poll: the
+// segment, with no page beside it. The mailbox calendars' change
+// notifications are the anonymous operations of modules that serve neither
+// the payer nor the invitee: Graph posts its handshake and its notifications
+// to PUBLIC_BASE_URL (calendar Outlook sync design O11.5), and so does Google
+// Calendar its push messages (Google Workspace design G32), so Entra's one
+// path and Google's one path are admitted, under POST alone and exactly. No maintenance poll: the
 // root layout makes none on the pay page. No Vipps webhook path: webhooks are
 // deferred (the plan's Task 11) and nothing serves one. The list names only
 // what is served. The paths are base-relative: the gate runs after
@@ -74,6 +75,7 @@ func PayRoutes() []Route {
 		{Methods: post, Path: "/api/v1/calendar/rsvp"},
 		{Methods: get, Path: "/api/v1/calendar/feed/", OneSegment: true},
 		{Methods: post, Path: "/api/v1/entra/mailbox-notifications"},
+		{Methods: post, Path: "/api/v1/google/calendar-notifications"},
 		{Methods: getHead, Path: "/health/", Prefix: true},
 	}
 }

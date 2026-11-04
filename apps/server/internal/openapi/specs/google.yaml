@@ -672,6 +672,53 @@ paths:
             tags:
                 - Google
             x-vantigo-access: permission:google:manage
+    /api/v1/google/calendar-notifications:
+        post:
+            description: 'Google Calendar''s push notifications for the calendar sync (Google Workspace design G32): Google posts here, to PUBLIC_BASE_URL, for each channel the module opened on a person''s primary calendar with events.watch; on the public host''s allowlist and on the app''s host alike. Anonymous: Google sends no session, and a signed-in caller is answered alike. A notification is a nudge — it makes the person''s sync due and nothing more; nothing it says is stored. Only the headers are read, never a body: X-Goog-Channel-ID must be a UUID naming a channel the module holds, the SHA-256 of X-Goog-Channel-Token must equal the one stored (compared in constant time) and X-Goog-Resource-ID must be the channel''s; then a resource state of exists or not_exists marks the channel notified, and sync (the channel''s first message) or anything else marks nothing. 204 with no body for every request, whatever it named — an unknown channel, a forged token and a valid notification are answered alike, and so is a database that could not be written. Rate limited to 600 per client address a minute (google-calendar-notifications).'
+            operationId: postGoogleCalendarNotifications
+            parameters:
+                - description: The channel's id, the UUID the module gave events.watch.
+                  in: header
+                  name: X-Goog-Channel-ID
+                  schema:
+                    type: string
+                - description: The channel's token, as the module gave it to events.watch; only its SHA-256 is stored.
+                  in: header
+                  name: X-Goog-Channel-Token
+                  schema:
+                    type: string
+                - description: Google's id of the watched resource.
+                  in: header
+                  name: X-Goog-Resource-ID
+                  schema:
+                    type: string
+                - description: sync for the channel's first message; exists or not_exists for a change.
+                  in: header
+                  name: X-Goog-Resource-State
+                  schema:
+                    type: string
+                - description: The message's number on the channel, ignored.
+                  in: header
+                  name: X-Goog-Message-Number
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No Content — whatever the request named, nothing more is said.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — google-calendar-notifications's limit for this client address. Google retries.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Google Calendar's push notifications
+            tags:
+                - Google
+            x-vantigo-access: anonymous
     /api/v1/google/complete:
         post:
             description: 'Completes a connect under the session (Google Workspace design G26, G27): opens vantigo.google.connected, which must be the caller''s and this session''s, checks the switch, that Vantigo still knows the caller by a Google account it manages and that the account signed in is that one (the ID token''s sub equals its Directory id), and stores the connection with its refresh token sealed — taking over a closing connection of the same account, and closing the caller''s connection of another account. Audited google.personal.connected. The cookie is cleared on every answer. 410 expired for a cookie missing, expired or another session''s; 409 switch_off, no_account, account_mismatch (the account signed in to is not the one Vantigo knows the caller by; the detail names no address) or account_taken. Rate limited to 30 per client address a minute, shared with POST /connect (google-connect).'

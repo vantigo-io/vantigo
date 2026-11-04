@@ -22,8 +22,9 @@ import (
 // TestMain turns it into the coverage gate.
 var recorder = contracttest.NewForModule("google")
 
-// pendingOperations are the contract's operations no test covers yet: none.
-var pendingOperations []string
+// pendingOperations are the contract's operations no test covers yet: the
+// calendar notifications, until delivery E's notifications land.
+var pendingOperations = []string{"postGoogleCalendarNotifications"}
 
 func TestMain(m *testing.M) {
 	os.Exit(contracttest.RequireCoverage(m, recorder, pendingOperations...))

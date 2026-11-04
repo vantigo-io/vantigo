@@ -187,7 +187,8 @@ const deleteSpentPersonal = `-- name: DeleteSpentPersonal :many
 DELETE FROM google.connections c
 WHERE c.state = 'closing'
   AND (c.changed_at + interval '7 days' < $1::timestamptz
-       OR GREATEST(COALESCE(c.used_at, c.changed_at), c.changed_at) + interval '24 hours' < $1::timestamptz)
+       OR (GREATEST(COALESCE(c.used_at, c.changed_at), c.changed_at) + interval '24 hours' < $1::timestamptz
+           AND NOT EXISTS (SELECT 1 FROM google.calendar_channels ch WHERE ch.google_user_id = c.google_user_id)))
 RETURNING google_user_id, user_id, refresh_sealed
 `
 
@@ -199,8 +200,9 @@ type DeleteSpentPersonalRow struct {
 
 // DeleteSpentPersonal is google-sweep's first step (G28): a closing
 // connection goes seven days after it closed, or once a day has passed since
-// it was last used and since it closed. The statement is the claim: of two
-// replicas, one deletes each row and revokes its token.
+// it was last used and since it closed while it holds no calendar push channel
+// (delivery E: the channel's stop needs its token). The statement is the
+// claim: of two replicas, one deletes each row and revokes its token.
 func (q *Queries) DeleteSpentPersonal(ctx context.Context, now time.Time) ([]DeleteSpentPersonalRow, error) {
 	rows, err := q.db.Query(ctx, deleteSpentPersonal, now)
 	if err != nil {
@@ -390,7 +392,7 @@ type ListPersonalChangesRow struct {
 	ChangedAt    time.Time
 }
 
-// ListPersonalChanges is what the mailbox calendar's Connections will answer
+// ListPersonalChanges is what the mailbox calendar's Connections answers
 // (delivery E): the connections whose state moved after since, oldest first,
 // at most row_limit, through ix_google_connections_changed. A refresh, a
 // forgotten token and the bookkeeping move no changed_at.
@@ -557,7 +559,7 @@ UPDATE google.connection SET
     personal_connection = $1,
     personal_connection_at = CASE WHEN $1::boolean AND NOT personal_connection THEN $2::timestamptz ELSE personal_connection_at END
 WHERE id = 1
-RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus, personal_connection, personal_connection_at, personal_last_error, personal_last_error_at
+RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus, personal_connection, personal_connection_at, personal_last_error, personal_last_error_at, marker
 `
 
 type SetPersonalSwitchParams struct {
@@ -602,6 +604,7 @@ func (q *Queries) SetPersonalSwitch(ctx context.Context, arg SetPersonalSwitchPa
 		&i.PersonalConnectionAt,
 		&i.PersonalLastError,
 		&i.PersonalLastErrorAt,
+		&i.Marker,
 	)
 	return i, err
 }
