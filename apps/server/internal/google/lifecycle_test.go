@@ -345,6 +345,134 @@ func TestPrepare_ACreateWhoseAnswerIsLostIsReadBack(t *testing.T) {
 	}
 }
 
+// flaky answers 503 to the requests fail picks: after the fake carried
+// the request out when after is set (the answer lost), else instead of it.
+type flaky struct {
+	inner http.RoundTripper
+	fail  func(req *http.Request, body string) (fail, after bool)
+}
+
+func (w *flaky) RoundTrip(req *http.Request) (*http.Response, error) {
+	var body string
+	if req.Body != nil {
+		b, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		_ = req.Body.Close()
+		body = string(b)
+		req.Body = io.NopCloser(strings.NewReader(body))
+	}
+	fail, after := false, false
+	if w.fail != nil {
+		fail, after = w.fail(req, body)
+	}
+	if !fail || after {
+		resp, err := w.inner.RoundTrip(req)
+		if err != nil || !fail {
+			return resp, err
+		}
+		_ = resp.Body.Close()
+	}
+	return &http.Response{
+		StatusCode: http.StatusServiceUnavailable, Status: "503", Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1,
+		Header: http.Header{"Content-Type": {"application/json"}}, Request: req,
+		Body: io.NopCloser(strings.NewReader(`{"error":{"code":503,"message":"lost","errors":[{"reason":"backendError"}]}}`)),
+	}, nil
+}
+
+// inserts counts the users.insert calls the fake was made.
+func (l *lifecycle) inserts() int {
+	n := 0
+	for _, c := range l.g.Calls() {
+		if c.Method == http.MethodPost && c.Path == "/admin/directory/v1/users" {
+			n++
+		}
+	}
+	return n
+}
+
+func TestPrepare_ALostCreateTheSearchLagsIsReadBackByItsAddress(t *testing.T) {
+	t.Parallel()
+	w := &loseInsert{}
+	h := newHarness(t, modtest.WithTransport(w))
+	w.inner = h.g
+	l := lifecycleOn(t, h)
+	l.g.Configure(func(g *googletest.FakeGoogle) { g.SearchLag = true })
+	acc := l.prepare(t, joiner("E1042"))
+	if !acc.Created || acc.ExternalID == "" || acc.Email != "kari.nordmann@nordlys.no" {
+		t.Fatalf("Prepare: %+v", acc)
+	}
+	if n := l.inserts(); n != 1 || !w.lost.Load() {
+		t.Errorf("%d inserts (lost %v), want the one", n, w.lost.Load())
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM google.accounts WHERE user_id = $1 AND created_by_us`, acc.ExternalID); n != 1 {
+		t.Error("the user read back is not recorded as the module's own")
+	}
+}
+
+func TestPrepare_AnAddressTakenByALostCreateIsTheModulesOwn(t *testing.T) {
+	t.Parallel()
+	var failing atomic.Bool
+	failing.Store(true)
+	w := &flaky{}
+	h := newHarness(t, modtest.WithTransport(w))
+	w.inner = h.g
+	w.fail = func(req *http.Request, _ string) (bool, bool) {
+		if !failing.Load() {
+			return false, false
+		}
+		switch {
+		case req.Method == http.MethodPost && req.URL.Path == "/admin/directory/v1/users":
+			return true, true // made, its answer lost
+		case req.Method == http.MethodGet && strings.Contains(req.URL.Path, "@"):
+			return true, false // and the read back lost too
+		}
+		return false, false
+	}
+	l := lifecycleOn(t, h)
+	l.g.Configure(func(g *googletest.FakeGoogle) { g.SearchLag = true })
+	if _, err := l.p.Prepare(context.Background(), staffActor, joiner("E1042")); err == nil {
+		t.Fatal("Prepare whose create and read back were lost answered no error")
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM google.accounts`); n != 0 {
+		t.Fatalf("%d accounts recorded for a lost create", n)
+	}
+	failing.Store(false)
+	// The search still lags the user made: the next Prepare's create meets
+	// the address taken (409) and reads it back, never a second user.
+	acc := l.prepare(t, joiner("E1042"))
+	if !acc.Created || acc.Email != "kari.nordmann@nordlys.no" {
+		t.Fatalf("Prepare after the lost create: %+v", acc)
+	}
+	if n := l.inserts(); n != 2 {
+		t.Errorf("%d inserts, want the lost one and the one answered 409", n)
+	}
+	if _, ok := l.g.UserByEmail("kari.nordmann2@nordlys.no"); ok {
+		t.Error("a second user was made at the next address")
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM google.accounts WHERE user_id = $1 AND created_by_us`, acc.ExternalID); n != 1 {
+		t.Error("the user read back is not recorded as the module's own")
+	}
+}
+
+func TestPrepare_AnAddressTakenByAnotherUserMovesOn(t *testing.T) {
+	t.Parallel()
+	l := newLifecycle(t)
+	// Suspended at the pattern's address, holding the number as another
+	// type of id, and signed in to: not the module's lost create.
+	other := l.g.AddUser(googletest.User{
+		PrimaryEmail: "kari.nordmann@nordlys.no", Suspended: true, LastLoginTime: "2026-09-01T08:00:00.000Z",
+		ExternalIDs: []map[string]any{{"type": "custom", "customType": "badge", "value": "E1042"}},
+	})
+	spec := joiner("E1042")
+	spec.WorkEmail = ""
+	acc := l.prepare(t, spec)
+	if !acc.Created || acc.ExternalID == other.ID || acc.Email != "kari.nordmann2@nordlys.no" {
+		t.Errorf("Prepare: %+v, want a user made at the next address", acc)
+	}
+}
+
 // --- Activate and the password ------------------------------------------------
 
 func TestActivate_LiftsTheSuspensionWithAPasswordShownOnce(t *testing.T) {

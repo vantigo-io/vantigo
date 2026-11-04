@@ -347,8 +347,11 @@ the mailbox alphabet: the work email on a verified domain, else the pattern at
 `ErrExternalAddressTaken`), a random 32-character password nobody sees,
 `changePasswordAtNextLogin: true`, `suspended: true`, `orgUnitPath`, `externalIds`
 `[{type: organization, value: <number>}]`, and the mapping below. The create is made
-once; when its answer is lost, the one suspended user the number's search finds holding
-the address asked for is taken as this call's.
+once; when its answer is lost, and on every 409 before the next address is tried, the
+user at the address asked for is read back with `users.get` — strongly consistent, where
+the number's search may lag a create — and taken as this call's (`created_by_us`) when it
+holds the number as its organization id, is suspended and its `lastLoginTime` is still
+the epoch: a lost answer never makes a second user.
 
 **The mapping** writes only what Google has: the names (`name.givenName`,
 `name.familyName`, at most 60 each), and of the spec's fields `jobTitle`, `department`
