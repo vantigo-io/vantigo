@@ -29,6 +29,24 @@ type GoogleAccount struct {
 	UpdatedAt                 time.Time
 }
 
+type GoogleCalendar struct {
+	GoogleUserID string
+	CalendarID   string
+	CreatedAt    time.Time
+}
+
+type GoogleCalendarChannel struct {
+	GoogleUserID   string
+	ChannelID      uuid.UUID
+	ResourceID     string
+	TokenHash      []byte
+	Address        string
+	ExpiresAt      time.Time
+	GrantedSeconds int32
+	NotifiedAt     *time.Time
+	CreatedAt      time.Time
+}
+
 type GoogleConnection struct {
 	ID                   int16
 	CredentialKind       string
@@ -60,6 +78,7 @@ type GoogleConnection struct {
 	PersonalConnectionAt *time.Time
 	PersonalLastError    *string
 	PersonalLastErrorAt  *time.Time
+	Marker               string
 }
 
 type GoogleCredential struct {

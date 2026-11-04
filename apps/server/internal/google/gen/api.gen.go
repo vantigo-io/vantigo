@@ -718,6 +718,24 @@ type GoogleSku struct {
 	Value string `json:"value"`
 }
 
+// PostGoogleCalendarNotificationsParams defines parameters for PostGoogleCalendarNotifications.
+type PostGoogleCalendarNotificationsParams struct {
+	// XGoogChannelID The channel's id, the UUID the module gave events.watch.
+	XGoogChannelID *string `json:"X-Goog-Channel-ID,omitempty"`
+
+	// XGoogChannelToken The channel's token, as the module gave it to events.watch; only its SHA-256 is stored.
+	XGoogChannelToken *string `json:"X-Goog-Channel-Token,omitempty"`
+
+	// XGoogResourceID Google's id of the watched resource.
+	XGoogResourceID *string `json:"X-Goog-Resource-ID,omitempty"`
+
+	// XGoogResourceState sync for the channel's first message; exists or not_exists for a change.
+	XGoogResourceState *string `json:"X-Goog-Resource-State,omitempty"`
+
+	// XGoogMessageNumber The message's number on the channel, ignored.
+	XGoogMessageNumber *string `json:"X-Goog-Message-Number,omitempty"`
+}
+
 // GetGoogleConnectCallbackParams defines parameters for GetGoogleConnectCallback.
 type GetGoogleConnectCallbackParams struct {
 	Code  *string `form:"code,omitempty" json:"code,omitempty"`
@@ -787,6 +805,9 @@ type ServerInterface interface {
 	// PostGoogleAccountsByUserIdConfirm Confirm an adopted account
 	// (POST /api/v1/google/accounts/{userId}/confirm)
 	PostGoogleAccountsByUserIdConfirm(w http.ResponseWriter, r *http.Request, userId string)
+	// PostGoogleCalendarNotifications Google Calendar's push notifications
+	// (POST /api/v1/google/calendar-notifications)
+	PostGoogleCalendarNotifications(w http.ResponseWriter, r *http.Request, params PostGoogleCalendarNotificationsParams)
 	// PostGoogleComplete Complete connecting Google
 	// (POST /api/v1/google/complete)
 	PostGoogleComplete(w http.ResponseWriter, r *http.Request)
@@ -880,6 +901,123 @@ func (siw *ServerInterfaceWrapper) PostGoogleAccountsByUserIdConfirm(w http.Resp
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostGoogleAccountsByUserIdConfirm(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostGoogleCalendarNotifications operation middleware
+func (siw *ServerInterfaceWrapper) PostGoogleCalendarNotifications(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostGoogleCalendarNotificationsParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-Goog-Channel-ID" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Goog-Channel-ID")]; found {
+		var XGoogChannelID string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Goog-Channel-ID", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Goog-Channel-ID", valueList[0], &XGoogChannelID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Goog-Channel-ID", Err: err})
+			return
+		}
+
+		params.XGoogChannelID = &XGoogChannelID
+
+	}
+
+	// ------------- Optional header parameter "X-Goog-Channel-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Goog-Channel-Token")]; found {
+		var XGoogChannelToken string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Goog-Channel-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Goog-Channel-Token", valueList[0], &XGoogChannelToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Goog-Channel-Token", Err: err})
+			return
+		}
+
+		params.XGoogChannelToken = &XGoogChannelToken
+
+	}
+
+	// ------------- Optional header parameter "X-Goog-Resource-ID" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Goog-Resource-ID")]; found {
+		var XGoogResourceID string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Goog-Resource-ID", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Goog-Resource-ID", valueList[0], &XGoogResourceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Goog-Resource-ID", Err: err})
+			return
+		}
+
+		params.XGoogResourceID = &XGoogResourceID
+
+	}
+
+	// ------------- Optional header parameter "X-Goog-Resource-State" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Goog-Resource-State")]; found {
+		var XGoogResourceState string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Goog-Resource-State", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Goog-Resource-State", valueList[0], &XGoogResourceState, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Goog-Resource-State", Err: err})
+			return
+		}
+
+		params.XGoogResourceState = &XGoogResourceState
+
+	}
+
+	// ------------- Optional header parameter "X-Goog-Message-Number" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Goog-Message-Number")]; found {
+		var XGoogMessageNumber string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Goog-Message-Number", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Goog-Message-Number", valueList[0], &XGoogMessageNumber, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Goog-Message-Number", Err: err})
+			return
+		}
+
+		params.XGoogMessageNumber = &XGoogMessageNumber
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostGoogleCalendarNotifications(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1477,6 +1615,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/google/accounts", wrapper.GetGoogleAccounts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/google/accounts/{userId}/confirm", wrapper.PostGoogleAccountsByUserIdConfirm)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/google/calendar-notifications", wrapper.PostGoogleCalendarNotifications)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/google/complete", wrapper.PostGoogleComplete)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/google/connect", wrapper.PostGoogleConnect)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/google/connect/callback", wrapper.GetGoogleConnectCallback)
@@ -1615,6 +1754,46 @@ func (response PostGoogleAccountsByUserIdConfirm409ApplicationProblemPlusJSONRes
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleCalendarNotificationsRequestObject struct {
+	Params PostGoogleCalendarNotificationsParams
+}
+
+type PostGoogleCalendarNotificationsResponseObject interface {
+	VisitPostGoogleCalendarNotificationsResponse(w http.ResponseWriter) error
+}
+
+type PostGoogleCalendarNotifications204Response struct {
+}
+
+func (response PostGoogleCalendarNotifications204Response) VisitPostGoogleCalendarNotificationsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type PostGoogleCalendarNotifications429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostGoogleCalendarNotifications429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostGoogleCalendarNotifications429ResponseHeaders
+}
+
+func (response PostGoogleCalendarNotifications429JSONResponse) VisitPostGoogleCalendarNotificationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2836,6 +3015,9 @@ type StrictServerInterface interface {
 	// PostGoogleAccountsByUserIdConfirm Confirm an adopted account
 	// (POST /api/v1/google/accounts/{userId}/confirm)
 	PostGoogleAccountsByUserIdConfirm(ctx context.Context, request PostGoogleAccountsByUserIdConfirmRequestObject) (PostGoogleAccountsByUserIdConfirmResponseObject, error)
+	// PostGoogleCalendarNotifications Google Calendar's push notifications
+	// (POST /api/v1/google/calendar-notifications)
+	PostGoogleCalendarNotifications(ctx context.Context, request PostGoogleCalendarNotificationsRequestObject) (PostGoogleCalendarNotificationsResponseObject, error)
 	// PostGoogleComplete Complete connecting Google
 	// (POST /api/v1/google/complete)
 	PostGoogleComplete(ctx context.Context, request PostGoogleCompleteRequestObject) (PostGoogleCompleteResponseObject, error)
@@ -2971,6 +3153,32 @@ func (sh *strictHandler) PostGoogleAccountsByUserIdConfirm(w http.ResponseWriter
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostGoogleAccountsByUserIdConfirmResponseObject); ok {
 		if err := validResponse.VisitPostGoogleAccountsByUserIdConfirmResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostGoogleCalendarNotifications operation middleware
+func (sh *strictHandler) PostGoogleCalendarNotifications(w http.ResponseWriter, r *http.Request, params PostGoogleCalendarNotificationsParams) {
+	var request PostGoogleCalendarNotificationsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostGoogleCalendarNotifications(ctx, request.(PostGoogleCalendarNotificationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostGoogleCalendarNotifications")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostGoogleCalendarNotificationsResponseObject); ok {
+		if err := validResponse.VisitPostGoogleCalendarNotificationsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

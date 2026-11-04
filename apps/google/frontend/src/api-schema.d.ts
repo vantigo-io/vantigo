@@ -42,6 +42,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/calendar-notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Google Calendar's push notifications
+         * @description Google Calendar's push notifications for the calendar sync (Google Workspace design G32): Google posts here, to PUBLIC_BASE_URL, for each channel the module opened on a person's primary calendar with events.watch; on the public host's allowlist and on the app's host alike. Anonymous: Google sends no session, and a signed-in caller is answered alike. A notification is a nudge — it makes the person's sync due and nothing more; nothing it says is stored. Only the headers are read, never a body: X-Goog-Channel-ID must be a UUID naming a channel the module holds, the SHA-256 of X-Goog-Channel-Token must equal the one stored (compared in constant time) and X-Goog-Resource-ID must be the channel's; then a resource state of exists or not_exists marks the channel notified, and sync (the channel's first message) or anything else marks nothing. 204 with no body for every request, whatever it named — an unknown channel, a forged token and a valid notification are answered alike, and so is a database that could not be written. Rate limited to 600 per client address a minute (google-calendar-notifications).
+         */
+        post: operations["postGoogleCalendarNotifications"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/complete": {
         parameters: {
             query?: never;
@@ -789,6 +809,45 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["GoogleProblem"];
+                };
+            };
+        };
+    };
+    postGoogleCalendarNotifications: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The channel's id, the UUID the module gave events.watch. */
+                "X-Goog-Channel-ID"?: string;
+                /** @description The channel's token, as the module gave it to events.watch; only its SHA-256 is stored. */
+                "X-Goog-Channel-Token"?: string;
+                /** @description Google's id of the watched resource. */
+                "X-Goog-Resource-ID"?: string;
+                /** @description sync for the channel's first message; exists or not_exists for a change. */
+                "X-Goog-Resource-State"?: string;
+                /** @description The message's number on the channel, ignored. */
+                "X-Goog-Message-Number"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — whatever the request named, nothing more is said. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too Many Requests — google-calendar-notifications's limit for this client address. Google retries. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };

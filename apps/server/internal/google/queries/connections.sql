@@ -138,12 +138,14 @@ FROM google.connections;
 -- name: DeleteSpentPersonal :many
 -- DeleteSpentPersonal is google-sweep's first step (G28): a closing
 -- connection goes seven days after it closed, or once a day has passed since
--- it was last used and since it closed. The statement is the claim: of two
--- replicas, one deletes each row and revokes its token.
+-- it was last used and since it closed while it holds no calendar push channel
+-- (delivery E: the channel's stop needs its token). The statement is the
+-- claim: of two replicas, one deletes each row and revokes its token.
 DELETE FROM google.connections c
 WHERE c.state = 'closing'
   AND (c.changed_at + interval '7 days' < @now::timestamptz
-       OR GREATEST(COALESCE(c.used_at, c.changed_at), c.changed_at) + interval '24 hours' < @now::timestamptz)
+       OR (GREATEST(COALESCE(c.used_at, c.changed_at), c.changed_at) + interval '24 hours' < @now::timestamptz
+           AND NOT EXISTS (SELECT 1 FROM google.calendar_channels ch WHERE ch.google_user_id = c.google_user_id)))
 RETURNING google_user_id, user_id, refresh_sealed;
 
 -- name: ClaimPersonalAccountChecks :many
@@ -166,7 +168,7 @@ WHERE c.google_user_id = due.google_user_id
 RETURNING c.google_user_id, c.revision;
 
 -- name: ListPersonalChanges :many
--- ListPersonalChanges is what the mailbox calendar's Connections will answer
+-- ListPersonalChanges is what the mailbox calendar's Connections answers
 -- (delivery E): the connections whose state moved after since, oldest first,
 -- at most row_limit, through ix_google_connections_changed. A refresh, a
 -- forgotten token and the bookkeeping move no changed_at.
