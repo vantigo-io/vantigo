@@ -59,6 +59,14 @@ application.
   rotated by an Owner; the Temporary Access Pass policy; and what a leaver's steps and a
   delete do in the tenant. Nothing of it is in `vantigo.env`; its page is under
   **Integrations** in Workspace admin.
+- **Google Workspace.** [Google Workspace](/en/admin/google-workspace/) connects Vantigo
+  to the company's Google Workspace organisation through a service account with
+  domain-wide delegation: `google` in `MODULES` beside `staff`, which it requires; a
+  Google Cloud project with the Admin SDK API, the service account's JSON key uploaded
+  and rotated by an Owner, the scopes delegated in the Admin console, the admin to
+  impersonate, and the Internal web client. This release reads the organisation; the
+  accounts, calendar and Gmail come later. Nothing of it is in `vantigo.env`; its page
+  is under **Integrations** in Workspace admin.
 
 ## Configuration
 

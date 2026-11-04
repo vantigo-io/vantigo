@@ -2801,6 +2801,47 @@ hybrid tenants, with users synced from on-premises Active Directory · Lifecycle
 Workflows switches per step · Google Workspace as the second provider · group-based
 licensing as a trait · delegated authorisation.
 
+## Google Workspace
+
+Researched in
+[`docs/superpowers/research/2026-11-03-google-workspace-module.md`](docs/superpowers/research/2026-11-03-google-workspace-module.md)
+and designed in
+[`docs/superpowers/specs/2026-11-03-google-workspace-design.md`](docs/superpowers/specs/2026-11-03-google-workspace-design.md):
+Google Workspace as Vantigo's second external identity provider, beside [Entra](#entra).
+The connection is the organisation's service account with domain-wide delegation; on it,
+Staff's people get Google accounts and groups, existing users are connected to their
+Google sign-in, each person connects their own Google account once, the calendar syncs
+with Google Calendar, and Gmail serves Communications' channels and personal sending.
+Eight deliveries, one pull request each.
+
+**0 — The neutral seams (in progress)**
+([the plan](docs/superpowers/plans/2026-11-03-google-neutral-seams.md)): the slots and
+contracts Entra fills made provider-neutral, so a second provider can fill them.
+
+**A — The foundation, built**
+([the plan](docs/superpowers/plans/2026-11-03-google-foundation.md);
+[the reference](docs/src/content/docs/en/reference/google.md);
+[the operator's page](docs/src/content/docs/en/admin/google-workspace.md);
+[the user guide](docs/src/content/docs/en/user/google-workspace.md)): the `google`
+module, which requires `staff`, and its schema (`00112_google_baseline.sql`): one
+connection row, the credentials and the module's own trail of events. An Owner uploads
+the service account's JSON key — the private key sealed under
+`google/service-account-key`, several keys live for rotation, a key of another service
+account refused while one of the current one's is live — names the admin to impersonate,
+and enters the Internal web client, its secret sealed under `google/oauth-client-secret`.
+**Test connection** asks a fresh delegated token per needed scope, and per scope Vantigo
+never uses to warn of an over-wide delegation, then reads the customer and its verified
+domains: `pending_delegation`, `connected` or `failing` with its reason. A guarded client
+to fixed Google hosts through netguard, the token exchange through it, and one token
+seam every later delivery takes its token from. One permission, `google:manage`
+(sensitive, not delegable); every write and the test are the Owner's. The page is
+**Google Workspace** under Integrations, in four tabs; **Accounts** and **Calendar and
+Gmail** say what is coming.
+
+**B to G — next**: accounts, groups, licences and photos (B); connecting existing users
+(C); the person's own Google connection (D); calendar sync with Google Calendar (E);
+Gmail mail channels (F); personal sending from Gmail (G).
+
 ## Integrations and configuration tiers
 
 Decided in

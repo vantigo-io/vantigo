@@ -26,6 +26,7 @@ const contracts = [
   "inventory",
   "calendar",
   "entra",
+  "google",
   "assistant",
 ];
 

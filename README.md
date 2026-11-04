@@ -53,6 +53,7 @@ your thing, a managed **SaaS offering** is available where we run the platform f
 | **Inventory**          | Stock of the catalog's goods in warehouses and stores: sites, locations, receipts, adjustments, moves, counts and labels. | 🚧 In development |
 | **Calendar**           | One calendar per person: appointments and what the other apps hold.   | 🚧 In development |
 | **Microsoft Entra ID** | The accounts of Staff's people in your Entra tenant, kept in step.    | 🚧 In development |
+| **Google Workspace**   | The connection to your Google Workspace organisation; accounts, calendar and Gmail to come. | 🚧 In development |
 | **Assistant**          | Answers "how do I…" from the documentation and reads the data a person may read. | 🚧 In development |
 
 Identity — accounts, sign-in, MFA, RBAC, OIDC and SCIM — is always part of the
@@ -83,7 +84,7 @@ docker compose up -d
 Compose starts PostgreSQL, applies the database migrations as a one-shot `migrate`
 job, and then brings up the single Vantigo application on <http://localhost:8080>.
 Customers, Communications, Products, Energy, Projects, Time, Expenses, Invoices,
-Staff, Planning, Inventory, Calendar, Microsoft Entra ID and Assistant are modules in that one application.
+Staff, Planning, Inventory, Calendar, Microsoft Entra ID, Google Workspace and Assistant are modules in that one application.
 
 The stack runs outside development, so `vantigo.env` must carry `APP_SECRET` before
 the first start — at least 32 bytes of key material, generated with
@@ -124,6 +125,7 @@ vantigo/
 │   │       ├── inventory/           # Inventory vertical slice (stock in sites and locations)
 │   │       ├── calendar/            # Calendar vertical slice
 │   │       ├── entra/               # Microsoft Entra ID (accounts in the tenant, for Staff)
+│   │       ├── google/              # Google Workspace (the organisation's connection, for Staff)
 │   │       ├── assistant/           # Assistant vertical slice (conversations, runs and tools)
 │   │       ├── module/              # The platform modules mount through
 │   │       ├── db/                  # Pool and the embedded goose migrations
@@ -142,6 +144,7 @@ vantigo/
 │   ├── inventory/frontend/          # @vantigo/inventory-ui
 │   ├── calendar/frontend/           # @vantigo/calendar-ui
 │   ├── entra/frontend/              # @vantigo/entra-ui
+│   ├── google/frontend/             # @vantigo/google-ui
 │   └── assistant/frontend/          # @vantigo/assistant-ui
 ├── packages/
 │   ├── frontend-shell/              # @vantigo/frontend-shell — shared shell, theme, branding

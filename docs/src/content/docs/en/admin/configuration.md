@@ -14,7 +14,7 @@ says where each of the workspace's is edited.
 | Tier | Owner | Where it lives | Edited by | Examples |
 | --- | --- | --- | --- | --- |
 | **Instance** | Vantigo, or the operator who runs the installation | The environment (`vantigo.env`), validated when the process starts | Nobody in the interface: the operator changes the environment and restarts | `DATABASE_URL`, `APP_SECRET`, `APP_URL`, `MODULES`, `STORAGE_*`, `MAIL_DRIVER`, `SMTP_*` and `CLOUDFLARE_EMAIL_*`, `TRUSTED_PROXY_*`, every worker's poll, `ENERGY_SPOT_PRICE_SERVICE_*`, `AI_*` |
-| **Workspace** | The tenant — the company that uses the installation | The database | An Owner, or whoever holds the permission, under **Workspace admin** or in the module's own settings | Single sign-on, the Microsoft Entra ID connection and its rules, Communications' channels, the model each AI task uses, each module's settings |
+| **Workspace** | The tenant — the company that uses the installation | The database | An Owner, or whoever holds the permission, under **Workspace admin** or in the module's own settings | Single sign-on, the Microsoft Entra ID connection and its rules, the Google Workspace connection, Communications' channels, the model each AI task uses, each module's settings |
 
 **A setting lives in exactly one tier**, so there is no precedence rule to learn: no
 workspace setting is read from the environment, and no instance setting is offered for
@@ -49,7 +49,7 @@ the guides linked from each group say how to choose.
 | `PUBLIC_BASE_URL` | unset | The `https` address the pay page, the calendar answer page and Microsoft's change notifications are reached at from the internet |
 | `PORT` | `8080` | The listen port |
 | `DATABASE_URL`, `MIGRATIONS_DATABASE_URL` | required; the second defaults to the first | The runtime role's connection and the owner role the migrations use |
-| `MODULES` | every module the binary knows | The business modules this installation serves: `customers`, `products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `calendar`, `entra` and `assistant`. `inventory` requires `products`. The `assistant` has no permissions of its own and needs no other module, but is of use only while `AI_PROVIDER` is set ([AI](#ai)) |
+| `MODULES` | every module the binary knows | The business modules this installation serves: `customers`, `products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `calendar`, `entra`, `google` and `assistant`. `inventory` requires `products`; `entra` and `google` each require `staff` (`google requires staff`). The `assistant` has no permissions of its own and needs no other module, but is of use only while `AI_PROVIDER` is set ([AI](#ai)) |
 | `WORKERS_IN_PROCESS` | `1` | Whether the API process also runs the background workers |
 | `SHUTDOWN_TIMEOUT`, `LOG_LEVEL` | `30s`, `info` | How long a stop drains in-flight work; the log's verbosity |
 | `APP_SECRET` | required | The process-wide key material: cookies, CSRF, sealed secrets |
@@ -287,6 +287,7 @@ change: both operations keep using that model until an Owner chooses another.
 | The Microsoft Entra ID connection: tenant, application, client secrets and permissions | **Workspace admin** › **Integrations** › **Microsoft Entra ID** › **Connection** ([guide](/en/user/entra/#where-it-is-and-the-four-tabs)) | an Owner |
 | The account rules, sign-in and provisioning, the groups Vantigo keeps in the tenant | **Integrations** › **Microsoft Entra ID** › **Accounts** | `entra:manage` (sign-in and provisioning: an Owner) |
 | The Outlook connection, calendar sync on it, and Mail channels | **Integrations** › **Microsoft Entra ID** › **Outlook and mail** | `entra:manage` |
+| The Google Workspace connection: the service account's keys, the admin to impersonate, the Internal web client and the test | **Workspace admin** › **Integrations** › **Google Workspace** › **Connection** ([guide](/en/user/google-workspace/#where-it-is-and-the-four-tabs)) | an Owner (`google:manage` reads it) |
 | The model each AI task uses, among the models the plan allows | **Workspace admin** › **Integrations** › **AI models** ([guide](/en/user/workspace-administration/#ai-models)) | an Owner |
 | Who has the assistant, how long conversations are kept and what the assistant may use | **Workspace admin** › **Integrations** › **Assistant** ([guide](/en/user/workspace-administration/#assistant)); each person's own switch in **Users** › **Edit details** | an Owner |
 | The mailboxes Communications sends from, and the SMTP accounts it uses | **Communications** › **Channels** | `communications:channels-manage` |

@@ -12,12 +12,13 @@ sources:
 Administrasjon av arbeidsområdet er der en **Eier** styrer hvem som kan bruke
 Vantigo og hva de kan gjøre. Åpne avatar-menyen øverst til høyre og velg
 **Administrer arbeidsområde**; sidemenyen har **Oversikt**, **Brukere**,
-**Invitasjoner** og **Roller og tilgang**, og, under **Integrasjoner**, **Microsoft Entra ID**
-og, når Vantigo har satt opp KI for installasjonen, **KI-modeller** og **Assistent**.
+**Invitasjoner** og **Roller og tilgang**, og, under **Integrasjoner**, **Microsoft Entra ID**,
+**Google Workspace** og, når Vantigo har satt opp KI for installasjonen, **KI-modeller** og **Assistent**.
 
 Alt her krever eierrollen, med ett unntak: den en eier har delegert
 rolleadministrasjon til, ser bare **Roller og tilgang**, både i avatar-menyen og i
-sidemenyen; og den som har `entra:manage` uten å være eier, ser bare **Integrasjoner**
+sidemenyen; og den som har `entra:manage` eller `google:manage` uten å være eier, ser bare
+**Integrasjoner**
 ([nedenfor](#integrasjoner)). Den siste aktive eieren kan aldri degraderes, deaktiveres
 eller slettes, så arbeidsområdet har alltid én.
 
@@ -505,23 +506,30 @@ styrer grupper, får medlemmene de tilknyttede rollene automatisk; se
 
 **Integrasjoner** er den andre seksjonen i sidemenyen til **Administrer arbeidsområde**:
 stedet selskapets tilkoblinger til systemer andre steder styres, og eierens innstillinger for
-assistenten. Den har tre punkter.
+assistenten. Den har fire punkter.
 **Microsoft Entra ID** kobler Vantigo til selskapets Microsoft Entra ID-leietaker; siden har
 fire faner — **Status**, **Tilkobling**, **Kontoer** og **Outlook og e-post** — beskrevet i
 [Microsoft Entra ID](/nb/user/entra/#hvor-den-er-og-de-fire-fanene). Det er der bare mens
 modulen Microsoft Entra ID er på i denne installasjonen, og bare for den som har
-`entra:manage`; en eier har alle rettigheter. **KI-modeller** er bare eierens, og er der bare
+`entra:manage`; en eier har alle rettigheter. **Google Workspace** kobler Vantigo til
+selskapets Google Workspace-organisasjon; siden har fire faner — **Status**,
+**Tilkobling**, **Kontoer** og **Kalender og Gmail** — beskrevet i [Google
+Workspace](/nb/user/google-workspace/#hvor-den-er-og-de-fire-fanene). Det er der bare mens
+modulen Google Workspace er på, og bare for den som har `google:manage`.
+**KI-modeller** er bare eierens, og er der bare
 mens Vantigo har satt opp KI for denne installasjonen ([nedenfor](#ki-modeller)). **Assistent** er
 også bare eierens, og er der mens modulen Assistent er på og KI er satt opp
 ([nedenfor](#assistent)).
 
 - En eier ser hele Administrer arbeidsområde, med **Integrasjoner** etter resten.
-- Den som har `entra:manage` uten å være eier, ser bare **Integrasjoner** i sidemenyen —
-  slik en person med delegert rolleadministrasjon bare ser **Roller og tilgang** — og
-  finner **Microsoft Entra ID** i avatar-menyen. Stegene som er en eiers, leser
+- Den som har `entra:manage` eller `google:manage` uten å være eier, ser bare
+  **Integrasjoner** i sidemenyen — slik en person med delegert rolleadministrasjon bare
+  ser **Roller og tilgang** — med sidene rettighetene åpner, og finner **Microsoft Entra
+  ID** eller **Google Workspace** i avatar-menyen. Stegene som er en eiers, leser
   vedkommende uten skjemaene. Vedkommende ser ikke **KI-modeller** eller **Assistent**.
-- Uten `entra:manage` (og uten å være eier) finnes ingen seksjon **Integrasjoner**. For en
-  eier finnes den heller ikke mens modulen Microsoft Entra ID er av og KI ikke er satt opp.
+- Uten `entra:manage` eller `google:manage` (og uten å være eier) finnes ingen seksjon
+  **Integrasjoner**. For en eier finnes den heller ikke mens modulene Microsoft Entra ID og
+  Google Workspace er av og KI ikke er satt opp.
 
 Dine egne kontoer andre steder, som Outlook, kobler du til under **Innstillinger** ›
 **Tilkoblinger** ([Tilkoblinger](/nb/user/connections/)); postboksene Kommunikasjon

@@ -16,8 +16,8 @@ shown.
 ## Apps and the switcher
 
 Each module is an **app** with its own sidebar: Customers, Projects, Time, Calendar,
-Expenses, Staff, Planning, Invoices, Communications, Products, Inventory and Energy — and Microsoft Entra ID,
-where an administrator connects the company's tenant. The [Assistant](/en/user/assistant/) is an app
+Expenses, Staff, Planning, Invoices, Communications, Products, Inventory and Energy — and Microsoft Entra ID
+and Google Workspace, where an administrator connects the company's tenant or organisation. The [Assistant](/en/user/assistant/) is an app
 too, and also a panel that opens beside any screen with the button in the top bar or Cmd/Ctrl+J, and it can [show you where to click](/en/user/assistant/#show-me-how) in the main create flows. The app switcher in the top bar lists
 the apps you can open; **Home** is the dashboard, which opens with Calendar's **Today and
 this week** agenda when you use Calendar ([the dashboard](/en/user/calendar/#the-dashboard)),
@@ -83,6 +83,7 @@ shorter than yours:
 | [Inventory](/en/user/inventory/) | Overview, Movements, Receipts, Counts, Import opening balances |
 | [Energy](/en/user/energy/) | Metering points |
 | [Microsoft Entra ID](/en/user/entra/) | Microsoft Entra ID (the connection's status and its six setup steps), for `entra:manage` |
+| [Google Workspace](/en/user/google-workspace/) | Google Workspace (the connection's status and its six setup steps), for `google:manage` |
 | [Assistant](/en/user/assistant/) | Your conversations with the assistant, from anywhere in Vantigo; shown to everyone who has the assistant |
 
 A few screens belong to an area without a sidebar entry of their own, and are opened
