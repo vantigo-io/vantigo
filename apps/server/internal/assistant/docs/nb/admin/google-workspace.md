@@ -218,8 +218,9 @@ kan ha lekket.
 
 Hver nøkkel Vantigo har lagret, er aktiv til den trekkes tilbake. Når Google avviser den
 nyeste (slettet i konsollen, for eksempel), merker Vantigo den *Google avviste den* og
-hendelsen *Google avviste en nøkkel*, av Vantigo, og bruker den eldre; når Google
-avviser alle, **Feiler** tilkoblingen.
+hendelsen *Google avviste en nøkkel*, av Vantigo — én gang, til nøkkelen virker igjen — og
+bruker den eldre; når Google avviser alle, **Feiler** tilkoblingen. En nøkkel som virker
+igjen, mister merket. En adresse Google ikke kjenner, holdes ikke mot nøklene.
 
 ## Bytt tjenestekonto
 
@@ -246,8 +247,8 @@ og av hvem.
 | **Ikke satt opp** | Ingen aktiv nøkkel, eller ingen administrator å etterligne — eller administratoren ble nettopp endret. | Fullfør steg 2 og 4, og test. |
 | **Venter på delegering** (`not_delegated`) | Google avviste alle tilgangsområdene: delegeringen er ikke lagt inn, er lagt inn for en annen klient-ID, eller er ikke tatt i bruk ennå. | Sjekk **Client ID** og tilgangsområdene i administrasjonskonsollen; vent opptil 24 timer, og på en annen superadministrators godkjenning ved godkjenning fra flere parter; test igjen. |
 | **Tilkoblet**, med tilgangsområder oppført som avvist | Noen av tilgangsområdene er delegert, andre ikke. | Legg de manglende til i klientens delegering, og test igjen. |
-| **Feiler** (`credential_invalid`) | Google avviste alle nøklene — slettet eller deaktivert i Cloud-konsollen — eller kjenner ikke administratoren som etterlignes: adressen er feilskrevet eller ikke i organisasjonen. En nøkkel forseglet under en annen `APP_SECRET` kan heller ikke åpnes. | Sjekk adressen i steg 4; last opp en ny nøkkel hvis den gamle er borte; test igjen. |
-| **Feiler** (`admin_refused`) | Tokenet ble gitt, men Admin SDK svarte 403: administratoren har ikke lov til å lese organisasjonen, eller Admin SDK API er ikke slått på i prosjektet. | Oppgi en superadministrator, eller gi administratorens rolle rett til å lese brukere og domener; slå på **Admin SDK API**; test igjen. |
+| **Feiler** (`credential_invalid`) | Google avviste alle nøklene — slettet eller deaktivert i Cloud-konsollen. En nøkkel forseglet under en annen `APP_SECRET` kan heller ikke åpnes. | Last opp en ny nøkkel hvis den gamle er borte; test igjen. |
+| **Feiler** (`admin_refused`) | Google kjenner ikke administratoren som etterlignes — adressen er feilskrevet, ikke i organisasjonen, eller brukeren er suspendert — eller tokenet ble gitt, men Admin SDK svarte 403: administratoren har ikke lov til å lese organisasjonen, eller Admin SDK API er ikke slått på i prosjektet. Nøklene merkes ikke. | Sjekk adressen i steg 4; oppgi en superadministrator, eller gi administratorens rolle rett til å lese brukere og domener; slå på **Admin SDK API**; test igjen. |
 | **Feiler** (`google_unreachable`) | Google svarte ikke, eller svarte med feil to ganger. | Sjekk utgående https til vertene [over](#før-du-begynner) fra hver prosess, og test igjen. |
 | *Denne nøkkelen tilhører en annen tjenestekonto* (`client_mismatch`) | Den opplastede nøkkelen tilhører en annen tjenestekonto enn de aktive nøklene. | Last opp en nøkkel til den nåværende kontoen, eller [bytt tjenestekonto](#bytt-tjenestekonto). |
 | *Tilgangsområder Vantigo ikke bruker* | Delegeringen har tilgangsområder Vantigo aldri ber om. | Fjern dem fra delegeringen med mindre et annet produkt trenger dem. |
