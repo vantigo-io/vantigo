@@ -169,7 +169,7 @@ func TestSwitchChannelProvider_BetweenTwoMailboxProviders(t *testing.T) {
 		t.Errorf("message = %q", e.Error.Message)
 	}
 	wantCode(t, switchTo("entra"), http.StatusConflict, "provider_switch_unsupported")
-	wantCode(t, switchTo("yahoo"), http.StatusBadRequest, "invalid_request")
+	wantCode(t, switchTo("yahoo"), http.StatusConflict, "provider_switch_unsupported")
 	if p := modtest.One[string](t, h, `SELECT provider FROM communications.channels WHERE id = $1`, ch.Id); p != "google" {
 		t.Errorf("provider = %q, want google", p)
 	}
