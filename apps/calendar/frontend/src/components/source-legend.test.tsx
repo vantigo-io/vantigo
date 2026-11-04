@@ -18,9 +18,14 @@ describe("the filter's memory", () => {
     expect(readHiddenKinds()).toEqual([]);
   });
 
-  it("drops a kind the server no longer answers, the Outlook kind before the mailbox kind", () => {
+  it("carries the Outlook kind over to the mailbox kind, once", () => {
     window.localStorage.setItem(HIDDEN_KINDS_STORAGE_KEY, JSON.stringify(["calendar.outlook", "projects.task"]));
-    expect(readHiddenKinds()).toEqual(["projects.task"]);
+    expect(readHiddenKinds()).toEqual(["calendar.mailbox", "projects.task"]);
+    window.localStorage.setItem(
+      HIDDEN_KINDS_STORAGE_KEY,
+      JSON.stringify(["calendar.outlook", "calendar.mailbox", "projects.task"]),
+    );
+    expect(readHiddenKinds()).toEqual(["calendar.mailbox", "projects.task"]);
   });
 
   it.each([

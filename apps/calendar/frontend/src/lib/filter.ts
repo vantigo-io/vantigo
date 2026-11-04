@@ -1,17 +1,19 @@
 import { useCallback, useState } from "react";
-import { RETIRED_KINDS } from "./colours";
+import { RENAMED_KINDS } from "./colours";
 
 /** Where the legend keeps the kinds the person hid — a convenience per browser, not a setting. */
 export const HIDDEN_KINDS_STORAGE_KEY = "vantigo.calendar.hiddenKinds";
 
-/** The kinds the person hid, as saved; a kind the server no longer answers (RETIRED_KINDS) is dropped. */
+/** The kinds the person hid, as saved; a kind renamed since (RENAMED_KINDS) is read as its new name. */
 export const readHiddenKinds = (): string[] => {
   try {
     const raw = window.localStorage.getItem(HIDDEN_KINDS_STORAGE_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed)
-      ? parsed.filter((kind): kind is string => typeof kind === "string" && !RETIRED_KINDS.includes(kind))
-      : [];
+    if (!Array.isArray(parsed)) return [];
+    const kinds = parsed
+      .filter((kind): kind is string => typeof kind === "string")
+      .map((kind) => (Object.hasOwn(RENAMED_KINDS, kind) ? RENAMED_KINDS[kind] : kind));
+    return [...new Set(kinds)];
   } catch {
     return [];
   }

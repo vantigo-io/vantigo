@@ -202,7 +202,7 @@ describe("CalendarPage", () => {
     },
   );
 
-  it("drops a saved filter's kind the server no longer answers", async () => {
+  it("carries a saved filter's renamed kind over to its new name", async () => {
     window.localStorage.setItem(HIDDEN_KINDS_STORAGE_KEY, JSON.stringify(["calendar.outlook", "customers.follow-up"]));
     stubCalendarServer({
       meta: defaultMeta({
@@ -224,7 +224,8 @@ describe("CalendarPage", () => {
     });
     renderRoute("/calendar");
 
-    expect(await screen.findByText("Busy in Outlook")).toBeInTheDocument();
+    expect(await screen.findByText("Kickoff with Nordlys AS")).toBeInTheDocument();
+    expect(screen.queryByText("Busy in Outlook")).not.toBeInTheDocument();
     expect(screen.queryByText("Call back Nordlys")).not.toBeInTheDocument();
   });
 

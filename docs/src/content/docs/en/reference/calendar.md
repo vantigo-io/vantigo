@@ -297,8 +297,8 @@ provider's name being `provider.displayName` of [`GET
 provider, **Busy** and **Tentative** (**Opptatt**, **Foreløpig**) — and draws hatched, in
 a colour of its own; the legend's chip is the provider's name, or **Mailbox calendar**
 (**Postbokskalender**) without one. A filter saved in a browser that names the kind's
-old name, `calendar.outlook`, has that entry dropped when it is read, so the busy time
-shows; their id is the first 16 hex digits of the
+old name, `calendar.outlook`, has that entry read as `calendar.mailbox`, so busy time
+the person hid stays hidden; their id is the first 16 hex digits of the
 SHA-256 of the event's id in the mailbox, which never reaches the browser. The person's
 own Outlook titles are not shown ([why](#the-persons-own-outlook-titles)).
 

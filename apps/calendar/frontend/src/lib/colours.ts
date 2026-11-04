@@ -4,8 +4,8 @@
  * Workspace design G10).
  */
 export const MAILBOX_KIND = "calendar.mailbox";
-/** Kinds the server no longer answers: a saved filter naming one is dropped on read. */
-export const RETIRED_KINDS: readonly string[] = ["calendar.outlook"];
+/** Kinds the server answers under another name now: a saved filter naming one carries over to the new. */
+export const RENAMED_KINDS: Readonly<Record<string, string>> = { "calendar.outlook": MAILBOX_KIND };
 /** The kind of an appointment's item on `/items`. */
 export const APPOINTMENT_KIND = "calendar.appointment";
 /** The kind of a subscribed calendar's item on `/items` (feed design D8). */
