@@ -26,9 +26,16 @@ import (
 // User is a user in the fake's Directory. The list-valued attributes are
 // Google's objects, as a test sets them and as the module wrote them.
 type User struct {
-	ID                        string
-	PrimaryEmail              string
-	Aliases                   []string
+	ID           string
+	PrimaryEmail string
+	Aliases      []string
+	// NonEditableAliases are the same names on an alias domain, which
+	// Google answers apart from the aliases.
+	NonEditableAliases []string
+	// OtherEmails are emails[] entries beyond the primary email and the
+	// aliases — an address an administrator typed for the person, such as
+	// a home address elsewhere ({"address": …, "type": "home"}).
+	OtherEmails               []map[string]any
 	GivenName, FamilyName     string
 	Suspended                 bool
 	IsAdmin, IsDelegatedAdmin bool
@@ -88,6 +95,8 @@ type directory struct {
 	// until CatchUp (lagging holds their ids).
 	SearchLag bool
 	lagging   map[string]bool
+	// userLists counts the users.list calls answered.
+	userLists int
 }
 
 // CatchUp makes the search find every user it lagged.
@@ -358,8 +367,19 @@ func userBody(u *User) map[string]any {
 	if len(u.Aliases) > 0 {
 		out["aliases"] = u.Aliases
 	}
+	if len(u.NonEditableAliases) > 0 {
+		out["nonEditableAliases"] = u.NonEditableAliases
+	}
+	emails := []map[string]any{{"address": u.PrimaryEmail, "primary": true}}
+	for _, a := range u.Aliases {
+		emails = append(emails, map[string]any{"address": a})
+	}
+	out["emails"] = append(emails, u.OtherEmails...)
 	return out
 }
+
+// fullName is u's full name as Google answers it.
+func (u *User) fullName() string { return strings.TrimSpace(u.GivenName + " " + u.FamilyName) }
 
 // emailTaken reports whether email is a user's primary email or alias, or a
 // group's address.
@@ -377,36 +397,107 @@ func (g *FakeGoogle) emailTaken(email string) bool {
 	return false
 }
 
-// listUsers is users.list: customer=my_customer and a query
-// externalId:<n> (bare or quoted), matched loosely (U11).
+// listUsers is users.list for customer=my_customer, paged by maxResults (at
+// most 500, 100 when absent) and pageToken, ordered by id, with one query
+// or none:
+//
+//   - externalId:<n> (bare or quoted), matched loosely (U11);
+//   - name:'<s>*', the full name starting with s, ignoring case;
+//   - email:'<s>*', the primary email or an alias starting with s, ignoring
+//     case;
+//
+// and any other query refused 400 invalidQuery, as an OR between two
+// clauses would be here.
 func (g *FakeGoogle) listUsers(q url.Values) answer {
 	if q.Get("customer") != "my_customer" {
 		return g.refuse(http.StatusBadRequest, "badRequest")
 	}
-	number, ok := strings.CutPrefix(q.Get("query"), "externalId:")
+	match, ok := userQuery(q.Get("query"))
 	if !ok {
 		return g.refuse(http.StatusBadRequest, "invalidQuery")
 	}
-	number = strings.Trim(number, "'")
+	size := 100
+	if v := q.Get("maxResults"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 500 {
+			return g.refuse(http.StatusBadRequest, "invalid")
+		}
+		size = n
+	}
+	offset := 0
+	if v := q.Get("pageToken"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return g.refuse(http.StatusBadRequest, "invalid")
+		}
+		offset = n
+	}
 	ids := slices.Sorted(maps.Keys(g.users))
-	var out []map[string]any
+	var found []*User
 	for _, id := range ids {
 		u := g.users[id]
-		if g.lagging[id] {
-			continue
-		}
-		if slices.ContainsFunc(u.ExternalIDs, func(e map[string]any) bool {
-			v, _ := e["value"].(string)
-			return strings.HasPrefix(strings.ToLower(v), strings.ToLower(number))
-		}) {
-			out = append(out, userBody(u))
+		if !g.lagging[id] && match(u) {
+			found = append(found, u)
 		}
 	}
+	g.userLists++
 	body := map[string]any{"kind": "admin#directory#users"}
+	var out []map[string]any
+	for i := offset; i < len(found) && i < offset+size; i++ {
+		out = append(out, userBody(found[i]))
+	}
 	if len(out) > 0 {
 		body["users"] = out
 	}
+	if offset+size < len(found) {
+		body["nextPageToken"] = strconv.Itoa(offset + size)
+	}
 	return answer{status: http.StatusOK, body: body}
+}
+
+// userQuery is users.list's query as the fake reads it: the users it
+// matches; false for a query the fake refuses.
+func userQuery(query string) (func(u *User) bool, bool) {
+	prefix := func(field string) (string, bool) {
+		rest, ok := strings.CutPrefix(query, field+":'")
+		if !ok {
+			return "", false
+		}
+		s, ok := strings.CutSuffix(rest, "*'")
+		if !ok || s == "" || strings.ContainsAny(s, `'"*\`) {
+			return "", false
+		}
+		return strings.ToLower(s), true
+	}
+	if query == "" {
+		return func(*User) bool { return true }, true
+	}
+	if number, ok := strings.CutPrefix(query, "externalId:"); ok {
+		number = strings.ToLower(strings.Trim(number, "'"))
+		return func(u *User) bool {
+			return slices.ContainsFunc(u.ExternalIDs, func(e map[string]any) bool {
+				v, _ := e["value"].(string)
+				return strings.HasPrefix(strings.ToLower(v), number)
+			})
+		}, true
+	}
+	if s, ok := prefix("name"); ok {
+		return func(u *User) bool { return strings.HasPrefix(strings.ToLower(u.fullName()), s) }, true
+	}
+	if s, ok := prefix("email"); ok {
+		return func(u *User) bool {
+			return strings.HasPrefix(u.PrimaryEmail, s) ||
+				slices.ContainsFunc(u.Aliases, func(a string) bool { return strings.HasPrefix(strings.ToLower(a), s) })
+		}, true
+	}
+	return nil, false
+}
+
+// UserLists is how many users.list calls the fake answered.
+func (g *FakeGoogle) UserLists() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.userLists
 }
 
 // attributes copies the list-valued attributes and the flags body names
