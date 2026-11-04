@@ -1,6 +1,6 @@
 ---
 title: Kalender
-description: Avtalene dine og det de andre appene har lagt inn i dagene dine, å invitere kolleger, kunders kontaktpersoner og hvem som helst med en adresse, hva en invitert får og hvordan de svarer, avlysning, når kolleger er opptatt, gjentakende avtaler, agendaen på dashbordet, kalenderen din på mobilen, kalendere fra andre steder ved siden av din egen, en kopi av kalenderen din i Outlook, å endre dine egne avtaler fra Outlook, og når du er opptatt i Outlook, vist i Vantigo.
+description: Avtalene dine og det de andre appene har lagt inn i dagene dine, å invitere kolleger, kunders kontaktpersoner og hvem som helst med en adresse, hva en invitert får og hvordan de svarer, avlysning, når kolleger er opptatt, gjentakende avtaler, agendaen på dashbordet, kalenderen din på mobilen, kalendere fra andre steder ved siden av din egen, en kopi av kalenderen din i Outlook eller Google Kalender, å endre dine egne avtaler derfra, og når du er opptatt der, vist i Vantigo.
 sidebar:
   order: 35
 sources:
@@ -657,10 +657,63 @@ stedet, tidene, **Vis som** og **Privat** — og fra da av er den en kopi som de
 gjentakende hendelse, eller en med deltakere, blir liggende bare i Outlook. Hendelser du
 oppretter i hovedkalenderen, forblir dine i Outlook og tas aldri med.
 
+## Synkroniser med Google Kalender
+
+Når organisasjonen din bruker Google Workspace, heter det samme kortet **Google
+Calendar**, og det holder kopien i Google Kalender i stedet. Alt [Synkroniser med
+Outlook](#synkroniser-med-outlook) sier, gjelder, med Googles navn: du kobler til din
+egen Google-konto én gang, velger **Hvor**, **Hva** og **Titler** på samme måte, og
+endringene du gjør i dine egne avtaler i Google Kalender, kommer tilbake til Vantigo
+etter de samme reglene ([Endre avtalene dine i Outlook](#endre-avtalene-dine-i-outlook)).
+
+1. Åpne **Kalender → Min kalender**. Kortet **Google Calendar** står under
+   kalenderadressene dine.
+2. Under beskrivelsen på kortet velger du **Koble til Google** og logger på Google med
+   jobbkontoen din. Google ber deg la Vantigo se og endre hendelsene i kalenderne dine og
+   lage sin egen kalender; du kommer tilbake til denne siden, og kortet sier **Tilkoblet
+   som** og kontoen din ([Tilkoblinger](/nb/user/connections/)).
+3. Slå på **Synkroniser med Google Calendar**, og velg som for Outlook.
+
+**Hvor.** **Hovedkalenderen min** er din egen Google-kalender, der kolleger som booker
+møter i Google, ser at du er opptatt. **En egen Vantigo-kalender** er en kalender som
+heter *Vantigo*, og som Vantigo lager i Google Kalender; du kan skjule den i
+kalenderlisten i Google Kalender. Lar ikke organisasjonen din Vantigo lage en kalender
+for deg, sier kortet **Organisasjonen din har ikke gitt Vantigo tilgang til postboksen
+din.**: velg **Hovedkalenderen min** i stedet, eller spør administratoren din.
+
+**Slik vises kopiene i Google Kalender.** En avtale merket som ledig er ledig (*Vis som
+tilgjengelig*), og en privat avtale er privat. Google Kalender har ikke *foreløpig* og
+ikke *ikke til stede* for en hendelse Vantigo skriver, så en avtale du har svart
+foreløpig på, og et fravær, vises som opptatt der. Kopiene har ingen gjester og ingen
+varsler.
+
+**Når du er opptatt i Google, vist i Vantigo.** Mens synkroniseringen er på, leser
+Vantigo tidspunktene i hovedkalenderen din i Google — aldri titlene — og viser dem som
+skraverte blokker under brikken **Google Calendar**:
+
+- **Opptatt i Google Calendar** — en hendelse som viser deg som opptatt;
+- **Foreløpig i Google Calendar** — en invitasjon du har svart *Kanskje* på;
+- **Ikke til stede** — en «ikke til stede»-hendelse du har laget i Google Kalender;
+- **Arbeider et annet sted** — et arbeidssted du har satt til å vise deg som opptatt.
+
+En hendelse som viser deg som tilgjengelig, en invitasjon du har takket nei til, og
+Vantigos egne kopier blir utelatt. En endring i Google Kalender vises etter neste
+synkronisering — som regel innen et minutt, fordi Google sier fra til Vantigo; ellers ved
+kvartersynkroniseringen.
+
+**Koble til på nytt.** Når Google ikke lenger godtar tilkoblingen din — du har fjernet
+Vantigo på sikkerhetssiden til Google-kontoen din, passordet ditt er endret, eller
+administratoren din har blokkert appen — sier kortet **Google Calendar vil at du logger
+på igjen: velg Koble til Google Calendar på nytt ovenfor.** Velg **Koble til Google på
+nytt** på kortet. Slår du av synkroniseringen eller kobler fra Google under
+**Innstillinger → Tilkoblinger**, fjerner Vantigo det den har lagt i Google Kalender.
+Slutter du, blir kopiene liggende i Google-kontoen din, som blir suspendert når
+arbeidsforholdet ditt slutter.
+
 ## Hva som kommer
 
-Kalenderadressen til telefonen, kalendere fra andre steder og kopien i Outlook er
-bygget, når du er opptatt i Outlook, vises i Vantigo, og endringene du gjør i dine egne
-avtaler i Outlook, kommer tilbake. Neste for Outlook: raskere oppdateringer. Lenger
-frem: synkronisering med Google, bookingsider, rom og ressurser, påminnelser i appen og
-på e-post, CalDAV og teamkalendere.
+Kalenderadressen til telefonen, kalendere fra andre steder og kopien i Outlook eller
+Google Kalender er bygget, når du er opptatt der, vises i Vantigo, og endringene du gjør
+i dine egne avtaler der, kommer tilbake. Neste for Outlook: raskere oppdateringer.
+Lenger frem: bookingsider, rom og ressurser, påminnelser i appen og på e-post, CalDAV og
+teamkalendere.

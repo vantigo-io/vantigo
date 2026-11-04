@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Connecting Vantigo to a Google Workspace organisation through a service account with domain-wide delegation — the Google Cloud project and the Admin SDK API, the service account and its JSON key, lifting iam.disableServiceAccountKeyCreation for the project, uploading the key, delegating the scopes in the Admin console and waiting for them, the admin to impersonate, the Internal web client and its two redirect URIs, verifying with Test connection — then Connection for people (each person's own Google connection — the switch, the web client as Internal, verifying by connecting yourself, turning it off, what happens to a person's connection, google-sweep), the accounts Staff keeps in Google, the account rules (the address, the organisational unit, the first password and its lifetime), licences, Staff's groups and their three settings, photos at 96 px, what a leaver's steps do, delete after N days, confirming an account or a group Vantigo did not create, rotating a key, changing the service account, and what can go wrong.
+description: Connecting Vantigo to a Google Workspace organisation through a service account with domain-wide delegation — the Google Cloud project and the Admin SDK API, the service account and its JSON key, lifting iam.disableServiceAccountKeyCreation for the project, uploading the key, delegating the scopes in the Admin console and waiting for them, the admin to impersonate, the Internal web client and its two redirect URIs, verifying with Test connection — then Connection for people (each person's own Google connection — the switch, the web client as Internal, verifying by connecting yourself, turning it off, what happens to a person's connection, google-sweep), calendar sync on each person's connection (change notifications, verifying, a leaver's copies), the accounts Staff keeps in Google, the account rules (the address, the organisational unit, the first password and its lifetime), licences, Staff's groups and their three settings, photos at 96 px, what a leaver's steps do, delete after N days, confirming an account or a group Vantigo did not create, rotating a key, changing the service account, and what can go wrong.
 sidebar:
   order: 47
 sources:
@@ -28,6 +28,9 @@ sources:
   - apps/server/internal/google/personal_close.go
   - apps/server/internal/google/personal_token.go
   - apps/server/internal/google/personal_sweep.go
+  - apps/server/internal/google/mailbox.go
+  - apps/server/internal/google/mailbox_notifications.go
+  - apps/server/internal/google/mailbox_notifications_endpoint.go
 ---
 
 The Google Workspace module connects Vantigo to your company's Google Workspace
@@ -39,8 +42,8 @@ account before their first day, opens it on the day with a first password HR han
 over, keeps their profile and manager in step, assigns the licences of their groups,
 writes their photo, and suspends the account when they leave
 ([The accounts](#the-accounts)). Each person can connect their own Google account
-([Connection for people](#connection-for-people)), which calendar sync and Gmail, in
-later releases, will use.
+([Connection for people](#connection-for-people)), which [calendar sync](#calendar-sync)
+uses, and sending from Gmail will in a later release.
 
 This page is the operator's side: what Google needs, the steps in the Google Cloud
 console and the Admin console, and what to do when something fails. The page in Vantigo
@@ -226,9 +229,9 @@ the old one in the console. A new client id always needs its secret.
 ## Connection for people
 
 **Connection for people** lets each person connect their own Google account to Vantigo
-once, under **Settings → Connections**, so that calendar sync to Google Calendar and
-sending from their own Gmail address — later releases — act as that person with their
-own consent, never through the service account: no calendar scope is ever delegated.
+once, under **Settings → Connections**, so that [calendar sync](#calendar-sync) to
+Google Calendar — and sending from their own Gmail address, in a later release — acts as
+that person with their own consent, never through the service account: no calendar scope is ever delegated.
 Vantigo keeps each person's refresh token sealed, and nothing else of Google's.
 
 ### Before you turn it on
@@ -271,14 +274,14 @@ card says **Reconnect needed**.
 
 Turn off **Connection for people** on the same tab. While anyone is connected, the page
 asks first: turning it off closes **every** person's connection, and each must connect
-again once it is back on. The tokens are kept, for a few days at most, only for what a
-later release's calendar sync must remove; then they are deleted and revoked at Google.
+again once it is back on. The tokens are kept, for a few days at most, only for what
+calendar sync must remove; then they are deleted and revoked at Google.
 
 ### What happens to a person's connection
 
 | When | What happens |
 | --- | --- |
-| The person chooses **Disconnect** | The connection closes; its token is kept only for removals, and deleted — and revoked at Google — once unused for a day, at the latest after seven days. |
+| The person chooses **Disconnect** | The connection closes; its token is kept only for removals, and deleted — and revoked at Google — once unused for a day and its calendar's push channel stopped, at the latest after seven days. |
 | Google refuses the token (revoked, unused for six months, a password change, a policy) | The person sees **Reconnect needed** with the reason; only they can mend it, by connecting again. |
 | The person leaves | The account is suspended and the connection closed with its token forgotten. |
 | The account is suspended or deleted in the Admin console, or no longer one Vantigo manages | The connection closes with its token forgotten — on its next use, or within a day by `google-sweep` for one waiting in *Reconnect needed*. |
@@ -294,6 +297,57 @@ a time, the accounts of connections waiting in *Reconnect needed* — in Vantigo
 then at Google as the admin to impersonate — closing those whose account is suspended or
 gone. It has no setting, takes no lock across replicas, and never holds a database
 connection while it waits for Google.
+
+## Calendar sync
+
+A person whose account in Staff is a Google Workspace account can sync their Vantigo
+calendar with **Google Calendar** on their **My calendar** screen
+([Sync with Google Calendar](/en/user/calendar/#sync-with-google-calendar)). The calendar's
+`calendar-mailbox-sync` worker writes the copies, reads the person's busy time and takes
+back their edits through this module, **on each person's own connection** — the
+calendar access they consented to when they connected (*see and change the events in
+your calendars*, *make secondary calendars*). No calendar scope is delegated to the
+service account, for anyone: Vantigo never reaches a calendar its person did not connect.
+How the worker runs and its settings are on the [Calendar](/en/admin/calendar/#google-calendar)
+page.
+
+- **Preconditions.** [Connection for people](#connection-for-people) on and *Ready*, and
+  the person connected. Nothing else is set up for the calendar: there is no switch of its
+  own.
+- **The person's calendar.** The copies go to their main calendar, or to a calendar
+  called *Vantigo* that the module makes in their Google Calendar. Each copy carries this
+  installation's own mark, so two installations writing to one person's calendar never
+  touch each other's copies, and the person's own events are only ever read for their
+  times.
+- **Change notifications.** With `PUBLIC_BASE_URL` set, the module opens a push channel
+  on each synced person's main calendar, and Google posts a message to
+  `PUBLIC_BASE_URL/api/v1/google/calendar-notifications` when it changes, which makes the
+  person's sync due at once. The address must be reachable from the internet over HTTPS;
+  Google asks no domain verification for it. The endpoint reads the message's headers
+  alone, takes one only when its channel and secret token match one the module opened —
+  the token is stored as a hash —, answers every request alike, and is rate limited to
+  600 a minute per address. A channel is renewed before it lapses. Without
+  `PUBLIC_BASE_URL`, or with `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED=0`, the
+  quarter-hour poll carries the sync.
+
+### Verify calendar sync
+
+1. Connect yourself (above), then open **Calendar → My calendar**, turn on **Sync with
+   Google Calendar**, and make an appointment. Within a minute it is in your Google
+   Calendar, saying **Kept by Vantigo — change it there:**.
+2. In Google Calendar, make an out-of-office event this week. Within a minute or two
+   (at the next poll without notifications) it shows in Vantigo as **Out of office**.
+3. Move the appointment's copy in Google Calendar: Vantigo takes the move.
+4. With `PUBLIC_BASE_URL` set, your proxy's access log shows Google's
+   `POST /api/v1/google/calendar-notifications` after each change in your calendar.
+
+### A person's copies when they disconnect or leave
+
+When a person turns the sync off or disconnects Google, Vantigo removes the copies with
+their closing connection and stops the channel; the connection is kept until its channel
+is stopped, at the latest seven days. When a person leaves, their connection closes with
+its token forgotten at the suspension, so nothing can remove the copies: **they stay in
+the suspended account**, as everything else in it does.
 
 ## The accounts
 
@@ -421,8 +475,9 @@ A step that fails leaves the rest to the next run, and the person's Account tab 
 it. A rehire later opens the same account again.
 
 With the suspension, the person's own Google connection is closed and its token
-forgotten ([Connection for people](#what-happens-to-a-persons-connection)); what a later
-release's calendar sync put in their calendar stays in the suspended account.
+forgotten ([Connection for people](#what-happens-to-a-persons-connection)); what calendar
+sync put in their calendar stays in the suspended account
+([Calendar sync](#a-persons-copies-when-they-disconnect-or-leave)).
 
 ## Delete after N days
 
