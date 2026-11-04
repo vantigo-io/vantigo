@@ -76,7 +76,7 @@ func personalMailboxFor(deps module.Deps, key string) contracts.PersonalMailbox 
 // personalMailboxOfMessage is the PersonalMailbox a personal message is sent
 // through: the one under its recorded send_provider (G3), nil when that one
 // is no longer filled. A message with no send_provider was queued by a
-// replica older than the column (migration 00109): it goes through the only
+// replica older than the column (migration 00111): it goes through the only
 // filled provider, or, with several, the one the author's status names —
 // asked as the author. nil when none is filled.
 func personalMailboxOfMessage(ctx context.Context, deps module.Deps, sendProvider *string, author uuid.UUID) (contracts.PersonalMailbox, error) {

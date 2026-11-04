@@ -8,18 +8,18 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
 )
 
-// The staff provider-neutral names (00111_staff_provider_neutral.sql; Google
+// The staff provider-neutral names (00113_staff_provider_neutral.sql; Google
 // Workspace design G6): the code Staff records on a provider link when the
 // person's manager has no account in the directory is renamed
 // manager_not_in_entra → manager_not_in_directory, in reported_codes and in
 // last_error.
 
-// staffProviderNeutralVersion is 00111's goose version.
-const staffProviderNeutralVersion = 111
+// staffProviderNeutralVersion is 00113's goose version.
+const staffProviderNeutralVersion = 113
 
 // TestStaffProviderNeutral_RewritesTheManagerCode migrates to the version
-// before 00111 with a provider link carrying the old code beside another in
-// reported_codes and in last_error, and a link carrying neither; 00111 Up
+// before 00113 with a provider link carrying the old code beside another in
+// reported_codes and in last_error, and a link carrying neither; 00113 Up
 // rewrites the code in both columns, leaves the other code and the other link
 // as they were; Down restores the old code; Up again re-applies.
 func TestStaffProviderNeutral_RewritesTheManagerCode(t *testing.T) {
@@ -52,23 +52,23 @@ func TestStaffProviderNeutral_RewritesTheManagerCode(t *testing.T) {
 	}
 
 	migrateTo(t, url, staffProviderNeutralVersion)
-	if got, want := links("the links after 00111"), []string{
+	if got, want := links("the links after 00113"), []string{
 		"entra:hire_date_not_written,manager_not_in_directory:manager_not_in_directory",
 		"other:photo_not_written:unreachable",
 	}; !equalStrings(got, want) {
-		t.Errorf("links after 00111 = %v, want %v", got, want)
+		t.Errorf("links after 00113 = %v, want %v", got, want)
 	}
 
 	migrateTo(t, url, staffProviderNeutralVersion-1)
-	if got, want := links("the links after 00111 Down"), []string{
+	if got, want := links("the links after 00113 Down"), []string{
 		"entra:hire_date_not_written,manager_not_in_entra:manager_not_in_entra",
 		"other:photo_not_written:unreachable",
 	}; !equalStrings(got, want) {
-		t.Errorf("links after 00111 Down = %v, want %v", got, want)
+		t.Errorf("links after 00113 Down = %v, want %v", got, want)
 	}
 
 	migrateTo(t, url, staffProviderNeutralVersion)
-	if got := links("the links after 00111 again"); len(got) != 2 || got[0] != "entra:hire_date_not_written,manager_not_in_directory:manager_not_in_directory" {
-		t.Errorf("links after 00111 again = %v, want the code rewritten", got)
+	if got := links("the links after 00113 again"); len(got) != 2 || got[0] != "entra:hire_date_not_written,manager_not_in_directory:manager_not_in_directory" {
+		t.Errorf("links after 00113 again = %v, want the code rewritten", got)
 	}
 }

@@ -13,7 +13,7 @@ sources:
   - apps/server/internal/db/migrations/00068_staff_competence_profiles.sql
   - apps/server/internal/db/migrations/00069_staff_person_photo.sql
   - apps/server/internal/db/migrations/00071_staff_photo_push.sql
-  - apps/server/internal/db/migrations/00111_staff_provider_neutral.sql
+  - apps/server/internal/db/migrations/00113_staff_provider_neutral.sql
 ---
 The Staff module is the company's register of the people who work for it: who they
 are, how to reach them and their next of kin, their employments as Norwegian
@@ -272,8 +272,8 @@ is class C with the rest of the link ([the classes](#the-classes-column-by-colum
 index, no setting, no CHECK constraint: the worker writes it. The Down drops the column,
 so the next claim of each link pushes its picture once more.
 
-The Google Workspace design's delivery 0 adds `00111_staff_provider_neutral.sql`
-(00109 is communications', 00110 the calendar's, the same delivery's): Staff's own code
+The Google Workspace design's delivery 0 adds `00113_staff_provider_neutral.sql`
+(00111 is communications', 00112 the calendar's, the same delivery's): Staff's own code
 for a person whose manager has no account in the directory is renamed
 `manager_not_in_entra` → `manager_not_in_directory`, rewritten in `identity_links`'
 `reported_codes` and `last_error`. No column, index or constraint changes. The Down
@@ -2120,7 +2120,7 @@ reported codes are `hire_date_not_written`, `privileged`, `pass_not_allowed`,
 `pass_forbidden`, `licence_unavailable:<SKU part number>`, `manager_not_found`,
 `photo_not_written`, `adoption_unconfirmed` and `leaver_step_failed:<step>`; Staff adds its own
 `manager_not_in_directory` (until delivery 0 of the Google Workspace design,
-`manager_not_in_entra`, which 00111 rewrote) when the person's effective manager has no account in the
+`manager_not_in_entra`, which 00113 rewrote) when the person's effective manager has no account in the
 directory.
 
 **The address the provider made.** When the account answers an address

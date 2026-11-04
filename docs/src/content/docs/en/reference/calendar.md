@@ -15,7 +15,7 @@ sources:
   - apps/server/internal/db/migrations/00086_calendar_mailbox_sync_mailbox.sql
   - apps/server/internal/db/migrations/00087_calendar_mailbox_sync_claim.sql
   - apps/server/internal/db/migrations/00097_calendar_settings.sql
-  - apps/server/internal/db/migrations/00110_calendar_mailbox_neutral.sql
+  - apps/server/internal/db/migrations/00112_calendar_mailbox_neutral.sql
 ---
 The Calendar module is one view of every time-bound thing Vantigo knows about one
 person — the follow-ups Customers holds for them, their absences in Staff, their tasks in
@@ -100,7 +100,7 @@ sync's](#the-two-tables) two tables, `00083_calendar_mailbox_busy.sql` adds the
 the [change notifications'](#change-notifications) marks, and
 `00087_calendar_mailbox_sync_claim.sql` adds the [worker's](#the-mailbox-sync-worker) claim,
 `mailbox_sync.claimed_until`, `00097_calendar_settings.sql` the module's one workspace
-setting, [`settings`](#the-invitation-channel), and `00110_calendar_mailbox_neutral.sql`
+setting, [`settings`](#the-invitation-channel), and `00112_calendar_mailbox_neutral.sql`
 the [mailbox sync's](#the-two-tables) provider, the marks' index by provider and the
 busy rows' neutral `show_as` values (Google Workspace design G3, G10). Every id is a `bigint` identity starting at 1001. Every foreign identifier — the
 owner, an attendee, a customer, a project, the holder of an address — is opaque: users, customers and projects
@@ -1869,7 +1869,7 @@ on an id; `00084_calendar_mailbox_writeback.sql` adds the [write-back's](#the-wr
 five columns; `00086_calendar_mailbox_sync_mailbox.sql` adds the index on `lower(mailbox)`
 where the sync is on (the [change notifications'](#change-notifications) marks);
 `00087_calendar_mailbox_sync_claim.sql` adds `claimed_until` (the
-[worker's](#the-mailbox-sync-worker) claim); `00110_calendar_mailbox_neutral.sql` adds
+[worker's](#the-mailbox-sync-worker) claim); `00112_calendar_mailbox_neutral.sql` adds
 `provider`, backfilled `entra` on every row with a mailbox, replaces 00086's index with one
 on `(provider, lower(mailbox))` where the sync is on, and rewrites the busy rows'
 `show_as` `oof` and `workingElsewhere` to `out_of_office` and `working_elsewhere` (its down
@@ -1903,7 +1903,7 @@ module's validation does.
   turning the sync off. Nothing of what the change said is stored.
 - **`mailbox_events`** — the map of what the worker wrote: `(user_id, item_key)` the
   primary key, `event_id` (500, the event's id in the mailbox), `content_hash` (the hex
-  SHA-256 of what was written, its show-as in the words before 00110 — `oof`,
+  SHA-256 of what was written, its show-as in the words before 00112 — `oof`,
   `workingElsewhere` — so the rename rewrote no copy; `''` when the copy is to be
   rewritten whole),
   `starts_on` (the item's first day, for the window's edge), `change_key` (512, the
@@ -2086,7 +2086,7 @@ person:
    external id than the one stored — or the same id under another provider — cleans the
    old mailbox up first, on the row's provider, then starts over on the new one. The
    mailbox is recorded with its provider as soon as it is known, whatever the revision.
-   A stored mailbox with no provider — written by a replica older than 00110 — is the
+   A stored mailbox with no provider — written by a replica older than 00112 — is the
    same mailbox: nothing is cleaned up, and the row records the account's provider.
 4. **The *Vantigo* calendar**, for target `own`: `EnsureCalendar` with the stored id; a
    changed id empties the map and makes the sync a reconcile.
@@ -2464,7 +2464,7 @@ the delta answers them, and the provider decodes none of them.
   deletes its row, and so does a removal — whatever its reason: an event moved out of
   the window is answered removed.
 - `show_as` is `busy`, `tentative`, `out_of_office` or `working_elsewhere` (before
-  00110, `oof` and `workingElsewhere`, which it rewrote); a value the contract
+  00112, `oof` and `workingElsewhere`, which it rewrote); a value the contract
   does not name is stored `busy`.
 - An all-day event's dates are its start's and end's calendar dates, the end made
   inclusive, each rounded to the nearest midnight should Graph answer it off one. An

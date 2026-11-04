@@ -8,11 +8,11 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
 )
 
-// calendarMailboxNeutralVersion is 00110_calendar_mailbox_neutral.sql: the
+// calendarMailboxNeutralVersion is 00112_calendar_mailbox_neutral.sql: the
 // mailbox sync's provider, the marks' index by provider, and the busy rows'
 // neutral show_as values
 // (docs/superpowers/specs/2026-11-03-google-workspace-design.md, G3 and G10).
-const calendarMailboxNeutralVersion = 110
+const calendarMailboxNeutralVersion = 112
 
 // TestCalendarMailboxNeutral_AppliesAndIsIdempotent proves the migration
 // applies, rolls back and re-applies cleanly, and pins what it does to the
