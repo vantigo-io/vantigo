@@ -1,8 +1,9 @@
 // Package googletest is a fake Google for the google module's tests (Google
 // Workspace design G16): an http.RoundTripper standing in for
 // oauth2.googleapis.com, admin.googleapis.com, for the person's own
-// connection (authorize.go) accounts.google.com, and for the calendar sync
-// (calendar.go) Calendar v3 on www.googleapis.com, handed to the module as
+// connection (authorize.go) accounts.google.com, for the calendar sync
+// (calendar.go) Calendar v3 on www.googleapis.com, and for the mail
+// channels (gmail.go) gmail.googleapis.com, handed to the module as
 // Deps.HTTPTransport (modtest.WithTransport). Its token endpoint verifies
 // the JWT bearer assertion as Google does — the RS256 signature against the
 // public half of a key the test registered, the issuer, the audience, the
@@ -141,9 +142,9 @@ type FakeGoogle struct {
 	// ClientIDs are each service account's numeric client id, by
 	// client_email.
 	ClientIDs map[string]string
-	// Admins are the users the organisation has, lower-case: a subject not
-	// among them is refused invalid_grant, "Invalid email or User ID", as
-	// Google does.
+	// Admins are the admins the organisation has, lower-case: a subject
+	// neither among them nor a Directory user who is not suspended is
+	// refused invalid_grant, "Invalid email or User ID", as Google does.
 	Admins []string
 	// AdminRefused is the admin to impersonate not allowed the Directory's
 	// reads: each answers 403.
@@ -175,6 +176,8 @@ type FakeGoogle struct {
 	auth authState
 	// The people's calendars (calendar.go).
 	cal calendarState
+	// The mailboxes (gmail.go).
+	gmail gmailState
 
 	mu       sync.Mutex
 	tokens   map[string]issued
@@ -316,7 +319,7 @@ func (g *FakeGoogle) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		body = b
 	}
-	if req.URL.Scheme != "https" || !slices.Contains([]string{TokenHost, AdminHost, LicensingHost, APIsHost, AccountsHost}, req.URL.Host) {
+	if req.URL.Scheme != "https" || !slices.Contains([]string{TokenHost, AdminHost, LicensingHost, APIsHost, AccountsHost, GmailHost}, req.URL.Host) {
 		return nil, fmt.Errorf("googletest: no such host: %s://%s", req.URL.Scheme, req.URL.Host)
 	}
 
@@ -350,6 +353,8 @@ func (g *FakeGoogle) RoundTrip(req *http.Request) (*http.Response, error) {
 		a = g.calendarBatch(req, body)
 	case req.URL.Host == APIsHost && strings.HasPrefix(req.URL.Path, "/calendar/v3/"):
 		a = g.calendarCall(req, body)
+	case req.URL.Host == GmailHost:
+		a = g.gmailCall(req, body)
 	default:
 		a = g.admin(req, body)
 	}
@@ -468,7 +473,7 @@ func (g *FakeGoogle) token(req *http.Request, body []byte, call *Call) answer {
 	if c.Aud != TokenURL || c.Exp <= wall || c.Iat > wall+300 || c.Exp-c.Iat > 3600 {
 		return g.oauthError(http.StatusBadRequest, "invalid_grant")
 	}
-	if c.Sub == "" || !slices.Contains(g.Admins, strings.ToLower(c.Sub)) {
+	if c.Sub == "" || !g.knownSubject(c.Sub) {
 		// Google's own description of an unknown or suspended subject,
 		// which the module reads to tell it from a refused key.
 		return answer{status: http.StatusBadRequest, body: map[string]any{"error": "invalid_grant", "error_description": "Invalid email or User ID"}}
