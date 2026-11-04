@@ -426,7 +426,8 @@ centre square, scales it to **96 × 96** with Catmull-Rom over white, encodes a 
 writes `users.photos.update` with `photoData` in Google's web-safe base64 (`+` as `-`, `/`
 as `_`, `=` as `*`), `mimeType` `JPEG`. A 400, 403, 404 or 413, or a picture that cannot
 be decoded, reports `photo_not_written` and answers nil ([U13](#unverified-items));
-`ClearPhoto` is `users.photos.delete`, a 404 done.
+`ClearPhoto` is `users.photos.delete`, a 404 done. Both refuse an administrator
+(`ErrExternalPrivileged`, nothing written), as every write does.
 
 ## The events
 
