@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Å koble til selskapets Google Workspace-organisasjon på siden Google Workspace under Integrasjoner i Administrer arbeidsområde — de fire fanene Status, Tilkobling, Kontoer og Kalender og Gmail, hvor siden er, de seks stegene på Tilkobling og hva Ferdig betyr på hvert, nøkkelen som aldri vises igjen, klient-ID-en og tilgangsområdene som skal kopieres, administratoren som etterlignes, Test tilkoblingen, den interne nettklienten og omdirigerings-URI-ene, fanen Status med tilgangsområder og hendelser, varselet om tilgangsområder Vantigo ikke bruker, fanen Kontoer med kontoreglene, lisensene, kontoene og gruppene Vantigo holder, og Bekreft for dem den ikke opprettet — og hvem som ser hva.
+description: Å koble til selskapets Google Workspace-organisasjon på siden Google Workspace under Integrasjoner i Administrer arbeidsområde — de fire fanene Status, Tilkobling, Kontoer og Kalender og Gmail, hvor siden er, de seks stegene på Tilkobling og hva Ferdig betyr på hvert, nøkkelen som aldri vises igjen, klient-ID-en og tilgangsområdene som skal kopieres, administratoren som etterlignes, Test tilkoblingen, den interne nettklienten og omdirigerings-URI-ene, fanen Status med tilgangsområder og hendelser, varselet om tilgangsområder Vantigo ikke bruker, fanen Kontoer med kontoreglene, stegene Innlogging og Klargjøring, lisensene, kontoene og gruppene Vantigo holder, og Bekreft for dem den ikke opprettet, å koble dem som allerede har en Vantigo-bruker til Google-kontoen sin — og hvem som ser hva.
 sidebar:
   order: 48
 sources:
@@ -24,7 +24,7 @@ tilkoblingen. Driftsprosedyren, med hva du gjør i Googles konsoller, står i
 | --- | --- |
 | **Google Workspace** under **Administrer arbeidsområde** › **Integrasjoner**, fanen **Status** med tilgangsområder og **Siste hendelser**, og alle stegene skrivebeskyttet | `google:manage` |
 | Fanen **Kontoer**: å lagre kontoreglene, å lese lisensene, og **Bekreft** for en konto eller en gruppe Vantigo ikke opprettet | `google:manage` |
-| **Last opp nøkkel**, **Trekk tilbake**, å lagre administratoren som etterlignes, **Test tilkoblingen** og å lagre nettklienten | en **eier**, innlogget med en andre faktor når eiere må bruke en; for alle andre med `google:manage` vises stegene med *En eier gjør dette steget. Du kan se hva som er satt, men ikke endre det.* |
+| **Last opp nøkkel**, **Trekk tilbake**, å lagre administratoren som etterlignes, **Test tilkoblingen**, å lagre nettklienten, og stegene **Innlogging** og **Klargjøring** på **Kontoer** | en **eier**, innlogget med en andre faktor når eiere må bruke en; for alle andre med `google:manage` vises stegene med *En eier gjør dette steget. Du kan se hva som er satt, men ikke endre det.* |
 
 `google:manage` (*Administrere Google Workspace*) er i kategorien Administrasjon og kan
 ikke delegeres: bare en eier gir den til en rolle. Eieren har den allerede. En som har
@@ -45,7 +45,7 @@ Siden har fire faner, hver med sin egen adresse, slik at det kan lenkes til en f
 | --- | --- |
 | **Status** | Kortet **Status** — statusen, organisasjonen, tilgangsområdene — og **Siste hendelser** |
 | **Tilkobling** | De seks stegene som setter opp tilkoblingen |
-| **Kontoer** | Kontoreglene, organisasjonens lisenser, og kontoene og gruppene Vantigo holder for Ansatte |
+| **Kontoer** | Kontoreglene, stegene **Innlogging** og **Klargjøring**, organisasjonens lisenser, og kontoene og gruppene Vantigo holder for Ansatte |
 | **Kalender og Gmail** | *Kalender og Gmail kommer*: hver persons egen Google-tilkobling, kalendersynkronisering, e-postkanaler i Gmail og sending fra en persons Gmail-adresse skal settes opp her |
 
 Mens ingenting er satt opp og ingen nøkkel er lastet opp, åpner siden på **Tilkobling**.
@@ -132,8 +132,9 @@ avviste en nøkkel.
 
 Ansatte avgjør hvem som har en Google-konto, og når: HR gir en person kontotypen **Google
 Workspace** i Ansatte ([Ansatte](/nb/user/staff/#en-google-workspace-konto)). Denne fanen
-setter hvordan Vantigo lager og avslutter de kontoene, og viser hva den holder. Den har
-fire kort.
+setter hvordan Vantigo lager og avslutter de kontoene, lar folk logge inn med dem, og
+viser hva den holder. **Innlogging** og **Klargjøring** vises når en test har lest
+organisasjonen.
 
 **Kontoregler.** Velg, og velg så **Lagre kontoreglene**:
 
@@ -153,6 +154,23 @@ fire kort.
 
 Har noen andre lagret tilkoblingen mens du hadde fanen åpen, sier fanen fra; last den inn
 på nytt og gjør endringen din igjen.
+
+**Innlogging.** Et steg for en eier: det lar folk logge inn i Vantigo med Google-kontoen
+sin. Det har **OIDC**-delen av kortet **Enkel pålogging**, fylt ut med **Google
+Workspace**, **Autoritet** `https://accounts.google.com`, **Klient-ID** til den interne
+nettklienten, og hvert verifiserte domene i organisasjonen under **Domener**. Skriv inn
+nettklientens **Klienthemmelighet** og velg **Lagre**. Kortet fyller bare ut et skjema som
+ikke har noe i seg ennå; når enkel pålogging allerede er satt, viser det det som er
+lagret. Uten nettklient sier det *Legg inn den interne nettklienten på fanen Tilkobling
+først.* Uten dette steget oppretter Ansatte fortsatt Google-kontoene, men ingen logger inn
+i Vantigo med dem. Koble deretter til dem som allerede har en Vantigo-bruker
+([nedenfor](#koble-til-eksisterende-brukere)).
+
+**Klargjøring.** Et steg for en eier, med **SCIM**-delen av det samme kortet. Google
+Workspace sender ikke brukere til Vantigo: Ansatte oppretter Google-kontoene, og
+personens Vantigo-bruker dukker opp ved første innlogging med Google. SCIM-tokenet er
+bare for et eget klargjøringsverktøy. **Åpne innstillingene til Ansatte** er der Google
+Workspace gjøres til kontotypen nye personer får som standard.
 
 **Lisenser.** Lisensene organisasjonen har, hver med navnet og hvor mange som har den,
 slik Vantigo sist leste dem — valgene i en Ansatte-gruppes **Lisenser**. **Les
@@ -174,3 +192,36 @@ bekreft* og har **Bekreft**, av samme grunn. Når den er bekreftet, avstemmer Va
 med gruppen i Ansatte: navnet, beskrivelsen og synligheten overskrives med dem fra
 Ansatte, eiere Ansatte ikke nevner, gjøres til medlemmer, og medlemmer gruppen i Ansatte
 ikke har, fjernes. Den slettes aldri. Bekreftelsesdialogen sier det samme.
+
+## Koble til eksisterende brukere
+
+Den som hadde en Vantigo-bruker før enkel pålogging ble satt til Google, beholder den.
+Første innlogging med Google avvises til du, som eier, sier hvilken Google-konto som er
+deres; da havner den innloggingen på deres egen bruker, med navn, adresse og roller som
+før. Mens Google Workspace er leverandøren for enkel pålogging, slår **Administrer
+arbeidsområde › Brukere** opp kontoene i organisasjonen for deg
+([Slå opp kontoene i katalogen](/nb/user/workspace-administration/#slå-opp-kontoene-i-katalogen)):
+
+- **Én person.** **Koble til…** i raden deres åpner **Søk i katalogen**. Skriv to tegn
+  eller mer av navnet eller adressen: listen viser Google-kontoene der navnet eller
+  adressen begynner med det, høyst 20, hver med primæradresse og ansattnummer, og
+  *Deaktivert* for en suspendert konto. Velg deres og velg **Koble til**.
+- **Alle på en gang.** **Finn treff i katalogen…** parer hver bruker som ikke er koblet
+  til, med den ene Google-kontoen som passer nøyaktig: adressen deres er kontoens
+  primæradresse eller et av aliasene, eller ansattnummeret deres er kontoens ansattnummer
+  i Google. **Treff på** sier hva — **E-post** og **Brukerprinsipalnavn** for
+  primæradressen, **E-post** alene for et alias, **Ansattnummer** — og en rad er krysset
+  av fra start bare når primæradressen traff, kontoen ikke er suspendert og brukeren ikke
+  er eier. En bruker som passer med to kontoer, eller der kontoen også passer med en annen
+  bruker, utelates og telles; koble dem til én om gangen. Vantigo sammenligner de 1 000
+  første brukerne og leser høyst 10 000 Google-kontoer; utover det sier den at ikke alle
+  ble sammenlignet, og matcher bare på adresse.
+
+Hver kobling viser **Venter på første pålogging** til personen logger inn med Google.
+Søket og treffene trenger at tilkoblingen virker: når Google ikke kan spørres — ingen
+nøkkel, administratorens delegering mangler `admin.directory.user`, eller Google svarer
+ikke — sier de det med ord; se fanen **Status** og prøv igjen om et minutt.
+
+En person med adresse på et annet av organisasjonens verifiserte domener enn primærdomenet
+kan bli avvist ved innlogging; se
+[administrasjonsveiledningen](/nb/admin/sso-scim/#google-workspace).
