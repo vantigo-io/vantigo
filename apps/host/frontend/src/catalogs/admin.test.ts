@@ -297,6 +297,28 @@ describe("the admin permission catalog", () => {
     );
   });
 
+  // Hand-kept in step with `apps/server/internal/google/module.go` (`var
+  // permissions`): the one key, under Administration, the English the
+  // server's own.
+  it("names google:manage under Administration in English and Norwegian, the English the server's own", () => {
+    const translation = hostPermissionTranslationKeys["google:manage"];
+    expect(translation, "no catalog entry for google:manage").toBeDefined();
+    expect(translation.moduleKey).toBe("admin.permission.module.google");
+    expect(translation.categoryKey).toBe("admin.permission.category.administration");
+    for (const lng of ["en", "nb"] as const) {
+      const catalog = adminCatalog[lng] as Record<string, string>;
+      expect(catalog[translation.displayNameKey], `google:manage display name (${lng})`).toBeTruthy();
+      expect(catalog[translation.descriptionKey], `google:manage description (${lng})`).toBeTruthy();
+      expect(catalog[translation.moduleKey], `google:manage module (${lng})`).toBe("Google Workspace");
+      expect(catalog[translation.categoryKey], `google:manage category (${lng})`).toBeTruthy();
+    }
+    const en = adminCatalog.en as Record<string, string>;
+    expect(en["admin.permission.googleManage"]).toBe("Manage Google Workspace");
+    expect(en["admin.permission.googleManageDescription"]).toBe(
+      "See the Google Workspace connection's status, accounts and events, and set the account rules.",
+    );
+  });
+
   // The English text is pinned verbatim against the server's own strings
   // (`apps/server/internal/expenses/module.go`), the way a translation catalog
   // should track its source of truth rather than paraphrase it.

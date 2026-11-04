@@ -38,6 +38,7 @@ const allModules = [
   "energy",
   "entra",
   "expenses",
+  "google",
   "inventory",
   "invoices",
   "planning",
@@ -163,6 +164,18 @@ describe("the app registry", () => {
     expect(allNavSections.flatMap((section) => section.items).some((item) => item.to.startsWith("/entra"))).toBe(false);
     expect(navigationCatalog.en["navigation.entra"]).toBe("Microsoft Entra ID");
     expect(navigationCatalog.nb["navigation.entra"]).toBe("Microsoft Entra ID");
+  });
+
+  // The connection to the organisation (Google Workspace design G16) is a page of Workspace admin too.
+  it("gives Google Workspace no app: no tile, whoever asks", () => {
+    expect(apps.some((app) => app.key === ("google" as never) || app.module === "google")).toBe(false);
+    expect(() => appForKey("google" as never)).toThrow(/google/);
+    const tiles = (permissions: string[]) => switcherTiles(permissions, allModules, "home").map((tile) => tile.app.key);
+    expect(tiles(["google:manage"])).not.toContain("google");
+    expect(tiles(["*"])).not.toContain("google");
+    expect(allNavSections.flatMap((section) => section.items).some((item) => item.to.startsWith("/google"))).toBe(
+      false,
+    );
   });
 
   it("requires, for a tile, any permission that unlocks one of its sidebar entries", () => {
@@ -726,10 +739,11 @@ describe("the administration areas", () => {
       const prefix = `/${area.key}`;
       for (const item of area.navSections.flatMap((section) => section.items)) {
         expect(item.to === prefix || item.to.startsWith(`${prefix}/`)).toBe(true);
-        // An area belongs to no module; only an entry a module provides, Entra's Integrations page and
-        // the Assistant's, names its module. Connections names the providers' modules in `modules`.
+        // An area belongs to no module; only an entry a module provides, Entra's and Google's Integrations
+        // pages and the Assistant's, names its module. Connections names the providers' modules in `modules`.
         const owner: Record<string, string> = {
           "/workspace/entra": "entra",
+          "/workspace/google": "google",
           "/workspace/assistant": "assistant",
         };
         expect(item.module).toBe(owner[item.to]);
@@ -759,6 +773,7 @@ describe("the administration areas", () => {
       "/workspace/users",
       "/workspace/invitations",
       "/workspace/entra",
+      "/workspace/google",
     ]);
     expect(workspaceFor(ownerOnWorkspace).map((section) => section.label)).toEqual([
       undefined,
@@ -783,25 +798,44 @@ describe("the administration areas", () => {
     expect(workspacePaths(workspaceFor(both))).toEqual(["/workspace/roles", "/workspace/entra"]);
   });
 
-  it("hides Integrations, section and all, while the Entra module is off", () => {
-    const withoutEntra = allModules.filter((key) => key !== "entra");
-    const sections = workspaceFor(ownerOnWorkspace, withoutEntra);
+  it("hides Integrations, section and all, while the Entra and Google modules are off", () => {
+    const withoutEither = allModules.filter((key) => key !== "entra" && key !== "google");
+    const sections = workspaceFor(ownerOnWorkspace, withoutEither);
     expect(workspacePaths(sections)).toEqual(["/workspace/overview", "/workspace/users", "/workspace/invitations"]);
     expect(sections.map((section) => section.label)).toEqual([undefined]);
-    expect(workspacePaths(workspaceFor({ ...visibility, permissions: ["entra:manage"] }, withoutEntra))).toEqual([]);
+    expect(workspacePaths(workspaceFor({ ...visibility, permissions: ["entra:manage"] }, withoutEither))).toEqual([]);
+    expect(workspacePaths(workspaceFor({ ...visibility, permissions: ["google:manage"] }, withoutEither))).toEqual([]);
+  });
+
+  it("shows a Google manager who is not an Owner Google Workspace alone, while the module is on", () => {
+    const manager = { ...visibility, permissions: ["google:manage"] };
+    const sections = workspaceFor(manager);
+    expect(workspacePaths(sections)).toEqual(["/workspace/google"]);
+    expect(sections.map((section) => section.label)).toEqual(["navigation.integrations"]);
+    const withoutGoogle = allModules.filter((key) => key !== "google");
+    expect(workspacePaths(workspaceFor(manager, withoutGoogle))).toEqual([]);
+    expect(workspacePaths(workspaceFor(ownerOnWorkspace, withoutGoogle))).not.toContain("/workspace/google");
   });
 
   it("gates the Integrations item on the module and its permission, as Connections gates on the module", () => {
     const integrations = areaForKey("workspace").navSections.find(
       (section) => section.label === "navigation.integrations",
     );
-    expect(integrations?.items).toHaveLength(3);
+    expect(integrations?.items).toHaveLength(4);
     expect(integrations?.items[0]).toMatchObject({
       label: "navigation.entra",
       to: "/workspace/entra",
       module: "entra",
       requiredPermissions: ["entra:manage"],
     });
+    expect(integrations?.items[1]).toMatchObject({
+      label: "navigation.google",
+      to: "/workspace/google",
+      module: "google",
+      requiredPermissions: ["google:manage"],
+    });
+    expect(navigationCatalog.en["navigation.google"]).toBe("Google Workspace");
+    expect(navigationCatalog.nb["navigation.google"]).toBe("Google Workspace");
     expect(navigationCatalog.en["navigation.integrations"]).toBe("Integrations");
     expect(navigationCatalog.nb["navigation.integrations"]).toBe("Integrasjoner");
   });
@@ -817,6 +851,7 @@ describe("the administration areas", () => {
         "/workspace/users",
         "/workspace/invitations",
         "/workspace/entra",
+        "/workspace/google",
         "/workspace/ai",
         "/workspace/assistant",
       ]);
@@ -843,9 +878,9 @@ describe("the administration areas", () => {
       ]);
     });
 
-    it("does not depend on the Entra module: with Entra off it is the section's only item", () => {
-      const withoutEntra = allModules.filter((key) => key !== "entra");
-      const sections = workspaceFor(withAi, withoutEntra);
+    it("does not depend on the Entra or Google module: with both off it is the section's only item", () => {
+      const withoutEither = allModules.filter((key) => key !== "entra" && key !== "google");
+      const sections = workspaceFor(withAi, withoutEither);
       expect(workspacePaths(sections)).toEqual([
         "/workspace/overview",
         "/workspace/users",
@@ -898,10 +933,20 @@ describe("the administration areas", () => {
       "/workspace/overview",
       "/workspace/roles",
       "/workspace/entra",
+      "/workspace/google",
     ]);
     const withoutEntra = allModules.filter((key) => key !== "entra");
     expect(menuPaths({ ...manager, enabledModules: withoutEntra })).toEqual(["/settings", "/docs"]);
     expect(menuPaths(visibility)).toEqual(["/settings", "/docs"]);
+  });
+
+  it("offers a Google manager Google Workspace in the avatar menu, while the module is on", () => {
+    const menuPaths = (context: NavVisibilityContext) =>
+      visibleNavSections(accountMenuSections, context).flatMap((section) => section.items.map((item) => item.to));
+    const manager = { ...visibility, permissions: ["google:manage"] };
+    expect(menuPaths(manager)).toEqual(["/settings", "/docs", "/workspace/google"]);
+    const withoutGoogle = allModules.filter((key) => key !== "google");
+    expect(menuPaths({ ...manager, enabledModules: withoutGoogle })).toEqual(["/settings", "/docs"]);
   });
 
   it("names the area in the header", () => {
@@ -1064,6 +1109,7 @@ describe("the Assistant app", () => {
       "/workspace/users",
       "/workspace/invitations",
       "/workspace/entra",
+      "/workspace/google",
       "/workspace/ai",
       "/workspace/assistant",
     ]);

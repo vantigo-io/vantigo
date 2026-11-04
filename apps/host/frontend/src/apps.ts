@@ -3,6 +3,7 @@ import {
   IconAdjustments,
   IconBolt,
   IconBook,
+  IconBrandGoogle,
   IconBrandWindows,
   IconBriefcase,
   IconBuildingBank,
@@ -66,13 +67,13 @@ import {
 } from "./navigation";
 
 /**
- * The modules that own an app (a switcher tile and a sidebar). Entra is a
- * module without one: its page is Microsoft Entra ID under *Integrations* in
- * Workspace admin (Integrations design T2), so it is not here and
- * `appForKey("entra")` is a type error.
+ * The modules that own an app (a switcher tile and a sidebar). Entra and Google
+ * are modules without one: their pages are Microsoft Entra ID and Google
+ * Workspace under *Integrations* in Workspace admin (Integrations design T2,
+ * Google Workspace design G9, G16), so they are not here and
+ * `appForKey("entra")` and `appForKey("google")` are type errors.
  */
-// Google, a module without an app too, joins the exclusion when it joins `moduleKeys` (Google Workspace design G9).
-export type ModuleWithApp = Exclude<ModuleKey, "entra">;
+export type ModuleWithApp = Exclude<ModuleKey, "entra" | "google">;
 
 export type AppKey = "home" | ModuleWithApp;
 
@@ -653,6 +654,15 @@ export const areas: readonly AreaDefinition[] = [
             icon: IconBrandWindows,
             module: "entra",
             requiredPermissions: ["entra:manage"],
+          },
+          // Google Workspace is the connection to the organisation (Google Workspace design G16),
+          // in four tabs, behind google:manage while the module is on, as Entra's is.
+          {
+            label: "navigation.google",
+            to: "/workspace/google",
+            icon: IconBrandGoogle,
+            module: "google",
+            requiredPermissions: ["google:manage"],
           },
           // The AI plan Vantigo provisioned and the model each task uses (Integrations
           // design T13): the Owner's, and present only while the instance has an AI

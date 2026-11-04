@@ -15,6 +15,7 @@ const allModules: ModuleKey[] = [
   "energy",
   "entra",
   "expenses",
+  "google",
   "inventory",
   "planning",
   "products",
