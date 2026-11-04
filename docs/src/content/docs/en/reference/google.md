@@ -1,6 +1,6 @@
 ---
 title: "Google Workspace module"
-description: "Google Workspace as a connection to one organisation through a service account's domain-wide delegation — the foundation: the module and why it requires Staff; the schema; the page and its four tabs; the permission and the Owner policy; the connection, the admin to impersonate and the credential kind under If-Match; the key file's rules, the keys in the plural, their try order and a refused key; the Internal web client and its secret; the guarded client, its fixed hosts and its limits; the delegated token, its cache and the one seam; Test connection, the needed and the unexpected scopes, and the statuses and their reasons; the events; the refusals and the endpoints; and the unverified items U2 and U14."
+description: "Google Workspace as a connection to one organisation through a service account's domain-wide delegation — the foundation: the module and why it requires Staff; the schema; the page and its four tabs; the permission and the Owner policy; the connection, the admin to impersonate and the credential kind under If-Match; the key file's rules, the keys in the plural, their try order and a refused key; the Internal web client and its secret; the guarded client, its fixed hosts and its limits; the delegated token, its cache and the one seam; Test connection, the needed and the unexpected scopes, and the statuses and their reasons; the events; the refusals and the endpoints; and the unverified items U2 and U14 — and the accounts (delivery B): the provisioner google and its status, the accounts and groups tables and the account rules, the correlation on the organization external id and the adoption, the address, the mapping, the first password, the licences, the leaver's steps, the delete, the groups' three traits, the photo at 96 px, and the unverified items U11, U12, U13, U16 and U19."
 sources:
   - apps/server/internal/google
   - apps/google/frontend
@@ -9,6 +9,8 @@ sources:
   - openapi/google.yaml
   - apps/server/internal/openapi/specs/google.yaml
   - apps/server/internal/db/migrations/00114_google_baseline.sql
+  - apps/server/internal/db/migrations/00113_google_accounts.sql
+  - apps/server/internal/directoryaddress
 ---
 The Google Workspace module connects one installation to one Google Workspace
 organisation through a **service account with domain-wide delegation**: a JWT signed with
@@ -21,14 +23,15 @@ owns the `google` schema in the shared PostgreSQL database, and serves
 and its page is **Google Workspace** under **Integrations** in Workspace admin
 ([the page](#the-page)).
 
-**This is the foundation (delivery A).** The module holds the connection — the service
-account's keys, the admin to impersonate, the Internal web client — tests it, and reads
-the organisation and its verified domains. It fills no slot yet: the accounts
-(`contracts.IdentityProvisioner`), the person's own Google connection, the calendar and
-Gmail come in later deliveries, each taking its token from the one seam
-[`tokenSource`](#the-delegated-token). `MODULES` refuses `google` without `staff`
-(`google requires staff`): Staff's accounts worker will be the provisioner's only caller,
-and without it the module would hold an organisation-wide credential nothing uses.
+**Deliveries A and B.** The module holds the connection — the service account's keys,
+the admin to impersonate, the Internal web client — tests it, and reads the organisation
+and its verified domains (A). It fills `contracts.IdentityProvisioner` under the key
+`google` ([the provisioner](#the-provisioner)): Staff's accounts worker drives a person's
+account and Staff's groups in the organisation through it (B). The person's own Google
+connection, the calendar and Gmail come in later deliveries, each taking its token from
+the one seam [`tokenSource`](#the-delegated-token). `MODULES` refuses `google` without
+`staff` (`google requires staff`): Staff's accounts worker is the provisioner's only
+caller.
 
 Nothing in the module imports another module — depguard enforces it, tests included —
 and no SQL of it crosses a schema. It has no background worker. It reaches the internet
@@ -65,6 +68,28 @@ tables. No table references another schema; the user who acted is an opaque id.
   a Google id, never an address) and `codes`; indexed on `at`.
 
 The migration's down step drops the schema whole; nothing at Google is touched.
+
+A second migration, `00113_google_accounts.sql` (delivery B), adds:
+
+- **`accounts`** — the users the module made or found for Staff's people, keyed by
+  `user_id` (32, the Directory id): `employee_number` (16, unique case-folded),
+  `primary_email` (254, never renamed), `state` (`disabled`, `enabled` or `deleted`,
+  `CHECK`ed), the first password `pass_sealed` (under `google/pass`) with
+  `pass_expires_at` and `pass_revealed_at` (`CHECK`: no password without its expiry),
+  `created_by_us`, `licences_assigned` (the `productId/skuId` the module assigned),
+  `reported` (codes), `last_error` (60), `last_synced_at`, `adoption_confirmed_at` and
+  `adoption_confirmed_by_user_id`, `created_at`, `updated_at`.
+- **`groups`** — the groups the module made or found for Staff's groups, keyed by
+  `group_id` (32, the Directory id): `staff_group_id` (64, unique), `email` (254, unique
+  case-folded), `created_by_us`, `adoption_confirmed_at`, `adoption_confirmed_by_user_id`,
+  `created_at`, `updated_at`.
+- **`connection`** gains the account rules: `address_domain` (253), `address_pattern`
+  (`given.family` by default, or `g.family` or `given`), `org_unit_path` (400, `/` by
+  default, starting with `/`), `pass_lifetime_days` (7; 1 to 30), `pass_delivery` (`hr`;
+  `hr`, `manager` or `both`), `leaver_remove_licences` (true), `leaver_remove_groups`
+  (`managed`; `all`, `managed` or `none`), `leaver_sign_out` (true), each `CHECK`ed as
+  Entra's are, and `skus`, the licences as last read (at most 200 of `productId`, `skuId`,
+  `name`, `assigned`).
 
 ## The page
 
@@ -202,13 +227,19 @@ Every call to Google — the token exchange included — goes through one client
   endpoint), `admin.googleapis.com` (the Directory), `licensing.googleapis.com`,
   `www.googleapis.com`, `gmail.googleapis.com`, `groupssettings.googleapis.com` and
   `accounts.google.com`. The hosts are constants: no setting reaches them, and a test's
-  fake comes in through `Deps.HTTPTransport`, never as a base URL. This delivery calls the
-  first two.
+  fake comes in through `Deps.HTTPTransport`, never as a base URL. Deliveries A and B call
+  the first four; Groups Settings is called on `www.googleapis.com/groups/v1/groups`
+  ([U12](#unverified-items)).
 - **The transport** dials through netguard, so every address is checked against the one
   table of forbidden addresses; no proxy, and no redirect is followed.
 - **Budgets.** 30 seconds per call; a 429 waits `Retry-After` once, at most 10 seconds
   (a longer one fails at once); a 5xx is retried once after a second; a 401 drops the
-  token and retries once with a fresh one. Every answer is read through a 1 MiB cap.
+  token and retries once with a fresh one. Every answer is read through a 1 MiB cap. A
+  create (`users.insert`, `groups.insert`, a licence's insert) is made once: its 5xx is
+  the answer, never a second create.
+- **Bodies** are JSON. A Licensing path carries the user's primary email; the log names
+  it as `{user}`, and a Groups Settings or group-by-address path as `{group}`, so no
+  address reaches a log line.
 - **Google's words are never read.** A refusal is the HTTP status and the reason code of
   Google's error body (`error.errors[0].reason`, else `error.status`, else the OAuth
   error); its message is never logged, stored or answered. A 403 reads as the admin
@@ -277,6 +308,116 @@ key or an admin it is `unconfigured` and asks Google nothing.
 
 The event is `google.connection.tested`, with the customer id as its subject.
 
+## The provisioner
+
+`provisioner.go` fills `contracts.IdentityProvisioner` under `Key() = "google"`, display
+name *Google Workspace*, registered as `module.Module.IdentityProvisioner`; Compose and
+Workers collect it into `Deps.IdentityProvisioners` beside Entra's, and Staff drives it
+exactly as it drives Entra (boundaries rule 13). Every call to the Directory is made as
+`admin_subject` with `admin.directory.user` (users), `admin.directory.group` (groups and
+members), `apps.groups.settings` (Groups Settings) or `apps.licensing` (licences), on no
+transaction; the rows and the event follow in short transactions. A token Google will
+not issue — no key, every key refused, the admin unknown, the scope not delegated — is
+`ErrProviderUnavailable`, nothing written. The module has **no worker**: Staff's accounts
+worker reads every link's `Account` on its own cycle, which is what tells Staff an
+account was suspended or deleted outside Vantigo.
+
+**`Provider`** reads the rows, never the network: `unconfigured` while A's status is
+(no live key or no admin) and, with the reason `not_delegated`, while it is
+`pending_delegation`; `failing` with A's reason when the last test failed, or
+`scopes_missing` while the last test's granted scopes lack one of the four above;
+`connected` otherwise. Every write but `Deactivate` needs `connected`.
+
+**Correlation.** A person's account is the user holding their employee number as an
+external id of the type `organization`: `users.list(customer=my_customer,
+query=externalId:<number>)`, each answer filtered to an `organization` id equal to the
+number, ignoring case ([U11](#unverified-items)). Two holders are
+`ErrExternalAmbiguous`; a holder with `isAdmin` or `isDelegatedAdmin` is
+`ErrExternalPrivileged` (reported `privileged`), and so is every later write to one, as
+is a 403 on a write to a user. One the module did not create is linked
+`created_by_us false` and adopted untrusted: `adoption_unconfirmed` reported, nothing
+written, every write `ErrExternalUnconfirmed`, until `POST /accounts/{userId}/confirm`.
+A row naming a user the organisation no longer holds, or a deleted one, is forgotten so
+a rehire gets a new user.
+
+**Prepare** creates the user with `users.insert`: `primaryEmail` by the shared address
+rule ([`directoryaddress`](/en/contributing/platform-packages/#the-directory-address-rule),
+the mailbox alphabet: the work email on a verified domain, else the pattern at
+`address_domain` or the primary domain, 2 to 99 on a 409 — a taken work email is
+`ErrExternalAddressTaken`), a random 32-character password nobody sees,
+`changePasswordAtNextLogin: true`, `suspended: true`, `orgUnitPath`, `externalIds`
+`[{type: organization, value: <number>}]`, and the mapping below. The create is made
+once; when its answer is lost, the one suspended user the number's search finds holding
+the address asked for is taken as this call's.
+
+**The mapping** writes only what Google has: the names (`name.givenName`,
+`name.familyName`, at most 60 each), and of the spec's fields `jobTitle`, `department`
+and `costCenter` (the primary entry of `organizations`), `businessPhone` and
+`mobilePhone` (`phones` of type `work` and `mobile`), `officeLocation` (`locations` of
+type `desk`, as `area`), the manager (`relations` of type `manager`, the manager's primary
+email — `manager_not_found` when the organisation holds no such user), and
+`preferredLanguage` (`languages`, `no` or `en-GB`). Entries of other types are written
+back as they were. `employeeHireDate`, `employeeLeaveDateTime`, `employeeType`,
+`companyName` and the division are ignored and **not reported**. **Update** patches the
+attributes that differ, never the external id or the primary email, and on an active
+user reconciles the licences.
+
+**Activate** lifts the suspension (`suspended: false`). With it — when no password waits
+unrevealed, or on HR's *Run now* (`Flags.Fresh`) — and on *Run now* for an active user
+whose `lastLoginTime` is still the epoch, it sets a fresh 16-character password
+(`directoryaddress.ReadablePassword`) with `changePasswordAtNextLogin: true`, sealed under
+**`google/pass`** with `pass_expires_at = now + pass_lifetime_days`; never on an account
+someone has signed in to. A 400 on the password is `pass_not_allowed`, the suspension
+lifted without it. **`RevealPass`** answers it once, taken and cleared in one statement,
+audited `google.pass.revealed` with no value; a second reveal, or one after the lifetime
+(every expired password is cleared first), is `ErrPassGone`.
+
+**Licences** are `productId/skuId`. For each one the spec names that the module has not
+assigned, `licenseAssignments.get` (404 not held) then `insert` with the user's primary
+email; any refusal of the insert is `licence_unavailable:<skuId>`. A licence the module
+assigned that no group names any more is deleted; an administrator's is left.
+`GET /connection/skus` reads `listForProduct` for `Google-Apps`, `101001`, `101005`,
+`101033` and `101034` with the customer id, counts the assignments by SKU, counts a
+product Google refuses as none held, and caches at most 200 on `connection.skus`.
+
+**Deactivate** runs whatever the status says, on any working key: `suspended: true`
+always and first, the waiting password cleared, then in order as the account rules turn
+them on — `remove_licences` (every licence the module assigned and every cached SKU the
+user holds; U16), `remove_groups` (`groups.list(userKey)`'s groups, all or the module's
+own; a membership gone is done) and `sign_out` (`users.signOut`; a 4xx is reported
+`sign_out_refused` and the rest goes on, U19). A step that fails is
+`leaver_step_failed:<step>`, the rest left to the next call. **Delete** is
+`users.delete` of a suspended user (`ErrExternalEnabled` otherwise), the row marked
+`deleted`; Google keeps it restorable for 20 days. It is called by Staff's
+`deleteExternalAfterDays`; the module has no delete setting of its own. **`Account`**
+is `users.get`: `suspended` is `disabled`, a 404 is `nil`.
+
+**Groups.** `GroupTraits` declares, from the rows alone:
+
+| Trait | Type | Rule |
+| --- | --- | --- |
+| `email` | string (254) | the group's address; empty for `<group key>@<address domain>`; its domain one of `domains` (`trait_invalid`); `trait_immutable` once the group exists. Not *required* in Staff's sense, since empty has its default. |
+| `visibility` | choice | `domain` (default): `whoCanViewGroup` and `whoCanViewMembership` `ALL_IN_DOMAIN_CAN_VIEW`, `showInGroupDirectory` true; `members`: `ALL_MEMBERS_CAN_VIEW`, false. |
+| `licences` | list | the cached SKUs, `productId/skuId`, labelled with their name and the count assigned. |
+
+`EnsureGroup` updates the group its row names (`groups.patch` for the name and the
+description, Groups Settings, the owners), or adopts the group Google holds at the
+address — `ErrGroupUnconfirmed`, nothing written, until `POST /groups/{groupId}/confirm`;
+`ErrGroupNotManageable` when another Staff group's row names it — or creates it with
+`groups.insert` (a 409 is `ErrGroupNotManageable`). Owners are members with the role
+`OWNER`: one missing is added or raised, one no longer named lowered to `MEMBER`.
+`SetMembers` diffs `members.list` against the ids, adds the missing as `MEMBER`
+(`not_found`, `refused` or `other` per member) and removes the users not named — never an
+owner, never a member that is not a user. `DeleteGroup` deletes a group the module made
+(`groups.delete`) and forgets one it found (`kept_not_ours`).
+
+**The photo.** `SetPhoto` decodes the JPEG or PNG (at most 4096 px a side), crops its
+centre square, scales it to **96 × 96** with Catmull-Rom over white, encodes a JPEG and
+writes `users.photos.update` with `photoData` in Google's web-safe base64 (`+` as `-`, `/`
+as `_`, `=` as `*`), `mimeType` `JPEG`. A 400, 403, 404 or 413, or a picture that cannot
+be decoded, reports `photo_not_written` and answers nil ([U13](#unverified-items));
+`ClearPhoto` is `users.photos.delete`, a 404 done.
+
 ## The events
 
 Every write the module makes is a row in `google.events`, read newest first by
@@ -289,6 +430,12 @@ Every write the module makes is a row in `google.events`, read newest first by
 | `google.oauth_client.changed` | `PUT /connection/oauth-client` | `client_id:<id>`, `client_changed`, `secret:<row id>` |
 | `google.credential.added`, `google.credential.revoked` | the upload and the revoke | `credential:<row id>`, `kind:<kind>`, `key_id:<id>`, `client_id:<numeric id>`; subject the numeric client id |
 | `google.credential.refused` | a call that found a key refused, by `system:google` | as above |
+| `google.settings.changed` | `PUT /connection/settings` | the names of the rules that changed |
+| `google.user.prepared`, `.activated`, `.updated`, `.deactivated`, `.deleted` | the provisioner, by Staff's actor | `created`, `found`, `enabled`, `suspended`, `pass_issued`, `changed:<attribute>`, `licences_assigned:<n>`, `licences_removed:<n>`, `groups_left`, `signed_out`, `gone`, the codes reported, `refused:<code>`; subject the user id |
+| `google.user.photo_set`, `google.user.photo_cleared` | `SetPhoto`, `ClearPhoto` | `photo_written`, `photo_cleared`, `refused:photo_not_written` |
+| `google.pass.issued`, `google.pass.revealed` | `Activate`, `RevealPass` | `expires_at:<instant>` — never the password |
+| `google.account.adoption_confirmed` | `POST /accounts/{userId}/confirm` | — |
+| `google.group.created`, `.adopted`, `.updated`, `.members_set`, `.deleted`, `.adoption_confirmed` | the groups' calls and `POST /groups/{groupId}/confirm` | `visibility:<v>`, `owners_added:<n>`, `owners_removed:<n>`, `added:<n>`, `removed:<n>`, `failed:<n>`, `kept_not_ours`, `gone`, `refused:<code>`; subject the group id |
 
 An event names a user or a system, exactly one. It never carries an address, a key, a
 secret, a token or Google's words.
@@ -302,7 +449,9 @@ A refusal is an RFC 9457 problem, `GoogleProblem`, whose `code` names the rule:
 | field errors under `errors` | 400 | A field broke its rule, keyed by the request's camelCase field (`json`, `adminSubject`, `credentialKind`, `clientId`, `clientSecret`, `limit`, `If-Match`). |
 | `client_mismatch` | 422 | `POST /connection/credentials`: a key of another service account while one of the current one's is live. |
 | `credential_kind_unsupported` | 422 | `PUT /connection`: `credentialKind` `vantigo_hosted`. |
-| `version_mismatch` | 412 | `PUT /connection`: the connection was written since the `If-Match` version; the detail names both. |
+| `version_mismatch` | 412 | `PUT /connection` and `PUT /connection/settings`: the connection was written since the `If-Match` version; the detail names both. |
+| `adoption_confirmed` | 409 | `POST /accounts/{userId}/confirm`: the adoption is confirmed already, or the module created the user. |
+| `credential_invalid`, `google_unreachable` | 503 | `GET /connection/skus`: no token for the licences' scope, or Google did not answer. |
 
 An unknown credential is a bare 404. The 401, the 403 and the 429 are the router's.
 
@@ -319,6 +468,10 @@ All under `/api/v1/google`.
 | `PUT /connection/oauth-client` | `policy:Owner+OwnerManagement`; `google-owner` |
 | `POST /connection/test` | `policy:Owner+OwnerManagement`; `google-owner` |
 | `GET /events` | `google:manage` |
+| `PUT /connection/settings` | `google:manage`; `If-Match` |
+| `GET /connection/skus` | `google:manage`; `google-skus` (30 a minute per client address) |
+| `GET /accounts`, `POST /accounts/{userId}/confirm` | `google:manage` |
+| `GET /groups`, `POST /groups/{groupId}/confirm` | `google:manage` |
 
 The request and response shapes are in the contract,
 [`openapi/google.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/google.yaml),
@@ -338,6 +491,24 @@ settled in a test organisation:
   refusal of a scope is read as not delegated whether it says `unauthorized_client` or
   `access_denied`, so either shape gives `pending_delegation` or a missing scope, never a
   refused key.
+
+Five more concern delivery B, each taken on the design's defensive path; none is
+settled in a test organisation yet:
+
+- **U11 — `query=externalId:` matches exactly and across types.** Whatever it matches,
+  every answer is filtered to an `organization` external id equal to the number,
+  ignoring case; the fake answers prefixes and other types to prove it.
+- **U12 — Groups Settings' host.** Called on `www.googleapis.com/groups/v1/groups`, the
+  documented host; `groupssettings.googleapis.com` is on the fixed list too.
+- **U13 — `users.photos.update` takes a 96 px JPEG in the `*`-padded alphabet.** A
+  refusal reports `photo_not_written`.
+- **U16 — a suspended user's licence is billed, and removing it is allowed.**
+  `leaver_remove_licences` defaults on and can be turned off.
+- **U19 — `users.signOut` under the delegated scope.** A refusal is reported
+  `sign_out_refused`; the suspension is already done.
+
+Besides: `licenseAssignments` is addressed by the user's primary email, as its
+reference documents; and the language codes written are `no` and `en-GB`.
 
 ## Testing
 

@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Å koble til selskapets Google Workspace-organisasjon på siden Google Workspace under Integrasjoner i Administrer arbeidsområde — de fire fanene Status, Tilkobling, Kontoer og Kalender og Gmail, hvor siden er, de seks stegene på Tilkobling og hva Ferdig betyr på hvert, nøkkelen som aldri vises igjen, klient-ID-en og tilgangsområdene som skal kopieres, administratoren som etterlignes, Test tilkoblingen, den interne nettklienten og omdirigerings-URI-ene, fanen Status med tilgangsområder og hendelser, varselet om tilgangsområder Vantigo ikke bruker — og hvem som ser hva.
+description: Å koble til selskapets Google Workspace-organisasjon på siden Google Workspace under Integrasjoner i Administrer arbeidsområde — de fire fanene Status, Tilkobling, Kontoer og Kalender og Gmail, hvor siden er, de seks stegene på Tilkobling og hva Ferdig betyr på hvert, nøkkelen som aldri vises igjen, klient-ID-en og tilgangsområdene som skal kopieres, administratoren som etterlignes, Test tilkoblingen, den interne nettklienten og omdirigerings-URI-ene, fanen Status med tilgangsområder og hendelser, varselet om tilgangsområder Vantigo ikke bruker, fanen Kontoer med kontoreglene, lisensene, kontoene og gruppene Vantigo holder, og Bekreft for dem den ikke opprettet — og hvem som ser hva.
 sidebar:
   order: 48
 sources:
@@ -11,10 +11,10 @@ sources:
 
 Siden **Google Workspace**, under **Integrasjoner** i Administrer arbeidsområde, kobler
 Vantigo til selskapets Google Workspace-organisasjon gjennom en tjenestekonto med
-domenedekkende delegering. I denne versjonen leser Vantigo organisasjonen og de
-bekreftede domenene gjennom tilkoblingen; å holde personenes Google-kontoer og grupper,
-hver persons egen Google-tilkobling, kalendersynkronisering og Gmail kommer senere, på den
-samme tilkoblingen. Driftsprosedyren, med hva du gjør i Googles konsoller, står i
+domenedekkende delegering. Gjennom den holder Ansatte personenes Google-kontoer og
+gruppene sine i organisasjonen, etter kontoreglene på fanen **Kontoer**; hver persons
+egen Google-tilkobling, kalendersynkronisering og Gmail kommer senere, på den samme
+tilkoblingen. Driftsprosedyren, med hva du gjør i Googles konsoller, står i
 [administrasjonsveiledningen](/nb/admin/google-workspace/); reglene står i
 [referansen](/en/reference/google/).
 
@@ -23,6 +23,7 @@ samme tilkoblingen. Driftsprosedyren, med hva du gjør i Googles konsoller, stå
 | Hva | Hvem |
 | --- | --- |
 | **Google Workspace** under **Administrer arbeidsområde** › **Integrasjoner**, fanen **Status** med tilgangsområder og **Siste hendelser**, og alle stegene skrivebeskyttet | `google:manage` |
+| Fanen **Kontoer**: å lagre kontoreglene, å lese lisensene, og **Bekreft** for en konto eller en gruppe Vantigo ikke opprettet | `google:manage` |
 | **Last opp nøkkel**, **Trekk tilbake**, å lagre administratoren som etterlignes, **Test tilkoblingen** og å lagre nettklienten | en **eier**, innlogget med en andre faktor når eiere må bruke en; for alle andre med `google:manage` vises stegene med *En eier gjør dette steget. Du kan se hva som er satt, men ikke endre det.* |
 
 `google:manage` (*Administrere Google Workspace*) er i kategorien Administrasjon og kan
@@ -44,7 +45,7 @@ Siden har fire faner, hver med sin egen adresse, slik at det kan lenkes til en f
 | --- | --- |
 | **Status** | Kortet **Status** — statusen, organisasjonen, tilgangsområdene — og **Siste hendelser** |
 | **Tilkobling** | De seks stegene som setter opp tilkoblingen |
-| **Kontoer** | *Kontoer kommer*: Ansatte skal opprette og vedlikeholde Google-kontoene og -gruppene til personene deres her, og koble eksisterende brukere til Google-innloggingen sin |
+| **Kontoer** | Kontoreglene, organisasjonens lisenser, og kontoene og gruppene Vantigo holder for Ansatte |
 | **Kalender og Gmail** | *Kalender og Gmail kommer*: hver persons egen Google-tilkobling, kalendersynkronisering, e-postkanaler i Gmail og sending fra en persons Gmail-adresse skal settes opp her |
 
 Mens ingenting er satt opp og ingen nøkkel er lastet opp, åpner siden på **Tilkobling**.
@@ -126,3 +127,48 @@ Mens ingenting er satt opp, viser en melding, *Ikke tilkoblet ennå*, til fanen
 det Vantigo gjorde selv: administratoren endret, tilkoblingen testet, nettklienten endret,
 en nøkkel lastet opp, en nøkkel eller en klienthemmelighet trukket tilbake, og at Google
 avviste en nøkkel.
+
+## Fanen Kontoer
+
+Ansatte avgjør hvem som har en Google-konto, og når: HR gir en person kontotypen **Google
+Workspace** i Ansatte ([Ansatte](/nb/user/staff/#en-google-workspace-konto)). Denne fanen
+setter hvordan Vantigo lager og avslutter de kontoene, og viser hva den holder. Den har
+fire kort.
+
+**Kontoregler.** Velg, og velg så **Lagre kontoreglene**:
+
+- **Adressedomene** — det bekreftede domenet nye adresser lages på; tomt for
+  primærdomenet.
+- **Adressemønster** — hvordan en adresse lages av navnene når personens e-post på jobb
+  ikke kan brukes: *kari.nordmann*, *k.nordmann* eller *kari*.
+- **Organisasjonsenhet** — der nye kontoer lages, for eksempel `/Ansatte`; `/` for
+  toppen.
+- **Levetiden til det første passordet, i dager** — 1 til 30: hvor lenge passordet
+  personen får den første dagen, kan vises før det glemmes; og **Hvem som gir det første
+  passordet videre** — tas vare på til en senere versjon; HR viser det på personens
+  Konto-fane i Ansatte.
+- **Når noen slutter** — **Fjern lisensene**, **Ta dem ut av grupper** (*Alle grupper*,
+  *Gruppene Vantigo har laget* eller *Ingen grupper*) og **Logg dem ut av alle økter**.
+  Kontoen suspenderes alltid først.
+
+Har noen andre lagret tilkoblingen mens du hadde fanen åpen, sier fanen fra; last den inn
+på nytt og gjør endringen din igjen.
+
+**Lisenser.** Lisensene organisasjonen har, hver med navnet og hvor mange som har den,
+slik Vantigo sist leste dem — valgene i en Ansatte-gruppes **Lisenser**. **Les
+lisensene** spør Google igjen. Når Google ikke kan spørres, sier kortet hvorfor: ingen
+nøkkel fikk et token for lisensene (sjekk delegeringen og test tilkoblingen), eller
+Google svarte ikke.
+
+**Kontoer.** Hver Google-konto Vantigo holder for en person: adressen, ansattnummeret,
+tilstanden (*Aktiv*, *Suspendert* eller *Slettet*), lisensene Vantigo tildelte, om et
+første passord venter på å bli vist, og hva Google ikke fikk gjort, i en setning hver. En
+konto Vantigo fant i Google i stedet for å opprette, er merket *Funnet – bekreft* og har
+**Bekreft**: Vantigo skriver ingenting til den før du bekrefter at den er personens
+([hvorfor](/nb/admin/google-workspace/#kontoer-og-grupper-vantigo-ikke-opprettet)).
+
+**Grupper.** Hver Google-gruppe Vantigo holder for en gruppe i Ansatte: adressen,
+gruppen i Ansatte, og om Vantigo laget den (*Opprettet av Vantigo*, *Funnet og
+overtatt*). En gruppe Vantigo fant på adressen i stedet for å lage, er merket *Funnet –
+bekreft* og har **Bekreft**, av samme grunn; når den er bekreftet, skriver Vantigo navnet,
+medlemmene og innstillingene fra Ansatte til den, men sletter den aldri.

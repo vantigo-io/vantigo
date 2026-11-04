@@ -599,13 +599,19 @@ day, at which address and who holds the account. HR changes it:
      Entra create the person's account, enables and disables it there, and tells
      Vantigo to expect it, so the user it brings is the person's with no Owner in
      between.
+   - **Google Workspace** — offered only while the Google Workspace module is on: the
+     same as Microsoft Entra ID, in the company's Google Workspace organisation. Staff
+     has Google create the person's account (suspended until their first day), lifts the
+     suspension on the day with a first password HR shows once, and suspends it when
+     they leave ([A Google Workspace account](#a-google-workspace-account)).
 
-   A new person gets the **Default account kind** from [Accounts](#accounts). Changing a
+   A new person gets the **Default account kind** from [Accounts](#accounts). What
+   follows for Microsoft Entra ID holds for Google Workspace in the same way. Changing a
    person away from Microsoft Entra ID while Entra holds an account for them — enabled,
    disabled or held up, until Entra has deleted it or reported it gone — is refused —
-   *The account kind cannot leave Microsoft Entra ID while Microsoft Entra ID
-   holds an account for the person. The person leaves the directory by Disable now or
-   by the end of their employment.* A person whose
+   *The account kind cannot leave the identity provider while the provider holds an
+   account for the person. The person leaves the directory by Disable now or by the end
+   of their employment.* A person whose
    Vantigo user still waits for its invitation can be moved from Local to Microsoft
    Entra ID: the account that arrives from Entra takes over that user. Until Staff has
    set everyone's kind on the upgrade that brought the kinds, a change of kind is not
@@ -700,6 +706,40 @@ unless changed — under its [**Set the account rules** step](/en/user/entra/#4-
 never mailed. A pass that has run out, or one already shown, is gone — the tab says
 *The pass was shown already, has expired, or none was issued. Run now (new pass) issues
 a new one.* — so use **Run now (new pass)**.
+
+### A Google Workspace account
+
+For a person of the **Google Workspace** kind the card is titled **Google Workspace**
+and reads as Microsoft Entra ID's, with Google's words:
+
+- The account's address is its **primary email** in Google Workspace — the work email
+  when it is on one of the organisation's verified domains, else one made from the
+  names by the account rules (*kari.nordmann@…*, then *kari.nordmann2@…* when taken).
+  Staff never renames it.
+- *Disabled* is Google's **suspended**: the account exists and nobody can sign in to it.
+  Staff makes the account suspended, and lifts the suspension on the first day of
+  employment.
+- In place of a Temporary Access Pass, Google gets a **first password** when the
+  suspension is lifted: 16 characters, which the person types at their first sign-in to
+  Google and then replaces with their own. **Show the password** (HR) shows it once, in
+  a window titled **First password**, with **Copy** and when it stops working — seven
+  days unless the account rules on the Google Workspace page's
+  [Accounts tab](/en/user/google-workspace/#the-accounts-tab) say otherwise. After that
+  it is forgotten; **Run now (new password)** sets a new one only while nobody has
+  signed in to the account yet, never over an account someone uses. Give it to the person yourself; it is
+  never mailed.
+- What Google could not do is said one sentence each, as for Entra: the account found
+  in Google but not created by Vantigo and not yet confirmed (someone with
+  `google:manage` confirms it on the Accounts tab), an account with an administrator
+  role, no licence left, the password refused by the organisation's password policy,
+  the photo not written, the leaver not signed out (*the account is suspended all the
+  same*), or a leaver step not finished.
+- Google keeps fewer fields than Entra: of the [Directory profile](#directory-profile)
+  it writes the job title, the department, the cost centre, the business and mobile
+  phones, the office location, the manager and the preferred language. The hire date,
+  the leave date, the employee type, the company name and the division have no place in
+  Google and are not sent; nothing is reported for them.
+- The photo is written at 96 × 96 pixels, its centre square, as Google keeps it.
 
 **Run now** (HR, while the flag is on) does the account's next step at once, with a
 fresh invitation for a pending user whose last one cannot be accepted. The tab then
@@ -1015,6 +1055,18 @@ again at each run, and the group follows at the run after the confirmation. A te
 so it appears a run after the group. When the directory could not say what a group can
 carry, the card says *Microsoft Entra ID could not say what a group can carry there.
 Try again later.*
+
+**A group in Google Workspace.** While the Google Workspace module is on, a group has a
+**Google Workspace** card too. Its settings are the **Group address** — the group's
+email address, on one of the organisation's verified domains; left empty, the group's
+key at the domain of the account rules; it cannot change once the group is made — **Who
+sees the group** — *Everyone in the organisation*, who also find it in the directory, or
+*Members only* — and the **Licences** its members get, the organisation's licences as
+the Google Workspace page last read them. The group's owners are its members with the
+role *Owner* in Google. A group Google already holds at the address that Vantigo did not
+make waits until someone with `google:manage` confirms it on the Google Workspace page's
+[Accounts tab](/en/user/google-workspace/#the-accounts-tab). Letting the group go
+deletes it in Google when Vantigo made it, and leaves one it found to the organisation.
 
 **Turning the switch off** asks *Turn off Microsoft Entra ID for …?* and says what
 happens, by **Delete an external account (days after the end)** under
@@ -1508,7 +1560,7 @@ type is counted only for `staff:personal-data`:
 | The competence review of … is overdue | Someone in employment has had no competence review recorded within the interval set under [Competence reviews](#competence-reviews) — counted from their last review, or from the start of their current employment when that is later. A manager sees their own people's; HR everyone's. Go through the tab together and press **Reviewed today**. | The person's Competence tab |
 | … does not meet their competence profile (2 items) | A competence profile that applies to someone active today asks for competences they do not meet — missing, below the level, a certificate declared but not verified, or expired — counted. One per person, for their manager and HR, never for the person themselves or for `staff:approve` alone. It goes away when every item is met or expires soon. | The person's Competence tab |
 | The group … is not in sync with its directory | A group could not be kept in the directory — a setting the directory refused, a group there holding its key that Vantigo may not change, or a directory that could not be reached three times in a row; the group's page says why. One per group and directory, for HR. | The group |
-| Microsoft Entra ID refused the photo of … | Entra ID would not take the person's picture — HR's photo, or the person's own when HR has set none. Nothing is needed for sign-in; set another photo to try again. For HR. | The person's Account tab |
+| Microsoft Entra ID refused the photo of … (or Google Workspace …) | The person's directory — named in the sentence — would not take the person's picture: HR's photo, or the person's own when HR has set none. Nothing is needed for sign-in; set another photo to try again. For HR. | The person's Account tab |
 
 **Accounts held up in the directory.** For HR, the dashboard also says when a person's
 account in the company's directory is held up, naming the person and opening their
