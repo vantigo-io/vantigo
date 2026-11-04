@@ -266,6 +266,33 @@ func (g *FakeGoogle) EditEvent(owner, id, eventID string, fn func(*Event)) {
 	c.touch(ev)
 }
 
+// DeleteSeries is the person deleting the recurring series master of their
+// calendar id ("" the primary one) whole: its instances (RecurringEventID
+// master) cancelled with no change recorded, and one cancelled item with the
+// series' own id the change a sync token answers — as Google may answer a
+// series deleted to a list of single events.
+func (g *FakeGoogle) DeleteSeries(owner, id, master string) {
+	if id == "" {
+		id = "primary"
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	c := g.calendarOf(owner, id)
+	for _, ev := range c.events {
+		if ev.RecurringEventID == master {
+			ev.Status = "cancelled"
+		}
+	}
+	ev := c.events[master]
+	if ev == nil {
+		ev = &Event{ID: master}
+		c.events[master] = ev
+		c.order = append(c.order, master)
+	}
+	ev.Status = "cancelled"
+	c.touch(ev)
+}
+
 // Calendars are owner's secondary calendars, by id.
 func (g *FakeGoogle) Calendars(owner string) []string {
 	g.mu.Lock()

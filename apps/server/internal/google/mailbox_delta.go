@@ -2,6 +2,7 @@ package google
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -32,6 +33,10 @@ const (
 	deltaLinkPrefix = "g1."
 	// maxDeltaLink bounds a link the caller hands back.
 	maxDeltaLink = 8192
+	// maxLinkSeries is the most series a link remembers (seriesKey's eleven
+	// characters each in the JSON, under maxDeltaLink once encoded); past it
+	// the link remembers that it forgot.
+	maxLinkSeries = 300
 	// deltaFields is what a delta page asks of each event.
 	deltaFields = "items(id,status,start,end,transparency,eventType,recurringEventId,attendees(self,responseStatus)),nextPageToken,nextSyncToken"
 	// markedFields is what Marked asks of an event.
@@ -42,7 +47,9 @@ const (
 // the sync token the next read starts from, and — for a delta cut before its
 // end — the next page's token and whether the listing paged is the windowed
 // first one. A link with neither token nor page is a delta read to its end
-// with no sync token (U7): its next read starts again.
+// with no sync token (U7): its next read starts again. Series are the
+// recurring series the delta has answered an instance of (seriesKey), at most
+// maxLinkSeries; Forgot is set once more were seen.
 type deltaLink struct {
 	Mailbox  string    `json:"m"`
 	From     time.Time `json:"f"`
@@ -50,6 +57,40 @@ type deltaLink struct {
 	Sync     string    `json:"s,omitempty"`
 	Page     string    `json:"p,omitempty"`
 	Windowed bool      `json:"w,omitempty"`
+	Series   []string  `json:"r,omitempty"`
+	Forgot   bool      `json:"o,omitempty"`
+}
+
+// seriesKey is a recurring series' id as a link remembers it: eight
+// characters of its SHA-256, so a link's size does not grow with the ids'. Two
+// series sharing a key cost a needless restart, never a change lost.
+func seriesKey(id string) string {
+	sum := sha256.Sum256([]byte(id))
+	return base64.RawURLEncoding.EncodeToString(sum[:6])
+}
+
+// remember records the series of an instance answered.
+func (l *deltaLink) remember(series string) {
+	k := seriesKey(series)
+	switch {
+	case slices.Contains(l.Series, k):
+	case len(l.Series) >= maxLinkSeries:
+		l.Forgot = true
+	default:
+		l.Series = append(l.Series, k)
+	}
+}
+
+// seriesGone reports whether ev, an item of an increment, is a recurring
+// series the delta answered instances of, deleted whole: with singleEvents
+// Google may answer the deletion as one cancelled item with the series' own
+// id — no _<time> instance suffix — and not the instances. False for an id
+// the link never saw as a series, unless it forgot some.
+func (l *deltaLink) seriesGone(ev readEvent) bool {
+	if !ev.cancelled() || strings.Contains(ev.ID, "_") {
+		return false
+	}
+	return l.Forgot || slices.Contains(l.Series, seriesKey(ev.ID))
 }
 
 // encode is the link as the contract carries it: g1. and the base64url of
@@ -107,7 +148,10 @@ func (o *loggedOnce) first(key string) bool {
 // read is answered cut with its link. 410 is ErrMailboxDeltaExpired, and so
 // is a link read to its end with no sync token, which logs once per mailbox in
 // the process. The window is enforced here: an event outside from..to, deleted
-// or cancelled is answered Removed. Refused under cleanup.
+// or cancelled is answered Removed. A series deleted whole in an increment
+// (seriesGone) is ErrMailboxDeltaExpired too: its instances' ids are the
+// caller's alone, so only a fresh read of the window drops them. Refused under
+// cleanup.
 func (m *mailboxCalendar) Delta(ctx context.Context, mailbox string, from, to time.Time, link string) (contracts.MailboxDelta, error) {
 	var l deltaLink
 	if link == "" {
@@ -156,6 +200,13 @@ func (m *mailboxCalendar) Delta(ctx context.Context, mailbox string, from, to ti
 		}
 		skipped := 0
 		for _, ev := range answer.Items {
+			if !l.Windowed && l.seriesGone(ev) {
+				m.c.logger.DebugContext(ctx, "google: a recurring series was deleted whole; the delta starts again")
+				return contracts.MailboxDelta{}, fmt.Errorf("google: a recurring series deleted whole: %w", contracts.ErrMailboxDeltaExpired)
+			}
+			if ev.RecurringEventID != "" && validEventID(ev.RecurringEventID) {
+				l.remember(ev.RecurringEventID)
+			}
 			change, ok := changeOf(ev, l.From, l.To)
 			if !ok {
 				skipped++
@@ -174,7 +225,7 @@ func (m *mailboxCalendar) Delta(ctx context.Context, mailbox string, from, to ti
 			}
 			continue
 		}
-		done := deltaLink{Mailbox: l.Mailbox, From: l.From, To: l.To, Sync: answer.NextSyncToken}
+		done := deltaLink{Mailbox: l.Mailbox, From: l.From, To: l.To, Sync: answer.NextSyncToken, Series: l.Series, Forgot: l.Forgot}
 		out.Link, out.Done = done.encode(), true
 		return out, nil
 	}
