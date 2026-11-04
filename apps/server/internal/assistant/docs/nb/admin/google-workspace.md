@@ -590,6 +590,8 @@ og av hvem.
 | Folk ser *Må kobles til på nytt* — *blocked* | Administrasjonskonsollen begrenser nettklienten, eller kontoen er utenfor organisasjonen. | Merk nettklienten som **Trusted** under API controls. |
 | Folk får beskjed om at de logget inn med en konto utenfor organisasjonens Google Workspace | ID-tokenet navnga ikke noe verifisert domene i organisasjonen — en privat konto, eller et domene lagt til etter siste test. | Test tilkoblingen igjen etter å ha lagt til et domene. |
 | Kortet **Kontoer** i Ansatte: Google Workspace feiler (`scopes_missing`) | Den siste testen ble nektet et av tilgangsområdene for kontoene, gruppene, gruppeinnstillingene eller lisensene, eller ble gjort før de trengtes. | Legg dem til i delegeringen, og test igjen. |
+| En persons Google Kalender har to kalendere som heter *Vantigo*, og den ene er tom | Vantigo ba Google lage kalenderen, og svaret gikk tapt — et tidsavbrudd, en feil hos Google, eller at Vantigo stoppet akkurat da. Google laget den likevel; Vantigo bruker bare en kalender den har registrert, så den laget en til og rører aldri den første. | Personen kan slette den tomme *Vantigo*-kalenderen i Google Kalender. Vantigo sletter den ikke for dem. |
+| Kalendersynkroniseringen feiler for mange på én gang | Google Cloud-prosjektets kvote for Calendar API er brukt opp (`quotaExceeded`, `dailyLimitExceeded`). Vantigo prøver igjen senere; ingen persons kalender merkes som avvist. | Sjekk kvotene for Calendar API under **APIs & Services** i Cloud-konsollen, og be om mer om organisasjonen trenger det. |
 
 **Årsakene på en persons konto.** Ansattes Konto-fane og dashbord sier hva Google ikke
 fikk gjort, med disse kodene:
