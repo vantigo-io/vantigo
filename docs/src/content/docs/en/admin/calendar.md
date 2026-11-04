@@ -1,6 +1,6 @@
 ---
 title: Calendar
-description: Turning Calendar on and giving people its three permissions; what invitations to people outside the company need — a channel chosen in the Calendar settings, a sending domain with SPF, DKIM and DMARC, the public host and its routes; the calendar feed on the public host, its rate limit and the proxy's log; the cancellations, subscriptions and mailbox sync workers and their settings, and what Vantigo fetches from the internet; how to check that an invitation went and that the feed answers, and what can go wrong.
+description: Turning Calendar on and giving people its three permissions; what invitations to people outside the company need — a channel chosen in the Calendar settings, a sending domain with SPF, DKIM and DMARC, the public host and its routes; the calendar feed on the public host, its rate limit and the proxy's log; the cancellations, subscriptions and mailbox sync workers — to Outlook or Google Calendar — and their settings, and what Vantigo fetches from the internet; how to check that an invitation went and that the feed answers, and what can go wrong.
 sidebar:
   order: 45
 sources:
@@ -21,7 +21,7 @@ customers' contacts and other people on them, beside what the other modules know
 them. This page is the operator's side: turning it on, what the invitations to people
 outside the company need, the worker that tidies up after a cancellation, the calendar
 feed a phone subscribes to, the worker that fetches the calendars people subscribe
-to from elsewhere, and the worker that keeps their copies in Outlook. What the
+to from elsewhere, and the worker that keeps their copies in Outlook or Google Calendar. What the
 module does and the rules it checks are in [the reference](/en/reference/calendar/); what
 a person does on its screens is in [the user guide](/en/user/calendar/).
 
@@ -133,8 +133,10 @@ The link's token is in the query of the page request alone: Vantigo's request lo
 writes the path and never the query, and the page posts the token rather than putting
 it in an API address. Keep the proxy's access log to the path for the whole public host,
 as the pay page's steps show. The public host also admits, beside these, one route of the
-Microsoft Entra ID module: `POST /api/v1/entra/mailbox-notifications`, the webhook of the
-Outlook sync's [change notifications](#the-mailbox-sync-worker).
+Microsoft Entra ID module, `POST /api/v1/entra/mailbox-notifications`, the webhook of the
+Outlook sync's [change notifications](#the-mailbox-sync-worker), and one of the Google
+Workspace module, `POST /api/v1/google/calendar-notifications`, where Google posts the
+Google Calendar sync's [change notifications](#google-calendar).
 
 ### Verify
 
@@ -439,7 +441,32 @@ their connection, at info with its code.
 | --- | --- | --- |
 | `CALENDAR_MAILBOX_SYNC_ENABLED` | On/off switch for the `calendar-mailbox-sync` worker | `1` |
 | `CALENDAR_MAILBOX_SYNC_POLL` | How often each person's copies are synced when nothing made them due sooner; a duration of at least `1m` | `15m` |
-| `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` | Whether Microsoft is asked to notify changes in synced mailboxes, so a change made in Outlook is taken within about a minute; needs `PUBLIC_BASE_URL`. `0` is for a public host Microsoft cannot reach | `1` |
+| `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` | Whether Microsoft and Google are asked to notify changes in synced calendars, so a change made in Outlook or Google Calendar is taken within about a minute; needs `PUBLIC_BASE_URL`. `0` is for a public host they cannot reach | `1` |
+
+### Google Calendar
+
+A person whose account in Staff is a Google Workspace account is synced to **Google
+Calendar** instead, by the same worker and under the same rules and settings: the
+calendar picks the provider by the person's account, so one installation may sync some
+people to Outlook and others to Google. The copies are written through the Google
+Workspace module on **each person's own Google connection**, once an Owner has turned on
+**Connection for people** on the Google Workspace page and the person has connected
+Google ([Google Workspace](/en/admin/google-workspace/#calendar-sync)). No calendar
+access is ever delegated to the service account: a person's calendar is reached with
+their own consent alone.
+
+- **What it reaches.** Calendar v3 on `www.googleapis.com` and the token endpoint on
+  `oauth2.googleapis.com`, through the Google module's guarded client and its fixed
+  hosts. Each call names the person's Google id as Google's `quotaUser`, so one busy
+  person does not spend the organisation's quota.
+- **Change notifications.** With `PUBLIC_BASE_URL` set and
+  `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` on, the first sync that pushed opens a push
+  channel on the person's main Google calendar, and Google posts to
+  `PUBLIC_BASE_URL/api/v1/google/calendar-notifications` when something in it changes.
+  The address must be HTTPS with a certificate Google trusts; Google asks no handshake
+  and no domain verification of it. A channel is renewed before it lapses and stopped
+  with the copies. Without notifications the poll carries the sync.
+- **The log** names no Google id, no channel and no event, and never Google's words.
 
 ## Key material
 
@@ -539,3 +566,7 @@ with nothing lost. Appointments keep their identifiers.
   could not reach it; the Entra page says which
   ([Microsoft Entra ID](/en/admin/entra/#change-notifications)). Nothing is lost: the poll
   takes them every `CALENDAR_MAILBOX_SYNC_POLL`.
+- **Changes made in Google Calendar arrive only at the poll.** The same two settings, or
+  the proxy does not pass `POST /api/v1/google/calendar-notifications` on the public
+  host, or its certificate is one Google does not trust. Nothing is lost: the poll takes
+  them.

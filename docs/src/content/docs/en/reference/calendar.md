@@ -42,7 +42,7 @@ and typed addresses on them. It provides one single-provider contract,
 [`contracts.CalendarBusy`](#the-busy-time-contract): people's busy time, which Planning's
 board reads. For the [Outlook sync](#outlook-sync) it also reads, when wired, the
 caller's own directory account through `contracts.Workforce` (Staff) and writes and
-reads people's mailboxes through `contracts.MailboxCalendar` (Entra).
+reads people's mailboxes through `contracts.MailboxCalendar` (Entra, Google Workspace).
 What it shows from the other modules it never copies: it consumes the many-provider slot
 `CalendarSources`, through which each enabled module **projects** its own rows at read
 time, under its own permission, so a follow-up ticked in Customers is ticked on the
@@ -1676,7 +1676,8 @@ The person's own Outlook titles are [not shown](#the-persons-own-outlook-titles)
 
 The providers are the many-provider slot `MailboxCalendar` (`contracts.MailboxCalendar`),
 keyed by `Key()` — the [Microsoft Entra ID module](/en/reference/entra/#the-mailbox-calendar)
-fills it as `entra` — and **a person's provider is the one their directory account belongs
+fills it as `entra` (Outlook), the [Google Workspace
+module](/en/reference/google/#the-mailbox-calendar) as `google` (Google Calendar) — and **a person's provider is the one their directory account belongs
 to** (Google Workspace design G3): `contracts.Workforce.DirectoryAccount`
 ([Staff](/en/reference/staff/#the-workforce-contract)) answers the account and its
 `Provider`, and `mailboxCalendarFor(Provider)` — the slot's provider under that key, no

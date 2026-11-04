@@ -1,6 +1,6 @@
 ---
 title: "Google Workspace module"
-description: "Google Workspace as a connection to one organisation through a service account's domain-wide delegation — the foundation: the module and why it requires Staff; the schema; the page and its four tabs; the permission and the Owner policy; the connection, the admin to impersonate and the credential kind under If-Match; the key file's rules, the keys in the plural, their try order and a refused key; the Internal web client and its secret; the guarded client, its fixed hosts and its limits; the delegated token, its cache and the one seam; Test connection, the needed and the unexpected scopes, and the statuses and their reasons; the events; the refusals and the endpoints; and the unverified items U2 and U14 — and the accounts (delivery B): the provisioner google and its status, the accounts and groups tables and the account rules, the correlation on the organization external id and the adoption, the address, the mapping, the first password, the licences, the leaver's steps, the delete, the groups' three traits, the photo at 96 px, and the unverified items U11, U12, U13, U16 and U19 — and connecting existing users (delivery C): the directory search identity serves, its two prefix queries, the exact matches by primary email, alias and employee number, their bounds, the announced link keyed by the Directory id, the Sign-in and Provisioning steps, and the unverified items U1 and U4 — and the person's own Google connection (delivery D): the connections table and the switch, the flow with its two cookies, PKCE and the ID token's checks, the features and the scopes as answered, the certain account checked three times, the states, the refresh and its failures, the closes, google-sweep, the codes, the endpoints and their limits, and the unverified items U1 and U9."
+description: "Google Workspace as a connection to one organisation through a service account's domain-wide delegation — the foundation: the module and why it requires Staff; the schema; the page and its four tabs; the permission and the Owner policy; the connection, the admin to impersonate and the credential kind under If-Match; the key file's rules, the keys in the plural, their try order and a refused key; the Internal web client and its secret; the guarded client, its fixed hosts and its limits; the delegated token, its cache and the one seam; Test connection, the needed and the unexpected scopes, and the statuses and their reasons; the events; the refusals and the endpoints; and the unverified items U2 and U14 — and the accounts (delivery B): the provisioner google and its status, the accounts and groups tables and the account rules, the correlation on the organization external id and the adoption, the address, the mapping, the first password, the licences, the leaver's steps, the delete, the groups' three traits, the photo at 96 px, and the unverified items U11, U12, U13, U16 and U19 — and connecting existing users (delivery C): the directory search identity serves, its two prefix queries, the exact matches by primary email, alias and employee number, their bounds, the announced link keyed by the Directory id, the Sign-in and Provisioning steps, and the unverified items U1 and U4 — and the person's own Google connection (delivery D): the connections table and the switch, the flow with its two cookies, PKCE and the ID token's checks, the features and the scopes as answered, the certain account checked three times, the states, the refresh and its failures, the closes, google-sweep, the codes, the endpoints and their limits, and the unverified items U1 and U9 — and calendar sync on the person's connection (delivery E): the MailboxCalendar google, its status and footing, the marker, the calendars the module makes, the batch endpoint, the delta with its sync token and link, ShowAs, the write-back's reads, the push channels and the anonymous notifications endpoint, and the unverified items U5, U7, U8 and U18."
 sources:
   - apps/server/internal/google
   - apps/google/frontend
@@ -11,6 +11,7 @@ sources:
   - apps/server/internal/db/migrations/00114_google_baseline.sql
   - apps/server/internal/db/migrations/00115_google_accounts.sql
   - apps/server/internal/db/migrations/00116_google_connections.sql
+  - apps/server/internal/db/migrations/00117_google_calendar.sql
   - apps/server/internal/directoryaddress
 ---
 The Google Workspace module connects one installation to one Google Workspace
@@ -24,7 +25,7 @@ owns the `google` schema in the shared PostgreSQL database, and serves
 and its page is **Google Workspace** under **Integrations** in Workspace admin
 ([the page](#the-page)).
 
-**Deliveries A, B, C and D.** The module holds the connection — the service account's keys,
+**Deliveries A, B, C, D and E.** The module holds the connection — the service account's keys,
 the admin to impersonate, the Internal web client — tests it, and reads the organisation
 and its verified domains (A). It fills `contracts.IdentityProvisioner` under the key
 `google` ([the provisioner](#the-provisioner)): Staff's accounts worker drives a person's
@@ -33,8 +34,11 @@ account and Staff's groups in the organisation through it (B). It fills
 search](#the-directory-search)): identity's Owner endpoints search the organisation's
 users and propose exact matches for connecting existing users to Google sign-in (C). It
 keeps each person's own Google connection, behind the Owner's Connection for people
-switch ([the personal connection](#the-personal-connection)) (D). The calendar and Gmail
-come in later deliveries, each taking its token from the one seam
+switch ([the personal connection](#the-personal-connection)) (D). It fills
+`contracts.MailboxCalendar` under the same key ([the mailbox
+calendar](#the-mailbox-calendar)): the calendar syncs a person's copies with their
+Google Calendar on that connection (E). Gmail comes in later deliveries, each taking its
+token from the one seam
 [`tokenSource`](#the-delegated-token) — the person's own token through the same
 interface. `MODULES` refuses `google` without
 `staff` (`google requires staff`): Staff's accounts worker is the provisioner's only
@@ -697,7 +701,8 @@ The module's one worker, hourly, in the API and in worker mode. It takes no advi
 lease and holds no pooled connection across a call to Google:
 
 1. One `DELETE … RETURNING` takes the spent closing rows — seven days after closing, or
-   once a day has passed since their last use and their closing — then each token they
+   once a day has passed since their last use and their closing while they hold no
+   calendar push channel (delivery E) — then each token they
    held is revoked at `oauth2.googleapis.com/revoke` (a token Google no longer knows is
    revoked already), and each is a `google.personal.deleted` event with `revoked` or
    `revoke_failed`. A failed revocation is not retried: the row is gone, and Google lets
@@ -713,8 +718,147 @@ lease and holds no pooled connection across a call to Google:
 
 `connectionChanges(since)` answers the rows whose state moved after `since`, oldest
 first, at most `contracts.ConnectionChangesMax`, each as a `contracts.ConnectionChange`
-whose mailbox is the Google id: what the calendar's `MailboxCalendar.Connections` will
-answer in delivery E.
+whose mailbox is the Google id: what the calendar's `MailboxCalendar.Connections`
+answers ([the mailbox calendar](#the-mailbox-calendar)).
+
+## The mailbox calendar
+
+Delivery E (G30–G32, [`docs/superpowers/plans/2026-11-03-google-calendar.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-11-03-google-calendar.md))
+fills `contracts.MailboxCalendar` under the key `google`, `DisplayName()` *Google
+Calendar* (`mailbox*.go`). The calendar picks it for a person whose directory account's
+`Provider` is `google`; the mailbox is the account's Directory id, and the calendar id
+`""` is the person's `primary` calendar. Every call is made **on the person's own
+connection** with the `calendar` feature ([the token](#the-token-and-its-failures)),
+never on the service account: no calendar scope is delegated (Q3).
+
+### The footing of a call
+
+- **The status** (`Status`, no network): `available` while Connection for people is on
+  and the web client ready; `cleanup` (`switch_off`) while the switch is off, the web
+  client set, and a closing connection still holds its token; else `unavailable` with
+  `switch_off` or the web client's reason (`no_web_client`, `not_tested`).
+- **The removals** — `DeleteCalendar`, `Find`, `Unwatch` and an `Apply` of deletes alone
+  — run under `cleanup` and on a closing connection while it holds its token; every
+  other call needs `available` and an active connection. A removal whose connection is
+  closing with no token, or gone, is `ErrMailboxGone`.
+- **The account**: a Directory id that is a row of `accounts` the module made or whose
+  adoption is confirmed, and not deleted; otherwise `ErrMailboxUnknown`, with no
+  network.
+- **The connection's answers**: `ErrConnectionNeeded` with `not_connected`, `closing`,
+  `consent_missing` (the calendar's scopes not granted — the row is not moved) or the
+  reconnect's code. A **401** after the client's one fresh token moves the row to
+  `reconnect`, `sign_in_again`, at the revision the token came from (a row moved on
+  since is a failure to retry). A **403** that is no usage limit is `ErrMailboxDenied`.
+  The web client not set up or refused is `ErrMailboxUnavailable`.
+- **`quotaUser`** is the Google id on every call — the batch's and each part's.
+
+### The tables
+
+`00117_google_calendar.sql` creates **`calendars`** — `(google_user_id, calendar_id)`,
+the secondary calendars the module made, with `created_at` — and **`calendar_channels`**
+— `google_user_id` (the primary key: one channel a person), `channel_id` (a UUID,
+unique), `resource_id`, `token_hash` (32 bytes, `CHECK`ed), `address`, `expires_at`,
+`granted_seconds`, `notified_at` (indexed where set) and `created_at` — and gives
+**`connection`** its `marker` (32 lower-case hex digits, `CHECK`ed, drawn with
+`gen_random_uuid()`). The down step drops them; the copies and calendars stay in the
+people's Google Calendars, and the channels lapse.
+
+### Copies and calendars
+
+- **The marker.** `connection.marker`, 32 hex digits the migration draws once. A copy
+  carries `extendedProperties.private = {"vantigo": <marker>, "vantigoKey": <key>}`,
+  written on a create and on an update naming a key. An event whose `vantigo` is another
+  value is another installation's (`Foreign`), and one without it the person's own: never
+  answered by `Find`, `Marked` or the default calendar's `Versions`.
+- **`Apply`** sends creates (`POST …/events`), updates (`PATCH …/events/{id}`) and deletes
+  (`DELETE …/events/{id}`) through the batch endpoint
+  (`www.googleapis.com/batch/calendar/v3`, `multipart/mixed`), fifty a batch, one batch
+  after another, and asks Google to answer `id,etag,status` alone. The `etag` is the change
+  key. Each part is judged alone: 2xx done (an update answered `cancelled` is `Gone`), 404
+  or 410 on an update or a delete `Gone`, a 403 `ErrMailboxDenied`, a usage limit (429, or
+  403 `rateLimitExceeded`/`userRateLimitExceeded`) sent again once after a second and then
+  a failure. Once one op is refused for the mailbox, the rest answer the same, unsent. A
+  batch holding a create is sent once.
+- **The event written**: `summary`, `description`, `location` (an update always writes
+  it), a timed event's `start.dateTime`/`end.dateTime` in RFC 3339 with the event's IANA
+  zone (else UTC), an all-day event's `start.date`/`end.date` (the end the day after the
+  last), the other kind's field `null`; `transparency` `transparent` for free and `opaque`
+  otherwise — tentative, out of office and working elsewhere are written opaque, Google
+  keeping no such state on a plain event —; `visibility` `private` or `default`;
+  `reminders {useDefault: false}`.
+- **`Find`** is `events.list(privateExtendedProperty=vantigo=<marker>, timeMin=from)`,
+  pages of 250, an event kept only when it starts at or after `from` (`timeMin` bounds
+  the end), at most 5000; `Meeting` when it has an attendee other than the person. A
+  secondary calendar that is gone answers none.
+- **The calendars.** `calendar.app.created` reaches only the calendars this client made,
+  and Google keeps no property on a calendar, so a calendar is the module's when
+  **`calendars`** holds `(google_user_id, calendar_id)`. `EnsureCalendar` keeps `known`
+  when its row and `calendars.get` both answer, else adopts another row's calendar that
+  still exists, else `calendars.insert {summary: name}` and writes the row; a row whose
+  calendar is gone (404, 410) is dropped. A 403 on the insert is `ErrMailboxDenied` (U8):
+  the calendar's *own* target is then unavailable. `DeleteCalendar` of `primary`, or of a
+  calendar no row names that still exists, is `ErrCalendarNotOurs`; one gone is done.
+
+### Reads
+
+- **`Delta`** (G31). `link ""` lists `primary` with `singleEvents=true`,
+  `showDeleted=true`, `timeMin` and `timeMax`, pages of 250; the last page's
+  `nextSyncToken` is the link answered `Done`. A continuing link lists with `syncToken`.
+  At most 40 pages a call; a cut answer's link carries the next page's token. The link is
+  `g1.` and the base64url of `{m, f, t, s, p, w}` — the mailbox, the window, the sync
+  token, the page token and whether the listing paged is the windowed one; a link whose
+  `m` is not the mailbox asked, or not the provider's at all, is refused with a failure,
+  unsent. **410 is `ErrMailboxDeltaExpired`.** Increments are not windowed (U7), so the
+  provider enforces the window: an event outside it, deleted or cancelled is `Removed`.
+  A windowed list that answers no `nextSyncToken` leaves a link with no token, whose next
+  read is `ErrMailboxDeltaExpired` at once — every sync then re-reads the window, logged
+  once per mailbox in the process. The fields asked are `id`, `status`, `start`, `end`,
+  `transparency`, `eventType`, `recurringEventId` and `attendees(self,responseStatus)`;
+  `Series` is an instance of a recurring event.
+- **`ShowAs`**: `transparency=transparent` → `free`; `eventType=outOfOffice` →
+  `out_of_office`; `eventType=workingLocation` → `working_elsewhere` (opaque only, a
+  transparent one being free); the person's own `declined` → `free`; `tentative` →
+  `tentative`; otherwise `busy`.
+- **`Marked`** and **`Events`** read `events.get` per id through the batch endpoint, fifty
+  a batch. `Marked` answers the ids carrying the marker; `Events` reads the event whole —
+  `TextBody` is a description with no HTML tag (Google's editor writes HTML), `Private` a
+  `private` or `confidential` visibility — and answers 404, 410 and a cancelled event in
+  `Gone`, skipping a 403 of one event. A usage limit is waited once, then a failure.
+- **`Versions`**: the default calendar is `Find`'s list with the `etag`; a secondary
+  calendar is `events.list(timeMin, timeMax, singleEvents=true)` with
+  `fields=items(id,etag,status,recurringEventId)`; at most 5000, `Complete` false past
+  it.
+- **Ids.** An event id is `[A-Za-z0-9_-]`, at most 1024; a calendar id
+  `[A-Za-z0-9_.@+-]`, at most 255, path-escaped. Anything else is refused before a call,
+  and a delta's event with one is left out, counted.
+
+### Change notifications
+
+- **`Watch`** opens `events.watch` on `primary` — `id` a fresh UUID, `token` 32 random
+  bytes in base64url, `address` `PUBLIC_BASE_URL/api/v1/google/calendar-notifications`,
+  `params.ttl` 30 days — and records **`calendar_channels`**: the Google id (one channel a
+  person), the channel and resource ids, the token's **SHA-256** (the token itself is
+  never stored), the address, the expiry Google answered and the seconds it granted.
+  Nothing is asked while a channel for the present address has more than **min(3 days,
+  half its granted life)** left (U5); otherwise a new channel is opened, the row
+  replaced, and the old one stopped (a refused stop is logged and left to lapse; its
+  messages name no row). No `PUBLIC_BASE_URL`, or `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED`
+  off, answers nil: the poll carries the sync. Refused under `cleanup`.
+- **`Unwatch`** is `channels.stop {id, resourceId}` on the removal token: 2xx and 404
+  forget the row, and so does a connection holding no token for it; anything else keeps
+  the row and answers the error, the stop owed. No row, or one past its expiry, is nil
+  with no network.
+- **`Notified`** answers the rows notified after `since`, oldest first, at most
+  `MailboxNoticesMax`. **`Connections`** is [the changes reader](#the-changes-reader).
+- **`POST /calendar-notifications`** (anonymous, on the public host's allowlist, 600 a
+  minute per client address, `google-calendar-notifications`) reads headers alone and no
+  body: `X-Goog-Channel-ID` a UUID naming a row, the SHA-256 of `X-Goog-Channel-Token`
+  equal to the row's (constant time), `X-Goog-Resource-ID` the row's; `exists` and
+  `not_exists` set `notified_at`, `sync` and anything else nothing. **204 always**, a
+  database failure included, so the endpoint tells nothing of which channels exist. The
+  log names no channel, token, resource or Google id.
+- `google-sweep` deletes a closing connection unused for a day only once it holds no
+  channel row; after seven days, whatever it holds.
 
 ## The events
 
@@ -786,6 +930,7 @@ All under `/api/v1/google`.
 | `POST /connect`, `POST /complete` | `session`; `google-connect` (30 a minute per client address, shared) |
 | `GET /connect/callback` | `anonymous`; `google-connect-callback` (60 a minute per client address) |
 | `GET /connection/me`, `DELETE /connection/me` | `session` |
+| `POST /calendar-notifications` | `anonymous`; `google-calendar-notifications` (600 a minute per client address); on the public host's allowlist |
 
 The directory search adds none: identity serves it ([the directory
 search](#the-directory-search)).
@@ -858,6 +1003,21 @@ Two concern delivery D, built on the design's defensive path before they are set
   `admin_policy_enforced` and `org_internal` as the refusals of a blocked web client
   (any other refusal is `sign_in_again`, never a loop).
 
+Four concern delivery E, built on the design's defensive path before they are settled
+(P5); the check in a test organisation comes before its merge:
+
+- **U5 — a push channel's lifetime.** Google does not document what `events.watch`
+  grants; the channel asks 30 days and is renewed at min(3 days, half the life granted),
+  and the poll runs regardless.
+- **U7 — a windowed first list answers a sync token, and increments are unwindowed.** The
+  provider enforces the window on every change; with no token answered, every sync
+  re-reads the window (correct, costlier, logged once per mailbox).
+- **U8 — `calendar.app.created` lets the person's token make and use a secondary
+  calendar.** A refusal is `ErrMailboxDenied`: the *own* target is unavailable, and the
+  main calendar is unaffected.
+- **U18 — push needs HTTPS alone, no domain verification.** Without notifications the
+  poll carries the sync.
+
 Besides: `licenseAssignments` is addressed by the user's primary email, as its
 reference documents; and the language codes written are `no` and `en-GB`.
 
@@ -872,5 +1032,9 @@ discovery document and a JWK set, stands in for the authorization endpoint with
 authorization code grant (the web client and secret, the redirect URI, PKCE, single
 use, a minute's life), signs the ID token (its claims changeable to prove each check),
 answers refreshes as Google does (no new refresh token; `RefuseRefresh`,
-`NarrowRefresh`) and revokes. The sweep's tests run on a pool of one connection. It comes in through `Deps.HTTPTransport`, so the
+`NarrowRefresh`) and revokes. For the calendar it serves Calendar v3 — calendars,
+events with `privateExtendedProperty`, windows, pages and sync tokens
+(`ExpireSyncTokens` for 410, `SetNoSyncToken` for U7), the batch endpoint, `events.watch`
+and `channels.stop` — to the person's own access token. `internal/integration` composes
+the calendar and this module together and drives the calendar's own worker against it. The sweep's tests run on a pool of one connection. It comes in through `Deps.HTTPTransport`, so the
 host guard runs in every test.

@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Å koble Vantigo til en Google Workspace-organisasjon gjennom en tjenestekonto med domenedekkende delegering — Google Cloud-prosjektet og Admin SDK API, tjenestekontoen og JSON-nøkkelen, å oppheve iam.disableServiceAccountKeyCreation for prosjektet, å laste opp nøkkelen, å delegere tilgangsområdene i administrasjonskonsollen og vente på dem, administratoren som skal etterlignes, den interne nettklienten og de to omdirigerings-URI-ene, å verifisere med Test tilkoblingen — deretter Tilkobling for personer (hver persons egen Google-tilkobling — bryteren, nettklienten som intern, å verifisere ved å koble til selv, å slå den av, hva som skjer med en persons tilkobling, google-sweep), kontoene Ansatte holder i Google, kontoreglene (adressen, organisasjonsenheten, det første passordet og levetiden til det), lisenser, Ansattes grupper og de tre innstillingene deres, bilder i 96 px, hva stegene for en som slutter gjør, slett etter N dager, å bekrefte en konto eller en gruppe Vantigo ikke opprettet, å rotere en nøkkel, å bytte tjenestekonto, og hva som kan gå galt.
+description: Å koble Vantigo til en Google Workspace-organisasjon gjennom en tjenestekonto med domenedekkende delegering — Google Cloud-prosjektet og Admin SDK API, tjenestekontoen og JSON-nøkkelen, å oppheve iam.disableServiceAccountKeyCreation for prosjektet, å laste opp nøkkelen, å delegere tilgangsområdene i administrasjonskonsollen og vente på dem, administratoren som skal etterlignes, den interne nettklienten og de to omdirigerings-URI-ene, å verifisere med Test tilkoblingen — deretter Tilkobling for personer (hver persons egen Google-tilkobling — bryteren, nettklienten som intern, å verifisere ved å koble til selv, å slå den av, hva som skjer med en persons tilkobling, google-sweep), kalendersynkronisering på hver persons tilkobling (endringsvarsler, verifisering, kopiene til en som slutter), kontoene Ansatte holder i Google, kontoreglene (adressen, organisasjonsenheten, det første passordet og levetiden til det), lisenser, Ansattes grupper og de tre innstillingene deres, bilder i 96 px, hva stegene for en som slutter gjør, slett etter N dager, å bekrefte en konto eller en gruppe Vantigo ikke opprettet, å rotere en nøkkel, å bytte tjenestekonto, og hva som kan gå galt.
 sidebar:
   order: 47
 sources:
@@ -28,6 +28,9 @@ sources:
   - apps/server/internal/google/personal_close.go
   - apps/server/internal/google/personal_token.go
   - apps/server/internal/google/personal_sweep.go
+  - apps/server/internal/google/mailbox.go
+  - apps/server/internal/google/mailbox_notifications.go
+  - apps/server/internal/google/mailbox_notifications_endpoint.go
 ---
 
 Google Workspace-modulen kobler Vantigo til selskapets Google Workspace-organisasjon.
@@ -39,8 +42,9 @@ oppretter en persons konto før den første dagen, åpner den på dagen med et f
 passord HR gir videre, holder profilen og lederen i samsvar, tildeler lisensene til
 gruppene deres, skriver bildet deres, og suspenderer kontoen når de slutter
 ([Kontoene](#kontoene)). Hver person kan koble til sin egen Google-konto
-([Tilkobling for personer](#tilkobling-for-personer)), som kalendersynkronisering og
-Gmail, i senere versjoner, skal bruke.
+([Tilkobling for personer](#tilkobling-for-personer)), som
+[kalendersynkroniseringen](#kalendersynkronisering) bruker, og som sending fra Gmail skal
+bruke i en senere versjon.
 
 Denne siden er driftssiden: hva Google trenger, stegene i Google Cloud-konsollen og i
 administrasjonskonsollen, og hva du gjør når noe feiler. Siden i Vantigo er **Google
@@ -237,9 +241,9 @@ sin.
 ## Tilkobling for personer
 
 **Tilkobling for personer** lar hver person koble sin egen Google-konto til Vantigo én
-gang, under **Innstillinger → Tilkoblinger**, slik at kalendersynkronisering til Google
-Kalender og sending fra egen Gmail-adresse — senere versjoner — handler som den personen
-med personens eget samtykke, aldri gjennom tjenestekontoen: ingen kalendertilgang
+gang, under **Innstillinger → Tilkoblinger**, slik at
+[kalendersynkronisering](#kalendersynkronisering) til Google Kalender — og sending fra egen
+Gmail-adresse, i en senere versjon — handler som den personen med personens eget samtykke, aldri gjennom tjenestekontoen: ingen kalendertilgang
 delegeres noen gang. Vantigo holder hver persons oppdateringstoken (refresh token)
 forseglet, og ingenting annet fra Google.
 
@@ -283,15 +287,14 @@ kortet **Må kobles til på nytt**.
 
 Slå av **Tilkobling for personer** på den samme fanen. Mens noen er tilkoblet, spør
 siden først: å slå den av lukker **hver** persons tilkobling, og hver må koble til på
-nytt når den er på igjen. Tokenene beholdes, i noen dager på det meste, bare for det en
-senere versjons kalendersynkronisering må fjerne; så slettes de og tilbakekalles hos
-Google.
+nytt når den er på igjen. Tokenene beholdes, i noen dager på det meste, bare for det
+kalendersynkroniseringen må fjerne; så slettes de og tilbakekalles hos Google.
 
 ### Hva som skjer med en persons tilkobling
 
 | Når | Hva skjer |
 | --- | --- |
-| Personen velger **Koble fra** | Tilkoblingen lukkes; tokenet beholdes bare for fjerninger, og slettes — og tilbakekalles hos Google — når det har vært ubrukt i et døgn, senest etter sju dager. |
+| Personen velger **Koble fra** | Tilkoblingen lukkes; tokenet beholdes bare for fjerninger, og slettes — og tilbakekalles hos Google — når det har vært ubrukt i et døgn og kalenderens push-kanal er stoppet, senest etter sju dager. |
 | Google avviser tokenet (tilbakekalt, ubrukt i seks måneder, et passordbytte, en policy) | Personen ser **Må kobles til på nytt** med årsaken; bare de kan rette det, ved å koble til på nytt. |
 | Personen slutter | Kontoen suspenderes, og tilkoblingen lukkes med tokenet glemt. |
 | Kontoen suspenderes eller slettes i administrasjonskonsollen, eller er ikke lenger en Vantigo administrerer | Tilkoblingen lukkes med tokenet glemt — ved neste bruk, eller innen et døgn av `google-sweep` for en som venter på å kobles til på nytt. |
@@ -307,6 +310,56 @@ døgnet og høyst 100 om gangen, kontoene til tilkoblinger som venter på å kob
 nytt — i Vantigo først, så hos Google som administratoren som etterlignes — og lukker dem
 der kontoen er suspendert eller borte. Den har ingen innstilling, tar ingen lås på tvers
 av instanser, og holder aldri en databasetilkobling mens den venter på Google.
+
+## Kalendersynkronisering
+
+En person som har en Google Workspace-konto i Ansatte, kan synkronisere Vantigo-kalenderen
+sin med **Google Kalender** på skjermbildet **Min kalender**
+([Synkroniser med Google Kalender](/nb/user/calendar/#synkroniser-med-google-kalender)).
+Kalenderens arbeider `calendar-mailbox-sync` skriver kopiene, leser når personen er
+opptatt og tar inn endringene deres gjennom denne modulen, **på hver persons egen
+tilkobling** — kalendertilgangen de samtykket til da de koblet til (*se og endre
+hendelsene i kalenderne dine*, *lage sekundærkalendere*). Tjenestekontoen får ikke
+delegert noe kalendertilgangsområde, for noen: Vantigo når aldri en kalender som ikke
+personen selv har koblet til. Hvordan arbeideren kjører, og innstillingene, står på siden
+[Kalender](/nb/admin/calendar/#google-kalender).
+
+- **Forutsetninger.** [Tilkobling for personer](#tilkobling-for-personer) er på og
+  *Klar*, og personen har koblet til. Ingenting annet settes opp for kalenderen: den har
+  ingen egen bryter.
+- **Personens kalender.** Kopiene går til hovedkalenderen, eller til en kalender som heter
+  *Vantigo*, og som modulen lager i Google Kalender. Hver kopi bærer denne installasjonens
+  eget merke, så to installasjoner som skriver til én persons kalender, aldri rører
+  hverandres kopier, og personens egne hendelser leses bare for tidspunktene.
+- **Endringsvarsler.** Med `PUBLIC_BASE_URL` satt åpner modulen en push-kanal på hver
+  synkroniserte persons hovedkalender, og Google poster en melding til
+  `PUBLIC_BASE_URL/api/v1/google/calendar-notifications` når den endres, som gjør
+  personens synkronisering forfalt med en gang. Adressen må kunne nås fra internett over
+  HTTPS; Google krever ingen domeneverifisering av den. Endepunktet leser bare
+  meldingens hoder, tar bare imot en melding når kanalen og det hemmelige tokenet stemmer
+  med en kanal modulen åpnet — tokenet lagres som en hash —, svarer alle forespørsler
+  likt og er begrenset til 600 i minuttet per adresse. En kanal fornyes før den går ut.
+  Uten `PUBLIC_BASE_URL`, eller med `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED=0`, bærer
+  kvarterspollingen synkroniseringen.
+
+### Verifiser kalendersynkroniseringen
+
+1. Koble til selv (over), åpne så **Kalender → Min kalender**, slå på **Synkroniser med
+   Google Calendar**, og lag en avtale. Innen et minutt er den i Google Kalender, med
+   **Holdes av Vantigo — endre det der:**.
+2. Lag en «ikke til stede»-hendelse denne uken i Google Kalender. Innen et minutt eller
+   to (ved neste polling uten varsler) vises den i Vantigo som **Ikke til stede**.
+3. Flytt kopien av avtalen i Google Kalender: Vantigo tar inn flyttingen.
+4. Med `PUBLIC_BASE_URL` satt viser proxyens tilgangslogg Googles
+   `POST /api/v1/google/calendar-notifications` etter hver endring i kalenderen din.
+
+### En persons kopier når de kobler fra eller slutter
+
+Når en person slår av synkroniseringen eller kobler fra Google, fjerner Vantigo kopiene
+med tilkoblingen som lukkes, og stopper kanalen; tilkoblingen beholdes til kanalen er
+stoppet, senest sju dager. Når en person slutter, lukkes tilkoblingen med tokenet glemt
+ved suspenderingen, så ingenting kan fjerne kopiene: **de blir liggende i den suspenderte
+kontoen**, slik alt annet i den gjør.
 
 ## Kontoene
 
@@ -443,9 +496,9 @@ Et steg som feiler, overlater resten til neste kjøring, og personens Konto-fane
 navngir det. En som ansettes på nytt senere, åpner den samme kontoen igjen.
 
 Med suspenderingen lukkes personens egen Google-tilkobling, og tokenet glemmes
-([Tilkobling for personer](#hva-som-skjer-med-en-persons-tilkobling)); det en senere
-versjons kalendersynkronisering la i kalenderen deres, blir liggende i den suspenderte
-kontoen.
+([Tilkobling for personer](#hva-som-skjer-med-en-persons-tilkobling)); det
+kalendersynkroniseringen la i kalenderen deres, blir liggende i den suspenderte kontoen
+([Kalendersynkronisering](#en-persons-kopier-når-de-kobler-fra-eller-slutter)).
 
 ## Slett etter N dager
 

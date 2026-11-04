@@ -21,7 +21,7 @@ kunders kontaktpersoner og andre på, ved siden av det de andre modulene vet om 
 Denne siden er driftssiden: å slå modulen på, hva invitasjonene til folk utenfor
 bedriften trenger, arbeideren som rydder opp etter en avlysning, kalenderstrømmen en
 mobil abonnerer på, arbeideren som henter kalenderne folk abonnerer på fra andre
-steder, og arbeideren som holder kopiene deres i Outlook. Hva modulen gjør og
+steder, og arbeideren som holder kopiene deres i Outlook eller Google Kalender. Hva modulen gjør og
 reglene den sjekker, står i [referansen](/en/reference/calendar/); hva en person gjør på
 skjermbildene, står i [brukerveiledningen](/nb/user/calendar/).
 
@@ -136,9 +136,11 @@ Lenkens token står bare i spørrestrengen til forespørselen etter siden: Vanti
 forespørselslogg skriver stien og aldri spørrestrengen, og siden poster tokenet i stedet
 for å legge det i en API-adresse. Hold proxyens tilgangslogg til stien for hele den
 offentlige verten, slik stegene for betalingssiden viser. Den offentlige verten slipper
-også inn, ved siden av disse, én rute fra Microsoft Entra ID-modulen:
+også inn, ved siden av disse, én rute fra Microsoft Entra ID-modulen,
 `POST /api/v1/entra/mailbox-notifications`, webhooken for
-[endringsvarslene](#postbokssynkroniseringen) til Outlook-synkroniseringen.
+[endringsvarslene](#postbokssynkroniseringen) til Outlook-synkroniseringen, og én fra
+Google Workspace-modulen, `POST /api/v1/google/calendar-notifications`, der Google
+poster [endringsvarslene](#google-kalender) til synkroniseringen med Google Kalender.
 
 ### Kontroller
 
@@ -449,7 +451,32 @@ tilkoblingen sin, på info-nivå med koden.
 | --- | --- | --- |
 | `CALENDAR_MAILBOX_SYNC_ENABLED` | Av/på-bryter for arbeideren `calendar-mailbox-sync` | `1` |
 | `CALENDAR_MAILBOX_SYNC_POLL` | Hvor ofte hver persons kopier synkroniseres når ingenting har gjort dem forfalt tidligere; en varighet på minst `1m` | `15m` |
-| `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` | Om Microsoft bes varsle om endringer i synkroniserte postbokser, slik at en endring gjort i Outlook tas på omtrent ett minutt; krever `PUBLIC_BASE_URL`. `0` er for en offentlig vert Microsoft ikke kan nå | `1` |
+| `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` | Om Microsoft og Google bes varsle om endringer i synkroniserte kalendere, slik at en endring gjort i Outlook eller Google Kalender tas på omtrent ett minutt; krever `PUBLIC_BASE_URL`. `0` er for en offentlig vert de ikke kan nå | `1` |
+
+### Google Kalender
+
+En person som har en Google Workspace-konto i Ansatte, synkroniseres med **Google
+Kalender** i stedet, av den samme arbeideren og etter de samme reglene og innstillingene:
+kalenderen velger leverandør etter personens konto, så én installasjon kan synkronisere
+noen med Outlook og andre med Google. Kopiene skrives gjennom Google Workspace-modulen på
+**hver persons egen Google-tilkobling**, når en eier har slått på **Tilkobling for
+personer** på Google Workspace-siden og personen har koblet til Google ([Google
+Workspace](/nb/admin/google-workspace/#kalendersynkronisering)). Tjenestekontoen får
+aldri delegert kalendertilgang: en persons kalender nås bare med personens eget samtykke.
+
+- **Hva den når.** Calendar v3 på `www.googleapis.com` og tokenendepunktet på
+  `oauth2.googleapis.com`, gjennom Google-modulens bevoktede klient og dens faste verter.
+  Hvert kall oppgir personens Google-id som Googles `quotaUser`, slik at én travel person
+  ikke bruker opp organisasjonens kvote.
+- **Endringsvarsler.** Med `PUBLIC_BASE_URL` satt og
+  `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` på åpner den første synkroniseringen som
+  skrev, en push-kanal på personens hovedkalender i Google, og Google poster til
+  `PUBLIC_BASE_URL/api/v1/google/calendar-notifications` når noe i den endres. Adressen må
+  være HTTPS med et sertifikat Google stoler på; Google krever ingen håndtrykk og ingen
+  domeneverifisering av den. En kanal fornyes før den går ut, og stoppes sammen med
+  kopiene. Uten varsler bærer pollingen synkroniseringen.
+- **Loggen** navngir ingen Google-id, ingen kanal og ingen hendelse, og aldri Googles
+  ord.
 
 ## Nøkkelmateriale
 
@@ -550,3 +577,7 @@ oppdatering — én gang, uten at noe går tapt. Avtaler beholder identifikatore
   Microsoft kunne ikke nå den; Entra-siden sier hvilket
   ([Microsoft Entra ID](/nb/admin/entra/#endringsvarsler)). Ingenting går tapt: pollingen
   tar dem hver `CALENDAR_MAILBOX_SYNC_POLL`.
+- **Endringer gjort i Google Kalender kommer bare ved pollingen.** De samme to
+  innstillingene, eller proxyen slipper ikke gjennom
+  `POST /api/v1/google/calendar-notifications` på den offentlige verten, eller
+  sertifikatet er et Google ikke stoler på. Ingenting går tapt: pollingen tar dem.
