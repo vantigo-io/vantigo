@@ -1903,7 +1903,9 @@ module's validation does.
   turning the sync off. Nothing of what the change said is stored.
 - **`mailbox_events`** — the map of what the worker wrote: `(user_id, item_key)` the
   primary key, `event_id` (500, the event's id in the mailbox), `content_hash` (the hex
-  SHA-256 of what was written; `''` when the copy is to be rewritten whole),
+  SHA-256 of what was written, its show-as in the words before 00110 — `oof`,
+  `workingElsewhere` — so the rename rewrote no copy; `''` when the copy is to be
+  rewritten whole),
   `starts_on` (the item's first day, for the window's edge), `change_key` (512, the
   event's version as the last write, or the write-back's last look, left it — null for
   a row written before 00084 or adopted by a reconcile, which takes the next version

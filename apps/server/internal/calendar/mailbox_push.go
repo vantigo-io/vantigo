@@ -337,6 +337,20 @@ func (s *server) appointmentLinkOn(a store.CalendarAppointment, day time.Time) s
 		"&appointment=" + strconv.FormatInt(a.ID, 10)
 }
 
+// legacyShowAs is showAs in the words the hashes stored before migration
+// 00110 were made of (Graph's "oof" and "workingElsewhere"), for the hash
+// alone: an absence's copy hashes as it did, so the deploy that renamed the
+// values does not rewrite every pushed absence once.
+func legacyShowAs(showAs string) string {
+	switch showAs {
+	case contracts.ShowAsOutOfOffice:
+		return "oof"
+	case contracts.ShowAsWorkingElsewhere:
+		return "workingElsewhere"
+	}
+	return showAs
+}
+
 // newMailboxItem is the copy with its hash: the hex SHA-256 of the event's
 // canonical encoding and the target — every field in a fixed order, the
 // instants in UTC — so the same copy hashes the same from one sync to the
@@ -351,7 +365,7 @@ func newMailboxItem(key string, ev contracts.MailboxEvent, startsOn time.Time, t
 		Private                         bool
 	}{
 		Target: target, Subject: ev.Subject, Body: ev.Body, Location: ev.Location, AllDay: ev.AllDay,
-		TimeZone: ev.TimeZone, ShowAs: ev.ShowAs, Private: ev.Private,
+		TimeZone: ev.TimeZone, ShowAs: legacyShowAs(ev.ShowAs), Private: ev.Private,
 	}
 	if ev.AllDay {
 		canonical.StartDate, canonical.EndDate = ev.StartDate.Format(time.DateOnly), ev.EndDate.Format(time.DateOnly)
