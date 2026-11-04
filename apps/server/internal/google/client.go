@@ -328,16 +328,34 @@ func noRetry() callOption { return func(o *callOptions) { o.once = true } }
 // log names the host and the path — the one shownAs gives, when given —
 // never the query.
 func (c *googleClient) do(ctx context.Context, src tokenSource, method, target string, body *requestBody, into any, limit int64, opts ...callOption) error {
+	_, data, shown, err := c.doRaw(ctx, src, method, target, body, limit, opts...)
+	if err != nil {
+		return err
+	}
+	if into == nil || len(data) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(data, into); err != nil {
+		return fmt.Errorf("%w: %s %s: the answer is not the JSON expected", errGoogleUnreachable, method, shown)
+	}
+	return nil
+}
+
+// doRaw is do's exchange without the decoding: a 2xx answer's headers and
+// bytes, read through limit, and the path the log names the call by — for a
+// caller reading an answer that is not JSON (the batch endpoint's
+// multipart/mixed). Every rule of do holds.
+func (c *googleClient) doRaw(ctx context.Context, src tokenSource, method, target string, body *requestBody, limit int64, opts ...callOption) (http.Header, []byte, string, error) {
 	var o callOptions
 	for _, opt := range opts {
 		opt(&o)
 	}
 	u, err := url.Parse(target)
 	if err != nil {
-		return fmt.Errorf("google: a URL that does not parse: %w", err)
+		return nil, nil, "", fmt.Errorf("google: a URL that does not parse: %w", err)
 	}
 	if err := checkURL(u); err != nil {
-		return err
+		return nil, nil, "", err
 	}
 	shown := u.Host + u.Path
 	if o.shown != "" {
@@ -347,41 +365,46 @@ func (c *googleClient) do(ctx context.Context, src tokenSource, method, target s
 	for attempt := 1; ; attempt++ {
 		token, err := src.token(ctx)
 		if err != nil {
-			return err
+			return nil, nil, shown, err
 		}
 		status, header, data, err := c.exchange(ctx, method, u, shown, token, body, limit)
 		if err != nil {
-			return err
+			return nil, nil, shown, err
 		}
 		switch {
 		case status >= http.StatusOK && status < http.StatusMultipleChoices:
-			if into == nil || len(data) == 0 {
-				return nil
-			}
-			if err := json.Unmarshal(data, into); err != nil {
-				return fmt.Errorf("%w: %s %s: the answer is not the JSON expected", errGoogleUnreachable, method, shown)
-			}
-			return nil
+			return header, data, shown, nil
 		case status == http.StatusTooManyRequests:
 			wait, ok := retryAfter(header, c.now())
 			if throttled || !ok {
 				c.logger.DebugContext(ctx, "google: Google throttled a call", "method", method, "path", shown)
-				return errThrottled
+				return nil, nil, shown, errThrottled
 			}
 			throttled = true
 			if err := c.pause(ctx, attempt, wait); err != nil {
-				return err
+				return nil, nil, shown, err
+			}
+		case status == http.StatusForbidden && rateLimited(data):
+			// Calendar answers its usage limits 403, rateLimitExceeded or
+			// userRateLimitExceeded: a throttle like a 429, waited once.
+			if throttled {
+				c.logger.DebugContext(ctx, "google: Google throttled a call", "method", method, "path", shown)
+				return nil, nil, shown, errThrottled
+			}
+			throttled = true
+			if err := c.pause(ctx, attempt, serverErrorDelay); err != nil {
+				return nil, nil, shown, err
 			}
 		case status >= http.StatusInternalServerError && !retried && !o.once:
 			retried = true
 			if err := c.pause(ctx, attempt, serverErrorDelay); err != nil {
-				return err
+				return nil, nil, shown, err
 			}
 		case status == http.StatusUnauthorized && !reauthorised:
 			reauthorised = true
 			src.dropped()
 		default:
-			return c.refusal(ctx, method, shown, status, data)
+			return nil, nil, shown, c.refusal(ctx, method, shown, status, data)
 		}
 	}
 }
@@ -501,6 +524,15 @@ func reasonOf(data []byte) string {
 		return body.Error.Errors[0].Reason
 	}
 	return body.Error.Status
+}
+
+// rateLimitReasons are the reasons of a 403 that is a usage limit, not a
+// refusal: Calendar answers its limits so.
+var rateLimitReasons = []string{"rateLimitExceeded", "userRateLimitExceeded"}
+
+// rateLimited reports whether a refusal's body names a usage limit.
+func rateLimited(data []byte) bool {
+	return slices.Contains(rateLimitReasons, reasonOf(data))
 }
 
 // refusal is the *googleError of a refused call, logged at debug level by

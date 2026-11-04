@@ -30,8 +30,8 @@ import (
 // and leaves the row alone. Before any token is answered the account is
 // checked again (on use, G27).
 //
-// Nothing in delivery D calls it: the calendar (E) and personal sending (G)
-// take their tokens from personalTokens.source. Nothing here logs, audits or
+// The mailbox calendar (E, mailbox.go) and personal sending (G) take their
+// tokens from personalTokens.source. Nothing here logs, audits or
 // answers a token or the secret.
 
 // errWebClient: the web client is not set up, or Google refused it on a
@@ -400,7 +400,7 @@ func (s *personalSource) dropped() {
 
 var _ tokenSource = (*personalSource)(nil)
 
-// connectionChanges is what the mailbox calendar's Connections will answer
+// connectionChanges is what the mailbox calendar's Connections answers
 // (delivery E, G30): the connections whose state moved after since, oldest
 // first, at most contracts.ConnectionChangesMax, each by its Google id.
 func connectionChanges(ctx context.Context, q *store.Queries, since time.Time) ([]contracts.ConnectionChange, error) {

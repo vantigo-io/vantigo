@@ -1,7 +1,8 @@
 // Package googletest is a fake Google for the google module's tests (Google
 // Workspace design G16): an http.RoundTripper standing in for
-// oauth2.googleapis.com, admin.googleapis.com and, for the person's own
-// connection (authorize.go), accounts.google.com, handed to the module as
+// oauth2.googleapis.com, admin.googleapis.com, for the person's own
+// connection (authorize.go) accounts.google.com, and for the calendar sync
+// (calendar.go) Calendar v3 on www.googleapis.com, handed to the module as
 // Deps.HTTPTransport (modtest.WithTransport). Its token endpoint verifies
 // the JWT bearer assertion as Google does — the RS256 signature against the
 // public half of a key the test registered, the issuer, the audience, the
@@ -172,6 +173,8 @@ type FakeGoogle struct {
 	directory
 	// The authorization server's memory (authorize.go).
 	auth authState
+	// The people's calendars (calendar.go).
+	cal calendarState
 
 	mu       sync.Mutex
 	tokens   map[string]issued
@@ -311,6 +314,10 @@ func (g *FakeGoogle) RoundTrip(req *http.Request) (*http.Response, error) {
 		a = g.revoke(form)
 	case req.URL.Host == TokenHost:
 		a = g.token(req, body, &call)
+	case req.URL.Host == APIsHost && req.Method == http.MethodPost && req.URL.Path == "/batch/calendar/v3":
+		a = g.calendarBatch(req, body)
+	case req.URL.Host == APIsHost && strings.HasPrefix(req.URL.Path, "/calendar/v3/"):
+		a = g.calendarCall(req, body)
 	default:
 		a = g.admin(req, body)
 	}
@@ -324,11 +331,13 @@ func (g *FakeGoogle) RoundTrip(req *http.Request) (*http.Response, error) {
 	return a.response(req), nil
 }
 
-// answer is one response before it is written.
+// answer is one response before it is written: body is JSON, raw the bytes
+// of another type, which header names.
 type answer struct {
 	status int
 	header http.Header
 	body   any
+	raw    []byte
 }
 
 func (a answer) response(req *http.Request) *http.Response {
@@ -336,7 +345,7 @@ func (a answer) response(req *http.Request) *http.Response {
 	if h == nil {
 		h = http.Header{}
 	}
-	var b []byte
+	b := a.raw
 	if a.body != nil {
 		b, _ = json.Marshal(a.body)
 		h.Set("Content-Type", "application/json; charset=utf-8")
