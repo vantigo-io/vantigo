@@ -35,30 +35,45 @@ const (
 	scopeDomains  = scopePrefix + "admin.directory.domain.readonly"
 )
 
+// The Gmail scopes Mail channels needs while its switch is on (G33): read
+// and label a channel's mail, and send from it.
+const (
+	scopeGmailModify = scopePrefix + "gmail.modify"
+	scopeGmailSend   = scopePrefix + "gmail.send"
+)
+
+// gmailScopes are Mail channels' scopes, in the order the page lists them.
+var gmailScopes = []string{scopeGmailModify, scopeGmailSend}
+
 // neededScopes are the scopes the admin is asked to delegate, in the order
 // the page lists them, written in full (G15's table). Each delivery adds
 // its rows here — A the customer's and the domains', B the accounts',
-// groups', group settings' and licences' (accountScopes); F will add the two
-// Gmail scopes while Mail channels is on.
-func neededScopes() []string {
-	return append([]string{scopeCustomer, scopeDomains}, accountScopes...)
+// groups', group settings' and licences' (accountScopes), F the two Gmail
+// scopes while Mail channels is on (G33).
+func neededScopes(mailChannels bool) []string {
+	out := append([]string{scopeCustomer, scopeDomains}, accountScopes...)
+	if mailChannels {
+		out = append(out, gmailScopes...)
+	}
+	return out
 }
 
 // unexpectedProbes are the scopes the module never uses that the test asks a
 // token for, to list any the admin delegated (G15): a token is the only way
 // to learn what is delegated. The Gmail scopes are among them while Mail
-// channels — delivery F's switch — does not exist or is off. No calendar
-// scope is ever delegated (Q3).
-var unexpectedProbes = []string{
-	"https://mail.google.com/",
-	scopePrefix + "gmail.readonly",
-	scopePrefix + "gmail.modify",
-	scopePrefix + "gmail.send",
-	scopePrefix + "calendar",
-	scopePrefix + "calendar.events",
-	scopePrefix + "admin.directory.user.security",
-	scopePrefix + "drive",
-	scopePrefix + "cloud-platform",
+// channels is off (G33). No calendar scope is ever delegated (Q3).
+func unexpectedProbes(mailChannels bool) []string {
+	out := []string{"https://mail.google.com/", scopePrefix + "gmail.readonly"}
+	if !mailChannels {
+		out = append(out, gmailScopes...)
+	}
+	return append(out,
+		scopePrefix+"calendar",
+		scopePrefix+"calendar.events",
+		scopePrefix+"admin.directory.user.security",
+		scopePrefix+"drive",
+		scopePrefix+"cloud-platform",
+	)
 }
 
 // customerAnswer is what customers.get(my_customer) answers that the test
@@ -89,6 +104,15 @@ type testOutcome struct {
 	primaryDomain, organisation string
 }
 
+// add lists scope granted when ok, missing otherwise.
+func (o *testOutcome) add(scope string, ok bool) {
+	if ok {
+		o.granted = append(o.granted, scope)
+		return
+	}
+	o.missing = append(o.missing, scope)
+}
+
 // probe asks a fresh token for scope as subject, as mode says: true when
 // Google issued it, false when it refused the scope; any other failure is
 // its error.
@@ -116,25 +140,41 @@ func failure(err error) string {
 	}
 }
 
-// run is the test against Google as subject. ctx ending is its error;
-// everything Google answered is in the outcome.
-func (s *server) run(ctx context.Context, subject string) (testOutcome, error) {
+// run is the test against Google as subject; the Gmail scopes, while Mail
+// channels is on, as gmailSubject (G33). ctx ending is its error; everything
+// Google answered is in the outcome.
+func (s *server) run(ctx context.Context, subject string, mailChannels bool, gmailSubject string) (testOutcome, error) {
 	out := testOutcome{status: statusConnected, granted: []string{}, missing: []string{}, unexpect: []string{}}
-	for _, scope := range neededScopes() {
-		ok, err := s.probe(ctx, scope, subject, tokenFresh)
+	for _, scope := range neededScopes(mailChannels) {
+		as := subject
+		if slices.Contains(gmailScopes, scope) {
+			as = gmailSubject
+		}
+		ok, err := s.probe(ctx, scope, as, tokenFresh)
 		switch {
 		case ctx.Err() != nil:
 			return testOutcome{}, ctx.Err()
+		case err != nil && as != subject && errors.Is(err, errSubjectInvalid):
+			// The channel mailbox the Gmail scopes were asked as is gone or
+			// suspended: the delegation is not what failed, and the channel
+			// is Communications' to mend. Asked again as the admin.
+			ok, err = s.probe(ctx, scope, subject, tokenFresh)
+			if ctx.Err() != nil {
+				return testOutcome{}, ctx.Err()
+			}
+			if err != nil {
+				out.status, out.reason = statusFailing, failure(err)
+				return out, nil
+			}
+			out.add(scope, ok)
 		case err != nil:
 			out.status, out.reason = statusFailing, failure(err)
 			return out, nil
-		case ok:
-			out.granted = append(out.granted, scope)
 		default:
-			out.missing = append(out.missing, scope)
+			out.add(scope, ok)
 		}
 	}
-	for _, scope := range unexpectedProbes {
+	for _, scope := range unexpectedProbes(mailChannels) {
 		ok, err := s.probe(ctx, scope, subject, tokenProbe)
 		switch {
 		case ctx.Err() != nil:
@@ -221,13 +261,17 @@ func (s *server) PostGoogleConnectionTest(ctx context.Context, _ gen.PostGoogleC
 		return gen.PostGoogleConnectionTest200JSONResponse(gen.GoogleConnectionTest{
 			Status:     gen.GoogleConnectionTestStatus(statusUnconfigured),
 			Granted:    []string{},
-			Missing:    neededScopes(),
+			Missing:    neededScopes(conn.MailChannels),
 			Unexpected: []string{},
 			Domains:    orEmpty(conn.Domains),
 		}), nil
 	}
 
-	out, err := s.run(ctx, *conn.AdminSubject)
+	gmailSubject, err := s.gmailSubject(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.run(ctx, *conn.AdminSubject, conn.MailChannels, gmailSubject)
 	if err != nil {
 		return nil, err
 	}
@@ -294,4 +338,18 @@ func (s *server) PostGoogleConnectionTest(ctx context.Context, _ gen.PostGoogleC
 		answer.Customer = &gen.GoogleCustomer{Id: *updated.CustomerID, OrganisationName: updated.OrganisationName, PrimaryDomain: updated.PrimaryDomain}
 	}
 	return gen.PostGoogleConnectionTest200JSONResponse(answer), nil
+}
+
+// gmailSubject is whom the test asks the Gmail scopes' tokens as (G33): the
+// mailbox checked longest ago when a channel's is recorded, so the test
+// proves what a channel's calls will need, else the admin to impersonate.
+func (s *server) gmailSubject(ctx context.Context, conn store.GoogleConnection) (string, error) {
+	row, err := s.q.FirstChannelMailbox(ctx)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return deref(conn.AdminSubject), nil
+	case err != nil:
+		return "", fmt.Errorf("google: read the channel mailboxes: %w", err)
+	}
+	return row.Address, nil
 }

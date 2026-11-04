@@ -186,6 +186,27 @@ func (e GoogleCredentialKind) Valid() bool {
 	}
 }
 
+// Defines values for GoogleMailChannelsStatus.
+const (
+	GoogleMailChannelsStatusOff         GoogleMailChannelsStatus = "off"
+	GoogleMailChannelsStatusReady       GoogleMailChannelsStatus = "ready"
+	GoogleMailChannelsStatusUnavailable GoogleMailChannelsStatus = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the GoogleMailChannelsStatus enum.
+func (e GoogleMailChannelsStatus) Valid() bool {
+	switch e {
+	case GoogleMailChannelsStatusOff:
+		return true
+	case GoogleMailChannelsStatusReady:
+		return true
+	case GoogleMailChannelsStatusUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GooglePersonalConnectRequestFeature.
 const (
 	Calendar GooglePersonalConnectRequestFeature = "calendar"
@@ -248,22 +269,22 @@ func (e GooglePersonalConnectionState) Valid() bool {
 
 // Defines values for GooglePersonalSwitchStatus.
 const (
-	ConsentMissing GooglePersonalSwitchStatus = "consent_missing"
-	Off            GooglePersonalSwitchStatus = "off"
-	Ready          GooglePersonalSwitchStatus = "ready"
-	Unavailable    GooglePersonalSwitchStatus = "unavailable"
+	GooglePersonalSwitchStatusConsentMissing GooglePersonalSwitchStatus = "consent_missing"
+	GooglePersonalSwitchStatusOff            GooglePersonalSwitchStatus = "off"
+	GooglePersonalSwitchStatusReady          GooglePersonalSwitchStatus = "ready"
+	GooglePersonalSwitchStatusUnavailable    GooglePersonalSwitchStatus = "unavailable"
 )
 
 // Valid indicates whether the value is a known member of the GooglePersonalSwitchStatus enum.
 func (e GooglePersonalSwitchStatus) Valid() bool {
 	switch e {
-	case ConsentMissing:
+	case GooglePersonalSwitchStatusConsentMissing:
 		return true
-	case Off:
+	case GooglePersonalSwitchStatusOff:
 		return true
-	case Ready:
+	case GooglePersonalSwitchStatusReady:
 		return true
-	case Unavailable:
+	case GooglePersonalSwitchStatusUnavailable:
 		return true
 	default:
 		return false
@@ -406,6 +427,9 @@ type GoogleConnection struct {
 
 	// LeaverSignOut Whether a leaver is signed out of every session when the account is suspended.
 	LeaverSignOut bool `json:"leaverSignOut"`
+
+	// MailChannels Mail channels (Google Workspace design G33, G34): whether Communications' channels may use the organisation's licensed Gmail mailboxes, through domain-wide delegation. status is off while the switch is; unavailable when on but a channel cannot work yet, reason then being not_tested (no test has run since the switch was turned on, so Vantigo does not know whether the Gmail scopes are delegated), not_delegated (the last test was refused gmail.modify or gmail.send) or the connection's own status or reason (unconfigured, pending_delegation, credential_invalid, admin_refused, google_unreachable); ready otherwise. While on, gmail.modify and gmail.send are among scopesToDelegate, and they reach every mailbox in the domain: Vantigo uses them only for the mailboxes that are channels. mailboxes counts the mailboxes a channel was checked against.
+	MailChannels GoogleMailChannels `json:"mailChannels"`
 
 	// OauthClientId The Internal web client's id, ending .apps.googleusercontent.com — for the person's own Google connection and the sign-in with Google. Absent until set.
 	OauthClientId *string `json:"oauthClientId,omitempty"`
@@ -586,6 +610,24 @@ type GoogleGroup struct {
 
 	// StaffGroupId The Staff group's id.
 	StaffGroupId string `json:"staffGroupId"`
+}
+
+// GoogleMailChannels Mail channels (Google Workspace design G33, G34): whether Communications' channels may use the organisation's licensed Gmail mailboxes, through domain-wide delegation. status is off while the switch is; unavailable when on but a channel cannot work yet, reason then being not_tested (no test has run since the switch was turned on, so Vantigo does not know whether the Gmail scopes are delegated), not_delegated (the last test was refused gmail.modify or gmail.send) or the connection's own status or reason (unconfigured, pending_delegation, credential_invalid, admin_refused, google_unreachable); ready otherwise. While on, gmail.modify and gmail.send are among scopesToDelegate, and they reach every mailbox in the domain: Vantigo uses them only for the mailboxes that are channels. mailboxes counts the mailboxes a channel was checked against.
+type GoogleMailChannels struct {
+	Enabled   bool  `json:"enabled"`
+	Mailboxes int32 `json:"mailboxes"`
+
+	// Reason A code, never Google's words; absent when there is nothing to say.
+	Reason *string                  `json:"reason,omitempty"`
+	Status GoogleMailChannelsStatus `json:"status"`
+}
+
+// GoogleMailChannelsStatus defines model for GoogleMailChannels.Status.
+type GoogleMailChannelsStatus string
+
+// GoogleMailChannelsRequest Mail channels, on or off.
+type GoogleMailChannelsRequest struct {
+	Enabled bool `json:"enabled"`
 }
 
 // GoogleOAuthClientRequest The Internal web client. A changed client id needs its secret; a secret alone rotates the current client's.
@@ -788,6 +830,9 @@ type PutGoogleConnectionJSONRequestBody = GoogleConnectionRequest
 // PostGoogleConnectionCredentialsJSONRequestBody defines body for PostGoogleConnectionCredentials for application/json ContentType.
 type PostGoogleConnectionCredentialsJSONRequestBody = GoogleCredentialRequest
 
+// PutGoogleConnectionMailChannelsJSONRequestBody defines body for PutGoogleConnectionMailChannels for application/json ContentType.
+type PutGoogleConnectionMailChannelsJSONRequestBody = GoogleMailChannelsRequest
+
 // PutGoogleConnectionOauthClientJSONRequestBody defines body for PutGoogleConnectionOauthClient for application/json ContentType.
 type PutGoogleConnectionOauthClientJSONRequestBody = GoogleOAuthClientRequest
 
@@ -829,6 +874,9 @@ type ServerInterface interface {
 	// DeleteGoogleConnectionCredentialsById Revoke a key or a client secret
 	// (DELETE /api/v1/google/connection/credentials/{id})
 	DeleteGoogleConnectionCredentialsById(w http.ResponseWriter, r *http.Request, id int64)
+	// PutGoogleConnectionMailChannels Turn Mail channels on or off
+	// (PUT /api/v1/google/connection/mail-channels)
+	PutGoogleConnectionMailChannels(w http.ResponseWriter, r *http.Request)
 	// DeleteGoogleConnectionMe Disconnect Google
 	// (DELETE /api/v1/google/connection/me)
 	DeleteGoogleConnectionMe(w http.ResponseWriter, r *http.Request)
@@ -1291,6 +1339,20 @@ func (siw *ServerInterfaceWrapper) DeleteGoogleConnectionCredentialsById(w http.
 	handler.ServeHTTP(w, r)
 }
 
+// PutGoogleConnectionMailChannels operation middleware
+func (siw *ServerInterfaceWrapper) PutGoogleConnectionMailChannels(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutGoogleConnectionMailChannels(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteGoogleConnectionMe operation middleware
 func (siw *ServerInterfaceWrapper) DeleteGoogleConnectionMe(w http.ResponseWriter, r *http.Request) {
 
@@ -1626,6 +1688,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/google/connection/me", wrapper.DeleteGoogleConnectionMe)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/google/connection/me", wrapper.GetGoogleConnectionMe)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/google/connection/oauth-client", wrapper.PutGoogleConnectionOauthClient)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/google/connection/mail-channels", wrapper.PutGoogleConnectionMailChannels)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/google/connection/personal", wrapper.PutGoogleConnectionPersonal)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/google/connection/settings", wrapper.PutGoogleConnectionSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/google/connection/skus", wrapper.GetGoogleConnectionSkus)
@@ -2371,6 +2434,80 @@ func (response DeleteGoogleConnectionCredentialsById429JSONResponse) VisitDelete
 	return err
 }
 
+type PutGoogleConnectionMailChannelsRequestObject struct {
+	Body *PutGoogleConnectionMailChannelsJSONRequestBody
+}
+
+type PutGoogleConnectionMailChannelsResponseObject interface {
+	VisitPutGoogleConnectionMailChannelsResponse(w http.ResponseWriter) error
+}
+
+type PutGoogleConnectionMailChannels200JSONResponse GoogleConnection
+
+func (response PutGoogleConnectionMailChannels200JSONResponse) VisitPutGoogleConnectionMailChannelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutGoogleConnectionMailChannels401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutGoogleConnectionMailChannels401JSONResponse) VisitPutGoogleConnectionMailChannelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutGoogleConnectionMailChannels403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutGoogleConnectionMailChannels403JSONResponse) VisitPutGoogleConnectionMailChannelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutGoogleConnectionMailChannels429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PutGoogleConnectionMailChannels429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PutGoogleConnectionMailChannels429ResponseHeaders
+}
+
+func (response PutGoogleConnectionMailChannels429JSONResponse) VisitPutGoogleConnectionMailChannelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteGoogleConnectionMeRequestObject struct {
 }
 
@@ -3039,6 +3176,9 @@ type StrictServerInterface interface {
 	// DeleteGoogleConnectionCredentialsById Revoke a key or a client secret
 	// (DELETE /api/v1/google/connection/credentials/{id})
 	DeleteGoogleConnectionCredentialsById(ctx context.Context, request DeleteGoogleConnectionCredentialsByIdRequestObject) (DeleteGoogleConnectionCredentialsByIdResponseObject, error)
+	// PutGoogleConnectionMailChannels Turn Mail channels on or off
+	// (PUT /api/v1/google/connection/mail-channels)
+	PutGoogleConnectionMailChannels(ctx context.Context, request PutGoogleConnectionMailChannelsRequestObject) (PutGoogleConnectionMailChannelsResponseObject, error)
 	// DeleteGoogleConnectionMe Disconnect Google
 	// (DELETE /api/v1/google/connection/me)
 	DeleteGoogleConnectionMe(ctx context.Context, request DeleteGoogleConnectionMeRequestObject) (DeleteGoogleConnectionMeResponseObject, error)
@@ -3374,6 +3514,37 @@ func (sh *strictHandler) DeleteGoogleConnectionCredentialsById(w http.ResponseWr
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DeleteGoogleConnectionCredentialsByIdResponseObject); ok {
 		if err := validResponse.VisitDeleteGoogleConnectionCredentialsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutGoogleConnectionMailChannels operation middleware
+func (sh *strictHandler) PutGoogleConnectionMailChannels(w http.ResponseWriter, r *http.Request) {
+	var request PutGoogleConnectionMailChannelsRequestObject
+
+	var body PutGoogleConnectionMailChannelsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutGoogleConnectionMailChannels(ctx, request.(PutGoogleConnectionMailChannelsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutGoogleConnectionMailChannels")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutGoogleConnectionMailChannelsResponseObject); ok {
+		if err := validResponse.VisitPutGoogleConnectionMailChannelsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

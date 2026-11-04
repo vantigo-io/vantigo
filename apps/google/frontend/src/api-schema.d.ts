@@ -230,6 +230,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/connection/mail-channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Turn Mail channels on or off
+         * @description Turns Mail channels on or off (Google Workspace design G33): while on, gmail.modify and gmail.send join the scopes to delegate and Test connection checks them, as the first channel mailbox when one is recorded, else as the admin to impersonate; while off, a Gmail scope still delegated is unexpected, and every Gmail channel is unavailable until it is back on. The mailboxes already checked are kept. The Owner's, as the single sign-on settings are. Audited google.mail_channels.switched. Rate limited with every Owner operation of the module.
+         */
+        put: operations["putGoogleConnectionMailChannels"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/connection/personal": {
         parameters: {
             query?: never;
@@ -456,6 +476,7 @@ export interface components {
             /** @description The organisational unit new users are made in, / for the top. */
             orgUnitPath: string;
             personalConnection: components["schemas"]["GooglePersonalSwitch"];
+            mailChannels: components["schemas"]["GoogleMailChannels"];
             /**
              * @description Who is meant to hand the person their first password — hr, manager or both. HR shows it once on the person's Account tab in Staff; the setting is kept for a later release.
              * @enum {string}
@@ -599,6 +620,20 @@ export interface components {
             clientId: string;
             /** @description The web client's secret, which Google shows once, at creation. Sealed at once and never answered. */
             clientSecret?: string;
+        };
+        /** @description Mail channels (Google Workspace design G33, G34): whether Communications' channels may use the organisation's licensed Gmail mailboxes, through domain-wide delegation. status is off while the switch is; unavailable when on but a channel cannot work yet, reason then being not_tested (no test has run since the switch was turned on, so Vantigo does not know whether the Gmail scopes are delegated), not_delegated (the last test was refused gmail.modify or gmail.send) or the connection's own status or reason (unconfigured, pending_delegation, credential_invalid, admin_refused, google_unreachable); ready otherwise. While on, gmail.modify and gmail.send are among scopesToDelegate, and they reach every mailbox in the domain: Vantigo uses them only for the mailboxes that are channels. mailboxes counts the mailboxes a channel was checked against. */
+        GoogleMailChannels: {
+            enabled: boolean;
+            /** Format: int32 */
+            mailboxes: number;
+            /** @description A code, never Google's words; absent when there is nothing to say. */
+            reason?: string;
+            /** @enum {string} */
+            status: "off" | "ready" | "unavailable";
+        };
+        /** @description Mail channels, on or off. */
+        GoogleMailChannelsRequest: {
+            enabled: boolean;
         };
         /** @description Where to send the browser to connect Google — Google's authorization endpoint, with the state, nonce and PKCE challenge the answer's cookie holds sealed. */
         GooglePersonalAuthorize: {
@@ -1347,6 +1382,58 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["GoogleProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests — google-owner's limit for this client address, shared with every Owner operation of the module. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putGoogleConnectionMailChannels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleMailChannelsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleConnection"];
                 };
             };
             /** @description Unauthorized */

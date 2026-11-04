@@ -102,7 +102,7 @@ func connectionBody(conn store.GoogleConnection, creds []store.GoogleCredential,
 		OrganisationName: conn.OrganisationName,
 		OauthClientId:    conn.OauthClientID,
 		Credentials:      credentialsBody(creds),
-		ScopesToDelegate: neededScopes(),
+		ScopesToDelegate: neededScopes(conn.MailChannels),
 		ScopesGranted:    orEmpty(conn.ScopesGranted),
 		ScopesMissing:    orEmpty(conn.ScopesMissing),
 		ScopesUnexpected: orEmpty(conn.ScopesUnexpected),
@@ -151,6 +151,11 @@ func readConnection(ctx context.Context, q *store.Queries, cfg *config.Config, c
 		return gen.GoogleConnection{}, fmt.Errorf("google: count the personal connections: %w", err)
 	}
 	body.PersonalConnection = personalSwitchBody(conn, creds, counts, cfg)
+	mailboxes, err := q.CountChannelMailboxes(ctx)
+	if err != nil {
+		return gen.GoogleConnection{}, fmt.Errorf("google: count the channel mailboxes: %w", err)
+	}
+	body.MailChannels = mailChannelsBody(conn, creds, mailboxes)
 	return body, nil
 }
 
