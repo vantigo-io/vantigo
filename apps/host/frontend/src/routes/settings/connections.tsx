@@ -8,8 +8,8 @@ import "../../i18n";
 /**
  * Settings › Connections (Outlook connection design M8, Google Workspace
  * design G9): the person's own connections to accounts elsewhere, one card per
- * enabled provider in the host's list (lib/connections.tsx) — today Entra's
- * Outlook. A completed connect returns to where it began, replacing the
+ * enabled provider in the host's list (lib/connections.tsx) — Entra's Outlook
+ * and Google. A completed connect returns to where it began, replacing the
  * callback's address in the history so Back never completes it twice.
  */
 const ConnectionsPage = () => {

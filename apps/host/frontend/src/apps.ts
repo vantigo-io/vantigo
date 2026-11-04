@@ -616,7 +616,12 @@ export const areas: readonly AreaDefinition[] = [
           { label: "navigation.security", to: "/settings/security", icon: IconShieldLock },
           // The person's own connections, one card per provider in lib/connections.tsx (Outlook
           // connection design M8, Google Workspace design G9): shown while any provider's module is on.
-          { label: "navigation.connections", to: "/settings/connections", icon: IconPlugConnected, modules: ["entra"] },
+          {
+            label: "navigation.connections",
+            to: "/settings/connections",
+            icon: IconPlugConnected,
+            modules: ["entra", "google"],
+          },
         ],
       },
     ],
