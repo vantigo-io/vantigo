@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Connecting Vantigo to a Google Workspace organisation through a service account with domain-wide delegation — the Google Cloud project and the Admin SDK API, the service account and its JSON key, lifting iam.disableServiceAccountKeyCreation for the project, uploading the key, delegating the scopes in the Admin console and waiting for them, the admin to impersonate, the Internal web client and its two redirect URIs, verifying with Test connection — then the accounts Staff keeps in Google, the account rules (the address, the organisational unit, the first password and its lifetime), licences, Staff's groups and their three settings, photos at 96 px, what a leaver's steps do, delete after N days, confirming an account or a group Vantigo did not create, rotating a key, changing the service account, and what can go wrong.
+description: Connecting Vantigo to a Google Workspace organisation through a service account with domain-wide delegation — the Google Cloud project and the Admin SDK API, the service account and its JSON key, lifting iam.disableServiceAccountKeyCreation for the project, uploading the key, delegating the scopes in the Admin console and waiting for them, the admin to impersonate, the Internal web client and its two redirect URIs, verifying with Test connection — then Connection for people (each person's own Google connection: the switch, the web client as Internal, verifying by connecting yourself, turning it off, what happens to a person's connection, google-sweep), the accounts Staff keeps in Google, the account rules (the address, the organisational unit, the first password and its lifetime), licences, Staff's groups and their three settings, photos at 96 px, what a leaver's steps do, delete after N days, confirming an account or a group Vantigo did not create, rotating a key, changing the service account, and what can go wrong.
 sidebar:
   order: 47
 sources:
@@ -21,6 +21,13 @@ sources:
   - apps/server/internal/google/groups_traits.go
   - apps/server/internal/google/photo.go
   - apps/server/internal/google/accounts.go
+  - apps/server/internal/google/personal.go
+  - apps/server/internal/google/personal_connect.go
+  - apps/server/internal/google/personal_redeem.go
+  - apps/server/internal/google/personal_complete.go
+  - apps/server/internal/google/personal_close.go
+  - apps/server/internal/google/personal_token.go
+  - apps/server/internal/google/personal_sweep.go
 ---
 
 The Google Workspace module connects Vantigo to your company's Google Workspace
@@ -31,8 +38,9 @@ people's Google accounts and its groups in the organisation: it creates a person
 account before their first day, opens it on the day with a first password HR hands
 over, keeps their profile and manager in step, assigns the licences of their groups,
 writes their photo, and suspends the account when they leave
-([The accounts](#the-accounts)). Each person's own Google connection, calendar sync and
-Gmail come in later releases, on the same connection.
+([The accounts](#the-accounts)). Each person can connect their own Google account
+([Connection for people](#connection-for-people)), which calendar sync and Gmail, in
+later releases, will use.
 
 This page is the operator's side: what Google needs, the steps in the Google Cloud
 console and the Admin console, and what to do when something fails. The page in Vantigo
@@ -194,9 +202,9 @@ the same service account.
 
 ## Set up the Internal web client
 
-Each person's own Google connection and the sign-in with Google, in later releases, use
-an OAuth web client in the same project. Enter it now, so the project is set up in one
-sitting; nothing uses it yet.
+Each person's own Google connection ([Connection for people](#connection-for-people))
+and the sign-in with Google use an OAuth web client in the same project. Enter it now, so
+the project is set up in one sitting.
 
 1. In the project, open **Google Auth Platform** › **Branding** (the OAuth consent
    screen) and set it up with the **Audience** *Internal*, so only accounts in your
@@ -214,6 +222,78 @@ sitting; nothing uses it yet.
 To rotate the secret, add a new one to the client in the console, enter it in step 6
 with the same client id, and **Save**: the older one is revoked in Vantigo. Then delete
 the old one in the console. A new client id always needs its secret.
+
+## Connection for people
+
+**Connection for people** lets each person connect their own Google account to Vantigo
+once, under **Settings → Connections**, so that calendar sync to Google Calendar and
+sending from their own Gmail address — later releases — act as that person with their
+own consent, never through the service account: no calendar scope is ever delegated.
+Vantigo keeps each person's refresh token sealed, and nothing else of Google's.
+
+### Before you turn it on
+
+- The module is connected and tested: Vantigo checks that the account a person signs in
+  with belongs to one of the organisation's **verified domains**, which the test reads.
+- The **Internal web client** is entered with its secret ([above](#set-up-the-internal-web-client)),
+  with its consent screen's audience **Internal**, and the redirect URI
+  `APP_URL` + `APP_BASE_PATH` + `/api/v1/google/connect/callback` registered on it. The
+  callback is on `APP_URL`, never on `PUBLIC_BASE_URL`
+  ([Installation](/en/admin/installation/)).
+- People who are to connect have a Google account Vantigo manages: HR gave them the
+  Google Workspace account kind in Staff, and the account was created by Vantigo or its
+  adoption was confirmed. Nobody else is offered the connection.
+- If the Admin console restricts third-party app access (**Security › Access and data
+  control › API controls › App access control**), mark the web client **Trusted**, or
+  people are refused with *blocked*.
+
+### Turn it on
+
+1. Open **Workspace admin › Integrations › Google Workspace**, the **Calendar and Gmail**
+   tab. An Owner does this step.
+2. Check that the **Redirect URI** shown is the one registered on the web client; copy it
+   if not.
+3. Turn on **Connection for people**. The status says *Ready* when the web client is
+   set up and the domains are read; otherwise *Not available* with what is missing.
+
+### Verify
+
+Connect yourself: open **Settings → Connections** and choose **Connect Google** on the
+**Google** card. Google shows its consent page — always, as Vantigo asks for it each time
+so that Google issues the long-lived token — then sends you back; the card says
+**Connected as** and your address. The tab counts you among the people connected, and
+**Recent events** on the **Status** tab shows *A person connected their Google account*.
+Then check the other way: remove Vantigo under your Google account's security page,
+**Third-party apps with account access**; the next time Vantigo uses the connection, the
+card says **Reconnect needed**.
+
+### Turn it off
+
+Turn off **Connection for people** on the same tab. While anyone is connected, the page
+asks first: turning it off closes **every** person's connection, and each must connect
+again once it is back on. The tokens are kept, for a few days at most, only for what a
+later release's calendar sync must remove; then they are deleted and revoked at Google.
+
+### What happens to a person's connection
+
+| When | What happens |
+| --- | --- |
+| The person chooses **Disconnect** | The connection closes; its token is kept only for removals, and deleted — and revoked at Google — once unused for a day, at the latest after seven days. |
+| Google refuses the token (revoked, unused for six months, a password change, a policy) | The person sees **Reconnect needed** with the reason; only they can mend it, by connecting again. |
+| The person leaves | The account is suspended and the connection closed with its token forgotten. |
+| The account is suspended or deleted in the Admin console, or no longer one Vantigo manages | The connection closes with its token forgotten — on its next use, or within a day by `google-sweep` for one waiting in *Reconnect needed*. |
+| Staff points the person at another account | Their old connection closes when they connect the new one. |
+| An Owner turns the switch off | Every connection closes, tokens kept for removals. |
+
+### google-sweep
+
+The module's one worker, `google-sweep`, runs every hour in the API process and in worker
+mode alike. It deletes the closed connections nothing needs any more and revokes their
+tokens at `oauth2.googleapis.com/revoke`, and reads, at most once a day and at most 100 at
+a time, the accounts of connections waiting in *Reconnect needed* — in Vantigo first,
+then at Google as the admin to impersonate — closing those whose account is suspended or
+gone. It has no setting, takes no lock across replicas, and never holds a database
+connection while it waits for Google.
 
 ## The accounts
 
@@ -235,8 +315,9 @@ person's account in Google, through this module, as it drives Microsoft Entra ID
 4. **The day after they leave**, the account is suspended and the leaver's steps run.
 5. **After Staff's delete days**, the account is deleted.
 
-The module runs nothing of its own: Staff's worker reads each account from Google at
-every run, which is how a suspension or a delete made in the Admin console is seen.
+For the accounts the module runs nothing of its own: Staff's worker reads each account
+from Google at every run, which is how a suspension or a delete made in the Admin console
+is seen. (Its one worker, `google-sweep`, serves the people's own connections.)
 
 ### Set the account rules
 
@@ -339,6 +420,10 @@ nobody has shown. Then, in order, each step the account rules turn on:
 A step that fails leaves the rest to the next run, and the person's Account tab names
 it. A rehire later opens the same account again.
 
+With the suspension, the person's own Google connection is closed and its token
+forgotten ([Connection for people](#what-happens-to-a-persons-connection)); what a later
+release's calendar sync put in their calendar stays in the suspended account.
+
 ## Delete after N days
 
 Vantigo deletes a leaver's Google account only when Staff's **Delete an external account
@@ -418,6 +503,13 @@ done, and by whom.
 | *This key is for another service account* (`client_mismatch`) | The uploaded key belongs to another service account than the live keys. | Upload a key of the current account, or [change the service account](#change-the-service-account). |
 | *Scopes Vantigo does not use* | The delegation carries scopes Vantigo never asks for. | Remove them from the delegation unless another product needs them. |
 | The console says key creation is disabled | The organisation enforces `iam.disableServiceAccountKeyCreation`. | [Lift it for this project](#create-the-service-account-and-its-key). |
+| **Connection for people**: *Not available* (`no_web_client`) | The web client's id or secret is missing. | [Enter the web client](#set-up-the-internal-web-client). |
+| **Connection for people**: *Not available* (`not_tested`) | No test has read the organisation's verified domains yet. | Test the connection. |
+| **Connection for people**: *Not available* (`client_refused`) | Google refused the web client (`invalid_client`, `unauthorized_client`) on a connect or a refresh: the secret was deleted or the client removed. | Add a new secret to the client and enter it; a new web client clears it. |
+| **Connection for people**: *Consent missing* | The last connect came back without what the feature needs: the person unticked an item on Google's page. | Ask them to connect again and allow every item. |
+| Google's page says `redirect_uri_mismatch` | The callback's address is not registered on the web client, or `APP_URL` changed. | Register the redirect URI the tab shows. |
+| People see *Reconnect needed* — *blocked* | The Admin console restricts the web client, or the account is outside the organisation. | Mark the web client **Trusted** under API controls. |
+| People see *You signed in with an account outside your organisation's Google Workspace* | The ID token named no verified domain of the organisation — a personal account, or a domain added since the last test. | Test the connection again after adding a domain. |
 | Staff's **Accounts** card: Google Workspace failing (`scopes_missing`) | The last test was refused one of the scopes of the accounts, the groups, the group settings or the licences, or was made before they were needed. | Add them to the delegation, and test again. |
 
 **The reasons on a person's account.** Staff's Account tab and dashboard say what Google

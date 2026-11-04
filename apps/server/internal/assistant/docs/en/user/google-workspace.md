@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Connecting the company's Google Workspace organisation on the Google Workspace page under Integrations in Workspace admin — its four tabs, Status, Connection, Accounts and Calendar and Gmail, where the page is, the six steps on Connection and what Done means on each, the key shown never again, the client ID and the scopes to copy, the admin to impersonate, Test connection, the Internal web client and its redirect URIs, the Status tab with its scopes and events, the warning for scopes Vantigo does not use, the Accounts tab with the account rules, the Sign-in and Provisioning steps, the licences, the accounts and the groups Vantigo keeps and Confirm for those it did not create, connecting the people who already have a Vantigo user to their Google account — and who sees what.
+description: Connecting the company's Google Workspace organisation on the Google Workspace page under Integrations in Workspace admin — its four tabs, Status, Connection, Accounts and Calendar and Gmail, where the page is, the six steps on Connection and what Done means on each, the key shown never again, the client ID and the scopes to copy, the admin to impersonate, Test connection, the Internal web client and its redirect URIs, the Status tab with its scopes and events, the warning for scopes Vantigo does not use, the Accounts tab with the account rules, the Sign-in and Provisioning steps, the licences, the accounts and the groups Vantigo keeps and Confirm for those it did not create, connecting the people who already have a Vantigo user to their Google account, the Calendar and Gmail tab with Connection for people, its status and counts and the redirect URI to copy — and who sees what.
 sidebar:
   order: 48
 sources:
@@ -13,7 +13,8 @@ The **Google Workspace** page, under **Integrations** in Workspace admin, connec
 Vantigo to your company's Google Workspace organisation through a service account with
 domain-wide delegation. Through it Staff keeps your people's Google accounts and its
 groups in the organisation, by the account rules on the **Accounts** tab; each person's
-own Google connection, calendar sync and Gmail come later, on the same connection. The operator's procedure, with what to do in the Google consoles, is in
+own Google connection is turned on for everyone on the **Calendar and Gmail** tab;
+calendar sync and Gmail come later, on that connection. The operator's procedure, with what to do in the Google consoles, is in
 [the administration guide](/en/admin/google-workspace/); the rules are in [the
 reference](/en/reference/google/).
 
@@ -23,7 +24,7 @@ reference](/en/reference/google/).
 | --- | --- |
 | **Google Workspace** under **Workspace admin** › **Integrations**, the **Status** tab with its scopes and **Recent events**, and every step read-only | `google:manage` |
 | The **Accounts** tab: saving the account rules, reading the licences, and **Confirm** for an account or a group Vantigo did not create | `google:manage` |
-| **Upload key**, **Revoke**, saving the admin to impersonate, **Test connection**, saving the web client, and the **Sign-in** and **Provisioning** steps on **Accounts** | an **Owner**, signed in with a second factor when Owners must use one; to anyone else with `google:manage` the steps are shown with *An Owner does this step. You can see what is set, but not change it.* |
+| **Upload key**, **Revoke**, saving the admin to impersonate, **Test connection**, saving the web client, the **Sign-in** and **Provisioning** steps on **Accounts**, and the **Connection for people** switch on **Calendar and Gmail** | an **Owner**, signed in with a second factor when Owners must use one; to anyone else with `google:manage` the steps are shown with *An Owner does this step. You can see what is set, but not change it.* |
 
 `google:manage` (*Manage Google Workspace*) is in the category Administration and cannot
 be delegated: only an Owner gives it to a role. The Owner holds it already. A holder who
@@ -45,7 +46,7 @@ The page has four tabs, each with an address of its own, so a tab can be linked 
 | **Status** | The **Status** card — the status, the organisation, the scopes — and **Recent events** |
 | **Connection** | The six steps that set up the connection |
 | **Accounts** | The account rules, the **Sign-in** and **Provisioning** steps, the organisation's licences, and the accounts and groups Vantigo keeps for Staff |
-| **Calendar and Gmail** | *Calendar and Gmail are coming*: each person's own Google connection, calendar sync, Gmail mail channels and sending from a person's Gmail address will be set up here |
+| **Calendar and Gmail** | **Connection for people** — the switch, its status, how many people are connected and the redirect URI — and *Calendar sync and Gmail are coming* |
 
 While nothing is set up and no key is uploaded, the page opens on **Connection**. From
 then on it opens on **Status**.
@@ -217,3 +218,29 @@ they say so in words; check the **Status** tab and try again in a minute.
 A person whose address is on another of the organisation's verified domains than the
 primary one may be refused at sign-in; see [the administration
 guide](/en/admin/sso-scim/#google-workspace).
+
+## The Calendar and Gmail tab
+
+**Connection for people** lets each person connect their own Google account to Vantigo
+once, under **Settings › Connections** ([Connections](/en/user/connections/#connect-your-google-account)).
+Calendar sync and sending from Gmail, in a later release, will use that connection; until
+then nothing does.
+
+- **The switch.** Turn on **Connection for people** to offer the **Google** card to
+  everyone whose Staff record names a Google account Vantigo manages. Only an Owner
+  changes it. Turning it off while anyone is connected asks first, in *Turn Connection
+  for people off?*: *Everyone's Google connection closes, and each person must connect
+  Google again once it is back on.*
+- **The status.** *Off*; *Ready*; *Consent missing* — the last connect came back without
+  everything it asked for; or *Not available*, with what is missing: *Set up the Internal
+  web client and its secret on the Connection tab.*, *Test the connection first, so
+  Vantigo knows your organisation's domains.*, or *Google refused the web client. Check
+  its ID and secret on the Connection tab.*
+- **The counts.** *People connected* and *Waiting to reconnect* — those whose connection
+  Google refused, who see **Reconnect needed** on their own card.
+- **The redirect URI**, with a copy button: register it on the Internal web client,
+  beside the others on the **Connection** tab.
+
+**Recent events** on the **Status** tab records the switch and each person's connect,
+disconnect, refusal and close — by their Google id, never their address. What to set up
+in Google first is in [the administration guide](/en/admin/google-workspace/#connection-for-people).
