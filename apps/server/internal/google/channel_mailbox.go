@@ -485,8 +485,12 @@ func (m *channelMailbox) metadata(ctx context.Context, s gmailSession, id string
 	return meta, err
 }
 
-// Watch answers nil: v1 polls (Q7), the mailbox sync's own cadence.
-func (m *channelMailbox) Watch(context.Context, string, string) error { return nil }
+// Watch answers contracts.ErrWatchUnsupported: v1 polls (Q7), and the
+// mailbox sync keeps the channel on its normal poll rather than the safety
+// interval a live subscription allows.
+func (m *channelMailbox) Watch(context.Context, string, string) error {
+	return contracts.ErrWatchUnsupported
+}
 
 // Unwatch answers nil: nothing is ever watched.
 func (m *channelMailbox) Unwatch(context.Context, string, string) error { return nil }

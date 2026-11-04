@@ -92,7 +92,10 @@ type ChannelMailbox interface {
 	// when the directory asked to reauthorize it), a create otherwise. nil
 	// also when the provider offers no notifications on this installation, or
 	// holds creates off because the directory could not reach it: the poll
-	// runs either way. The errors of Send otherwise.
+	// runs either way. ErrWatchUnsupported when the provider has no push at
+	// all (Google Workspace design Q7): the caller keeps the mailbox on its
+	// normal poll, as nil would tell it a notification will come. The errors
+	// of Send otherwise.
 	Watch(ctx context.Context, mailbox, folder string) error
 
 	// Unwatch deletes the mailbox's folder subscription. Idempotent: a
@@ -194,6 +197,13 @@ var ErrMailTooLarge = errors.New("contracts: the message is larger than the mail
 // message, so it sent nothing rather than send it without them. Terminal for
 // the message.
 var ErrBccUnsupported = errors.New("contracts: the mailbox provider would not keep every blind copy")
+
+// ErrWatchUnsupported: the provider has no change notifications for a
+// channel mailbox (Google Workspace design Q7: Gmail is polled in v1). Watch
+// answers it so the caller keeps the mailbox on its normal poll rather than
+// the longer safety interval a live subscription allows; it is neither a
+// failure nor a refusal.
+var ErrWatchUnsupported = errors.New("contracts: the mailbox provider has no change notifications; keep polling")
 
 // MailboxTenantWide is MailboxStatus.Reason while available but the provider's grant
 // reaches every mailbox in the tenant (M10): a warning, never a refusal.
