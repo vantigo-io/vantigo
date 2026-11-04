@@ -114,3 +114,14 @@ func (s *server) GetGoogleEvents(ctx context.Context, req gen.GetGoogleEventsReq
 	}
 	return out, nil
 }
+
+// The person's own Google connection's actions (delivery D, G25–G28): the
+// switch, and each move of a person's row, its subject the Google id.
+const (
+	actionPersonalSwitched        = "google.personal.switched"
+	actionPersonalConnected       = "google.personal.connected"
+	actionPersonalDisconnected    = "google.personal.disconnected"
+	actionPersonalReconnectNeeded = "google.personal.reconnect_needed"
+	actionPersonalClosed          = "google.personal.closed"
+	actionPersonalDeleted         = "google.personal.deleted"
+)

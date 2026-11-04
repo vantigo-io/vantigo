@@ -14,7 +14,7 @@ import (
 
 const getConnection = `-- name: GetConnection :one
 
-SELECT id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus FROM google.connection WHERE id = 1
+SELECT id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus, personal_connection, personal_connection_at, personal_last_error, personal_last_error_at FROM google.connection WHERE id = 1
 `
 
 // The connection (Google Workspace design G12): the installation's one row,
@@ -54,12 +54,16 @@ func (q *Queries) GetConnection(ctx context.Context) (GoogleConnection, error) {
 		&i.LeaverRemoveGroups,
 		&i.LeaverSignOut,
 		&i.Skus,
+		&i.PersonalConnection,
+		&i.PersonalConnectionAt,
+		&i.PersonalLastError,
+		&i.PersonalLastErrorAt,
 	)
 	return i, err
 }
 
 const lockConnection = `-- name: LockConnection :one
-SELECT id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus FROM google.connection WHERE id = 1 FOR UPDATE
+SELECT id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus, personal_connection, personal_connection_at, personal_last_error, personal_last_error_at FROM google.connection WHERE id = 1 FOR UPDATE
 `
 
 // LockConnection takes the row's lock for a write of the settings or the web
@@ -96,6 +100,10 @@ func (q *Queries) LockConnection(ctx context.Context) (GoogleConnection, error) 
 		&i.LeaverRemoveGroups,
 		&i.LeaverSignOut,
 		&i.Skus,
+		&i.PersonalConnection,
+		&i.PersonalConnectionAt,
+		&i.PersonalLastError,
+		&i.PersonalLastErrorAt,
 	)
 	return i, err
 }
@@ -125,7 +133,7 @@ UPDATE google.connection SET
     organisation_name = COALESCE($9, organisation_name),
     last_checked_at = $10::timestamptz
 WHERE id = 1 AND version = $11
-RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus
+RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus, personal_connection, personal_connection_at, personal_last_error, personal_last_error_at
 `
 
 type SetConnectionTestParams struct {
@@ -189,6 +197,10 @@ func (q *Queries) SetConnectionTest(ctx context.Context, arg SetConnectionTestPa
 		&i.LeaverRemoveGroups,
 		&i.LeaverSignOut,
 		&i.Skus,
+		&i.PersonalConnection,
+		&i.PersonalConnectionAt,
+		&i.PersonalLastError,
+		&i.PersonalLastErrorAt,
 	)
 	return i, err
 }
@@ -219,7 +231,7 @@ UPDATE google.connection SET
     updated_at = $9::timestamptz,
     updated_by_user_id = $10
 WHERE id = 1
-RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus
+RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus, personal_connection, personal_connection_at, personal_last_error, personal_last_error_at
 `
 
 type UpdateAccountRulesParams struct {
@@ -278,6 +290,10 @@ func (q *Queries) UpdateAccountRules(ctx context.Context, arg UpdateAccountRules
 		&i.LeaverRemoveGroups,
 		&i.LeaverSignOut,
 		&i.Skus,
+		&i.PersonalConnection,
+		&i.PersonalConnectionAt,
+		&i.PersonalLastError,
+		&i.PersonalLastErrorAt,
 	)
 	return i, err
 }
@@ -296,7 +312,7 @@ UPDATE google.connection SET
     updated_at = $4::timestamptz,
     updated_by_user_id = $5
 WHERE id = 1
-RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus
+RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus, personal_connection, personal_connection_at, personal_last_error, personal_last_error_at
 `
 
 type UpdateConnectionSettingsParams struct {
@@ -346,6 +362,10 @@ func (q *Queries) UpdateConnectionSettings(ctx context.Context, arg UpdateConnec
 		&i.LeaverRemoveGroups,
 		&i.LeaverSignOut,
 		&i.Skus,
+		&i.PersonalConnection,
+		&i.PersonalConnectionAt,
+		&i.PersonalLastError,
+		&i.PersonalLastErrorAt,
 	)
 	return i, err
 }
@@ -357,7 +377,7 @@ UPDATE google.connection SET
     updated_at = $2::timestamptz,
     updated_by_user_id = $3
 WHERE id = 1
-RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus
+RETURNING id, credential_kind, customer_id, primary_domain, domains, organisation_name, admin_subject, oauth_client_id, scopes_granted, scopes_missing, scopes_unexpected, status, status_reason, last_checked_at, version, updated_at, updated_by_user_id, address_domain, address_pattern, org_unit_path, pass_lifetime_days, pass_delivery, leaver_remove_licences, leaver_remove_groups, leaver_sign_out, skus, personal_connection, personal_connection_at, personal_last_error, personal_last_error_at
 `
 
 type UpdateOAuthClientParams struct {
@@ -397,6 +417,10 @@ func (q *Queries) UpdateOAuthClient(ctx context.Context, arg UpdateOAuthClientPa
 		&i.LeaverRemoveGroups,
 		&i.LeaverSignOut,
 		&i.Skus,
+		&i.PersonalConnection,
+		&i.PersonalConnectionAt,
+		&i.PersonalLastError,
+		&i.PersonalLastErrorAt,
 	)
 	return i, err
 }

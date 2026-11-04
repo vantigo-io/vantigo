@@ -138,13 +138,20 @@ func connectionBody(conn store.GoogleConnection, creds []store.GoogleCredential,
 	return body
 }
 
-// readConnection is the connection's body read through q.
+// readConnection is the connection's body read through q, with the people's
+// own connections counted for Connection for people (delivery D).
 func readConnection(ctx context.Context, q *store.Queries, cfg *config.Config, conn store.GoogleConnection) (gen.GoogleConnection, error) {
 	creds, err := q.ListCredentials(ctx)
 	if err != nil {
 		return gen.GoogleConnection{}, fmt.Errorf("google: read the credentials: %w", err)
 	}
-	return connectionBody(conn, creds, cfg), nil
+	body := connectionBody(conn, creds, cfg)
+	counts, err := q.CountPersonal(ctx)
+	if err != nil {
+		return gen.GoogleConnection{}, fmt.Errorf("google: count the personal connections: %w", err)
+	}
+	body.PersonalConnection = personalSwitchBody(conn, creds, counts, cfg)
+	return body, nil
 }
 
 // GetGoogleConnection answers the connection from the module's rows;
@@ -313,6 +320,11 @@ func (s *server) PutGoogleConnectionOauthClient(ctx context.Context, req gen.Put
 			return fmt.Errorf("google: revoke the older client secrets: %w", err)
 		}
 		codes = append(codes, "secret:"+strconv.FormatInt(row.ID, 10))
+		// A new client or secret is the Owner's answer to the web client's
+		// last failure on a connect or a refresh (delivery D, G28).
+		if err := q.ClearPersonalLastError(ctx); err != nil {
+			return fmt.Errorf("google: clear the personal connection's last error: %w", err)
+		}
 		updated, err := q.UpdateOAuthClient(ctx, store.UpdateOAuthClientParams{OauthClientID: &clientID, Now: now, UpdatedByUserID: actor.UserID})
 		if err != nil {
 			return fmt.Errorf("google: set the web client: %w", err)

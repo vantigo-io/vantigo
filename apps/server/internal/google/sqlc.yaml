@@ -8,6 +8,7 @@ sql:
     schema:
       - ../db/migrations/00114_google_baseline.sql
       - ../db/migrations/00115_google_accounts.sql
+      - ../db/migrations/00114_google_connections.sql
     queries: queries
     gen:
       go:
@@ -16,6 +17,13 @@ sql:
         sql_package: pgx/v5
         emit_pointers_for_null_types: true
         emit_json_tags: false
+        # google.connections (the people's) would singularise onto
+        # google.connection (the installation's): it keeps its plural and is
+        # named for what it holds.
+        inflection_exclude_table_names:
+          - google_connections
+        rename:
+          google_connections: GooglePersonalConnection
         overrides:
           - db_type: uuid
             go_type: github.com/google/uuid.UUID

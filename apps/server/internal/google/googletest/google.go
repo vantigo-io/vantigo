@@ -1,6 +1,7 @@
 // Package googletest is a fake Google for the google module's tests (Google
 // Workspace design G16): an http.RoundTripper standing in for
-// oauth2.googleapis.com and admin.googleapis.com, handed to the module as
+// oauth2.googleapis.com, admin.googleapis.com and, for the person's own
+// connection (authorize.go), accounts.google.com, handed to the module as
 // Deps.HTTPTransport (modtest.WithTransport). Its token endpoint verifies
 // the JWT bearer assertion as Google does — the RS256 signature against the
 // public half of a key the test registered, the issuer, the audience, the
@@ -163,8 +164,14 @@ type FakeGoogle struct {
 	// fake's lock: a test's way into the middle of a flow.
 	OnCall func(Call)
 
+	// WebClients are the Internal web clients the token endpoint knows: id to
+	// secret (authorize.go, AddWebClient).
+	WebClients map[string]string
+
 	// The Directory's users, groups and licences (directory.go).
 	directory
+	// The authorization server's memory (authorize.go).
+	auth authState
 
 	mu       sync.Mutex
 	tokens   map[string]issued
@@ -274,7 +281,7 @@ func (g *FakeGoogle) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		body = b
 	}
-	if req.URL.Scheme != "https" || !slices.Contains([]string{TokenHost, AdminHost, LicensingHost, APIsHost}, req.URL.Host) {
+	if req.URL.Scheme != "https" || !slices.Contains([]string{TokenHost, AdminHost, LicensingHost, APIsHost, AccountsHost}, req.URL.Host) {
 		return nil, fmt.Errorf("googletest: no such host: %s://%s", req.URL.Scheme, req.URL.Host)
 	}
 
@@ -295,6 +302,13 @@ func (g *FakeGoogle) RoundTrip(req *http.Request) (*http.Response, error) {
 		status := g.failNext[0]
 		g.failNext = g.failNext[1:]
 		a = answer{status: status, body: g.apiError(status, "backendError")}
+	case req.URL.Host == AccountsHost:
+		a = g.discovery(req)
+	case req.URL.Host == APIsHost && req.Method == http.MethodGet && req.URL.Path == "/oauth2/v3/certs":
+		a = g.certs()
+	case req.URL.Host == TokenHost && req.Method == http.MethodPost && req.URL.Path == "/revoke":
+		form, _ := url.ParseQuery(string(body))
+		a = g.revoke(form)
 	case req.URL.Host == TokenHost:
 		a = g.token(req, body, &call)
 	default:
@@ -371,7 +385,16 @@ func (g *FakeGoogle) token(req *http.Request, body []byte, call *Call) answer {
 		return answer{status: http.StatusNotFound, body: g.apiError(http.StatusNotFound, "notFound")}
 	}
 	form, err := url.ParseQuery(string(body))
-	if err != nil || form.Get("grant_type") != "urn:ietf:params:oauth:grant-type:jwt-bearer" {
+	if err != nil {
+		return g.oauthError(http.StatusBadRequest, "invalid_request")
+	}
+	switch form.Get("grant_type") {
+	case "authorization_code":
+		return g.authorizationCode(form)
+	case "refresh_token":
+		return g.refreshToken(form)
+	case "urn:ietf:params:oauth:grant-type:jwt-bearer":
+	default:
 		return g.oauthError(http.StatusBadRequest, "unsupported_grant_type")
 	}
 	parts := strings.Split(form.Get("assertion"), ".")

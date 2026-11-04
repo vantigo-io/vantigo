@@ -79,8 +79,8 @@ func (p *provisioner) deactivate(ctx context.Context, s session, actor contracts
 		done = append(done, "suspended")
 		u.Suspended = true
 	}
-	// Suspended, the password waiting is of no use to anyone: cleared
-	// before any other step can fail.
+	// Suspended, the password waiting and the person's own connection are of
+	// no use to anyone: cleared before any other step can fail.
 	now := p.now()
 	err := db.WithTx(ctx, p.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
@@ -91,7 +91,9 @@ func (p *provisioner) deactivate(ctx context.Context, s session, actor contracts
 		if err := q.ClearAccountPass(ctx, store.ClearAccountPassParams{Now: now, UserID: u.ID}); err != nil {
 			return fmt.Errorf("google: clear the password: %w", err)
 		}
-		return nil
+		// The leaver's own Google connection closes with its token forgotten
+		// (G19, G28): their calendar copies stay in the suspended account.
+		return closePersonal(ctx, q, now, actor, u.ID, nil, true, personalClosedLeaver)
 	})
 	if err != nil {
 		return contracts.ExternalAccount{}, err
@@ -218,8 +220,9 @@ func (p *provisioner) leaveGroups(ctx context.Context, s session, u directoryUse
 // Delete deletes a suspended user (contracts.IdentityProvisioner.Delete):
 // ErrExternalEnabled while Google says it is not suspended; Google keeps it
 // restorable for 20 days. The row is marked deleted and kept for the
-// events, its password cleared. A user the organisation no longer holds is
-// deleted already. An unconfirmed adoption is ErrExternalUnconfirmed,
+// events, its password cleared and the person's own connection closed with
+// its token forgotten. A user the organisation no longer holds is deleted
+// already. An unconfirmed adoption is ErrExternalUnconfirmed,
 // nothing written.
 func (p *provisioner) Delete(ctx context.Context, actor contracts.Actor, externalID string) error {
 	if !actor.Valid() {
@@ -254,6 +257,9 @@ func (p *provisioner) delete(ctx context.Context, s session, actor contracts.Act
 	if err := s.q.ClearAccountPass(ctx, store.ClearAccountPassParams{Now: p.now(), UserID: u.ID}); err != nil {
 		return fmt.Errorf("google: clear the password: %w", err)
 	}
+	if err := closePersonalIn(ctx, p.deps.Pool, s.q, p.now(), actor, u.ID, nil, true, personalClosedDeleted); err != nil {
+		return err
+	}
 	_, err = p.settle(ctx, s, actor, actionUserDeleted, u, stateDeleted, row.Reported, nil)
 	return err
 }
@@ -277,6 +283,9 @@ func (p *provisioner) markDeleted(ctx context.Context, actor contracts.Actor, ex
 	}
 	if err := q.ClearAccountPass(ctx, store.ClearAccountPassParams{Now: p.now(), UserID: row.UserID}); err != nil {
 		return fmt.Errorf("google: clear the password: %w", err)
+	}
+	if err := closePersonalIn(ctx, p.deps.Pool, q, p.now(), actor, row.UserID, nil, true, personalClosedDeleted); err != nil {
+		return err
 	}
 	_, err = p.settle(ctx, session{q: q}, actor, actionUserDeleted, directoryUser{ID: row.UserID, PrimaryEmail: row.PrimaryEmail}, stateDeleted, row.Reported, []string{"gone"})
 	return err

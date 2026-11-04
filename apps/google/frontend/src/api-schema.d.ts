@@ -42,6 +42,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete connecting Google
+         * @description Completes a connect under the session (Google Workspace design G26, G27): opens vantigo.google.connected, which must be the caller's and this session's, checks the switch, that Vantigo still knows the caller by a Google account it manages and that the account signed in is that one (the ID token's sub equals its Directory id), and stores the connection with its refresh token sealed — taking over a closing connection of the same account, and closing the caller's connection of another account. Audited google.personal.connected. The cookie is cleared on every answer. 410 expired for a cookie missing, expired or another session's; 409 switch_off, no_account, account_mismatch (the account signed in to is not the one Vantigo knows the caller by; the detail names no address) or account_taken. Rate limited to 30 per client address a minute, shared with POST /connect (google-connect).
+         */
+        post: operations["postGoogleComplete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start connecting Google
+         * @description Starts connecting the caller's own Google account (Google Workspace design G26, G27): checks the feature, the switch and the web client, the Google account Vantigo knows the caller by (Staff's directory account, managed by this module, enabled and trusted) and that no other person's connection holds it; then seals a fresh state, nonce and PKCE verifier with the session into the vantigo.google.connect cookie (HttpOnly, SameSite=Lax, ten minutes, on /api/v1/google) and answers the authorization URL to send the browser to, with access_type=offline, prompt=consent, include_granted_scopes=true, login_hint and hd. 422 feature_unknown; 409 switch_off, no_account or account_taken. Rate limited to 30 per client address a minute, shared with POST /complete (google-connect).
+         */
+        post: operations["postGoogleConnect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/connect/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google's answer to a connect
+         * @description The personal connection's redirect URI (Google Workspace design G26), on APP_URL with the base path, never the public host. Anonymous: Google's redirect carries the browser's Lax cookies but the session's Strict one is not sent. It checks the state against the sealed vantigo.google.connect cookie — nothing is written without a valid one — redeems the code through the module's guarded client with the web client's secret and the PKCE verifier, verifies the ID token's signature against Google's published keys, its issuer, audience, expiry and nonce, requires its hd to be one of the organisation's verified domains, checks that the granted scope holds the feature asked, and seals the result into vantigo.google.connected for POST /complete. Every answer clears vantigo.google.connect and redirects to /settings/connections with connection=google and outcome=complete, or outcome=failed and code: expired, access_denied, domain_mismatch, consent_missing or failed. Google's error_description is never read. Rate limited to 60 per client address a minute (google-connect-callback).
+         */
+        get: operations["getGoogleConnectCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/connection": {
         parameters: {
             query?: never;
@@ -106,6 +166,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/connection/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get my Google connection
+         * @description The caller's own Google connection, whether they may connect, and the account Vantigo knows them by. Always 200, so the page can tell "not connected" from "nothing to connect". Reads the module's own rows and Staff's directory account; nothing reaches Google.
+         */
+        get: operations["getGoogleConnectionMe"];
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect Google
+         * @description Disconnects the caller's own Google account (Google Workspace design G28): their live connection closes, its token kept only for the removals that may still need it, and is deleted — its token revoked at Google — once nothing does. Audited google.personal.disconnected. 204 whether or not there was one.
+         */
+        delete: operations["deleteGoogleConnectionMe"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/connection/oauth-client": {
         parameters: {
             query?: never;
@@ -119,6 +203,26 @@ export interface paths {
          * @description Sets the Internal web client — its id, ending .apps.googleusercontent.com, and its secret, sealed at once and never answered. A changed client id needs its secret; a secret alone rotates the current client's, the older one revoked. The Owner's. Audited google.oauth_client.changed, never with the secret. Rate limited with every Owner operation of the module.
          */
         put: operations["putGoogleConnectionOauthClient"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/connection/personal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Turn Connection for people on or off
+         * @description Turns Connection for people on or off (Google Workspace design G28, G29). Turning it off closes every person's connection, tokens kept for the removals, and each must connect again once it is back on; the page asks first while anyone is connected. Turning it on records when, from which the status's ready is judged. The Owner's, as the single sign-on settings are. Audited google.personal.switched. Rate limited with every Owner operation of the module.
+         */
+        put: operations["putGoogleConnectionPersonal"];
         post?: never;
         delete?: never;
         options?: never;
@@ -331,6 +435,7 @@ export interface components {
             organisationName?: string;
             /** @description The organisational unit new users are made in, / for the top. */
             orgUnitPath: string;
+            personalConnection: components["schemas"]["GooglePersonalSwitch"];
             /**
              * @description Who is meant to hand the person their first password — hr, manager or both. HR shows it once on the person's Account tab in Staff; the setting is kept for a later release.
              * @enum {string}
@@ -475,7 +580,61 @@ export interface components {
             /** @description The web client's secret, which Google shows once, at creation. Sealed at once and never answered. */
             clientSecret?: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: version_mismatch (412: the connection has been written since the If-Match version), client_mismatch (422: a key for another service account while one of the current account's is live), credential_kind_unsupported (422: a credential kind this version does not implement), adoption_confirmed (409: the account's adoption is confirmed already, or the module created it), credential_invalid and google_unreachable (503: Google could not be asked). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description Where to send the browser to connect Google — Google's authorization endpoint, with the state, nonce and PKCE challenge the answer's cookie holds sealed. */
+        GooglePersonalAuthorize: {
+            authorizeUrl: string;
+        };
+        /** @description A connect completed — the person's connection as it now stands, and the path in Vantigo to return to. */
+        GooglePersonalComplete: {
+            connection: components["schemas"]["GooglePersonalConnection"];
+            /** @description A path on this installation, never another origin; /settings/connections when the connect named none. */
+            returnTo: string;
+        };
+        /** @description What a connect is for, and where to return once it completes. */
+        GooglePersonalConnectRequest: {
+            /**
+             * @description The feature the connect asks Google's consent for — calendar asks for calendar.events and calendar.app.created, mail for gmail.send — beside the features the person's connection already holds.
+             * @enum {string}
+             */
+            feature: "calendar" | "mail";
+            /** @description A path on this installation to return to; anything that is not one becomes /settings/connections. */
+            returnTo?: string;
+        };
+        /** @description The caller's own Google connection (Google Workspace design G25–G29). offered says whether the caller may connect at all — false while Connection for people is off or the web client is not ready (reason switch_off), or Vantigo knows no Google account of theirs that it manages (reason no_account). state is not_connected with no connection, active while it works, reconnect when Google refused it (errorCode says why) and closing once disconnected, which reads as not connected. */
+        GooglePersonalConnection: {
+            /** @description The primary email of the Google account Vantigo knows the caller by. Absent when there is none. */
+            account?: string;
+            /** Format: date-time */
+            connectedAt?: string;
+            /** @description Why Google refused the connection, a code: expired, blocked, consent_missing or sign_in_again. Present while state is reconnect. */
+            errorCode?: string;
+            /** @description The features the scopes Google granted allow — calendar, mail. */
+            features: string[];
+            offered: boolean;
+            /** @enum {string} */
+            reason?: "switch_off" | "no_account";
+            /** @enum {string} */
+            state: "not_connected" | "active" | "reconnect" | "closing";
+        };
+        /** @description Connection for people (Google Workspace design G29): whether people may connect their own Google account to Vantigo, and whether a connect can work. status is off while the switch is; unavailable when on but the web client is not ready, reason then being no_web_client (no client id or no secret), not_tested (no test has read the organisation's domains) or client_refused (Google refused the web client on a connect or a refresh); consent_missing when the last connect came back without the feature it asked; ready otherwise. connected and reconnect count the people connected and those whose connection Google refused, waiting for them to connect again. redirectUri is the redirect URI to register on the web client. */
+        GooglePersonalSwitch: {
+            /** Format: int32 */
+            connected: number;
+            enabled: boolean;
+            /** @description A code, never Google's words; absent when there is nothing to say. */
+            reason?: string;
+            /** Format: int32 */
+            reconnect: number;
+            /** @description APP_URL with the base path and /api/v1/google/connect/callback. */
+            redirectUri: string;
+            /** @enum {string} */
+            status: "off" | "ready" | "consent_missing" | "unavailable";
+        };
+        /** @description Connection for people, on or off. */
+        GooglePersonalSwitchRequest: {
+            enabled: boolean;
+        };
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: version_mismatch (412: the connection has been written since the If-Match version), client_mismatch (422: a key for another service account while one of the current account's is live), credential_kind_unsupported (422: a credential kind this version does not implement), adoption_confirmed (409: the account's adoption is confirmed already, or the module created it), credential_invalid and google_unreachable (503: Google could not be asked); and those of the person's own Google connection: feature_unknown (422), switch_off, no_account, account_taken and account_mismatch (409), expired (410). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         GoogleProblem: {
             code?: string | null;
             detail?: string | null;
@@ -630,6 +789,169 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["GoogleProblem"];
+                };
+            };
+        };
+    };
+    postGoogleComplete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — connected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GooglePersonalComplete"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — switch_off, no_account, account_mismatch or account_taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["GoogleProblem"];
+                };
+            };
+            /** @description Gone — expired, the connect's cookie is missing, expired, or another session's. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["GoogleProblem"];
+                };
+            };
+            /** @description Too Many Requests — google-connect's limit for this client address, shared with POST /connect. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postGoogleConnect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GooglePersonalConnectRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the cookie is set; send the browser to authorizeUrl. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GooglePersonalAuthorize"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — switch_off, no_account or account_taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["GoogleProblem"];
+                };
+            };
+            /** @description Unprocessable Content — feature_unknown. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["GoogleProblem"];
+                };
+            };
+            /** @description Too Many Requests — google-connect's limit for this client address, shared with POST /complete. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getGoogleConnectCallback: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+                error?: string;
+                /** @description Google's words, never read. */
+                error_description?: string;
+                /** @description The scopes Google granted, as it echoes them; ignored — the token answer's scope is what is stored. */
+                scope?: string;
+                /** @description Ignored. */
+                authuser?: string;
+                /** @description Ignored. */
+                hd?: string;
+                /** @description Ignored. */
+                prompt?: string;
+                /** @description The authorization server's issuer (RFC 9207), ignored — the ID token's issuer is what is checked. */
+                iss?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Found — to /settings/connections?connection=google&outcome=complete, or &outcome=failed&code=… on any failure. */
+            302: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too Many Requests — google-connect-callback's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };
@@ -881,6 +1203,62 @@ export interface operations {
             };
         };
     };
+    getGoogleConnectionMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GooglePersonalConnection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteGoogleConnectionMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — disconnected, or nothing was connected. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     putGoogleConnectionOauthClient: {
         parameters: {
             query?: never;
@@ -910,6 +1288,58 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["GoogleProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests — google-owner's limit for this client address, shared with every Owner operation of the module. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putGoogleConnectionPersonal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GooglePersonalSwitchRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleConnection"];
                 };
             };
             /** @description Unauthorized */
