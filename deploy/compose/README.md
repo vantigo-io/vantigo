@@ -61,11 +61,11 @@ a one-shot job, and then starts Vantigo:
 - **API contract** — `GET http://localhost:8080/api/openapi.json` (requires a session)
 
 The Customers, Products, Energy, Communications, Projects, Time, Expenses,
-Invoices, Staff, Planning, Inventory, Calendar, Microsoft Entra ID and Assistant modules are enabled by
+Invoices, Staff, Planning, Inventory, Calendar, Microsoft Entra ID, Google Workspace and Assistant modules are enabled by
 default (`MODULES` in `vantigo.env`). They share one PostgreSQL database named
 `vantigo`, with independent `identity`, `customers`, `products`, `energy`,
 `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`,
-`inventory`, `calendar`, `entra` and `assistant` schemas and migration histories.
+`inventory`, `calendar`, `entra`, `google` and `assistant` schemas and migration histories.
 
 ## First sign-in
 
@@ -166,9 +166,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Default privileges only cover objects created afterwards; grant on the
 -- schemas the enabled modules already created (add/remove schemas to match
 -- the MODULES enabled in your installation).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, assistant TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, assistant TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, assistant TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, google, assistant TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, google, assistant TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, google, assistant TO "vantigo_app";
 ```
 
 ## Background workers
@@ -231,7 +231,7 @@ host (no path — the path prefix is `APP_BASE_PATH`, not part of `APP_URL`).
 The API prefixes remain `/api/v1/identity`, `/api/v1/customers`,
 `/api/v1/products`, `/api/v1/energy`, `/api/v1/communications`,
 `/api/v1/projects`, `/api/v1/time`, `/api/v1/expenses`, `/api/v1/invoices`,
-`/api/v1/staff`, `/api/v1/planning`, `/api/v1/inventory`, `/api/v1/calendar`, `/api/v1/entra` and `/api/v1/assistant`.
+`/api/v1/staff`, `/api/v1/planning`, `/api/v1/inventory`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and `/api/v1/assistant`.
 
 For example, with nginx:
 

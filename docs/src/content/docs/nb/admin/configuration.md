@@ -14,7 +14,7 @@ installasjonens innstillinger, og sier hvor hver av arbeidsområdets redigeres.
 | Nivå | Eier | Hvor den bor | Redigeres av | Eksempler |
 | --- | --- | --- | --- | --- |
 | **Installasjon** | Vantigo, eller driftsansvarlig som kjører installasjonen | Miljøet (`vantigo.env`), validert når prosessen starter | Ingen i grensesnittet: driftsansvarlig endrer miljøet og starter på nytt | `DATABASE_URL`, `APP_SECRET`, `APP_URL`, `MODULES`, `STORAGE_*`, `MAIL_DRIVER`, `SMTP_*` og `CLOUDFLARE_EMAIL_*`, `TRUSTED_PROXY_*`, hver arbeiders poll, `ENERGY_SPOT_PRICE_SERVICE_*`, `AI_*` |
-| **Arbeidsområde** | Leietakeren — selskapet som bruker installasjonen | Databasen | En eier, eller den som har rettigheten, under **Administrer arbeidsområde** eller i modulens egne innstillinger | Single sign-on, tilkoblingen til Microsoft Entra ID og reglene for den, kanalene i Kommunikasjon, modellen hver KI-oppgave bruker, hver moduls innstillinger |
+| **Arbeidsområde** | Leietakeren — selskapet som bruker installasjonen | Databasen | En eier, eller den som har rettigheten, under **Administrer arbeidsområde** eller i modulens egne innstillinger | Single sign-on, tilkoblingen til Microsoft Entra ID og reglene for den, tilkoblingen til Google Workspace, kanalene i Kommunikasjon, modellen hver KI-oppgave bruker, hver moduls innstillinger |
 
 **En innstilling bor på ett nivå**, så det er ingen presedensregel å lære: ingen
 innstilling på arbeidsområdenivå leses fra miljøet, og ingen innstilling på
@@ -51,7 +51,7 @@ veiledningene det lenkes til fra hver gruppe, sier hvordan du velger.
 | `PUBLIC_BASE_URL` | ikke satt | `https`-adressen betalingssiden, kalenderens svarside og Microsofts endringsvarsler nås på fra internett |
 | `PORT` | `8080` | Porten det lyttes på |
 | `DATABASE_URL`, `MIGRATIONS_DATABASE_URL` | påkrevd; den andre er som den første | Kjøretidsrollens tilkobling og eierrollen migreringene bruker |
-| `MODULES` | alle modulene binæren kjenner | Forretningsmodulene denne installasjonen betjener: `customers`, `products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `calendar`, `entra` og `assistant`. `inventory` krever `products`. `assistant` har ingen egne rettigheter og trenger ingen annen modul, men har bare nytte av seg mens `AI_PROVIDER` er satt ([KI](#ki)) |
+| `MODULES` | alle modulene binæren kjenner | Forretningsmodulene denne installasjonen betjener: `customers`, `products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `calendar`, `entra`, `google` og `assistant`. `inventory` krever `products`; `entra` og `google` krever hver `staff` (`google requires staff`). `assistant` har ingen egne rettigheter og trenger ingen annen modul, men har bare nytte av seg mens `AI_PROVIDER` er satt ([KI](#ki)) |
 | `WORKERS_IN_PROCESS` | `1` | Om API-prosessen også kjører bakgrunnsarbeiderne |
 | `SHUTDOWN_TIMEOUT`, `LOG_LEVEL` | `30s`, `info` | Hvor lenge et stopp tømmer pågående arbeid; loggens detaljnivå |
 | `APP_SECRET` | påkrevd | Nøkkelmaterialet for hele prosessen: cookies, CSRF, forseglede hemmeligheter |
@@ -292,6 +292,7 @@ endres ikke: begge operasjonene bruker den modellen til en eier velger en annen.
 | Tilkoblingen til Microsoft Entra ID: leietaker, applikasjon, klienthemmeligheter og tillatelser | **Administrer arbeidsområde** › **Integrasjoner** › **Microsoft Entra ID** › **Tilkobling** ([veiledning](/nb/user/entra/#hvor-den-er-og-de-fire-fanene)) | en eier |
 | Kontoreglene, innlogging og klargjøring, gruppene Vantigo holder i leietakeren | **Integrasjoner** › **Microsoft Entra ID** › **Kontoer** | `entra:manage` (innlogging og klargjøring: en eier) |
 | Outlook-tilkoblingen, kalendersynkronisering på den, og e-postkanaler | **Integrasjoner** › **Microsoft Entra ID** › **Outlook og e-post** | `entra:manage` |
+| Tilkoblingen til Google Workspace: tjenestekontoens nøkler, administratoren som etterlignes, den interne nettklienten og testen | **Administrer arbeidsområde** › **Integrasjoner** › **Google Workspace** › **Tilkobling** ([veiledning](/nb/user/google-workspace/#hvor-den-er-og-de-fire-fanene)) | en eier (`google:manage` leser den) |
 | Modellen hver KI-oppgave bruker, blant modellene abonnementet tillater | **Administrer arbeidsområde** › **Integrasjoner** › **KI-modeller** ([veiledning](/nb/user/workspace-administration/#ki-modeller)) | en eier |
 | Hvem som har assistenten, hvor lenge samtaler beholdes og hva assistenten kan bruke | **Administrer arbeidsområde** › **Integrasjoner** › **Assistent** ([veiledning](/nb/user/workspace-administration/#assistent)); hver persons egen bryter under **Brukere** › **Rediger detaljer** | en eier |
 | Postboksene Kommunikasjon sender fra, og SMTP-kontoene den bruker | **Kommunikasjon** › **Kanaler** | `communications:channels-manage` |

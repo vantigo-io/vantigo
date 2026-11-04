@@ -15,6 +15,7 @@ sources:
   - apps/customers/frontend/eslint.config.js
   - apps/energy/frontend/eslint.config.js
   - apps/entra/frontend/eslint.config.js
+  - apps/google/frontend/eslint.config.js
   - apps/expenses/frontend/eslint.config.js
   - apps/invoices/frontend/eslint.config.js
   - apps/planning/frontend/eslint.config.js
@@ -28,7 +29,7 @@ sources:
 Vantigo is a modular monolith: one Go binary, one container, one PostgreSQL
 database — with strict module boundaries so any module can later be extracted into
 its own deployable without a rewrite. Customers, Products, Energy, Communications,
-Projects, Time, Expenses, Invoices, Staff, Calendar, Entra, Planning, Inventory and Assistant are vertical-slice modules composed only
+Projects, Time, Expenses, Invoices, Staff, Calendar, Entra, Google, Planning, Inventory and Assistant are vertical-slice modules composed only
 by `cmd/vantigo`, on the Identity platform.
 
 Modules never reference each other directly. Synchronous cross-module needs go
@@ -85,7 +86,7 @@ Communications' outbox is the working example.
    type, never a store type, and the reason is rules 8, 9 and 10's.
 4. **One schema per module.** Each module maps tables only into its own PostgreSQL
    schema (`identity`, `customers`, `products`, `energy`, `communications`,
-   `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar`, `entra`, `planning`, `assistant`), and no module's migrations or queries reference
+   `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar`, `entra`, `google`, `planning`, `assistant`), and no module's migrations or queries reference
    another's. **No cross-schema foreign keys or joins** — reference other modules'
    data by opaque ID only. That is what keeps a future "move this schema to its own
    server" a connection-string change instead of a data migration.
@@ -270,7 +271,9 @@ Communications' outbox is the working example.
    for the organisation's side of that line: the workspace area's second sidebar
    section, **Integrations** (`apps.ts`, `areas`), is a slot a module may take an item
    in. Entra's item, **Microsoft Entra ID** at `/workspace/entra` (`routes/workspace/entra.tsx`),
-   carries `module: "entra"` and `requiredPermissions: ["entra:manage"]`; the area's
+   carries `module: "entra"` and `requiredPermissions: ["entra:manage"]`, and Google's,
+   **Google Workspace** at `/workspace/google` (`routes/workspace/google.tsx`),
+   `module: "google"` and `requiredPermissions: ["google:manage"]`; the area's
    layout (`routes/workspace.tsx`) admits a holder of that permission while the module is
    on, the item's route asks the module and the permission again, and the section hides
    itself when none of its items shows. A module that takes such an item owns no app: it
@@ -1182,7 +1185,7 @@ MODULES=customers,products
 ```
 
 Unset enables every module this binary can mount
-(`customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,calendar,entra,assistant`). Identity is always mounted and
+(`customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,calendar,entra,google,assistant`). Identity is always mounted and
 is never listed. Entries are trimmed and lower-cased, empty entries are ignored, and a
 name the binary does not know fails startup naming both the value and the known set.
 
@@ -1211,7 +1214,9 @@ rejected the same way (`time requires projects`). Entra reads of Staff only the
 caller's own directory account, for the Outlook connection, and is
 called only by Staff's accounts worker, the slot's one consumer, so `entra` without
 `staff` would hold a tenant's credential nothing uses and is rejected too (`entra
-requires staff`). Planning books Staff's people on Projects' projects, so `planning`
+requires staff`). Google is rejected without `staff` for the same reason (`google
+requires staff`): the accounts it will keep are Staff's decisions, made by its accounts
+worker. Planning books Staff's people on Projects' projects, so `planning`
 requires both `projects` and `staff` (`planning requires projects`, `planning requires
 staff`). Inventory keeps stock of the catalog's variants and reads and locks them
 through `contracts.ProductCatalog`, so `inventory` without `products` is rejected
@@ -1577,6 +1582,16 @@ network in one place, its Graph client, through `internal/netguard` with no prox
 no redirect, to two fixed hosts no setting changes; the client's transport and its
 token cache are built once per process, and `Deps.HTTPTransport` is the test seam. See [Microsoft Entra
 ID](/en/reference/entra/#the-graph-client).
+
+**Google imports nothing and reads no other module.** It writes nothing outside the
+`google` schema, fills no slot yet, and has no worker; the Owner's and
+`google:manage`'s checks are the router's. It reaches the network in one place, its
+guarded Google client, through `internal/netguard` with no proxy and no redirect, to
+fixed Google hosts no setting changes; the token exchange goes through the same
+client, the transport and the token cache are built once per process, and
+`Deps.HTTPTransport` is the test seam, which its fake Google, `internal/google/googletest`,
+comes in through — only `_test.go` files may import it. Every later delivery takes its
+token from the one seam, `tokenSource`. See [Google Workspace](/en/reference/google/#the-guarded-client).
 
 ## Adding a module
 

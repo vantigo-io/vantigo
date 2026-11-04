@@ -84,10 +84,10 @@ job, and then starts Vantigo:
 - **API contract** — `GET http://localhost:8080/api/openapi.json` (requires a session)
 
 The Customers, Products, Energy, Communications, Projects, Time, Expenses, Invoices,
-Staff, Planning, Inventory, Calendar, Microsoft Entra ID and Assistant modules are enabled by default
+Staff, Planning, Inventory, Calendar, Microsoft Entra ID, Google Workspace and Assistant modules are enabled by default
 (`MODULES` in `vantigo.env`). They share one PostgreSQL database named `vantigo`, with
 independent `identity`, `customers`, `products`, `energy`, `communications`,
-`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `calendar`, `entra` and `assistant`
+`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `calendar`, `entra`, `google` and `assistant`
 schemas and migration histories.
 
 ## What the stack contains
@@ -189,9 +189,9 @@ and the recovery.
   deployment enables. `identity` is always mounted and never listed. Unset enables
   every module the binary can mount: `customers`, `products`, `energy`,
   `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`,
-  `inventory`, `calendar`, `entra` and `assistant`. `energy`, `communications`, `projects` and `invoices` each
+  `inventory`, `calendar`, `entra`, `google` and `assistant`. `energy`, `communications`, `projects` and `invoices` each
   require `customers`, `time` requires `projects`, `planning` requires both `projects`
-  and `staff`, `inventory` requires `products`, and `entra` requires `staff`; `projects` also
+  and `staff`, `inventory` requires `products`, and `entra` and `google` each require `staff`; `projects` also
   uses `products` when it is enabled and answers 409 on its billing-line endpoints when
   it is not; `expenses` requires nothing and reads `projects` only when it happens to be
   enabled; `staff`, `calendar` and `assistant` require nothing (the assistant is of
@@ -268,9 +268,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Default privileges only cover objects created afterwards; grant on the
 -- schemas the enabled modules already created (add/remove schemas to match
 -- the MODULES enabled in your installation).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, assistant TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, assistant TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, assistant TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, google, assistant TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, google, assistant TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, google, assistant TO "vantigo_app";
 ```
 
 ## Background workers and scaling
@@ -490,7 +490,7 @@ registration ([Microsoft Entra ID](/en/admin/entra/#outlook-connection)). The AP
 prefixes remain `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
 `/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
-`/api/v1/inventory`, `/api/v1/calendar`, `/api/v1/entra` and `/api/v1/assistant`.
+`/api/v1/inventory`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and `/api/v1/assistant`.
 
 For example, with nginx:
 
@@ -620,6 +620,11 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   the database, set by an Owner and `entra:manage` on the module's page; the module
   reaches two fixed hosts that no setting changes
   ([Microsoft Entra ID](/en/admin/entra/)).
+- There is **no `GOOGLE_*` variable** either. The Google Workspace module's service
+  account keys and web client secret (sealed under `APP_SECRET`), the admin to
+  impersonate and the web client's id are in the database, set by an Owner on the
+  module's page; the module reaches fixed Google hosts that no setting changes
+  ([Google Workspace](/en/admin/google-workspace/)).
 - The workforce OIDC provider and the SCIM token are set on the **Single sign-on**
   card, not in `vantigo.env`: `OIDC_*` and `SCIM_*` there are imported into the
   database once, at the first start of the release that brought the card, and then
@@ -822,6 +827,17 @@ the new tables and columns with every packaging, count and count movement's link
 count, and what was entered in packagings; the movements and the stock stay. See
 [Count stock](/en/user/inventory/#count-stock) and
 [Packagings](/en/user/products/#packagings).
+
+**The release with Google Workspace.** It brings `00112_google_baseline.sql`, the
+`google` schema with its one connection row, not set up. An installation that leaves
+`MODULES` unset gets the module, and its page under **Integrations** for Owners, on
+upgrade; one that lists `MODULES` gets it once `google` is added beside `staff`, which it
+requires — `google` without `staff` refuses to start. The permission `google:manage` is
+new and held by no custom role until an Owner adds it. Nothing reaches Google until an
+Owner uploads a key and tests the connection. A least-privilege role needs the `google`
+schema granted ([Database roles](#database-roles)). It starts no worker. Rolling the
+migration back drops the schema with the sealed keys and secret, and touches nothing at
+Google. See [Google Workspace](/en/admin/google-workspace/).
 
 **The release with Staff competence.** It brings `00066_staff_competence.sql`: the
 competence catalogue — five categories and fifteen Norwegian certificates seeded — and

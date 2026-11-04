@@ -15,8 +15,8 @@ rollene dine gir deg. En modul du ikke har rettighet til vises rett og slett ikk
 ## Apper og app-velgeren
 
 Hver modul er en **app** med sin egen sidemeny: Kunder, Prosjekter, Timer, Kalender,
-Utlegg, Ansatte, Bemanning, Fakturaer, Kommunikasjon, Produkter, Lager og Energi — og Microsoft Entra ID,
-der en administrator kobler til selskapets leietaker. [Assistenten](/nb/user/assistant/) er også en
+Utlegg, Ansatte, Bemanning, Fakturaer, Kommunikasjon, Produkter, Lager og Energi — og Microsoft Entra ID
+og Google Workspace, der en administrator kobler til selskapets leietaker eller organisasjon. [Assistenten](/nb/user/assistant/) er også en
 app, og et panel som åpnes ved siden av hvilket som helst skjermbilde med knappen i toppfeltet eller Cmd/Ctrl+J, og den kan [vise deg hvor du skal klikke](/nb/user/assistant/#vis-meg-hvordan) i de viktigste opprettelsesflytene. App-velgeren i toppfeltet lister appene
 du kan åpne; **Hjem** er dashbordet, som åpner med agendaen **I dag og denne uken** fra
 Kalender når du bruker Kalender ([dashbordet](/nb/user/calendar/#dashbordet)), og der
@@ -86,6 +86,7 @@ kortere enn din:
 | [Lager](/nb/user/inventory/) | Oversikt, Bevegelser, Varemottak, Varetellinger, Importer inngående beholdning |
 | [Energi](/nb/user/energy/) | Målepunkter |
 | [Microsoft Entra ID](/nb/user/entra/) | Microsoft Entra ID (tilkoblingens status og de seks stegene i oppsettet), for `entra:manage` |
+| [Google Workspace](/nb/user/google-workspace/) | Google Workspace (tilkoblingens status og de seks stegene i oppsettet), for `google:manage` |
 | [Assistent](/nb/user/assistant/) | Samtalene dine med assistenten, fra hvor som helst i Vantigo; vises for alle som har assistenten |
 
 Noen få skjermbilder hører til et område uten å ha en egen oppføring i sidefeltet, og

@@ -136,6 +136,7 @@ vantigo/
 │   │       ├── inventory/           # Inventory vertical slice (stock in sites and locations)
 │   │       ├── calendar/            # Calendar vertical slice
 │   │       ├── entra/               # Microsoft Entra ID (accounts in the tenant, for Staff)
+│   │       ├── google/              # Google Workspace (the organisation's connection, for Staff)
 │   │       ├── assistant/           # Assistant vertical slice (conversations, runs and tools)
 │   │       ├── module/              # The platform modules mount through
 │   │       ├── contracts/           # Cross-module interfaces, permissions, access rules
@@ -162,6 +163,7 @@ vantigo/
 │   ├── inventory/frontend/          # @vantigo/inventory-ui
 │   ├── calendar/frontend/           # @vantigo/calendar-ui
 │   ├── entra/frontend/              # @vantigo/entra-ui
+│   ├── google/frontend/             # @vantigo/google-ui
 │   └── assistant/frontend/          # @vantigo/assistant-ui
 ├── packages/
 │   ├── frontend-shell/              # @vantigo/frontend-shell — shared app shell, theme, branding
@@ -223,7 +225,7 @@ own deployable without a rewrite.
 
 One PostgreSQL database, one schema per module: `identity`, `customers`, `products`,
 `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`,
-`planning`, `inventory`, `calendar`, `entra` and `assistant`. Schemas are hard boundaries:
+`planning`, `inventory`, `calendar`, `entra`, `google` and `assistant`. Schemas are hard boundaries:
 
 - **No cross-schema foreign keys or joins.** Reference other modules' data by
   opaque ID only. This is what keeps a future "move this schema to its own
@@ -311,7 +313,7 @@ Navigation — *one pattern per level*, so every page reads the same way:
   `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
   `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`, `/api/v1/expenses`,
   `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`, `/api/v1/inventory`,
-  `/api/v1/calendar`, `/api/v1/entra` and `/api/v1/assistant`.
+  `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and `/api/v1/assistant`.
 - **In-process contracts** — module collaboration uses `internal/contracts`, not
   service-to-service API keys.
 - **Form-friendly errors** — validation errors use camelCase JSON field paths.
@@ -327,7 +329,7 @@ enabled modules at `GET /api/openapi.json` (session required). Module prefixes a
 `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
 `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`, `/api/v1/expenses`,
 `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`, `/api/v1/inventory`,
-`/api/v1/calendar`, `/api/v1/entra` and `/api/v1/assistant`. Every other
+`/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and `/api/v1/assistant`. Every other
 `/api` path answers the catch-all 404 problem.
 
 Errors are RFC 7807 problem responses written by `internal/httpx`; validation errors
@@ -534,9 +536,9 @@ that does not match `identity.yaml` fails the test that produced it. `go test
 must have been exercised by at least one successful exchange, with no allow-list, so a newly
 added operation without a passing test fails the whole package.
 
-### Customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra and assistant
+### Customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, google and assistant
 
-Fourteen business modules mount on that platform, each serving its own contract and
+Fifteen business modules mount on that platform, each serving its own contract and
 owning its own schema:
 
 - `internal/customers` → `/api/v1/customers/*` from `openapi/customers.yaml`:
@@ -618,10 +620,16 @@ owning its own schema:
   its client secrets and the account rules, and the users Staff's decisions create,
   enable, disable and delete there through Microsoft Graph. Staff's accounts worker
   is its only caller, so `entra` **requires `staff`**.
+- `internal/google` → `/api/v1/google/*` from `openapi/google.yaml`: the connection
+  to a Google Workspace organisation through a service account's domain-wide
+  delegation — its keys, the admin to impersonate, the Internal web client and the
+  connection test. It fills no slot yet; the accounts it will keep are Staff's
+  decisions, so `google` **requires `staff`**. See
+  [`docs/src/content/docs/en/reference/google.md`](docs/src/content/docs/en/reference/google.md).
 
 `MODULES` chooses which of them a deployment serves: a comma-separated list,
 parsed once at startup, defaulting to
-`customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,calendar,entra,assistant` — every module
+`customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,calendar,entra,google,assistant` — every module
 this binary can mount. Identity is always mounted and is never
 listed. A name the binary does not know fails
 startup, naming the name and the known set. `energy`, `communications` and
@@ -633,7 +641,7 @@ without `customers` fails too, `planning` reads projects through
 `contracts.ProjectDirectory` and people through `contracts.Workforce`, so `planning`
 without `projects` or without `staff` fails startup, `inventory` reads and locks
 variants through `contracts.ProductCatalog`, so `inventory` without `products` fails
-startup, and `entra` without `staff` fails the same way.
+startup, and `entra` or `google` without `staff` fails the same way.
 `expenses`, `staff`, `calendar` and `assistant` have no such dependency check — each starts with or
 without any other module. A disabled module
 contributes no route, no permission and no contract path, and its paths answer

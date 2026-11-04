@@ -60,6 +60,14 @@ applikasjonen.
   tilgangspass; og hva stegene for en som slutter og en sletting gjør i leietakeren.
   Ingenting av det står i `vantigo.env`; siden ligger under **Integrasjoner** i
   Administrer arbeidsområde.
+- **Google Workspace.** [Google Workspace](/nb/admin/google-workspace/) kobler Vantigo
+  til selskapets Google Workspace-organisasjon gjennom en tjenestekonto med
+  domenedekkende delegering: `google` i `MODULES` ved siden av `staff`, som den krever;
+  et Google Cloud-prosjekt med Admin SDK API, tjenestekontoens JSON-nøkkel som en eier
+  laster opp og roterer, tilgangsområdene delegert i administrasjonskonsollen,
+  administratoren som etterlignes, og den interne nettklienten. Denne versjonen leser
+  organisasjonen; kontoene, kalenderen og Gmail kommer senere. Ingenting av det står i
+  `vantigo.env`; siden ligger under **Integrasjoner** i Administrer arbeidsområde.
 
 ## Konfigurasjon
 
