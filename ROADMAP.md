@@ -2823,7 +2823,7 @@ contracts Entra fills made provider-neutral, so a second provider can fill them.
 [the reference](docs/src/content/docs/en/reference/google.md);
 [the operator's page](docs/src/content/docs/en/admin/google-workspace.md);
 [the user guide](docs/src/content/docs/en/user/google-workspace.md)): the `google`
-module, which requires `staff`, and its schema (`00112_google_baseline.sql`): one
+module, which requires `staff`, and its schema (`00114_google_baseline.sql`): one
 connection row, the credentials and the module's own trail of events. An Owner uploads
 the service account's JSON key — the private key sealed under
 `google/service-account-key`, several keys live for rotation, a key of another service

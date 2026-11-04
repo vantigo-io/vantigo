@@ -8,7 +8,7 @@ sources:
   - apps/host/frontend/src/routes/workspace/google.tsx
   - openapi/google.yaml
   - apps/server/internal/openapi/specs/google.yaml
-  - apps/server/internal/db/migrations/00112_google_baseline.sql
+  - apps/server/internal/db/migrations/00114_google_baseline.sql
 ---
 The Google Workspace module connects one installation to one Google Workspace
 organisation through a **service account with domain-wide delegation**: a JWT signed with
@@ -38,7 +38,7 @@ G12 to G16.
 
 ## The schema
 
-One migration, `00112_google_baseline.sql`, creates the `google` schema and its three
+One migration, `00114_google_baseline.sql`, creates the `google` schema and its three
 tables. No table references another schema; the user who acted is an opaque id.
 
 - **`connection`** — the installation's one connection, a single row seeded by the
