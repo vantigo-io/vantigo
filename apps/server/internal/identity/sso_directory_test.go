@@ -343,3 +343,26 @@ func TestSsoDirectory_AGoogleSignInLandsOnTheUserAnnouncedFromAPick(t *testing.T
 		t.Errorf("account.linked-from-provider = %v, want matched by the object id", got)
 	}
 }
+
+// Should a Google ID token's sub not be the Directory id the pick named
+// (U1, not yet settled in a test organisation), the announced link is still
+// fulfilled by its other key — the primary email, against the token's
+// verified email — and lands on the announced user; nobody else is linked.
+func TestSsoDirectory_AGoogleSignInWhoseSubDiffersLandsByThePrimaryEmail(t *testing.T) {
+	t.Parallel()
+	f := newFakeGoogleOIDC(t)
+	f.set("sub", "999999999999999999999")
+	h := newHarness(t, f.options()...)
+	owner, _ := h.bootstrapOwner(t)
+	id := h.seedUser(t, "kari@example.test", userPassword, identity.RoleUserID)
+	mustAnnounce(t, owner, id, map[string]any{"objectId": "104857600000000000001", "userPrincipalName": fakeGoogleEmail})
+
+	c := h.client(t)
+	assertOIDCRedirect(t, h.oidcSignIn(t, c, f), "/")
+	if s := oidcSession(t, c); s.User.ID != id {
+		t.Errorf("signed in as %+v, want the announced user", s.User)
+	}
+	if got := linkedFromProvider(t, h); len(got) != 1 || got[0] != `{"matchedBy":"principalName"}` {
+		t.Errorf("account.linked-from-provider = %v, want matched by the principal name", got)
+	}
+}
