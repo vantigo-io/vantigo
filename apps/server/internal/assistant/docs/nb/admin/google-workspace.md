@@ -239,8 +239,8 @@ konto i Google, gjennom denne modulen, slik den styrer kontoene i Microsoft Entr
    *Organization* — det samme feltet som fylles ut for eksisterende kontoer, under
    **User information** › **Employee information** › **Employee ID** i
    administrasjonskonsollen.
-2. **Den første dagen** oppheves suspenderingen, Google får et første passord, og
-   lisensene til personens grupper tildeles.
+2. **Den første dagen** oppheves suspenderingen, Google får et første passord — når
+   ingen har logget inn på kontoen ennå — og lisensene til personens grupper tildeles.
 3. **Mens de jobber**, når en endring av navnet, stillingstittelen, avdelingen,
    kostnadsstedet, telefonene, kontorstedet, lederen eller språket Google ved neste
    kjøring.
@@ -286,11 +286,20 @@ Google har ikke noe midlertidig tilgangspass. Når suspenderingen oppheves den f
 dagen, setter Vantigo et nytt passord på 16 tegn — uten bokstavene og sifrene som lett
 forveksles — som personen **må bytte** ved første innlogging. Det holdes forseglet til
 HR viser det, **én gang**, på personens Konto-fane i Ansatte, og glemmes når levetiden
-er ute. HRs **Kjør nå** setter et nytt, men bare så lenge ingen har logget inn på kontoen
-ennå: Vantigo setter aldri et passord over en konto noen bruker. Avviser organisasjonens
-passordregler det, åpnes kontoen uten et, og personens Konto-fane sier det
-(`pass_not_allowed`): tilbakestill passordet i administrasjonskonsollen, eller lemp på
-reglene for organisasjonsenheten.
+er ute. HRs **Kjør nå** setter et nytt.
+
+Vantigo setter et passord **bare så lenge ingen har logget inn på kontoen ennå** — aldri
+over en konto noen har brukt, fordi et nytt passord der ville være en vei inn i noens
+postkasse. Det gjelder også når suspenderingen som oppheves, ikke er en nyansatts: en
+konto en administrator suspenderte i administrasjonskonsollen, den gamle kontoen til en
+som kommer tilbake, eller en konto Vantigo fant og noen bekreftet. Vantigo opphever da
+suspenderingen uten passord, og personens Konto-fane sier det (`pass_not_set_used`):
+trenger personen et nytt passord, tilbakestiller en administrator det i
+administrasjonskonsollen.
+
+Avviser organisasjonens passordregler passordet, åpnes kontoen uten et, og personens
+Konto-fane sier det (`pass_not_allowed`): tilbakestill passordet i
+administrasjonskonsollen, eller lemp på reglene for organisasjonsenheten.
 
 ### Lisenser
 
@@ -376,7 +385,11 @@ til, bekreftet eller ikke: gi personen en egen konto, eller håndter deres for h
 
 En gruppe Google allerede har på adressen en gruppe i Ansatte ville fått, og som Vantigo
 ikke laget, venter på samme måte: **Bekreft** den ved siden av gruppen på fanen
-**Kontoer**. En bekreftet gruppe skrives til, men slettes aldri.
+**Kontoer**. Å bekrefte gir gruppen til Ansatte, og Vantigo **avstemmer** den ved neste
+kjøring: navnet, beskrivelsen og synligheten overskrives med dem fra Ansatte, eiere
+Ansatte ikke nevner, gjøres til medlemmer, og medlemmer gruppen i Ansatte ikke har,
+fjernes. Bekreft bare en gruppe som skal være denne gruppen i Ansatte. En bekreftet
+gruppe skrives til, men slettes aldri.
 
 ## Roter en nøkkel
 
@@ -441,6 +454,7 @@ fikk gjort, med disse kodene:
 | `external_privileged`, `privileged` | Kontoen har en administratorrolle i Google. | Håndter den for hånd, eller gi personen en annen konto. |
 | `external_enabled` | En sletting ble bedt om for en konto som ikke er suspendert. | Ingenting: suspenderingen av en som slutter, kommer først, og slettingen følger. |
 | `pass_not_allowed` | Organisasjonens passordregler avviste det første passordet. | Tilbakestill passordet i administrasjonskonsollen, eller lemp på reglene. |
+| `pass_not_set_used` | Noen har logget inn på kontoen, så det ble ikke satt noe nytt passord da suspenderingen ble opphevet. | Ingenting, om personen kan passordet sitt; ellers tilbakestill det i administrasjonskonsollen. |
 | `licence_unavailable` | Det er ingen lisens igjen av den SKU-en å tildele. | Kjøp flere, eller frigjør en; Ansatte prøver igjen. |
 | `manager_not_found` | Lederen Ansatte navngir, har ingen konto i Google. | Gi lederen typen Google Workspace. |
 | `photo_not_written` | Google avviste bildet, eller det kunne ikke leses. | Legg inn et annet bilde. |

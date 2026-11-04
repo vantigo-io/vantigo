@@ -727,7 +727,10 @@ and reads as Microsoft Entra ID's, with Google's words:
   [Accounts tab](/en/user/google-workspace/#the-accounts-tab) say otherwise. After that
   it is forgotten; **Run now (new password)** sets a new one only while nobody has
   signed in to the account yet, never over an account someone uses. Give it to the person yourself; it is
-  never mailed.
+  never mailed. When the suspension lifted is on an account someone has already used —
+  one an administrator suspended, or a returning employee's old account — no password is
+  set and the Account tab says so: if the person needs a new one, an administrator
+  resets it in Google's Admin console.
 - What Google could not do is said one sentence each, as for Entra: the account found
   in Google but not created by Vantigo and not yet confirmed (someone with
   `google:manage` confirms it on the Accounts tab), an account with an administrator

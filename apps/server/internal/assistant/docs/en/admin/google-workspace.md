@@ -227,8 +227,9 @@ person's account in Google, through this module, as it drives Microsoft Entra ID
    person's account by their **employee number**, kept as the account's external ID of
    the type *Organization* — the same field to fill in for existing accounts, under
    **User information** › **Employee information** › **Employee ID** in the Admin console.
-2. **On the first day** the suspension is lifted, Google gets a first password, and the
-   licences of the person's groups are assigned.
+2. **On the first day** the suspension is lifted, Google gets a first password — when
+   nobody has signed in to the account yet — and the licences of the person's groups are
+   assigned.
 3. **While they work**, a change to their name, job title, department, cost centre,
    phones, office location, manager or language reaches Google at the next run.
 4. **The day after they leave**, the account is suspended and the leaver's steps run.
@@ -269,11 +270,20 @@ Google has no Temporary Access Pass. When the suspension is lifted on the first 
 Vantigo sets a fresh password of 16 characters — without the letters and digits easily
 mistaken for each other — which the person **must change** at their first sign-in. It is
 kept sealed until HR shows it, **once**, on the person's Account tab in Staff, and is
-forgotten when its lifetime ends. HR's **Run now** sets a new one, but only while nobody
-has signed in to the account yet: Vantigo never sets a password over an account someone
-uses. If the organisation's password policy refuses it, the account is opened without
-one and the person's Account tab says so (`pass_not_allowed`): reset the password in
-the Admin console, or relax the policy for the organisational unit.
+forgotten when its lifetime ends. HR's **Run now** sets a new one.
+
+Vantigo sets a password **only while nobody has signed in to the account yet** — never
+over an account someone has used, because a new password there would be a way into
+someone's mailbox. That holds when the suspension it lifts is not a new joiner's: an
+account an administrator suspended in the Admin console, a returning employee's old
+account, or an account Vantigo found and someone confirmed. Vantigo then lifts the
+suspension without a password, and the person's Account tab says so
+(`pass_not_set_used`): if the person needs a new password, an administrator resets it in
+the Admin console.
+
+If the organisation's password policy refuses the password, the account is opened
+without one and the person's Account tab says so (`pass_not_allowed`): reset the
+password in the Admin console, or relax the policy for the organisational unit.
 
 ### Licences
 
@@ -354,8 +364,12 @@ to the person. An account with an administrator role in Google is never written 
 confirmed or not: give the person an account of their own, or handle theirs by hand.
 
 A group Google already holds at the address a Staff group would get, not made by
-Vantigo, waits the same way: **Confirm** it beside the group on the **Accounts** tab. A
-confirmed group is written to, but never deleted.
+Vantigo, waits the same way: **Confirm** it beside the group on the **Accounts** tab.
+Confirming hands the group to Staff, and Vantigo **reconciles** it at the next run: its
+name, description and visibility are overwritten with Staff's, owners Staff does not name
+are made members, and members Staff's group does not list are removed. Confirm only a
+group that is meant to be that Staff group. A confirmed group is written to, but never
+deleted.
 
 ## Rotate a key
 
@@ -417,6 +431,7 @@ could not do, by these codes:
 | `external_privileged`, `privileged` | The account holds an administrator role in Google. | Handle it by hand, or give the person another account. |
 | `external_enabled` | A delete was asked of an account that is not suspended. | Nothing: the leaver's suspension comes first, and the delete follows. |
 | `pass_not_allowed` | The organisation's password policy refused the first password. | Reset the password in the Admin console, or relax the policy. |
+| `pass_not_set_used` | Someone has signed in to the account, so no new password was set when its suspension was lifted. | Nothing, if the person knows their password; otherwise reset it in the Admin console. |
 | `licence_unavailable` | No licence of that SKU is left to assign. | Buy more, or free one; Staff tries again. |
 | `manager_not_found` | The manager Staff names has no account in Google. | Give the manager the Google Workspace kind. |
 | `photo_not_written` | Google refused the photo, or it could not be read. | Set another photo. |
