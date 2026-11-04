@@ -55,7 +55,7 @@ func TestTest_BeforeDelegationIsPending(t *testing.T) {
 		}
 	}
 	codes := modtest.One[[]string](t, h.Harness, `SELECT codes FROM google.events WHERE action = 'google.connection.tested' AND actor_user_id = $1`, ownerID)
-	if len(codes) != 4 || codes[0] != "pending_delegation" || codes[1] != "not_delegated" || codes[2] != "missing:"+googletest.ScopeCustomer {
+	if len(codes) != 2+len(everyScope) || codes[0] != "pending_delegation" || codes[1] != "not_delegated" || codes[2] != "missing:"+googletest.ScopeCustomer {
 		t.Errorf("the event's codes = %v", codes)
 	}
 }
@@ -80,11 +80,11 @@ func TestTest_DelegatedIsConnectedWithTheOrganisation(t *testing.T) {
 		!slices.Equal(conn.ScopesGranted, everyScope) || conn.Version != 2 || conn.LastCheckedAt == nil || !conn.LastCheckedAt.Equal(h.Now()) {
 		t.Errorf("the connection: %+v", conn)
 	}
-	// The test's own tokens served the Directory's reads: two scopes, nine
+	// The test's own tokens served the Directory's reads: six scopes, nine
 	// probes, two reads.
 	calls := h.g.Calls()
-	if len(calls) != 13 {
-		t.Errorf("%d calls, want 11 tokens and 2 reads: %+v", len(calls), calls)
+	if len(calls) != 17 {
+		t.Errorf("%d calls, want 15 tokens and 2 reads: %+v", len(calls), calls)
 	}
 }
 
@@ -94,12 +94,12 @@ func TestTest_SomeMissingIsConnectedWithTheMissingAndUnexpectedListed(t *testing
 	o, ownerID := configured(t, h)
 	h.g.Delegate(saClientID, googletest.ScopeCustomer, "https://mail.google.com/", "https://www.googleapis.com/auth/drive")
 	result := testConnection(t, o)
-	if result.Status != gen.GoogleConnectionTestStatusConnected || !slices.Equal(result.Missing, []string{googletest.ScopeDomains}) ||
+	if result.Status != gen.GoogleConnectionTestStatusConnected || !slices.Equal(result.Missing, everyScope[1:]) ||
 		!slices.Equal(result.Unexpected, []string{"https://mail.google.com/", "https://www.googleapis.com/auth/drive"}) {
 		t.Errorf("the test: %+v", result)
 	}
 	conn := getConnection(t, o)
-	if !slices.Equal(conn.ScopesMissing, []string{googletest.ScopeDomains}) || len(conn.ScopesUnexpected) != 2 {
+	if !slices.Equal(conn.ScopesMissing, everyScope[1:]) || len(conn.ScopesUnexpected) != 2 {
 		t.Errorf("the connection: %+v", conn)
 	}
 	codes := modtest.One[[]string](t, h.Harness, `SELECT codes FROM google.events WHERE action = 'google.connection.tested' AND actor_user_id = $1`, ownerID)
@@ -215,7 +215,7 @@ func TestTest_TheProbesTokensAreNotKept(t *testing.T) {
 		t.Fatalf("the test: %+v", result)
 	}
 	sealed := modtest.One[[]byte](t, h.Harness, `SELECT sealed FROM google.credentials WHERE kind = 'service_account_key'`)
-	if cached := google.CachedScopes(sealed); !slices.Equal(cached, everyScope) {
+	if cached := google.CachedScopes(sealed); !slices.Equal(cached, slices.Sorted(slices.Values(everyScope))) {
 		t.Errorf("the tokens kept: %v, want the needed scopes' alone", cached)
 	}
 }

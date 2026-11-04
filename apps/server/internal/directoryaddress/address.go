@@ -202,6 +202,22 @@ func TemporaryPassword() (string, error) {
 	return randomPassword(passwordLength, passwordAlphabet, passwordClasses)
 }
 
+// The password a person is handed (Google Workspace design G17): 16
+// characters with no two that are easily mistaken for each other (no 0 or O,
+// 1, l or I), one of each of its three classes at least.
+const (
+	readableLength   = 16
+	readableAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+)
+
+var readableClasses = []string{"ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnopqrstuvwxyz", "23456789"}
+
+// ReadablePassword is a fresh random password a person types once, from
+// crypto/rand.
+func ReadablePassword() (string, error) {
+	return randomPassword(readableLength, readableAlphabet, readableClasses)
+}
+
 // randomPassword is length characters of alphabet holding one of each class.
 func randomPassword(length int, alphabet string, classes []string) (string, error) {
 	limit := big.NewInt(int64(len(alphabet)))

@@ -8,20 +8,27 @@
 // connection: Vantigo asks Google's token endpoint for a domain-wide
 // delegation token per scope it needs, and per scope it never uses, then
 // reads the customer and its verified domains. google:manage reads the
-// connection and the events. Delivery A fills no slot: the accounts
-// (contracts.IdentityProvisioner), the person's connection, the calendar and
-// Gmail come in the deliveries after it, each through tokenSource, the one
-// seam every call to Google takes its token from. MODULES refuses google
-// without staff, whose accounts worker will be the provisioner's caller.
-// Nothing here imports another module — depguard enforces it, tests
-// included — and no SQL of this module crosses a schema.
+// connection and the events, and sets the account rules. Delivery B
+// (G17–G22, docs/superpowers/plans/2026-11-03-google-accounts.md) fills
+// contracts.IdentityProvisioner under the key google: Staff's accounts
+// worker prepares, activates, updates, suspends and deletes a person's
+// Google account, keeps Staff's groups as Google groups with their
+// licences, and pushes the photo; the module runs no worker of its own. The
+// person's connection, the calendar and Gmail come in the deliveries after
+// it. Every call to Google takes its token from tokenSource. MODULES refuses
+// google without staff. Nothing here imports another module — depguard
+// enforces it, tests included — and no SQL of this module crosses a schema.
 //
 // module.go is the module and its permission, server.go the operations'
 // receiver, errors.go the refusals, client.go the guarded client and the
 // hosts it may reach, token.go the delegated tokens and their cache,
 // credentials.go the keys and the web client's secret, connection.go the
 // connection's read and writes, test.go Test connection, events.go the
-// trail, and googletest the fake Google its tests run against.
+// trail; provisioner.go the provisioner and its status, directory.go the
+// user as the Directory has it, lifecycle_*.go the account's lifecycle,
+// licences.go the licences, groups.go and groups_traits.go the groups,
+// photo.go the photo, accounts.go the Accounts tab's operations; and
+// googletest the fake Google its tests run against.
 package google
 
 import (
@@ -65,16 +72,23 @@ var limits = map[string]ratelimit.Policy{
 	"deleteGoogleConnectionCredentialsById": ownerLimit,
 	"putGoogleConnectionOauthClient":        ownerLimit,
 	"postGoogleConnectionTest":              ownerLimit,
+	"getGoogleConnectionSkus":               skusLimit,
 }
 
+// skusLimit is GET /connection/skus's policy, a bucket of its own: each
+// read reaches Google once per product Vantigo knows.
+var skusLimit = ratelimit.Policy{Name: "google-skus", Limit: 30, Window: time.Minute}
+
 // Module is google as a platform module: its contract mounted under
-// /api/v1/google/ and its one permission in the composed catalog. It fills
-// no slot yet.
+// /api/v1/google/, its one permission in the composed catalog, and its
+// contracts.IdentityProvisioner (provisioner.go), which Compose and Workers
+// collect into Deps.IdentityProvisioners for Staff's accounts worker.
 func Module() module.Module {
 	return module.Module{
-		Name:        "google",
-		Permissions: permissions,
-		Mount:       mount,
+		Name:                "google",
+		Permissions:         permissions,
+		Mount:               mount,
+		IdentityProvisioner: newProvisioner,
 	}
 }
 

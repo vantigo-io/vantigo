@@ -504,6 +504,7 @@ uses.
 | `Rules.For(spec, pattern, domain, verified)` | the person's work email, lower-cased and folded, when its domain is one of `verified` and its local part is in the alphabet, tried once; else `pattern` — `given.family`, `g.family` or `given` — over the cleaned names at `domain`, at most 62 characters before a suffix, `user` when the names clean to nothing. `ErrNoDomain` when the work email cannot be used and `domain` is empty: which domain to use is the provider's choice. |
 | `Address.Attempt(n)` | the `n`-th address to try: the local part as it is, then with 2 to 99 appended when a pattern made it; none past 99, and none after the first for a work email. |
 | `TemporaryPassword()` | 32 random characters with an upper-case letter, a lower-case one, a digit and one of `!#%+-`: the password a create must carry and nobody uses. |
+| `ReadablePassword()` | 16 random characters a person types once — an upper-case letter, a lower-case one and a digit at least, and none of `0`, `O`, `1`, `l` or `I` — Google's first password, which the person changes at the first sign-in. |
 
 The package is pure — no context, no network, no database — and any module may import
 it.

@@ -18,6 +18,48 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// Defines values for GoogleAccountState.
+const (
+	Deleted  GoogleAccountState = "deleted"
+	Disabled GoogleAccountState = "disabled"
+	Enabled  GoogleAccountState = "enabled"
+)
+
+// Valid indicates whether the value is a known member of the GoogleAccountState enum.
+func (e GoogleAccountState) Valid() bool {
+	switch e {
+	case Deleted:
+		return true
+	case Disabled:
+		return true
+	case Enabled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GoogleConnectionAddressPattern.
+const (
+	GoogleConnectionAddressPatternGFamily     GoogleConnectionAddressPattern = "g.family"
+	GoogleConnectionAddressPatternGiven       GoogleConnectionAddressPattern = "given"
+	GoogleConnectionAddressPatternGivenFamily GoogleConnectionAddressPattern = "given.family"
+)
+
+// Valid indicates whether the value is a known member of the GoogleConnectionAddressPattern enum.
+func (e GoogleConnectionAddressPattern) Valid() bool {
+	switch e {
+	case GoogleConnectionAddressPatternGFamily:
+		return true
+	case GoogleConnectionAddressPatternGiven:
+		return true
+	case GoogleConnectionAddressPatternGivenFamily:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GoogleConnectionCredentialKind.
 const (
 	GoogleConnectionCredentialKindServiceAccountKey GoogleConnectionCredentialKind = "service_account_key"
@@ -30,6 +72,48 @@ func (e GoogleConnectionCredentialKind) Valid() bool {
 	case GoogleConnectionCredentialKindServiceAccountKey:
 		return true
 	case GoogleConnectionCredentialKindVantigoHosted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GoogleConnectionLeaverRemoveGroups.
+const (
+	GoogleConnectionLeaverRemoveGroupsAll     GoogleConnectionLeaverRemoveGroups = "all"
+	GoogleConnectionLeaverRemoveGroupsManaged GoogleConnectionLeaverRemoveGroups = "managed"
+	GoogleConnectionLeaverRemoveGroupsNone    GoogleConnectionLeaverRemoveGroups = "none"
+)
+
+// Valid indicates whether the value is a known member of the GoogleConnectionLeaverRemoveGroups enum.
+func (e GoogleConnectionLeaverRemoveGroups) Valid() bool {
+	switch e {
+	case GoogleConnectionLeaverRemoveGroupsAll:
+		return true
+	case GoogleConnectionLeaverRemoveGroupsManaged:
+		return true
+	case GoogleConnectionLeaverRemoveGroupsNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GoogleConnectionPassDelivery.
+const (
+	GoogleConnectionPassDeliveryBoth    GoogleConnectionPassDelivery = "both"
+	GoogleConnectionPassDeliveryHr      GoogleConnectionPassDelivery = "hr"
+	GoogleConnectionPassDeliveryManager GoogleConnectionPassDelivery = "manager"
+)
+
+// Valid indicates whether the value is a known member of the GoogleConnectionPassDelivery enum.
+func (e GoogleConnectionPassDelivery) Valid() bool {
+	switch e {
+	case GoogleConnectionPassDeliveryBoth:
+		return true
+	case GoogleConnectionPassDeliveryHr:
+		return true
+	case GoogleConnectionPassDeliveryManager:
 		return true
 	default:
 		return false
@@ -102,8 +186,113 @@ func (e GoogleCredentialKind) Valid() bool {
 	}
 }
 
+// Defines values for GoogleSettingsRequestAddressPattern.
+const (
+	GoogleSettingsRequestAddressPatternGFamily     GoogleSettingsRequestAddressPattern = "g.family"
+	GoogleSettingsRequestAddressPatternGiven       GoogleSettingsRequestAddressPattern = "given"
+	GoogleSettingsRequestAddressPatternGivenFamily GoogleSettingsRequestAddressPattern = "given.family"
+)
+
+// Valid indicates whether the value is a known member of the GoogleSettingsRequestAddressPattern enum.
+func (e GoogleSettingsRequestAddressPattern) Valid() bool {
+	switch e {
+	case GoogleSettingsRequestAddressPatternGFamily:
+		return true
+	case GoogleSettingsRequestAddressPatternGiven:
+		return true
+	case GoogleSettingsRequestAddressPatternGivenFamily:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GoogleSettingsRequestLeaverRemoveGroups.
+const (
+	GoogleSettingsRequestLeaverRemoveGroupsAll     GoogleSettingsRequestLeaverRemoveGroups = "all"
+	GoogleSettingsRequestLeaverRemoveGroupsManaged GoogleSettingsRequestLeaverRemoveGroups = "managed"
+	GoogleSettingsRequestLeaverRemoveGroupsNone    GoogleSettingsRequestLeaverRemoveGroups = "none"
+)
+
+// Valid indicates whether the value is a known member of the GoogleSettingsRequestLeaverRemoveGroups enum.
+func (e GoogleSettingsRequestLeaverRemoveGroups) Valid() bool {
+	switch e {
+	case GoogleSettingsRequestLeaverRemoveGroupsAll:
+		return true
+	case GoogleSettingsRequestLeaverRemoveGroupsManaged:
+		return true
+	case GoogleSettingsRequestLeaverRemoveGroupsNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GoogleSettingsRequestPassDelivery.
+const (
+	GoogleSettingsRequestPassDeliveryBoth    GoogleSettingsRequestPassDelivery = "both"
+	GoogleSettingsRequestPassDeliveryHr      GoogleSettingsRequestPassDelivery = "hr"
+	GoogleSettingsRequestPassDeliveryManager GoogleSettingsRequestPassDelivery = "manager"
+)
+
+// Valid indicates whether the value is a known member of the GoogleSettingsRequestPassDelivery enum.
+func (e GoogleSettingsRequestPassDelivery) Valid() bool {
+	switch e {
+	case GoogleSettingsRequestPassDeliveryBoth:
+		return true
+	case GoogleSettingsRequestPassDeliveryHr:
+		return true
+	case GoogleSettingsRequestPassDeliveryManager:
+		return true
+	default:
+		return false
+	}
+}
+
+// GoogleAccount One user the module made or found in the organisation for a person in Staff (Google Workspace design G17), as the module last recorded it — read from its own rows, nothing asked of Google. The password is never answered.
+type GoogleAccount struct {
+	// AdoptionConfirmedAt When a holder of google:manage confirmed the adoption of a user the module found rather than made. Absent on a user the module created, and on one not yet confirmed.
+	AdoptionConfirmedAt *time.Time `json:"adoptionConfirmedAt,omitempty"`
+	CreatedAt           time.Time  `json:"createdAt"`
+
+	// CreatedByUs Whether the module created the user. A user it found holding the employee number is written to only once its adoption is confirmed.
+	CreatedByUs    bool   `json:"createdByUs"`
+	EmployeeNumber string `json:"employeeNumber"`
+
+	// LastError The last refusal's code — privileged, ambiguous, address_taken, enabled. Absent when the last write succeeded.
+	LastError    *string    `json:"lastError,omitempty"`
+	LastSyncedAt *time.Time `json:"lastSyncedAt,omitempty"`
+
+	// Licences The licences the module assigned the user, each productId/skuId — the only ones it removes.
+	Licences []string `json:"licences"`
+
+	// PassWaiting Whether a password the module set waits to be revealed once, in Staff, before its lifetime ends.
+	PassWaiting bool `json:"passWaiting"`
+
+	// PrimaryEmail The user's address, as the module made or found it; never renamed.
+	PrimaryEmail string `json:"primaryEmail"`
+
+	// Reported What the module could not act on, as codes — adoption_unconfirmed, privileged, manager_not_found, licence_unavailable:<skuId>, photo_not_written, sign_out_refused, leaver_step_failed:<step>.
+	Reported []string `json:"reported"`
+
+	// State disabled (suspended), enabled, or deleted.
+	State GoogleAccountState `json:"state"`
+
+	// UserId The user's Directory id.
+	UserId string `json:"userId"`
+}
+
+// GoogleAccountState disabled (suspended), enabled, or deleted.
+type GoogleAccountState string
+
 // GoogleConnection The installation's one connection to a Google Workspace organisation (Google Workspace design G12–G16): the service account Vantigo signs in as through domain-wide delegation, the admin it impersonates, the Internal web client, and what the last connection test found. Sent whether or not anything is set, so the Connection tab can show every step before the first is done. No key and no client secret is ever answered.
 type GoogleConnection struct {
+	// AddressDomain The domain new users' addresses are made at, one of the verified domains. Absent until set; the primary domain is used then.
+	AddressDomain *string `json:"addressDomain,omitempty"`
+
+	// AddressPattern How an address is made for a person whose work email cannot be theirs — given.family, g.family or given.
+	AddressPattern GoogleConnectionAddressPattern `json:"addressPattern"`
+
 	// AdminSubject The super admin (or delegated admin) whose address the Admin SDK calls impersonate. Absent until set.
 	AdminSubject *string `json:"adminSubject,omitempty"`
 
@@ -125,14 +314,32 @@ type GoogleConnection struct {
 	// LastCheckedAt When the connection was last tested. Absent until it has been, and again after the admin to impersonate changes.
 	LastCheckedAt *time.Time `json:"lastCheckedAt,omitempty"`
 
+	// LeaverRemoveGroups Which groups a leaver is taken out of — all, managed (the groups the module made) or none.
+	LeaverRemoveGroups GoogleConnectionLeaverRemoveGroups `json:"leaverRemoveGroups"`
+
+	// LeaverRemoveLicences Whether a leaver's licences are removed when the account is suspended. Google bills a suspended user's licence.
+	LeaverRemoveLicences bool `json:"leaverRemoveLicences"`
+
+	// LeaverSignOut Whether a leaver is signed out of every session when the account is suspended.
+	LeaverSignOut bool `json:"leaverSignOut"`
+
 	// OauthClientId The Internal web client's id, ending .apps.googleusercontent.com — for the person's own Google connection and the sign-in with Google. Absent until set.
 	OauthClientId *string `json:"oauthClientId,omitempty"`
 
 	// OauthClientSecretAddedAt When the web client's secret in use was added. The secret itself is never answered; absent while none is.
 	OauthClientSecretAddedAt *time.Time `json:"oauthClientSecretAddedAt,omitempty"`
 
+	// OrgUnitPath The organisational unit new users are made in, / for the top.
+	OrgUnitPath string `json:"orgUnitPath"`
+
 	// OrganisationName The organisation's name, as the last successful test read it.
 	OrganisationName *string `json:"organisationName,omitempty"`
+
+	// PassDelivery Who is meant to hand the person their first password — hr, manager or both. HR shows it once on the person's Account tab in Staff; the setting is kept for a later release.
+	PassDelivery GoogleConnectionPassDelivery `json:"passDelivery"`
+
+	// PassLifetimeDays How many days, 1 to 30, the first password waits to be revealed before it is forgotten.
+	PassLifetimeDays int32 `json:"passLifetimeDays"`
 
 	// PrimaryDomain The organisation's primary domain, as the last successful test read it.
 	PrimaryDomain *string `json:"primaryDomain,omitempty"`
@@ -152,6 +359,9 @@ type GoogleConnection struct {
 	// ScopesUnexpected Scopes Vantigo never uses that the last test was granted anyway — a warning, never a status. Domain-wide delegation reaches every account of the organisation, so a scope nobody needs is better removed in the Admin console.
 	ScopesUnexpected []string `json:"scopesUnexpected"`
 
+	// Skus The licences the organisation holds, as the last read of them (GET /connection/skus) found them — the choices of a Staff group's licences.
+	Skus []GoogleSku `json:"skus"`
+
 	// Status unconfigured while no key is uploaded or no admin is named, or until the first test; pending_delegation when every scope Vantigo needs was refused; connected when the organisation answered; failing otherwise, with its reason.
 	Status GoogleConnectionStatus `json:"status"`
 
@@ -162,8 +372,17 @@ type GoogleConnection struct {
 	Version int32 `json:"version"`
 }
 
+// GoogleConnectionAddressPattern How an address is made for a person whose work email cannot be theirs — given.family, g.family or given.
+type GoogleConnectionAddressPattern string
+
 // GoogleConnectionCredentialKind How Vantigo obtains its tokens. service_account_key, the service account's JSON key the Owner uploads, is the only kind implemented; vantigo_hosted is reserved for a later delivery.
 type GoogleConnectionCredentialKind string
+
+// GoogleConnectionLeaverRemoveGroups Which groups a leaver is taken out of — all, managed (the groups the module made) or none.
+type GoogleConnectionLeaverRemoveGroups string
+
+// GoogleConnectionPassDelivery Who is meant to hand the person their first password — hr, manager or both. HR shows it once on the person's Account tab in Staff; the setting is kept for a later release.
+type GoogleConnectionPassDelivery string
 
 // GoogleConnectionStatus unconfigured while no key is uploaded or no admin is named, or until the first test; pending_delegation when every scope Vantigo needs was refused; connected when the organisation answered; failing otherwise, with its reason.
 type GoogleConnectionStatus string
@@ -250,7 +469,7 @@ type GoogleCustomer struct {
 
 // GoogleEvent One write the module made, to its own connection or in the organisation — the module's own append-only trail. It carries codes and Google's ids, never an address, a key, a secret or a token.
 type GoogleEvent struct {
-	// Action google.connection.changed, google.connection.tested, google.oauth_client.changed, google.credential.added, google.credential.revoked or google.credential.refused.
+	// Action google.connection.changed, google.connection.tested, google.oauth_client.changed, google.credential.added, google.credential.revoked, google.credential.refused, google.settings.changed; the accounts' google.user.prepared, google.user.activated, google.user.updated, google.user.deactivated, google.user.deleted, google.user.photo_set, google.user.photo_cleared, google.pass.issued, google.pass.revealed, google.account.adoption_confirmed; the groups' google.group.created, google.group.adopted, google.group.updated, google.group.members_set, google.group.deleted, google.group.adoption_confirmed.
 	Action string `json:"action"`
 
 	// Actor Who acted — the user's id, or the system's name.
@@ -265,6 +484,23 @@ type GoogleEvent struct {
 	SubjectId *string `json:"subjectId,omitempty"`
 }
 
+// GoogleGroup One group the module made or found in the organisation for a group in Staff (Google Workspace design G20), from its own rows.
+type GoogleGroup struct {
+	// AdoptionConfirmedAt When a holder of google:manage confirmed the adoption of a group the module found rather than made. Absent on a group the module created, and on one not yet confirmed.
+	AdoptionConfirmedAt *time.Time `json:"adoptionConfirmedAt,omitempty"`
+	CreatedAt           time.Time  `json:"createdAt"`
+	CreatedByUs         bool       `json:"createdByUs"`
+
+	// Email The group's address, which never changes once the group exists.
+	Email string `json:"email"`
+
+	// GroupId The group's Directory id.
+	GroupId string `json:"groupId"`
+
+	// StaffGroupId The Staff group's id.
+	StaffGroupId string `json:"staffGroupId"`
+}
+
 // GoogleOAuthClientRequest The Internal web client. A changed client id needs its secret; a secret alone rotates the current client's.
 type GoogleOAuthClientRequest struct {
 	// ClientId The web client's id, ending .apps.googleusercontent.com.
@@ -274,7 +510,7 @@ type GoogleOAuthClientRequest struct {
 	ClientSecret *string `json:"clientSecret,omitempty"`
 }
 
-// GoogleProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: version_mismatch (412: the connection has been written since the If-Match version), client_mismatch (422: a key for another service account while one of the current account's is live), credential_kind_unsupported (422: a credential kind this version does not implement). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// GoogleProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: version_mismatch (412: the connection has been written since the If-Match version), client_mismatch (422: a key for another service account while one of the current account's is live), credential_kind_unsupported (422: a credential kind this version does not implement), adoption_confirmed (409: the account's adoption is confirmed already, or the module created it), credential_invalid and google_unreachable (503: Google could not be asked). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type GoogleProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -285,8 +521,54 @@ type GoogleProblem struct {
 	Type     *string              `json:"type,omitempty"`
 }
 
+// GoogleSettingsRequest The account rules (Google Workspace design G17, G19). Every field is optional and one left out keeps its value.
+type GoogleSettingsRequest struct {
+	// AddressDomain One of the verified domains, or empty to use the primary domain.
+	AddressDomain        *string                                  `json:"addressDomain,omitempty"`
+	AddressPattern       *GoogleSettingsRequestAddressPattern     `json:"addressPattern,omitempty"`
+	LeaverRemoveGroups   *GoogleSettingsRequestLeaverRemoveGroups `json:"leaverRemoveGroups,omitempty"`
+	LeaverRemoveLicences *bool                                    `json:"leaverRemoveLicences,omitempty"`
+	LeaverSignOut        *bool                                    `json:"leaverSignOut,omitempty"`
+
+	// OrgUnitPath An organisational unit's path, starting with /, at most 400 characters.
+	OrgUnitPath  *string                            `json:"orgUnitPath,omitempty"`
+	PassDelivery *GoogleSettingsRequestPassDelivery `json:"passDelivery,omitempty"`
+
+	// PassLifetimeDays 1 to 30.
+	PassLifetimeDays *int32 `json:"passLifetimeDays,omitempty"`
+}
+
+// GoogleSettingsRequestAddressPattern defines model for GoogleSettingsRequest.AddressPattern.
+type GoogleSettingsRequestAddressPattern string
+
+// GoogleSettingsRequestLeaverRemoveGroups defines model for GoogleSettingsRequest.LeaverRemoveGroups.
+type GoogleSettingsRequestLeaverRemoveGroups string
+
+// GoogleSettingsRequestPassDelivery defines model for GoogleSettingsRequest.PassDelivery.
+type GoogleSettingsRequestPassDelivery string
+
+// GoogleSku One licence the organisation holds, as licenseAssignments.listForProduct answers it.
+type GoogleSku struct {
+	// Assigned How many users hold it, as the read counted them.
+	Assigned int32 `json:"assigned"`
+
+	// Name The licence's name, as Google answers it; the SKU id when it answers none.
+	Name      string `json:"name"`
+	ProductId string `json:"productId"`
+	SkuId     string `json:"skuId"`
+
+	// Value productId/skuId, the value a Staff group's licences name.
+	Value string `json:"value"`
+}
+
 // PutGoogleConnectionParams defines parameters for PutGoogleConnection.
 type PutGoogleConnectionParams struct {
+	// IfMatch The version the connection was read at, bare (3) or quoted ("3"). A version that has moved on is a 412 version_mismatch.
+	IfMatch string `json:"If-Match"`
+}
+
+// PutGoogleConnectionSettingsParams defines parameters for PutGoogleConnectionSettings.
+type PutGoogleConnectionSettingsParams struct {
 	// IfMatch The version the connection was read at, bare (3) or quoted ("3"). A version that has moved on is a 412 version_mismatch.
 	IfMatch string `json:"If-Match"`
 }
@@ -306,8 +588,17 @@ type PostGoogleConnectionCredentialsJSONRequestBody = GoogleCredentialRequest
 // PutGoogleConnectionOauthClientJSONRequestBody defines body for PutGoogleConnectionOauthClient for application/json ContentType.
 type PutGoogleConnectionOauthClientJSONRequestBody = GoogleOAuthClientRequest
 
+// PutGoogleConnectionSettingsJSONRequestBody defines body for PutGoogleConnectionSettings for application/json ContentType.
+type PutGoogleConnectionSettingsJSONRequestBody = GoogleSettingsRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetGoogleAccounts The module's accounts
+	// (GET /api/v1/google/accounts)
+	GetGoogleAccounts(w http.ResponseWriter, r *http.Request)
+	// PostGoogleAccountsByUserIdConfirm Confirm an adopted account
+	// (POST /api/v1/google/accounts/{userId}/confirm)
+	PostGoogleAccountsByUserIdConfirm(w http.ResponseWriter, r *http.Request, userId string)
 	// GetGoogleConnection Get the connection
 	// (GET /api/v1/google/connection)
 	GetGoogleConnection(w http.ResponseWriter, r *http.Request)
@@ -323,12 +614,24 @@ type ServerInterface interface {
 	// PutGoogleConnectionOauthClient Set the Internal web client
 	// (PUT /api/v1/google/connection/oauth-client)
 	PutGoogleConnectionOauthClient(w http.ResponseWriter, r *http.Request)
+	// PutGoogleConnectionSettings Set the account rules
+	// (PUT /api/v1/google/connection/settings)
+	PutGoogleConnectionSettings(w http.ResponseWriter, r *http.Request, params PutGoogleConnectionSettingsParams)
+	// GetGoogleConnectionSkus The organisation's licences
+	// (GET /api/v1/google/connection/skus)
+	GetGoogleConnectionSkus(w http.ResponseWriter, r *http.Request)
 	// PostGoogleConnectionTest Test the connection
 	// (POST /api/v1/google/connection/test)
 	PostGoogleConnectionTest(w http.ResponseWriter, r *http.Request)
 	// GetGoogleEvents The module's recent events
 	// (GET /api/v1/google/events)
 	GetGoogleEvents(w http.ResponseWriter, r *http.Request, params GetGoogleEventsParams)
+	// GetGoogleGroups The module's groups
+	// (GET /api/v1/google/groups)
+	GetGoogleGroups(w http.ResponseWriter, r *http.Request)
+	// PostGoogleGroupsByGroupIdConfirm Confirm an adopted group
+	// (POST /api/v1/google/groups/{groupId}/confirm)
+	PostGoogleGroupsByGroupIdConfirm(w http.ResponseWriter, r *http.Request, groupId string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -339,6 +642,46 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetGoogleAccounts operation middleware
+func (siw *ServerInterfaceWrapper) GetGoogleAccounts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGoogleAccounts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostGoogleAccountsByUserIdConfirm operation middleware
+func (siw *ServerInterfaceWrapper) PostGoogleAccountsByUserIdConfirm(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostGoogleAccountsByUserIdConfirm(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetGoogleConnection operation middleware
 func (siw *ServerInterfaceWrapper) GetGoogleConnection(w http.ResponseWriter, r *http.Request) {
@@ -453,6 +796,65 @@ func (siw *ServerInterfaceWrapper) PutGoogleConnectionOauthClient(w http.Respons
 	handler.ServeHTTP(w, r)
 }
 
+// PutGoogleConnectionSettings operation middleware
+func (siw *ServerInterfaceWrapper) PutGoogleConnectionSettings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutGoogleConnectionSettingsParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutGoogleConnectionSettings(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetGoogleConnectionSkus operation middleware
+func (siw *ServerInterfaceWrapper) GetGoogleConnectionSkus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGoogleConnectionSkus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostGoogleConnectionTest operation middleware
 func (siw *ServerInterfaceWrapper) PostGoogleConnectionTest(w http.ResponseWriter, r *http.Request) {
 
@@ -491,6 +893,46 @@ func (siw *ServerInterfaceWrapper) GetGoogleEvents(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetGoogleEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetGoogleGroups operation middleware
+func (siw *ServerInterfaceWrapper) GetGoogleGroups(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGoogleGroups(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostGoogleGroupsByGroupIdConfirm operation middleware
+func (siw *ServerInterfaceWrapper) PostGoogleGroupsByGroupIdConfirm(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "groupId" -------------
+	var groupId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "groupId", r.PathValue("groupId"), &groupId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "groupId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostGoogleGroupsByGroupIdConfirm(w, r, groupId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -620,15 +1062,142 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/google/accounts", wrapper.GetGoogleAccounts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/google/accounts/{userId}/confirm", wrapper.PostGoogleAccountsByUserIdConfirm)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/google/connection", wrapper.GetGoogleConnection)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/google/connection", wrapper.PutGoogleConnection)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/google/connection/credentials", wrapper.PostGoogleConnectionCredentials)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/google/connection/credentials/{id}", wrapper.DeleteGoogleConnectionCredentialsById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/google/connection/oauth-client", wrapper.PutGoogleConnectionOauthClient)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/google/connection/settings", wrapper.PutGoogleConnectionSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/google/connection/skus", wrapper.GetGoogleConnectionSkus)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/google/connection/test", wrapper.PostGoogleConnectionTest)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/google/events", wrapper.GetGoogleEvents)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/google/groups", wrapper.GetGoogleGroups)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/google/groups/{groupId}/confirm", wrapper.PostGoogleGroupsByGroupIdConfirm)
 
 	return m
+}
+
+type GetGoogleAccountsRequestObject struct {
+}
+
+type GetGoogleAccountsResponseObject interface {
+	VisitGetGoogleAccountsResponse(w http.ResponseWriter) error
+}
+
+type GetGoogleAccounts200JSONResponse []GoogleAccount
+
+func (response GetGoogleAccounts200JSONResponse) VisitGetGoogleAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGoogleAccounts401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetGoogleAccounts401JSONResponse) VisitGetGoogleAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGoogleAccounts403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetGoogleAccounts403JSONResponse) VisitGetGoogleAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleAccountsByUserIdConfirmRequestObject struct {
+	UserId string `json:"userId"`
+}
+
+type PostGoogleAccountsByUserIdConfirmResponseObject interface {
+	VisitPostGoogleAccountsByUserIdConfirmResponse(w http.ResponseWriter) error
+}
+
+type PostGoogleAccountsByUserIdConfirm200JSONResponse GoogleAccount
+
+func (response PostGoogleAccountsByUserIdConfirm200JSONResponse) VisitPostGoogleAccountsByUserIdConfirmResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleAccountsByUserIdConfirm401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostGoogleAccountsByUserIdConfirm401JSONResponse) VisitPostGoogleAccountsByUserIdConfirmResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleAccountsByUserIdConfirm403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostGoogleAccountsByUserIdConfirm403JSONResponse) VisitPostGoogleAccountsByUserIdConfirmResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleAccountsByUserIdConfirm404Response struct {
+}
+
+func (response PostGoogleAccountsByUserIdConfirm404Response) VisitPostGoogleAccountsByUserIdConfirmResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostGoogleAccountsByUserIdConfirm409ApplicationProblemPlusJSONResponse GoogleProblem
+
+func (response PostGoogleAccountsByUserIdConfirm409ApplicationProblemPlusJSONResponse) VisitPostGoogleAccountsByUserIdConfirmResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetGoogleConnectionRequestObject struct {
@@ -1069,6 +1638,172 @@ func (response PutGoogleConnectionOauthClient429JSONResponse) VisitPutGoogleConn
 	return err
 }
 
+type PutGoogleConnectionSettingsRequestObject struct {
+	Params PutGoogleConnectionSettingsParams
+	Body   *PutGoogleConnectionSettingsJSONRequestBody
+}
+
+type PutGoogleConnectionSettingsResponseObject interface {
+	VisitPutGoogleConnectionSettingsResponse(w http.ResponseWriter) error
+}
+
+type PutGoogleConnectionSettings200JSONResponse GoogleConnection
+
+func (response PutGoogleConnectionSettings200JSONResponse) VisitPutGoogleConnectionSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutGoogleConnectionSettings400ApplicationProblemPlusJSONResponse GoogleProblem
+
+func (response PutGoogleConnectionSettings400ApplicationProblemPlusJSONResponse) VisitPutGoogleConnectionSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutGoogleConnectionSettings401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutGoogleConnectionSettings401JSONResponse) VisitPutGoogleConnectionSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutGoogleConnectionSettings403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutGoogleConnectionSettings403JSONResponse) VisitPutGoogleConnectionSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutGoogleConnectionSettings412ApplicationProblemPlusJSONResponse GoogleProblem
+
+func (response PutGoogleConnectionSettings412ApplicationProblemPlusJSONResponse) VisitPutGoogleConnectionSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGoogleConnectionSkusRequestObject struct {
+}
+
+type GetGoogleConnectionSkusResponseObject interface {
+	VisitGetGoogleConnectionSkusResponse(w http.ResponseWriter) error
+}
+
+type GetGoogleConnectionSkus200JSONResponse []GoogleSku
+
+func (response GetGoogleConnectionSkus200JSONResponse) VisitGetGoogleConnectionSkusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGoogleConnectionSkus401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetGoogleConnectionSkus401JSONResponse) VisitGetGoogleConnectionSkusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGoogleConnectionSkus403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetGoogleConnectionSkus403JSONResponse) VisitGetGoogleConnectionSkusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGoogleConnectionSkus429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type GetGoogleConnectionSkus429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers GetGoogleConnectionSkus429ResponseHeaders
+}
+
+func (response GetGoogleConnectionSkus429JSONResponse) VisitGetGoogleConnectionSkusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGoogleConnectionSkus503ApplicationProblemPlusJSONResponse GoogleProblem
+
+func (response GetGoogleConnectionSkus503ApplicationProblemPlusJSONResponse) VisitGetGoogleConnectionSkusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostGoogleConnectionTestRequestObject struct {
 }
 
@@ -1206,8 +1941,121 @@ func (response GetGoogleEvents403JSONResponse) VisitGetGoogleEventsResponse(w ht
 	return err
 }
 
+type GetGoogleGroupsRequestObject struct {
+}
+
+type GetGoogleGroupsResponseObject interface {
+	VisitGetGoogleGroupsResponse(w http.ResponseWriter) error
+}
+
+type GetGoogleGroups200JSONResponse []GoogleGroup
+
+func (response GetGoogleGroups200JSONResponse) VisitGetGoogleGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGoogleGroups401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetGoogleGroups401JSONResponse) VisitGetGoogleGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGoogleGroups403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetGoogleGroups403JSONResponse) VisitGetGoogleGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleGroupsByGroupIdConfirmRequestObject struct {
+	GroupId string `json:"groupId"`
+}
+
+type PostGoogleGroupsByGroupIdConfirmResponseObject interface {
+	VisitPostGoogleGroupsByGroupIdConfirmResponse(w http.ResponseWriter) error
+}
+
+type PostGoogleGroupsByGroupIdConfirm200JSONResponse GoogleGroup
+
+func (response PostGoogleGroupsByGroupIdConfirm200JSONResponse) VisitPostGoogleGroupsByGroupIdConfirmResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleGroupsByGroupIdConfirm401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostGoogleGroupsByGroupIdConfirm401JSONResponse) VisitPostGoogleGroupsByGroupIdConfirmResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleGroupsByGroupIdConfirm403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostGoogleGroupsByGroupIdConfirm403JSONResponse) VisitPostGoogleGroupsByGroupIdConfirmResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostGoogleGroupsByGroupIdConfirm404Response struct {
+}
+
+func (response PostGoogleGroupsByGroupIdConfirm404Response) VisitPostGoogleGroupsByGroupIdConfirmResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// GetGoogleAccounts The module's accounts
+	// (GET /api/v1/google/accounts)
+	GetGoogleAccounts(ctx context.Context, request GetGoogleAccountsRequestObject) (GetGoogleAccountsResponseObject, error)
+	// PostGoogleAccountsByUserIdConfirm Confirm an adopted account
+	// (POST /api/v1/google/accounts/{userId}/confirm)
+	PostGoogleAccountsByUserIdConfirm(ctx context.Context, request PostGoogleAccountsByUserIdConfirmRequestObject) (PostGoogleAccountsByUserIdConfirmResponseObject, error)
 	// GetGoogleConnection Get the connection
 	// (GET /api/v1/google/connection)
 	GetGoogleConnection(ctx context.Context, request GetGoogleConnectionRequestObject) (GetGoogleConnectionResponseObject, error)
@@ -1223,12 +2071,24 @@ type StrictServerInterface interface {
 	// PutGoogleConnectionOauthClient Set the Internal web client
 	// (PUT /api/v1/google/connection/oauth-client)
 	PutGoogleConnectionOauthClient(ctx context.Context, request PutGoogleConnectionOauthClientRequestObject) (PutGoogleConnectionOauthClientResponseObject, error)
+	// PutGoogleConnectionSettings Set the account rules
+	// (PUT /api/v1/google/connection/settings)
+	PutGoogleConnectionSettings(ctx context.Context, request PutGoogleConnectionSettingsRequestObject) (PutGoogleConnectionSettingsResponseObject, error)
+	// GetGoogleConnectionSkus The organisation's licences
+	// (GET /api/v1/google/connection/skus)
+	GetGoogleConnectionSkus(ctx context.Context, request GetGoogleConnectionSkusRequestObject) (GetGoogleConnectionSkusResponseObject, error)
 	// PostGoogleConnectionTest Test the connection
 	// (POST /api/v1/google/connection/test)
 	PostGoogleConnectionTest(ctx context.Context, request PostGoogleConnectionTestRequestObject) (PostGoogleConnectionTestResponseObject, error)
 	// GetGoogleEvents The module's recent events
 	// (GET /api/v1/google/events)
 	GetGoogleEvents(ctx context.Context, request GetGoogleEventsRequestObject) (GetGoogleEventsResponseObject, error)
+	// GetGoogleGroups The module's groups
+	// (GET /api/v1/google/groups)
+	GetGoogleGroups(ctx context.Context, request GetGoogleGroupsRequestObject) (GetGoogleGroupsResponseObject, error)
+	// PostGoogleGroupsByGroupIdConfirm Confirm an adopted group
+	// (POST /api/v1/google/groups/{groupId}/confirm)
+	PostGoogleGroupsByGroupIdConfirm(ctx context.Context, request PostGoogleGroupsByGroupIdConfirmRequestObject) (PostGoogleGroupsByGroupIdConfirmResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1268,6 +2128,56 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetGoogleAccounts operation middleware
+func (sh *strictHandler) GetGoogleAccounts(w http.ResponseWriter, r *http.Request) {
+	var request GetGoogleAccountsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGoogleAccounts(ctx, request.(GetGoogleAccountsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGoogleAccounts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGoogleAccountsResponseObject); ok {
+		if err := validResponse.VisitGetGoogleAccountsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostGoogleAccountsByUserIdConfirm operation middleware
+func (sh *strictHandler) PostGoogleAccountsByUserIdConfirm(w http.ResponseWriter, r *http.Request, userId string) {
+	var request PostGoogleAccountsByUserIdConfirmRequestObject
+
+	request.UserId = userId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostGoogleAccountsByUserIdConfirm(ctx, request.(PostGoogleAccountsByUserIdConfirmRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostGoogleAccountsByUserIdConfirm")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostGoogleAccountsByUserIdConfirmResponseObject); ok {
+		if err := validResponse.VisitPostGoogleAccountsByUserIdConfirmResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetGoogleConnection operation middleware
@@ -1415,6 +2325,63 @@ func (sh *strictHandler) PutGoogleConnectionOauthClient(w http.ResponseWriter, r
 	}
 }
 
+// PutGoogleConnectionSettings operation middleware
+func (sh *strictHandler) PutGoogleConnectionSettings(w http.ResponseWriter, r *http.Request, params PutGoogleConnectionSettingsParams) {
+	var request PutGoogleConnectionSettingsRequestObject
+
+	request.Params = params
+
+	var body PutGoogleConnectionSettingsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutGoogleConnectionSettings(ctx, request.(PutGoogleConnectionSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutGoogleConnectionSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutGoogleConnectionSettingsResponseObject); ok {
+		if err := validResponse.VisitPutGoogleConnectionSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGoogleConnectionSkus operation middleware
+func (sh *strictHandler) GetGoogleConnectionSkus(w http.ResponseWriter, r *http.Request) {
+	var request GetGoogleConnectionSkusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGoogleConnectionSkus(ctx, request.(GetGoogleConnectionSkusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGoogleConnectionSkus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGoogleConnectionSkusResponseObject); ok {
+		if err := validResponse.VisitGetGoogleConnectionSkusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostGoogleConnectionTest operation middleware
 func (sh *strictHandler) PostGoogleConnectionTest(w http.ResponseWriter, r *http.Request) {
 	var request PostGoogleConnectionTestRequestObject
@@ -1458,6 +2425,56 @@ func (sh *strictHandler) GetGoogleEvents(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetGoogleEventsResponseObject); ok {
 		if err := validResponse.VisitGetGoogleEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGoogleGroups operation middleware
+func (sh *strictHandler) GetGoogleGroups(w http.ResponseWriter, r *http.Request) {
+	var request GetGoogleGroupsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGoogleGroups(ctx, request.(GetGoogleGroupsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGoogleGroups")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGoogleGroupsResponseObject); ok {
+		if err := validResponse.VisitGetGoogleGroupsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostGoogleGroupsByGroupIdConfirm operation middleware
+func (sh *strictHandler) PostGoogleGroupsByGroupIdConfirm(w http.ResponseWriter, r *http.Request, groupId string) {
+	var request PostGoogleGroupsByGroupIdConfirmRequestObject
+
+	request.GroupId = groupId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostGoogleGroupsByGroupIdConfirm(ctx, request.(PostGoogleGroupsByGroupIdConfirmRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostGoogleGroupsByGroupIdConfirm")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostGoogleGroupsByGroupIdConfirmResponseObject); ok {
+		if err := validResponse.VisitPostGoogleGroupsByGroupIdConfirmResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

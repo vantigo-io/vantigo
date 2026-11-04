@@ -1,8 +1,76 @@
 components:
     schemas:
+        GoogleAccount:
+            description: 'One user the module made or found in the organisation for a person in Staff (Google Workspace design G17), as the module last recorded it — read from its own rows, nothing asked of Google. The password is never answered.'
+            properties:
+                adoptionConfirmedAt:
+                    description: When a holder of google:manage confirmed the adoption of a user the module found rather than made. Absent on a user the module created, and on one not yet confirmed.
+                    format: date-time
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                createdByUs:
+                    description: Whether the module created the user. A user it found holding the employee number is written to only once its adoption is confirmed.
+                    type: boolean
+                employeeNumber:
+                    type: string
+                lastError:
+                    description: The last refusal's code — privileged, ambiguous, address_taken, enabled. Absent when the last write succeeded.
+                    type: string
+                lastSyncedAt:
+                    format: date-time
+                    type: string
+                licences:
+                    description: The licences the module assigned the user, each productId/skuId — the only ones it removes.
+                    items:
+                        type: string
+                    type: array
+                passWaiting:
+                    description: Whether a password the module set waits to be revealed once, in Staff, before its lifetime ends.
+                    type: boolean
+                primaryEmail:
+                    description: The user's address, as the module made or found it; never renamed.
+                    type: string
+                reported:
+                    description: What the module could not act on, as codes — adoption_unconfirmed, privileged, manager_not_found, licence_unavailable:<skuId>, photo_not_written, sign_out_refused, leaver_step_failed:<step>.
+                    items:
+                        type: string
+                    type: array
+                state:
+                    description: disabled (suspended), enabled, or deleted.
+                    enum:
+                        - disabled
+                        - enabled
+                        - deleted
+                    type: string
+                userId:
+                    description: The user's Directory id.
+                    type: string
+            required:
+                - userId
+                - employeeNumber
+                - primaryEmail
+                - state
+                - createdByUs
+                - licences
+                - reported
+                - passWaiting
+                - createdAt
+            type: object
         GoogleConnection:
             description: 'The installation''s one connection to a Google Workspace organisation (Google Workspace design G12–G16): the service account Vantigo signs in as through domain-wide delegation, the admin it impersonates, the Internal web client, and what the last connection test found. Sent whether or not anything is set, so the Connection tab can show every step before the first is done. No key and no client secret is ever answered.'
             properties:
+                addressDomain:
+                    description: The domain new users' addresses are made at, one of the verified domains. Absent until set; the primary domain is used then.
+                    type: string
+                addressPattern:
+                    description: How an address is made for a person whose work email cannot be theirs — given.family, g.family or given.
+                    enum:
+                        - given.family
+                        - g.family
+                        - given
+                    type: string
                 adminSubject:
                     description: The super admin (or delegated admin) whose address the Admin SDK calls impersonate. Absent until set.
                     type: string
@@ -32,6 +100,19 @@ components:
                     description: When the connection was last tested. Absent until it has been, and again after the admin to impersonate changes.
                     format: date-time
                     type: string
+                leaverRemoveGroups:
+                    description: Which groups a leaver is taken out of — all, managed (the groups the module made) or none.
+                    enum:
+                        - all
+                        - managed
+                        - none
+                    type: string
+                leaverRemoveLicences:
+                    description: Whether a leaver's licences are removed when the account is suspended. Google bills a suspended user's licence.
+                    type: boolean
+                leaverSignOut:
+                    description: Whether a leaver is signed out of every session when the account is suspended.
+                    type: boolean
                 oauthClientId:
                     description: The Internal web client's id, ending .apps.googleusercontent.com — for the person's own Google connection and the sign-in with Google. Absent until set.
                     type: string
@@ -42,6 +123,20 @@ components:
                 organisationName:
                     description: The organisation's name, as the last successful test read it.
                     type: string
+                orgUnitPath:
+                    description: The organisational unit new users are made in, / for the top.
+                    type: string
+                passDelivery:
+                    description: Who is meant to hand the person their first password — hr, manager or both. HR shows it once on the person's Account tab in Staff; the setting is kept for a later release.
+                    enum:
+                        - hr
+                        - manager
+                        - both
+                    type: string
+                passLifetimeDays:
+                    description: How many days, 1 to 30, the first password waits to be revealed before it is forgotten.
+                    format: int32
+                    type: integer
                 primaryDomain:
                     description: The organisation's primary domain, as the last successful test read it.
                     type: string
@@ -64,6 +159,11 @@ components:
                     description: The scopes to paste into the Admin console's domain-wide delegation, in full, in the order Vantigo needs them. A function of the features turned on.
                     items:
                         type: string
+                    type: array
+                skus:
+                    description: The licences the organisation holds, as the last read of them (GET /connection/skus) found them — the choices of a Staff group's licences.
+                    items:
+                        $ref: '#/components/schemas/GoogleSku'
                     type: array
                 scopesUnexpected:
                     description: Scopes Vantigo never uses that the last test was granted anyway — a warning, never a status. Domain-wide delegation reaches every account of the organisation, so a scope nobody needs is better removed in the Admin console.
@@ -96,6 +196,14 @@ components:
                 - scopesUnexpected
                 - redirectUris
                 - version
+                - addressPattern
+                - orgUnitPath
+                - passLifetimeDays
+                - passDelivery
+                - leaverRemoveLicences
+                - leaverRemoveGroups
+                - leaverSignOut
+                - skus
             type: object
         GoogleConnectionRequest:
             description: The connection's settings. Every field is optional and one left out keeps its value.
@@ -221,7 +329,7 @@ components:
             description: One write the module made, to its own connection or in the organisation — the module's own append-only trail. It carries codes and Google's ids, never an address, a key, a secret or a token.
             properties:
                 action:
-                    description: google.connection.changed, google.connection.tested, google.oauth_client.changed, google.credential.added, google.credential.revoked or google.credential.refused.
+                    description: google.connection.changed, google.connection.tested, google.oauth_client.changed, google.credential.added, google.credential.revoked, google.credential.refused, google.settings.changed; the accounts' google.user.prepared, google.user.activated, google.user.updated, google.user.deactivated, google.user.deleted, google.user.photo_set, google.user.photo_cleared, google.pass.issued, google.pass.revealed, google.account.adoption_confirmed; the groups' google.group.created, google.group.adopted, google.group.updated, google.group.members_set, google.group.deleted, google.group.adoption_confirmed.
                     type: string
                 actor:
                     description: Who acted — the user's id, or the system's name.
@@ -247,6 +355,34 @@ components:
                 - action
                 - codes
             type: object
+        GoogleGroup:
+            description: One group the module made or found in the organisation for a group in Staff (Google Workspace design G20), from its own rows.
+            properties:
+                adoptionConfirmedAt:
+                    description: When a holder of google:manage confirmed the adoption of a group the module found rather than made. Absent on a group the module created, and on one not yet confirmed.
+                    format: date-time
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                createdByUs:
+                    type: boolean
+                email:
+                    description: The group's address, which never changes once the group exists.
+                    type: string
+                groupId:
+                    description: The group's Directory id.
+                    type: string
+                staffGroupId:
+                    description: The Staff group's id.
+                    type: string
+            required:
+                - groupId
+                - staffGroupId
+                - email
+                - createdByUs
+                - createdAt
+            type: object
         GoogleOAuthClientRequest:
             description: The Internal web client. A changed client id needs its secret; a secret alone rotates the current client's.
             properties:
@@ -260,7 +396,7 @@ components:
                 - clientId
             type: object
         GoogleProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: version_mismatch (412: the connection has been written since the If-Match version), client_mismatch (422: a key for another service account while one of the current account''s is live), credential_kind_unsupported (422: a credential kind this version does not implement). errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither.'
+            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: version_mismatch (412: the connection has been written since the If-Match version), client_mismatch (422: a key for another service account while one of the current account''s is live), credential_kind_unsupported (422: a credential kind this version does not implement), adoption_confirmed (409: the account''s adoption is confirmed already, or the module created it), credential_invalid and google_unreachable (503: Google could not be asked). errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither.'
             properties:
                 code:
                     nullable: true
@@ -288,11 +424,141 @@ components:
                     nullable: true
                     type: string
             type: object
+        GoogleSettingsRequest:
+            description: The account rules (Google Workspace design G17, G19). Every field is optional and one left out keeps its value.
+            properties:
+                addressDomain:
+                    description: One of the verified domains, or empty to use the primary domain.
+                    type: string
+                addressPattern:
+                    enum:
+                        - given.family
+                        - g.family
+                        - given
+                    type: string
+                leaverRemoveGroups:
+                    enum:
+                        - all
+                        - managed
+                        - none
+                    type: string
+                leaverRemoveLicences:
+                    type: boolean
+                leaverSignOut:
+                    type: boolean
+                orgUnitPath:
+                    description: An organisational unit's path, starting with /, at most 400 characters.
+                    type: string
+                passDelivery:
+                    enum:
+                        - hr
+                        - manager
+                        - both
+                    type: string
+                passLifetimeDays:
+                    description: 1 to 30.
+                    format: int32
+                    type: integer
+            type: object
+        GoogleSku:
+            description: One licence the organisation holds, as licenseAssignments.listForProduct answers it.
+            properties:
+                assigned:
+                    description: How many users hold it, as the read counted them.
+                    format: int32
+                    type: integer
+                name:
+                    description: The licence's name, as Google answers it; the SKU id when it answers none.
+                    type: string
+                productId:
+                    type: string
+                skuId:
+                    type: string
+                value:
+                    description: productId/skuId, the value a Staff group's licences name.
+                    type: string
+            required:
+                - productId
+                - skuId
+                - value
+                - name
+                - assigned
+            type: object
 info:
     title: Vantigo Google Workspace API
     version: "1"
 openapi: 3.0.3
 paths:
+    /api/v1/google/accounts:
+        get:
+            description: Every user the module keeps in the organisation, by address, with its state — the Accounts tab's table. From the module's own rows; nothing asked of Google. The password is never answered.
+            operationId: getGoogleAccounts
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/GoogleAccount'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: The module's accounts
+            tags:
+                - Google
+            x-vantigo-access: permission:google:manage
+    /api/v1/google/accounts/{userId}/confirm:
+        post:
+            description: 'Confirms the adoption of a user the module found holding a person''s employee number rather than created. Until it is confirmed the module writes nothing to that user — no profile, no password, no suspension, no delete — and reports adoption_unconfirmed; from then on it manages the user as one it created, and Staff''s next cycle brings it to the person. Audited google.account.adoption_confirmed. 404 for an account the module does not keep, 409 adoption_confirmed for one confirmed already or one the module created.'
+            operationId: postGoogleAccountsByUserIdConfirm
+            parameters:
+                - in: path
+                  name: userId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleAccount'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the module keeps no account by that id. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleProblem'
+                    description: Conflict — adoption_confirmed, the adoption is confirmed already, or the module created the user.
+            summary: Confirm an adopted account
+            tags:
+                - Google
+            x-vantigo-access: permission:google:manage
     /api/v1/google/connection:
         get:
             description: The connection, its credentials without their values, the scopes to delegate and what the last test found — the Status tab and every step of the Connection tab. Reads the module's own rows only; nothing reaches Google.
@@ -537,6 +803,103 @@ paths:
             tags:
                 - Google
             x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/google/connection/settings:
+        put:
+            description: The account rules — the address domain and pattern, the organisational unit, the first password's lifetime and who hands it over, and the leaver's steps — under If-Match on the connection's version. Every field is optional and one left out keeps its value; each refusal is a field error. Audited google.settings.changed with the names of what changed.
+            operationId: putGoogleConnectionSettings
+            parameters:
+                - description: The version the connection was read at, bare (3) or quoted ("3"). A version that has moved on is a 412 version_mismatch.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GoogleSettingsRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleConnection'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleProblem'
+                    description: Bad Request — field errors on the body, or an If-Match that is not a version.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "412":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleProblem'
+                    description: Precondition Failed — version_mismatch, the connection has been written since the If-Match version.
+            summary: Set the account rules
+            tags:
+                - Google
+            x-vantigo-access: permission:google:manage
+    /api/v1/google/connection/skus:
+        get:
+            description: The licences the organisation holds — for each Google Workspace product Vantigo knows, the SKUs licenseAssignments.listForProduct finds assigned — read from Google as the admin to impersonate and cached on the connection, the choices for a Staff group's licences. A product Google refuses counts as none held. 503 when Google cannot be asked. Rate limited to 30 per client address a minute, a bucket of its own.
+            operationId: getGoogleConnectionSkus
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/GoogleSku'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — google-skus's limit for this client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleProblem'
+                    description: Service Unavailable — credential_invalid, no key fetched a token or the scope is not delegated; or google_unreachable, Google did not answer.
+            summary: The organisation's licences
+            tags:
+                - Google
+            x-vantigo-access: permission:google:manage
     /api/v1/google/connection/test:
         post:
             description: 'Tests the connection: a token for each scope Vantigo needs and for each scope it never uses, asked as the admin to impersonate with the newest live key, then the organisation and its verified domains read — and writes what it found to the connection. pending_delegation when every needed scope was refused, connected with the missing ones listed when some were, failing with credential_invalid, admin_refused or google_unreachable. 200 with the result whatever it found. The Owner''s. Audited google.connection.tested with the status and the scopes'' codes. Rate limited with every Owner operation of the module.'
@@ -613,6 +976,70 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
             summary: The module's recent events
+            tags:
+                - Google
+            x-vantigo-access: permission:google:manage
+    /api/v1/google/groups:
+        get:
+            description: Every group the module keeps in the organisation for Staff's groups, by address — the Accounts tab's groups. From the module's own rows; nothing asked of Google.
+            operationId: getGoogleGroups
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/GoogleGroup'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: The module's groups
+            tags:
+                - Google
+            x-vantigo-access: permission:google:manage
+    /api/v1/google/groups/{groupId}/confirm:
+        post:
+            description: 'Confirms the adoption of a group the module found holding a Staff group''s address rather than made. Until it is confirmed the module writes nothing to it — no name, no settings, no member — and Staff''s sync waits with group_unconfirmed; from then on it writes to it as to one it made, though it never deletes it. Idempotent: a group confirmed already, or one the module made, is answered as it is. Audited google.group.adoption_confirmed, once. 404 for a group the module does not keep.'
+            operationId: postGoogleGroupsByGroupIdConfirm
+            parameters:
+                - in: path
+                  name: groupId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GoogleGroup'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the module keeps no group by that id. The body is empty.
+            summary: Confirm an adopted group
             tags:
                 - Google
             x-vantigo-access: permission:google:manage

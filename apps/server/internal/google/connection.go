@@ -109,6 +109,21 @@ func connectionBody(conn store.GoogleConnection, creds []store.GoogleCredential,
 		LastCheckedAt:    conn.LastCheckedAt,
 		RedirectUris:     redirectURIs(cfg),
 		Version:          conn.Version,
+
+		AddressDomain:        conn.AddressDomain,
+		AddressPattern:       gen.GoogleConnectionAddressPattern(conn.AddressPattern),
+		OrgUnitPath:          conn.OrgUnitPath,
+		PassLifetimeDays:     conn.PassLifetimeDays,
+		PassDelivery:         gen.GoogleConnectionPassDelivery(conn.PassDelivery),
+		LeaverRemoveLicences: conn.LeaverRemoveLicences,
+		LeaverRemoveGroups:   gen.GoogleConnectionLeaverRemoveGroups(conn.LeaverRemoveGroups),
+		LeaverSignOut:        conn.LeaverSignOut,
+		Skus:                 []gen.GoogleSku{},
+	}
+	if skus, err := cachedSkus(conn); err == nil {
+		for _, c := range skus {
+			body.Skus = append(body.Skus, skuBody(c))
+		}
 	}
 	if reason != "" {
 		body.StatusReason = &reason

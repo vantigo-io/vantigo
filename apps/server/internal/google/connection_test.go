@@ -126,7 +126,7 @@ func TestConnection_AChangedAdminForgetsTheTest(t *testing.T) {
 		t.Fatalf("the test: %+v", result)
 	}
 	before := getConnection(t, o)
-	if before.Status != gen.GoogleConnectionStatusConnected || len(before.ScopesGranted) != 2 {
+	if before.Status != gen.GoogleConnectionStatusConnected || len(before.ScopesGranted) != len(everyScope) {
 		t.Fatalf("connected: %+v", before)
 	}
 	after := setAdmin(t, o, "other.admin@nordlys.no")

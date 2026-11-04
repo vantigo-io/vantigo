@@ -1,6 +1,7 @@
 package google
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -41,6 +42,12 @@ const (
 	tokenURL = "https://oauth2.googleapis.com/token"
 	// directoryBase is the Admin SDK Directory API's v1 base.
 	directoryBase = "https://admin.googleapis.com/admin/directory/v1"
+	// licensingBase is the Enterprise License Manager API's v1 base.
+	licensingBase = "https://licensing.googleapis.com/apps/licensing/v1"
+	// groupsSettingsBase is the Groups Settings API's v1 base, on the host
+	// its reference documents (U12: groupssettings.googleapis.com is on the
+	// list too, should the test organisation answer only there).
+	groupsSettingsBase = "https://www.googleapis.com/groups/v1/groups"
 )
 
 // googleHosts are the only hosts the client reaches (G14): the token and
@@ -270,17 +277,61 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 }
 
 // get reads target with src's token into into, under do's rules.
-func (c *googleClient) get(ctx context.Context, src tokenSource, target string, into any) error {
-	return c.do(ctx, src, http.MethodGet, target, into, maxBody)
+func (c *googleClient) get(ctx context.Context, src tokenSource, target string, into any, opts ...callOption) error {
+	return c.do(ctx, src, http.MethodGet, target, nil, into, maxBody, opts...)
 }
 
-// do is one call to Google with src's token: a 2xx answer decoded into into
-// when not nil, read through limit. A 429 waits Retry-After once (at most
-// maxRetryAfter), then fails errThrottled; a 5xx is retried once after
-// serverErrorDelay; a 401 drops the token and is retried once with a fresh
-// one. Any other answer is a *googleError, logged by its status and reason
-// alone. The log names the host and the path, never the query.
-func (c *googleClient) do(ctx context.Context, src tokenSource, method, target string, into any, limit int64) error {
+// send is a write to target with src's token: body sent as JSON when not
+// nil, the answer decoded into into when not nil, under do's rules.
+func (c *googleClient) send(ctx context.Context, src tokenSource, method, target string, body, into any, opts ...callOption) error {
+	var payload *requestBody
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("google: encode a %s body: %w", method, err)
+		}
+		payload = &requestBody{contentType: "application/json", data: data}
+	}
+	return c.do(ctx, src, method, target, payload, into, maxBody, opts...)
+}
+
+// requestBody is what a write sends: its bytes and their content type.
+type requestBody struct {
+	contentType string
+	data        []byte
+}
+
+// callOption adjusts one call.
+type callOption func(*callOptions)
+
+type callOptions struct {
+	// shown is the path the log names in place of the URL's: a path that
+	// carries an address (Licensing's userId) is logged without it.
+	shown string
+	// once is a write made once: a 5xx is not retried, as a second create
+	// could make a second user.
+	once bool
+}
+
+// shownAs names the call in the log by path, in place of the URL's path.
+func shownAs(path string) callOption { return func(o *callOptions) { o.shown = path } }
+
+// noRetry makes a write once: its 5xx is the answer.
+func noRetry() callOption { return func(o *callOptions) { o.once = true } }
+
+// do is one call to Google with src's token: body sent when not nil, a 2xx
+// answer decoded into into when not nil, read through limit. A 429 waits
+// Retry-After once (at most maxRetryAfter), then fails errThrottled; a 5xx is
+// retried once after serverErrorDelay, unless the call is made once
+// (noRetry); a 401 drops the token and is retried once with a fresh one. Any
+// other answer is a *googleError, logged by its status and reason alone. The
+// log names the host and the path — the one shownAs gives, when given —
+// never the query.
+func (c *googleClient) do(ctx context.Context, src tokenSource, method, target string, body *requestBody, into any, limit int64, opts ...callOption) error {
+	var o callOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	u, err := url.Parse(target)
 	if err != nil {
 		return fmt.Errorf("google: a URL that does not parse: %w", err)
@@ -289,13 +340,16 @@ func (c *googleClient) do(ctx context.Context, src tokenSource, method, target s
 		return err
 	}
 	shown := u.Host + u.Path
+	if o.shown != "" {
+		shown = u.Host + o.shown
+	}
 	throttled, retried, reauthorised := false, false, false
 	for attempt := 1; ; attempt++ {
 		token, err := src.token(ctx)
 		if err != nil {
 			return err
 		}
-		status, header, data, err := c.exchange(ctx, method, u, shown, token, limit)
+		status, header, data, err := c.exchange(ctx, method, u, shown, token, body, limit)
 		if err != nil {
 			return err
 		}
@@ -318,7 +372,7 @@ func (c *googleClient) do(ctx context.Context, src tokenSource, method, target s
 			if err := c.pause(ctx, attempt, wait); err != nil {
 				return err
 			}
-		case status >= http.StatusInternalServerError && !retried:
+		case status >= http.StatusInternalServerError && !retried && !o.once:
 			retried = true
 			if err := c.pause(ctx, attempt, serverErrorDelay); err != nil {
 				return err
@@ -336,13 +390,20 @@ func (c *googleClient) do(ctx context.Context, src tokenSource, method, target s
 // body read through limit. A request that could not be made, or was not
 // answered in time, is errGoogleUnreachable; the caller's own context
 // ending is its error.
-func (c *googleClient) exchange(ctx context.Context, method string, target *url.URL, shown, token string, limit int64) (int, http.Header, []byte, error) {
-	req, err := http.NewRequestWithContext(ctx, method, target.String(), nil)
+func (c *googleClient) exchange(ctx context.Context, method string, target *url.URL, shown, token string, body *requestBody, limit int64) (int, http.Header, []byte, error) {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body.data)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, target.String(), reader)
 	if err != nil {
 		return 0, nil, nil, fmt.Errorf("google: build %s %s: %w", method, shown, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", body.contentType)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -364,8 +425,8 @@ func (c *googleClient) exchange(ctx context.Context, method string, target *url.
 	return resp.StatusCode, resp.Header, data, nil
 }
 
-// unwrapURLError is a transport error without the *url.Error's URL, which
-// the caller names by method and path.
+// unwrapURLError is a transport error without the *url.Error's URL — which
+// may carry an address — the caller names by method and shown path.
 func unwrapURLError(err error) error {
 	var ue *url.Error
 	if errors.As(err, &ue) {

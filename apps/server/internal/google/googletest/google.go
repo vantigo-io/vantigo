@@ -35,17 +35,23 @@ import (
 
 // The hosts the fake answers.
 const (
-	TokenHost = "oauth2.googleapis.com"
-	AdminHost = "admin.googleapis.com"
+	TokenHost     = "oauth2.googleapis.com"
+	AdminHost     = "admin.googleapis.com"
+	LicensingHost = "licensing.googleapis.com"
+	APIsHost      = "www.googleapis.com"
 )
 
 // TokenURL is the token endpoint, and the audience an assertion must name.
 const TokenURL = "https://" + TokenHost + "/token"
 
-// The scopes the fake's Directory checks.
+// The scopes the fake checks.
 const (
-	ScopeCustomer = "https://www.googleapis.com/auth/admin.directory.customer.readonly"
-	ScopeDomains  = "https://www.googleapis.com/auth/admin.directory.domain.readonly"
+	ScopeCustomer       = "https://www.googleapis.com/auth/admin.directory.customer.readonly"
+	ScopeDomains        = "https://www.googleapis.com/auth/admin.directory.domain.readonly"
+	ScopeUsers          = "https://www.googleapis.com/auth/admin.directory.user"
+	ScopeGroups         = "https://www.googleapis.com/auth/admin.directory.group"
+	ScopeGroupsSettings = "https://www.googleapis.com/auth/apps.groups.settings"
+	ScopeLicensing      = "https://www.googleapis.com/auth/apps.licensing"
 )
 
 // ServiceAccount is a service account and one key of it: what a test
@@ -105,12 +111,15 @@ type Domain struct {
 	IsPrimary bool
 }
 
-// Call is one request the fake answered: the host, the method, the path,
-// and for a token request the subject and the scope it asked for.
+// Call is one request the fake answered: the host, the method, the path
+// and the query, the body it carried, and for a token request the subject
+// and the scope it asked for.
 type Call struct {
 	Host    string
 	Method  string
 	Path    string
+	Query   string
+	Body    string
 	Status  int
 	Subject string
 	Scope   string
@@ -154,11 +163,15 @@ type FakeGoogle struct {
 	// fake's lock: a test's way into the middle of a flow.
 	OnCall func(Call)
 
+	// The Directory's users, groups and licences (directory.go).
+	directory
+
 	mu       sync.Mutex
 	tokens   map[string]issued
 	failNext []int
 	throttle int
 	calls    []Call
+	failOn   map[string]int
 }
 
 // issued is a token the fake issued: for whom, which scopes, until when.
@@ -206,6 +219,33 @@ func (g *FakeGoogle) Delegate(clientID string, scopes ...string) {
 	g.Configure(func(g *FakeGoogle) { g.Delegated[clientID] = slices.Clone(scopes) })
 }
 
+// FailOn makes every request whose method and path match ("PATCH
+// /admin/directory/v1/users/123" — the path's end is enough) answer status,
+// until FailOn is called with status 0.
+func (g *FakeGoogle) FailOn(methodPath string, status int) {
+	g.Configure(func(g *FakeGoogle) {
+		if g.failOn == nil {
+			g.failOn = map[string]int{}
+		}
+		if status == 0 {
+			delete(g.failOn, methodPath)
+			return
+		}
+		g.failOn[methodPath] = status
+	})
+}
+
+// failing is the status FailOn set for req, 0 for none.
+func (g *FakeGoogle) failing(req *http.Request) int {
+	for key, status := range g.failOn {
+		method, path, _ := strings.Cut(key, " ")
+		if req.Method == method && strings.HasSuffix(req.URL.Path, path) {
+			return status
+		}
+	}
+	return 0
+}
+
 // FailNext makes the next requests answer status, one each, in order.
 func (g *FakeGoogle) FailNext(status ...int) {
 	g.Configure(func(g *FakeGoogle) { g.failNext = append(g.failNext, status...) })
@@ -234,14 +274,20 @@ func (g *FakeGoogle) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		body = b
 	}
-	if req.URL.Scheme != "https" || (req.URL.Host != TokenHost && req.URL.Host != AdminHost) {
+	if req.URL.Scheme != "https" || !slices.Contains([]string{TokenHost, AdminHost, LicensingHost, APIsHost}, req.URL.Host) {
 		return nil, fmt.Errorf("googletest: no such host: %s://%s", req.URL.Scheme, req.URL.Host)
 	}
 
 	g.mu.Lock()
-	call := Call{Host: req.URL.Host, Method: req.Method, Path: req.URL.Path}
+	call := Call{Host: req.URL.Host, Method: req.Method, Path: req.URL.Path, Query: req.URL.RawQuery}
+	if req.URL.Host != TokenHost {
+		call.Body = string(body)
+	}
 	var a answer
 	switch {
+	case g.failing(req) > 0:
+		status := g.failing(req)
+		a = answer{status: status, body: g.apiError(status, "forbidden")}
 	case g.throttle > 0:
 		g.throttle--
 		a = answer{status: http.StatusTooManyRequests, header: http.Header{"Retry-After": {"1"}}, body: g.apiError(http.StatusTooManyRequests, "rateLimitExceeded")}
@@ -252,7 +298,7 @@ func (g *FakeGoogle) RoundTrip(req *http.Request) (*http.Response, error) {
 	case req.URL.Host == TokenHost:
 		a = g.token(req, body, &call)
 	default:
-		a = g.admin(req)
+		a = g.admin(req, body)
 	}
 	call.Status = a.status
 	g.calls = append(g.calls, call)
@@ -403,8 +449,8 @@ func (g *FakeGoogle) bearer(req *http.Request) (issued, bool) {
 	return tok, true
 }
 
-// admin answers one Directory call: the token checked, then its scope.
-func (g *FakeGoogle) admin(req *http.Request) answer {
+// admin answers one API call: the token checked, then its scope.
+func (g *FakeGoogle) admin(req *http.Request, body []byte) answer {
 	tok, ok := g.bearer(req)
 	if !ok {
 		return answer{status: http.StatusUnauthorized, body: g.apiError(http.StatusUnauthorized, "authError")}
@@ -412,12 +458,15 @@ func (g *FakeGoogle) admin(req *http.Request) answer {
 	need := ""
 	var route func() answer
 	switch {
-	case req.Method == http.MethodGet && req.URL.Path == "/admin/directory/v1/customers/my_customer":
+	case req.URL.Host == AdminHost && req.Method == http.MethodGet && req.URL.Path == "/admin/directory/v1/customers/my_customer":
 		need, route = ScopeCustomer, g.customer
-	case req.Method == http.MethodGet && req.URL.Path == "/admin/directory/v1/customer/my_customer/domains":
+	case req.URL.Host == AdminHost && req.Method == http.MethodGet && req.URL.Path == "/admin/directory/v1/customer/my_customer/domains":
 		need, route = ScopeDomains, g.domains
 	default:
-		return answer{status: http.StatusNotFound, body: g.apiError(http.StatusNotFound, "notFound")}
+		need, route = g.directoryRoute(req, body)
+		if route == nil {
+			return answer{status: http.StatusNotFound, body: g.apiError(http.StatusNotFound, "notFound")}
+		}
 	}
 	if !slices.Contains(tok.scopes, need) {
 		return answer{status: http.StatusForbidden, body: g.apiError(http.StatusForbidden, "insufficientPermissions")}
