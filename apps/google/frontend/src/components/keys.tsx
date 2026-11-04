@@ -23,6 +23,10 @@ const readText = (file: File): Promise<string> =>
         reader.readAsText(file);
       });
 
+/** Google refused the key after it last fetched a token, or it never fetched one: a key working again is not shown refused. */
+const refusedSinceUsed = (key: GoogleCredential): key is GoogleCredential & { lastFailedAt: string } =>
+  key.lastFailedAt != null && (key.lastUsedAt == null || Date.parse(key.lastFailedAt) > Date.parse(key.lastUsedAt));
+
 /**
  * The service account's keys, revoked ones included, newest first: per key
  * only the four things the server keeps in the clear that a person needs —
@@ -95,7 +99,7 @@ export const KeyList = ({ credentials, owner }: { credentials: GoogleCredential[
                       {t("notInUse")}
                     </Badge>
                   )}
-                  {key.lastFailedAt && !key.revokedAt && (
+                  {refusedSinceUsed(key) && !key.revokedAt && (
                     <Text size="xs" c="red">
                       {t("keyRefusedOn", { date: date(key.lastFailedAt) })}
                     </Text>
