@@ -94,8 +94,9 @@ func renewAt(expires time.Time, granted int32) time.Time {
 //     on its own and its messages name no row.
 //
 // Every call is on the person's token: a connection that cannot serve it
-// answers contracts.ErrConnectionNeeded and leaves the row as it is. A 403 is
-// ErrMailboxDenied.
+// answers contracts.ErrConnectionNeeded and leaves the row as it is. A 403
+// refusing the calendar is ErrMailboxDenied, and Google having no primary
+// calendar for the account (404) ErrMailboxUnknown.
 func (m *mailboxCalendar) Watch(ctx context.Context, mailbox string) error {
 	s, err := m.checked(ctx, mailbox, false)
 	if err != nil {
@@ -136,7 +137,7 @@ func (m *mailboxCalendar) Watch(ctx context.Context, mailbox string) error {
 	// Sent once: a 5xx may have opened the channel, which lapses on its own
 	// and whose messages name no row.
 	if err := m.send(ctx, s, http.MethodPost, s.withQuota(eventsPath("")+"/watch", nil), body, &answer, noRetry()); err != nil {
-		return m.refused(ctx, s, err)
+		return m.primaryRefused(ctx, s, err)
 	}
 	if answer.ID != id.String() || answer.ResourceID == "" || len(answer.ResourceID) > maxResourceID {
 		return fmt.Errorf("%w: a channel opened with another id or no resource", errGoogleUnreachable)

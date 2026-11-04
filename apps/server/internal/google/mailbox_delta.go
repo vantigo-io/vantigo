@@ -152,7 +152,7 @@ func (m *mailboxCalendar) Delta(ctx context.Context, mailbox string, from, to ti
 			if errors.As(err, &g) && g.Status == http.StatusGone {
 				return contracts.MailboxDelta{}, fmt.Errorf("%w: %w", contracts.ErrMailboxDeltaExpired, err)
 			}
-			return contracts.MailboxDelta{}, m.refused(ctx, s, err)
+			return contracts.MailboxDelta{}, m.primaryRefused(ctx, s, err)
 		}
 		skipped := 0
 		for _, ev := range answer.Items {
