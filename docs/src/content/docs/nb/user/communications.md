@@ -247,8 +247,8 @@ en kanal som er utilgjengelig tilbys ikke Fakturering eller Kalender som sted å
 
 En kanal sender gjennom sin **Leverandør**: SMTP, eller en postbokstjeneste Vantigo er
 koblet til. Listen **Leverandør** i dialogen **Legg til e-postkanal** viser **SMTP**
-først, deretter hver postbokstjeneste administratoren har slått på, med navnet sitt — i
-dag **Microsoft 365** — og en tjeneste som er slått på, men ikke kan brukes akkurat nå, er
+først, deretter hver postbokstjeneste administratoren har slått på, med navnet sitt —
+**Microsoft 365** og **Google Workspace** — og en tjeneste som er slått på, men ikke kan brukes akkurat nå, er
 nedtonet, med *Ikke tilgjengelig nå* og årsaken ved siden av:
 
 - **SMTP** — gjennom en e-postserver, med en SMTP-konto. Administratoren må ha
@@ -271,6 +271,16 @@ nedtonet, med *Ikke tilgjengelig nå* og årsaken ved siden av:
   samtykket som gjelder hele leietakeren. Så lenge denne advarselen vises, kan alle som
   administrerer kanaler i Kommunikasjon, sende som hvilken som helst delt postboks i
   leietakeren.* Kanalene virker likevel.
+- **Google Workspace** — fra en lisensiert Gmail-postboks i organisasjonen, som `post@`,
+  gjennom Google Workspace, uten passord å legge inn. Den **mottar** også, slik
+  Microsoft 365 gjør. Den står i listen når appen Google Workspace er på, og kan velges
+  først når en eier har slått på **E-postkanaler** på siden Google Workspace og en
+  superadministrator i Google har delegert Gmail-tilgangsområdene
+  ([administrasjonsveiledningen](/nb/admin/google-workspace/#e-postkanaler)). Google kan
+  ikke begrense Vantigos tilgang til noen postbokser, så det oransje varselet
+  *E-posttilgangen gjelder alle postbokser* vises over tabellen så lenge Google Workspace
+  kan brukes; teksten er skrevet for Microsoft 365, men gjelder for Google også: Vantigo
+  bruker bare postboksene som er kanaler, og avviser en persons egen.
 
 Leverandørlisten i dialogen **Legg til e-postkanal** slutter med **Vantigo-driftet
 e-post**, nedtonet og med *Ikke tilgjengelig ennå*: den tilbys ikke ennå og kan ikke
@@ -331,12 +341,55 @@ postboksens egen primære adresse, og kan sende med en gang. Sjekken kan avvise 
 Hver melding navngir leverandøren du valgte. Å legge til, bytte og bekrefte kanaler er begrenset til 30 i minuttet; over det,
 *For mange forsøk. Vent et minutt og prøv igjen.*
 
+### Legg til en Google Workspace-kanal
+
+Klikk **Legg til kanal**, og velg **Google Workspace** som **Leverandør**. Dialogen spør
+etter det samme som for Microsoft 365: **E-postadresse** til postboksen, et
+**Visningsnavn**, **Importer historikk** og **Når en samtale lukkes**. Merknaden
+*Postboksen må være en delt postboks som applikasjonen har tilgang til.* er skrevet for
+Microsoft 365; for Google Workspace er postboksen en **lisensiert bruker** i
+organisasjonen, laget for formålet, som `post@` — Google Workspace har ingen egen delt
+postboks, så den tar en lisens.
+
+**Opprett kanal** sjekker adressen med Google Workspace først. Et alias tas som
+postboksen sin, og kanalen opprettes aktiv med postboksens primære adresse. Sjekken
+avviser, med meldingene i tabellen ovenfor:
+
+- **En gruppes adresse** — *Adressen er en gruppe. En gruppe har ingen postboks Vantigo kan
+  lese; bruk en lisensiert postboks.* En Google-gruppe, også en Collaborative Inbox, tar
+  imot e-post for medlemmene sine, men har ingen egen postboks. Bruk adressen til en
+  lisensiert bruker, og la gruppen sende videre til den hvis du trenger begge.
+- **En persons egen postboks** — *Dette er en persons egen postboks. Bare en delt postboks
+  kan være en kanal.* når adressen hører til en som Vantigo holder en Google-konto for
+  gjennom Ansatte. En kanal skal aldri lese eller sende fra en kollegas egen e-post.
+- **En adresse Google Workspace ikke kjenner** — *Google Workspace har ingen postboks med
+  denne adressen.*: ingen bruker har den, eller brukeren er suspendert, arkivert eller har
+  ingen Gmail-lisens.
+- *E-postkanaler gjennom Google Workspace er ikke tilgjengelige …* mens **E-postkanaler**
+  er av på siden Google Workspace, eller Gmail-tilgangsområdene ikke er delegert ennå.
+
+Hva som er annerledes enn for Microsoft 365, når kanalen virker:
+
+- **Størrelse.** En melding på kanalen kan være opptil 25 MB — Gmails grense — så
+  skrivevinduet tar vedlegg på opptil omtrent **18,2 MB** til sammen.
+- **Mottak** hentes, det varsles ikke: Vantigo ser etter ny e-post omtrent **hvert femte
+  minutt**, og en melding kommer innen det.
+- **Sendt e-post** ligger i postboksens **Sent** i Gmail. Gmail kan gi en sendt melding sin
+  egen Message-ID; Vantigo tar vare på begge, og på Gmails tråd, så et svar fra kunden
+  havner i samtalen likevel.
+- **Når en samtale lukkes**: Gmail har etiketter, ikke mapper. **Marker som lest i
+  postboksen** tar bort meldingens *Ulest*; **Flytt til en mappe i postboksen** gir den
+  etiketten som står i **Mappe i postboksen** (`Handled in Vantigo` med mindre du endrer
+  det), opprettet hvis den ikke finnes, og tar den ut av **innboksen**.
+- **Å arkivere eller slette** en melding i Gmail etter at Vantigo har lest den, endrer
+  ingenting i Vantigo; e-post et Gmail-filter holder unna innboksen, leses aldri.
+
 ### Bytt en SMTP-kanal til en postbokstjeneste
 
 Når postboksen en SMTP-kanal sender fra er en delt postboks i Exchange Online, kan
 kanalen sende gjennom Microsoft 365 i stedet, og beholder samtalene, adressen og merket
 **Standard**. På raden, velg **Bytt til Microsoft 365** — det er én **Bytt til …** for hver
-postbokstjeneste som kan brukes nå; dialogen advarer *SMTP-innstillingene
+postbokstjeneste som kan brukes nå, **Bytt til Google Workspace** for en Gmail-postboks; dialogen advarer *SMTP-innstillingene
 slettes. For å gå tilbake må du legge dem inn på nytt.*, og tilbyr de samme valgene for
 **Importer historikk** og **Når en samtale lukkes** som når du legger til en Microsoft
 365-kanal — velg **Bytt**. Vantigo sjekker
@@ -348,7 +401,7 @@ er på én postbokstjeneste, kan ikke byttes direkte til en annen: *Kanalen bruk
 postboksleverandør. Bytt den tilbake til SMTP først, og deretter til den nye
 leverandøren.*
 
-På raden til en Microsoft 365-kanal åpner **Postboksen ved lukking** en dialog der du kan
+På raden til en Microsoft 365- eller Google Workspace-kanal åpner **Postboksen ved lukking** en dialog der du kan
 endre **Når en samtale lukkes** (*La stå uendret i postboksen*, *Marker som lest i
 postboksen* eller *Flytt til en mappe i postboksen* med **Mappe i postboksen**).
 
@@ -364,7 +417,7 @@ SMTP-innstillinger på nytt med passordet ([Switching provider](/en/reference/co
 ### Bekreft og deaktiver
 
 Per kanal sjekker **Bekreft** at kanalen kan sende: for SMTP kobler den til serveren med
-de lagrede opplysningene, for Microsoft 365 sjekker den postboksen igjen, og den melder
+de lagrede opplysningene, for Microsoft 365 og Google Workspace sjekker den postboksen igjen, og den melder
 «Kanal bekreftet — Kanaltilkoblingen er gyldig.» Når det feiler, sier *Kanalen ble ikke
 bekreftet* hvorfor — for Microsoft 365 med meldingene ovenfor, eller *Adressen hører nå
 til en annen postboks i Microsoft 365.* **Deaktiver** beholder kanalen, men stopper

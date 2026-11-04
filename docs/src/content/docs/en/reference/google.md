@@ -1,6 +1,6 @@
 ---
 title: "Google Workspace module"
-description: "Google Workspace as a connection to one organisation through a service account's domain-wide delegation — the foundation: the module and why it requires Staff; the schema; the page and its four tabs; the permission and the Owner policy; the connection, the admin to impersonate and the credential kind under If-Match; the key file's rules, the keys in the plural, their try order and a refused key; the Internal web client and its secret; the guarded client, its fixed hosts and its limits; the delegated token, its cache and the one seam; Test connection, the needed and the unexpected scopes, and the statuses and their reasons; the events; the refusals and the endpoints; and the unverified items U2 and U14 — and the accounts (delivery B): the provisioner google and its status, the accounts and groups tables and the account rules, the correlation on the organization external id and the adoption, the address, the mapping, the first password, the licences, the leaver's steps, the delete, the groups' three traits, the photo at 96 px, and the unverified items U11, U12, U13, U16 and U19 — and connecting existing users (delivery C): the directory search identity serves, its two prefix queries, the exact matches by primary email, alias and employee number, their bounds, the announced link keyed by the Directory id, the Sign-in and Provisioning steps, and the unverified items U1 and U4 — and the person's own Google connection (delivery D): the connections table and the switch, the flow with its two cookies, PKCE and the ID token's checks, the features and the scopes as answered, the certain account checked three times, the states, the refresh and its failures, the closes, google-sweep, the codes, the endpoints and their limits, and the unverified items U1 and U9 — and calendar sync on the person's connection (delivery E): the MailboxCalendar google, its status and footing, the marker, the calendars the module makes, the batch endpoint, the delta with its sync token and link, ShowAs, the write-back's reads, the push channels and the anonymous notifications endpoint, and the unverified items U5, U7, U8 and U18."
+description: "Google Workspace as a connection to one organisation through a service account's domain-wide delegation — the foundation: the module and why it requires Staff; the schema; the page and its four tabs; the permission and the Owner policy; the connection, the admin to impersonate and the credential kind under If-Match; the key file's rules, the keys in the plural, their try order and a refused key; the Internal web client and its secret; the guarded client, its fixed hosts and its limits; the delegated token, its cache and the one seam; Test connection, the needed and the unexpected scopes, and the statuses and their reasons; the events; the refusals and the endpoints; and the unverified items U2 and U14 — and the accounts (delivery B): the provisioner google and its status, the accounts and groups tables and the account rules, the correlation on the organization external id and the adoption, the address, the mapping, the first password, the licences, the leaver's steps, the delete, the groups' three traits, the photo at 96 px, and the unverified items U11, U12, U13, U16 and U19 — and connecting existing users (delivery C): the directory search identity serves, its two prefix queries, the exact matches by primary email, alias and employee number, their bounds, the announced link keyed by the Directory id, the Sign-in and Provisioning steps, and the unverified items U1 and U4 — and the person's own Google connection (delivery D): the connections table and the switch, the flow with its two cookies, PKCE and the ID token's checks, the features and the scopes as answered, the certain account checked three times, the states, the refresh and its failures, the closes, google-sweep, the codes, the endpoints and their limits, and the unverified items U1 and U9 — and calendar sync on the person's connection (delivery E): the MailboxCalendar google, its status and footing, the marker, the calendars the module makes, the batch endpoint, the delta with its sync token and link, ShowAs, the write-back's reads, the push channels and the anonymous notifications endpoint, and the unverified items U5, U7, U8 and U18 — and Gmail mail channels (delivery F): the Owner's Mail channels switch and its status, the two Gmail scopes and whom the test asks them as, the ChannelMailbox google and its status, channel_mailboxes, Check and its refusals, Send through the upload endpoint and the Message-ID read back, the delta over history.list and its g1. link, Raw, the labels for marks and folders, the refusals, the limits and the quota, and the unverified items U6, U10, U15 and U17."
 sources:
   - apps/server/internal/google
   - apps/google/frontend
@@ -12,6 +12,7 @@ sources:
   - apps/server/internal/db/migrations/00115_google_accounts.sql
   - apps/server/internal/db/migrations/00116_google_connections.sql
   - apps/server/internal/db/migrations/00128_google_calendar.sql
+  - apps/server/internal/db/migrations/00118_google_mail_channels.sql
   - apps/server/internal/directoryaddress
 ---
 The Google Workspace module connects one installation to one Google Workspace
@@ -25,7 +26,7 @@ owns the `google` schema in the shared PostgreSQL database, and serves
 and its page is **Google Workspace** under **Integrations** in Workspace admin
 ([the page](#the-page)).
 
-**Deliveries A, B, C, D and E.** The module holds the connection — the service account's keys,
+**Deliveries A, B, C, D, E and F.** The module holds the connection — the service account's keys,
 the admin to impersonate, the Internal web client — tests it, and reads the organisation
 and its verified domains (A). It fills `contracts.IdentityProvisioner` under the key
 `google` ([the provisioner](#the-provisioner)): Staff's accounts worker drives a person's
@@ -37,8 +38,11 @@ keeps each person's own Google connection, behind the Owner's Connection for peo
 switch ([the personal connection](#the-personal-connection)) (D). It fills
 `contracts.MailboxCalendar` under the same key ([the mailbox
 calendar](#the-mailbox-calendar)): the calendar syncs a person's copies with their
-Google Calendar on that connection (E). Gmail comes in later deliveries, each taking its
-token from the one seam
+Google Calendar on that connection (E). It fills `contracts.ChannelMailbox` under the same
+key ([mail channels](#mail-channels)): behind the Owner's Mail channels switch,
+Communications' channels send from and read the organisation's licensed Gmail mailboxes
+through domain-wide delegation (F). Sending from a person's own Gmail comes in a later
+delivery. Every call takes its token from the one seam
 [`tokenSource`](#the-delegated-token) — the person's own token through the same
 interface. `MODULES` refuses `google` without
 `staff` (`google requires staff`): Staff's accounts worker is the provisioner's only
@@ -113,7 +117,7 @@ as tabs under one header, each tab a link (`googleTabs` in `@vantigo/google-ui`)
 | `/workspace/google` | Status | `GoogleStatusTab` | A *Not connected yet* notice while unconfigured, the **Status** card — status and reason, organisation, customer id, primary and verified domains, last test, the scopes granted, missing and unexpected — and **Recent events** |
 | `/workspace/google/connection` | Connection | `GoogleConnectionTab` | The six steps: the project, the service account and its key; upload the key; delegate the scopes; the admin to impersonate; **Test connection**; the Internal web client |
 | `/workspace/google/accounts` | Accounts | `GoogleAccountsTab` | The account rules; once a test has read the organisation, **Sign-in** and **Provisioning**, identity's single sign-on card handed in by the host ([the prefill](#the-sign-in-prefill)); the licences; the accounts and the groups |
-| `/workspace/google/calendar-gmail` | Calendar and Gmail | `GoogleCalendarGmailTab` | **Connection for people**: the switch (the Owner's; confirmed before it turns off while anyone is connected), its status and reason, the counts of people connected and waiting to reconnect, and the redirect URI to copy |
+| `/workspace/google/calendar-gmail` | Calendar and Gmail | `GoogleCalendarGmailTab` | **Connection for people**: the switch (the Owner's; confirmed before it turns off while anyone is connected), its status and reason, the counts of people connected and waiting to reconnect, and the redirect URI to copy; **Mail channels**: the switch (the Owner's), its status and reason, the two Gmail scopes to delegate with the warning that they reach every mailbox, and the count of mailboxes in use |
 
 - **The gate.** The workspace layout admits a holder of `google:manage` while `google` is
   in `MODULES`; the layout route asks again: the module on, otherwise the not-enabled
@@ -159,13 +163,16 @@ Google. Beside the row's fields it answers:
   marked `inUse`;
 - `delegationClientId`: the numeric client id of the key in use — what the Admin console's
   domain-wide delegation takes;
-- `scopesToDelegate`: the [needed scopes](#test-connection), written in full; the page
-  joins them with commas, ready to paste;
+- `scopesToDelegate`: the [needed scopes](#test-connection), written in full — the two
+  Gmail scopes among them while Mail channels is on; the page joins them with commas,
+  ready to paste;
 - `redirectUris`: the two URIs to register on the Internal web client, `APP_URL` +
   `APP_BASE_PATH` + `/api/v1/google/connect/callback` (the person's connection, a later
   delivery) and + `/api/v1/identity/oidc/callback` (identity's single sign-on with
   Google as the provider); none without `APP_URL`;
-- `oauthClientSecretAddedAt`: when the live client secret was added.
+- `oauthClientSecretAddedAt`: when the live client secret was added;
+- `personalConnection` ([the switch](#the-table-and-the-switch)) and `mailChannels`
+  ([Mail channels](#the-switch)).
 
 **`PUT /connection`** sets `adminSubject` and `credentialKind` under `If-Match` on the
 connection's `version` (bare, quoted or weak); a field left out keeps its value. The admin
@@ -240,7 +247,7 @@ Every call to Google — the token exchange included — goes through one client
   `www.googleapis.com`, `gmail.googleapis.com`, `groupssettings.googleapis.com` and
   `accounts.google.com`. The hosts are constants: no setting reaches them, and a test's
   fake comes in through `Deps.HTTPTransport`, never as a base URL. Deliveries A and B call
-  the first four; Groups Settings is called on `www.googleapis.com/groups/v1/groups`
+  the first four, F `gmail.googleapis.com` too; Groups Settings is called on `www.googleapis.com/groups/v1/groups`
   ([U12](#unverified-items)).
 - **The transport** dials through netguard, so every address is checked against the one
   table of forbidden addresses; no proxy, and no redirect is followed.
@@ -248,7 +255,8 @@ Every call to Google — the token exchange included — goes through one client
   (a longer one fails at once); a 5xx is retried once after a second; a 401 drops the
   token and retries once with a fresh one. Every answer is read through a 1 MiB cap. A
   create (`users.insert`, `groups.insert`, a licence's insert) is made once: its 5xx is
-  the answer, never a second create.
+  the answer, never a second create; so is a Gmail send and a label's create. A Gmail raw
+  read takes a larger cap of its own ([Raw](#delta-and-raw)).
 - **Bodies** are JSON. A Licensing path carries the user's primary email; the log names
   it as `{user}`, and a Groups Settings or group-by-address path as `{group}`, so no
   address reaches a log line.
@@ -287,14 +295,21 @@ a 429 or a 5xx retried once; anything else Google unreachable.
 
 1. **One fresh token per needed scope.** In this delivery:
    `https://www.googleapis.com/auth/admin.directory.customer.readonly` and
-   `https://www.googleapis.com/auth/admin.directory.domain.readonly`. Each later
-   delivery adds its rows; the Gmail scopes join only while its Mail channels switch is on.
+   `https://www.googleapis.com/auth/admin.directory.domain.readonly`; delivery B's four
+   ([the provisioner](#the-provisioner)); and, only while the Mail channels switch is on,
+   `https://www.googleapis.com/auth/gmail.modify` and
+   `https://www.googleapis.com/auth/gmail.send`. **The Gmail scopes are asked as the first
+   channel mailbox** — the one checked longest ago — when `channel_mailboxes` holds one,
+   so the test proves what a channel's calls need, else as the admin; a channel mailbox
+   whose subject Google refuses (suspended, gone) is asked again as the admin, since the
+   delegation is not what failed.
 2. **One token per unexpected scope** — scopes Vantigo never uses that an over-wide
    delegation is likely to carry; a token is the only way to learn what is delegated:
    `https://mail.google.com/`, and under `https://www.googleapis.com/auth/`
-   `gmail.readonly`, `gmail.modify`, `gmail.send`, `calendar`, `calendar.events`,
-   `admin.directory.user.security`, `drive` and `cloud-platform`. The Gmail scopes are
-   unexpected while there is no Mail channels switch. No calendar scope is ever delegated:
+   `gmail.readonly`, `gmail.modify` and `gmail.send` (these two only while Mail channels is
+   off), `calendar`, `calendar.events`, `admin.directory.user.security`, `drive` and
+   `cloud-platform`. `https://mail.google.com/` and `gmail.readonly` are never asked for,
+   switch or not. No calendar scope is ever delegated:
    calendar sync will run on each person's own connection. A probe's other failure is not
    reported.
 3. **The organisation**: `customers.get(my_customer)` and `domains.list` on the
@@ -888,6 +903,179 @@ people's Google Calendars, and the channels lapse.
 - `google-sweep` deletes a closing connection unused for a day only once it holds no
   channel row; after seven days, whatever it holds.
 
+## Mail channels
+
+Delivery F (G33–G34, P2, P4, [`docs/superpowers/plans/2026-11-03-google-mail-channels.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-11-03-google-mail-channels.md))
+fills `contracts.ChannelMailbox` under the key `google`, `DisplayName()` *Google
+Workspace* (`mail_channels.go`, `channel_mailbox*.go`); Compose and Workers collect it into
+`Deps.ChannelMailboxes` beside Entra's, and Communications drives it exactly as it drives
+Entra's ([Communications' mailbox channels](/en/reference/communications/#mailbox-channels)).
+A channel mailbox is a **licensed Google Workspace user** that is no person's account; the
+mailbox id is the user's Directory id. Every Gmail call is made **through domain-wide
+delegation, as the mailbox** — a token from [`tokenSource`](#the-delegated-token) with
+`gmail.modify` or `gmail.send` and the mailbox's primary address as its subject — on the
+path `users/me`, never on a person's own connection. Every Gmail URL carries
+`quotaUser`, the mailbox's Directory id.
+
+### The switch
+
+`connection.mail_channels` (off by default) is the Owner's switch on the **Calendar and
+Gmail** tab. **`PUT /connection/mail-channels`** `{enabled}` is under
+`policy:Owner+OwnerManagement` and `google-owner`; under the connection's lock it writes
+the switch and records **`google.mail_channels.switched`** with the code `on` or `off`. The
+same value again writes nothing; either way it answers the connection. Turning it off
+keeps the recorded mailboxes: every Gmail channel is unavailable, and Communications holds
+its sends and syncs, until it is on again.
+
+`GET /connection` answers **`mailChannels`** (`GoogleMailChannels`):
+
+| Field | Value |
+| --- | --- |
+| `enabled` | the switch |
+| `status` | `off` while the switch is; `unavailable` while a channel cannot work; `ready` otherwise |
+| `reason` | with `unavailable`: `not_tested` (no test has granted or refused a Gmail scope since the switch was turned on), `not_delegated` (the last test was refused `gmail.modify` or `gmail.send`), or, while the connection is not `connected`, its reason or else its status (`unconfigured`, `pending_delegation`, `credential_invalid`, `admin_refused`, `google_unreachable`) |
+| `mailboxes` | the rows of `channel_mailboxes`: the mailboxes a channel was checked against |
+
+**The provider's `Status`** reads the same rows and no network: `available` with the reason
+**`tenant_wide`** — always, since domain-wide delegation cannot be limited to some
+mailboxes and the two scopes reach every mailbox in the domain (Communications' channels
+page shows its warning) — or `unavailable` with the reason above (`switch_off` while the
+switch is off). `MaxMessage()` is **25 000 000** bytes of MIME (P4, Gmail's 25 MB, U10).
+
+### The table
+
+`00118_google_mail_channels.sql` adds `connection.mail_channels` (`boolean`, false) and
+**`channel_mailboxes`**: `google_user_id` (32, the primary key, the Directory id),
+`address` (320, the primary address in lower case, the subject the Gmail calls
+impersonate) and `checked_at` (the last `Check` that reached it). The module answers only
+for a mailbox recorded here: `Send`, `Delta`, `Raw`, `Mark` and `EnsureFolder` of any other
+id are `ErrMailboxUnknown` with no call. Communications is the authority on which mailboxes
+are channels; `Forget` deletes the row. A person's account (`accounts`) is never recorded
+(P2). The down step drops the table and the column; nothing at Google is touched.
+
+### Check
+
+`Check(address)` takes a bare addr-spec only — no display name, white space, control
+character or one of `/ \ ? # %`, at most 320 bytes — else `ErrMailboxUnknown` with no call;
+the provider not available is `ErrMailboxUnavailable`. Then, as the admin to impersonate:
+
+1. **`groups.get(address)`** with `admin.directory.group`: found is **`ErrMailboxGroup`**
+   (422 `group_address`) — a Google Group, a Collaborative Inbox included, has no mailbox
+   a delegated token can read. A 404, or a 400, goes on.
+2. **`users.get(address)`** with `admin.directory.user` (`projection=basic`): a 404 is
+   `ErrMailboxUnknown`; a suspended or archived user `ErrMailboxGone` (both 422
+   `mailbox_unknown` at Communications). An alias answers its user, whose primary address
+   the channel takes.
+3. **A user the module keeps an account for** — a row of `accounts`, made or adopted for a
+   person in Staff — is answered `Shared` false and not recorded, **with no call to that
+   mailbox**: Communications answers 422 `personal_mailbox`.
+4. **`users.getProfile`** as the mailbox, with `gmail.modify`: it proves the delegation
+   reaches the mailbox and the user has Gmail. A 404, or a refusal of the user as the
+   token's subject, is `ErrMailboxGone`; the rest as [the refusals](#refusals-of-a-channels-calls).
+5. The row is written (`checked_at` now), and the mailbox answered `Shared` with its
+   Directory id, primary address and full name.
+
+A scope not delegated, no key, the admin refused or a 403 on the Directory reads are
+`ErrMailboxUnavailable` (409 `mail_channels_off`); Google not answering is a failure
+(503 `provider_unreachable`). The typed address is never in an error or a log line: the
+Directory paths are logged as `{group}` and `{user}`, and Check logs the Directory id.
+
+### Send
+
+`Send(mailbox, mime, bcc)`: over `MaxMessage` is `ErrMailTooLarge`, and a blind copy the
+MIME's `Bcc:` header does not carry is `ErrBccUnsupported`, both before any call — Gmail
+delivers the header's blind copies and strips the header, so it is the only way they
+travel. The MIME is posted whole to
+`https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=media` as
+`message/rfc822`, with `gmail.send`, **made once**: a 5xx is not retried, Gmail may have
+taken it, and the outbox's own retry is the one (at least once). Gmail files the message
+under the mailbox's **Sent**.
+
+It answers `contracts.SentMessage`: `ThreadID` Gmail's `threadId` (Communications' `providerThreadId`),
+and `MessageID` **read back** by `messages.get(format=metadata,
+metadataHeaders=Message-ID)` — Gmail may replace the Message-ID the MIME carried (U6), and
+Communications records the one Gmail sent with as `sent_message_id` when it differs, so a
+reply threads by either, or by Gmail's thread. A read-back that fails answers the thread
+alone; the message is sent. A 413 is `ErrMailTooLarge` (`too_large`, never retried).
+
+**Quota.** Gmail charges a send to the mailbox, 100 units of its per-user budget, so a
+channel sends at most about 60 messages a minute; a usage limit is waited once, then a
+failure the outbox retries.
+
+### Delta and Raw
+
+Polled, never pushed: `Watch` answers `contracts.ErrWatchUnsupported`, and Communications
+keeps the five-minute poll; `Unwatch` and `Notified` do nothing (no Pub/Sub in this
+release). `Delta(mailbox, "inbox", link, since)` reads one page of the Inbox's changes, at
+most 50 (`MailDeltaPageMax`):
+
+- **A fresh read** (`link ""`): `users.getProfile`'s `historyId` first, then
+  `messages.list(labelIds=INBOX, q=after:<since − 1 s, Unix>, maxResults=50)`, page by
+  page; its last page answers the history link, `Done`.
+- **A continuing link**: `history.list(startHistoryId, labelId=INBOX,
+  historyTypes=messageAdded,labelAdded,labelRemoved,messageDeleted, maxResults=50)`, page by
+  page under that start; the last page's `historyId` is the next start. A message added with
+  `INBOX`, or given it, is an item; `INBOX` taken off or the message deleted is `Removed`,
+  the last record of a message winning — Communications ignores removals and keeps what
+  it imported. A history page naming more than 50 messages keeps the rest in the link's
+  queue, answered before the next page is read.
+- **Each new item** is completed by `messages.get(format=metadata,
+  metadataHeaders=Message-ID)`: the Message-ID, `internalDate` as the received time and
+  `threadId` as `ConversationID`; a 404 there is `Removed`. Nothing of what a message says
+  is read here.
+- **Expired.** A history start Gmail no longer keeps — 404, or 400 — and a listing's page
+  token refused 400 are `ErrMailboxDeltaExpired` (U15); Communications restarts from its
+  restart point.
+
+**The link** is `g1.` and the base64url of `{m, h, p, l, a, q}` — the mailbox, the history
+id to read from, the page token under way, whether it is the fresh listing, the instant it
+lists after, and the queue (ids, `-` before a removed one) — at most 64 KiB. A link not
+`g1.`, another mailbox's, or any part not as the provider writes it (a history id of 1 to
+20 digits, a page token of printable ASCII up to 1024, at most 5000 queued Gmail ids) is
+refused with a failure, unsent.
+
+**`Raw(mailbox, id, max)`** is `messages.get(format=raw)`, read through a cap of the
+base64url of `max` plus 64 KiB for the JSON around it; more than `max` either way is
+`ErrMailTooLarge` (Communications records `skipped`/`too_large`), a 404 `ErrMailItemGone`.
+`max` is Communications' `COMMUNICATIONS_INBOUND_MAX_BYTES`.
+
+### Marks
+
+Gmail has labels where Exchange has folders and categories:
+
+- **`EnsureFolder(mailbox, name)`** answers the id of the **user label** named `name`
+  (ignoring case; 1 to 120 characters, no control character, no `/` at either end):
+  `labels.list`, else `labels.create` (shown in the label list and the message list), made
+  once; a 409 — created meanwhile — reads the list again. A system label is never
+  answered.
+- **`Mark`** is `messages.modify`: `read` removes `UNREAD`; `move` adds the label
+  `EnsureFolder` answered and removes `INBOX`; `category` adds a label per category (at
+  most 25), each found or created. A 404 is `ErrMailItemGone`.
+
+### Refusals of a channel's calls
+
+| Gmail answers | The contract | At Communications |
+| --- | --- | --- |
+| the mailbox refused as the token's subject (deleted, suspended, unknown), a 400 `failedPrecondition` (no Gmail: no licence), a 404 on the mailbox itself (U17) | `ErrMailboxGone` | `mailbox_gone`: a send fails at once; the sync fails and is tried hourly |
+| a Gmail scope not delegated | `ErrMailboxUnavailable` (`not_delegated`) | held, as while the switch is off |
+| no key, every key refused | `ErrMailboxUnavailable` | held |
+| any other 403 (a usage limit already waited on is a throttle) | `ErrMailboxDenied` | `mailbox_denied` |
+| a 413 | `ErrMailTooLarge` | `too_large` |
+| a 404 on one message | `ErrMailItemGone` | `skipped`/`gone`, or the mark done |
+| a 429, a 5xx, no answer | a failure | retried on Communications' backoff |
+
+Google's words, addresses and subjects are never logged: the client logs a refusal by its
+status and reason, and the provider names the mailbox by its Directory id.
+
+### What this fake proves
+
+`googletest` serves Gmail to delegated tokens whose subject is the user's address
+(`gmail.go`): `users.getProfile`, `messages.list` with `labelIds` and `q=after:`,
+`messages.get` (metadata and raw), `messages.modify`, `history.list` (a start older than
+the mailbox keeps answers 404), `labels.list` and `labels.create`, and the upload
+`messages.send`, which threads a reply by its `In-Reply-To` and, when told to, replaces the
+Message-ID, as Gmail is reported to.
+
 ## The events
 
 Every write the module makes is a row in `google.events`, read newest first by
@@ -906,6 +1094,7 @@ Every write the module makes is a row in `google.events`, read newest first by
 | `google.pass.issued`, `google.pass.revealed` | `Activate`, `RevealPass` | `expires_at:<instant>` — never the password |
 | `google.account.adoption_confirmed` | `POST /accounts/{userId}/confirm` | — |
 | `google.personal.switched` | `PUT /connection/personal` | `on`, `off` |
+| `google.mail_channels.switched` | `PUT /connection/mail-channels` | `on`, `off` |
 | `google.personal.connected` | `POST /complete` | `feature:<feature>`; subject the Google id |
 | `google.personal.disconnected` | `DELETE /connection/me` | — |
 | `google.personal.reconnect_needed` | a refused refresh, by `system:google` | the error code |
@@ -955,6 +1144,7 @@ All under `/api/v1/google`.
 | `GET /accounts`, `POST /accounts/{userId}/confirm` | `google:manage` |
 | `GET /groups`, `POST /groups/{groupId}/confirm` | `google:manage` |
 | `PUT /connection/personal` | `policy:Owner+OwnerManagement`; `google-owner` |
+| `PUT /connection/mail-channels` | `policy:Owner+OwnerManagement`; `google-owner` |
 | `POST /connect`, `POST /complete` | `session`; `google-connect` (30 a minute per client address, shared) |
 | `GET /connect/callback` | `anonymous`; `google-connect-callback` (60 a minute per client address) |
 | `GET /connection/me`, `DELETE /connection/me` | `session` |
@@ -1046,6 +1236,24 @@ Four concern delivery E, built on the design's defensive path before they are se
 - **U18 — push needs HTTPS alone, no domain verification.** Without notifications the
   poll carries the sync.
 
+Four concern delivery F, built on the design's defensive path before they are settled
+(P5); the check in a test organisation comes before its merge:
+
+- **U6 — Gmail replaces the Message-ID on `messages.send`.** The Message-ID is read back
+  after every send and recorded when it differs; threading matches ours, Gmail's and
+  Gmail's thread. If Gmail keeps ours, the two are equal.
+- **U10 — Gmail's limits: 25 MB a message, 35 MB through the upload endpoint.**
+  `MaxMessage` is 25 000 000; a refusal (413) is `ErrMailTooLarge`, terminal for the
+  message, never a retry loop.
+- **U15 — `history.list` with a stale start answers 404.** A 404 and a 400 both restart
+  the delta.
+- **U17 — what a delegated call answers for a suspended or unlicensed mailbox.** The
+  subject refused at the token endpoint, a 400 `failedPrecondition` and a 404 on the
+  mailbox all map to `ErrMailboxGone`, never a retry.
+- Besides: that a delegated token's subject may be any licensed user's address for the
+  Gmail scopes, not only an admin's; and that `groups.get` of a user's address answers 404
+  (a 400 is taken the same way).
+
 Besides: `licenseAssignments` is addressed by the user's primary email, as its
 reference documents; and the language codes written are `no` and `en-GB`.
 
@@ -1064,5 +1272,7 @@ answers refreshes as Google does (no new refresh token; `RefuseRefresh`,
 events with `privateExtendedProperty`, windows, pages and sync tokens
 (`ExpireSyncTokens` for 410, `SetNoSyncToken` for U7), the batch endpoint, `events.watch`
 and `channels.stop` — to the person's own access token. `internal/integration` composes
-the calendar and this module together and drives the calendar's own worker against it. The sweep's tests run on a pool of one connection. It comes in through `Deps.HTTPTransport`, so the
+the calendar and this module together and drives the calendar's own worker against it;
+for mail channels it serves Gmail ([what this fake proves](#what-this-fake-proves)), and
+composes Communications with this module to drive a channel's create, send, sync and marks. The sweep's tests run on a pool of one connection. It comes in through `Deps.HTTPTransport`, so the
 host guard runs in every test.

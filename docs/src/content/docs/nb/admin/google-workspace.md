@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Å koble Vantigo til en Google Workspace-organisasjon gjennom en tjenestekonto med domenedekkende delegering — Google Cloud-prosjektet og Admin SDK API, tjenestekontoen og JSON-nøkkelen, å oppheve iam.disableServiceAccountKeyCreation for prosjektet, å laste opp nøkkelen, å delegere tilgangsområdene i administrasjonskonsollen og vente på dem, administratoren som skal etterlignes, den interne nettklienten og de to omdirigerings-URI-ene, å verifisere med Test tilkoblingen — deretter Tilkobling for personer (hver persons egen Google-tilkobling — bryteren, nettklienten som intern, å verifisere ved å koble til selv, å slå den av, hva som skjer med en persons tilkobling, google-sweep), kalendersynkronisering på hver persons tilkobling (endringsvarsler, verifisering, kopiene til en som slutter), kontoene Ansatte holder i Google, kontoreglene (adressen, organisasjonsenheten, det første passordet og levetiden til det), lisenser, Ansattes grupper og de tre innstillingene deres, bilder i 96 px, hva stegene for en som slutter gjør, slett etter N dager, å bekrefte en konto eller en gruppe Vantigo ikke opprettet, å rotere en nøkkel, å bytte tjenestekonto, og hva som kan gå galt.
+description: Å koble Vantigo til en Google Workspace-organisasjon gjennom en tjenestekonto med domenedekkende delegering — Google Cloud-prosjektet og Admin SDK API, tjenestekontoen og JSON-nøkkelen, å oppheve iam.disableServiceAccountKeyCreation for prosjektet, å laste opp nøkkelen, å delegere tilgangsområdene i administrasjonskonsollen og vente på dem, administratoren som skal etterlignes, den interne nettklienten og de to omdirigerings-URI-ene, å verifisere med Test tilkoblingen — deretter Tilkobling for personer (hver persons egen Google-tilkobling — bryteren, nettklienten som intern, å verifisere ved å koble til selv, å slå den av, hva som skjer med en persons tilkobling, google-sweep), kalendersynkronisering på hver persons tilkobling (endringsvarsler, verifisering, kopiene til en som slutter), E-postkanaler (bryteren, de to Gmail-tilgangsområdene og hva de når, en lisensiert postboks, verifisering, å slå den av, hva som kan gå galt), kontoene Ansatte holder i Google, kontoreglene (adressen, organisasjonsenheten, det første passordet og levetiden til det), lisenser, Ansattes grupper og de tre innstillingene deres, bilder i 96 px, hva stegene for en som slutter gjør, slett etter N dager, å bekrefte en konto eller en gruppe Vantigo ikke opprettet, å rotere en nøkkel, å bytte tjenestekonto, og hva som kan gå galt.
 sidebar:
   order: 47
 sources:
@@ -31,6 +31,10 @@ sources:
   - apps/server/internal/google/mailbox.go
   - apps/server/internal/google/mailbox_notifications.go
   - apps/server/internal/google/mailbox_notifications_endpoint.go
+  - apps/server/internal/google/mail_channels.go
+  - apps/server/internal/google/channel_mailbox.go
+  - apps/server/internal/google/channel_mailbox_inbound.go
+  - apps/server/internal/google/channel_mailbox_marks.go
 ---
 
 Google Workspace-modulen kobler Vantigo til selskapets Google Workspace-organisasjon.
@@ -43,8 +47,10 @@ passord HR gir videre, holder profilen og lederen i samsvar, tildeler lisensene 
 gruppene deres, skriver bildet deres, og suspenderer kontoen når de slutter
 ([Kontoene](#kontoene)). Hver person kan koble til sin egen Google-konto
 ([Tilkobling for personer](#tilkobling-for-personer)), som
-[kalendersynkroniseringen](#kalendersynkronisering) bruker, og som sending fra Gmail skal
-bruke i en senere versjon.
+[kalendersynkroniseringen](#kalendersynkronisering) bruker, og som sending fra deres egen
+Gmail skal bruke i en senere versjon. Kanalene i Kommunikasjon kan sende fra og lese
+organisasjonens lisensierte Gmail-postbokser, som `post@`
+([E-postkanaler](#e-postkanaler)).
 
 Denne siden er driftssiden: hva Google trenger, stegene i Google Cloud-konsollen og i
 administrasjonskonsollen, og hva du gjør når noe feiler. Siden i Vantigo er **Google
@@ -71,7 +77,7 @@ Workspace** under **Integrasjoner** i Administrer arbeidsområde; skjermbildene 
   Googles verter — `oauth2.googleapis.com`, `admin.googleapis.com`,
   `licensing.googleapis.com`, `www.googleapis.com`, `gmail.googleapis.com`,
   `groupssettings.googleapis.com` og `accounts.google.com` — uten proxy: modulen bruker
-  ingen og følger ingen omdirigering. Denne versjonen kaller de fire første.
+  ingen og følger ingen omdirigering. Denne versjonen kaller de fem første.
 - Migreringene lager skjemaet `google` enten modulen er slått på eller ikke; en
   applikasjonsrolle med minste privilegium trenger tilgang til det som til alle andre
   ([Installasjon](/nb/admin/installation/#databaseroller)).
@@ -148,7 +154,8 @@ den nedlastede filen nå.
 ## Deleger tilgangsområdene
 
 1. Steg **3 Deleger tilgangsområdene** viser tjenestekontoens numeriske **Klient-ID** og
-   **OAuth-tilgangsområder (kommadelt)**; kopier begge. Denne versjonen trenger seks:
+   **OAuth-tilgangsområder (kommadelt)**; kopier begge. Denne versjonen trenger seks, og
+   to til mens [E-postkanaler](#e-postkanaler) er på:
    - `https://www.googleapis.com/auth/admin.directory.customer.readonly` —
      organisasjonen;
    - `https://www.googleapis.com/auth/admin.directory.domain.readonly` — domenene;
@@ -157,7 +164,10 @@ den nedlastede filen nå.
    - `https://www.googleapis.com/auth/admin.directory.group` — Ansattes grupper og
      medlemmene deres;
    - `https://www.googleapis.com/auth/apps.groups.settings` — hvem som ser en gruppe;
-   - `https://www.googleapis.com/auth/apps.licensing` — lisensene.
+   - `https://www.googleapis.com/auth/apps.licensing` — lisensene;
+   - bare mens E-postkanaler er på, `https://www.googleapis.com/auth/gmail.modify` og
+     `https://www.googleapis.com/auth/gmail.send` — å lese, merke og sende en kanals
+     e-post.
 2. Som superadministrator åpner du **Security** › **Access and data control** › **API
    controls** › **Manage domain-wide delegation** i **Google Admin console**, og velger
    **Add new**.
@@ -206,8 +216,9 @@ ny test.
 
 **Tilgangsområder Vantigo ikke bruker.** Testen ber også om tilgangsområder Vantigo
 aldri bruker, men som en delegering kopiert fra et annet produkt ofte har med —
-`https://mail.google.com/`, `gmail.readonly`, `gmail.modify`, `gmail.send`, `calendar`,
-`calendar.events`, `admin.directory.user.security`, `drive` og `cloud-platform` (alle
+`https://mail.google.com/`, `gmail.readonly`, `gmail.modify` og `gmail.send` (de to
+siste bare mens E-postkanaler er av), `calendar`, `calendar.events`,
+`admin.directory.user.security`, `drive` og `cloud-platform` (alle
 under `https://www.googleapis.com/auth/` unntatt det første). De Google gir, vises i en
 oransje melding på fanen **Status**. Tilkoblingen forblir **Tilkoblet**; fjern disse
 tilgangsområdene fra klientens delegering i administrasjonskonsollen, med mindre et
@@ -360,6 +371,135 @@ med tilkoblingen som lukkes, og stopper kanalen; tilkoblingen beholdes til kanal
 stoppet, senest sju dager. Når en person slutter, lukkes tilkoblingen med tokenet glemt
 ved suspenderingen, så ingenting kan fjerne kopiene: **de blir liggende i den suspenderte
 kontoen**, slik alt annet i den gjør.
+
+## E-postkanaler
+
+**E-postkanaler** lar Kommunikasjon sende et teams e-post fra en Gmail-postboks i
+organisasjonen — `post@`, `support@`, `faktura@` — som en kanal
+([brukerveiledningen](/nb/user/communications/#legg-til-en-google-workspace-kanal)).
+Vantigo når disse postboksene gjennom tjenestekontoens **domenedekkende delegering**, som
+hver postboks, med to Gmail-tilgangsområder; aldri gjennom en persons egen tilkobling. Den
+er av som standard.
+
+En kanal **sender og mottar**: svarene sendes fra postboksen og ligger i mappen **Sent**
+i Gmail, og e-posten som kommer til **innboksen** fra det valgte importvinduet, leses inn
+i Innboks i Kommunikasjon, hentet omtrent hvert femte minutt — Gmail varsler ikke Vantigo.
+Når en samtale lukkes, lar kanalen meldingene stå som de er, markerer dem som lest, eller
+gir dem en etikett og tar dem ut av innboksen, slik kanalens innstilling sier: Gmail har
+etiketter der Exchange har mapper. Hvordan modulen sender og leser, står i
+[referansen](/en/reference/google/#mail-channels).
+
+**Hva tilgangsområdene når.** Domenedekkende delegering kan ikke begrenses til noen
+postbokser: `gmail.modify` og `gmail.send` når **alle postboksene i domenet**, også
+personenes egne. Vantigo ber om dem bare mens bryteren er på, og bruker dem bare for
+postboksene som er kanaler; en persons egen postboks avvises som kanal. Siden **Kanaler** i
+Kommunikasjon sier det i et oransje varsel, *E-posttilgangen gjelder alle postbokser*, så
+lenge E-postkanaler er tilgjengelig. Slå bryteren av, og fjern de to tilgangsområdene, når
+ingen kanal trenger dem.
+
+### Forutsetninger for e-postkanaler
+
+- Tilkoblingen er **Tilkoblet** ([Verifiser](#verifiser)), og modulen Kommunikasjon er
+  slått på.
+- Postboksen er en **lisensiert Google Workspace-bruker** i organisasjonen, som `post@` —
+  en bruker med Gmail, laget i administrasjonskonsollen for formålet. Google Workspace har
+  ingen gratis delt postboks slik Exchange har, så hver kanalpostboks tar en lisens. Ikke
+  en person Ansatte holder en konto for: en persons egen postboks avvises.
+- Ikke en **Google-gruppe** eller en **Collaborative Inbox**: en gruppe har ingen postboks
+  Vantigo kan lese, og adressen dens avvises.
+- **En eier** i Vantigo slår bryteren på; en superadministrator i administrasjonskonsollen
+  legger til tilgangsområdene.
+
+### Slå på e-postkanaler
+
+1. Åpne **Administrer arbeidsområde › Integrasjoner › Google Workspace**, fanen **Kalender
+   og Gmail**, og slå på **E-postkanaler** på kortet. En eier gjør dette steget. Statusen
+   sier *Ikke tilgjengelig*: *Test tilkoblingen, så Vantigo vet om Gmail-tilgangsområdene
+   er delegert.*
+2. Kortet viser de to tilgangsområdene som skal legges til, hvert med en
+   kopieringsknapp: `https://www.googleapis.com/auth/gmail.modify` og
+   `https://www.googleapis.com/auth/gmail.send`. De står nå også blant
+   **OAuth-tilgangsområder (kommadelt)** i steg **3 Deleger tilgangsområdene** på fanen
+   **Tilkobling**.
+3. Som superadministrator åpner du **Security** › **Access and data control** › **API
+   controls** › **Manage domain-wide delegation** i **Google Admin console**, velger
+   **Edit** på tjenestekontoens klient-ID, legger de to tilgangsområdene til i listen og
+   velger **Authorise**. Som for all delegering kan Google bruke **opptil 24 timer** på å
+   ta den i bruk, og den kan vente på en annen superadministrators godkjenning ved
+   godkjenning fra flere parter.
+4. På fanen **Tilkobling** velger du **Test tilkoblingen** i steg 5. Gmail-
+   tilgangsområdene spørres om som den første kanalpostboksen når en er registrert, ellers
+   som administratoren som skal etterlignes.
+5. Statusen på kortet sier **Klar**.
+
+### Verifiser e-postkanaler
+
+1. I Kommunikasjon legger du til postboksen som kanal: **Kanaler** › **Legg til kanal**,
+   leverandøren **Google Workspace**, postboksens adresse
+   ([brukerveiledningen](/nb/user/communications/#legg-til-en-google-workspace-kanal)).
+   Vantigo sjekker den da — at adressen er en brukers, ikke en gruppes, at brukeren ikke er
+   suspendert, og at Gmail svarer som brukeren selv — og kanalen opprettes aktiv, med
+   postboksens primære adresse. **Postbokser i bruk av kanaler** på kortet teller den.
+2. Svar i en samtale på kanalen, eller send fra den. Logget inn i Gmail som postboksen
+   ligger meldingen under **Sent**.
+3. Send en e-post til postboksen utenfra. Innen omtrent fem minutter er den en samtale i
+   Innboks i Kommunikasjon, og kanalens **Mottaksstatus** sier **Mottar**. Svar på den fra
+   postboksen utenfor: svaret havner i den samme samtalen.
+
+### Slå av e-postkanaler
+
+Slå av **E-postkanaler** på kortet. Ingenting slettes: kanalene og postboksene Vantigo har
+sjekket, blir stående, Google Workspace tilbys ikke lenger for nye kanaler, og hver
+Gmail-kanal er utilgjengelig. E-posten som venter på å sendes, **holdes** — den prøves igjen
+med høyst fem minutters mellomrom og gis opp som `provider_unavailable` 24 timer etter at
+den ble lagt i kø — og ingen e-post leses; slår du bryteren på igjen innen et døgn, går
+ingenting tapt. Det samme gjelder mens tilkoblingen ikke er **Tilkoblet**, eller den siste
+testen fikk et Gmail-tilgangsområde avvist. Fjern de to tilgangsområdene fra delegeringen i
+administrasjonskonsollen: mens bryteren er av, vises et Gmail-tilgangsområde som fortsatt
+er delegert, under *Tilgangsområder Vantigo ikke bruker*.
+
+### Hva som kan gå galt med e-postkanaler
+
+- **Kortet sier *Ikke tilgjengelig*: *Test tilkoblingen, så Vantigo vet om
+  Gmail-tilgangsområdene er delegert.*** (`not_tested`). Ingen test har kjørt siden
+  bryteren ble slått på. Test tilkoblingen.
+- **Kortet sier *Ikke tilgjengelig*: *Google avviste Gmail-tilgangsområdene. Legg dem til
+  i den domenedekkende delegeringen, og test på nytt.*** (`not_delegated`).
+  Tilgangsområdene står ikke i klientens delegering, eller er ikke tatt i bruk ennå. Legg
+  dem til, vent, og test på nytt.
+- **Kortet sier *Ikke tilgjengelig* med tilkoblingens årsak** — *Ikke satt opp*, *Venter
+  på delegering*, *Feiler*. Rett tilkoblingen først ([Hva som kan gå
+  galt](#hva-som-kan-gå-galt)).
+- **Å legge til en kanal sier *Adressen er en gruppe …*** (`group_address`). Adressen er en
+  Google-gruppes, også en Collaborative Inbox. Grupper støttes ikke: lag en lisensiert
+  bruker for postboksen, og send gruppens e-post videre til den om nødvendig.
+- **Å legge til en kanal sier at det er en persons egen postboks** (`personal_mailbox`).
+  Ansatte holder en Google-konto for personen med adressen. Bare en postboks som ikke er
+  en persons, kan være en kanal.
+- **Å legge til en kanal sier at Google Workspace ikke har noen postboks med adressen**
+  (`mailbox_unknown`). Ingen bruker har adressen, eller et alias av den; eller brukeren er
+  suspendert eller arkivert, eller har ikke Gmail fordi den ikke har lisens. Et alias tas
+  som brukeren sin.
+- **Google Workspace tilbys ikke, eller å legge til sier *E-postkanaler gjennom Google
+  Workspace er ikke tilgjengelige …*** (`mail_channels_off`). Bryteren er av, kortet sier
+  ikke **Klar**, eller modulen Google Workspace er ikke slått på.
+- **En kanal feiler senere med *Postboksen finnes ikke lenger i Google Workspace.***
+  (`mailbox_gone`). Brukeren er suspendert, slettet eller har mistet Gmail-lisensen siden.
+  E-posten dens gis opp etter ett forsøk, og synkroniseringen prøver igjen hver time.
+  Gjenopprett brukeren i administrasjonskonsollen, eller legg til en annen postboks som
+  kanal.
+- **En kanal feiler med `mailbox_denied`.** Google avviste postboksen (403) av en annen
+  grunn enn delegeringen — en regel på brukeren. Sjekk brukeren i
+  administrasjonskonsollen.
+- **En melding ble gitt opp som `too_large`.** Gmail tar høyst 25 MB per melding;
+  skrivevinduet holder en kanals vedlegg under det.
+- **Sendingen går tregere.** Gmail belaster hver postboks' sending mot dens egen kvote: en
+  kanal sender høyst omtrent **60 meldinger i minuttet**. Vantigo venter og prøver igjen
+  av seg selv.
+- **En melding mangler.** Vantigo leser bare **innboksen** — e-post et filter arkiverte
+  eller ga en etikett bort fra innboksen først, leses aldri — og hopper over en melding
+  større enn `COMMUNICATIONS_INBOUND_MAX_BYTES` (25 MiB som standard). Å arkivere eller
+  slette en melding i Gmail etter at den er lest, endrer ingenting i Vantigo.
 
 ## Kontoene
 
