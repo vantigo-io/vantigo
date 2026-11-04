@@ -328,6 +328,16 @@ export const stubGoogleApi = (server: GoogleServer = {}): GoogleStub => {
       };
       return jsonResponse(200, state.connection);
     }
+    if (method === "PUT" && path === "/api/v1/google/connection/mail-channels") {
+      const { enabled } = body as { enabled: boolean };
+      state.connection = {
+        ...c,
+        mailChannels: enabled
+          ? { ...c.mailChannels, enabled, status: "unavailable", reason: "not_tested" }
+          : { ...c.mailChannels, enabled, status: "off", reason: undefined },
+      };
+      return jsonResponse(200, state.connection);
+    }
     if (method === "GET" && path === "/api/v1/google/accounts") return jsonResponse(200, state.accounts);
     if (method === "GET" && path === "/api/v1/google/groups") return jsonResponse(200, state.groups);
     const confirmAccount = method === "POST" && path.match(/^\/api\/v1\/google\/accounts\/([^/]+)\/confirm$/);

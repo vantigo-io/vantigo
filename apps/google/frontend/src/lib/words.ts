@@ -101,3 +101,11 @@ export const personalFeatureText = (feature: string, t: Translate): string =>
 /** Why Connection for people cannot work (`no_web_client`, …) in words; an unknown one as it came. */
 export const peopleReasonText = (reason: string, t: Translate): string =>
   known(`people.reason.${reason}`) ? t(`people.reason.${reason}`) : reason;
+
+/**
+ * Why Mail channels cannot work in words: not_tested and not_delegated have
+ * their own sentence; the connection's own status or reason sends the reader
+ * to the Status tab.
+ */
+export const mailReasonText = (reason: string, t: Translate): string =>
+  known(`mail.reason.${reason}`) ? t(`mail.reason.${reason}`) : t("mail.reason.connection");
