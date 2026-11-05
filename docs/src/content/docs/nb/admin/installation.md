@@ -288,7 +288,8 @@ Microsoft 365-kanal hvert 30. sekund — den trenger objektlageret og utgående 
 kundemodulens importjobb `customers-import`, energimodulens importjobb `energy-import`, energimodulens spotprisjobb
 `energy-spot-prices` når `ENERGY_SPOT_PRICE_SERVICE_URL` er satt eller `ENERGY_SPOT_PRICE_FEED_ENABLED=1`, fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
 `INVOICES_EHF_ENABLED` er på, fakturamodulens purrejobb `invoices-reminders`, alltid,
-fakturamodulens faktureringsjobb `invoices-billing`, alltid,
+fakturamodulens faktureringsjobb `invoices-billing`, alltid, fakturamodulens avstemming av
+ordreallokeringer `invoices.allocation_reconcile`, alltid,
 fakturamodulens betalingsjobb `invoices-payments` når `INVOICES_VIPPS_ENABLED` er på, og
 kalendermodulens avlysningsjobb `calendar-cancellations` med mindre
 `CALENDAR_CANCELLATIONS_ENABLED=0`, kalendermodulens abonnementsjobb
@@ -330,8 +331,8 @@ instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben
 `invoices-billing`-jobben, `invoices-payments`-jobben, `communications-mailbox-sync`,
 kalenderens abonnements- og postboksjobb og `events.dispatch` tar i stedet én rad om gangen under en tidsbegrenset lås, så
 et hvilket som helst antall instanser deler arbeidet uten å sende noe to ganger.
-`google-sweep` tar ingen av delene: hvert av stegene dens tar radene sine i én setning,
-så to instanser behandler aldri samme tilkobling. Purrejobben sender ett brev om
+`google-sweep` og `invoices.allocation_reconcile` tar ingen av delene: hvert av stegene
+deres tar radene sine i én setning, så to instanser behandler aldri samme rad. Purrejobben sender ett brev om
 gangen, høyst ett i sekundet per instans, og hver sending må bli ferdig godt innenfor
 låsen på 60 sekunder
 ([Purrejobben og e-post](/nb/admin/payments/#purrejobben-og-e-post)).
@@ -917,15 +918,19 @@ over hva fakturautkast og utstedte fakturaer holder av hver ordrelinje, tom, og
 allokering og gir en fakturakjøring en kilde — alle kjøringer laget før den, fakturerer
 forbruk. Ingen rettighet og ingen innstilling er ny: knappen **Fakturer** på en ordre og
 veiviseren **Fra ordre** i Fakturaer krever `invoices:access` og `invoices:create` i
-Fakturaer. Med Ordre
-slått på starter den én arbeider til, `orders.allocation_sweep`: én gang i døgnet, under en
-rådgivende lås (advisory lock) i PostgreSQL så én instans kjører den, frigjør den
-ordreantall som fakturautkast har holdt i 30 dager — sikkerhetsnettet for et utkast som ble
-slettet mens Ordre ikke kunne få beskjed, og grunnen til at et fakturautkast av en ordre
-bør utstedes innen 30 dager.
-Den trenger ingenting eget og sender ingenting. Å rulle `00122` tilbake avvises så lenge
-en fakturalinje viser til en ordrelinje eller en fakturakjøring fakturerer ordre; å rulle
-`00121` tilbake fjerner det fakturaene holdt.
+Fakturaer. `00123_invoices_order_allocation_ledger.sql` legger til Fakturaers oversikt
+over ordreantallene den har tatt, tom, og Fakturaer starter én arbeider til, alltid,
+`invoices.allocation_reconcile`: hvert tiende minutt gir den tilbake til Ordre det
+Fakturaer tok for over en time siden og som ingen fakturautkast holder —
+sikkerhetsnettet for et utkast som ble slettet mens Ordre ikke kunne få beskjed, en
+kundes utkast slettet ved en anonymisering, eller en veiviser eller fakturakjøring som
+ble avbrutt underveis. Et fakturautkast som fortsatt finnes, beholder det det holder,
+uansett hvor gammelt det er. Arbeideren tar radene sine i én setning, så et hvilket som
+helst antall instanser kan kjøre den, trenger ingenting eget og sender ingenting; med
+Ordre slått av gjør den ingenting. Å rulle `00123` tilbake fjerner oversikten, og det den
+ville gitt tilbake, blir holdt til noen frigjør det på ordren; å rulle `00122` tilbake
+avvises så lenge en fakturalinje viser til en ordrelinje eller en fakturakjøring
+fakturerer ordre; å rulle `00121` tilbake fjerner det fakturaene holdt.
 
 **Utgivelsen med kompetanse i Ansatte.** Den har `00066_staff_competence.sql`:
 kompetansekatalogen — fem kategorier og femten norske sertifikater forhåndsdefinert — og

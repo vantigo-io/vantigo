@@ -1392,8 +1392,10 @@ or more than one of the three, or an id named twice; 409 **`orders_unavailable`*
 Orders is off. It answers Orders' `DueOrders` as `{orders[], warnings[]}`: each order its
 `id`, `number`, `customerId` and `customerName` (from the customer directory, absent when
 it does not know the customer), `currency`, `projectId`, `yourReference`, `deliveryDate`,
-`deliveryName` and `deliveryAddress`, `paymentTermsDays`, and `blocked` — `draft` or
-`on_hold` — when it cannot be invoiced now; each line its `lineId`, `position`,
+`deliveryName` and `deliveryAddress`, `paymentTermsDays`, and `blocked` when it cannot be
+invoiced now — `draft` or `on_hold`, as Orders answers it, or **`currency_not_supported`**,
+set here for an order in another currency than the settings' `defaultCurrency`, which the
+wizard shows greyed with its reason; each line its `lineId`, `position`,
 `description`, `unit`, `toInvoice` (ordered − cancelled − invoiced − draft-allocated,
 three decimals), `unitPrice` (eight decimals), `discountPercent`, `vatCodeId`,
 `invoicePolicy` and `amount`, docmath's net of `toInvoice`. `orders_truncated` warns when
@@ -1417,29 +1419,40 @@ serves the handler and the billing run. **In order**, every read before any writ
    **`allocation_exceeds_open`**.
 4. **The settings, each customer's billing profile and the customer gates**
    ([Drafts](#drafts)); an order in another currency than the settings' —
-   **`currency_not_nok`**; a line's VAT code not active today — **`vat_code_inactive`**
+   **`currency_not_nok`**, the whole request refused: the due list offers no such order,
+   so only a body naming one explicitly meets it; a line's VAT code not active today — **`vat_code_inactive`**
    with `orderLineId`; a draft that would hold more than 500 lines, the section lines
    counted — **`too_many_lines`**; the orders' projects' codes, when Projects is on.
 5. **`Allocate`** on Orders, which judges every line again under its locks and answers
    `allocation_exceeds_open` or `line_not_invoiceable` for the first it refuses — with
-   `orderLineId`, nothing allocated. **From here every way out but success releases the
+   `orderLineId`, nothing allocated. **The ledger** records every allocation it answered at
+   once, on a statement of its own, before anything else can fail
+   ([Releases](#releases)). **From here every way out but success releases the
    allocations again** (`ReleaseAllocations`, after the failing step).
 6. **One transaction** writes every draft and holds the allocations
    (`source_held_elsewhere` should another live document hold one).
 
 **The grouping** (`groupOrders`, [`order_lines.go`](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/invoices/order_lines.go)):
 by customer, then by each order's first appearance. Without `combine`, one draft per
-order. With it, a customer's orders that share **currency, your reference, project and
-payment terms** share a draft, in order number order, and each of the customer's drafts
-answers `separatedBy` — `currency`, `your_reference`, `project`, `payment_terms` — naming
-what set it apart from the customer's others.
+order. With it, a customer's orders that share **currency, your reference, project,
+payment terms and delivery address** share a draft, in order number order, and each of
+the customer's drafts answers `separatedBy` — `currency`, `your_reference`, `project`,
+`payment_terms`, `delivery_address` — naming what set it apart from the customer's
+others. A draft states one place of delivery, so the address is part of the key,
+normalised: each part trimmed, its inner spaces collapsed and its case folded, the
+country in capitals (`addressKey`); the delivery name is not.
 
 **A line per allocation**, at the order line's description, unit, quantity, unit price at
 its **eight decimals**, discount and VAT code, naming the allocation as its one source;
 docmath computes the line from the same three numbers Orders computed the allocation's
 amount from, so the line's net is the allocation's, and an order invoiced in full by one
 invoice nets, taxes and totals exactly what the order does. A save takes eight decimals
-on a line naming an allocation, as on a settlement's. On a draft of several orders each
+on a line naming an allocation, as on a settlement's. **The line keeps the allocation's
+numbers**: a save (`PUT /{id}`) that carries an allocation on a line whose quantity, unit
+price, discount or VAT code differ from the line that held it — judged under the draft's
+lock — is **409 `line_holds_order_allocation`**, with `linePosition`, `sourceKind` and
+`sourceId`; its description may change. To bill another quantity the user removes the
+line, which releases the allocation, and invoices the order again. On a draft of several orders each
 order's lines are opened by a **section line** — "Ordre 2210, Deres ref. PO-1", "Order
 2210, your ref. PO-1" in English — at 1 × 0.00 at the VAT code of the order's first line,
 naming no source.
@@ -1463,15 +1476,35 @@ kind, naming no other schema.
 
 ### Releases
 
-An allocation a draft no longer holds goes back to Orders **after the transaction that
-let go of it has committed** (`releaseOrderAllocations`): a deleted draft's (`DELETE
-/{id}`, which reads them under the draft's lock), a save's dropped ones (`PUT /{id}`,
-named in `releasedSources`), and a wizard's that failed after `Allocate`. The call is best
-effort, on a context the request's end does not cancel, and logged when it fails; a
-customer's anonymisation, which deletes the customer's drafts inside its own
-transaction, makes none. What is left, Orders' daily `orders.allocation_sweep` releases
-30 days after the allocation was made ([Workers](/en/reference/orders/#workers)) — and a
-draft still holding a released allocation is then refused at issue.
+**This module owns the cleanup of the allocations it took.** An allocation a draft no
+longer holds goes back to Orders **after the transaction that let go of it has
+committed** (`releaseOrderAllocations`): a deleted draft's (`DELETE /{id}`, which reads
+them under the draft's lock), a save's dropped ones (`PUT /{id}`, named in
+`releasedSources`), and a wizard's that failed after `Allocate`. The call is best effort,
+on a context the request's end does not cancel, and logged when it fails; a customer's
+anonymisation, which deletes the customer's drafts inside its own transaction, makes
+none. What those leave, the ledger and its reconcile give back.
+
+**The ledger** — `invoices.order_allocations_taken` (migration
+`00123_invoices_order_allocation_ledger.sql`): one row per allocation `Allocate`
+answered, `allocation_id` (Orders' id, opaque), `taken_at`, `run_item_id` (the billing
+run item that took it, NULL for the wizard), `claimed_until` and `released_at`. It is
+written at once after `Allocate` returns, on a statement of its own, before any draft is;
+`released_at` is set when `ReleaseAllocations` for the row has answered; the issue that
+stamps an allocation deletes its row on the issue's own transaction — Orders holds it
+from there, and a credit note's release is Orders' holder's. A row released 30 days ago
+is pruned.
+
+**`invoices.allocation_reconcile`**, a worker on every installation, every 10 minutes:
+it claims, in one statement, at most 5 000 rows taken **more than an hour ago**, not
+released, and held by **no live line source** (`held` or `invoiced`) — each claimed for
+5 minutes (`claimed_until`, `FOR UPDATE SKIP LOCKED`), so two replicas never take one
+row — then calls `ReleaseAllocations` for them on the pool, and marks them released. It
+holds no connection while it calls Orders, so it is safe on a pool of one; a failed call
+leaves the rows to be claimed again once their claim has run out, and Orders' release is
+idempotent. An allocation a draft holds is never touched, however old the draft: a
+draft invoice of an order may wait as long as it likes. With Orders off a cycle does
+nothing.
 
 ### Freshness and the issue
 
@@ -1481,8 +1514,11 @@ draft still holding a released allocation is then refused at issue.
 revision, currency or amount moved. A refresh (`refreshSources`) drops the ones no longer
 a draft and names them released.
 
-**The issue** ([The write-back](#the-write-back)) hands the allocations to Orders'
-holder last: it judges `source_already_invoiced`, `source_not_invoiceable` — released,
+**The issue** ([The write-back](#the-write-back)) first judges each line holding an
+allocation against its held row under the issue's lock — its quantity, and its net
+against the allocation's amount — and refuses **`source_changed`** with the line and the
+allocation should one differ (the save refuses such a change already; this is its
+defence in depth). It hands the allocations to Orders' holder last: it judges `source_already_invoiced`, `source_not_invoiceable` — released,
 the order no longer confirmed or on hold, the line no longer invoiceable or its quantity
 no longer open — and `source_changed` — a revision, currency or exact amount other than
 the held row's — refusing the issue with the line, and otherwise stamps the order lines
@@ -1621,13 +1657,22 @@ again: they were judged when the run was made.
 ### An item, in order
 
 An item of a run of **orders** (`billOrders`): Orders off is `skipped`
-`orders_unavailable`; `DueOrders` for the customer until `through` — a draft
+`orders_unavailable`; then the allocations **an earlier attempt of this item** took
+(the ledger's rows naming the item) and no live line source holds — an attempt that
+ended between `Allocate` and its drafts — are released and marked so, a failure being an
+error, retried; then `DueOrders` for the customer until `through` — a draft
 allocation's quantity is not offered again, so the documents an earlier attempt made are
 not drafted twice but carried on (when the run issues, their drafts are issued first);
-more than 5 000 lines is `skipped` `too_many_sources`; nothing left and nothing made
-before is `skipped` `no_orders_due`. Every line of every order not blocked is invoiced in
-full by `fromOrders` with the run's `combine`, each draft recorded on the item at once
-and — when the run issues — issued by `issueDraft` for today. A wizard refusal skips the
+more than 5 000 lines is `skipped` `too_many_sources`. An order in another currency than
+the settings' is left out and named in the item's `detail` — *Orders 2212 (EUR) are in
+another currency than NOK and were left out (currency_not_supported).* — on a `drafted` or
+`issued` item too. Nothing left and nothing made before is `skipped`:
+**`currency_not_supported`** when only such orders were due;
+**`orders_held_by_drafts`** when a draft of the customer holds an order allocation —
+what is left is on drafts already; else `no_orders_due`. Every line of every other order
+not blocked is invoiced in full by `fromOrders` with the run's `combine` — its
+allocations recorded in the ledger under the item —, each draft recorded on the item at
+once and — when the run issues — issued by `issueDraft` for today. A wizard refusal skips the
 item with its code, an issue refusal fails it, an error is retried as below. A run of
 orders has no split: the wizard's grouping decides the documents, and a group past 500
 lines is `too_many_lines`. A run of **consumption**:
@@ -2878,7 +2923,9 @@ installation ([The worker](#the-worker)); a fourth, `invoices-payments`, carries
 payments to their end while `INVOICES_VIPPS_ENABLED` is on
 ([Capture and the reservation](#capture-and-the-reservation)); a fifth,
 `invoices-billing`, carries billing runs and runs on every installation
-([The billing worker](#the-billing-worker)). The first two run only when `INVOICES_EHF_ENABLED` is on — off, neither is handed to the
+([The billing worker](#the-billing-worker)); a sixth, `invoices.allocation_reconcile`,
+gives back the order allocations no draft holds and runs on every installation
+([Releases](#releases)). The first two run only when `INVOICES_EHF_ENABLED` is on — off, neither is handed to the
 runner — and both run with `PEPPOL_LOOKUP_ENABLED` off too: what is already submitted
 still completes, the 48-hour age cap still reaches a `queued` row (it makes no call),
 and short of it a `queued` row is left alone, unleased, said in one log line when the
@@ -5403,7 +5450,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `GET /consumption` | `invoices:create` | 400 no `customerId`, a `through` that is no date; 409 `consumption_unavailable` |
 | `GET /consumption/settlements` | `invoices:create` | 400 no `customerId`, a `through` that is no date; 409 `consumption_unavailable` |
 | `POST /from-consumption` | `invoices:create` | 400 on the field (`customerId`, `settlementIds`, `settlementIds[i]`, `invoiceId`, `revision`, `note`, `vatCodes.energy`, `vatCodes.energyExempt`, `lines` — the document total too large); 404 the target; 409 `invoice_issued`, `too_many_sources`, `consumption_unavailable`, the customer gates, `source_not_for_customer`, `source_not_invoiceable`, `settlement_blocked`, `cadence_not_allowed`, `currency_not_nok`, `no_consumption_due`, `too_many_lines`, a stale revision, `source_held_elsewhere` (with `heldBy`) |
-| `GET /from-orders/due` | `invoices:create` | 400 none or more than one of `customerId`, `orderId` and `every`, more than 100 customers or 5 000 orders, one named twice; 409 `orders_unavailable` |
+| `GET /from-orders/due` | `invoices:create` | 400 none or more than one of `customerId`, `orderId` and `every`, more than 100 customers or 5 000 orders, one named twice; 409 `orders_unavailable`; an order in another currency than the settings' is answered `blocked` `currency_not_supported` |
 | `POST /from-orders` | `invoices:create` | 400 on the field (`lines` — none or more than 5 000, a document total too large —, `lines[i].orderId`, `lines[i].lineId` — not positive or named twice —, `lines[i].quantity`); 409 `orders_unavailable`, `too_many_sources`, `order_blocked`, `line_not_invoiceable`, `allocation_exceeds_open`, `vat_code_inactive` (each with `orderLineId`), the customer gates, `currency_not_nok`, `too_many_lines`, `source_held_elsewhere` — nothing written and nothing left allocated |
 | `POST /billing-runs` | `invoices:create`, and `invoices:issue` when `issue` | 400 on the field (`source`, `combine` — with consumption —, `through`, `customerIds` — none or more than 5 000 —, `customerIds[i]` — not positive, twice, or unknown to the customer directory); 403 `issue` without `invoices:issue`; 409 `consumption_unavailable`, `orders_unavailable`, `billing_run_active` (with `runId`), `too_many_customers`, `no_consumption_due`, `no_orders_due` |
 | `GET /billing-runs` | | 400 paging |
@@ -5413,7 +5460,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` (`projectId` filters on the document's project) |
 | `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included; a deduction line's `quantity`, `unitPrice`, `discountPercent`, `deductsInvoiceId`, `vatCodeId`, `sources`); 409 the customer gates, `deduction_duplicated` (with `linePosition`) |
 | `GET /{id}` | | 404 (an invoice draft's work is judged fresh — `source_changed`, `source_not_invoiceable` — only for a caller holding `invoices:create`) |
-| `PUT /{id}` | `invoices:create` | The body's phase 3 fields: each line's `sources` (`[{kind, id}]`, required on a draft that holds work) and `deductsInvoiceId`, `refreshSources` and `timesheet`. 404; 400 (a line's `sources` against the work the draft holds, at most 5 000; a deduction line's fields as on `POST /`; on a credit note a line's `deductsInvoiceId`, or a quantity of the other sign than the line it credits; `timesheet: true` on a credit-note draft; a settlement's lines not consecutive (`lines[i].sources`), a discount on a correction line, a unit price past its decimals (eight on a line billing a settlement or an order allocation, four otherwise; a credit line's past its original's), more than 500 lines after a refresh rebuilt them (`lines`)); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`), `deduction_duplicated` (with `linePosition`) |
+| `PUT /{id}` | `invoices:create` | The body's phase 3 fields: each line's `sources` (`[{kind, id}]`, required on a draft that holds work) and `deductsInvoiceId`, `refreshSources` and `timesheet`. 404; 400 (a line's `sources` against the work the draft holds, at most 5 000; a deduction line's fields as on `POST /`; on a credit note a line's `deductsInvoiceId`, or a quantity of the other sign than the line it credits; `timesheet: true` on a credit-note draft; a settlement's lines not consecutive (`lines[i].sources`), a discount on a correction line, a unit price past its decimals (eight on a line billing a settlement or an order allocation, four otherwise; a credit line's past its original's), more than 500 lines after a refresh rebuilt them (`lines`)); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`), `deduction_duplicated` (with `linePosition`), `line_holds_order_allocation` (with `linePosition`, `sourceKind`, `sourceId`) |
 | `DELETE /{id}` | `invoices:create` | 404; 409 `invoice_issued` |
 | `POST /{id}/issue` | `invoices:issue` | 400 a body that does not decode (none, or an `issueDate` that is no calendar day); 404; 409 every code under [Issuing](#issuing); 503 `storage_unavailable` |
 | `POST /{id}/credit` | `invoices:issue` | 404; 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited` |
