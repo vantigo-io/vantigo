@@ -26,9 +26,9 @@ runs in the carrier's test mode:
 | --- | --- |
 | `Capabilities()` | What the carrier can do beyond booking and tracking: rates, pickup points, delivery windows, cancel, webhooks, a coverage check, and its label formats. A caller asks it; an absent capability is never found by an error |
 | `Rates(ctx, RateRequest)` | One `Option` per product or delivery window: the price excluding VAT and the VAT, in minor units, an `Estimate` flag, an expected date or a `Window`, and an `ExpiresAt` and opaque `Token` for a quote that must be booked as given. A carrier with no rate call answers none |
-| `Book(ctx, BookRequest)` | Sender and recipient (with the phone and e-mail that drive the carrier's notices), the product, value-added services, packages, the chosen option's token, references, the caller's `IdempotencyKey` and `Retry` when an earlier call's outcome is unknown. Answers the consignment number, a package number per package, the product actually booked, the cost, the tracking URL and the document references |
+| `Book(ctx, BookRequest)` | Sender and recipient (with the phone and e-mail that drive the carrier's notices), the product, value-added services, packages, the chosen option's token, references, the caller's `IdempotencyKey`, `Retry` when an earlier call's outcome is unknown, and `FindOnly` with it to look without booking (`ErrNotFound` when the carrier shows none). Answers the consignment number, a package number per package, the product actually booked, the cost, the tracking URL and the document references |
 | `Label(ctx, Booking, kind, format)` | The label or the waybill, in a format `Capabilities` lists |
-| `Track(ctx, refs)` | Per known reference — consignment, package or the booking's reference — the events folded onto `booked`, `in_transit`, `ready_for_pickup`, `delivered`, `returned`, `exception` and `cancelled`, keeping the carrier's code, text, place and time |
+| `Track(ctx, refs)` | Each reference within a deadline of its own, one that fails or hangs left out; when ctx ends, what was answered and ctx's error. Per known reference — consignment, package or the booking's reference — the events folded onto `booked`, `in_transit`, `ready_for_pickup`, `delivered`, `returned`, `exception` and `cancelled`, keeping the carrier's code, text, place and time |
 | `ParseWebhook(r, secret)` | A tracking callback authenticated and parsed, for a carrier with the capability |
 | `Cancel(ctx, Booking, key)` | `CancelCancelled`, `CancelNotSupported` — void it locally, its label must not be used — or `CancelTooLate` |
 | `Services(ctx)` | The products the account may book, from the carrier or the adapter's data file — never Go constants |
@@ -64,17 +64,21 @@ for an account in test mode:
 - **Book** — `POST /booking/api/create`, packages in kilograms with three decimals. Bring has
   no idempotency key, so the caller's key is the consignment's `correlationId` and the
   sender's reference; with `Retry`, the adapter looks the key up through tracking first and
-  answers the booking it finds (`Recovered`, without document links), booking only when it
-  finds none. Bring's errors per consignment become a `CarrierRefusal` with the English
-  message.
+  answers the booking it finds (`Recovered`, without document links: Bring documents no
+  label link by consignment number, so the caller sends the user to Mybring), booking only
+  when it finds none — with `FindOnly`, answering `ErrNotFound` instead. A lookup that fails
+  is an unknown outcome, never a definitive refusal. Bring's errors per consignment become a
+  `CarrierRefusal` with the English message.
 - **Label** — the labels link, followed through its redirect, PDF only; the Mybring keys go
   only to Bring's own host on a redirect.
-- **Track** — `GET /tracking/api/v2/tracking.json?q=…`, one reference at a time under one
-  deadline; `PRE_NOTIFIED` folds to booked, `READY_FOR_PICKUP` to ready for pickup,
+- **Track** — `GET /tracking/api/v2/tracking.json?q=…`, one reference at a time, each
+  within 10 seconds (one that fails is skipped; refused keys stop the poll); `PRE_NOTIFIED` folds to booked, `READY_FOR_PICKUP` to ready for pickup,
   `DELIVERED` to delivered, `RETURN` and `DELIVERED_SENDER` to returned, `DEVIATION` to an
   exception, and anything else to in transit.
 - **Pickup points** — `GET /pickuppoint/api/pickuppoint/{country}/postalCode/{pc}.json`.
 - **Cancel** answers `CancelNotSupported`: Bring has no cancel call and bills on hand-in.
+  `bring.Capabilities()` answers the capabilities without an account, so a caller voids a
+  booking without opening its keys.
 - **Services** are `shipping/bring/products.json` — code, English and Norwegian names,
   segment (`b2c`, `b2b`, `cargo`, `return`), whether delivered to a pickup point and whether
   it has a waybill of its own. When Bring withdraws or adds a product, edit the file. A

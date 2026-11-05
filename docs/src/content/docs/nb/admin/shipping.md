@@ -80,7 +80,9 @@ bestilling — og aldri med en ekte kundes.
 ## Velg standardkonto per lagersted
 
 Under **Standardkonto per lagersted** velger du en konto for hvert lagersted som leverer
-ordrer, og **Lagre**. Et lagersteds nye sendinger og fraktestimatene for ordrene dets bruker
+ordrer, og **Lagre**; fjern et lagersteds valg for å ta bort standardkontoen. En lagring endrer
+bare lagerstedene på siden, så to administratorer som lagrer samtidig, opphever ikke
+hverandre. Et lagersteds nye sendinger og fraktestimatene for ordrene dets bruker
 den; et tilbuds estimat bruker standard lagersteds. Et lagersted uten bruker den eneste aktive
 kontoen når det finnes nøyaktig én; ellers velger sendingen konto.
 
@@ -88,8 +90,10 @@ kontoen når det finnes nøyaktig én; ellers velger sendingen konto.
 
 I **Innstillinger for Ordre** › **Frakt**:
 
-- **Fraktprodukt** — et tjenesteprodukt, for eksempel *Frakt*, som en fraktlinje tar navn,
-  pris og mva-kode fra. Uten et slikt er en fraktlinje fritekst med standardsatsen.
+- **Fraktprodukt** — et tjenesteprodukt, for eksempel *Frakt*, som en fraktlinje tar navn og
+  pris fra. Mva-koden følger varene på tilbudet eller ordren: deres når de har samme, ellers
+  den som størstedelen av varenes beløp har; fraktproduktets egen mva-kode gjelder bare et
+  dokument uten varer. Uten et fraktprodukt er en fraktlinje fritekst.
 - **Påslag på transportørens estimat** — prosenten **Estimer** legger til Brings pris.
 - **Send kunden e-post når frakten er bestilt** — på som standard: sendingsvarselet, med
   ordrenummeret, Bring, sendingsnummeret og sporingslenken, sendt fra avsenderkanalen i Ordre.
@@ -99,8 +103,12 @@ I **Innstillinger for Ordre** › **Frakt**:
 
 `orders.shipment_tracking` spør Bring hvert 30. minutt om hver sending som er bestilt eller
 underveis de siste 60 dagene, lagrer hendelsene og flytter sendingen — underveis, levert,
-avvik. Den kjører i arbeiderprosessen med de andre og trenger ingenting eget; et hvilket som
-helst antall instanser deler den. Brings push-varsler (Event Cast) brukes ikke.
+avvik. En kansellering Bring melder, vises som et avvik og gjøres ikke noe med: en person
+kansellerer sendingen i Vantigo. Hver sending spørres om innen 10 sekunder, og en som henger,
+holder ikke de andre tilbake; en runde slutter å spørre etter 10 minutter, og sendingene den
+ikke rakk, kommer først i neste. Den kjører i arbeiderprosessen med de andre og trenger
+ingenting eget; et hvilket som helst antall instanser deler den. Brings push-varsler (Event
+Cast) brukes ikke.
 
 ## Kontroller
 
@@ -122,7 +130,10 @@ helst antall instanser deler den. Brings push-varsler (Event Cast) brukes ikke.
 | «Fraktkontoens nøkler kan ikke leses på denne serveren» | `APP_SECRET` er endret siden nøklene ble lagret | Skriv inn nøklene igjen |
 | «Ingen fraktkonto å bruke» ved sending | Ingen konto er lagerstedets standard, og det finnes ikke nøyaktig én aktiv konto | Velg lagerstedets standardkonto |
 | Transportøren avviser en bestilling og nevner et postnummer eller en adresse | Ordrens leveringsadresse er ufullstendig | Rett leveringsadressen på ordren, lag en ny sending og bestill |
-| En bestilling ender med «Transportøren svarte ikke» | Bring svarte ikke i tide; den kan ha bestilt | Bestill igjen: Vantigo slår opp sendingen hos Bring først og bestiller én gang. En sending funnet slik har ingen etikett i Vantigo — skriv den ut fra Mybring |
+| En bestilling ender med «Transportøren svarte ikke» | Bring svarte ikke i tide; den kan ha bestilt | Vent to minutter og bestill igjen: Vantigo slår opp sendingen hos Bring først og bestiller én gang. Til da kan sendingen ikke endres |
+| «Sendingen bestilles akkurat nå» (`booking_in_progress`) | Noen bestilte den for under to minutter siden, og Bring kan fortsatt holde på | Vent et par minutter og se igjen; den bestilles én gang |
+| «Transportøren viser ikke den tidligere bestillingen ennå» (`booking_outcome_unknown`) | En bestilling fikk ikke svar for under et kvarter siden, og Bring viser den ikke på referanse ennå | Slå opp sendingen i Mybring blant ordrens sendinger; eller vent et kvarter og bestill igjen — da bestiller Vantigo på nytt om Bring fortsatt ikke viser noen |
+| Sendingen sier «skriv ut etiketten i Mybring» | Bestillingen ble funnet igjen etter et tapt svar, og Bring gir ingen etikettlenke for den | Skriv ut etiketten fra sendingen i Mybring |
 | En testbestilling sendte SMS til en kunde | Bring varsler ekte kontakter i testmodus | Bruk oppdiktede kontakter på testsendinger |
 | Sendinger blir stående *Bestilt* | Sporingsarbeideren kjører ikke, eller serveren når ikke Bring | Sjekk at arbeiderprosessen kjører og at `api.bring.com` kan nås |
 | En kansellert bestilt sending viser fortsatt etiketten | Bring har ingen kansellering: sendingen er ugyldiggjort i Vantigo | Ikke bruk etiketten; Bring fakturerer bare pakker som er levert inn |

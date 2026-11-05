@@ -132,8 +132,9 @@ Whoever invoices needs no Orders permission to do it; the order's **Invoices** c
   order is changed again before the mail goes, the current version is sent instead, and
   the order's **Documents and mailings** shows which. An order cancelled before its
   confirmation goes gets none.
-- **Shipping** — the **Freight product**: a Service product whose name, price and VAT code
-  a shipping line takes, or none for a free-text line; the **Markup on the carrier's
+- **Shipping** — the **Freight product**: a Service product whose name and price a
+  shipping line takes — its VAT code follows the goods, the freight product's own only for
+  a document without goods — or none for a free-text line; the **Markup on the carrier's
   estimate** in percent (0 unless changed), which **Estimate** on a shipping line adds;
   and **E-mail the customer when a shipment is booked** (on unless changed), which sends
   the shipping notice with the tracking link on the send channel. The carrier accounts

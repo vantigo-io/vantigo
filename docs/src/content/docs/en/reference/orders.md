@@ -904,10 +904,12 @@ or `archived`, when Verify last passed and a `version`.
   constants, since Bring withdraws products yearly. A cargo product has a waybill of its
   own; for the others the label serves.
 - **The default account per site** (`orders.site_carrier_defaults`, `PUT
-  /shipping/site-defaults`, replaced whole) names, per Inventory site, the account its
-  shipments and estimates use; each site must be one Inventory has that fulfils orders and
-  each account active. A site without one uses the only active account when there is
-  exactly one.
+  /shipping/site-defaults`) names, per Inventory site, the account its shipments and
+  estimates use; each site must be one Inventory has that fulfils orders, named once, and
+  each account active. A save changes only the sites it names — `accountId: null` clears a
+  site's default, and a site not named keeps its own — so two people saving different
+  sites do not undo each other; the settings page sends every site it shows. A site
+  without one uses the only active account when there is exactly one.
 
 The accounts are managed under Workspace admin › Integrations › Shipping
 (`/workspace/shipping`), behind the orders module and `orders:carriers-manage`, the
@@ -939,38 +941,59 @@ shipments.
 - **Save** (`PUT /shipments/{id}`) replaces a draft's account, service, value-added
   services, pickup point, the recipient's contact, phone and e-mail, and its packages (1 to
   20; 1 g to 1 tonne; dimensions 0–10 000 mm). A shipment no longer a draft is
-  `shipment_not_draft` (409).
+  `shipment_not_draft` (409). A draft with a booking attempt whose outcome is unknown
+  (`bookAttempted`) is `booking_unresolved` (409): a retry books what was attempted, so it
+  is booked again to resolve it, never changed.
 - **Prices** (`GET /shipments/{id}/rates`) ask the carrier for every product of the account
   for the draft's packages, from the sender to the recipient, cheapest first: each with the
   price excluding VAT, the VAT, the currency, whether it is an estimate and the expected
   delivery day. Bring's net price is preferred, else its list price; both are estimates.
 - **Book** (`POST /shipments/{id}/book`, the version and `expectedUpdatedAt`) records the
-  attempt under the shipment's lock and commits it before Bring is called, then books under
-  the stored key: Bring has no idempotency key, so the key travels as the consignment's
-  `correlationId` and the sender's reference, and when an earlier attempt's outcome is
-  unknown the adapter looks the key up through Bring's tracking first and answers the
-  booking it finds — so a retried request books once. A booking recovered that way has no
-  label link (Bring's tracking does not give it again): print it from Mybring. Bring's
-  refusal is 422 `carrier_refused` with Bring's own message, and the shipment stays a draft;
-  refused keys 503 `carrier_unavailable`; no answer 503 `carrier_unreachable` — book again.
+  attempt (`book_attempted_at`) under the shipment's lock, moving its version, and commits
+  it before Bring is called, then books under the stored key: Bring has no idempotency key,
+  so the key travels as the consignment's `correlationId` and the sender's reference.
+  - **The attempt is a lease.** While it is under **two minutes** old — longer than the
+    carrier call's own 30-second deadline — another book of the shipment is
+    `booking_in_progress` (409), and so is a cancel; a client holding the version it read
+    before the attempt is `version_conflict`. Two books at once make one booking.
+  - **An unknown outcome.** When an earlier attempt got no answer, a book after the lease
+    asks Bring's tracking for the key first and records the booking it finds — so a retried
+    request books once. Bring shows a booking by reference only after a lag, so while the
+    earlier attempt is under **fifteen minutes** old a retry that finds none books nothing
+    and is `booking_outcome_unknown` (409): check Mybring, or wait. After fifteen minutes a
+    retry that still finds none books again. A lookup that fails leaves the outcome
+    unknown.
+  - **Label in Mybring only.** A booking recovered by its reference has no label link:
+    Bring's tracking does not give it, and Bring documents no label link by consignment
+    number. The shipment is marked `labelInMybringOnly` (`label_in_mybring_only`), has no
+    label to download, and its label is printed in Mybring.
+  - Bring's refusal is 422 `carrier_refused` with Bring's own message; refused keys 503
+    `carrier_unavailable`. After such a definitive refusal nothing was booked under the
+    key: the draft gets a fresh key and its attempt is taken back, so it can be changed and
+    booked anew. No answer is 503 `carrier_unreachable` — book again in a couple of
+    minutes.
   On one transaction, under the shipping lines' variants', the order's and the shipment's
   locks: the consignment number, package numbers, tracking URL, product booked and cost
   (marked an estimate) are stored, `orders.shipment.booked` is published, the order's
   [shipping lines](#the-shipping-line) count delivered, and — with the setting
   `shippingNoticeOnBook` — the [shipping notice](#the-shipping-notice) is queued. After the
-  commit the label and the waybill are fetched — Bring's label behind its redirect, PDF only
-  — and stored (`orders.shipment_documents`, under `shipment/<id>/` in orders' storage
-  scope); a fetch that fails is made again by the first download. The booked cost is the
+  commit the label and the waybill are fetched, each within 10 seconds, — Bring's label
+  behind its redirect, PDF only — and stored (`orders.shipment_documents`, under
+  `shipment/<id>/` in orders' storage scope); a fetch that fails or runs out of time is made
+  again by the first download. The booked cost is the
   business's, never invoiced: the customer pays the shipping line.
-- **Cancel** (`POST /shipments/{id}/cancel`) cancels a draft at once. A booked shipment is
-  cancelled with the carrier, whose answer is one of three: `cancelled`; `not_supported` —
-  Bring, which has no cancel call and bills on hand-in — and the shipment is **voided** in
-  Vantigo, its label must not be used; or too late, refused with `shipment_past_cancel`
-  (409). A shipment in transit or delivered is `shipment_past_cancel`; one already cancelled
+- **Cancel** (`POST /shipments/{id}/cancel`) cancels a draft at once — but not while a
+  booking attempt holds it (`booking_in_progress`, 409). A booked shipment is cancelled with
+  the carrier, whose answer is one of three: `cancelled`; `not_supported` — Bring, which
+  has no cancel call and bills on hand-in — and the shipment is **voided** in Vantigo, its
+  label must not be used; or too late, refused with `shipment_past_cancel` (409). A carrier
+  whose capabilities list no cancel (Bring) is voided without a call, so without reading
+  the account's keys: a void works even when the keys cannot be opened. A shipment in transit or delivered is `shipment_past_cancel`; one already cancelled
   `shipment_not_cancellable`. Cancelling changes nothing on the order's lines.
-- **The label and the waybill** (`GET /shipments/{id}/label`, `/waybill`) are the stored
-  PDFs as Bring issued them; a service without a waybill of its own answers its label for
-  the waybill. 404 when there is none.
+- **The label and the waybill** (`GET /shipments/{id}/label`, `/waybill`,
+  deliveries-manage) are the stored PDFs as Bring issued them; a service without a waybill
+  of its own answers its label for the waybill. 404 when there is none, and for a shipment
+  of an anonymised order.
 - `GET /deliveries/{id}/shipments` and `GET /orders/{id}/shipments` list a delivery's and
   an order's shipments with their packages, documents and tracking events.
 
@@ -978,13 +1001,19 @@ shipments.
 
 `orders.shipment_tracking` polls the carriers every 30 minutes for the shipments booked or in
 transit, booked in the last 60 days. A cycle claims up to 50 shipments at a time with a
-`SKIP LOCKED` pick that moves `last_tracked_at` to now — the lease — asks each account's
-carrier once for its shipments in the batch, outside any transaction, and records each on a
-short transaction of its own: every event once (`orders.shipment_events`: Bring's code, text,
-place and time, and the state it folds onto), the status moved and the exception flag set
-or cleared. Bring's statuses fold so: `PRE_NOTIFIED` booked; `READY_FOR_PICKUP` and in-transit
-codes in transit; `DELIVERED` delivered, publishing `orders.shipment.delivered`; `DEVIATION`,
-`RETURN` and `DELIVERED_SENDER` set the exception flag. Bring's Event Cast webhooks are not
+`SKIP LOCKED` pick, the least recently tracked first, that moves `last_tracked_at` to now —
+the lease — asks each account's carrier once for its shipments in the batch, outside any
+transaction, and records each on a short transaction of its own: every event once
+(`orders.shipment_events`: Bring's code, text, place and time, and the state it folds
+onto), the status moved and the exception flag set or cleared. Bring is asked one reference
+at a time, each within 10 seconds: one that fails or hangs is skipped, not the rest. A
+cycle's carrier calls end after 10 minutes, well inside the lease; a shipment not yet asked
+about then gets its `last_tracked_at` back, so it is due — and first — in the next cycle,
+and a stuck tail rotates. Bring's statuses fold so: `PRE_NOTIFIED` booked;
+`READY_FOR_PICKUP` and in-transit codes in transit; `DELIVERED` delivered, publishing
+`orders.shipment.delivered`; `DEVIATION`, `RETURN` and `DELIVERED_SENDER` set the exception
+flag; `CANCELLED` sets the exception flag too and is recorded as an event, but the shipment
+is not cancelled on the carrier's word — a person looks, and cancels it in Vantigo. Bring's Event Cast webhooks are not
 used: they are unsigned and retry little.
 
 ### The shipping notice
@@ -1004,19 +1033,24 @@ A line of kind `shipping` (O53) is the freight the customer pays, on a quote or 
 (a template or a subscription refuses it, `line_invalid`). It is priced like a product line
 with **quantity 1** (`quantity_invalid` otherwise), is never optional and has no packaging;
 its invoice policy is `order` and its delivery method `manual`. It names the settings'
-**freight product** (a variant of a Service product), taking its name and its VAT code, or
-is free text with its own VAT code — the standard rate's by default, as freight follows the
-goods.
+**freight product** (a variant of a Service product), taking its name, or is free text.
+Freight follows the VAT of the goods it carries: see the estimate's VAT code below.
 
-- **The estimate** (`POST /shipping-estimate` with `quoteId` or `orderId`, orders:access)
-  writes nothing. It asks the default account of the order's site — a quote's: the
+- **The estimate** (`POST /shipping-estimate` with `quoteId` or `orderId`) writes nothing.
+  Besides orders:access it needs the right to edit the document: orders:quotes-manage for a
+  quote, orders:sales-manage for an order (403 otherwise). It asks the default account of the order's site — a quote's: the
   settings' default site — for its default service, for one package weighing the document's
   goods lines (catalog lines, optional ones left out) by their variants' weights, to the
   document's delivery address, else its invoice address (`address_missing`, 409). It answers
   the carrier's price excluding VAT, the settings' markup percent, the price with the markup
   rounded to øre, and `unitPrice`, that price as the line enters it — including VAT when the
-  document's prices do —, with the freight product's variant, name and VAT code. A carrier
-  pricing in another currency than the document's is `currency_mismatch` (409).
+  document's prices do —, with the freight product's variant and name. **The VAT code**
+  is the document's priced goods lines' (product lines, optional ones left out) when they
+  all share one; when they are mixed, the code carrying the largest net amount of them
+  (the lowest code id on a tie) — a simplification of "freight follows the main supply" that
+  a person may override on the line; with no goods line, the freight product's code, else
+  the standard rate's. A carrier pricing in another currency than the document's is
+  `currency_mismatch` (409).
 - A save naming `priceSource: carrier` with a typed `unitPrice` on a shipping line stores
   `price_source = carrier`; a price typed over it without that is `manual`.
 - **Delivered** when a shipment of the order is booked: every shipping line's delivered
@@ -1198,8 +1232,9 @@ each object from the store first, then its row; the send rows stay, blanked, wit
 link to the PDF removed. An activated subscription is kept the same way until 3 years and
 6 months after the end of the financial year it ended in — its end date, or the day it was
 cancelled — and then anonymised by the same worker; an active one is kept. An anonymised
-order's shipments lose their recipient; their consignment numbers, packages and tracking
-events stay. An erasure is
+order's shipments lose their recipient, their label and waybill links and their tracking
+page link, so no label is fetched from the carrier again, and their label and waybill
+answer 404; their consignment numbers, packages and tracking events stay. An erasure is
 marked complete only when no order or subscription of the customer is left unanonymised
 and no stored PDF of theirs remains.
 
@@ -1386,6 +1421,9 @@ a bare 400.
 | `shipment_not_draft` | 409 | A save, a price or a booking of a shipment no longer a draft |
 | `shipment_past_cancel` | 409 | The carrier has the parcel: in transit, delivered, or the carrier answered too late |
 | `shipment_not_cancellable` | 409 | The shipment is already cancelled |
+| `booking_in_progress` | 409 | A book or a cancel of a draft whose booking attempt is under two minutes old |
+| `booking_outcome_unknown` | 409 | A retry after a lost answer, under fifteen minutes after it, while the carrier shows no booking under the key: check Mybring, or wait |
+| `booking_unresolved` | 409 | A save of a draft whose booking's outcome is unknown: book it again first |
 | `address_missing` | 409 | An estimate of a document with no delivery or invoice postal code |
 | `currency_mismatch` | 409 | The carrier prices in another currency than the document |
 | `freight_product_invalid` | 400 | The settings' freight product is not a variant of a Service product |
@@ -1578,18 +1616,18 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `GET /carrier-accounts/{id}/services` | access | 200 the carrier's products; 404 |
 | `GET /carrier-accounts/{id}/pickup-points` | deliveries-manage | 200 near `postalCode` (`country`, default NO); 400; 404; 422 `carrier_refused`; 503 |
 | `GET /shipping/site-defaults` | access | 200 the default account per site |
-| `PUT /shipping/site-defaults` | carriers-manage | 200; 400 a site twice, `site_not_fulfilling`, an account not active |
+| `PUT /shipping/site-defaults` | carriers-manage | 200 the sites named saved, a null cleared, the others kept; 400 a site twice, `site_not_fulfilling`, an account not active |
 | `GET /deliveries/{id}/shipments` | access | 200; 404 |
 | `POST /deliveries/{id}/shipments` | deliveries-manage | 201; 400 `service_unknown`; 404; 409 `delivery_not_posted`, `no_carrier_account`, `carrier_account_archived`; 503 |
 | `GET /orders/{id}/shipments` | access | 200 the order's shipments; 404 |
 | `GET /shipments/{id}` | access | 200; 404 |
-| `PUT /shipments/{id}` | deliveries-manage | 200; 400 `service_unknown`; 404; 409 `version_conflict`, `shipment_not_draft`, `carrier_account_archived` |
+| `PUT /shipments/{id}` | deliveries-manage | 200; 400 `service_unknown`; 404; 409 `version_conflict`, `shipment_not_draft`, `carrier_account_archived`, `booking_unresolved` |
 | `GET /shipments/{id}/rates` | deliveries-manage | 200 cheapest first; 404; 409 `shipment_not_draft`; 422 `carrier_refused`; 503 |
-| `POST /shipments/{id}/book` | deliveries-manage | 200; 404; 409 `version_conflict`, `shipment_not_draft`, `carrier_account_archived`; 422 `carrier_refused`; 503 `carrier_unavailable`, `carrier_unreachable` |
-| `POST /shipments/{id}/cancel` | deliveries-manage | 200 cancelled or voided; 404; 409 `version_conflict`, `shipment_past_cancel`, `shipment_not_cancellable`; 503 |
-| `GET /shipments/{id}/label` | access | 200 the carrier's PDF; 404 none |
-| `GET /shipments/{id}/waybill` | access | 200 the waybill, else the label; 404 none |
-| `POST /shipping-estimate` | access | 200; 400 neither or both ids; 404; 409 `no_carrier_account`, `address_missing`, `currency_mismatch`; 422 `carrier_refused`; 503 |
+| `POST /shipments/{id}/book` | deliveries-manage | 200; 404; 409 `version_conflict`, `shipment_not_draft`, `carrier_account_archived`, `booking_in_progress`, `booking_outcome_unknown`; 422 `carrier_refused`; 503 `carrier_unavailable`, `carrier_unreachable` |
+| `POST /shipments/{id}/cancel` | deliveries-manage | 200 cancelled or voided; 404; 409 `version_conflict`, `shipment_past_cancel`, `shipment_not_cancellable`, `booking_in_progress`; 503 |
+| `GET /shipments/{id}/label` | deliveries-manage | 200 the carrier's PDF; 404 none, or the order is anonymised |
+| `GET /shipments/{id}/waybill` | deliveries-manage | 200 the waybill, else the label; 404 none, or the order is anonymised |
+| `POST /shipping-estimate` | access + quotes-manage for a quote, sales-manage for an order | 200; 403; 400 neither or both ids; 404; 409 `no_carrier_account`, `address_missing`, `currency_mismatch`; 422 `carrier_refused`; 503 |
 | `GET /warnings` | access | 200 — every warning, customers' first, each by name, a deleted product's `orphaned`; `scope` narrows |
 | `GET /warnings/customers/{customerId}` | access | 200; 404 none |
 | `PUT /warnings/customers/{customerId}` | settings | 200; 400 level or text; 404 no such customer; 503 |
