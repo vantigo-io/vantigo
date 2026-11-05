@@ -1,6 +1,6 @@
 ---
 title: Ordre
-description: Slå på Ordre — modulene den krever, koblingen av avgiftskategoriene i Produkter til mva-koder, de ni rettighetene og rollene du bygger av dem — og hold innstillingene — nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen, ordrebekreftelse ved bekreftelse og e-posttekstene — tilbudsmalene og salgsadvarslene, hvem som ser salgsanalysen, og hvem som fakturerer ordre; hvordan du kontrollerer det, og hva som kan gå galt.
+description: Slå på Ordre — modulene den krever, koblingen av avgiftskategoriene i Produkter til mva-koder, de ni rettighetene og rollene du bygger av dem — og hold innstillingene — nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen, ordrebekreftelse ved bekreftelse og e-posttekstene — tilbudsmalene og salgsadvarslene, hvem som ser salgsanalysen, hvem som holder abonnementene, og hvem som fakturerer ordre og abonnement; hvordan du kontrollerer det, og hva som kan gå galt.
 sidebar:
   order: 48
 sources:
@@ -62,16 +62,22 @@ Ingen andre enn eieren kan bruke appen før en rolle gir rettighetene, under
 
 | Rettighet | Nøkkel | Gir |
 | --- | --- | --- |
-| Bruke Ordre | `orders:access` | Appen, og å lese tilbud, ordrer og maler |
+| Bruke Ordre | `orders:access` | Appen, og å lese tilbud, ordrer, abonnement og maler |
 | Håndtere tilbud | `orders:quotes-manage` | Lage, sende, besvare og kopiere tilbud |
 | Håndtere ordrer | `orders:sales-manage` | Lage og endre ordrer, sette på vent, kansellere, registrere levert, sende ordrebekreftelsen |
 | Bekrefte ordrer | `orders:sales-confirm` | Bekrefte, låse og låse opp; akseptere et tilbud rett til en bekreftet ordre |
+| Håndtere abonnementer | `orders:subscriptions-manage` | Lage, aktivere, endre, pause, gjenoppta, avslutte og kansellere abonnement; akseptere et tilbud som abonnement |
 | Se salgsanalyse | `orders:analysis-view` | **Analyse**: treffprosenten på tilbud, ordreinngangen og ordrereserven, med CSV-filene |
 | Håndtere innstillinger for Ordre | `orders:settings` | Innstillingene, tilbudsmalene og salgsadvarslene, og overstyring av en sperre; kan ikke delegeres |
 
-**Håndtere abonnementer**, **Håndtere leveranser** og **Håndtere fraktselskaper** (sensitiv,
-kan ikke delegeres) er allerede listet og gjør ingenting ennå: de hører til leveransene som
-bringer abonnementer, leveranser og frakt.
+**Håndtere leveranser** og **Håndtere fraktselskaper** (sensitiv, kan ikke delegeres) er
+allerede listet og gjør ingenting ennå: de hører til leveransene som bringer leveranser og
+frakt.
+
+Den som holder kundenes abonnement — supportavtaler, drift, lisenser — får **Håndtere
+abonnementer**; listen **Abonnement** og hvert abonnements side er åpne for alle med
+**Bruke Ordre**. Et abonnements perioder faktureres som ordre, med veiviseren **Fra ordre**
+i Fakturaer og fakturakjøringer av ordre, med rettighetene i Fakturaer.
 
 **Se salgsanalyse** viser tallene til alle selgere og ordreinngangen fra alle kunder, så gi
 den til salgsledelsen heller enn til hver selger.
@@ -85,8 +91,8 @@ ingen rettighet i Produkter.
 
 **Å fakturere en ordre** er Fakturaers arbeid, ikke en rettighet i Ordre: knappen
 **Fakturer** på ordren og veiviseren **Fra ordre** krever **Bruke Fakturaer** og **Lage
-fakturaer**, og å utstede utkastet **Utstede fakturaer**. Den som fakturerer, trenger ingen
-rettighet i Ordre for det; kortet **Fakturaer** på ordren lenker til fakturaene for dem
+fakturaer**, og å utstede utkastet **Utstede fakturaer** — et abonnements perioder det
+samme. Den som fakturerer, trenger ingen rettighet i Ordre for det; kortet **Fakturaer** på ordren lenker til fakturaene for dem
 som har **Bruke Fakturaer**. **Frigjør fra fakturautkast** på en ordre krever **Håndtere
 ordrer**.
 

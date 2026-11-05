@@ -653,6 +653,14 @@ Open the wizard from the order — **Invoice** on a confirmed order in Orders
    of a customer's orders apart — *Kept apart from the customer's other invoice by its
    delivery address.*
 
+A customer's **subscriptions** are listed beside their orders, with the periods due
+today — *Subscription 3001 – January 2027, February 2027*
+([Subscriptions](/en/user/orders/#subscriptions)). A subscription's periods are invoiced
+whole: on the **Lines** step each period is a line of its own, *Support – January 2027*,
+with no quantity to lower; untick the subscription to leave it for later. On
+**Combined per customer** a customer's orders and subscriptions share one invoice where
+they agree, as orders do.
+
 Choose **Create the drafts**. One draft opens at once; several are listed — *Draft 1042:
 order 2210* — to open and check one by one. Nothing is issued yet.
 
@@ -669,6 +677,12 @@ order 2210* — to open and check one by one. Nothing is issued yet.
   invoice holds one order, the latest delivery date of the orders (today when none has
   one), the delivery address when every order has the same complete one, and the
   orders' project.
+- **A subscription's period** is a line with the subscription line's text and the period —
+  *Support, januar 2027* — and the header's delivery is a **Delivery period** from the
+  first period's first day to the last one's last. A pro-rated first period bills its
+  share at a unit price of up to eight decimals, with no discount. On a combined
+  invoice a subscription's lines open with *Abonnement 3001* (*Subscription 3001* in
+  English).
 
 ### Editing, deleting, issuing and crediting it
 
@@ -706,6 +720,10 @@ invoice of every customer — or of the customers you name — in one go.
    one invoice where they agree on currency, your reference, project, payment terms and
    delivery address; unticked, each order gets its own.
 4. **Issue the invoices** and **Customer ids** as for consumption, then **Start the run**.
+
+A customer's active subscriptions are invoiced in the same run: every period due through
+the run's day — its first day on or before it when billed in advance, its last when in
+arrears — and none starting more than twelve months ahead.
 
 An order on hold or still a draft is left out. So is an order in another currency than
 the invoice settings': the customer's row names it — *Orders 2212 (EUR) are in another

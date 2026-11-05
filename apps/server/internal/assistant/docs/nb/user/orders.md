@@ -1,6 +1,6 @@
 ---
 title: Ordre
-description: Ordre-appen — lag et tilbud, fra appen, kundesiden eller en mal; legg til produkt-, fritekst-, seksjons- og merknadslinjer, valgfrie linjer og rabatter; send det eller marker det som sendt, revider, aksepter, avslå, kanseller og kopier det; lag en ordre, bekreft den, endre den etter bekreftelse, sett den på vent, lås den, kanseller den eller resten, registrer hva som er levert, send ordrebekreftelsen og skriv ut en proforma; fakturer den, se fakturaene dens og frigjør det fakturautkast holder; endringsloggen; linjer i forpakninger og fra variantrutenettet; kunde- og produktadvarsler og overstyring av en sperre; salgsanalysen; kundens Ordre-fane; og hva en avvisning betyr.
+description: Ordre-appen — lag et tilbud, fra appen, kundesiden eller en mal; legg til produkt-, fritekst-, seksjons- og merknadslinjer, valgfrie linjer og rabatter; send det eller marker det som sendt, revider, aksepter, avslå, kanseller og kopier det; lag en ordre, bekreft den, endre den etter bekreftelse, sett den på vent, lås den, kanseller den eller resten, registrer hva som er levert, send ordrebekreftelsen og skriv ut en proforma; fakturer den, se fakturaene dens og frigjør det fakturautkast holder; lag et abonnement, aktiver, endre, pause, gjenoppta, avslutt og kanseller det, aksepter et tilbud som abonnement og se periodene; endringsloggen; linjer i forpakninger og fra variantrutenettet; kunde- og produktadvarsler og overstyring av en sperre; salgsanalysen; kundens Ordre-fane; og hva en avvisning betyr.
 sidebar:
   order: 55
 sources:
@@ -15,7 +15,7 @@ leverer og fakturerer.
 
 ## Appen og sidemenyen
 
-Sidemenyen har **Tilbud** og **Ordre** for alle med tilgang til appen, **Analyse** for dem
+Sidemenyen har **Tilbud**, **Ordre** og **Abonnement** for alle med tilgang til appen, **Analyse** for dem
 som kan se salgsanalysen, og **Tilbudsmaler** og **Ordreinnstillinger** for dem som
 håndterer innstillingene for Ordre. Hva du kan gjøre
 i hver, avhenger av rettighetene dine: å lage og endre tilbud, å lage og endre ordrer og å
@@ -165,8 +165,11 @@ På et sendt eller utløpt tilbud:
 - **Aksepter** åpner **Aksepter tilbudet**. Kryss av **Valgfrie linjer kunden tok**; de som
   ikke er krysset av, tas ikke med. Under **Lag** velger du **Et ordreutkast**, til
   kontroll før den bekreftes, eller **En bekreftet ordre**, bekreftet med en gang med
-  tilbudets priser — som krever rettigheten til å bekrefte ordrer. Ordren åpnes; tilbudet
-  viser **Akseptert som** med en lenke til den. Et tilbud aksepteres én gang.
+  tilbudets priser — som krever rettigheten til å bekrefte ordrer — eller **Et
+  abonnement**, et abonnementsutkast på planen du oppgir, som krever rettigheten til å
+  administrere abonnement og et tilbud med bare tjenester ([Abonnement](#abonnement)).
+  Ordren eller abonnementet åpnes; tilbudet viser **Akseptert som** med en lenke til det.
+  Et tilbud aksepteres én gang.
 - **Avslå** registrerer at kunden sa nei, med en **Begrunnelse** om du vil.
 - **Revider** gjør tilbudet til et utkast igjen, som ny revisjon, for å endre og sende det
   på nytt. PDF-ene fra tidligere revisjoner beholdes.
@@ -321,6 +324,80 @@ kreditert* — og **Status**, **Fakturert** eller, når kreditnotaer har returne
 **Kreditert**. Med **Bruke Fakturaer** lenker nummeret til fakturaen. Til noe er fakturert,
 sier kortet «Ingenting er fakturert ennå.»
 
+## Abonnement
+
+Et **abonnement** fakturerer tjenester per periode — support, drift, en lisens — måned
+etter måned til det avsluttes. Abonnement selger bare tjenester: en produktlinje må være
+en tjeneste i katalogen, og fritekstlinjer, seksjoner og merknader er tillatt.
+
+**Abonnement** i sidemenyen viser dem med de nyeste først, med status, plan, start og
+slutt, **Fakturert til og med** og hva en hel periode er verdt eksklusiv mva. Avgrens med
+status, kunde og søket (nummer, kunde eller referanse). Alle med tilgang til appen ser
+dem; å lage og endre dem krever rettigheten til å administrere abonnement.
+
+### Lag et abonnement
+
+1. Velg **Nytt abonnement**.
+2. Velg **Kunde** og planen: **Intervall** (**Månedlig**, **Kvartalsvis**, **Halvårlig**
+   eller **Årlig**), **Fakturering** — **Forskuddsvis**, en periode fakturert fra første
+   dag, eller **Etterskuddsvis**, fra siste dag — **Start**, en **Slutt** om det har en,
+   **Oppsigelse (måneder)** og **Fakturadag**. Oppsigelsestiden og fakturadagen skrives ut
+   for kunden; de endrer ikke hva som faktureres når.
+3. Velg **Opprett abonnement**. Utkastet åpnes; legg til linjene som på et tilbud, og
+   **Lagre**.
+4. Velg **Aktiver**. Abonnementet kontrolleres som en ordre ved bekreftelse — hver linje
+   priset og med mva-kode, kunden aktiv — og fra nå av faktureres periodene.
+
+Et tilbud kan også bli et abonnement: i **Aksepter tilbudet** velger du **Et abonnement**
+under **Lag** og oppgir planen ([Svar på et tilbud](#svar-på-et-tilbud)).
+
+Periodene går fra den første i startmåneden: et månedlig abonnements perioder er
+kalendermånedene, et kvartalsvis tre måneder om gangen fra startmåneden. Når starten ikke
+er den første i en måned, går første periode fra starten til periodens slutt og
+**fordeles forholdsmessig** etter dager — et månedlig abonnement startet 31. januar
+fakturerer 1/31 av januarprisen for 31. januar, deretter hele måneder fra februar.
+
+### Periodene
+
+Abonnementets side viser **Perioder**, hver med beløp og status:
+
+- **Fakturert** — på en utstedt faktura, med nummeret;
+- **På fakturautkast** — tatt av et utkast i Fakturaer, ikke utstedt ennå;
+- **Til fakturering** — kan faktureres i dag, ikke fakturert ennå;
+- **Kommende** — ikke til fakturering ennå;
+- **Pauset** og **Hoppet over** — se under.
+
+**Fakturert til og med** er siste dag i periodene som er fakturert uten opphold fra
+starten. Periodene faktureres i Fakturaer, med **Fakturer fra ordre** eller en
+faktureringskjøring av ordre ([Fakturer ordre](/nb/user/invoices/#fakturere-ordre)), og
+aldri mer enn tolv måneder fram. Når en kreditnota gir en fakturert periode tilbake i sin
+helhet, er den perioden til fakturering igjen — og bare den.
+
+### Endre et aktivt abonnement
+
+Endre linjene — antallet, prisen, en linje lagt til eller fjernet — og velg **Lagre**. En
+endring rører aldri en periode som alt er på en faktura eller et fakturautkast: den
+gjelder fra **Endringene gjelder fra**, den første perioden som ikke er fakturert, eller
+en senere periodestart du velger. En endret eller fjernet linje slutter dagen før; den nye
+versjonen starter den dagen. Linjene en endring avsluttet, står under **Tidligere
+linjer**. En endring fordeles aldri forholdsmessig, og **Endringsloggen** viser den med
+perioden den gjelder fra.
+
+Kunden, valutaen og planens intervall, fakturering og start ligger fast når abonnementet
+er aktivt.
+
+### Pause, gjenoppta, avslutt og kanseller
+
+- **Pause** stopper faktureringen fra en periodestart — den neste som ikke er fakturert,
+  med mindre du velger en senere. Periodene før faktureres fortsatt.
+- **Gjenoppta** starter faktureringen igjen fra en periodestart du velger. Periodene
+  mellom pausen og den **hoppes over** og faktureres aldri.
+- **Avslutt** setter sluttdatoen: perioden den faller i, er den siste som faktureres. Den
+  kan ikke ligge før en periode som alt er på en faktura eller et fakturautkast — krediter
+  den først.
+- **Kanseller abonnement** kansellerer et utkast, eller et aktivt abonnement der ingenting
+  er fakturert ennå. Et med fakturerte perioder avsluttes i stedet.
+
 ## Salgsanalyse
 
 **Analyse** (rettigheten til å se salgsanalysen) har tre visninger, hver med et diagram, en
@@ -343,9 +420,10 @@ flere velger du den over diagrammet.
 
 ## Kundens Ordre-fane
 
-På kundesiden viser fanen **Ordre** tre tall per valuta, eksklusiv mva — **Åpne tilbud**,
-**Bestilt, ikke levert** og **Levert, ikke fakturert** — og under dem kundens åpne tilbud
-og ordrene deres, **Åpne** eller **Alle**. **Nytt tilbud** og **Ny ordre** starter et for
+På kundesiden viser fanen **Ordre** fire tall per valuta, eksklusiv mva — **Åpne tilbud**,
+**Bestilt, ikke levert**, **Levert, ikke fakturert** og **Abonnement, per år**, de aktive
+og pausede abonnementenes verdi over et år — og under dem kundens åpne tilbud, ordrene
+deres, **Åpne** eller **Alle**, og abonnementene med hvert abonnements verdi per periode. **Nytt tilbud** og **Ny ordre** starter et for
 denne kunden. Fanen krever tilgang til Ordre-appen; knappene krever rettigheten til å lage
 tilbud eller ordrer, og vises ikke på en sammenslått eller anonymisert kunde.
 

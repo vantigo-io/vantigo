@@ -1,6 +1,6 @@
 ---
 title: Orders
-description: Turning Orders on — the modules it requires, mapping Products' tax categories to VAT codes, the nine permissions and the roles to build from them — and keeping its settings — the number series, quote validity, payment terms, the send channel, the confirmation on confirm and the mail texts — its quote templates and its sales warnings, who sees the sales analysis, and who invoices orders; how to verify it, and what can go wrong.
+description: Turning Orders on — the modules it requires, mapping Products' tax categories to VAT codes, the nine permissions and the roles to build from them — and keeping its settings — the number series, quote validity, payment terms, the send channel, the confirmation on confirm and the mail texts — its quote templates and its sales warnings, who sees the sales analysis, who keeps subscriptions, and who invoices orders and subscriptions; how to verify it, and what can go wrong.
 sidebar:
   order: 48
 sources:
@@ -61,16 +61,23 @@ Every Orders permission needs **Use Orders** (`orders:access`) beside it.
 
 | Permission | Key | Gives |
 | --- | --- | --- |
-| Use Orders | `orders:access` | The app, and reading quotes, orders and templates |
+| Use Orders | `orders:access` | The app, and reading quotes, orders, subscriptions and templates |
 | Manage quotes | `orders:quotes-manage` | Making, sending, answering and copying quotes |
 | Manage orders | `orders:sales-manage` | Making and changing orders, hold, cancel, register delivered, send the confirmation |
 | Confirm orders | `orders:sales-confirm` | Confirm, lock and unlock; accept a quote straight into a confirmed order |
+| Manage subscriptions | `orders:subscriptions-manage` | Making, activating, changing, pausing, resuming, ending and cancelling subscriptions; accepting a quote as a subscription |
 | View sales analysis | `orders:analysis-view` | **Analysis**: the quote hit rate, the order intake and the backlog, with their CSV files |
 | Manage Orders settings | `orders:settings` | The settings, the quote templates and the sales warnings, and overriding a block warning; cannot be delegated |
 
-**Manage subscriptions**, **Manage deliveries** and **Manage carriers** (sensitive, not
-delegable) are listed already and do nothing yet: they belong to the deliveries that bring
-subscriptions, deliveries and shipping.
+**Manage deliveries** and **Manage carriers** (sensitive, not delegable) are listed
+already and do nothing yet: they belong to the deliveries that bring deliveries and
+shipping.
+
+Whoever keeps the customers' subscriptions — support agreements, hosting, licences — gets
+**Manage subscriptions**; the **Subscriptions** list and each subscription's page are
+open to everyone with **Use Orders**. A subscription's periods are invoiced as orders are,
+by Invoices' **From orders** wizard and its billing runs of orders, with Invoices'
+permissions.
 
 **View sales analysis** shows every salesperson's figures and every customer's intake, so
 give it to sales management rather than to every salesperson.
@@ -83,8 +90,8 @@ free-text line; picking a product needs no Products permission.
 
 **Invoicing an order** is Invoices' work, not a permission of Orders: the order's
 **Invoice** button and the **From orders** wizard need **Use Invoices** and **Create
-invoices**, and issuing the draft **Issue invoices**. Whoever invoices needs no Orders
-permission to do it; the order's **Invoices** card links to the invoices for those with
+invoices**, and issuing the draft **Issue invoices** — a subscription's periods the same.
+Whoever invoices needs no Orders permission to do it; the order's **Invoices** card links to the invoices for those with
 **Use Invoices**. **Release draft allocations** on an order needs **Manage orders**.
 
 ## Keep the settings
