@@ -442,11 +442,9 @@ func (m *channelMailbox) Forget(ctx context.Context, mailbox string) error {
 // ErrMailTooLarge, a blind copy the MIME's Bcc header does not carry
 // ErrBccUnsupported, both before any call — Gmail delivers the header's
 // blind copies and strips it, so the header is the only way they travel.
-// The MIME is uploaded whole to messages.send as the mailbox, made once (a
-// 5xx is not retried: Gmail may have taken it, and the outbox's own retry is
-// the one), under a budget scaled to its size (sizedBudget). It answers
-// Gmail's thread id and the Message-ID Gmail sent the message with, read
-// back (U6) on a context of its own (readBackBudget), so an upload that took
+// The MIME is uploaded whole to messages.send as the mailbox (gmailUpload).
+// It answers Gmail's thread id and the Message-ID Gmail sent the message
+// with, read back (U6) on a context of its own (readBackBudget), so an upload that took
 // the caller's time does not lose it; a read-back that fails answers the
 // thread alone, the message being sent.
 func (m *channelMailbox) Send(ctx context.Context, mailbox string, mime []byte, bcc []string) (contracts.SentMessage, error) {
@@ -460,22 +458,12 @@ func (m *channelMailbox) Send(ctx context.Context, mailbox string, mime []byte, 
 	if len(bcc) > 0 && !bccCarried(mime, bcc) {
 		return contracts.SentMessage{}, fmt.Errorf("%w: the MIME's Bcc header does not carry every blind copy", contracts.ErrBccUnsupported)
 	}
-	var sent struct {
-		ID       string `json:"id"`
-		ThreadID string `json:"threadId"`
-	}
-	err = m.keys.c.do(ctx, s.send, http.MethodPost, gmailSendURL+"&"+url.Values{"quotaUser": {s.gid}}.Encode(),
-		&requestBody{contentType: "message/rfc822", data: mime}, &sent, maxBody,
-		noRetry(), withBudget(sizedBudget(int64(len(mime)))), shownAs("/upload"+gmailShownBase+"/messages/send"))
+	sent, err := gmailUpload(ctx, m.keys.c, s.send, s.gid, mime)
 	if err != nil {
 		return contracts.SentMessage{}, gmailRefusal(err)
 	}
-	var out contracts.SentMessage
-	if validGmailID(sent.ThreadID) {
-		out.ThreadID = sent.ThreadID
-	}
+	out := contracts.SentMessage{ThreadID: sent.threadID()}
 	if !validGmailID(sent.ID) {
-		m.keys.c.logger.WarnContext(ctx, "google: Gmail answered a send without a message id", "mailbox", s.gid)
 		return out, nil
 	}
 	readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), readBackBudget)
@@ -488,6 +476,42 @@ func (m *channelMailbox) Send(ctx context.Context, mailbox string, mime []byte, 
 	}
 	out.MessageID = meta.messageID()
 	return out, nil
+}
+
+// gmailSent is what messages.send answers of the message it sent.
+type gmailSent struct {
+	ID       string `json:"id"`
+	ThreadID string `json:"threadId"`
+}
+
+// threadID is Gmail's thread id, "" when it is none Gmail could have
+// answered.
+func (g gmailSent) threadID() string {
+	if validGmailID(g.ThreadID) {
+		return g.ThreadID
+	}
+	return ""
+}
+
+// gmailUpload posts mime whole to the upload messages.send with src's token,
+// quotaUser gid, for a channel's mailbox (F) and a person's own (G) alike:
+// made once (a 5xx is not retried: Gmail may have taken it, and the outbox's
+// own retry is the one), under a budget scaled to its size (sizedBudget).
+// Gmail files it under the mailbox's SENT. It answers Gmail's message and
+// thread ids, a message id that is none logged by gid alone; a failure is
+// the client's, for the caller to name.
+func gmailUpload(ctx context.Context, c *googleClient, src tokenSource, gid string, mime []byte) (gmailSent, error) {
+	var sent gmailSent
+	err := c.do(ctx, src, http.MethodPost, gmailSendURL+"&"+url.Values{"quotaUser": {gid}}.Encode(),
+		&requestBody{contentType: "message/rfc822", data: mime}, &sent, maxBody,
+		noRetry(), withBudget(sizedBudget(int64(len(mime)))), shownAs("/upload"+gmailShownBase+"/messages/send"))
+	if err != nil {
+		return gmailSent{}, err
+	}
+	if !validGmailID(sent.ID) {
+		c.logger.WarnContext(ctx, "google: Gmail answered a send without a message id", "mailbox", gid)
+	}
+	return sent, nil
 }
 
 // bccCarried reports whether every address of bcc is in the Bcc header of
@@ -559,8 +583,14 @@ func (g gmailMetadata) receivedAt() time.Time {
 // metadata reads the message's metadata: its thread, labels, internalDate
 // and Message-ID header, nothing of what it says.
 func (m *channelMailbox) metadata(ctx context.Context, s gmailSession, id string) (gmailMetadata, error) {
+	return readMetadata(ctx, m.keys.c, s, id)
+}
+
+// readMetadata is metadata with c, s.modify's token reading — a channel's
+// gmail.modify, or a person's token whose scopes read (personal sending).
+func readMetadata(ctx context.Context, c *googleClient, s gmailSession, id string) (gmailMetadata, error) {
 	var meta gmailMetadata
-	err := m.keys.c.get(ctx, s.modify, s.gmailURL("/messages/"+url.PathEscape(id), url.Values{
+	err := c.get(ctx, s.modify, s.gmailURL("/messages/"+url.PathEscape(id), url.Values{
 		"format": {"metadata"}, "metadataHeaders": {"Message-ID"},
 		"fields": {"id,threadId,labelIds,internalDate,payload/headers"},
 	}), &meta, shownAs(gmailShownBase+"/messages/{id}"))

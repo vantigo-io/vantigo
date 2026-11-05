@@ -249,20 +249,40 @@ func (g *FakeGoogle) knownSubject(sub string) bool {
 	return false
 }
 
+// mailboxOf is the address of the mailbox a token for sub reaches: a
+// delegated token's subject is the address itself; a person's own token's
+// (delivery G) is their Directory id, whose user's primary address it is.
+// False for a subject that may not reach one — a suspended user's.
+func (g *FakeGoogle) mailboxOf(sub string) (string, bool) {
+	if g.knownSubject(sub) {
+		return strings.ToLower(sub), true
+	}
+	for _, u := range g.users {
+		if u.ID == sub {
+			return strings.ToLower(u.PrimaryEmail), !u.Suspended
+		}
+	}
+	return "", false
+}
+
 // gmailCall answers one Gmail call. g.mu is held.
 func (g *FakeGoogle) gmailCall(req *http.Request, body []byte) answer {
 	tok, ok := g.bearer(req)
-	if !ok || !g.knownSubject(tok.subject) {
+	address := ""
+	if ok {
+		address, ok = g.mailboxOf(tok.subject)
+	}
+	if !ok {
 		// A user suspended since the token was issued: its tokens no longer
 		// work, and a fresh one is refused.
 		return answer{status: http.StatusUnauthorized, body: g.apiError(http.StatusUnauthorized, "authError")}
 	}
 	has := func(scope string) bool { return slices.Contains(tok.scopes, scope) }
 	denied := answer{status: http.StatusForbidden, body: g.apiError(http.StatusForbidden, "insufficientPermissions")}
-	if g.gmail.noGmail[tok.subject] {
+	if g.gmail.noGmail[address] {
 		return answer{status: http.StatusBadRequest, body: g.apiError(http.StatusBadRequest, "failedPrecondition")}
 	}
-	b := g.box(tok.subject)
+	b := g.box(address)
 	if req.Method == http.MethodPost && req.URL.Path == "/upload/gmail/v1/users/me/messages/send" {
 		if !has(ScopeGmailSend) && !has(ScopeGmailModify) {
 			return denied
@@ -281,7 +301,7 @@ func (g *FakeGoogle) gmailCall(req *http.Request, body []byte) answer {
 	switch {
 	case rest == "profile" && req.Method == http.MethodGet:
 		return answer{status: http.StatusOK, body: map[string]any{
-			"emailAddress": tok.subject, "messagesTotal": len(b.messages), "historyId": strconv.FormatUint(b.current, 10),
+			"emailAddress": address, "messagesTotal": len(b.messages), "historyId": strconv.FormatUint(b.current, 10),
 		}}
 	case rest == "messages" && req.Method == http.MethodGet:
 		return g.gmailList(b, q)

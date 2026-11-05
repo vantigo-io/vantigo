@@ -134,7 +134,9 @@ var skusLimit = ratelimit.Policy{Name: "google-skus", Limit: 30, Window: time.Mi
 // contracts.MailboxCalendar (mailbox.go), which Compose and Workers collect
 // into Deps.MailboxCalendars for the calendar; its contracts.ChannelMailbox
 // (channel_mailbox.go), which they collect into Deps.ChannelMailboxes for
-// Communications' channels; and its one worker, google-sweep
+// Communications' channels; its contracts.PersonalMailbox
+// (personal_mailbox.go), which they collect into Deps.PersonalMailboxes for
+// sending from a person's own Gmail address; and its one worker, google-sweep
 // (personal_sweep.go).
 func Module() module.Module {
 	return module.Module{
@@ -145,6 +147,7 @@ func Module() module.Module {
 		DirectorySearch:     newDirectorySearch,
 		MailboxCalendar:     newMailboxCalendar,
 		ChannelMailbox:      newChannelMailbox,
+		PersonalMailbox:     newPersonalMailbox,
 		Workers:             workers,
 	}
 }

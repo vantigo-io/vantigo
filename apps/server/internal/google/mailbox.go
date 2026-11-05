@@ -267,13 +267,6 @@ func (s *mailboxSource) answer(err error) error {
 	return err
 }
 
-// lastRevision is the revision of the row the last token came from.
-func (s *mailboxSource) lastRevision() int64 {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.last.revision
-}
-
 // refused is err, a call's failure, as the contract answers it:
 //
 //   - a 401 — Google refused the person's token after the client fetched a
@@ -328,17 +321,7 @@ func (m *mailboxCalendar) primaryRefused(ctx context.Context, s mailboxSession, 
 // from (or its closing token forgotten); a row moved on since is a failure
 // to retry.
 func (m *mailboxCalendar) unauthorized(ctx context.Context, s mailboxSession) error {
-	row, err := m.q.GetPersonal(ctx, s.gid)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return needsPerson(contracts.ConnectionNotConnected)
-	}
-	if err != nil {
-		return fmt.Errorf("google: read the personal connection: %w", err)
-	}
-	if row.Revision != s.src.lastRevision() {
-		return fmt.Errorf("%w: the personal connection changed while Google refused its token", errGoogleUnreachable)
-	}
-	return m.tokens.reconnect(ctx, row, personalCodeSignInAgain)
+	return m.tokens.unauthorized(ctx, s.gid, s.src.lastRevision())
 }
 
 // isForbidden reports whether err is Google's 403.
