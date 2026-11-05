@@ -1360,6 +1360,56 @@ describe("the timeline's merge events", () => {
     expect(screen.getByRole("link", { name: "Open #2 Acme AS" })).toHaveAttribute("href", "/customers/1002");
   });
 
+  it("labels the orders events and links each to its document", async () => {
+    const base = {
+      provenance: "generated",
+      producer: "customers.orders",
+      occurredOn: "2026-11-05",
+      occurredAt: "2026-11-05T10:00:00Z",
+      currentRevision: 1,
+      createdAt: "2026-11-05T10:00:00Z",
+      updatedAt: "2026-11-05T10:00:00Z",
+      actorKind: "system",
+      actorDisplay: "System",
+    };
+    await renderRoutedTimeline([
+      {
+        ...base,
+        id: 201,
+        eventType: "orders.quote_sent",
+        summary: "Quote sent: 1042 revision 1",
+        payload: { documentKind: "quote", documentId: 5, number: 1042, link: "/orders/quotes/5" },
+      },
+      {
+        ...base,
+        id: 202,
+        eventType: "orders.quote_accepted",
+        summary: "Quote accepted: 1042 revision 1",
+        payload: { documentKind: "quote", documentId: 5, number: 1042, link: "/orders/quotes/5" },
+      },
+      {
+        ...base,
+        id: 203,
+        eventType: "orders.order_confirmed",
+        summary: "Order confirmed: 2001",
+        payload: { documentKind: "order", documentId: 9, number: 2001, link: "/orders/orders/9" },
+      },
+      {
+        ...base,
+        id: 204,
+        eventType: "orders.order_cancelled",
+        summary: "Order cancelled: 2001",
+        payload: { documentKind: "order", documentId: 9, number: 2001, link: "/orders/orders/9" },
+      },
+    ]);
+
+    for (const label of ["Quote sent", "Quote accepted", "Order confirmed", "Order cancelled"]) {
+      expect((await screen.findAllByText(label, { selector: "p" })).length).toBeGreaterThan(0);
+    }
+    expect(screen.getAllByRole("link", { name: "Open quote 1042" })[0]).toHaveAttribute("href", "/orders/quotes/5");
+    expect(screen.getAllByRole("link", { name: "Open order 2001" })[0]).toHaveAttribute("href", "/orders/orders/9");
+  });
+
   it("renders an anonymised customer's entries plainly, and labels the three new events", async () => {
     await renderTimeline(
       vi.fn().mockResolvedValue(
