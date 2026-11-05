@@ -8,6 +8,7 @@ sql:
     schema:
       - ../db/migrations/00108_inventory_baseline.sql
       - ../db/migrations/00110_inventory_counts.sql
+      - ../db/migrations/00125_inventory_reservations.sql
     queries: queries
     gen:
       go:

@@ -115,6 +115,7 @@ func siteOf(s store.InventorySite, rootID int64) gen.InventorySite {
 		Id: s.ID, Code: s.Code, Name: s.Name, Kind: gen.InventorySiteKind(s.Kind), Status: gen.InventoryStatus(s.Status),
 		Address:        addressOf(s.AddressLine1, s.AddressLine2, s.PostalCode, s.City, s.Country),
 		RootLocationId: rootID, Revision: s.Revision, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
+		FulfilsOrders: s.FulfilsOrders,
 	}
 }
 
@@ -123,7 +124,7 @@ func siteRowOf(r store.GetSiteRow) gen.InventorySite {
 	return siteOf(store.InventorySite{
 		ID: r.ID, Code: r.Code, Name: r.Name, Kind: r.Kind, AddressLine1: r.AddressLine1, AddressLine2: r.AddressLine2,
 		PostalCode: r.PostalCode, City: r.City, Country: r.Country, Status: r.Status, Revision: r.Revision,
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, FulfilsOrders: r.FulfilsOrders,
 	}, r.RootLocationID)
 }
 

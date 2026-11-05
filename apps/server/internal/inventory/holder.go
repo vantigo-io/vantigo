@@ -25,20 +25,34 @@ func newVariantHolder(module.Deps) contracts.VariantReferenceHolder { return var
 
 // VariantHeld sums the variant's balances on the caller's transaction and
 // answers the quantity, as the shortest decimal that says it, and the number
-// of locations it lies on — nil when it lies nowhere. It locks nothing: a
+// of locations it lies on; when it lies nowhere but is reserved, what is
+// reserved and at how many sites (VariantHoldKindReserved); nil when
+// neither. It locks nothing: a
 // posting that would add to the variant holds FOR SHARE on it
 // (ProductCatalog.LockVariants), so it has committed before Products' FOR
 // UPDATE was granted, or waits for Products' transaction. Stock stops both
 // a delete and a change to Service, so purpose changes nothing here.
 func (variantHolder) VariantHeld(ctx context.Context, tx pgx.Tx, variantID int32, _ contracts.VariantHoldPurpose) (*contracts.VariantHold, error) {
-	row, err := store.New(tx).VariantHeld(ctx, variantID)
+	q := store.New(tx)
+	row, err := q.VariantHeld(ctx, variantID)
 	if err != nil {
 		return nil, fmt.Errorf("inventory: read the stock of variant %d: %w", variantID, err)
 	}
-	if row.Locations == 0 {
+	if row.Locations > 0 {
+		return &contracts.VariantHold{
+			Kind: contracts.VariantHoldKindStock, Quantity: decimalText(ratFromText(row.Quantity)), Locations: int(row.Locations),
+		}, nil
+	}
+	// Reserved with nothing on hand: an order still waits for it (orders
+	// design O45). A reserve holds FOR SHARE on the variant too.
+	reserved, err := q.VariantReserved(ctx, variantID)
+	if err != nil {
+		return nil, fmt.Errorf("inventory: read the reservations of variant %d: %w", variantID, err)
+	}
+	if reserved.Sites == 0 {
 		return nil, nil
 	}
 	return &contracts.VariantHold{
-		Kind: contracts.VariantHoldKindStock, Quantity: decimalText(ratFromText(row.Quantity)), Locations: int(row.Locations),
+		Kind: contracts.VariantHoldKindReserved, Quantity: decimalText(ratFromText(reserved.Quantity)), Locations: int(reserved.Sites),
 	}, nil
 }

@@ -25,11 +25,20 @@ type balance struct {
 	onHand     *big.Rat
 }
 
-// stockSnapshot is the balances a read found, with their locations and sites.
+// stockSnapshot is the balances a read found, with their locations and sites,
+// and — for a variant's or a product's stock — what is reserved of the
+// variants per site (orders design O45).
 type stockSnapshot struct {
 	balances  []balance
+	reserved  map[siteKey]*big.Rat
 	locations map[int64]store.InventoryLocation
 	sites     map[int64]store.InventorySite
+}
+
+// siteKey names a variant at a site: where a reservation is held.
+type siteKey struct {
+	variantID int32
+	siteID    int64
 }
 
 // readPlaces reads the locations the balances lie on, and their sites, into
@@ -44,10 +53,13 @@ func (sn *stockSnapshot) readPlaces(ctx context.Context, q *store.Queries) error
 		return fmt.Errorf("inventory: read the locations of balances: %w", err)
 	}
 	sn.locations = make(map[int64]store.InventoryLocation, len(rows))
-	siteIDs := make([]int64, 0, len(rows))
+	siteIDs := make([]int64, 0, len(rows)+len(sn.reserved))
 	for _, r := range rows {
 		sn.locations[r.ID] = r
 		siteIDs = append(siteIDs, r.SiteID)
+	}
+	for k := range sn.reserved {
+		siteIDs = append(siteIDs, k.siteID)
 	}
 	sites, err := q.SitesByIDs(ctx, distinct(siteIDs))
 	if err != nil {
@@ -66,9 +78,12 @@ func (sn *stockSnapshot) row(b balance, ref gen.InventoryVariantRef) gen.Invento
 }
 
 // variantStock is one variant's stock by site, sites by code and rows by full
-// code, with the totals summed exactly.
+// code, with the totals summed exactly: on hand, reserved, and available —
+// on hand less reserved, negative when a correction took on hand below what
+// is reserved (orders design O45). A site holding only a reservation is
+// listed with no rows.
 func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.InventoryVariantStock {
-	total := new(big.Rat)
+	total, totalReserved := new(big.Rat), new(big.Rat)
 	bySite := map[int64]*big.Rat{}
 	rows := map[int64][]gen.InventoryBalanceRow{}
 	for _, b := range sn.balances {
@@ -83,13 +98,35 @@ func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.Inventory
 		total.Add(total, b.onHand)
 		rows[siteID] = append(rows[siteID], sn.row(b, ref))
 	}
-	out := gen.InventoryVariantStock{Variant: ref, TotalOnHand: wireQuantity(total), Sites: make([]gen.InventorySiteStock, 0, len(bySite))}
+	for k, q := range sn.reserved {
+		if k.variantID != ref.Id {
+			continue
+		}
+		if bySite[k.siteID] == nil {
+			bySite[k.siteID] = new(big.Rat)
+		}
+		totalReserved.Add(totalReserved, q)
+	}
+	out := gen.InventoryVariantStock{
+		Variant: ref, TotalOnHand: wireQuantity(total), TotalReserved: wireQuantity(totalReserved),
+		TotalAvailable: wireQuantity(new(big.Rat).Sub(total, totalReserved)), Sites: make([]gen.InventorySiteStock, 0, len(bySite)),
+	}
 	for siteID, onHand := range bySite {
 		r := rows[siteID]
+		if r == nil {
+			r = []gen.InventoryBalanceRow{}
+		}
 		slices.SortFunc(r, func(a, b gen.InventoryBalanceRow) int {
 			return strings.Compare(a.Location.FullCode, b.Location.FullCode)
 		})
-		out.Sites = append(out.Sites, gen.InventorySiteStock{Site: siteRefOf(sn.sites[siteID]), OnHand: wireQuantity(onHand), Rows: r})
+		reserved := sn.reserved[siteKey{ref.Id, siteID}]
+		if reserved == nil {
+			reserved = new(big.Rat)
+		}
+		out.Sites = append(out.Sites, gen.InventorySiteStock{
+			Site: siteRefOf(sn.sites[siteID]), OnHand: wireQuantity(onHand), Reserved: wireQuantity(reserved),
+			Available: wireQuantity(new(big.Rat).Sub(onHand, reserved)), Rows: r,
+		})
 	}
 	slices.SortFunc(out.Sites, func(a, b gen.InventorySiteStock) int { return strings.Compare(a.Site.Code, b.Site.Code) })
 	return out
@@ -105,6 +142,14 @@ func (s *server) balancesOf(ctx context.Context, ids []int32, then func(ctx cont
 		}
 		for _, r := range rows {
 			sn.balances = append(sn.balances, balance{r.VariantID, r.LocationID, ratFromNumeric(r.OnHand)})
+		}
+		reserved, err := q.ReservedOfVariants(ctx, ids)
+		if err != nil {
+			return fmt.Errorf("inventory: read reservations: %w", err)
+		}
+		sn.reserved = make(map[siteKey]*big.Rat, len(reserved))
+		for _, r := range reserved {
+			sn.reserved[siteKey{r.VariantID, r.SiteID}] = ratFromText(r.Reserved)
 		}
 		if err := sn.readPlaces(ctx, q); err != nil {
 			return err

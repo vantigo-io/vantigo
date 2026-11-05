@@ -855,12 +855,13 @@ components:
                 - postedAt
             type: object
         InventoryMovementKind:
-            description: 'An open set (design §12): issue, production and transfer join later.'
+            description: 'An open set (design §12): issue is stock taken out for another module''s document, such as an order''s delivery (orders design O45); production and transfer join later.'
             enum:
                 - adjustment
                 - move
                 - receipt
                 - count
+                - issue
             type: string
         InventoryMovementLine:
             additionalProperties: false
@@ -1098,6 +1099,9 @@ components:
                 createdAt:
                     format: date-time
                     type: string
+                fulfilsOrders:
+                    description: Whether orders reserve and deliver stock from the site (orders design O45). A warehouse does by default, a store does not.
+                    type: boolean
                 id:
                     format: int64
                     type: integer
@@ -1141,6 +1145,7 @@ components:
                 - createdAt
                 - updatedAt
                 - locationCount
+                - fulfilsOrders
             type: object
         InventorySiteInput:
             additionalProperties: false
@@ -1152,6 +1157,9 @@ components:
                     description: Upper-cased before it is checked.
                     maxLength: 16
                     type: string
+                fulfilsOrders:
+                    description: Whether orders reserve and deliver stock from the site; when absent, true for a warehouse and false for a store.
+                    type: boolean
                 kind:
                     $ref: '#/components/schemas/InventorySiteKind'
                 name:
@@ -1206,7 +1214,15 @@ components:
             additionalProperties: false
             description: One variant's stock in one site.
             properties:
+                available:
+                    description: On hand less reserved; negative when a correction took on hand below what is reserved.
+                    format: double
+                    type: number
                 onHand:
+                    format: double
+                    type: number
+                reserved:
+                    description: What other modules' documents (orders) have reserved of it at the site (orders design O45).
                     format: double
                     type: number
                 rows:
@@ -1219,6 +1235,8 @@ components:
             required:
                 - site
                 - onHand
+                - reserved
+                - available
                 - rows
             type: object
         InventorySiteUpdate:
@@ -1231,6 +1249,9 @@ components:
                     description: Upper-cased before it is checked.
                     maxLength: 16
                     type: string
+                fulfilsOrders:
+                    description: Whether orders reserve and deliver stock from the site; when absent, it is left as it is. Turning it off leaves the site's reservations as they are.
+                    type: boolean
                 kind:
                     $ref: '#/components/schemas/InventorySiteKind'
                 name:
@@ -1247,7 +1268,7 @@ components:
             type: object
         InventorySourceRef:
             additionalProperties: false
-            description: What another module's record caused the movement (design §12); none does in this phase.
+            description: 'What another module''s record caused the movement (design §12): an issue names the document it was posted for, such as an order''s delivery.'
             properties:
                 id:
                     type: string
@@ -1328,9 +1349,15 @@ components:
             type: string
         InventoryStockTotal:
             additionalProperties: false
-            description: A variant's on hand across every location.
+            description: A variant's on hand across every location, what is reserved of it across every site, and the difference.
             properties:
+                available:
+                    format: double
+                    type: number
                 onHand:
+                    format: double
+                    type: number
+                reserved:
                     format: double
                     type: number
                 variantId:
@@ -1339,10 +1366,12 @@ components:
             required:
                 - variantId
                 - onHand
+                - reserved
+                - available
             type: object
         InventoryStockTotals:
             additionalProperties: false
-            description: One total per variant asked for that has stock; a variant with none is absent.
+            description: One total per variant asked for that has stock or a reservation; a variant with neither is absent.
             properties:
                 totals:
                     items:
@@ -1406,11 +1435,18 @@ components:
             description: One variant's stock by site (I27).
             properties:
                 sites:
-                    description: Sites holding stock, by code.
+                    description: Sites holding stock or a reservation of it, by code.
                     items:
                         $ref: '#/components/schemas/InventorySiteStock'
                     type: array
+                totalAvailable:
+                    description: Total on hand less total reserved.
+                    format: double
+                    type: number
                 totalOnHand:
+                    format: double
+                    type: number
+                totalReserved:
                     format: double
                     type: number
                 variant:
@@ -1418,6 +1454,8 @@ components:
             required:
                 - variant
                 - totalOnHand
+                - totalReserved
+                - totalAvailable
                 - sites
             type: object
 info:

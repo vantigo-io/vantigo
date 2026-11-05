@@ -705,7 +705,7 @@ func productHasStock(sku string, hold *contracts.VariantHold, unit string) gen.P
 	}
 	return gen.PutProductsById409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 		"Product has stock",
-		fmt.Sprintf("Variant %s still has %s. Move the stock or adjust it to zero before you make the product a service.", sku, holdText(hold, unit)),
+		fmt.Sprintf("Variant %s still has %s. %s before you make the product a service.", sku, holdText(hold, unit), holdRemedy(hold)),
 		http.StatusConflict))
 }
 

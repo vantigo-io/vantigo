@@ -5,7 +5,7 @@
 -- name: ListSites :many
 -- ListSites is every site in one status, by code, with its root location.
 SELECT s.id, s.code, s.name, s.kind, s.address_line1, s.address_line2, s.postal_code, s.city, s.country,
-       s.status, s.revision, s.created_at, s.updated_at, r.id AS root_location_id
+       s.status, s.revision, s.created_at, s.updated_at, s.fulfils_orders, r.id AS root_location_id
 FROM inventory.sites s
 JOIN inventory.locations r ON r.site_id = s.id AND r.parent_id IS NULL
 WHERE s.status = @status
@@ -14,7 +14,7 @@ ORDER BY s.code;
 -- name: GetSite :one
 -- GetSite is one site with its root location.
 SELECT s.id, s.code, s.name, s.kind, s.address_line1, s.address_line2, s.postal_code, s.city, s.country,
-       s.status, s.revision, s.created_at, s.updated_at, r.id AS root_location_id
+       s.status, s.revision, s.created_at, s.updated_at, s.fulfils_orders, r.id AS root_location_id
 FROM inventory.sites s
 JOIN inventory.locations r ON r.site_id = s.id AND r.parent_id IS NULL
 WHERE s.id = @id;
@@ -33,9 +33,10 @@ SELECT * FROM inventory.sites WHERE id = @id FOR UPDATE;
 SELECT EXISTS (SELECT 1 FROM inventory.sites WHERE code = @code AND id <> @id);
 
 -- name: InsertSite :one
-INSERT INTO inventory.sites (code, name, kind, address_line1, address_line2, postal_code, city, country, status, created_at, updated_at)
+INSERT INTO inventory.sites (code, name, kind, address_line1, address_line2, postal_code, city, country, status, fulfils_orders,
+                             created_at, updated_at)
 VALUES (@code, @name, @kind, sqlc.narg(address_line1), sqlc.narg(address_line2), sqlc.narg(postal_code), sqlc.narg(city),
-        sqlc.narg(country), 'active', @now::timestamptz, @now::timestamptz)
+        sqlc.narg(country), 'active', @fulfils_orders, @now::timestamptz, @now::timestamptz)
 RETURNING *;
 
 -- name: UpdateSite :one
@@ -43,7 +44,7 @@ RETURNING *;
 UPDATE inventory.sites
 SET code = @code, name = @name, kind = @kind, address_line1 = sqlc.narg(address_line1), address_line2 = sqlc.narg(address_line2),
     postal_code = sqlc.narg(postal_code), city = sqlc.narg(city), country = sqlc.narg(country), status = @status,
-    revision = revision + 1, updated_at = @now::timestamptz
+    fulfils_orders = @fulfils_orders, revision = revision + 1, updated_at = @now::timestamptz
 WHERE id = @id
 RETURNING *;
 

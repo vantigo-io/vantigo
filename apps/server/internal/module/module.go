@@ -196,6 +196,20 @@ type Deps struct {
 	// Module.BillableOrders, after Consumption; it is nil when Orders is
 	// disabled.
 	BillableOrders contracts.BillableOrders
+	// Stock is Inventory's read of on hand and available per variant and
+	// site (contracts.Stock, orders design O45). Compose and Workers set it,
+	// on every module's Deps copy, from whichever enabled module declares
+	// Module.Stock, after the product catalog; it is nil when Inventory is
+	// off, which a caller reads as "stock is not kept": it reserves and
+	// issues nothing.
+	Stock contracts.Stock
+	// StockLedger is Inventory's write of reservations and issues on the
+	// caller's transaction (contracts.StockLedger, module-boundaries rule
+	// 24). Unlike Stock it is resolved from every module given, enabled or
+	// not — the holders' reason: a reservation made while Inventory was on
+	// must still be released after it is switched off — so it is nil only
+	// when no module given provides one.
+	StockLedger contracts.StockLedger
 	// Workforce is Staff's register of competences, the one sanctioned way a
 	// module reads who holds what (see contracts.Workforce, staff competence
 	// design S15). Compose sets it, on every module's Deps copy, from
@@ -554,6 +568,19 @@ type Module struct {
 	// same way. The provider is built from Deps.Pool and Deps.Clock and never
 	// reads a directory while it serves.
 	BillableOrders func(Deps) contracts.BillableOrders
+	// Stock builds this module's contracts.Stock, if it provides one
+	// (inventory). At most one enabled module may set it; Compose and
+	// Workers call it before anything they build runs, after the product
+	// catalog, and put the result on every module's Deps.
+	Stock func(Deps) contracts.Stock
+	// StockLedger builds this module's contracts.StockLedger, if it provides
+	// one (inventory). At most one module given may set it, and — like
+	// CustomerReferences — it is called for a module MODULES leaves out too,
+	// so it must need nothing of Deps a disabled module would lack beyond the
+	// pool, the clock and the product catalog (nil when Products is off, or in
+	// worker mode, which then fails a Reserve or an Issue but never a
+	// Release).
+	StockLedger func(Deps) contracts.StockLedger
 	// Workforce builds this module's contracts.Workforce implementation, if
 	// it provides one (staff). At most one enabled module may set it; Compose
 	// and Workers call it before anything they build runs — after they have

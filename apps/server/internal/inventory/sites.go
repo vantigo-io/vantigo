@@ -125,9 +125,15 @@ func (s *server) CreateInventorySite(ctx context.Context, req gen.CreateInventor
 			return siteCodeTaken(in.code)
 		}
 		now := s.deps.Clock()
+		// A warehouse fulfils orders unless told otherwise, a store does not
+		// (orders design O45).
+		fulfils := in.kind == string(gen.Warehouse)
+		if req.Body.FulfilsOrders != nil {
+			fulfils = *req.Body.FulfilsOrders
+		}
 		site, err := txq.InsertSite(ctx, store.InsertSiteParams{
 			Code: in.code, Name: in.name, Kind: in.kind, AddressLine1: in.address.line1, AddressLine2: in.address.line2,
-			PostalCode: in.address.postalCode, City: in.address.city, Country: in.address.country, Now: now,
+			PostalCode: in.address.postalCode, City: in.address.city, Country: in.address.country, FulfilsOrders: fulfils, Now: now,
 		})
 		if db.IsUniqueViolation(err, "ux_sites_code") {
 			return siteCodeTaken(in.code)
@@ -151,7 +157,7 @@ func (s *server) CreateInventorySite(ctx context.Context, req gen.CreateInventor
 		}
 		return s.recordEvent(ctx, txq, who, event{
 			EntityKind: entitySite, EntityID: site.ID, SiteID: &site.ID, Kind: eventSiteCreated,
-			Payload: map[string]any{"code": site.Code, "name": site.Name, "kind": site.Kind, "rootLocationId": root.ID},
+			Payload: map[string]any{"code": site.Code, "name": site.Name, "kind": site.Kind, "rootLocationId": root.ID, "fulfilsOrders": site.FulfilsOrders},
 		})
 	})
 	if status, p, ok := answerOf(err); ok && status == http.StatusConflict {
@@ -240,9 +246,14 @@ func (s *server) PutInventorySite(ctx context.Context, req gen.PutInventorySiteR
 				return err
 			}
 		}
+		fulfils := cur.FulfilsOrders
+		if req.Body.FulfilsOrders != nil {
+			fulfils = *req.Body.FulfilsOrders
+		}
 		site, err := txq.UpdateSite(ctx, store.UpdateSiteParams{
 			ID: cur.ID, Code: in.code, Name: in.name, Kind: in.kind, AddressLine1: in.address.line1, AddressLine2: in.address.line2,
-			PostalCode: in.address.postalCode, City: in.address.city, Country: in.address.country, Status: status, Now: now,
+			PostalCode: in.address.postalCode, City: in.address.city, Country: in.address.country, Status: status,
+			FulfilsOrders: fulfils, Now: now,
 		})
 		if db.IsUniqueViolation(err, "ux_sites_code") {
 			return siteCodeTaken(in.code)
@@ -311,6 +322,7 @@ func (s *server) recordSiteChanges(ctx context.Context, txq *store.Queries, who 
 	note("code", before.Code, after.Code)
 	note("name", before.Name, after.Name)
 	note("kind", before.Kind, after.Kind)
+	note("fulfilsOrders", before.FulfilsOrders, after.FulfilsOrders)
 	note("address", addressOf(before.AddressLine1, before.AddressLine2, before.PostalCode, before.City, before.Country),
 		addressOf(after.AddressLine1, after.AddressLine2, after.PostalCode, after.City, after.Country))
 	e := event{EntityKind: entitySite, EntityID: after.ID, SiteID: &after.ID, Kind: eventSiteChanged}

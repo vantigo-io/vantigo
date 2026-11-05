@@ -317,7 +317,7 @@ func (s *server) DeleteProductsByIdVariantsByVariantId(ctx context.Context, req 
 		if hold != nil {
 			refused = gen.DeleteProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 				"Variant has stock",
-				fmt.Sprintf("This variant still has %s. Move the stock or adjust it to zero before you delete the variant.", holdText(hold, variant.Unit)),
+				fmt.Sprintf("This variant still has %s. %s before you delete the variant.", holdText(hold, variant.Unit), holdRemedy(hold)),
 				http.StatusConflict))
 			return nil
 		}
@@ -369,12 +369,19 @@ func (s *server) variantHeld(ctx context.Context, tx pgx.Tx, variantID int32, pu
 }
 
 // holdText is a hold as a refusal's detail says it: "34 pcs in stock at 3
-// locations". The holder's decimal loses its trailing zeros, so 34.000
+// locations", or "5 pcs reserved for orders at 1 site". The holder's decimal loses its trailing zeros, so 34.000
 // reads 34 and 2.500 reads 2.5.
 func holdText(hold *contracts.VariantHold, unit string) string {
 	quantity := hold.Quantity
 	if strings.Contains(quantity, ".") {
 		quantity = strings.TrimRight(strings.TrimRight(quantity, "0"), ".")
+	}
+	if hold.Kind == contracts.VariantHoldKindReserved {
+		places := "sites"
+		if hold.Locations == 1 {
+			places = "site"
+		}
+		return fmt.Sprintf("%s %s reserved for orders at %d %s", quantity, unit, hold.Locations, places)
 	}
 	places := "locations"
 	if hold.Locations == 1 {
@@ -390,4 +397,12 @@ func documentsText(hold *contracts.VariantHold) string {
 		return "1 open quote or order"
 	}
 	return fmt.Sprintf("%d open quotes or orders", hold.Documents)
+}
+
+// holdRemedy is what a stock hold's refusal asks the user to do first.
+func holdRemedy(hold *contracts.VariantHold) string {
+	if hold.Kind == contracts.VariantHoldKindReserved {
+		return "Deliver or cancel the orders that reserve it"
+	}
+	return "Move the stock or adjust it to zero"
 }

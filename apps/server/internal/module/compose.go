@@ -376,6 +376,13 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.VariantReferenceHolders = append(slices.Clone(deps.VariantReferenceHolders), variantHolders...)
 	}
 
+	// The stock read from the enabled modules, the stock ledger from every
+	// module given (withStock says why), after the product catalog, by the
+	// helper Workers uses too.
+	if deps, err = withStock(deps, given, mods); err != nil {
+		return nil, err
+	}
+
 	// The outbox's event handlers (orders design O2), a many-provider slot
 	// collected from every module given, for the holders' reason above. The
 	// API runs none of them — the dispatcher, a worker, does — but a

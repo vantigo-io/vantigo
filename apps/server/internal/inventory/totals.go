@@ -3,6 +3,7 @@ package inventory
 import (
 	"context"
 	"fmt"
+	"math/big"
 
 	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
 	"github.com/vantigo-io/vantigo/server/internal/inventory/store"
@@ -15,8 +16,10 @@ const maxTotalVariants = 100
 // ListInventoryStockTotals Stock totals of variants
 // (GET /api/v1/inventory/stock)
 //
-// Each variant's on hand across every location, summed exactly, for the
-// product list's column (I33); a variant with no stock is absent. Products
+// Each variant's on hand across every location, summed exactly, what is
+// reserved of it across every site, and available, the difference, for the
+// product list's column (I33); a variant with neither stock nor a
+// reservation is absent. Products
 // reads nothing of Inventory: the host composes the column from this.
 func (s *server) ListInventoryStockTotals(ctx context.Context, req gen.ListInventoryStockTotalsRequestObject) (gen.ListInventoryStockTotalsResponseObject, error) {
 	ids := distinct(req.Params.VariantIds)
@@ -36,7 +39,11 @@ func (s *server) ListInventoryStockTotals(ctx context.Context, req gen.ListInven
 	}
 	out := gen.InventoryStockTotals{Totals: make([]gen.InventoryStockTotal, 0, len(rows))}
 	for _, r := range rows {
-		out.Totals = append(out.Totals, gen.InventoryStockTotal{VariantId: r.VariantID, OnHand: wireQuantity(ratFromText(r.OnHand))})
+		onHand, reserved := ratFromText(r.OnHand), ratFromText(r.Reserved)
+		out.Totals = append(out.Totals, gen.InventoryStockTotal{
+			VariantId: r.VariantID, OnHand: wireQuantity(onHand), Reserved: wireQuantity(reserved),
+			Available: wireQuantity(new(big.Rat).Sub(onHand, reserved)),
+		})
 	}
 	return gen.ListInventoryStockTotals200JSONResponse(out), nil
 }

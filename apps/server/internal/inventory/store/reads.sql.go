@@ -292,21 +292,96 @@ func (q *Queries) MovementLines(ctx context.Context, movementID int64) ([]Invent
 	return items, nil
 }
 
-const stockTotals = `-- name: StockTotals :many
-SELECT variant_id, sum(on_hand)::text AS on_hand
-FROM inventory.balances
+const onHandBySite = `-- name: OnHandBySite :many
+SELECT b.variant_id, l.site_id, sum(b.on_hand)::text AS on_hand
+FROM inventory.balances b
+JOIN inventory.locations l ON l.id = b.location_id
+WHERE b.variant_id = ANY($1::int[])
+GROUP BY b.variant_id, l.site_id
+ORDER BY b.variant_id, l.site_id
+`
+
+type OnHandBySiteRow struct {
+	VariantID int32
+	SiteID    int64
+	OnHand    string
+}
+
+// OnHandBySite is each variant's on hand per site, summed over its locations.
+func (q *Queries) OnHandBySite(ctx context.Context, variantIds []int32) ([]OnHandBySiteRow, error) {
+	rows, err := q.db.Query(ctx, onHandBySite, variantIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OnHandBySiteRow
+	for rows.Next() {
+		var i OnHandBySiteRow
+		if err := rows.Scan(&i.VariantID, &i.SiteID, &i.OnHand); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reservedOfVariants = `-- name: ReservedOfVariants :many
+SELECT variant_id, site_id, sum(quantity)::text AS reserved
+FROM inventory.reservations
 WHERE variant_id = ANY($1::int[])
-GROUP BY variant_id
-ORDER BY variant_id
+GROUP BY variant_id, site_id
+ORDER BY variant_id, site_id
+`
+
+type ReservedOfVariantsRow struct {
+	VariantID int32
+	SiteID    int64
+	Reserved  string
+}
+
+// ReservedOfVariants is what is reserved of each variant, per site.
+func (q *Queries) ReservedOfVariants(ctx context.Context, variantIds []int32) ([]ReservedOfVariantsRow, error) {
+	rows, err := q.db.Query(ctx, reservedOfVariants, variantIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReservedOfVariantsRow
+	for rows.Next() {
+		var i ReservedOfVariantsRow
+		if err := rows.Scan(&i.VariantID, &i.SiteID, &i.Reserved); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const stockTotals = `-- name: StockTotals :many
+SELECT coalesce(b.variant_id, r.variant_id)::int AS variant_id, coalesce(b.on_hand, 0)::text AS on_hand,
+       coalesce(r.reserved, 0)::text AS reserved
+FROM (SELECT variant_id, sum(on_hand) AS on_hand FROM inventory.balances
+      WHERE variant_id = ANY($1::int[]) GROUP BY variant_id) b
+FULL JOIN (SELECT variant_id, sum(quantity) AS reserved FROM inventory.reservations
+           WHERE variant_id = ANY($1::int[]) GROUP BY variant_id) r ON r.variant_id = b.variant_id
+ORDER BY 1
 `
 
 type StockTotalsRow struct {
 	VariantID int32
 	OnHand    string
+	Reserved  string
 }
 
-// StockTotals is each of the variants' on hand across every location (I33);
-// a variant with no balance is absent.
+// StockTotals is each of the variants' on hand across every location and
+// what is reserved of it across every site (I33); a variant with neither is
+// absent.
 func (q *Queries) StockTotals(ctx context.Context, variantIds []int32) ([]StockTotalsRow, error) {
 	rows, err := q.db.Query(ctx, stockTotals, variantIds)
 	if err != nil {
@@ -316,7 +391,7 @@ func (q *Queries) StockTotals(ctx context.Context, variantIds []int32) ([]StockT
 	var items []StockTotalsRow
 	for rows.Next() {
 		var i StockTotalsRow
-		if err := rows.Scan(&i.VariantID, &i.OnHand); err != nil {
+		if err := rows.Scan(&i.VariantID, &i.OnHand, &i.Reserved); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

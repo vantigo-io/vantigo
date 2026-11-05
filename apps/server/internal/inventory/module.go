@@ -74,6 +74,8 @@ func Module() module.Module {
 		Permissions:       permissions,
 		Mount:             mount,
 		VariantReferences: newVariantHolder,
+		Stock:             newStock,
+		StockLedger:       newLedger,
 	}
 }
 
