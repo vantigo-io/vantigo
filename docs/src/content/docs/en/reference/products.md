@@ -1,11 +1,12 @@
 ---
 title: "Products module"
-description: "The catalog of goods and services the company sells, with prices, variants and their packagings; the catalog contract other modules read and lock; the variants that hold stock; the API, its permissions and the product list's extra columns."
+description: "The catalog of goods and services the company sells, with prices, variants and their packagings; the catalog contract other modules read and lock; the variants that hold stock; the product images; the API, its permissions and the product list's extra columns."
 sources:
   - apps/server/internal/products
   - apps/products/frontend
   - openapi/products.yaml
   - apps/server/internal/db/migrations/00109_products_packagings.sql
+  - apps/server/internal/db/migrations/00131_products_images.sql
 ---
 The Products module is the catalog of everything the company sells: physical goods
 and performed services alike. It is a vertical-slice module inside the single Vantigo
@@ -86,6 +87,8 @@ the JSON number its response carries, which a two-place price survives exactly.
 | `LookupCode(code)` | A `CodeMatch` for every variant whose SKU equals the trimmed code, ignoring case, or whose barcode equals it exactly — the variant matches first — then one per **packaging** whose barcode equals it, with `Packaging` set to the packaging that matched. |
 | `LookupSKUs(skus)` | For each SKU, keyed exactly as the caller wrote it, every variant whose SKU equals it trimmed and ignoring case, by id — `LookupCode`'s SKU half for many codes at once, barcodes not matched. A SKU no variant has, or a blank one, is absent. One query per 1,000 distinct SKUs and one load of their packagings. |
 | `SearchVariants(q, VariantSearch{Types, Limit, IncludeInactive})` | At most `Limit` (capped at 50) variants of products of `Types` (`Goods`, `Service`; both when empty) whose SKU, product name or barcode contains `q`, ignoring case, by SKU — of **active** products only unless `IncludeInactive`; `%` and `_` are matched literally, and a blank `q` (or a `Limit` of 0) answers nothing. Packaging barcodes are not searched. Inventory's picker asks for `Goods` of every status, as it always has; Orders will ask for both types, active only. |
+| `ProductImages(productID, use)` | The product's images marked for a use, in order; see [the catalog's image calls](#the-catalogs-image-calls). |
+| `OpenProductImage(imageID)` | One image's normalised bytes and description, nil when it is gone; see [the catalog's image calls](#the-catalogs-image-calls). |
 | `LockVariants(tx, ids)` | Takes `FOR SHARE` on the variants' rows and their products' rows, in id order, **on the caller's transaction**, and answers the entries. |
 
 Every method but `LockVariants` runs on the module's pool and is called before the
@@ -241,6 +244,90 @@ theirs. So the two orders agree and two writes cannot both claim one barcode.
 
 A packaging is deleted with its variant (`ON DELETE CASCADE`).
 
+## Images
+
+A product has images, which a person shows a customer in a message (Messenger design
+N13–N15; Communications reads them through the catalog's two image calls, never through
+the `products` schema). Products keeps them in `products.product_images`
+(`00131_products_images.sql`): `product_id` (`ON DELETE CASCADE`), the object keys of the
+picture and its thumbnail, `content_type`, `byte_size`, `width`, `height`, `sha256`,
+`alt_text` (null, at most 250 characters), `sort_order`, `is_primary`, `uses` and
+`created_at` / `created_by`. A product is archived, never deleted, so its images go only
+when they are deleted one by one.
+
+### Normalisation at upload
+
+`POST /api/v1/products/{id}/images` takes one file in the multipart field `file`, and
+**stores only the normalised file**:
+
+1. The type is decided by the bytes: a JPEG or a PNG. Anything else — WebP and HEIC
+   included — is **422 `image_type_unsupported`**.
+2. More than 10 MiB is **422 `image_too_large`**. `image.DecodeConfig` then reads the size
+   before anything is decoded: more than **40 megapixels** is also `image_too_large`, so
+   a decompression bomb costs nothing; a side under **200 px** is **422
+   `image_too_small`**; a file that cannot be decoded is **422 `image_invalid`**.
+3. The EXIF orientation is read by `imagemeta.Orientation`, which walks a JPEG's
+   segments (or a PNG's chunks) to the one tag and never decodes the pixels.
+4. The picture is decoded, scaled so its longer side is at most **2048 px** (Catmull-Rom,
+   never upscaled), turned upright and encoded again: JPEG at quality 90, or PNG. This
+   drops every piece of metadata — Exif, XMP, IPTC, a PNG's text chunks — so no camera
+   location reaches a customer.
+5. A **320 px** thumbnail of the same type is made in the same pass, with
+   `golang.org/x/image/draw`.
+
+The two files go in the object store under the scope **`products-images`**, keys
+`{productId}/{uuid}` and `{productId}/{uuid}-thumb`, never derived from the file's name,
+and written before the row's transaction and removed again if it does not commit. A store
+that cannot be written is **503 `storage_unavailable`** with nothing recorded. A body
+that is no multipart form, has no file or more than one is 400. The router's body cap for
+the upload is 10 MiB and the framing. Image refusals are the one place Products' problems
+carry a `code`.
+
+### The primary image and the order
+
+Every write is one transaction that first takes the product's advisory lock
+`pg_advisory_xact_lock(1130, productId)` — not a row lock on the product, which an
+Inventory posting holds `FOR SHARE`. The rules:
+
+- **The first image uploaded is primary**, and a new image is last. At most one image of a
+  product is primary, by the partial unique index `ux_product_images_primary`.
+- **Making another image primary** (`isPrimary: true`) clears the old one first. `false`
+  on the primary image is a 400: another image's `true` is what replaces it.
+- **Deleting the primary promotes the next** by `sort_order`.
+- **`sortOrder` is a place**, not a free number: `PATCH` with it moves the image to that
+  place (past the last is the last), and the others close the gap. Every image's
+  `sort_order` is kept as 0, 1, 2… with no gaps, renumbered by every move and delete.
+- **`uses`** says where the image may be shown: `communications` — to a customer in a
+  message; the default for a new image — and `marketing`, for marketing use such as ads,
+  which nothing reads yet. A CHECK keeps the column within those two words; a `PATCH`
+  with any other is a 400, and an empty list is allowed.
+
+### Endpoints and permissions
+
+| Operation | Permission | |
+| --- | --- | --- |
+| `GET /{id}/images` | `products-view` | The images in their order; 404 for an unknown product. |
+| `POST /{id}/images` | `products-manage` | Upload, as above; 201 with the image. |
+| `PATCH /{id}/images/{imageId}` | `products-manage` | The alt text (an empty text clears it), `sortOrder`, `isPrimary` and `uses`; a field left out is left as it is; 200. |
+| `DELETE /{id}/images/{imageId}` | `products-manage` | Deletes the row and, once that has committed, both objects (a failure to remove one is logged and leaves it unreferenced); 204. |
+| `GET /{id}/images/{imageId}/content` | `products-view` | Streams the normalised file; `?size=thumb` the thumbnail. `Cache-Control: private, max-age=300`, `X-Content-Type-Options: nosniff`, no `Content-Disposition`. 404 for an image the product does not have or whose object is gone, 503 when the store cannot be read. |
+
+No new permission is added: the ten that exist cover it. The upload and the content are
+file operations, never offered to the Assistant.
+
+### The catalog's image calls
+
+`contracts.ProductCatalog` has two more calls, with `int32` ids:
+
+| Method | Answers |
+| --- | --- |
+| `ProductImages(productID, use)` | The product's images marked for `use` (`communications` or `marketing`), by `sort_order` then id; empty when it has none, the product does not exist or `use` is neither. A `ProductImage` carries `ID`, `ProductID`, `AltText` (`""` when none), `ContentType`, `Width`, `Height`, `Uses` and `SortOrder`. |
+| `OpenProductImage(imageID)` | The normalised file's stream and its `ProductImage`; `(nil, ProductImage{}, nil)` when the image does not exist or its object is gone. The caller closes the stream. |
+
+Like the rest of the catalog they run on the pool, before the caller opens a transaction,
+and check no user permission: the composer's product picker, which runs on the Products
+API with the user's own permissions, is what checks the user.
+
 ## API
 
 Versioned REST endpoints live under `/api/v1/products`, authenticated with the shared
@@ -263,6 +350,11 @@ rather than an antiforgery token — see
 | `POST /api/v1/products/{id}/variants/{variantId}/packagings` | Add a packaging |
 | `PUT /api/v1/products/{id}/variants/{variantId}/packagings/{packagingId}` | Replace a packaging |
 | `DELETE /api/v1/products/{id}/variants/{variantId}/packagings/{packagingId}` | Remove a packaging no other is built from |
+| `GET /api/v1/products/{id}/images` | List a product's images |
+| `POST /api/v1/products/{id}/images` | Upload an image (multipart, normalised) |
+| `PATCH /api/v1/products/{id}/images/{imageId}` | Change an image's alt text, order, primary flag and uses |
+| `DELETE /api/v1/products/{id}/images/{imageId}` | Delete an image and its files |
+| `GET /api/v1/products/{id}/images/{imageId}/content` | Stream an image, or its thumbnail with `?size=thumb` |
 | `GET /api/v1/products/{id}/variants/{variantId}/prices` | List price rows |
 | `POST /api/v1/products/{id}/variants/{variantId}/prices` | Add a price row |
 | `PUT /api/v1/products/{id}/variants/{variantId}/prices/{priceId}` | Update a price row |

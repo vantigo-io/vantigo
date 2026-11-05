@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/invoices/print_batches.go
   - apps/server/internal/staff/objects.go
   - apps/server/internal/customers/objects.go
+  - apps/server/internal/products/objects.go
 ---
 Object storage is the application port Communications stages and serves attachments
 through. Modules never talk to a provider SDK: they receive an `ObjectStore` scoped
@@ -133,7 +134,11 @@ one store timeout
 scope `customers`: an attachment's relative key is `attachments/<uuid>`, so its physical key
 is `customers/attachments/<uuid>` — a key that names no customer, since a merge moves the
 attachment's row to the surviving customer and the store has no rename
-([Customers](/en/reference/customers/#attachments)). A scoped store refuses a
+([Customers](/en/reference/customers/#attachments)). Products uses the scope
+`products-images`: a product image's relative key is `<productId>/<uuid>` and its
+thumbnail's `<productId>/<uuid>-thumb`, so the physical keys are
+`products-images/<productId>/<uuid>` and `products-images/<productId>/<uuid>-thumb`
+([Products](/en/reference/products/#images)). A scoped store refuses a
 relative key that equals its scope or already begins with `{scope}/`: callers pass
 relative keys only and must never construct the prefix themselves.
 
