@@ -26,7 +26,7 @@ import (
 
 // shareEmailChoiceID is the choice id of a "user_email" quick reply's answer: an
 // e-mail address the person shared (N5, N8).
-const shareEmailChoiceID = "share-email"
+const shareEmailChoiceID = contracts.MessengerShareEmail
 
 // choiceIDPattern is a component id (N4): lower case, digits and hyphens, 1 to
 // 40 characters, unique within its message.

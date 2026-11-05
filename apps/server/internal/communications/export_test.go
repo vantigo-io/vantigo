@@ -3,6 +3,7 @@ package communications
 import (
 	"context"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/secrets"
 )
 
@@ -85,3 +86,33 @@ var ThreadReferencesForTest = threadReferences
 
 // AttachmentDispositionForTest is attachmentDisposition (attachments.go).
 var AttachmentDispositionForTest = attachmentDisposition
+
+// NewMessengerSyncWorkerWithMeterForTest is newMessengerSyncWorker
+// (messenger_sync.go) with the meter provider chosen by the caller, as
+// NewOutboxWorkerWithMeterForTest.
+var NewMessengerSyncWorkerWithMeterForTest = newMessengerSyncWorker
+
+// expectedInTxKey marks a context whose call made inside one of the module's
+// transactions is the point of a test, so the harness's lock-rule check does not
+// count it.
+type expectedInTxKey struct{}
+
+// ExpectedInTx reports whether ctx is marked by a test as making a call inside a
+// transaction on purpose (harness_test.go's hook skips it).
+func ExpectedInTx(ctx context.Context) bool {
+	expected, _ := ctx.Value(expectedInTxKey{}).(bool)
+	return expected
+}
+
+// ErrCallInsideTransactionForTest is errCallInsideTransaction.
+var ErrCallInsideTransactionForTest = errCallInsideTransaction
+
+// MessengerProfileInTxForTest makes the accessor of ChannelMessenger.Profile the
+// call a transaction's code would make, in a context inside one marked as on
+// purpose: the guard must refuse it before the provider is reached.
+func MessengerProfileInTxForTest(m contracts.ChannelMessenger) error {
+	ctx := context.WithValue(context.Background(), lockedTxKey{}, true)
+	ctx = context.WithValue(ctx, expectedInTxKey{}, true)
+	_, err := messengerProfile(ctx, m, "page", "participant")
+	return err
+}

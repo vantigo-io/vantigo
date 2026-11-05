@@ -216,12 +216,18 @@ const (
 )
 
 // MessengerAnswer is the answer to a question Communications asked, parsed from
-// the payload the platform sent back (MessengerPayload).
+// the payload the platform sent back (MessengerPayload). An e-mail address the
+// person shared in answer to the quick reply that asks for one carries no
+// payload of ours: its answer is ChoiceID MessengerShareEmail, with no MessageID,
+// and the address as the event's Text.
 type MessengerAnswer struct {
 	// MessageID is the Communications message the question was in.
 	MessageID string
 	ChoiceID  string
 }
+
+// MessengerShareEmail is the ChoiceID of an e-mail address a person shared.
+const MessengerShareEmail = "share-email"
 
 // MessengerAttachmentRef names one attachment of an event, for OpenAttachment.
 type MessengerAttachmentRef struct {

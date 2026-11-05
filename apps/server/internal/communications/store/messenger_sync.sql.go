@@ -432,6 +432,25 @@ func (q *Queries) InsertMessengerSync(ctx context.Context, arg InsertMessengerSy
 	return i, err
 }
 
+const latestShareEmailQuestion = `-- name: LatestShareEmailQuestion :one
+SELECT id
+FROM communications.conversation_messages
+WHERE conversation_id = $1 AND direction = 'outbound'
+  AND components->>'shareEmail' = 'true'
+ORDER BY occurred_at DESC, id DESC
+LIMIT 1
+`
+
+// The newest message of the conversation that asked the person for an e-mail
+// address: a user_email quick reply carries no payload of ours, so the address
+// that comes back is placed under it (N5).
+func (q *Queries) LatestShareEmailQuestion(ctx context.Context, conversationID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, latestShareEmailQuestion, conversationID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const markMessengerSyncNotified = `-- name: MarkMessengerSyncNotified :execrows
 UPDATE communications.messenger_sync s
 SET notified = true, next_sync_at = LEAST(s.next_sync_at, $1), updated_at = $1

@@ -128,21 +128,23 @@ func Module() module.Module {
 }
 
 // workers is this module's background work (design §4): the outbox delivery
-// worker, the retention worker, the attachment-cleanup worker and the
+// worker, the retention worker, the attachment-cleanup worker, the
 // mailbox sync (Outlook connection design M14), which reads each mailbox
-// channel's Inbox. cmd/vantigo starts these through module.Workers in worker mode, and
-// in api mode when WORKERS_IN_PROCESS=1 — never in server mode.
+// channel's Inbox, and the messenger sync (Messenger design N3), which reads
+// each Messenger channel's inbox of events. cmd/vantigo starts these through
+// module.Workers in worker mode, and in api mode when WORKERS_IN_PROCESS=1 —
+// never in server mode.
 //
 // Only retention takes the advisory lease (inventory §14); delivery, cleanup
-// and the mailbox sync rely on their own conditional-update claims instead,
-// so every replica runs those three every cycle. Nothing here arbitrates that — each
+// and the two syncs rely on their own conditional-update claims instead,
+// so every replica runs those four every cycle. Nothing here arbitrates that — each
 // worker owns its own exclusion.
 //
 // TestModule_ContributesItsWorkers asserts this set exactly: a worker added
 // here without its name added there, or the reverse, fails that test rather
 // than silently never running in production.
 func workers(d module.Deps) []worker.Worker {
-	return []worker.Worker{NewOutboxWorker(d), NewRetentionWorker(d), NewCleanupWorker(d), NewMailboxSyncWorker(d)}
+	return []worker.Worker{NewOutboxWorker(d), NewRetentionWorker(d), NewCleanupWorker(d), NewMailboxSyncWorker(d), NewMessengerSyncWorker(d)}
 }
 
 // mount registers every contract operation on the platform router, which wraps
