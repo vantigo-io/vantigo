@@ -69,8 +69,10 @@ Under **Lines**, add:
   **Estimate** asks the carrier for a price for the saved document's delivery address and
   the weight of its goods, adds the markup from the Orders settings and fills in the price,
   marked **Carrier estimate**; when the settings name a freight product, the line takes its
-  name and VAT code. Type over the price to make it your own. Estimate needs the document
-  saved and a carrier account (see [Shipping](/en/admin/shipping/)). The line is counted as
+  name. Its VAT code follows the goods: theirs when they share one, else the one most of
+  the goods' amount carries. Type over the price to make it your own. Estimate needs the
+  document saved, a carrier account (see [Shipping](/en/admin/shipping/)) and the
+  permission to manage the quote or the order. The line is counted as
   delivered when the order's first shipment is booked, and is invoiced like any line.
 
 Give each product line a **Quantity**, and a **Discount** in percent if any. A price you
@@ -360,20 +362,26 @@ Integrations › Shipping ([Shipping](/en/admin/shipping/)).
    a **Track** link and a **Label** to print; a cargo service also has a **Waybill**
    (*fraktbrev*) — for the others the label serves. When the Orders settings say so, the
    customer gets an e-mail with the tracking link. The order's shipping lines count as
-   delivered.
+   delivered. Printing the label and the waybill needs the permission to manage deliveries.
 
 A test account books in Bring's test mode, marked **Test**. Bring still sends its notices
 to real phone numbers and e-mail addresses in test mode, so use made-up contacts there.
 
-When booking fails because the carrier did not answer, choose **Book shipment** again:
-Vantigo asks the carrier first and books once. When the carrier refuses, its own words say
-why — a wrong postal code, say — and the shipment stays a draft.
+When booking fails because the carrier did not answer, wait a couple of minutes and choose
+**Book shipment** again: Vantigo asks the carrier first and books once. Until then the
+shipment cannot be changed or cancelled, and while a booking is being made another
+**Book shipment** says so. The carrier may take up to a quarter of an hour to show a
+booking it made: until then Vantigo books nothing more and says so — check Mybring, or wait
+and book again. A booking found again this way has no label in Vantigo: the shipment says
+**print the label in Mybring**, and you print it there. When the carrier refuses, its own
+words say why — a wrong postal code, say — and the shipment stays a draft you can change.
 
 ### Follow and cancel a shipment
 
 The shipment's state moves by itself as the carrier reports it — **Booked**, **In transit**,
 **Delivered** — every half hour, with each **tracking event** listed under it. A deviation
-or a return marks it with **Exception**. The order's **Shipments** card lists every booked
+or a return marks it with **Exception**, and so does a cancel Bring reports: Vantigo does not
+cancel the shipment on its own — look at it, and cancel it here if it is so. The order's **Shipments** card lists every booked
 shipment with its tracking link.
 
 **Cancel shipment** cancels a draft. A booked Bring shipment cannot be cancelled with Bring:
@@ -606,6 +614,9 @@ confirmed or cancelled ([the timeline](/en/user/customers/#the-timeline)).
 | The final period is already on an invoice or a draft invoice and cannot be pro-rated. | Choose **Full period**, or credit the period — or delete the draft invoice — first. |
 | No carrier account to use | Ask an administrator to add one, or to choose the site's default account, under Integrations › Shipping. |
 | The carrier refused the request. … | The carrier's own words follow: correct what it names — the address, the weight — and book again. |
-| The carrier did not answer. | Try again later. A booking whose answer was lost is found again: **Book shipment** books once. |
+| The carrier did not answer. | Try again in a couple of minutes. A booking whose answer was lost is found again: **Book shipment** books once. |
+| The shipment is being booked right now. | Wait a couple of minutes and look again. |
+| The carrier does not show the earlier booking yet. | Check the booking in Mybring, or wait a quarter of an hour and book again. |
+| A booking's outcome is unknown: book again to resolve it before changing the shipment. | Choose **Book shipment**; change the shipment once it is booked or refused. |
 | The carrier has the parcel; it can no longer be cancelled. | Arrange a return with the carrier instead. |
 | The document has no address to ship to. | Choose a delivery address on the document, save it, and estimate again. |

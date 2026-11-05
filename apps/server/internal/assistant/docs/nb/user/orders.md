@@ -67,9 +67,11 @@ Under **Linjer** legger du til:
   antall 1, en pris og en mva-kode, standardsatsen med mindre du velger en annen.
   **Estimer** spør transportøren om en pris for det lagrede dokumentets leveringsadresse og
   varenes vekt, legger til påslaget fra innstillingene for Ordre og fyller inn prisen, merket
-  **Fraktestimat**; når innstillingene har et fraktprodukt, får linjen navnet og mva-koden
-  derfra. Skriv over prisen for å gjøre den til din egen. Estimer krever at dokumentet er
-  lagret og at det finnes en fraktkonto (se [Frakt](/nb/admin/shipping/)). Linjen regnes som
+  **Fraktestimat**; når innstillingene har et fraktprodukt, får linjen navnet derfra.
+  Mva-koden følger varene: deres når de har samme, ellers den som størstedelen av varenes
+  beløp har. Skriv over prisen for å gjøre den til din egen. Estimer krever at dokumentet er
+  lagret, at det finnes en fraktkonto (se [Frakt](/nb/admin/shipping/)) og tillatelsen til å
+  håndtere tilbudet eller ordren. Linjen regnes som
   levert når ordrens første sending er bestilt, og faktureres som alle andre linjer.
 
 Gi hver produktlinje et **Antall**, og en **Rabatt** i prosent om det er noen. En pris du
@@ -357,20 +359,29 @@ Integrasjoner › Frakt ([Frakt](/nb/admin/shipping/)).
 4. **Bestill frakt** bestiller sendingen. Sendingen viser sendingsnummeret, en lenke
    **Spor** og en **Etikett** å skrive ut; en godstjeneste har også et **Fraktbrev** — for de
    andre gjelder etiketten. Når innstillingene for Ordre sier det, får kunden en e-post med
-   sporingslenken. Ordrens fraktlinjer regnes som levert.
+   sporingslenken. Ordrens fraktlinjer regnes som levert. Å skrive ut etiketten og
+   fraktbrevet krever tillatelsen til å håndtere leveranser.
 
 En testkonto bestiller i Brings testmodus, merket **Test**. Bring sender likevel varslene sine
 til ekte telefonnumre og e-postadresser i testmodus, så bruk oppdiktede kontakter der.
 
-Når bestillingen feiler fordi transportøren ikke svarte, velger du **Bestill frakt** igjen:
-Vantigo spør transportøren først og bestiller én gang. Når transportøren avviser, sier dens
-egne ord hvorfor — et feil postnummer, for eksempel — og sendingen forblir et utkast.
+Når bestillingen feiler fordi transportøren ikke svarte, venter du et par minutter og velger
+**Bestill frakt** igjen: Vantigo spør transportøren først og bestiller én gang. Til da kan
+sendingen ikke endres eller kanselleres, og mens en bestilling pågår, sier et nytt
+**Bestill frakt** fra om det. Transportøren kan bruke opptil et kvarter på å vise en
+bestilling den har gjort: til da bestiller Vantigo ikke mer og sier fra — sjekk Mybring, eller
+vent og bestill igjen. En bestilling som finnes igjen slik, har ingen etikett i Vantigo:
+sendingen sier **skriv ut etiketten i Mybring**, og du skriver den ut der. Når transportøren
+avviser, sier dens egne ord hvorfor — et feil postnummer, for eksempel — og sendingen forblir
+et utkast du kan endre.
 
 ### Følg og kanseller en sending
 
 Sendingens status endrer seg av seg selv etter hvert som transportøren melder den —
 **Bestilt**, **Underveis**, **Levert** — hver halvtime, med hver **sporingshendelse** listet
-under. Et avvik eller en retur merker den med **Avvik**. Kortet **Sendinger** på ordren viser
+under. Et avvik eller en retur merker den med **Avvik**, og det gjør også en kansellering Bring
+melder: Vantigo kansellerer ikke sendingen av seg selv — se på den, og kanseller den her om
+det stemmer. Kortet **Sendinger** på ordren viser
 hver bestilte sending med sporingslenken.
 
 **Kanseller sendingen** kansellerer et utkast. En bestilt Bring-sending kan ikke kanselleres
@@ -600,6 +611,9 @@ eller kansellert ([tidslinjen](/nb/user/customers/#tidslinjen)).
 | Siste periode er alt på en faktura eller et fakturautkast og kan ikke gjøres forholdsmessig. | Velg **Full periode**, eller krediter perioden — eller slett fakturautkastet — først. |
 | Ingen fraktkonto å bruke | Be en administrator legge til en, eller velge lagerstedets standardkonto, under Integrasjoner › Frakt. |
 | Transportøren avviste forespørselen. … | Transportørens egne ord følger: rett det den nevner — adressen, vekten — og bestill igjen. |
-| Transportøren svarte ikke. | Prøv igjen senere. En bestilling der svaret gikk tapt, finnes igjen: **Bestill frakt** bestiller én gang. |
+| Transportøren svarte ikke. | Prøv igjen om et par minutter. En bestilling der svaret gikk tapt, finnes igjen: **Bestill frakt** bestiller én gang. |
+| Sendingen bestilles akkurat nå. | Vent et par minutter og se igjen. |
+| Transportøren viser ikke den tidligere bestillingen ennå. | Sjekk bestillingen i Mybring, eller vent et kvarter og bestill igjen. |
+| Utfallet av en bestilling er ukjent: bestill igjen for å avklare det før sendingen endres. | Velg **Bestill frakt**; endre sendingen når den er bestilt eller avvist. |
 | Transportøren har pakken; den kan ikke lenger kanselleres. | Avtal en retur med transportøren i stedet. |
 | Dokumentet har ingen adresse å sende til. | Velg en leveringsadresse på dokumentet, lagre det og estimer igjen. |
