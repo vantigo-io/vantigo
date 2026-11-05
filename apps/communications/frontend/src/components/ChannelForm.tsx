@@ -11,7 +11,7 @@ import {
   createChannel,
 } from "../api/channels";
 import { channelErrorMessage } from "./channelErrors";
-import { isMailboxProvider } from "./channelProviders";
+import { isMailboxProvider, providerText } from "./channelProviders";
 
 type ChannelFormValues = {
   address: string;
@@ -155,7 +155,7 @@ export function ChannelForm({ opened, onClose, onCreated, providers, providerLab
           ) : (
             <>
               <Text size="sm" c="dimmed">
-                {t("sharedMailboxOnly")}
+                {t(providerText("sharedMailboxOnly", provider), { provider: providerName })}
               </Text>
               <Select
                 label={t("importWindow")}
@@ -189,7 +189,7 @@ export function ChannelForm({ opened, onClose, onCreated, providers, providerLab
             </>
           )}
           {create.error && (
-            <Alert color="red">{channelErrorMessage(create.error, t, locale, undefined, providerName)}</Alert>
+            <Alert color="red">{channelErrorMessage(create.error, t, locale, undefined, providerName, provider)}</Alert>
           )}
           <Button type="submit" loading={create.isPending}>
             {t("createChannel")}

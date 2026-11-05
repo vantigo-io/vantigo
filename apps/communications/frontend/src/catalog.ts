@@ -18,6 +18,8 @@ const en = {
   smtp: "SMTP",
   microsoft365: "Microsoft 365",
   sharedMailboxOnly: "The mailbox must be a shared mailbox in the application's scope.",
+  sharedMailboxOnlyGoogle:
+    "The mailbox must be a licensed user of the organisation in {{provider}} that is no person's own, such as post@. A group cannot be a channel.",
   switchToProvider: "Switch to {{provider}}",
   switchConfirm: "The SMTP settings are deleted. To go back you enter them again.",
   switch: "Switch",
@@ -27,13 +29,20 @@ const en = {
   tenantWideTitle: "Mail access reaches every mailbox",
   tenantWide:
     "Mail access is granted to every mailbox in the tenant. Limit it with RBAC for Applications and remove the tenant-wide consent. While this shows, anyone who manages channels in Communications can send as any shared mailbox in the tenant.",
+  tenantWideGoogle:
+    "Mail access through {{provider}} reaches every mailbox in the domain: domain-wide delegation cannot be limited to some mailboxes. While this shows, anyone who manages channels in Communications can send as any mailbox in the domain that is no person's own.",
   errorPersonalMailbox: "This is a person's own mailbox. Only a shared mailbox can be a channel.",
+  errorPersonalMailboxGoogle:
+    "This is a person's own mailbox in {{provider}}. Only a mailbox that is no person's own, such as post@, can be a channel.",
   errorGroupAddress: "The address is a group. A group has no mailbox Vantigo can read; use a licensed mailbox.",
   errorProviderSwitchUnsupported:
     "The channel uses another mailbox provider. Switch it back to SMTP first, then to the new provider.",
   errorMailboxDenied:
     "The mailbox is outside the application's scope. Give the application access to it in Exchange Online.",
   errorMailboxDeniedLink: "How to give the application access",
+  errorMailboxDeniedGoogle:
+    "{{provider}} refused the mailbox for another reason than the delegation, such as a policy on the user. Check the user in the Google Admin console.",
+  errorMailboxDeniedLinkGoogle: "Mail channels in {{provider}}",
   errorMailboxUnknown: "{{provider}} has no mailbox with this address.",
   errorMailChannelsOff:
     "Mail channels through {{provider}} are not available. An administrator turns them on under Integrations.",
@@ -160,6 +169,7 @@ const en = {
   "sync.stopped": "Stopped",
   "sync.retrying": "Last sync failed: {{reason}}",
   "syncError.mailbox_denied": "The application can no longer read the mailbox. Give it access in Exchange Online.",
+  "syncError.google_mailbox_denied": "{{provider}} refuses the mailbox. Check the user in the Google Admin console.",
   "syncError.mailbox_gone": "The mailbox no longer exists in {{provider}}.",
   "syncError.mailbox_unknown": "The mailbox is not known for this channel. Verify the channel.",
   "syncError.provider_unavailable": "Mail channels through {{provider}} are not available.",
@@ -211,6 +221,8 @@ const nb: { [Key in keyof typeof en]: string } = {
   smtp: "SMTP",
   microsoft365: "Microsoft 365",
   sharedMailboxOnly: "Postboksen må være en delt postboks som applikasjonen har tilgang til.",
+  sharedMailboxOnlyGoogle:
+    "Postboksen må være en lisensiert bruker i organisasjonen i {{provider}} som ikke er noen persons egen, for eksempel post@. En gruppe kan ikke være en kanal.",
   switchToProvider: "Bytt til {{provider}}",
   switchConfirm: "SMTP-innstillingene slettes. For å gå tilbake må du legge dem inn på nytt.",
   switch: "Bytt",
@@ -220,7 +232,11 @@ const nb: { [Key in keyof typeof en]: string } = {
   tenantWideTitle: "E-posttilgangen gjelder alle postbokser",
   tenantWide:
     "Applikasjonen har tilgang til alle postboksene i leietakeren. Begrens den med RBAC for Applications, og fjern samtykket som gjelder hele leietakeren. Så lenge denne advarselen vises, kan alle som administrerer kanaler i Kommunikasjon, sende som hvilken som helst delt postboks i leietakeren.",
+  tenantWideGoogle:
+    "E-posttilgangen gjennom {{provider}} gjelder alle postboksene i domenet: delegering på domenenivå kan ikke begrenses til noen postbokser. Så lenge denne advarselen vises, kan alle som administrerer kanaler i Kommunikasjon, sende som hvilken som helst postboks i domenet som ikke er en persons egen.",
   errorPersonalMailbox: "Dette er en persons egen postboks. Bare en delt postboks kan være en kanal.",
+  errorPersonalMailboxGoogle:
+    "Dette er en persons egen postboks i {{provider}}. Bare en postboks som ikke er noen persons egen, for eksempel post@, kan være en kanal.",
   errorGroupAddress:
     "Adressen er en gruppe. En gruppe har ingen postboks Vantigo kan lese; bruk en lisensiert postboks.",
   errorProviderSwitchUnsupported:
@@ -228,6 +244,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   errorMailboxDenied:
     "Postboksen er utenfor det applikasjonen har tilgang til. Gi applikasjonen tilgang til den i Exchange Online.",
   errorMailboxDeniedLink: "Slik gir du applikasjonen tilgang",
+  errorMailboxDeniedGoogle:
+    "{{provider}} avviste postboksen av en annen grunn enn delegeringen, for eksempel en regel for brukeren. Sjekk brukeren i Google Admin-konsollen.",
+  errorMailboxDeniedLinkGoogle: "E-postkanaler i {{provider}}",
   errorMailboxUnknown: "{{provider}} har ingen postboks med denne adressen.",
   errorMailChannelsOff:
     "E-postkanaler gjennom {{provider}} er ikke tilgjengelige. En administrator slår dem på under Integrasjoner.",
@@ -354,6 +373,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "sync.stopped": "Stoppet",
   "sync.retrying": "Siste synkronisering feilet: {{reason}}",
   "syncError.mailbox_denied": "Applikasjonen kan ikke lenger lese postboksen. Gi den tilgang i Exchange Online.",
+  "syncError.google_mailbox_denied": "{{provider}} avviser postboksen. Sjekk brukeren i Google Admin-konsollen.",
   "syncError.mailbox_gone": "Postboksen finnes ikke lenger i {{provider}}.",
   "syncError.mailbox_unknown": "Postboksen er ikke kjent for denne kanalen. Bekreft kanalen.",
   "syncError.provider_unavailable": "E-postkanaler gjennom {{provider}} er ikke tilgjengelige.",

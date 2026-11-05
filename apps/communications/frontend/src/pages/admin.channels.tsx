@@ -17,14 +17,25 @@ import {
 } from "../api/channels";
 import { ChannelForm } from "../components/ChannelForm";
 import { channelErrorMessage } from "../components/channelErrors";
-import { isMailboxProvider } from "../components/channelProviders";
+import { isMailboxProvider, providerText } from "../components/channelProviders";
 import { relative } from "../components/conversationHelpers";
 import "../i18n";
 
 const syncErrors = ["mailbox_denied", "mailbox_gone", "mailbox_unknown", "provider_unavailable", "sync_failed"];
 
-/** Whether a channel receives: a mailbox channel's sync, by its state and last failure; SMTP sends only. */
-function ReceiveStatus({ sync, provider }: { sync: ChannelSync | null | undefined; provider: string }) {
+/**
+ * Whether a channel receives: a mailbox channel's sync, by its state and last failure; SMTP sends only.
+ * `provider` is the provider's name, `providerKey` its key, for the failures whose text is the provider's own.
+ */
+function ReceiveStatus({
+  sync,
+  provider,
+  providerKey,
+}: {
+  sync: ChannelSync | null | undefined;
+  provider: string;
+  providerKey: string;
+}) {
   const { t } = useI18n("communications");
   if (!sync)
     return (
@@ -33,7 +44,9 @@ function ReceiveStatus({ sync, provider }: { sync: ChannelSync | null | undefine
       </Text>
     );
   const reason = sync.error
-    ? t(`syncError.${syncErrors.includes(sync.error) ? sync.error : "sync_failed"}`, { provider })
+    ? t(providerText(`syncError.${syncErrors.includes(sync.error) ? sync.error : "sync_failed"}`, providerKey), {
+        provider,
+      })
     : t("syncError.sync_failed", { provider });
   const label =
     sync.state === "failed"
@@ -107,7 +120,14 @@ export function ChannelsPage() {
       notifications.show({
         color: "red",
         title: t("channelNotVerified"),
-        message: channelErrorMessage(error, t, locale, "errorVerificationFailed", providerLabel(channel.provider)),
+        message: channelErrorMessage(
+          error,
+          t,
+          locale,
+          "errorVerificationFailed",
+          providerLabel(channel.provider),
+          channel.provider,
+        ),
       }),
   });
   const switchProvider = useMutation({
@@ -157,11 +177,13 @@ export function ChannelsPage() {
         description={t("channelsDescription")}
         actions={<Button onClick={() => setOpened(true)}>{t("addChannel")}</Button>}
       />
-      {providers.some((provider) => provider.warning === "tenant_wide") && (
-        <Alert color="orange" title={t("tenantWideTitle")}>
-          {t("tenantWide")}
-        </Alert>
-      )}
+      {providers
+        .filter((provider) => provider.warning === "tenant_wide")
+        .map((provider) => (
+          <Alert key={provider.key} color="orange" title={t("tenantWideTitle")}>
+            {t(providerText("tenantWide", provider.key), { provider: provider.displayName })}
+          </Alert>
+        ))}
       {query.isError && (
         <Alert color="red">
           {t("couldNotLoadChannels")}: {query.error.message}
@@ -215,7 +237,11 @@ export function ChannelsPage() {
                       )}
                     </Table.Td>
                     <Table.Td>
-                      <ReceiveStatus sync={channel.sync} provider={providerLabel(channel.provider)} />
+                      <ReceiveStatus
+                        sync={channel.sync}
+                        provider={providerLabel(channel.provider)}
+                        providerKey={channel.provider}
+                      />
                       {isMailboxProvider(channel.provider) && channel.mailbox?.onClose === "read" && (
                         <Text size="xs" c="dimmed">
                           {t("onCloseSummaryRead")}
@@ -328,6 +354,7 @@ export function ChannelsPage() {
                 locale,
                 undefined,
                 switching ? providerLabel(switching.provider) : "",
+                switching?.provider ?? "",
               )}
             </Alert>
           )}
@@ -376,6 +403,7 @@ export function ChannelsPage() {
                 locale,
                 undefined,
                 editingOnClose ? providerLabel(editingOnClose.provider) : "",
+                editingOnClose?.provider ?? "",
               )}
             </Alert>
           )}
