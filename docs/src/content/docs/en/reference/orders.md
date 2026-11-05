@@ -139,8 +139,12 @@ of it — and the server stores the quantity in the variant's unit, exactly:
 the packaging's id, the count and its **name** (`packagingName`), as it was then. A
 packaging that is not the variant's, or one named on a free-text line, is
 `packaging_not_found` (400); a count that is not more than 0 with at most three decimals is
-`quantity_invalid`. A confirmed order's kept line in the same packaging takes a new count
-at the size it was confirmed with. The PDF prints the line's packaging after its
+`quantity_invalid`, and so is a count whose quantity would need more than the quantity's
+three decimals (1.5 of a packaging of 1.555), so the stored quantity is always the count
+times the size and the size can be read back from the line. A confirmed order's kept line
+in the same packaging takes a new count at the size it was confirmed with. A kept line
+that names the packaging it was saved in after the catalog has removed it keeps that
+packaging, its size and name from the line; a new line cannot name it. The PDF prints the line's packaging after its
 description: "3 × Eske à 15 (45 stk)" in Norwegian, "3 × Box of 15 (45 pcs)" in English.
 
 Prices are **stored net** of VAT. "Prices include VAT" is how they are entered and shown
@@ -465,8 +469,11 @@ one, and is composed whether or not `orders` is enabled.
   customer as it was. A quote's and a draft order's `updatedAt` moves, so an editor
   holding one from before the merge is stale; a confirmed or cancelled order's does not,
   since it is the moment a done order's retention runs from. The merged-away customer's
-  sales warning moves to the survivor when the survivor has none; when both have one the
-  survivor's is kept and the other deleted. Reported as `orders.quotes`, `orders.orders`
+  sales warning moves to the survivor when the survivor has none, its kept name blanked
+  (the settings show the customer's number until the warning is next set); when both have
+  one the survivor's is kept and the other deleted — except that a merged-away `block`
+  over the survivor's `info` makes the survivor's a `block`, its text the survivor's then
+  the merged-away one's on a new line, so a merge never lifts a block. Reported as `orders.quotes`, `orders.orders`
   and `orders.warnings`.
 - **Customer export**: every quote and order of the customer, each with its snapshot,
   status, revision or version, totals, texts, lines and sends, and the customer's sales
@@ -543,7 +550,11 @@ snapshots, so a line written before the warning existed counts as well.
 - A `block` warning refuses **send** and **mark as sent** of a quote, **confirm**, and
   **accept** into a confirmed order with `blocked_by_warning` (409), whose detail names each
   blocking warning and its text. A quote's send is judged before its PDF is printed or its
-  mail sent, and again under the quote's lock; a confirm under the order's lock. Saving a
+  mail sent; a send whose mail went out is not judged again, since the customer has the
+  quote — a block set while the mail was going out does not undo it. Mark as sent is
+  judged again under the quote's lock, and a confirm under the order's lock. The warnings
+  are read without a lock of their own, so the check is best effort: a warning set by a
+  commit that lands while a confirm is running does not refuse that confirm. Saving a
   draft, accepting into a draft order and sending a confirmed order's confirmation are
   never refused.
 - The request **overrides** the blocks with `overrideWarnings: true` and an
@@ -552,12 +563,16 @@ snapshots, so a line written before the warning existed counts as well.
   if no override were asked. An override at confirm — accept into a confirmed order
   included — is logged on the order's change log at the confirmed version, one
   `warning_overridden` action per block, from the warning to the reason; an override at
-  send or mark as sent is appended to the quote's internal note, which has no change log:
-  "Advarsel overstyrt <day> av <name> (<warnings>): <reason>", in the quote's language, cut
-  to the note's 4000 characters.
+  send or mark as sent is put first in the quote's internal note, which has no change log:
+  "Advarsel overstyrt <day> av <name> (<warnings>): <reason>", in the quote's language,
+  then the note as it was, cut to the note's 4000 characters — so the cut takes the old
+  note's end, never the override.
 
-A product warning is not removed when the product is: it is harmless, and an operator
-removes it in the settings. [The holders](#the-holders) re-point a customer's warning on a
+A product warning is not removed when the product is: Products deletes it without asking
+Orders to write. `GET /warnings` reads each product warning's product through the catalog,
+outside any transaction, and marks one whose product is gone **`orphaned: true`**; it can
+no longer be set (`PUT` is 404) but is removed with `DELETE`. A catalog that cannot be read
+leaves the list unmarked rather than failing it. [The holders](#the-holders) re-point a customer's warning on a
 merge and delete it on an erase.
 
 ## The variant grid
@@ -779,7 +794,7 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `DELETE /templates/{id}` | settings | 204; 404 |
 | `GET /settings` | settings | 200 |
 | `PUT /settings` | settings | 200; 400 `series_start_too_low`, `send_channel_unknown`; 409 `version_conflict` |
-| `GET /warnings` | access | 200 — every warning, customers' first, each by name; `scope` narrows |
+| `GET /warnings` | access | 200 — every warning, customers' first, each by name, a deleted product's `orphaned`; `scope` narrows |
 | `GET /warnings/customers/{customerId}` | access | 200; 404 none |
 | `PUT /warnings/customers/{customerId}` | settings | 200; 400 level or text; 404 no such customer; 503 |
 | `DELETE /warnings/customers/{customerId}` | settings | 204; 404 none |
