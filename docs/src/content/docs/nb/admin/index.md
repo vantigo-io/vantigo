@@ -73,6 +73,11 @@ applikasjonen.
   administratoren som etterlignes, og den interne nettklienten. Denne versjonen leser
   organisasjonen; kontoene, kalenderen og Gmail kommer senere. Ingenting av det står i
   `vantigo.env`; siden ligger under **Integrasjoner** i Administrer arbeidsområde.
+- **Frakt.** [Frakt](/nb/admin/shipping/) setter opp fraktkontoene Ordre bestiller sendinger
+  med: Mybring-brukeren og API-nøkkelen hos Bring — med økonomirollen for priser —,
+  kundenumrene, testmodus, standardkontoen per lagersted, fraktproduktet og påslaget.
+  `SHIPPING_CARRIERS` i `vantigo.env` holder tilbake en transportør; kontoene ligger under
+  **Integrasjoner** i Administrer arbeidsområde.
 
 ## Konfigurasjon
 

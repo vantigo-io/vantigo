@@ -1,6 +1,6 @@
 ---
 title: "Orders module"
-description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, subscriptions — the plan, the period calendar, proration, the due rule and the twelve-month limit, the per-period allocations, billed through, dated lines and changes, pause, resume, end and cancel —, PDFs, sending and the cover mail, the events, the handler and the four workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, deliveries and stock — the site, reservations at confirm and on edits, the delivery, its pick list and packing slip, the back order and invoicing on delivery —, the refusal codes, the assist targets and every endpoint with its permission and status codes."
+description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, subscriptions — the plan, the period calendar, proration, the due rule and the twelve-month limit, the per-period allocations, billed through, dated lines and changes, pause, resume, end and cancel —, PDFs, sending and the cover mail, the events, the handler and the five workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, deliveries and stock — the site, reservations at confirm and on edits, the delivery, its pick list and packing slip, the back order and invoicing on delivery —, shipping — carrier accounts and their sealed keys, shipments booked once under their key, labels and waybills, the tracking worker, the shipping notice and the shipping line with its estimate —, the refusal codes, the assist targets and every endpoint with its permission and status codes."
 sources:
   - apps/server/internal/orders
   - apps/orders/frontend
@@ -11,6 +11,7 @@ sources:
   - apps/server/internal/db/migrations/00121_orders_allocations.sql
   - apps/server/internal/db/migrations/00124_orders_subscriptions.sql
   - apps/server/internal/db/migrations/00126_orders_deliveries.sql
+  - apps/server/internal/db/migrations/00127_orders_shipping.sql
   - apps/server/internal/contracts/billable_orders.go
   - apps/server/internal/contracts/events_orders.go
   - apps/host/frontend/src/routes/orders
@@ -26,8 +27,8 @@ an order's life from draft to confirmed, delivered and cancelled. In Norwegian t
 selling comfort — sales warnings, packagings and the variant grid, and the analysis
 views — delivery B, invoicing from orders ([Invoicing from orders](#invoicing-from-orders)),
 delivery S, subscriptions ([Subscriptions](#subscriptions)), and delivery C, deliveries and
-stock ([Deliveries and stock](#deliveries-and-stock)). Shipping (D) comes later and is
-described as it lands.
+stock ([Deliveries and stock](#deliveries-and-stock)), and delivery D, shipping
+([Shipping](#shipping)).
 
 ## The module
 
@@ -66,13 +67,12 @@ hold a subscription's, and an allocation bill a subscription's period.
 | `orders:sales-confirm` | Confirm orders | Confirm, lock and unlock; accept a quote into a confirmed order | no | yes |
 | `orders:settings` | Manage Orders settings | The settings, the number series, the quote templates and the sales warnings; overriding a block warning | no | no |
 | `orders:subscriptions-manage` | Manage subscriptions | Create, save, activate, pause, resume, end and cancel subscriptions; accept a quote into a subscription | no | yes |
-| `orders:deliveries-manage` | Manage deliveries | Create, save, post and cancel deliveries (delivery C); shipments (delivery D) | no | yes |
-| `orders:carriers-manage` | Manage carriers | Carrier accounts and their keys under Integrations — delivery D | yes | no |
+| `orders:deliveries-manage` | Manage deliveries | Create, save, post and cancel deliveries (delivery C); create, save, price, book and cancel shipments, and list pickup points (delivery D) | no | yes |
+| `orders:carriers-manage` | Manage carriers | Carrier accounts and their keys, Verify and the default account per site, under Integrations › Shipping (delivery D) | yes | no |
 | `orders:analysis-view` | View sales analysis | The analysis views and their CSV files | no | yes |
 
 Every operation asks for `orders:access` **and** its own key, so a role that gives
-`orders:quotes-manage` without `orders:access` gives nothing. The carriers key is declared
-now so a role can be built once; no operation asks for it yet.
+`orders:quotes-manage` without `orders:access` gives nothing.
 
 The screens read other modules over HTTP and need their keys too: the customer picker
 `customers:view`, a customer's contacts `customers:contacts-view` with
@@ -110,8 +110,8 @@ since can still be saved and is refused at send or confirm.
 ## Lines
 
 A document has at most **500** lines (`too_many_lines`). A line is one of an open set of
-kinds (O15): **product**, **section** (a heading) or **note** (text printed between the
-lines). A save replaces the lines whole; a line that names its `id` is kept as that line.
+kinds (O15): **product**, **section** (a heading), **note** (text printed between the
+lines) or, on a quote or an order, **shipping** ([The shipping line](#the-shipping-line)). A save replaces the lines whole; a line that names its `id` is kept as that line.
 A kept line keeps its kind, on a quote and an order alike: a save that names a kept line
 with another kind is refused with `line_kind_changed` (409), and the client removes the
 line and adds a new one instead.
@@ -843,7 +843,10 @@ site's locations holding its variant and how much. The **packing slip** (`GET
 address, contact and references, and per line what was ordered, what this delivery takes
 and what is left as back order; a posted delivery's is the stored one (`orders.documents`,
 owner kind `delivery`, kind `packing_slip`), a draft's is printed now with the draft mark.
-The consignment's carrier, number and tracking are delivery D's.
+Once a shipment of the delivery is booked, the packing slip is printed now — dated the day
+the delivery was posted — with each booked shipment's carrier, service and consignment
+number as text and as Code 128, and its tracking URL as a QR code (O52); a cancelled or
+draft shipment is left out.
 
 ### Invoicing on delivery
 
@@ -855,6 +858,172 @@ invoiced or in a draft invoice is `line_invoiced` (409), logged `policy_changed`
 For a line on delivery, [the billable read](#the-billable-read) offers delivered less
 invoiced less draft-allocated, `Allocate` refuses beyond it (`exceeds_open`), and the
 invoiced-work holder judges an allocation against delivered less invoiced.
+
+## Shipping
+
+Delivery D (O49–O53) ships a posted delivery with a carrier. Carriers sit behind the platform
+port `internal/shipping` ([adding a carrier](/en/contributing/shipping-carriers/)); this
+phase has one adapter, **Bring** (`shipping/bring`). Every carrier call is made outside any
+transaction; amounts cross the port in øre, weights in grams and dimensions in millimetres,
+and the adapter converts (Bring's booking takes kilograms, its Shipping Guide grams and
+centimetres).
+
+### Carrier accounts
+
+A carrier account (`orders.carrier_accounts`, O51) has the carrier (`bring`), a name unique
+among the active accounts (`carrier_account_name_taken`, 409), one to five customer numbers
+— Bring's first books parcels, a second, when given, cargo (5100, 5300, 5400) — the
+**credentials**, a **test** flag, an optional sender address, a default service, `active`
+or `archived`, when Verify last passed and a `version`.
+
+- **The credentials** — the Mybring user id and API key — are sealed together by the
+  secrets box under the purpose `orders/carrier-credentials` and stored as bytes; they are
+  never answered (`hasCredentials` says whether they are stored), logged or sent anywhere
+  but to the carrier. A save without them keeps the stored bytes as they are; a save with
+  them replaces them. New keys, other customer numbers or another test flag clear
+  `verifiedAt`. Keys the box cannot open — `APP_SECRET` changed — are 503
+  `carrier_unavailable`, and must be entered again.
+- **The test flag** sends `X-Bring-Test-Indicator: true` on every call (and
+  `testIndicator` in the booking): Bring's test mode. Bring notifies real phone numbers and
+  e-mails even in test mode, so the booking card warns.
+- **The sender** is the account's address, each empty field taking the seller's from
+  Invoices (`contracts.SalesTax.Seller`).
+- **SHIPPING_CARRIERS** ([the configuration](/en/admin/configuration/)) lists the adapters
+  the installation allows. A carrier it withholds cannot be added, and every call on its
+  accounts is 503 `carrier_unavailable`; the account answers `carrierAllowed: false`.
+- **Verify** (`POST /carrier-accounts/{id}/verify`) asks Bring's Shipping Guide for product
+  5000 between two Oslo postal codes on the first customer number: `ok`,
+  `unauthorized` (refused keys), `refused` (Bring's message, for example a customer number
+  the user may not use) or `unreachable`. With `ok` it says whether **prices** are
+  available — Bring answers the net price only when the Mybring user has the *financial*
+  role on the customer number — and lists the services. A passed Verify records
+  `verifiedAt`.
+- **Services** are the adapter's data file (`shipping/bring/products.json`): 5800 parcel to
+  pickup point, 5600 delivered home, 3584 in the mailbox, 5801 parcel locker, 5000 business
+  parcel, 4850 business express, 5100 groupage, 5300 part load and 5400 pallet — never Go
+  constants, since Bring withdraws products yearly. A cargo product has a waybill of its
+  own; for the others the label serves.
+- **The default account per site** (`orders.site_carrier_defaults`, `PUT
+  /shipping/site-defaults`, replaced whole) names, per Inventory site, the account its
+  shipments and estimates use; each site must be one Inventory has that fulfils orders and
+  each account active. A site without one uses the only active account when there is
+  exactly one.
+
+The accounts are managed under Workspace admin › Integrations › Shipping
+(`/workspace/shipping`), behind the orders module and `orders:carriers-manage`, the
+sensitive key that is not delegable. `GET /carrier-accounts`, the services and the site
+defaults are read by every `orders:access` holder, to ship.
+
+### Shipments
+
+A shipment (`orders.shipments`, O50) of a posted delivery has the account, the service and
+value-added services, `status` `draft`, `booked`, `in_transit`, `delivered` or `cancelled`,
+an `exception` flag beside it, `voided`, the recipient as it was made, its packages
+(`orders.shipment_packages`: weight in grams, length, width and height in millimetres, 0 when
+not given, a content text and the carrier's package number once booked), and once booked the
+consignment number, the tracking URL, the product actually booked, the booked cost and the
+carrier's document references. `planned_window_start` and `planned_window_end` are kept for
+a carrier that sells delivery windows; Bring leaves them empty. A delivery may carry several
+shipments.
+
+- **Create** (`POST /deliveries/{id}/shipments`, deliveries-manage) needs a posted delivery
+  (`delivery_not_posted`, 409). It proposes **one package** weighing the delivered
+  quantities times their variants' weights (`contracts.VariantEntry.WeightGrams`), rounded
+  up to the gram — a kilogram when no variant has a weight —, the recipient as the order's
+  delivery address, else its invoice address, with the contact's name and phone and the
+  contact's e-mail, else the customer's invoice e-mail; the account named, else the site's
+  default (`no_carrier_account`, 409, when there is none; `carrier_account_archived`, 409);
+  the service named, else the account's default, else the first product of the carrier
+  (`service_unknown`, 400). The **idempotency key** — a UUID — is stored on the shipment
+  here.
+- **Save** (`PUT /shipments/{id}`) replaces a draft's account, service, value-added
+  services, pickup point, the recipient's contact, phone and e-mail, and its packages (1 to
+  20; 1 g to 1 tonne; dimensions 0–10 000 mm). A shipment no longer a draft is
+  `shipment_not_draft` (409).
+- **Prices** (`GET /shipments/{id}/rates`) ask the carrier for every product of the account
+  for the draft's packages, from the sender to the recipient, cheapest first: each with the
+  price excluding VAT, the VAT, the currency, whether it is an estimate and the expected
+  delivery day. Bring's net price is preferred, else its list price; both are estimates.
+- **Book** (`POST /shipments/{id}/book`, the version and `expectedUpdatedAt`) records the
+  attempt under the shipment's lock and commits it before Bring is called, then books under
+  the stored key: Bring has no idempotency key, so the key travels as the consignment's
+  `correlationId` and the sender's reference, and when an earlier attempt's outcome is
+  unknown the adapter looks the key up through Bring's tracking first and answers the
+  booking it finds — so a retried request books once. A booking recovered that way has no
+  label link (Bring's tracking does not give it again): print it from Mybring. Bring's
+  refusal is 422 `carrier_refused` with Bring's own message, and the shipment stays a draft;
+  refused keys 503 `carrier_unavailable`; no answer 503 `carrier_unreachable` — book again.
+  On one transaction, under the shipping lines' variants', the order's and the shipment's
+  locks: the consignment number, package numbers, tracking URL, product booked and cost
+  (marked an estimate) are stored, `orders.shipment.booked` is published, the order's
+  [shipping lines](#the-shipping-line) count delivered, and — with the setting
+  `shippingNoticeOnBook` — the [shipping notice](#the-shipping-notice) is queued. After the
+  commit the label and the waybill are fetched — Bring's label behind its redirect, PDF only
+  — and stored (`orders.shipment_documents`, under `shipment/<id>/` in orders' storage
+  scope); a fetch that fails is made again by the first download. The booked cost is the
+  business's, never invoiced: the customer pays the shipping line.
+- **Cancel** (`POST /shipments/{id}/cancel`) cancels a draft at once. A booked shipment is
+  cancelled with the carrier, whose answer is one of three: `cancelled`; `not_supported` —
+  Bring, which has no cancel call and bills on hand-in — and the shipment is **voided** in
+  Vantigo, its label must not be used; or too late, refused with `shipment_past_cancel`
+  (409). A shipment in transit or delivered is `shipment_past_cancel`; one already cancelled
+  `shipment_not_cancellable`. Cancelling changes nothing on the order's lines.
+- **The label and the waybill** (`GET /shipments/{id}/label`, `/waybill`) are the stored
+  PDFs as Bring issued them; a service without a waybill of its own answers its label for
+  the waybill. 404 when there is none.
+- `GET /deliveries/{id}/shipments` and `GET /orders/{id}/shipments` list a delivery's and
+  an order's shipments with their packages, documents and tracking events.
+
+### Tracking
+
+`orders.shipment_tracking` polls the carriers every 30 minutes for the shipments booked or in
+transit, booked in the last 60 days. A cycle claims up to 50 shipments at a time with a
+`SKIP LOCKED` pick that moves `last_tracked_at` to now — the lease — asks each account's
+carrier once for its shipments in the batch, outside any transaction, and records each on a
+short transaction of its own: every event once (`orders.shipment_events`: Bring's code, text,
+place and time, and the state it folds onto), the status moved and the exception flag set
+or cleared. Bring's statuses fold so: `PRE_NOTIFIED` booked; `READY_FOR_PICKUP` and in-transit
+codes in transit; `DELIVERED` delivered, publishing `orders.shipment.delivered`; `DEVIATION`,
+`RETURN` and `DELIVERED_SENDER` set the exception flag. Bring's Event Cast webhooks are not
+used: they are unsigned and retry little.
+
+### The shipping notice
+
+With the setting `shippingNoticeOnBook` (on by default), a booking queues a mailing of kind
+`shipping_notice` (owner `shipment`) to the shipment's recipient e-mail, else the order's
+contact's, else the customer's invoice e-mail — once per shipment, its trigger the
+shipment's idempotency key. `orders.mail` sends it on the settings' channel, without an
+attachment: "Ordre 5001 er sendt – …" / "Your order 5001 has shipped – …", naming the
+carrier, the consignment number and the tracking link. The settings may override it per
+language; an override may name `{number}`, `{seller}`, `{carrier}`, `{consignment}` and
+`{trackingUrl}`. A shipment cancelled before it went is not notified.
+
+### The shipping line
+
+A line of kind `shipping` (O53) is the freight the customer pays, on a quote or an order
+(a template or a subscription refuses it, `line_invalid`). It is priced like a product line
+with **quantity 1** (`quantity_invalid` otherwise), is never optional and has no packaging;
+its invoice policy is `order` and its delivery method `manual`. It names the settings'
+**freight product** (a variant of a Service product), taking its name and its VAT code, or
+is free text with its own VAT code — the standard rate's by default, as freight follows the
+goods.
+
+- **The estimate** (`POST /shipping-estimate` with `quoteId` or `orderId`, orders:access)
+  writes nothing. It asks the default account of the order's site — a quote's: the
+  settings' default site — for its default service, for one package weighing the document's
+  goods lines (catalog lines, optional ones left out) by their variants' weights, to the
+  document's delivery address, else its invoice address (`address_missing`, 409). It answers
+  the carrier's price excluding VAT, the settings' markup percent, the price with the markup
+  rounded to øre, and `unitPrice`, that price as the line enters it — including VAT when the
+  document's prices do —, with the freight product's variant, name and VAT code. A carrier
+  pricing in another currency than the document's is `currency_mismatch` (409).
+- A save naming `priceSource: carrier` with a typed `unitPrice` on a shipping line stores
+  `price_source = carrier`; a price typed over it without that is `manual`.
+- **Delivered** when a shipment of the order is booked: every shipping line's delivered
+  quantity becomes what is ordered less cancelled, the order's delivery status is recomputed
+  and `shipping_delivered` is logged with the consignment number. It is invoiced like any
+  line ([the billable read](#the-billable-read)). Manual delivery marking does not take a
+  shipping line.
 
 ## PDFs
 
@@ -901,7 +1070,7 @@ day, a revised confirmation's with its version — the dialog's message, and the
 with the seller's name. The subject is "Tilbud 1042 fra …" / "Quote 1042 from …",
 "Ordrebekreftelse …" / "Order confirmation …" or "Revidert ordrebekreftelse …" /
 "Revised order confirmation …". The settings may override the subject and the body per
-kind (`quote`, `confirmation`) and language (`nb`, `en`), up to 300 and 4000 characters;
+kind (`quote`, `confirmation`, and `shipping_notice`, [the shipping notice](#the-shipping-notice)) and language (`nb`, `en`), up to 300 and 4000 characters;
 an override may name `{number}`, `{seller}`, `{total}` and `{validUntil}`, which are
 filled in. An empty override uses the built-in text.
 
@@ -930,6 +1099,8 @@ each on the transaction that makes the change and while it holds the document's 
 | `orders.sales_order.changed` | A confirmed order is edited, or the rest cancelled, at a new version | `orderId`, `number`, `version`, `customerId`, `changedAt` |
 | `orders.sales_order.invoiced` | An invoice's issue stamped allocations of the order — once per order the invoice bills, by the [holder](#the-invoiced-work-holder) on the issue's transaction | `orderId`, `number`, `customerId`, `invoiceId`, `invoiceNumber`, `invoicedAt` (the issue's time) |
 | `orders.delivery.posted` | A delivery is posted; its aggregate is the order | `deliveryId`, `number`, `orderId`, `siteId`, `postedAt` |
+| `orders.shipment.booked` | A shipment is booked with its carrier | `shipmentId`, `deliveryId`, `orderId`, `carrier`, `service`, `consignmentNumber`, `bookedAt` |
+| `orders.shipment.delivered` | Tracking reports a shipment delivered | `shipmentId`, `deliveryId`, `orderId`, `consignmentNumber`, `deliveredAt` |
 | `orders.subscription.started` | A subscription is activated | `subscriptionId`, `number`, `version`, `customerId`, `currency`, `interval`, `startDate`, `startedAt` |
 | `orders.subscription.changed` | An activated subscription's lines are changed from a period on, or it is paused or resumed | `subscriptionId`, `number`, `version`, `customerId`, `status`, `changedAt` |
 | `orders.subscription.ended` | A subscription is given its end, or an activated one is cancelled | `subscriptionId`, `number`, `version`, `customerId`, `status` (`ended` or `cancelled`), `endDate`, `endedAt` |
@@ -955,6 +1126,7 @@ event, so a retried delivery queues nothing twice. The mail itself is sent by
 | `orders.mail` | every 10 seconds, up to 10 rows a cycle | Sends the queued mailings. A row is claimed under a two-minute lease (`SKIP LOCKED`), so two replicas never take one row; the stored PDF is read and mailed outside any transaction. A failure counts the attempt and waits 30 seconds, doubled per attempt, at most an hour; the eighth failure fails the row. A row that can never go — no recipient, sending disabled, the document gone, the order cancelled — fails at once. |
 | `orders.retention` | daily, one replica under an advisory lease | Anonymises the kept confirmed orders of erased customers once their retention has run, blanks their sends, and deletes the stored PDFs of every anonymised quote and order of theirs ([Retention](#retention)). |
 | `orders.quote_expiry` | daily | Moves every sent quote whose valid-until day is before today, in the business time zone, to `expired`, in one statement. It publishes no event. |
+| `orders.shipment_tracking` | every 30 minutes, 50 shipments a claim | Polls the carriers for the shipments booked or in transit in the last 60 days, records their events and moves them ([Tracking](#tracking)). A shipment is claimed by moving its `last_tracked_at` (`SKIP LOCKED`), so two replicas never poll one. |
 
 Each is safe on a pool of one connection.
 
@@ -1020,12 +1192,14 @@ order's last change once it is confirmed, delivered and invoiced. A confirmed or
 done is kept. Each day `orders.retention` works through the recorded erasures and
 anonymises every such order whose year has run. It then deletes the stored PDFs of the
 customer's anonymised quotes and orders — the quotes' on the first cycle after the erase,
-so within about a day, and an order's, with its deliveries' packing slips, once it has been
-anonymised after its retention —
+so within about a day, and an order's, with its deliveries' packing slips and its
+shipments' stored labels and waybills, once it has been anonymised after its retention —
 each object from the store first, then its row; the send rows stay, blanked, with their
 link to the PDF removed. An activated subscription is kept the same way until 3 years and
 6 months after the end of the financial year it ended in — its end date, or the day it was
-cancelled — and then anonymised by the same worker; an active one is kept. An erasure is
+cancelled — and then anonymised by the same worker; an active one is kept. An anonymised
+order's shipments lose their recipient; their consignment numbers, packages and tracking
+events stay. An erasure is
 marked complete only when no order or subscription of the customer is left unanonymised
 and no stored PDF of theirs remains.
 
@@ -1204,6 +1378,20 @@ a bare 400.
 | `change_in_billed_period` | 409 | A change or a pause from a period that, or a later one, has a live allocation |
 | `end_before_billed` | 409 | An end before the first day of a period with a live allocation: credit it first |
 | `final_period_billed` | 409 | A `prorated` final period, at End or in a save of the plan, while the period the end falls in has a live allocation: bill it in full, or credit it first |
+| `delivery_not_posted` | 409 | A shipment of a delivery that is not posted |
+| `no_carrier_account` | 409 | No carrier account is the site's default and there is not exactly one active account |
+| `carrier_account_archived` | 409 | The shipment's carrier account is archived |
+| `carrier_account_name_taken` | 409 | Another active carrier account has the name |
+| `service_unknown` | 400 | Not one of the carrier's services |
+| `shipment_not_draft` | 409 | A save, a price or a booking of a shipment no longer a draft |
+| `shipment_past_cancel` | 409 | The carrier has the parcel: in transit, delivered, or the carrier answered too late |
+| `shipment_not_cancellable` | 409 | The shipment is already cancelled |
+| `address_missing` | 409 | An estimate of a document with no delivery or invoice postal code |
+| `currency_mismatch` | 409 | The carrier prices in another currency than the document |
+| `freight_product_invalid` | 400 | The settings' freight product is not a variant of a Service product |
+| `carrier_refused` | 422 | The carrier refused the request; `detail` is its own message |
+| `carrier_unavailable` | 503 | `SHIPPING_CARRIERS` withholds the carrier, the keys cannot be opened, or the carrier refused them |
+| `carrier_unreachable` | 503 | The carrier did not answer; a booking's outcome is unknown, and booking again books once |
 | `dependency_unavailable` | 503 | Customers, Products or Invoices is not composed |
 | `sending_disabled` | 503 | Communications is off, or no channel that can send is chosen |
 | `mail_failed` | 503 | The mail provider did not take the e-mail; nothing changed, the failed send is listed |
@@ -1223,6 +1411,9 @@ a bare 400.
 | `mailTexts` | none | One subject and body per kind and language ([Sending](#sending)) |
 | `defaultSiteId` | none | The site a new order takes while Inventory keeps stock: an active site that fulfils orders (`site_not_fulfilling`); none names none |
 | `subscriptionFinalPeriodDefault` | `full` | The final period a new subscription takes, `full` or `prorated` ([The final period](#the-final-period)); a save that leaves it out keeps it |
+| `freightVariantId` | none | The freight product a shipping line takes: a variant of a Service product (`freight_product_invalid`); null names none, a save that leaves it out keeps it |
+| `freightMarkupPercent` | 0 | 0–500 % with at most two decimals, added to a carrier's estimate ([The shipping line](#the-shipping-line)); a save that leaves it out keeps it |
+| `shippingNoticeOnBook` | on | Queue [the shipping notice](#the-shipping-notice) when a shipment is booked; a save that leaves it out keeps it |
 
 The answer also lists the send channels Communications offers and whether sending is
 available. `GET /meta` gives every holder of `orders:access` what the screens need of it:
@@ -1265,6 +1456,14 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `orders.delivery.pick-list` | `/orders/deliveries/{deliveryId}` | Pick list |
 | `orders.delivery.post` | `/orders/deliveries/{deliveryId}` | Post delivery |
 | `orders.settings.default-site` | `/orders/settings` | Default site |
+| `orders.lines.add-shipping` | `/orders/quotes/{quoteId}` | Add shipping, under a quote's or an order's lines |
+| `orders.lines.estimate-shipping` | `/orders/quotes/{quoteId}` | Estimate, on a shipping line |
+| `orders.delivery.ship` | `/orders/deliveries/{deliveryId}` | Ship, on a posted delivery's Shipments card |
+| `orders.shipment.service` | `/orders/deliveries/{deliveryId}` | A draft shipment's service |
+| `orders.shipment.book` | `/orders/deliveries/{deliveryId}` | Book shipment |
+| `orders.settings.freight-markup` | `/orders/settings` | Markup on the carrier's estimate |
+| `orders.shipping.add-account` | `/workspace/shipping` | Add carrier account, under Integrations › Shipping |
+| `orders.shipping.verify` | `/workspace/shipping` | Verify a carrier account |
 | `orders.subscriptions.new` | `/orders/subscriptions` | New subscription |
 | `orders.new-subscription.customer` | `/orders/subscriptions/new` | The customer picker |
 | `orders.new-subscription.create` | `/orders/subscriptions/new` | Create the subscription |
@@ -1370,7 +1569,27 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `PUT /templates/{id}` | settings | 200; 400; 404; 409 `version_conflict`, `template_name_taken` |
 | `DELETE /templates/{id}` | settings | 204; 404 |
 | `GET /settings` | settings | 200 |
-| `PUT /settings` | settings | 200; 400 `series_start_too_low`, `send_channel_unknown`, `site_not_fulfilling`; 409 `version_conflict` |
+| `PUT /settings` | settings | 200; 400 `series_start_too_low`, `send_channel_unknown`, `site_not_fulfilling`, `freight_product_invalid`; 409 `version_conflict` |
+| `GET /carrier-accounts` | access | 200 — every account, the active first, never its keys, and the carriers `SHIPPING_CARRIERS` allows |
+| `POST /carrier-accounts` | carriers-manage | 201; 400 fields, keys required; 409 `carrier_account_name_taken`; 503 `carrier_unavailable` |
+| `GET /carrier-accounts/{id}` | carriers-manage | 200; 404 |
+| `PUT /carrier-accounts/{id}` | carriers-manage | 200; 400; 404; 409 `version_conflict`, `carrier_account_name_taken` |
+| `POST /carrier-accounts/{id}/verify` | carriers-manage | 200 `ok`, `unauthorized`, `refused` or `unreachable`, prices available, services; 404; 503 `carrier_unavailable` |
+| `GET /carrier-accounts/{id}/services` | access | 200 the carrier's products; 404 |
+| `GET /carrier-accounts/{id}/pickup-points` | deliveries-manage | 200 near `postalCode` (`country`, default NO); 400; 404; 422 `carrier_refused`; 503 |
+| `GET /shipping/site-defaults` | access | 200 the default account per site |
+| `PUT /shipping/site-defaults` | carriers-manage | 200; 400 a site twice, `site_not_fulfilling`, an account not active |
+| `GET /deliveries/{id}/shipments` | access | 200; 404 |
+| `POST /deliveries/{id}/shipments` | deliveries-manage | 201; 400 `service_unknown`; 404; 409 `delivery_not_posted`, `no_carrier_account`, `carrier_account_archived`; 503 |
+| `GET /orders/{id}/shipments` | access | 200 the order's shipments; 404 |
+| `GET /shipments/{id}` | access | 200; 404 |
+| `PUT /shipments/{id}` | deliveries-manage | 200; 400 `service_unknown`; 404; 409 `version_conflict`, `shipment_not_draft`, `carrier_account_archived` |
+| `GET /shipments/{id}/rates` | deliveries-manage | 200 cheapest first; 404; 409 `shipment_not_draft`; 422 `carrier_refused`; 503 |
+| `POST /shipments/{id}/book` | deliveries-manage | 200; 404; 409 `version_conflict`, `shipment_not_draft`, `carrier_account_archived`; 422 `carrier_refused`; 503 `carrier_unavailable`, `carrier_unreachable` |
+| `POST /shipments/{id}/cancel` | deliveries-manage | 200 cancelled or voided; 404; 409 `version_conflict`, `shipment_past_cancel`, `shipment_not_cancellable`; 503 |
+| `GET /shipments/{id}/label` | access | 200 the carrier's PDF; 404 none |
+| `GET /shipments/{id}/waybill` | access | 200 the waybill, else the label; 404 none |
+| `POST /shipping-estimate` | access | 200; 400 neither or both ids; 404; 409 `no_carrier_account`, `address_missing`, `currency_mismatch`; 422 `carrier_refused`; 503 |
 | `GET /warnings` | access | 200 — every warning, customers' first, each by name, a deleted product's `orphaned`; `scope` narrows |
 | `GET /warnings/customers/{customerId}` | access | 200; 404 none |
 | `PUT /warnings/customers/{customerId}` | settings | 200; 400 level or text; 404 no such customer; 503 |

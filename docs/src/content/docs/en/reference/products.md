@@ -58,7 +58,9 @@ product's type and status, the product's tax category id (`TaxCategoryID`) and
 description (`""` when it has none), the product's category (`CategoryID`, nil when it has
 none, and `CategoryName`, the category's own name — Orders' intake by category), the
 variant's option values (`OptionValues`, keyed by the option's name as it was typed, nil
-when it has none — Orders' variant grid), its own barcode (nil when it has none) and its
+when it has none — Orders' variant grid), its own barcode (nil when it has none), its
+weight in grams (`WeightGrams`, the variant's weight in kilograms as whole grams, nil when it
+has none — Orders proposes a shipment's parcel from it) and its
 **packagings** (`PackagingEntry`: id, name, kind, quantity as a three-place decimal
 such as `"600.000"`, barcode; by sort order then id, empty when it has none) — never
 enough to manage the catalog. Every read fills the packagings, `LockVariants` included,
