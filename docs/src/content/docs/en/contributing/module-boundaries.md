@@ -109,7 +109,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    (`contracts.SSOConnections`, identity — the users not yet connected to the
    workforce provider and who holds a directory account's keys, for Entra's exact
    matches; provider-gated, rule 12), `Products` (`contracts.ProductCatalog`,
-   products), `Projects` (`contracts.ProjectDirectory`, projects, incl. the
+   products; a `VariantEntry` carries its product's tax category, description, category id and
+   name, and its option values, so Orders prices, groups and builds the variant grid without a
+   second read), `Projects` (`contracts.ProjectDirectory`, projects, incl. the
    consumer-gated `ProjectsByStatus`), `Actuals`
    (`contracts.ProjectActuals`, time), `Timesheets` (`contracts.Timesheets`, time — the
    hours a user logged in a week, consumer-gated), `Expenses`

@@ -84,7 +84,7 @@ kortere enn din:
 | [Kommunikasjon](/nb/user/communications/) | Innboks, Kanaler, Blokkeringer |
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |
 | [Lager](/nb/user/inventory/) | Oversikt, Bevegelser, Varemottak, Varetellinger, Importer inngående beholdning |
-| [Ordre](/nb/user/orders/) | Tilbud, Ordre, Tilbudsmaler, Ordreinnstillinger |
+| [Ordre](/nb/user/orders/) | Tilbud, Ordre, Tilbudsmaler, Salgsanalyse, Ordreinnstillinger |
 | [Energi](/nb/user/energy/) | Målepunkter |
 | [Microsoft Entra ID](/nb/user/entra/) | Microsoft Entra ID (tilkoblingens status og de seks stegene i oppsettet), for `entra:manage` |
 | [Google Workspace](/nb/user/google-workspace/) | Google Workspace (tilkoblingens status og de seks stegene i oppsettet), for `google:manage` |
