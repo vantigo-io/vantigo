@@ -1481,7 +1481,7 @@ and planned in [`docs/superpowers/plans/2026-11-05-orders-plan.md`](docs/superpo
 landing as one stack of pull requests, one delivery each. Orders requires Products,
 Customers and Invoices; Inventory and Communications stay optional.
 
-### Phase 1 — Quotes, orders, invoicing, subscriptions and deliveries (in progress)
+### Phase 1 — Quotes, orders, invoicing, subscriptions, deliveries and shipping (done)
 
 - **0 — Platform and seams (done).** The domain-events outbox and its dispatcher
   ([Platform](#cross-module-domain-events-done)); the catalog contract's exact-decimal
@@ -1559,8 +1559,39 @@ Customers and Invoices; Inventory and Communications stay optional.
   Documented in [Orders](docs/src/content/docs/en/user/orders.md#deliveries-and-stock),
   [administration](docs/src/content/docs/en/admin/orders.md) and the
   [reference](docs/src/content/docs/en/reference/orders.md#deliveries-and-stock).
-- **D — Shipping.** Carriers (Bring first), shipments and the shipping line, revised
-  from the carrier research.
+- **D — Shipping (done).** The platform port `internal/shipping` — capabilities, options
+  with an estimate flag, a window, an expiry and a token, bookings under the caller's key,
+  labels and waybills, folded tracking and three cancel outcomes, in øre, grams and
+  millimetres — and its Bring adapter (the Shipping Guide, booking in kilograms with the
+  key as reference and a retry that finds the earlier booking, the label behind its
+  redirect, tracking, pickup points, products as data), with the `bringtest` fake and an
+  opt-in live test. Carrier accounts under Workspace admin › Integrations › Shipping, their
+  keys sealed and write-only, Bring's test mode, Verify, and the default account per site,
+  behind `orders:carriers-manage`; `SHIPPING_CARRIERS` withholds a carrier. Shipments of a
+  posted delivery — a package proposed from the variants' weights (the catalog contract
+  gained `WeightGrams`), prices, booking once, the stored label and waybill, cancel or void
+  — the `orders.shipment_tracking` worker, the `orders.shipment.booked` and `delivered`
+  events, the shipping notice with the tracking link, and the packing slip's consignment
+  number as Code 128 and tracking as QR. The `shipping` line kind with the carrier's
+  estimate and a markup, counted delivered when a shipment is booked and invoiced like any
+  line. On migration `00127`. Documented in
+  [Orders](docs/src/content/docs/en/user/orders.md#ship-a-delivery),
+  [Shipping](docs/src/content/docs/en/admin/shipping.md), the
+  [reference](docs/src/content/docs/en/reference/orders.md#shipping) and
+  [Shipping carriers](docs/src/content/docs/en/contributing/shipping-carriers.md).
+
+### Later
+
+- **Carriers beyond Bring**, an adapter each on `internal/shipping`: Helthjem (an
+  idempotency key, ZPL labels), Porterbuddy (delivery windows picked in the booking
+  dialog, token expiry and re-quote, verification options, its HMAC webhook, labels not
+  stored), PostNord after its certification, and nShift (Go) as an aggregator once partner
+  terms are settled.
+- **Webhooks** — Bring's Event Cast behind a secret header, if polling proves too slow;
+  Porterbuddy's signed callbacks with its adapter.
+- **ZPL label printing**, with a carrier that offers it and Inventory's thermal labels.
+- **The freight invoice check** — booked against invoiced cost from Bring's Reports API —
+  which, with shipments from no order and pickup planning, would make shipping its own app.
 
 ## Point of sale
 

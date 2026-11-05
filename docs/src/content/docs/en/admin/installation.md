@@ -897,6 +897,20 @@ held until someone releases it on the order; rolling `00122` back is refused whi
 invoice line names an order line or a billing run invoices orders; rolling `00121` back
 drops what the invoices held.
 
+**The release with shipping.** It brings `00127_orders_shipping.sql`: the carrier accounts,
+the default account per site, the shipments with their packages, stored labels and
+waybills and tracking events, all empty; three settings of Orders' — no freight product, no
+markup, and the shipping notice on — and the shipping notice's mail kind. Orders starts one
+more worker, always, `orders.shipment_tracking`: every 30 minutes it asks the carriers for
+the shipments booked in the last 60 days, claiming each by moving its last-tracked time
+(`SKIP LOCKED`), so any number of instances share it without asking twice; with no carrier
+account it does nothing. The API and the worker container need outbound https to
+`api.bring.com` (no certificate pinning: Bring uses Let's Encrypt). `SHIPPING_CARRIERS`
+(default `bring`) withholds a carrier. The keys are sealed with `APP_SECRET`: changing it
+makes them unreadable, and each account's keys must be entered again. Rolling the migration
+back drops the shipments and the accounts with their keys; the labels stay in the object
+store under `orders/shipment/`. See [Shipping](/en/admin/shipping/).
+
 **The release with Staff competence.** It brings `00066_staff_competence.sql`: the
 competence catalogue — five categories and fifteen Norwegian certificates seeded — and
 people's competences, empty. No permission is new: `staff:approve` now also verifies
