@@ -39,16 +39,16 @@ func TestDeliveries_ListRetrySkip(t *testing.T) {
 	ctx := context.Background()
 	at := time.Date(2026, time.November, 5, 10, 0, 0, 0, time.UTC)
 	var eventID int64
-	if err := pool.QueryRow(ctx, `INSERT INTO platform.events (name, version, module, aggregate_id, payload, occurred_at)
-VALUES ('orders.sales_order.confirmed', 1, 'orders', '7', '{}', $1) RETURNING id`, at).Scan(&eventID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO platform.events (name, version, module, aggregate, aggregate_id, payload, occurred_at)
+VALUES ('orders.sales_order.confirmed', 1, 'orders', 'orders.sales_order', '7', '{}', $1) RETURNING id`, at).Scan(&eventID); err != nil {
 		t.Fatal(err)
 	}
 	ids := map[string]int64{}
 	for _, row := range []struct{ handler, state string }{{"a.dead", "dead"}, {"a.failed", "failed"}, {"a.done", "done"}} {
 		var id int64
 		if err := pool.QueryRow(ctx, `INSERT INTO platform.event_deliveries
-(event_id, handler, aggregate_id, state, attempts, last_error, next_attempt_at, created_at, updated_at)
-VALUES ($1, $2, '7', $3, 8, 'boom', $4, $4, $4) RETURNING id`, eventID, row.handler, row.state, at).Scan(&id); err != nil {
+(event_id, handler, aggregate, aggregate_id, state, attempts, last_error, next_attempt_at, created_at, updated_at)
+VALUES ($1, $2, 'orders.sales_order', '7', $3, 8, 'boom', $4, $4, $4) RETURNING id`, eventID, row.handler, row.state, at).Scan(&id); err != nil {
 			t.Fatal(err)
 		}
 		ids[row.handler] = id
@@ -67,6 +67,7 @@ VALUES ($1, $2, '7', $3, 8, 'boom', $4, $4, $4) RETURNING id`, eventID, row.hand
 			Event       string  `json:"event"`
 			Version     int     `json:"version"`
 			Module      string  `json:"module"`
+			Aggregate   string  `json:"aggregate"`
 			AggregateID string  `json:"aggregateId"`
 			Handler     string  `json:"handler"`
 			State       string  `json:"state"`
@@ -81,7 +82,7 @@ VALUES ($1, $2, '7', $3, 8, 'boom', $4, $4, $4) RETURNING id`, eventID, row.hand
 		t.Fatalf("dead = %s, want one", res.Body)
 	}
 	if d := body.Deliveries[0]; d.ID != ids["a.dead"] || d.EventID != eventID || d.Event != "orders.sales_order.confirmed" ||
-		d.Version != 1 || d.Module != "orders" || d.AggregateID != "7" || d.Handler != "a.dead" || d.State != "dead" ||
+		d.Version != 1 || d.Module != "orders" || d.Aggregate != "orders.sales_order" || d.AggregateID != "7" || d.Handler != "a.dead" || d.State != "dead" ||
 		d.Attempts != 8 || d.LastError == nil || *d.LastError != "boom" {
 		t.Errorf("dead = %+v", d)
 	}

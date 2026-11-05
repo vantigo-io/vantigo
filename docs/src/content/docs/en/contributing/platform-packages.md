@@ -563,24 +563,34 @@ composes.
 workers run — the `worker` command, or `api` with `WORKERS_IN_PROCESS=1` — with no
 setting of its own and no `MODULES` entry. Every 5 seconds it:
 
-1. fans the new events out, the lowest ids first, 100 a statement until none is left:
-   one `pending` row of `platform.event_deliveries` for every handler that takes the
-   event's name and version (an event no handler takes gets none);
+1. fans the new events out, **once each**: the lowest unmarked ids first, 100 a
+   statement until none is left, writing one `pending` row of
+   `platform.event_deliveries` for every handler that takes the event's name and
+   version and marking the event `fanned_out_at` in the same statement. An event no
+   handler takes is marked with no rows, and a handler composed later gets **no
+   backfill** of events already fanned out;
 2. warns, `events deliveries wait for handlers that are not composed`, when undone
    deliveries name a handler the binary no longer has — they stay for the operator to
    skip;
 3. claims due deliveries, 100 at a time until none is left, under a 2-minute lease
    (`SKIP LOCKED`, so any number of instances share the work) and handles each on its
    own transaction, with a timeout of 1 minute, marking it `done` there; a handler's
-   panic is an error like any other. Deliveries to one handler are tried **in event
-   id order per aggregate**: a later one waits while an earlier one for the same
-   handler and aggregate is `pending`, `failed` or `dead`, so a timeline never shows
-   *changed* before *confirmed*; other aggregates are not held up;
-4. records a failure on a separate short statement — `failed`, retried after 1 minute,
+   panic is an error like any other, and the lease is renewed when handling starts.
+   Deliveries to one handler are tried **in event id order per aggregate** — the
+   aggregate is the event name less its last segment (`orders.sales_order`) together
+   with the aggregate id, so quote 42 and sales order 42 never wait on each other: a
+   later delivery waits while an earlier one for the same handler and aggregate is
+   `pending`, `failed` or `dead`, or while an earlier event of that aggregate is not yet
+   fanned out, so a timeline never shows *changed* before *confirmed*; other aggregates
+   are not held up;
+4. records a failure — only one after the lease was re-checked: the handler's error,
+   panic or timeout, or the commit; a database outage before that counts nothing and
+   the delivery is reclaimed when its lease runs out — on a separate short statement — `failed`, retried after 1 minute,
    then 5 minutes, 30 minutes, 2 hours and 12 hours, and 12 hours from then on, logged
    at warn `events delivery failed` — and the eighth failure makes the delivery `dead`,
    logged at error `events delivery is dead`, until the operator retries or skips it;
-5. prunes events more than 30 days old whose deliveries are all `done`, or that have
+5. prunes events **written** more than 30 days ago (`created_at`, not the publisher's
+   `occurred_at`) that are fanned out and whose deliveries are all `done`, or that have
    none, 1 000 a pass; their deliveries go with them.
 
 A pass that fails is logged at error, `events dispatch failed`, and the loop goes on. It

@@ -36,6 +36,22 @@ type thingV2 struct {
 	Aggregate string `json:"aggregate"`
 }
 
+// quoteThing and orderThing are events of two aggregates whose ids may
+// coincide, as quote 42 and sales order 42.
+type quoteThing struct {
+	ID string `json:"id"`
+}
+type orderThing struct {
+	ID string `json:"id"`
+}
+
+func (quoteThing) EventName() string     { return "test.quote.happened" }
+func (quoteThing) EventVersion() int     { return 1 }
+func (e quoteThing) AggregateID() string { return e.ID }
+func (orderThing) EventName() string     { return "test.sales_order.happened" }
+func (orderThing) EventVersion() int     { return 1 }
+func (e orderThing) AggregateID() string { return e.ID }
+
 // clock is a settable test clock.
 type clock struct {
 	mu  sync.Mutex
@@ -258,14 +274,21 @@ func TestDispatch_FansOutToSubscribedHandlersOnly(t *testing.T) {
 	if n := count(t, pool, `SELECT count(*) FROM platform.event_deliveries WHERE event_id = $1`, v2); n != 0 {
 		t.Errorf("v2 deliveries = %d, want none: no handler takes v2", n)
 	}
-	// A handler added later gets the events it takes, too.
+	// A handler added later gets no delivery for an event fanned out before
+	// it — there is no backfill — but does for the events published after.
 	three := &recorder{}
-	runOnce(t, events.NewDispatcher(pool, []events.Handler{one.handler("test.one"), two.handler("test.two"), three.handler("test.three")}, nil, c.Now))
-	if got := readDelivery(t, pool, v1, "test.three"); got.state != "done" {
-		t.Errorf("the new handler's delivery = %+v, want done", got)
+	ds := []events.Handler{one.handler("test.one"), two.handler("test.two"), three.handler("test.three")}
+	runOnce(t, events.NewDispatcher(pool, ds, nil, c.Now))
+	if n := count(t, pool, `SELECT count(*) FROM platform.event_deliveries WHERE event_id = $1 AND handler = 'test.three'`, v1); n != 0 {
+		t.Errorf("the new handler has %d deliveries of an event fanned out before it, want none", n)
 	}
-	if len(one.handled()) != 1 || len(two.handled()) != 1 {
-		t.Errorf("the first handlers ran %v and %v, want once each", one.handled(), two.handled())
+	later := publish(t, pool, thing{Aggregate: "a"}, c.Now())
+	runOnce(t, events.NewDispatcher(pool, ds, nil, c.Now))
+	if got := readDelivery(t, pool, later, "test.three"); got.state != "done" {
+		t.Errorf("the new handler's delivery of a later event = %+v, want done", got)
+	}
+	if len(one.handled()) != 2 || len(two.handled()) != 2 || len(three.handled()) != 1 {
+		t.Errorf("the handlers ran %v, %v and %v, want twice, twice and once", one.handled(), two.handled(), three.handled())
 	}
 }
 
@@ -321,6 +344,86 @@ func TestDispatch_OrdersPerAggregate(t *testing.T) {
 	runOnce(t, d)
 	if got := rec.handled(); len(got) != 5 || got[2] != a1 || got[3] != a2 || got[4] != a3 {
 		t.Errorf("handled %v, want a1, a2, a3 in order after the retry", got)
+	}
+}
+
+// TestDispatch_OrdersPerAggregateNotPerID: quote 42 dead does not hold back
+// sales order 42 for a handler that takes both — the aggregate is the name
+// less its last segment, with the id.
+func TestDispatch_OrdersPerAggregateNotPerID(t *testing.T) {
+	t.Parallel()
+	pool, _ := testdb.Migrated(t)
+	c := newClock()
+	quote := publish(t, pool, quoteThing{ID: "42"}, c.Now())
+	order := publish(t, pool, orderThing{ID: "42"}, c.Now())
+	rec := &recorder{fail: func(ev events.Delivered, _ int) error {
+		if ev.ID == quote {
+			return errors.New("broken")
+		}
+		return nil
+	}}
+	h := rec.handler("test.h")
+	h.Events = []events.EventRef{{Name: "test.quote.happened", Version: 1}, {Name: "test.sales_order.happened", Version: 1}}
+	d := events.NewDispatcher(pool, []events.Handler{h}, nil, c.Now)
+	runOnce(t, d)
+	if _, err := pool.Exec(context.Background(), `UPDATE platform.event_deliveries SET state = 'dead' WHERE event_id = $1`, quote); err != nil {
+		t.Fatal(err)
+	}
+	if got := readDelivery(t, pool, order, "test.h"); got.state != "done" {
+		t.Errorf("sales order 42 = %+v, want done though quote 42 failed", got)
+	}
+	var aggregate string
+	if err := pool.QueryRow(context.Background(), `SELECT aggregate FROM platform.event_deliveries WHERE event_id = $1`, order).Scan(&aggregate); err != nil || aggregate != "test.sales_order" {
+		t.Errorf("the delivery's aggregate = %q, %v; want test.sales_order", aggregate, err)
+	}
+	// A later quote 42 still waits behind the dead one.
+	quote2 := publish(t, pool, quoteThing{ID: "42"}, c.Now())
+	runOnce(t, d)
+	if got := readDelivery(t, pool, quote2, "test.h"); got.state != "pending" || got.attempts != 0 {
+		t.Errorf("the later quote 42 = %+v, want pending behind the dead one", got)
+	}
+}
+
+// TestDispatch_AnEarlierEventNotFannedOutHoldsBack: while another dispatcher
+// holds an earlier event of an aggregate mid fan-out, a later event of it
+// may be fanned out, but its delivery waits until the earlier one's is
+// written, then they run in order.
+func TestDispatch_AnEarlierEventNotFannedOutHoldsBack(t *testing.T) {
+	t.Parallel()
+	pool, _ := testdb.Migrated(t)
+	ctx := context.Background()
+	c := newClock()
+	first := publish(t, pool, thing{Aggregate: "a", N: 1}, c.Now())
+	second := publish(t, pool, thing{Aggregate: "a", N: 2}, c.Now())
+	other := publish(t, pool, thing{Aggregate: "b", N: 1}, c.Now())
+	// The other dispatcher's fan-out, mid statement: it holds the first
+	// event's row lock, its deliveries not yet committed.
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback(ctx) })
+	if _, err := tx.Exec(ctx, `SELECT id FROM platform.events WHERE id = $1 FOR UPDATE`, first); err != nil {
+		t.Fatal(err)
+	}
+	rec := &recorder{}
+	d := events.NewDispatcher(pool, []events.Handler{rec.handler("test.h")}, nil, c.Now)
+	runOnce(t, d)
+	if got := rec.handled(); len(got) != 1 || got[0] != other {
+		t.Fatalf("handled %v, want only the other aggregate's event", got)
+	}
+	if got := readDelivery(t, pool, second, "test.h"); got.state != "pending" || got.attempts != 0 {
+		t.Errorf("the second event = %+v, want pending behind the first, not fanned out yet", got)
+	}
+	if n := count(t, pool, `SELECT count(*) FROM platform.event_deliveries WHERE event_id = $1`, first); n != 0 {
+		t.Fatalf("the locked event has %d deliveries, want none yet", n)
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	runOnce(t, d)
+	if got := rec.handled(); len(got) != 3 || got[1] != first || got[2] != second {
+		t.Errorf("handled %v, want the other, then first and second in order", got)
 	}
 }
 
@@ -435,7 +538,7 @@ func TestDispatch_UnknownHandlerIsLeftAndWarned(t *testing.T) {
 	c := newClock()
 	id := publish(t, pool, thing{Aggregate: "a"}, c.Now())
 	if _, err := pool.Exec(context.Background(), `INSERT INTO platform.event_deliveries
-(event_id, handler, aggregate_id, next_attempt_at, created_at, updated_at) VALUES ($1, 'gone.handler', 'a', $2, $2, $2)`, id, c.Now()); err != nil {
+(event_id, handler, aggregate, aggregate_id, next_attempt_at, created_at, updated_at) VALUES ($1, 'gone.handler', 'test.thing', 'a', $2, $2, $2)`, id, c.Now()); err != nil {
 		t.Fatal(err)
 	}
 	rec := &recorder{}
@@ -452,18 +555,26 @@ func TestDispatch_UnknownHandlerIsLeftAndWarned(t *testing.T) {
 	}
 }
 
-// TestDispatch_Prunes: events past 30 days with every delivery done, or
-// none, go with their deliveries; one with an undone delivery, or younger,
-// stays.
+// TestDispatch_Prunes: events created over 30 days ago with every delivery
+// done, or none, go with their deliveries; one with an undone delivery, or
+// younger by created_at — whatever its occurred_at — stays.
 func TestDispatch_Prunes(t *testing.T) {
 	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	c := newClock()
 	old := c.Now().Add(-31 * 24 * time.Hour)
-	done := publish(t, pool, thing{Aggregate: "done"}, old)
-	stuck := publish(t, pool, thing{Aggregate: "stuck"}, old)
-	unheard := publish(t, pool, thingV2{Aggregate: "unheard"}, old)
-	young := publish(t, pool, thing{Aggregate: "young"}, c.Now().Add(-29*24*time.Hour))
+	done := publish(t, pool, thing{Aggregate: "done"}, c.Now())
+	stuck := publish(t, pool, thing{Aggregate: "stuck"}, c.Now())
+	unheard := publish(t, pool, thingV2{Aggregate: "unheard"}, c.Now())
+	young := publish(t, pool, thing{Aggregate: "young"}, old)
+	if _, err := pool.Exec(context.Background(), `UPDATE platform.events SET created_at = $1 WHERE id = ANY($2)`,
+		old, []int64{done, stuck, unheard}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(context.Background(), `UPDATE platform.events SET created_at = $1 WHERE id = $2`,
+		c.Now().Add(-29*24*time.Hour), young); err != nil {
+		t.Fatal(err)
+	}
 	rec := &recorder{fail: func(ev events.Delivered, _ int) error {
 		if ev.ID == stuck {
 			return errors.New("stuck")

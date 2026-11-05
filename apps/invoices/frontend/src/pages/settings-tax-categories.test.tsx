@@ -82,10 +82,14 @@ describe("Products' tax categories on the invoice settings", () => {
     );
     await waitFor(() => expect(food).toHaveValue("31 — Utgående mva 15 %"));
 
-    // Choosing the selected code again leaves the category with none.
+    // Choosing the selected code again keeps it; only the clear button
+    // leaves the category with none.
     await waitFor(() => expect(standard).toBeEnabled());
     await userEvent.click(standard);
     await userEvent.click(await screen.findByRole("option", { name: "3 — Utgående mva 25 %" }));
+    expect(standard).toHaveValue("3 — Utgående mva 25 %");
+    expect(calls(fetchMock, "DELETE")).toEqual([]);
+    await userEvent.click(within(card).getByLabelText("Remove the VAT code of Standard"));
     await waitFor(() => expect(calls(fetchMock, "DELETE")).toEqual([{ url: `${mappingsPath}/41`, body: undefined }]));
     await waitFor(() => expect(standard).toHaveValue(""));
   });
