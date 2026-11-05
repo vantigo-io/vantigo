@@ -18,7 +18,7 @@ UPDATE orders.quotes
 SET status = 'accepted', accepted_at = $1, accepted_into_kind = $2::text,
     accepted_into_id = $3::bigint, updated_at = $1
 WHERE id = $4
-RETURNING id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at
+RETURNING id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
 `
 
 type AcceptQuoteRowParams struct {
@@ -74,6 +74,7 @@ func (q *Queries) AcceptQuoteRow(ctx context.Context, arg AcceptQuoteRowParams) 
 		&i.ContactName,
 		&i.ContactEmail,
 		&i.ContactPhone,
+		&i.CustomerInvoiceEmail,
 		&i.YourReference,
 		&i.SalespersonID,
 		&i.SalespersonDisplay,
@@ -103,6 +104,7 @@ func (q *Queries) AcceptQuoteRow(ctx context.Context, arg AcceptQuoteRowParams) 
 		&i.CreatedByDisplay,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }
@@ -111,7 +113,7 @@ const cancelQuoteRow = `-- name: CancelQuoteRow :one
 UPDATE orders.quotes
 SET status = 'cancelled', cancelled_at = $1, updated_at = $1
 WHERE id = $2
-RETURNING id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at
+RETURNING id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
 `
 
 type CancelQuoteRowParams struct {
@@ -159,6 +161,7 @@ func (q *Queries) CancelQuoteRow(ctx context.Context, arg CancelQuoteRowParams) 
 		&i.ContactName,
 		&i.ContactEmail,
 		&i.ContactPhone,
+		&i.CustomerInvoiceEmail,
 		&i.YourReference,
 		&i.SalespersonID,
 		&i.SalespersonDisplay,
@@ -188,6 +191,7 @@ func (q *Queries) CancelQuoteRow(ctx context.Context, arg CancelQuoteRowParams) 
 		&i.CreatedByDisplay,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }
@@ -225,7 +229,7 @@ const declineQuoteRow = `-- name: DeclineQuoteRow :one
 UPDATE orders.quotes
 SET status = 'declined', declined_at = $1, decline_reason = $2, updated_at = $1
 WHERE id = $3
-RETURNING id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at
+RETURNING id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
 `
 
 type DeclineQuoteRowParams struct {
@@ -274,6 +278,7 @@ func (q *Queries) DeclineQuoteRow(ctx context.Context, arg DeclineQuoteRowParams
 		&i.ContactName,
 		&i.ContactEmail,
 		&i.ContactPhone,
+		&i.CustomerInvoiceEmail,
 		&i.YourReference,
 		&i.SalespersonID,
 		&i.SalespersonDisplay,
@@ -303,6 +308,7 @@ func (q *Queries) DeclineQuoteRow(ctx context.Context, arg DeclineQuoteRowParams
 		&i.CreatedByDisplay,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }
@@ -320,7 +326,7 @@ func (q *Queries) DeleteQuoteRow(ctx context.Context, id int64) (int64, error) {
 }
 
 const getQuote = `-- name: GetQuote :one
-SELECT id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at FROM orders.quotes WHERE id = $1
+SELECT id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.quotes WHERE id = $1
 `
 
 func (q *Queries) GetQuote(ctx context.Context, id int64) (OrdersQuote, error) {
@@ -363,6 +369,7 @@ func (q *Queries) GetQuote(ctx context.Context, id int64) (OrdersQuote, error) {
 		&i.ContactName,
 		&i.ContactEmail,
 		&i.ContactPhone,
+		&i.CustomerInvoiceEmail,
 		&i.YourReference,
 		&i.SalespersonID,
 		&i.SalespersonDisplay,
@@ -392,6 +399,7 @@ func (q *Queries) GetQuote(ctx context.Context, id int64) (OrdersQuote, error) {
 		&i.CreatedByDisplay,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }
@@ -403,7 +411,7 @@ INSERT INTO orders.quotes (
     customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2,
     invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name,
     delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city,
-    delivery_country, contact_id, contact_name, contact_email, contact_phone, your_reference,
+    delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference,
     salesperson_id, salesperson_display, project_id, currency, prices_include_vat,
     payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note,
     delivery_date, net_total, vat_total, gross_total,
@@ -417,16 +425,16 @@ INSERT INTO orders.quotes (
     $14, $15, $16, $17,
     $18, $19, $20,
     $21, $22, $23, $24,
-    $25, $26, $27,
-    $28, $29, $30, $31,
-    $32, $33, $34, $35,
-    $36, $37, $38, $39,
-    $40, $41, $42,
-    $43, $44, $45, $46,
-    $47, $48, $49,
-    $50, $50
+    $25, $26, $27, $28,
+    $29, $30, $31, $32,
+    $33, $34, $35, $36,
+    $37, $38, $39, $40,
+    $41, $42, $43,
+    $44, $45, $46, $47,
+    $48, $49, $50,
+    $51, $51
 )
-RETURNING id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at
+RETURNING id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
 `
 
 type InsertQuoteParams struct {
@@ -456,6 +464,7 @@ type InsertQuoteParams struct {
 	ContactName                *string
 	ContactEmail               *string
 	ContactPhone               *string
+	CustomerInvoiceEmail       *string
 	YourReference              string
 	SalespersonID              *uuid.UUID
 	SalespersonDisplay         *string
@@ -512,6 +521,7 @@ func (q *Queries) InsertQuote(ctx context.Context, arg InsertQuoteParams) (Order
 		arg.ContactName,
 		arg.ContactEmail,
 		arg.ContactPhone,
+		arg.CustomerInvoiceEmail,
 		arg.YourReference,
 		arg.SalespersonID,
 		arg.SalespersonDisplay,
@@ -575,6 +585,7 @@ func (q *Queries) InsertQuote(ctx context.Context, arg InsertQuoteParams) (Order
 		&i.ContactName,
 		&i.ContactEmail,
 		&i.ContactPhone,
+		&i.CustomerInvoiceEmail,
 		&i.YourReference,
 		&i.SalespersonID,
 		&i.SalespersonDisplay,
@@ -604,12 +615,13 @@ func (q *Queries) InsertQuote(ctx context.Context, arg InsertQuoteParams) (Order
 		&i.CreatedByDisplay,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }
 
 const listQuotes = `-- name: ListQuotes :many
-SELECT id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at FROM orders.quotes
+SELECT id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.quotes
 WHERE ($1::integer IS NULL OR customer_id = $1)
   AND (cardinality($2::text[]) = 0 OR status = ANY($2::text[]))
   AND ($3::uuid IS NULL OR salesperson_id = $3)
@@ -684,6 +696,7 @@ func (q *Queries) ListQuotes(ctx context.Context, arg ListQuotesParams) ([]Order
 			&i.ContactName,
 			&i.ContactEmail,
 			&i.ContactPhone,
+			&i.CustomerInvoiceEmail,
 			&i.YourReference,
 			&i.SalespersonID,
 			&i.SalespersonDisplay,
@@ -713,6 +726,7 @@ func (q *Queries) ListQuotes(ctx context.Context, arg ListQuotesParams) ([]Order
 			&i.CreatedByDisplay,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AnonymisedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -725,7 +739,7 @@ func (q *Queries) ListQuotes(ctx context.Context, arg ListQuotesParams) ([]Order
 }
 
 const lockQuote = `-- name: LockQuote :one
-SELECT id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at FROM orders.quotes WHERE id = $1 FOR UPDATE
+SELECT id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.quotes WHERE id = $1 FOR UPDATE
 `
 
 // LockQuote reads a quote under its row lock: every write of a quote takes
@@ -771,6 +785,7 @@ func (q *Queries) LockQuote(ctx context.Context, id int64) (OrdersQuote, error) 
 		&i.ContactName,
 		&i.ContactEmail,
 		&i.ContactPhone,
+		&i.CustomerInvoiceEmail,
 		&i.YourReference,
 		&i.SalespersonID,
 		&i.SalespersonDisplay,
@@ -800,12 +815,13 @@ func (q *Queries) LockQuote(ctx context.Context, id int64) (OrdersQuote, error) 
 		&i.CreatedByDisplay,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }
 
 const quoteByClientRequest = `-- name: QuoteByClientRequest :one
-SELECT id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at FROM orders.quotes WHERE client_request_id = $1
+SELECT id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.quotes WHERE client_request_id = $1
 `
 
 // QuoteByClientRequest is the quote an earlier create with this
@@ -850,6 +866,7 @@ func (q *Queries) QuoteByClientRequest(ctx context.Context, clientRequestID *uui
 		&i.ContactName,
 		&i.ContactEmail,
 		&i.ContactPhone,
+		&i.CustomerInvoiceEmail,
 		&i.YourReference,
 		&i.SalespersonID,
 		&i.SalespersonDisplay,
@@ -879,6 +896,7 @@ func (q *Queries) QuoteByClientRequest(ctx context.Context, clientRequestID *uui
 		&i.CreatedByDisplay,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }
@@ -887,7 +905,7 @@ const reviseQuoteRow = `-- name: ReviseQuoteRow :one
 UPDATE orders.quotes
 SET status = 'draft', revision = revision + 1, updated_at = $1
 WHERE id = $2
-RETURNING id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at
+RETURNING id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
 `
 
 type ReviseQuoteRowParams struct {
@@ -936,6 +954,7 @@ func (q *Queries) ReviseQuoteRow(ctx context.Context, arg ReviseQuoteRowParams) 
 		&i.ContactName,
 		&i.ContactEmail,
 		&i.ContactPhone,
+		&i.CustomerInvoiceEmail,
 		&i.YourReference,
 		&i.SalespersonID,
 		&i.SalespersonDisplay,
@@ -965,6 +984,7 @@ func (q *Queries) ReviseQuoteRow(ctx context.Context, arg ReviseQuoteRowParams) 
 		&i.CreatedByDisplay,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }
@@ -973,7 +993,7 @@ const setQuoteSent = `-- name: SetQuoteSent :one
 UPDATE orders.quotes
 SET status = 'sent', sent_at = $1, valid_until = $2, updated_at = $1
 WHERE id = $3 AND status = 'draft'
-RETURNING id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at
+RETURNING id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
 `
 
 type SetQuoteSentParams struct {
@@ -1023,6 +1043,7 @@ func (q *Queries) SetQuoteSent(ctx context.Context, arg SetQuoteSentParams) (Ord
 		&i.ContactName,
 		&i.ContactEmail,
 		&i.ContactPhone,
+		&i.CustomerInvoiceEmail,
 		&i.YourReference,
 		&i.SalespersonID,
 		&i.SalespersonDisplay,
@@ -1052,6 +1073,7 @@ func (q *Queries) SetQuoteSent(ctx context.Context, arg SetQuoteSentParams) (Ord
 		&i.CreatedByDisplay,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }
@@ -1071,16 +1093,17 @@ UPDATE orders.quotes SET
     delivery_city = $20, delivery_country = $21,
     contact_id = $22, contact_name = $23,
     contact_email = $24, contact_phone = $25,
-    your_reference = $26, salesperson_id = $27,
-    salesperson_display = $28, project_id = $29,
-    currency = $30, prices_include_vat = $31,
-    payment_terms_days = $32, discount_visible = $33,
-    language = $34, intro_text = $35, closing_text = $36,
-    internal_note = $37, delivery_date = $38,
-    net_total = $39, vat_total = $40, gross_total = $41,
-    updated_at = $42
-WHERE id = $43
-RETURNING id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at
+    customer_invoice_email = $26,
+    your_reference = $27, salesperson_id = $28,
+    salesperson_display = $29, project_id = $30,
+    currency = $31, prices_include_vat = $32,
+    payment_terms_days = $33, discount_visible = $34,
+    language = $35, intro_text = $36, closing_text = $37,
+    internal_note = $38, delivery_date = $39,
+    net_total = $40, vat_total = $41, gross_total = $42,
+    updated_at = $43
+WHERE id = $44
+RETURNING id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
 `
 
 type UpdateQuoteDraftParams struct {
@@ -1109,6 +1132,7 @@ type UpdateQuoteDraftParams struct {
 	ContactName                *string
 	ContactEmail               *string
 	ContactPhone               *string
+	CustomerInvoiceEmail       *string
 	YourReference              string
 	SalespersonID              *uuid.UUID
 	SalespersonDisplay         *string
@@ -1158,6 +1182,7 @@ func (q *Queries) UpdateQuoteDraft(ctx context.Context, arg UpdateQuoteDraftPara
 		arg.ContactName,
 		arg.ContactEmail,
 		arg.ContactPhone,
+		arg.CustomerInvoiceEmail,
 		arg.YourReference,
 		arg.SalespersonID,
 		arg.SalespersonDisplay,
@@ -1215,6 +1240,7 @@ func (q *Queries) UpdateQuoteDraft(ctx context.Context, arg UpdateQuoteDraftPara
 		&i.ContactName,
 		&i.ContactEmail,
 		&i.ContactPhone,
+		&i.CustomerInvoiceEmail,
 		&i.YourReference,
 		&i.SalespersonID,
 		&i.SalespersonDisplay,
@@ -1244,6 +1270,7 @@ func (q *Queries) UpdateQuoteDraft(ctx context.Context, arg UpdateQuoteDraftPara
 		&i.CreatedByDisplay,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }

@@ -49,6 +49,7 @@ type header struct {
 	ContactName                *string
 	ContactEmail               *string
 	ContactPhone               *string
+	CustomerInvoiceEmail       *string
 	YourReference              string
 	SalespersonID              *uuid.UUID
 	SalespersonDisplay         *string
@@ -74,7 +75,7 @@ func headerOfQuote(q store.OrdersQuote) header {
 		DeliveryAddressID: q.DeliveryAddressID, DeliveryName: q.DeliveryName, DeliveryAddressLine1: q.DeliveryAddressLine1,
 		DeliveryAddressLine2: q.DeliveryAddressLine2, DeliveryPostalCode: q.DeliveryPostalCode, DeliveryCity: q.DeliveryCity,
 		DeliveryCountry: q.DeliveryCountry, ContactID: q.ContactID, ContactName: q.ContactName, ContactEmail: q.ContactEmail,
-		ContactPhone: q.ContactPhone, YourReference: q.YourReference, SalespersonID: q.SalespersonID,
+		ContactPhone: q.ContactPhone, CustomerInvoiceEmail: q.CustomerInvoiceEmail, YourReference: q.YourReference, SalespersonID: q.SalespersonID,
 		SalespersonDisplay: q.SalespersonDisplay, ProjectID: q.ProjectID, Currency: q.Currency,
 		PricesIncludeVat: q.PricesIncludeVat, PaymentTermsDays: q.PaymentTermsDays, DiscountVisible: q.DiscountVisible,
 		Language: q.Language, IntroText: q.IntroText, ClosingText: q.ClosingText, InternalNote: q.InternalNote,
@@ -91,7 +92,7 @@ func headerOfOrder(o store.OrdersOrder) header {
 		DeliveryAddressID: o.DeliveryAddressID, DeliveryName: o.DeliveryName, DeliveryAddressLine1: o.DeliveryAddressLine1,
 		DeliveryAddressLine2: o.DeliveryAddressLine2, DeliveryPostalCode: o.DeliveryPostalCode, DeliveryCity: o.DeliveryCity,
 		DeliveryCountry: o.DeliveryCountry, ContactID: o.ContactID, ContactName: o.ContactName, ContactEmail: o.ContactEmail,
-		ContactPhone: o.ContactPhone, YourReference: o.YourReference, SalespersonID: o.SalespersonID,
+		ContactPhone: o.ContactPhone, CustomerInvoiceEmail: o.CustomerInvoiceEmail, YourReference: o.YourReference, SalespersonID: o.SalespersonID,
 		SalespersonDisplay: o.SalespersonDisplay, ProjectID: o.ProjectID, Currency: o.Currency,
 		PricesIncludeVat: o.PricesIncludeVat, PaymentTermsDays: o.PaymentTermsDays, DiscountVisible: o.DiscountVisible,
 		Language: o.Language, IntroText: o.IntroText, ClosingText: o.ClosingText, InternalNote: o.InternalNote,
@@ -385,6 +386,7 @@ func snapshotCustomer(h *header, p *contracts.CustomerBillingProfile) {
 		h.CustomerForeignID = textPtr(p.LegalID)
 	}
 	h.CustomerCountry = countryPtr(p.LegalCountry)
+	h.CustomerInvoiceEmail = textPtr(p.InvoiceEmail)
 	h.InvoiceAddressLine1, h.InvoiceAddressLine2, h.InvoicePostalCode, h.InvoiceCity, h.InvoiceCountry = nil, nil, nil, nil, nil
 	if a := p.InvoiceAddress; a != nil {
 		h.InvoiceAddressLine1, h.InvoiceAddressLine2 = textPtr(a.Line1), textPtr(a.Line2)
@@ -442,14 +444,24 @@ func snapshotOut(h header) gen.OrdersCustomerSnapshot {
 			Name: h.DeliveryName, Line1: h.DeliveryAddressLine1, Line2: h.DeliveryAddressLine2,
 			PostalCode: h.DeliveryPostalCode, City: h.DeliveryCity, Country: h.DeliveryCountry,
 		},
-		ContactId: h.ContactID,
-		Contact:   gen.OrdersContact{Name: h.ContactName, Email: h.ContactEmail, Phone: h.ContactPhone},
+		ContactId:    h.ContactID,
+		Contact:      gen.OrdersContact{Name: h.ContactName, Email: h.ContactEmail, Phone: h.ContactPhone},
+		InvoiceEmail: h.CustomerInvoiceEmail,
 	}
 	if h.CustomerType != nil {
 		t := gen.OrdersCustomerSnapshotType(*h.CustomerType)
 		out.Type = &t
 	}
 	return out
+}
+
+// defaultRecipient is a send's default recipient (O25): the contact's
+// e-mail, else the customer's invoice e-mail; nil when there is neither.
+func defaultRecipient(h header) *string {
+	if h.ContactEmail != nil {
+		return h.ContactEmail
+	}
+	return h.CustomerInvoiceEmail
 }
 
 // personOut is a user snapshot as the API answers it, nil when there is none.

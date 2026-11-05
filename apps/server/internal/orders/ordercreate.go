@@ -9,10 +9,13 @@ package orders
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/orders/gen"
 	"github.com/vantigo-io/vantigo/server/internal/orders/store"
 )
@@ -92,7 +95,7 @@ func (s *server) createOrder(ctx context.Context, _ pgx.Tx, txq *store.Queries, 
 		DeliveryAddressID: h.DeliveryAddressID, DeliveryName: h.DeliveryName, DeliveryAddressLine1: h.DeliveryAddressLine1,
 		DeliveryAddressLine2: h.DeliveryAddressLine2, DeliveryPostalCode: h.DeliveryPostalCode, DeliveryCity: h.DeliveryCity,
 		DeliveryCountry: h.DeliveryCountry, ContactID: h.ContactID, ContactName: h.ContactName, ContactEmail: h.ContactEmail,
-		ContactPhone: h.ContactPhone, YourReference: h.YourReference, SalespersonID: h.SalespersonID,
+		ContactPhone: h.ContactPhone, CustomerInvoiceEmail: h.CustomerInvoiceEmail, YourReference: h.YourReference, SalespersonID: h.SalespersonID,
 		SalespersonDisplay: h.SalespersonDisplay, ProjectID: h.ProjectID, Currency: h.Currency,
 		PricesIncludeVat: h.PricesIncludeVat, PaymentTermsDays: h.PaymentTermsDays, DiscountVisible: h.DiscountVisible,
 		Language: h.Language, IntroText: h.IntroText, ClosingText: h.ClosingText, InternalNote: h.InternalNote,
@@ -117,18 +120,13 @@ func (s *server) createOrder(ctx context.Context, _ pgx.Tx, txq *store.Queries, 
 // order confirmable (customer_disabled, order_empty, line_unpriced,
 // vat_code_unmapped), freezes it, records who confirmed it and publishes
 // orders.sales_order.confirmed.v1 on tx, and answers the order as it now is.
-// It makes no call out of the module: what it judges was read before the
-// transaction (the customer's status rides in on the arguments the orders
-// lane gives it).
-//
-// It is the orders lane's (lifecycle.go), which sets it when it builds
-// confirm; until then it is nil, and Accept and confirm answers 501 Not
-// Implemented without writing anything (AcceptQuote).
-var confirmOrderTx func(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, order store.OrdersOrder, lines []store.OrdersLine, by actor) (store.OrdersOrder, error)
+// It makes no call out of the module: the customer's billing profile was read
+// before the transaction and rides in as customer. lifecycle.go sets it.
+var confirmOrderTx func(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, order store.OrdersOrder, lines []store.OrdersLine,
+	by actor, customer *contracts.CustomerBillingProfile) (store.OrdersOrder, error)
 
 // afterOrderConfirmed is what follows a confirmation's commit, outside any
-// transaction: storing the confirmation's PDF (O24) and anything else the
-// orders lane does after confirming. nil until the orders lane sets it.
+// transaction: storing the confirmation's PDF (O24). lifecycle.go sets it.
 var afterOrderConfirmed func(ctx context.Context, s *server, order store.OrdersOrder)
 
 // orderView is an order with its lines as the API answers it (O13, O18).
@@ -139,7 +137,7 @@ func orderView(o store.OrdersOrder, lines []store.OrdersLine) gen.OrdersOrder {
 		Locked: o.Locked, Version: o.Version, DeliveryStatus: gen.OrdersOrderDeliveryStatus(o.DeliveryStatus),
 		InvoiceStatus: gen.OrdersOrderInvoiceStatus(o.InvoiceStatus),
 		Done:          o.Status == orderConfirmed && o.DeliveryStatus == "delivered" && o.InvoiceStatus == "invoiced",
-		Customer:      snapshotOut(h), YourReference: o.YourReference, Currency: o.Currency, PricesIncludeVat: o.PricesIncludeVat,
+		Customer:      snapshotOut(h), DefaultRecipient: defaultRecipient(h), YourReference: o.YourReference, Currency: o.Currency, PricesIncludeVat: o.PricesIncludeVat,
 		PaymentTermsDays: o.PaymentTermsDays, DiscountVisible: o.DiscountVisible, Language: gen.OrdersOrderLanguage(o.Language),
 		IntroText: o.IntroText, ClosingText: o.ClosingText, InternalNote: o.InternalNote,
 		Origin: gen.OrdersOrigin{
@@ -151,5 +149,23 @@ func orderView(o store.OrdersOrder, lines []store.OrdersLine) gen.OrdersOrder {
 		CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt, ProjectId: o.ProjectID,
 		Salesperson: personOut(o.SalespersonID, o.SalespersonDisplay), DeliveryDate: dateOut(o.DeliveryDate),
 		ConfirmedAt: o.ConfirmedAt, ConfirmedBy: personOut(o.ConfirmedByUserID, o.ConfirmedByDisplay), CancelledAt: o.CancelledAt,
+		SourceQuoteId: sourceQuoteID(o),
 	}
+}
+
+// sourceQuoteID is the quote an order was accepted from, when its origin
+// names one ("<id>@<revision>", O27); nil otherwise.
+func sourceQuoteID(o store.OrdersOrder) *int64 {
+	if o.Channel != channelQuote || o.SourceKind == nil || *o.SourceKind != ownerQuote || o.SourceID == nil {
+		return nil
+	}
+	id, _, ok := strings.Cut(*o.SourceID, "@")
+	if !ok {
+		return nil
+	}
+	n, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return nil
+	}
+	return &n
 }

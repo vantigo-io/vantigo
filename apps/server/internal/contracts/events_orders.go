@@ -68,3 +68,17 @@ type SalesOrderCancelled struct {
 func (SalesOrderCancelled) EventName() string     { return "orders.sales_order.cancelled" }
 func (SalesOrderCancelled) EventVersion() int     { return 1 }
 func (e SalesOrderCancelled) AggregateID() string { return strconv.FormatInt(e.OrderID, 10) }
+
+// SalesOrderChanged is orders.sales_order.changed v1: a confirmed order was
+// edited, or what remained of it cancelled, and is now at Version (O26).
+type SalesOrderChanged struct {
+	OrderID    int64     `json:"orderId"`
+	Number     int64     `json:"number"`
+	Version    int32     `json:"version"`
+	CustomerID int32     `json:"customerId"`
+	ChangedAt  time.Time `json:"changedAt"`
+}
+
+func (SalesOrderChanged) EventName() string     { return "orders.sales_order.changed" }
+func (SalesOrderChanged) EventVersion() int     { return 1 }
+func (e SalesOrderChanged) AggregateID() string { return strconv.FormatInt(e.OrderID, 10) }

@@ -69,11 +69,11 @@ func workers(d module.Deps) []worker.Worker {
 	s, err := newServer(d)
 	if err != nil {
 		if d.Logger != nil {
-			d.Logger.Error("orders: the mail worker cannot start", "error", err.Error())
+			d.Logger.Error("orders: the workers cannot start", "error", err.Error())
 		}
 		return nil
 	}
-	return []worker.Worker{&mailWorker{s: s}}
+	return []worker.Worker{&mailWorker{s: s}, &retentionWorker{s: s}, &quoteExpiryWorker{s: s}}
 }
 
 // mailWorker sends the queued mailings.

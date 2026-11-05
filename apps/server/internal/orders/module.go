@@ -95,6 +95,12 @@ func Module() module.Module {
 		Permissions: permissions,
 		Mount:       mount,
 		Workers:     workers,
+		// The slots below are composed whatever MODULES says, each from
+		// what a disabled module's Deps has too.
+		EventHandlers:        eventHandlers,
+		CustomerReferences:   newCustomerReferenceHolder,
+		CustomerPersonalData: newCustomerPersonalData,
+		VariantReferences:    newVariantReferenceHolder,
 	}
 }
 

@@ -127,6 +127,7 @@ type OrdersOrder struct {
 	ContactName                *string
 	ContactEmail               *string
 	ContactPhone               *string
+	CustomerInvoiceEmail       *string
 	YourReference              string
 	SalespersonID              *uuid.UUID
 	SalespersonDisplay         *string
@@ -156,6 +157,7 @@ type OrdersOrder struct {
 	CreatedByDisplay           *string
 	CreatedAt                  time.Time
 	UpdatedAt                  time.Time
+	AnonymisedAt               *time.Time
 }
 
 type OrdersOrderChange struct {
@@ -207,6 +209,7 @@ type OrdersQuote struct {
 	ContactName                *string
 	ContactEmail               *string
 	ContactPhone               *string
+	CustomerInvoiceEmail       *string
 	YourReference              string
 	SalespersonID              *uuid.UUID
 	SalespersonDisplay         *string
@@ -236,6 +239,7 @@ type OrdersQuote struct {
 	CreatedByDisplay           *string
 	CreatedAt                  time.Time
 	UpdatedAt                  time.Time
+	AnonymisedAt               *time.Time
 }
 
 type OrdersSetting struct {

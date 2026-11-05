@@ -89,6 +89,9 @@ CREATE TABLE orders.quotes (
     contact_name                 varchar(255),
     contact_email                varchar(254),
     contact_phone                varchar(50),
+    -- The customer's invoice e-mail, a send's default recipient when the
+    -- document names no contact (O25).
+    customer_invoice_email       varchar(254),
     your_reference               varchar(100)  NOT NULL DEFAULT '',
     -- Our side (O13).
     salesperson_id      uuid,
@@ -122,6 +125,8 @@ CREATE TABLE orders.quotes (
     created_by_display  varchar(200),
     created_at          timestamptz   NOT NULL,
     updated_at          timestamptz   NOT NULL,
+    -- When an erase took the person out of the snapshot (O29, O54).
+    anonymised_at       timestamptz,
     CONSTRAINT ck_quotes_status CHECK (status IN ('draft', 'sent', 'accepted', 'declined', 'expired', 'cancelled')),
     CONSTRAINT ck_quotes_revision CHECK (revision >= 1),
     CONSTRAINT ck_quotes_accepted_into CHECK (accepted_into_kind IS NULL OR accepted_into_kind IN ('order', 'subscription')),
@@ -177,6 +182,9 @@ CREATE TABLE orders.orders (
     contact_name                 varchar(255),
     contact_email                varchar(254),
     contact_phone                varchar(50),
+    -- The customer's invoice e-mail, a send's default recipient when the
+    -- document names no contact (O25).
+    customer_invoice_email       varchar(254),
     your_reference               varchar(100)  NOT NULL DEFAULT '',
     -- Our side (O13).
     salesperson_id      uuid,
@@ -209,6 +217,9 @@ CREATE TABLE orders.orders (
     created_by_display  varchar(200),
     created_at          timestamptz   NOT NULL,
     updated_at          timestamptz   NOT NULL,
+    -- When an erase, or the retention sweep after it, took the person out of
+    -- the snapshot (O29, O54).
+    anonymised_at       timestamptz,
     CONSTRAINT ck_orders_status CHECK (status IN ('draft', 'confirmed', 'cancelled')),
     CONSTRAINT ck_orders_version CHECK (version >= 1),
     CONSTRAINT ck_orders_delivery_status CHECK (delivery_status IN ('none', 'partial', 'delivered')),

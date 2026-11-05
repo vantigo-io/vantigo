@@ -296,8 +296,9 @@ func TestAcceptQuote_MakesADraftOrderOnce(t *testing.T) {
 	}
 }
 
-// Accept and confirm needs orders:sales-confirm; with it, it waits for the
-// orders lane's confirm and answers 501 without writing anything.
+// Accept and confirm needs orders:sales-confirm; with it, the quote becomes a
+// confirmed order on one transaction (O18, O20): the order confirmed,
+// orders.sales_order.confirmed.v1 published, and its confirmation stored.
 func TestAcceptQuote_AndConfirmNeedsTheConfirmKey(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, harnessOptions{})
@@ -306,11 +307,18 @@ func TestAcceptQuote_AndConfirmNeedsTheConfirmKey(t *testing.T) {
 	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{Revision: 1, Into: gen.ConfirmedOrder})
 	mustStatus(t, res, http.StatusForbidden, "accept and confirm without the key")
 	boss := h.SignIn(t, confirmer...)
-	res = boss.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{Revision: 1, Into: gen.ConfirmedOrder},
-		modtest.SkipContract("confirm is the orders lane's; it answers 501 until then"))
-	mustStatus(t, res, http.StatusNotImplemented, "accept and confirm")
-	if n := h.Count(t, `SELECT count(*) FROM orders.orders`); n != 0 {
-		t.Errorf("%d orders, want none", n)
+	res = boss.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{Revision: 1, Into: gen.ConfirmedOrder})
+	mustStatus(t, res, http.StatusOK, "accept and confirm")
+	var got gen.OrdersAccepted
+	res.JSON(&got)
+	if got.Order.Status != gen.OrdersOrderStatusConfirmed || got.Order.SourceQuoteId == nil || *got.Order.SourceQuoteId != q.Id {
+		t.Errorf("order status %s, source quote %v; want confirmed from quote %d", got.Order.Status, got.Order.SourceQuoteId, q.Id)
+	}
+	if n := eventsNamed(t, h, "orders.sales_order.confirmed", got.Order.Id); n != 1 {
+		t.Errorf("%d confirmed events, want 1", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM orders.documents WHERE owner_kind = 'order' AND kind = 'confirmation'`); n != 1 {
+		t.Errorf("%d stored confirmations, want 1", n)
 	}
 }
 
