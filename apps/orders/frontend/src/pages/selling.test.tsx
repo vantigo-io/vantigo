@@ -74,6 +74,30 @@ describe("the sales warnings (O33)", () => {
     });
   });
 
+  it("clears an override once the write that carried it is done", async () => {
+    const fake = fakeServer((call) => {
+      if (call.method === "GET" && call.url === quoteUrl)
+        return jsonResponse(200, quote({ warnings: [warning({ level: "block", text: "Betaler ikke" })] }));
+      // The same quote back, so the editor is not started afresh by a new version.
+      if (call.method === "POST" && call.url === `${quoteUrl}/mark-sent`)
+        return jsonResponse(200, quote({ warnings: [warning({ level: "block", text: "Betaler ikke" })] }));
+      return commonAnswers(call, settings(), meta());
+    });
+    renderRoute("/orders/quotes/1001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Override the warning" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText(/Reason/), "Forhåndsbetalt");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Override the warning" }));
+    expect(await screen.findByText("Warning overridden")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Mark as sent" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Mark as sent" }));
+    await waitFor(() => expect(fake.sent("POST", `${quoteUrl}/mark-sent`)).toBeDefined());
+    await waitFor(() => expect(screen.queryByText("Warning overridden")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Override the warning" })).toBeInTheDocument();
+  });
+
   it("says a refused confirm in the reader's words", async () => {
     fakeServer((call) => {
       if (call.method === "GET" && call.url === orderUrl)
@@ -109,6 +133,26 @@ describe("the sales warnings (O33)", () => {
       level: "block",
       text: "Ring før levering",
     });
+  });
+
+  it("marks a deleted product's warning, which is only removed", async () => {
+    const fake = fakeServer((call) => {
+      if (call.method === "GET" && call.url === "/api/v1/orders/warnings")
+        return jsonResponse(200, {
+          items: [
+            warning({ scope: "product", id: 30, name: "Kabel", level: "block", text: "Tilbakekalt", orphaned: true }),
+          ],
+        });
+      if (call.method === "DELETE") return new Response(null, { status: 204 });
+      return commonAnswers(call, settings(), meta());
+    });
+    renderRoute("/orders/settings");
+
+    const table = await screen.findByTestId("warnings-table");
+    expect(within(table).getByText("Product deleted")).toBeInTheDocument();
+    expect(within(table).queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    await userEvent.click(within(table).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(fake.sent("DELETE", "/api/v1/orders/warnings/products/30")).toBeDefined());
   });
 });
 

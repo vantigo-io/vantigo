@@ -2091,6 +2091,8 @@ export interface components {
             /** @enum {string} */
             level: "info" | "block";
             name: string;
+            /** @description On the list only: true for a product warning whose product no longer exists in the catalog. It cannot be set again (404) but can be removed. */
+            orphaned?: boolean;
             /** @enum {string} */
             scope: "customer" | "product";
             text: string;

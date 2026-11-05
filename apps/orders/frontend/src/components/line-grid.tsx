@@ -25,13 +25,22 @@ import {
   IconPencil,
   IconTrash,
 } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import type { Line } from "../api/types";
+import { variantSearchQueryOptions } from "../api/variants";
 import { currentRate, vatCodesQueryOptions } from "../api/vat-codes";
 import type { OrdersAccess } from "../lib/access";
 import { useOrdersFormat } from "../lib/format";
-import { applyGrid, type EditableLine, editLine, moveLine, newLine, packagingOf } from "../lib/lines";
+import {
+  applyGrid,
+  type EditableLine,
+  editLine,
+  moveLine,
+  newLine,
+  packagingOf,
+  withCurrentPackagings,
+} from "../lib/lines";
 import { GridDialog } from "./grid-dialog";
 import { VariantPicker } from "./variant-picker";
 
@@ -75,6 +84,17 @@ export const LineGrid = ({
   const { t, money, unitPrice, quantity, percent } = useOrdersFormat();
   const [gridOpen, setGridOpen] = useState(false);
   const vatCodes = useQuery({ ...vatCodesQueryOptions(), enabled: editable && access.canReadVatCodes });
+  // The saved catalog lines' variants as the catalog has them now, for the
+  // packagings they may be entered in (O15): found by their SKU.
+  const savedSkus = editable
+    ? [...new Set(lines.flatMap((line) => (line.saved && line.catalog && line.saved.sku ? [line.saved.sku] : [])))]
+    : [];
+  const currentVariants = useQueries({
+    queries: savedSkus.map((sku) => variantSearchQueryOptions(sku, currency)),
+  });
+  const currentPackagings = new Map(
+    currentVariants.flatMap((query) => (query.data ?? []).map((v) => [v.variantId, v.packagings] as const)),
+  );
   const amounts = mode !== "template";
   const showProgress = mode === "order" && confirmed;
   const set = (index: number, patch: Partial<EditableLine>) =>
@@ -88,7 +108,9 @@ export const LineGrid = ({
   // Position, line, quantity, unit and price; then what the mode adds.
   const columns = 5 + (amounts ? 3 : 0) + (mode !== "order" ? 1 : 0) + (showProgress ? 1 : 0) + (editable ? 1 : 0);
 
-  const productRow = (line: EditableLine, index: number) => {
+  const productRow = (row: EditableLine, index: number) => {
+    const current = row.variantId === null ? undefined : currentPackagings.get(row.variantId);
+    const line = current ? withCurrentPackagings(row, current) : row;
     const saved = line.saved;
     const invoiced = confirmed && (saved?.qtyInvoiced ?? 0) > 0;
     const pack = packagingOf(line);

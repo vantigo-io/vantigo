@@ -193,6 +193,8 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
         predicate: (q) => q.queryKey[2] !== "detail",
       });
       notifications.show({ color: "green", message: t("quoteSent") });
+      // An override is for the one write it was given with (O33).
+      setOverride(null);
       close();
     },
     // A refused send is said in the dialog, which stays open to be corrected.
@@ -206,6 +208,10 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
   const markSent = useDocumentWrite({
     ...common,
     write: () => markQuoteSent(quote.id, quote, validUntilDefault, overrideOf(override)),
+    onDone: () => {
+      setOverride(null);
+      close();
+    },
     done: t("quoteMarkedSent"),
     errorTitle: t("couldNotMarkSent"),
   });
@@ -260,6 +266,7 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
         queryKey: [ORDERS_QUERY_KEY],
         predicate: (q) => q.queryKey[2] !== "detail",
       });
+      setOverride(null);
       notifications.show({ color: "green", message: t("quoteAccepted", { number: accepted.order.number }) });
       navigate(salesOrderLinkOptions(accepted.order.id));
     },

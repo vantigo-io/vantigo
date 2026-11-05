@@ -190,6 +190,11 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
     ...common,
     write: (name: OrderTransition) =>
       transitionOrder(order.id, name, order, name === "confirm" ? overrideOf(override) : {}),
+    // An override is for the one confirm it was given with (O33).
+    onDone: () => {
+      setOverride(null);
+      close();
+    },
     errorTitle: t("couldNotChangeOrder"),
   });
   const hold = useDocumentWrite({

@@ -47,8 +47,25 @@ export interface EditableLine {
   changed: boolean;
 }
 
-/** A line the server answered, as an editor row. */
-export const fromLine = (line: Line): EditableLine => ({
+/**
+ * The packagings a saved line may be entered in (O15): the variant's current
+ * ones, when they are known, and the one the line was saved in when the
+ * catalog no longer has it — its size from the line, as the server keeps it.
+ */
+const savedPackagings = (line: Line, current: readonly VariantPackaging[] = []): VariantPackaging[] => {
+  const saved =
+    line.packagingId != null && line.packagingQuantity != null && line.quantity != null
+      ? {
+          id: line.packagingId,
+          name: line.packagingName ?? "",
+          quantity: Math.round((line.quantity / line.packagingQuantity) * 1000) / 1000,
+        }
+      : null;
+  return saved && !current.some((p) => p.id === saved.id) ? [...current, saved] : [...current];
+};
+
+/** A line the server answered, as an editor row, offered its variant's current packagings when they are known. */
+export const fromLine = (line: Line, current?: readonly VariantPackaging[]): EditableLine => ({
   key: `line-${line.id}`,
   id: line.id,
   kind: line.kind,
@@ -64,16 +81,7 @@ export const fromLine = (line: Line): EditableLine => ({
   discountPercent: line.discountPercent,
   vatCodeId: line.vatCodeId ?? null,
   optional: line.optional,
-  packagings:
-    line.packagingId != null && line.packagingQuantity != null && line.quantity != null
-      ? [
-          {
-            id: line.packagingId,
-            name: line.packagingName ?? "",
-            quantity: Math.round((line.quantity / line.packagingQuantity) * 1000) / 1000,
-          },
-        ]
-      : [],
+  packagings: savedPackagings(line, current),
   packagingId: line.packagingId ?? null,
   packagingQuantity: line.packagingQuantity ?? "",
   saved: line,
@@ -209,6 +217,15 @@ export const incompleteLines = (lines: readonly EditableLine[], { template = fal
   });
   return problems;
 };
+
+/**
+ * A saved line offered its variant's current packagings (O15) beside the one
+ * it was saved in, while it keeps its saved variant; any other line as it is.
+ */
+export const withCurrentPackagings = (line: EditableLine, current: readonly VariantPackaging[]): EditableLine =>
+  line.saved && line.variantId !== null && line.variantId === line.saved.variantId
+    ? { ...line, packagings: savedPackagings(line.saved, current) }
+    : line;
 
 /**
  * A line entered in a packaging, as the grid and the PDF say it (O15):

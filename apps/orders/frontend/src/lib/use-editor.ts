@@ -17,7 +17,7 @@ import { type EditableLine, fromLine, incompleteLines } from "./lines";
 export const useEditorState = (document: Quote | Order) => {
   const { t } = useOrdersFormat();
   const [header, setHeader] = useState<HeaderState>(() => headerOf(document));
-  const [lines, setLines] = useState<EditableLine[]>(() => document.lines.map(fromLine));
+  const [lines, setLines] = useState<EditableLine[]>(() => document.lines.map((line) => fromLine(line)));
   const [dirty, setDirty] = useState(false);
   const [refused, setRefused] = useState<ReadonlyMap<number, string>>(new Map());
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
