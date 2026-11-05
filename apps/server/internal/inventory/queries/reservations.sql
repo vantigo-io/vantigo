@@ -26,10 +26,12 @@ SELECT u.variant_id::int AS variant_id,
 FROM (SELECT unnest(@variant_ids::int[]) AS variant_id) AS u
 ORDER BY 1;
 
--- name: AddReservations :exec
+-- name: AddReservations :execrows
 -- AddReservations adds each line's quantity to its reservation at the site,
 -- creating it at the quantity when the line holds none there. The caller
--- names each line once.
+-- names each line once. A line's reservation is of one variant: one held of
+-- another variant is left as it is and not counted, so fewer rows than lines
+-- tells the caller to refuse.
 INSERT INTO inventory.reservations (variant_id, site_id, quantity, source_module, source_kind, source_id, source_line_id,
                                     created_at, updated_at)
 SELECT u.variant_id, @site_id, u.quantity, @source_module, @source_kind, @source_id, u.line_id, @now::timestamptz, @now::timestamptz
@@ -37,7 +39,8 @@ FROM (SELECT unnest(@variant_ids::int[]) AS variant_id, unnest(@line_ids::text[]
              unnest(@quantities::numeric[]) AS quantity) AS u
 ORDER BY u.line_id
 ON CONFLICT (source_module, source_kind, source_id, source_line_id, site_id)
-DO UPDATE SET quantity = inventory.reservations.quantity + excluded.quantity, updated_at = excluded.updated_at;
+DO UPDATE SET quantity = inventory.reservations.quantity + excluded.quantity, updated_at = excluded.updated_at
+WHERE inventory.reservations.variant_id = excluded.variant_id;
 
 -- name: LockSourceReservations :many
 -- LockSourceReservations takes FOR UPDATE on every reservation of the

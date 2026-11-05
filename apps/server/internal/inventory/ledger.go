@@ -340,8 +340,15 @@ func (l ledger) Reserve(ctx context.Context, tx pgx.Tx, src contracts.StockSourc
 		p.LineIds = append(p.LineIds, lineIDText(id))
 		p.Quantities = append(p.Quantities, n)
 	}
-	if err := txq.AddReservations(ctx, p); err != nil {
+	n, err := txq.AddReservations(ctx, p)
+	if err != nil {
 		return fmt.Errorf("inventory: reserve for %s/%s/%d: %w", src.Module, src.Kind, src.ID, err)
+	}
+	// A line already holding another variant at the site: the caller
+	// changed the line's item without releasing it first.
+	if n != int64(len(lineIDs)) {
+		return fmt.Errorf("inventory: reserve for %s/%s/%d: a line already holds another variant at site %d; release it first",
+			src.Module, src.Kind, src.ID, siteID)
 	}
 	return nil
 }
@@ -508,7 +515,13 @@ func (l ledger) Issue(ctx context.Context, tx pgx.Tx, src contracts.StockSource,
 		return 0, errors.New("inventory: an issue has no lines")
 	}
 	lines := make([]engineLine, len(issue.Lines))
-	issued := map[int64]*big.Rat{}
+	// What is issued per line and variant: a line's reservation is consumed
+	// only by an issue of the variant it holds.
+	type issuedKey struct {
+		line    int64
+		variant int32
+	}
+	issued := map[issuedKey]*big.Rat{}
 	for i, line := range issue.Lines {
 		q, err := ledgerQuantity(line.Quantity)
 		if err != nil {
@@ -519,10 +532,11 @@ func (l ledger) Issue(ctx context.Context, tx pgx.Tx, src contracts.StockSource,
 		}
 		from := line.FromLocationID
 		lines[i] = engineLine{index: i, variantID: line.VariantID, from: &from, quantity: q}
-		if issued[line.LineID] == nil {
-			issued[line.LineID] = new(big.Rat)
+		k := issuedKey{line.LineID, line.VariantID}
+		if issued[k] == nil {
+			issued[k] = new(big.Rat)
 		}
-		issued[line.LineID].Add(issued[line.LineID], q)
+		issued[k].Add(issued[k], q)
 	}
 	hash, err := requestHash(movementKindIssue, issueBody{Source: doc, SiteID: issue.SiteID, Lines: issue.Lines})
 	if err != nil {
@@ -567,8 +581,8 @@ func (l ledger) Issue(ctx context.Context, tx pgx.Tx, src contracts.StockSource,
 	if res.replay {
 		return res.movementID, nil
 	}
-	// The reservations of the lines issued, at the site, consumed as far as
-	// they go.
+	// The reservations of the lines issued, at the site and of the variant
+	// issued, consumed as far as they go.
 	rows, err := txq.LockSourceReservations(ctx, sourceParams(src))
 	if err != nil {
 		return 0, fmt.Errorf("inventory: lock the reservations of %s/%s/%d: %w", src.Module, src.Kind, src.ID, err)
@@ -583,7 +597,7 @@ func (l ledger) Issue(ctx context.Context, tx pgx.Tx, src contracts.StockSource,
 		if err != nil {
 			return 0, fmt.Errorf("inventory: reservation %d has the line id %q: %w", r.ID, r.SourceLineID, err)
 		}
-		if q := issued[lineID]; q != nil {
+		if q := issued[issuedKey{lineID, r.VariantID}]; q != nil {
 			take := minRat(left[i], q)
 			left[i].Sub(left[i], take)
 			q.Sub(q, take)
