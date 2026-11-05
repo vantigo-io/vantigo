@@ -473,8 +473,9 @@ identitet** (`identity:manage`) er identitetsmodulens egen, eneste tillatelse. I
 krever hver rettighet **Bruke Ordre** i tillegg; **Bekrefte ordrer** aksepterer også et
 tilbud rett til en bekreftet ordre; **Håndtere innstillinger for Ordre** holder også
 tilbudsmalene og kan ikke delegeres; **Håndtere abonnementer** lager, endrer, pauser og
-avslutter abonnement; og **Håndtere leveranser** og **Håndtere fraktselskaper** er listet
-for leveransene som kommer, og gjør ingenting ennå ([Ordre](/nb/admin/orders/#gi-folk-tilgang)).
+avslutter abonnement; **Håndtere leveranser** lager, plukker, bokfører og kansellerer
+leveranser; og **Håndtere fraktselskaper** er listet for frakten som kommer, og gjør ingenting
+ennå ([Ordre](/nb/admin/orders/#gi-folk-tilgang)).
 
 ### Tildelinger
 
