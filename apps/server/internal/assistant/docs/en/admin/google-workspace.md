@@ -390,7 +390,9 @@ channel needs them.
 - The mailbox is a **licensed Google Workspace user** of the organisation, such as
   `post@` — a user with Gmail, made in the Admin console for the purpose. Google Workspace
   has no free shared mailbox like Exchange's, so each channel mailbox takes a licence.
-  Not a person Staff keeps an account for: a person's own mailbox is refused.
+  Not a person Staff keeps an account for, nor one who connected their own Google account
+  to Vantigo: a person's own mailbox is refused. The address is in one of the
+  organisation's **verified domains**, as the last test read them.
 - Not a **Google Group** or a **Collaborative Inbox**: a group has no mailbox Vantigo can
   read, and its address is refused.
 - **An Owner** in Vantigo turns the switch on; a super admin in the Admin console adds
@@ -458,21 +460,29 @@ Vantigo does not use*.
   a Google Group's, a Collaborative Inbox included. Groups are not supported: make a
   licensed user for the mailbox, and point the group's mail at it if needed.
 - **Adding a channel says it is a person's own mailbox** (`personal_mailbox`). Staff keeps
-  a Google account for the address's person. Only a mailbox of no person can be a
-  channel.
+  a Google account for the address's person, or the person connected their own Google
+  account to Vantigo. Only a mailbox of no person can be a channel.
 - **Adding a channel says Google Workspace has no mailbox with this address**
   (`mailbox_unknown`). No user has the address, or an alias of it; or the user is
-  suspended or archived, or has no Gmail because it holds no licence. An alias is taken
-  as its user.
+  suspended or archived, or has no Gmail because it holds no licence; or the address is
+  not in one of the organisation's verified domains (test the connection after adding a
+  domain). An alias is taken as its user.
 - **Google Workspace is not offered, or adding says *Mail channels through Google
   Workspace are not available…*** (`mail_channels_off`). The switch is off, the card is
   not **Ready**, or the Google Workspace module is not enabled.
 - **A channel fails later with *The mailbox no longer exists in Google Workspace.***
-  (`mailbox_gone`). The user was suspended, deleted or lost its Gmail licence since. Its
-  mail is given up after one attempt, and the sync tries again every hour. Restore the
-  user in the Admin console, or add another mailbox as a channel.
+  (`mailbox_gone`). The user was suspended, archived, deleted or lost its Gmail licence
+  since; or it became a person's own — Staff now keeps an account for it, or for its
+  address, or the user connected their own Google account; or its primary address was
+  changed, or given to another user. Vantigo checks the mailbox again in the Directory
+  before reading it afresh and at least once a day. Its mail is given up after one
+  attempt, and the sync tries again every hour. Restore the user in the Admin console, or
+  add another mailbox as a channel.
 - **A channel fails with `mailbox_denied`.** Google refused the mailbox (403) for another
   reason than the delegation — a policy on the user. Check the user in the Admin console.
+  A channel whose **Mailbox folder** is named as a Gmail system label (*Inbox*, *Sent*,
+  *Trash*, *Spam*, *Drafts*, *Starred*, *Important*, *Unread*, *Chat*) fails its marks so
+  too: choose another name.
 - **A message was given up as `too_large`.** Gmail takes at most 25 MB a message; the
   composer keeps a channel's attachments below it.
 - **Sending slows down.** Gmail charges each mailbox's sending against its own quota: a
