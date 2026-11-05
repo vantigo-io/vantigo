@@ -128,6 +128,16 @@ ORDER BY created_at ASC, id ASC;
 SELECT count(*) FROM communications.suppressions
 WHERE normalized_email_address = ANY(@addresses::text[]);
 
+-- name: ExtendOutboxJobLease :execrows
+-- A send through a mail channels provider whose timeout is longer than the
+-- claim's lease allows for (M13): the lease moved on to lease_until, guarded
+-- by the lease like the marker, so the send never outlives the lease
+-- protecting it. 0 rows is a lease already taken over; the caller goes on as
+-- step 7 does, and complete's lease check settles it.
+UPDATE communications.outbox_jobs
+SET lease_until = @lease_until
+WHERE id = @id AND lease_id = @lease_id;
+
 -- name: StampOutboxDeliveryAttempted :execrows
 -- Step 7 (`:167-169`): the bare marker write, guarded by the lease, with NO
 -- enclosing transaction so it auto-commits BEFORE the external send. .NET does

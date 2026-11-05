@@ -79,6 +79,14 @@ const (
 	// invariant `0 < timeout < lease`. It is what stops a send outliving the
 	// lease protecting it — the only thing that does (inventory §13.6).
 	outboxSendTimeout = outboxLeaseDuration / 2
+	// outboxMailboxPerMB is what a send through a mail channels provider adds
+	// to outboxSendTimeout for each megabyte of the provider's MaxMessage —
+	// an upload of the largest message it takes must fit — and
+	// outboxMailboxSendCap the most such a send is given. The job's lease is
+	// moved on to twice the timeout before such a send (ExtendOutboxJobLease),
+	// keeping `timeout < lease`.
+	outboxMailboxPerMB   = 2 * time.Second
+	outboxMailboxSendCap = 3 * time.Minute
 
 	// outboxFailureMessage is the CONSTANT written to outbox_jobs.last_error
 	// and message_deliveries.last_error on every failure (`:1337`). The real
@@ -477,7 +485,7 @@ func (w *OutboxWorker) deliver(ctx context.Context, job store.CommunicationsOutb
 		return w.complete(ctx, job, leaseID, sendable, sent)
 	}
 	if isMailboxProvider(message.ChannelProvider) {
-		sent, err := w.sendThroughMailbox(ctx, message, envelope)
+		sent, err := w.sendThroughMailbox(ctx, job, leaseID, message, envelope)
 		if err != nil {
 			return err
 		}
@@ -500,10 +508,13 @@ func (w *OutboxWorker) deliver(ctx context.Context, job store.CommunicationsOutb
 // sendThroughMailbox is step 8 for a channel on a mail channels provider
 // (M13): the same envelope rendered as MIME — our Message-Id and threading
 // headers, the Bcc header too when there are blind copies — and handed to
-// the provider's Send with the blind copies beside it, under the SMTP send's
-// own timeout. The provider's acceptance is the relay's 250; what it knows
-// of the message it sent (G5) is answered for complete to record.
-func (w *OutboxWorker) sendThroughMailbox(ctx context.Context, message store.GetOutboundMessageForSendRow, envelope mail.Outbound) (contracts.SentMessage, error) {
+// the provider's Send with the blind copies beside it, under a timeout scaled
+// to the provider's MaxMessage (outboxMailboxSendTimeout), the job's lease
+// moved on first to twice it. The provider's acceptance is the relay's 250;
+// what it knows of the message it sent (G5) is answered for complete to
+// record.
+func (w *OutboxWorker) sendThroughMailbox(ctx context.Context, job store.CommunicationsOutboxJob, leaseID string,
+	message store.GetOutboundMessageForSendRow, envelope mail.Outbound) (contracts.SentMessage, error) {
 	mailbox, err := channelMailboxOf(message.ChannelSettings)
 	if err != nil {
 		return contracts.SentMessage{}, err
@@ -527,13 +538,38 @@ func (w *OutboxWorker) sendThroughMailbox(ctx context.Context, message store.Get
 	if err != nil {
 		return contracts.SentMessage{}, err
 	}
-	sendCtx, cancel := context.WithTimeout(ctx, outboxSendTimeout)
+	if err := noteContractCall(ctx, "ChannelMailbox.MaxMessage"); err != nil {
+		return contracts.SentMessage{}, err
+	}
+	timeout := outboxMailboxSendTimeout(provider.MaxMessage())
+	if lease := 2 * timeout; lease > outboxLeaseDuration {
+		// Rows-affected ignored as step 7's is: a lease already taken over is
+		// complete's to find.
+		until := w.now().Add(lease)
+		if _, err := store.New(w.deps.Pool).ExtendOutboxJobLease(ctx, store.ExtendOutboxJobLeaseParams{
+			LeaseUntil: &until, ID: job.ID, LeaseID: &leaseID,
+		}); err != nil {
+			return contracts.SentMessage{}, fmt.Errorf("communications: extend the outbox job's lease: %w", err)
+		}
+	}
+	sendCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	sent, err := mailboxSend(sendCtx, provider, mailbox, mime, envelope.Bcc)
 	if err != nil {
 		return contracts.SentMessage{}, fmt.Errorf("communications: send outbound message through the mailbox: %w", err)
 	}
 	return sent, nil
+}
+
+// outboxMailboxSendTimeout is the timeout of a send through a mail channels
+// provider taking messages of up to max bytes: outboxSendTimeout and
+// outboxMailboxPerMB for each megabyte begun, at most outboxMailboxSendCap.
+func outboxMailboxSendTimeout(max int64) time.Duration {
+	if max <= 0 {
+		return outboxSendTimeout
+	}
+	mb := (max + 999_999) / 1_000_000
+	return min(outboxSendTimeout+time.Duration(mb)*outboxMailboxPerMB, outboxMailboxSendCap)
 }
 
 // sendThroughPersonalMailbox is step 8 for a message sent from the author's own

@@ -97,6 +97,31 @@ func (q *Queries) DeferOutboxJob(ctx context.Context, arg DeferOutboxJobParams) 
 	return err
 }
 
+const extendOutboxJobLease = `-- name: ExtendOutboxJobLease :execrows
+UPDATE communications.outbox_jobs
+SET lease_until = $1
+WHERE id = $2 AND lease_id = $3
+`
+
+type ExtendOutboxJobLeaseParams struct {
+	LeaseUntil *time.Time
+	ID         uuid.UUID
+	LeaseID    *string
+}
+
+// A send through a mail channels provider whose timeout is longer than the
+// claim's lease allows for (M13): the lease moved on to lease_until, guarded
+// by the lease like the marker, so the send never outlives the lease
+// protecting it. 0 rows is a lease already taken over; the caller goes on as
+// step 7 does, and complete's lease check settles it.
+func (q *Queries) ExtendOutboxJobLease(ctx context.Context, arg ExtendOutboxJobLeaseParams) (int64, error) {
+	result, err := q.db.Exec(ctx, extendOutboxJobLease, arg.LeaseUntil, arg.ID, arg.LeaseID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const failOutboxJob = `-- name: FailOutboxJob :exec
 UPDATE communications.outbox_jobs
 SET status = $1, last_error = $2, next_attempt_at = $3,
