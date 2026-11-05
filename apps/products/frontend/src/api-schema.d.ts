@@ -42,6 +42,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/products/{id}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a product's images
+         * @description The product's images in their order, empty when it has none.
+         */
+        get: operations["getProductsByIdImages"];
+        put?: never;
+        /**
+         * Upload an image of a product
+         * @description Uploads an image of the product (messenger design N13): a JPEG or PNG of at most 10 MiB and at least 200 by 200 pixels, in the multipart field file, whose own bytes decide its type. More than 40 megapixels is refused before anything is decoded. The picture is turned upright by its EXIF orientation, scaled down so its longer side is at most 2048 pixels, and encoded again — JPEG at quality 90, or PNG — which drops all its metadata, camera location included; only that file is kept, and a 320 pixel thumbnail beside it. The first image of a product becomes its primary one, and a new image is last in the order, shown in Communications. Products' problems carry no code, but an image's refusals do.
+         */
+        post: operations["postProductsByIdImages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/products/{id}/images/{imageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete an image of a product
+         * @description Deletes the image and, once that has committed, its two files. Deleting the primary image promotes the next one by its place in the order.
+         */
+        delete: operations["deleteProductsByIdImagesByImageId"];
+        options?: never;
+        head?: never;
+        /**
+         * Change an image of a product
+         * @description Changes an image's alt text, its place in the order, whether it is the primary image and where it may be shown. Moving an image renumbers the product's images from 0 without gaps.
+         */
+        patch: operations["patchProductsByIdImagesByImageId"];
+        trace?: never;
+    };
+    "/api/v1/products/{id}/images/{imageId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream an image of a product
+         * @description Streams the normalised image with its type, Cache-Control private, max-age=300, never sniffed and with no Content-Disposition; size=thumb streams the 320 pixel thumbnail instead.
+         */
+        get: operations["getProductsByIdImagesByImageIdContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/products/{id}/variants": {
         parameters: {
             query?: never;
@@ -313,6 +381,67 @@ export interface components {
             /** Format: int32 */
             id: number;
             name: string;
+        };
+        /** @description An RFC 9457 problem with this module's image refusal code, the one place Products' problems carry a code (messenger design N13): image_type_unsupported (422: not a JPEG or PNG, WebP and HEIC among them), image_too_large (422: more than 10 MiB, or more than 40 megapixels), image_too_small (422: a side under 200 pixels), image_invalid (422: the bytes are no picture, or cannot be decoded) and storage_unavailable (503: the object store could not be reached). */
+        ProductImageProblem: {
+            code?: string | null;
+            detail?: string | null;
+            instance?: string | null;
+            /** Format: int32 */
+            status?: number | null;
+            title?: string | null;
+            type?: string | null;
+        };
+        /** @description An image of a product (messenger design N13). The bytes are the normalised file, upright, at most 2048 pixels on the longer side and without metadata, streamed by GET .../content; the thumbnail, 320 pixels on the longer side, by the same with size=thumb. */
+        ProductImageResponse: {
+            /** @description What the picture shows, for a customer who cannot see it. Absent when not set. */
+            altText?: string;
+            /**
+             * Format: int32
+             * @description The normalised file's size in bytes.
+             */
+            byteSize: number;
+            /** @description image/jpeg or image/png. */
+            contentType: string;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: int32
+             * @description The normalised file's height in pixels.
+             */
+            height: number;
+            /** Format: int32 */
+            id: number;
+            /** @description Whether this is the product's primary image. Exactly one image of a product is, once it has any. */
+            isPrimary: boolean;
+            /** Format: int32 */
+            productId: number;
+            /**
+             * Format: int32
+             * @description The image's place among the product's images, from 0, with no gaps.
+             */
+            sortOrder: number;
+            /** @description Where the image may be shown: communications, to a customer in a message; marketing, for marketing use such as ads — nothing reads it yet. */
+            uses: ("communications" | "marketing")[];
+            /**
+             * Format: int32
+             * @description The normalised file's width in pixels.
+             */
+            width: number;
+        };
+        /** @description A change to an image. Every field is optional, and a field left out is left as it is. */
+        ProductImageUpdateRequest: {
+            /** @description What the picture shows, at most 250 characters. An empty text clears it. */
+            altText?: string;
+            /** @description true makes this the product's primary image, and the one that was primary stops being it. false is refused for the primary image, since another image's true is what replaces it. */
+            isPrimary?: boolean;
+            /**
+             * Format: int32
+             * @description The place, from 0, to move the image to among the product's images; the others close the gap, and a place past the last is the last.
+             */
+            sortOrder?: number;
+            /** @description Where the image may be shown, replacing the earlier list; at most one of each, and none is allowed. */
+            uses?: ("communications" | "marketing")[];
         };
         /** @description A packaging's fields, on create and on a whole replace. Give either quantity, or containsPackagingId with containsCount — not both. A variant has at most 10 packagings. Changing what a packaging holds recomputes every packaging built from it; stock is never touched, it is always in the variant's unit. */
         ProductPackagingRequest: {
@@ -867,6 +996,311 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getProductsByIdImages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductImageResponse"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postProductsByIdImages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductImageResponse"];
+                };
+            };
+            /** @description Bad Request — the file is missing, empty or sent more than once, or the body cannot be read as a multipart form. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity — image_type_unsupported, image_too_large, image_too_small or image_invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProductImageProblem"];
+                };
+            };
+            /** @description Service Unavailable — storage_unavailable, the object store could not be written; nothing was recorded. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProductImageProblem"];
+                };
+            };
+        };
+    };
+    deleteProductsByIdImagesByImageId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                imageId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    patchProductsByIdImagesByImageId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                imageId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductImageUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductImageResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getProductsByIdImagesByImageIdContent: {
+        parameters: {
+            query?: {
+                /** @description thumb for the thumbnail; the image itself when left out. */
+                size?: "thumb";
+            };
+            header?: never;
+            path: {
+                id: number;
+                imageId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
+            };
+            /** @description Bad Request — size is neither thumb nor empty. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such product or image, or the object is gone from the store. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — storage_unavailable, the object store could not be read. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProductImageProblem"];
+                };
             };
         };
     };
