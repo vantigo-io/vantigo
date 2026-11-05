@@ -4,8 +4,8 @@ package orders
 // tab shows above its lists, per currency — the open quotes (draft and sent)
 // at their net totals; the confirmed orders' quantity still to deliver at its
 // net value, each line's open quantity at line_net over quantity; and what is
-// delivered and not invoiced, valued the same way, which is everything
-// delivered until invoicing comes with delivery B. Amounts are net of VAT.
+// delivered and not invoiced — delivered less what issued invoices stamped
+// (O38) — valued the same way. Amounts are net of VAT.
 
 import (
 	"context"

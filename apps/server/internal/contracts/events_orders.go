@@ -82,3 +82,20 @@ type SalesOrderChanged struct {
 func (SalesOrderChanged) EventName() string     { return "orders.sales_order.changed" }
 func (SalesOrderChanged) EventVersion() int     { return 1 }
 func (e SalesOrderChanged) AggregateID() string { return strconv.FormatInt(e.OrderID, 10) }
+
+// SalesOrderInvoiced is orders.sales_order.invoiced v1: an invoice's issue
+// stamped allocations of the order invoiced (O38). It is published by Orders'
+// InvoicedWorkHolder on the issue's transaction, once per order the invoice
+// bills, at the issue's time.
+type SalesOrderInvoiced struct {
+	OrderID       int64     `json:"orderId"`
+	Number        int64     `json:"number"`
+	CustomerID    int32     `json:"customerId"`
+	InvoiceID     int64     `json:"invoiceId"`
+	InvoiceNumber int64     `json:"invoiceNumber"`
+	InvoicedAt    time.Time `json:"invoicedAt"`
+}
+
+func (SalesOrderInvoiced) EventName() string     { return "orders.sales_order.invoiced" }
+func (SalesOrderInvoiced) EventVersion() int     { return 1 }
+func (e SalesOrderInvoiced) AggregateID() string { return strconv.FormatInt(e.OrderID, 10) }

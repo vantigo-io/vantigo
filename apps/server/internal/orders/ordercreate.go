@@ -132,10 +132,13 @@ var confirmOrderTx func(ctx context.Context, s *server, tx pgx.Tx, txq *store.Qu
 var afterOrderConfirmed func(ctx context.Context, s *server, order store.OrdersOrder, body []byte)
 
 // orderView is an order with its lines as the API answers it (O13, O18),
-// with the sales warnings that apply to it (documentWarnings).
-func orderView(o store.OrdersOrder, lines []store.OrdersLine, warnings []gen.OrdersWarning) gen.OrdersOrder {
+// with the sales warnings that apply to it (documentWarnings) and, from its
+// invoice allocations, the invoices issued from it (O41) and each line's
+// draft-allocated quantity; nil allocations for an order that can have none
+// yet — a new, a draft or a just-confirmed one.
+func orderView(o store.OrdersOrder, lines []store.OrdersLine, warnings []gen.OrdersWarning, allocations []store.OrdersInvoiceAllocation) gen.OrdersOrder {
 	h := headerOfOrder(o)
-	return gen.OrdersOrder{
+	out := gen.OrdersOrder{
 		Id: o.ID, Number: o.Number, Status: gen.OrdersOrderStatus(o.Status), OnHold: o.OnHold, HoldReason: o.HoldReason,
 		Locked: o.Locked, Version: o.Version, DeliveryStatus: gen.OrdersOrderDeliveryStatus(o.DeliveryStatus),
 		InvoiceStatus: gen.OrdersOrderInvoiceStatus(o.InvoiceStatus),
@@ -153,7 +156,13 @@ func orderView(o store.OrdersOrder, lines []store.OrdersLine, warnings []gen.Ord
 		Salesperson: personOut(o.SalespersonID, o.SalespersonDisplay), DeliveryDate: dateOut(o.DeliveryDate),
 		ConfirmedAt: o.ConfirmedAt, ConfirmedBy: personOut(o.ConfirmedByUserID, o.ConfirmedByDisplay), CancelledAt: o.CancelledAt,
 		SourceQuoteId: sourceQuoteID(o), Warnings: warningsOrEmpty(warnings),
+		Invoices: orderInvoicesOut(allocations, o.Currency),
 	}
+	drafts := allocationsByLine(allocations)
+	for i := range out.Lines {
+		out.Lines[i].QtyDraftAllocated = wire(drafts.drafted(out.Lines[i].Id), quantityPlaces)
+	}
+	return out
 }
 
 // sourceQuoteID is the quote an order was accepted from, when its origin

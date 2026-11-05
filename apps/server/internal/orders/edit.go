@@ -143,7 +143,7 @@ func (s *server) saveDraftOrder(ctx context.Context, cur store.OrdersOrder, curL
 		if err != nil {
 			return err
 		}
-		out = orderView(row, lines, warnings)
+		out = orderView(row, lines, warnings, nil)
 		return nil
 	})
 	return out, err
@@ -276,9 +276,14 @@ func lineText(v *big.Rat, places int) *string {
 }
 
 // judgeConfirmedLines judges a confirmed order's new lines against its lines
-// as they are under the lock (O26), and answers the change log's actions and
-// each kept line's buckets by id.
-func judgeConfirmedLines(priced []pricedLine, current []store.OrdersLine) ([]changeAction, error) {
+// and its invoice allocations as they are under the lock (O26), and answers
+// the change log's actions. A draft allocation counts as progress (B): a
+// line's quantity goes no lower than the larger of delivered and invoiced +
+// draft-allocated, plus cancelled; its price and discount do not change
+// while a draft allocation holds it (line_in_draft_invoice); and a line an
+// invoice allocation holds — draft, invoiced, or released with an invoice's
+// stamp — is not removed (line_has_progress).
+func judgeConfirmedLines(priced []pricedLine, current []store.OrdersLine, allocs lineAllocations) ([]changeAction, error) {
 	old := byID(current)
 	var actions []changeAction
 	var failures []lineFailure
@@ -300,20 +305,21 @@ func judgeConfirmedLines(priced []pricedLine, current []store.OrdersLine) ([]cha
 		kept[o.ID] = true
 		id := o.ID
 		delivered, invoiced, cancelled := ratOrZero(o.QtyDelivered), ratOrZero(o.QtyInvoiced), ratOrZero(o.QtyCancelled)
-		progressed := delivered.Sign() > 0 || invoiced.Sign() > 0 || cancelled.Sign() > 0
+		drafted := allocs.drafted(o.ID)
+		progressed := delivered.Sign() > 0 || invoiced.Sign() > 0 || cancelled.Sign() > 0 || drafted.Sign() > 0
 		if !equalInt32(o.VariantID, p.variantID) && progressed {
 			return nil, conflict(codeLineHasProgress, "The line has progress",
-				fmt.Sprintf("Line %d is delivered, invoiced or cancelled in part; its item cannot change. Add a new line instead.", o.Position))
+				fmt.Sprintf("Line %d is delivered, invoiced, in a draft invoice or cancelled in part; its item cannot change. Add a new line instead.", o.Position))
 		}
 		if p.kind == kindProduct && p.quantity != nil {
 			floor := new(big.Rat).Set(delivered)
-			if invoiced.Cmp(floor) > 0 {
-				floor.Set(invoiced)
+			if billed := new(big.Rat).Add(invoiced, drafted); billed.Cmp(floor) > 0 {
+				floor.Set(billed)
 			}
 			floor.Add(floor, cancelled)
 			if p.quantity.Cmp(floor) < 0 {
 				failures = append(failures, lineFailure{index: i, code: codeQuantityBelowProgress,
-					detail: fmt.Sprintf("Line %d cannot go below %s: what is delivered or invoiced, and cancelled.", o.Position, floor.FloatString(quantityPlaces))})
+					detail: fmt.Sprintf("Line %d cannot go below %s: what is delivered, invoiced or in a draft invoice, and cancelled.", o.Position, floor.FloatString(quantityPlaces))})
 				continue
 			}
 		}
@@ -324,6 +330,10 @@ func judgeConfirmedLines(priced []pricedLine, current []store.OrdersLine) ([]cha
 		if (priceChanged || discountChanged || textChanged) && invoiced.Sign() > 0 {
 			return nil, conflict(codeLineInvoiced, "The line is invoiced",
 				fmt.Sprintf("Something of line %d is invoiced; its price, discount and text no longer change.", o.Position))
+		}
+		if (priceChanged || discountChanged) && drafted.Sign() > 0 {
+			return nil, conflict(codeLineInDraftInvoice, "The line is in a draft invoice",
+				fmt.Sprintf("Part of line %d is in a draft invoice; its price and discount do not change until the draft is issued or deleted, or its allocations released.", o.Position))
 		}
 		if !equalRat(oldQty, p.quantity) {
 			actions = append(actions, changeAction{Kind: actionQuantityChanged, LineID: &id,
@@ -348,9 +358,10 @@ func judgeConfirmedLines(priced []pricedLine, current []store.OrdersLine) ([]cha
 		if kept[o.ID] {
 			continue
 		}
-		if ratOrZero(o.QtyDelivered).Sign() > 0 || ratOrZero(o.QtyInvoiced).Sign() > 0 || ratOrZero(o.QtyCancelled).Sign() > 0 {
+		if ratOrZero(o.QtyDelivered).Sign() > 0 || ratOrZero(o.QtyInvoiced).Sign() > 0 || ratOrZero(o.QtyCancelled).Sign() > 0 ||
+			allocs[o.ID].held {
 			return nil, conflict(codeLineHasProgress, "The line has progress",
-				fmt.Sprintf("Line %d is delivered, invoiced or cancelled in part, and is kept.", o.Position))
+				fmt.Sprintf("Line %d is delivered, invoiced, in a draft invoice or cancelled in part, and is kept.", o.Position))
 		}
 		id := o.ID
 		actions = append(actions, changeAction{Kind: actionLineRemoved, LineID: &id, From: ptr(deref(o.Name))})
@@ -412,7 +423,11 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 		if err != nil {
 			return err
 		}
-		actions, err := judgeConfirmedLines(priced, current)
+		allocations, err := orderAllocations(ctx, txq, o.ID)
+		if err != nil {
+			return err
+		}
+		actions, err := judgeConfirmedLines(priced, current, allocationsByLine(allocations))
 		if err != nil {
 			return err
 		}
@@ -422,12 +437,22 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 			if err != nil {
 				return err
 			}
-			out = orderView(o, current, warnings)
+			out = orderView(o, current, warnings, allocations)
 			return nil
 		}
 		now := s.deps.Clock()
 		if _, err := txq.UpdateOrderHeader(ctx, updateOrderParams(o.ID, h, totalsOfPriced(priced), o.DeliveryStatus, o.InvoiceStatus, o.Version, now)); err != nil {
 			return fmt.Errorf("orders: save order %d: %w", o.ID, err)
+		}
+		// A removed line's released allocations that no invoice stamped are
+		// forgotten with it; any other allocation kept it (judged above).
+		for _, a := range actions {
+			if a.Kind != actionLineRemoved {
+				continue
+			}
+			if err := txq.DeleteForgottenLineAllocations(ctx, *a.LineID); err != nil {
+				return fmt.Errorf("orders: forget removed line %d's released allocations: %w", *a.LineID, err)
+			}
 		}
 		if _, err := writeLines(ctx, txq, ownerOrder, o.ID, priced); err != nil {
 			return err
@@ -460,7 +485,7 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 		if err != nil {
 			return err
 		}
-		out = orderView(row, lines, warnings)
+		out = orderView(row, lines, warnings, allocations)
 		return nil
 	})
 	return out, err

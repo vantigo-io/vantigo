@@ -194,7 +194,7 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 		if err != nil {
 			return err
 		}
-		out = orderView(confirmed, locked, warnings)
+		out = orderView(confirmed, locked, warnings, nil)
 		return nil
 	})
 	if err != nil {
@@ -255,7 +255,11 @@ func (s *server) changeOrder(ctx context.Context, id int64, version int32, expec
 		if err != nil {
 			return err
 		}
-		out = orderView(row, lines, warnings)
+		allocations, err := orderAllocations(ctx, txq, id)
+		if err != nil {
+			return err
+		}
+		out = orderView(row, lines, warnings, allocations)
 		return nil
 	})
 	return out, err
@@ -383,7 +387,9 @@ func (s *server) UnlockSalesOrder(ctx context.Context, req gen.UnlockSalesOrderR
 //
 // A draft or a confirmed order with nothing delivered or invoiced is
 // cancelled (O18) — a locked one is unlocked first (order_locked); after that the order has progress (order_has_progress) and
-// Cancel remaining is the way. orders.sales_order.cancelled.v1 is published
+// Cancel remaining is the way. Neither is taken while a draft invoice holds
+// an allocation of the order (order_in_draft_invoice, O36): the draft is
+// deleted or issued, or the allocations released, first. orders.sales_order.cancelled.v1 is published
 // for an order that was confirmed — a draft was never on the customer's
 // timeline.
 func (s *server) CancelSalesOrder(ctx context.Context, req gen.CancelSalesOrderRequestObject) (gen.CancelSalesOrderResponseObject, error) {
@@ -401,6 +407,9 @@ func (s *server) CancelSalesOrder(ctx context.Context, req gen.CancelSalesOrderR
 			if hasProgress(lines) {
 				return o, nil, conflict(codeOrderHasProgress, "The order has progress",
 					fmt.Sprintf("Something of order %d is delivered or invoiced; cancel what remains instead.", o.Number))
+			}
+			if err := judgeNoDraftInvoice(ctx, txq, o); err != nil {
+				return o, nil, err
 			}
 			now := s.deps.Clock()
 			row, err := txq.CancelOrderRow(ctx, store.CancelOrderRowParams{ID: o.ID, Now: &now})
@@ -440,6 +449,9 @@ func (s *server) CancelSalesOrderRemaining(ctx context.Context, req gen.CancelSa
 				return o, nil, err
 			}
 			if err := judgeUnlocked(o); err != nil {
+				return o, nil, err
+			}
+			if err := judgeNoDraftInvoice(ctx, txq, o); err != nil {
 				return o, nil, err
 			}
 			var actions []changeAction

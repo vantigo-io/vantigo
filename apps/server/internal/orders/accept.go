@@ -142,7 +142,7 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 		if err != nil {
 			return err
 		}
-		out = gen.OrdersAccepted{Quote: quoteView(accepted, quoteLines, &order.Number, warnings), Order: orderView(order, orderLines, orderWarnings)}
+		out = gen.OrdersAccepted{Quote: quoteView(accepted, quoteLines, &order.Number, warnings), Order: orderView(order, orderLines, orderWarnings, nil)}
 		return nil
 	})
 	if err != nil {

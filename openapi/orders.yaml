@@ -123,7 +123,7 @@ components:
                 - actions
             type: object
         OrdersChangeAction:
-            description: "One typed action (O26, O32): line_added, line_removed, quantity_changed, price_changed, discount_changed, text_changed, delivery_changed, contact_changed, reference_changed, cancelled_remaining, held, released, locked, unlocked, delivered_marked, delivered_undone, warning_overridden (a block warning overridden at confirm: from is the warning, to the reason). lineId names the line when the action is about one; from and to are the values before and after as text."
+            description: "One typed action (O26, O32): line_added, line_removed, quantity_changed, price_changed, discount_changed, text_changed, delivery_changed, contact_changed, reference_changed, cancelled_remaining, held, released, locked, unlocked, delivered_marked, delivered_undone, warning_overridden (a block warning overridden at confirm: from is the warning, to the reason), draft_allocations_released (the order's draft invoice allocations released by hand, O36: to is how many). lineId names the line when the action is about one; from and to are the values before and after as text."
             properties:
                 from:
                     nullable: true
@@ -694,6 +694,10 @@ components:
                 qtyDelivered:
                     format: double
                     type: number
+                qtyDraftAllocated:
+                    description: "What draft invoices hold of the line (O36): its draft allocations' quantity, not yet invoiced and not offered to invoice again. 0 on a quote."
+                    format: double
+                    type: number
                 qtyInvoiced:
                     format: double
                     type: number
@@ -750,6 +754,7 @@ components:
                 - qtyCancelled
                 - qtyDelivered
                 - qtyInvoiced
+                - qtyDraftAllocated
                 - deliveryMethod
             type: object
         OrdersLineInput:
@@ -1013,6 +1018,11 @@ components:
                         - partial
                         - invoiced
                     type: string
+                invoices:
+                    description: "The invoices issued from the order (O41), from its own invoice allocations, in the order they were issued: each invoice's number, date and the amount of the order it bills, net of VAT in the order's currency; released when a credit note gave every allocation of it back."
+                    items:
+                        $ref: "#/components/schemas/OrdersOrderInvoice"
+                    type: array
                 language:
                     enum:
                         - nb
@@ -1096,6 +1106,7 @@ components:
                 - createdAt
                 - updatedAt
                 - warnings
+                - invoices
             type: object
         OrdersOrderInput:
             additionalProperties: false
@@ -1165,6 +1176,38 @@ components:
             required:
                 - clientRequestId
                 - customerId
+            type: object
+        OrdersOrderInvoice:
+            additionalProperties: false
+            description: "An invoice issued from an order (O41): its id and number in Invoices, its issue date, the net amount of the order it bills and its state — invoiced, or released when a credit note gave all of it back."
+            properties:
+                amount:
+                    format: double
+                    type: number
+                currency:
+                    maxLength: 3
+                    type: string
+                invoiceId:
+                    format: int64
+                    type: integer
+                invoiceNumber:
+                    format: int64
+                    type: integer
+                issueDate:
+                    format: date
+                    type: string
+                state:
+                    enum:
+                        - invoiced
+                        - released
+                    type: string
+            required:
+                - invoiceId
+                - invoiceNumber
+                - issueDate
+                - amount
+                - currency
+                - state
             type: object
         OrdersOrderPage:
             additionalProperties: false
@@ -1384,7 +1427,7 @@ components:
                 - displayName
             type: object
         OrdersProblem:
-            description: "An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice, client_request_reused, template_name_taken, blocked_by_warning (a block warning refuses send, mark as sent, confirm and accept into a confirmed order; detail holds its text, O33). 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither."
+            description: "An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, order_in_draft_invoice (a cancel while a draft invoice holds part of the order, O36), line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice (a price or discount change on a line a draft invoice holds part of, O26), client_request_reused, template_name_taken, blocked_by_warning (a block warning refuses send, mark as sent, confirm and accept into a confirmed order; detail holds its text, O33). 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither."
             properties:
                 code:
                     nullable: true
@@ -3160,7 +3203,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Conflict — version_conflict, order_locked, order_has_progress."
+                    description: "Conflict — version_conflict, order_locked, order_has_progress, order_in_draft_invoice."
             summary: Cancel an order
             tags:
                 - Orders
@@ -3208,7 +3251,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Conflict — version_conflict, order_not_confirmed, order_locked."
+                    description: "Conflict — version_conflict, order_not_confirmed, order_locked, order_in_draft_invoice."
             summary: Cancel what remains of an order
             tags:
                 - Orders
@@ -3657,6 +3700,54 @@ paths:
                                 $ref: "#/components/schemas/OrdersProblem"
                     description: Conflict — version_conflict.
             summary: Release a held order
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:sales-manage
+    "/api/v1/orders/orders/{id}/release-draft-allocations":
+        post:
+            description: "Releases every draft invoice allocation of the order at once (O36), so its quantity is offered to invoice again. A draft invoice still holding one is refused at issue. Logged as draft_allocations_released; an order with none is answered as it is."
+            operationId: releaseSalesOrderDraftAllocations
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersVersionInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrder"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Conflict — version_conflict.
+            summary: Release an order's draft invoice allocations
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access+orders:sales-manage

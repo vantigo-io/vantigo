@@ -359,6 +359,24 @@ func (e OrdersOrderInputLanguage) Valid() bool {
 	}
 }
 
+// Defines values for OrdersOrderInvoiceState.
+const (
+	OrdersOrderInvoiceStateInvoiced OrdersOrderInvoiceState = "invoiced"
+	OrdersOrderInvoiceStateReleased OrdersOrderInvoiceState = "released"
+)
+
+// Valid indicates whether the value is a known member of the OrdersOrderInvoiceState enum.
+func (e OrdersOrderInvoiceState) Valid() bool {
+	switch e {
+	case OrdersOrderInvoiceStateInvoiced:
+		return true
+	case OrdersOrderInvoiceStateReleased:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrdersOrderSummaryDeliveryStatus.
 const (
 	OrdersOrderSummaryDeliveryStatusDelivered OrdersOrderSummaryDeliveryStatus = "delivered"
@@ -1014,7 +1032,7 @@ type OrdersChange struct {
 	Version int32        `json:"version"`
 }
 
-// OrdersChangeAction One typed action (O26, O32): line_added, line_removed, quantity_changed, price_changed, discount_changed, text_changed, delivery_changed, contact_changed, reference_changed, cancelled_remaining, held, released, locked, unlocked, delivered_marked, delivered_undone, warning_overridden (a block warning overridden at confirm: from is the warning, to the reason). lineId names the line when the action is about one; from and to are the values before and after as text.
+// OrdersChangeAction One typed action (O26, O32): line_added, line_removed, quantity_changed, price_changed, discount_changed, text_changed, delivery_changed, contact_changed, reference_changed, cancelled_remaining, held, released, locked, unlocked, delivered_marked, delivered_undone, warning_overridden (a block warning overridden at confirm: from is the warning, to the reason), draft_allocations_released (the order's draft invoice allocations released by hand, O36: to is how many). lineId names the line when the action is about one; from and to are the values before and after as text.
 type OrdersChangeAction struct {
 	From   *string `json:"from,omitempty"`
 	Kind   string  `json:"kind"`
@@ -1242,7 +1260,10 @@ type OrdersLine struct {
 	ProductId    *int32  `json:"productId,omitempty"`
 	QtyCancelled float64 `json:"qtyCancelled"`
 	QtyDelivered float64 `json:"qtyDelivered"`
-	QtyInvoiced  float64 `json:"qtyInvoiced"`
+
+	// QtyDraftAllocated What draft invoices hold of the line (O36): its draft allocations' quantity, not yet invoiced and not offered to invoice again. 0 on a quote.
+	QtyDraftAllocated float64 `json:"qtyDraftAllocated"`
+	QtyInvoiced       float64 `json:"qtyInvoiced"`
 
 	// Quantity At most three decimals.
 	Quantity *float64 `json:"quantity,omitempty"`
@@ -1399,11 +1420,14 @@ type OrdersOrder struct {
 	InternalNote  string                   `json:"internalNote"`
 	IntroText     string                   `json:"introText"`
 	InvoiceStatus OrdersOrderInvoiceStatus `json:"invoiceStatus"`
-	Language      OrdersOrderLanguage      `json:"language"`
-	Lines         []OrdersLine             `json:"lines"`
-	Locked        bool                     `json:"locked"`
-	Number        int64                    `json:"number"`
-	OnHold        bool                     `json:"onHold"`
+
+	// Invoices The invoices issued from the order (O41), from its own invoice allocations, in the order they were issued: each invoice's number, date and the amount of the order it bills, net of VAT in the order's currency; released when a credit note gave every allocation of it back.
+	Invoices []OrdersOrderInvoice `json:"invoices"`
+	Language OrdersOrderLanguage  `json:"language"`
+	Lines    []OrdersLine         `json:"lines"`
+	Locked   bool                 `json:"locked"`
+	Number   int64                `json:"number"`
+	OnHold   bool                 `json:"onHold"`
 
 	// Origin Where the document came from (O27). channel is an open set: manual, quote and copy in this phase.
 	Origin           OrdersOrigin `json:"origin"`
@@ -1465,6 +1489,19 @@ type OrdersOrderInput struct {
 
 // OrdersOrderInputLanguage defines model for OrdersOrderInput.Language.
 type OrdersOrderInputLanguage string
+
+// OrdersOrderInvoice An invoice issued from an order (O41): its id and number in Invoices, its issue date, the net amount of the order it bills and its state — invoiced, or released when a credit note gave all of it back.
+type OrdersOrderInvoice struct {
+	Amount        float64                 `json:"amount"`
+	Currency      string                  `json:"currency"`
+	InvoiceId     int64                   `json:"invoiceId"`
+	InvoiceNumber int64                   `json:"invoiceNumber"`
+	IssueDate     openapi_types.Date      `json:"issueDate"`
+	State         OrdersOrderInvoiceState `json:"state"`
+}
+
+// OrdersOrderInvoiceState defines model for OrdersOrderInvoice.State.
+type OrdersOrderInvoiceState string
 
 // OrdersOrderPage One page of orders, newest first; total counts every match.
 type OrdersOrderPage struct {
@@ -1550,7 +1587,7 @@ type OrdersPerson struct {
 	UserId      *openapi_types.UUID `json:"userId,omitempty"`
 }
 
-// OrdersProblem An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice, client_request_reused, template_name_taken, blocked_by_warning (a block warning refuses send, mark as sent, confirm and accept into a confirmed order; detail holds its text, O33). 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// OrdersProblem An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, order_in_draft_invoice (a cancel while a draft invoice holds part of the order, O36), line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice (a price or discount change on a line a draft invoice holds part of, O26), client_request_reused, template_name_taken, blocked_by_warning (a block warning refuses send, mark as sent, confirm and accept into a confirmed order; detail holds its text, O33). 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type OrdersProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -2212,6 +2249,9 @@ type MarkSalesOrderDeliveredJSONRequestBody = OrdersDeliveredInput
 // ReleaseSalesOrderJSONRequestBody defines body for ReleaseSalesOrder for application/json ContentType.
 type ReleaseSalesOrderJSONRequestBody = OrdersVersionInput
 
+// ReleaseSalesOrderDraftAllocationsJSONRequestBody defines body for ReleaseSalesOrderDraftAllocations for application/json ContentType.
+type ReleaseSalesOrderDraftAllocationsJSONRequestBody = OrdersVersionInput
+
 // SendSalesOrderJSONRequestBody defines body for SendSalesOrder for application/json ContentType.
 type SendSalesOrderJSONRequestBody = OrdersSendInput
 
@@ -2331,6 +2371,9 @@ type ServerInterface interface {
 	// ReleaseSalesOrder Release a held order
 	// (POST /api/v1/orders/orders/{id}/release)
 	ReleaseSalesOrder(w http.ResponseWriter, r *http.Request, id int64)
+	// ReleaseSalesOrderDraftAllocations Release an order's draft invoice allocations
+	// (POST /api/v1/orders/orders/{id}/release-draft-allocations)
+	ReleaseSalesOrderDraftAllocations(w http.ResponseWriter, r *http.Request, id int64)
 	// SendSalesOrder Send an order confirmation
 	// (POST /api/v1/orders/orders/{id}/send)
 	SendSalesOrder(w http.ResponseWriter, r *http.Request, id int64)
@@ -3247,6 +3290,32 @@ func (siw *ServerInterfaceWrapper) ReleaseSalesOrder(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReleaseSalesOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReleaseSalesOrderDraftAllocations operation middleware
+func (siw *ServerInterfaceWrapper) ReleaseSalesOrderDraftAllocations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReleaseSalesOrderDraftAllocations(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4486,6 +4555,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/orders/{id}/pdf", wrapper.GetSalesOrderPdf)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/orders/{id}/proforma", wrapper.GetSalesOrderProforma)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/release", wrapper.ReleaseSalesOrder)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/release-draft-allocations", wrapper.ReleaseSalesOrderDraftAllocations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/send", wrapper.SendSalesOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/undo-delivered", wrapper.UndoSalesOrderDelivered)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/unlock", wrapper.UnlockSalesOrder)
@@ -6119,6 +6189,79 @@ func (response ReleaseSalesOrder404Response) VisitReleaseSalesOrderResponse(w ht
 type ReleaseSalesOrder409ApplicationProblemPlusJSONResponse OrdersProblem
 
 func (response ReleaseSalesOrder409ApplicationProblemPlusJSONResponse) VisitReleaseSalesOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseSalesOrderDraftAllocationsRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *ReleaseSalesOrderDraftAllocationsJSONRequestBody
+}
+
+type ReleaseSalesOrderDraftAllocationsResponseObject interface {
+	VisitReleaseSalesOrderDraftAllocationsResponse(w http.ResponseWriter) error
+}
+
+type ReleaseSalesOrderDraftAllocations200JSONResponse OrdersOrder
+
+func (response ReleaseSalesOrderDraftAllocations200JSONResponse) VisitReleaseSalesOrderDraftAllocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseSalesOrderDraftAllocations401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReleaseSalesOrderDraftAllocations401JSONResponse) VisitReleaseSalesOrderDraftAllocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseSalesOrderDraftAllocations403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReleaseSalesOrderDraftAllocations403JSONResponse) VisitReleaseSalesOrderDraftAllocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseSalesOrderDraftAllocations404Response struct {
+}
+
+func (response ReleaseSalesOrderDraftAllocations404Response) VisitReleaseSalesOrderDraftAllocationsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ReleaseSalesOrderDraftAllocations409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response ReleaseSalesOrderDraftAllocations409ApplicationProblemPlusJSONResponse) VisitReleaseSalesOrderDraftAllocationsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -8878,6 +9021,9 @@ type StrictServerInterface interface {
 	// ReleaseSalesOrder Release a held order
 	// (POST /api/v1/orders/orders/{id}/release)
 	ReleaseSalesOrder(ctx context.Context, request ReleaseSalesOrderRequestObject) (ReleaseSalesOrderResponseObject, error)
+	// ReleaseSalesOrderDraftAllocations Release an order's draft invoice allocations
+	// (POST /api/v1/orders/orders/{id}/release-draft-allocations)
+	ReleaseSalesOrderDraftAllocations(ctx context.Context, request ReleaseSalesOrderDraftAllocationsRequestObject) (ReleaseSalesOrderDraftAllocationsResponseObject, error)
 	// SendSalesOrder Send an order confirmation
 	// (POST /api/v1/orders/orders/{id}/send)
 	SendSalesOrder(ctx context.Context, request SendSalesOrderRequestObject) (SendSalesOrderResponseObject, error)
@@ -9656,6 +9802,39 @@ func (sh *strictHandler) ReleaseSalesOrder(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ReleaseSalesOrderResponseObject); ok {
 		if err := validResponse.VisitReleaseSalesOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReleaseSalesOrderDraftAllocations operation middleware
+func (sh *strictHandler) ReleaseSalesOrderDraftAllocations(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ReleaseSalesOrderDraftAllocationsRequestObject
+
+	request.Id = id
+
+	var body ReleaseSalesOrderDraftAllocationsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReleaseSalesOrderDraftAllocations(ctx, request.(ReleaseSalesOrderDraftAllocationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReleaseSalesOrderDraftAllocations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReleaseSalesOrderDraftAllocationsResponseObject); ok {
+		if err := validResponse.VisitReleaseSalesOrderDraftAllocationsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

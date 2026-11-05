@@ -46,6 +46,8 @@ const (
 	codeLineHasProgress         = "line_has_progress"
 	codeLineKindChanged         = "line_kind_changed"
 	codeOrderOnHold             = "order_on_hold"
+	codeLineInDraftInvoice      = "line_in_draft_invoice"
+	codeOrderInDraftInvoice     = "order_in_draft_invoice"
 	codeBlockedByWarning        = "blocked_by_warning"
 
 	// A line's codes (OrdersProblemLine.code).
