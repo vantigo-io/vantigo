@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Å koble Vantigo til en Google Workspace-organisasjon gjennom en tjenestekonto med domenedekkende delegering — Google Cloud-prosjektet og Admin SDK API, tjenestekontoen og JSON-nøkkelen, å oppheve iam.disableServiceAccountKeyCreation for prosjektet, å laste opp nøkkelen, å delegere tilgangsområdene i administrasjonskonsollen og vente på dem, administratoren som skal etterlignes, den interne nettklienten og de to omdirigerings-URI-ene, å verifisere med Test tilkoblingen — deretter Tilkobling for personer (hver persons egen Google-tilkobling — bryteren, nettklienten som intern, å verifisere ved å koble til selv, å slå den av, hva som skjer med en persons tilkobling, google-sweep), kalendersynkronisering på hver persons tilkobling (endringsvarsler, verifisering, kopiene til en som slutter), E-postkanaler (bryteren, de to Gmail-tilgangsområdene og hva de når, en lisensiert postboks, verifisering, å slå den av, hva som kan gå galt), kontoene Ansatte holder i Google, kontoreglene (adressen, organisasjonsenheten, det første passordet og levetiden til det), lisenser, Ansattes grupper og de tre innstillingene deres, bilder i 96 px, hva stegene for en som slutter gjør, slett etter N dager, å bekrefte en konto eller en gruppe Vantigo ikke opprettet, å rotere en nøkkel, å bytte tjenestekonto, og hva som kan gå galt.
+description: Å koble Vantigo til en Google Workspace-organisasjon gjennom en tjenestekonto med domenedekkende delegering — Google Cloud-prosjektet og Admin SDK API, tjenestekontoen og JSON-nøkkelen, å oppheve iam.disableServiceAccountKeyCreation for prosjektet, å laste opp nøkkelen, å delegere tilgangsområdene i administrasjonskonsollen og vente på dem, administratoren som skal etterlignes, den interne nettklienten og de to omdirigerings-URI-ene, å verifisere med Test tilkoblingen — deretter Tilkobling for personer (hver persons egen Google-tilkobling — bryteren, nettklienten som intern, å verifisere ved å koble til selv, å slå den av, hva som skjer med en persons tilkobling, google-sweep), kalendersynkronisering på hver persons tilkobling (endringsvarsler, verifisering, kopiene til en som slutter), E-postkanaler (bryteren, de to Gmail-tilgangsområdene og hva de når, en lisensiert postboks, verifisering, å slå den av, hva som kan gå galt), sending fra en persons egen Gmail (hva det trenger, gmail.send på personens samtykke, hva personen ser, verifisering, forbeholdet om tråder), kontoene Ansatte holder i Google, kontoreglene (adressen, organisasjonsenheten, det første passordet og levetiden til det), lisenser, Ansattes grupper og de tre innstillingene deres, bilder i 96 px, hva stegene for en som slutter gjør, slett etter N dager, å bekrefte en konto eller en gruppe Vantigo ikke opprettet, å rotere en nøkkel, å bytte tjenestekonto, og hva som kan gå galt.
 sidebar:
   order: 47
 sources:
@@ -35,6 +35,7 @@ sources:
   - apps/server/internal/google/channel_mailbox.go
   - apps/server/internal/google/channel_mailbox_inbound.go
   - apps/server/internal/google/channel_mailbox_marks.go
+  - apps/server/internal/google/personal_mailbox.go
 ---
 
 Google Workspace-modulen kobler Vantigo til selskapets Google Workspace-organisasjon.
@@ -47,8 +48,8 @@ passord HR gir videre, holder profilen og lederen i samsvar, tildeler lisensene 
 gruppene deres, skriver bildet deres, og suspenderer kontoen når de slutter
 ([Kontoene](#kontoene)). Hver person kan koble til sin egen Google-konto
 ([Tilkobling for personer](#tilkobling-for-personer)), som
-[kalendersynkroniseringen](#kalendersynkronisering) bruker, og som sending fra deres egen
-Gmail skal bruke i en senere versjon. Kanalene i Kommunikasjon kan sende fra og lese
+[kalendersynkroniseringen](#kalendersynkronisering) bruker, og det samme gjør
+[sending fra egen Gmail-adresse](#sending-fra-en-persons-egen-gmail). Kanalene i Kommunikasjon kan sende fra og lese
 organisasjonens lisensierte Gmail-postbokser, som `post@`
 ([E-postkanaler](#e-postkanaler)).
 
@@ -253,8 +254,8 @@ sin.
 
 **Tilkobling for personer** lar hver person koble sin egen Google-konto til Vantigo én
 gang, under **Innstillinger → Tilkoblinger**, slik at
-[kalendersynkronisering](#kalendersynkronisering) til Google Kalender — og sending fra egen
-Gmail-adresse, i en senere versjon — handler som den personen med personens eget samtykke, aldri gjennom tjenestekontoen: ingen kalendertilgang
+[kalendersynkronisering](#kalendersynkronisering) til Google Kalender og
+[sending fra egen Gmail-adresse](#sending-fra-en-persons-egen-gmail) handler som den personen med personens eget samtykke, aldri gjennom tjenestekontoen: ingen kalendertilgang
 delegeres noen gang. Vantigo holder hver persons oppdateringstoken (refresh token)
 forseglet, og ingenting annet fra Google.
 
@@ -512,6 +513,64 @@ er delegert, under *Tilgangsområder Vantigo ikke bruker*.
   eller ga en etikett bort fra innboksen først, leses aldri — og hopper over en melding
   større enn `COMMUNICATIONS_INBOUND_MAX_BYTES` (25 MiB som standard). Å arkivere eller
   slette en melding i Gmail etter at den er lest, endrer ingenting i Vantigo.
+
+## Sending fra en persons egen Gmail
+
+En person med **Gmail** i tilkoblingen sin kan huke av for **Send fra min Gmail-adresse** i
+skrivefeltet i Kommunikasjon, i en ny samtale eller et svar, på hvilken som helst kanal.
+Meldingen går fra personens egen Gmail-adresse gjennom **personens egen tilkobling** —
+aldri gjennom tjenestekontoens delegering, uansett hva E-postkanaler står på —, havner
+under personens egen **Sendt**, og har kanalen som `Reply-To`, så kundens svar kommer til
+kanalens postboks ([Send fra din egen adresse](/nb/user/communications/#personlig-sending-og-ny-prøving)).
+
+### Hva det trenger
+
+- **Tilkobling for personer** på og klar ([over](#tilkobling-for-personer)). Ingenting
+  annet slås på: det finnes ingen egen bryter.
+- Tilgangsområdet `https://www.googleapis.com/auth/gmail.send`, som hver person gir selv på
+  Googles samtykkeside når hen kobler til for Gmail. Det lar Vantigo sende som personen og
+  ingenting annet: det kan ikke lese, liste eller merke e-posten. Det delegeres **ikke** til
+  tjenestekontoen; samtykkeskjermen til den interne nettklienten bør vise det ved siden av
+  kalendertilgangene, ellers svarer Google *samtykke mangler*.
+- Begrenser administrasjonskonsollen Gmail-API-et for tredjepartsapper, må nettklienten
+  være **Trusted** ([Før du slår den på](#før-du-slår-den-på)).
+
+### Hva personen ser
+
+Til tilkoblingen har Gmail, tilbyr skrivefeltet **Koble til Google** ved **Send fra min
+adresse**; Google spør om sending og om kalenderen på nytt, så tilkoblingen beholder begge.
+Må tilkoblingen kobles til på nytt i det meldingen skal gå, sendes den **ikke** fra kanalen
+i stedet: den mislykkes med en gang med *Sendingen mislyktes fordi e-posttilkoblingen din
+må kobles til på nytt.*, og personen kobler til på nytt og velger **Prøv å sende på nytt**.
+En personlig melding kan være omtrent **3 MB** i alt, som med Microsoft 365, uansett hva en
+Gmail-kanal tar.
+
+### Verifiser personlig sending
+
+1. Koble deg selv til for Gmail: åpne en samtale på en hvilken som helst kanal i
+   Kommunikasjon og velg **Koble til Google** i skrivefeltet; tillat sending på Googles side.
+2. **Innstillinger → Tilkoblinger** viser **Brukes av:** *Kalender, Gmail* (eller *Gmail*).
+3. Svar med **Send fra min Gmail-adresse** avhuket. Meldingen ligger under **Sendt** i
+   Gmail-en din, fra adressen din, med kanalen som **Reply-To**.
+4. Svar på den utenfra slik kunden ville: svaret kommer til kanalen og trådes inn i
+   samtalen.
+
+### Hva som kan gå galt med personlig sending
+
+- **Kundens svar på en ny samtale startet fra Gmail blir en ny samtale.** Gmail kan bytte ut
+  Message-ID-en til en melding den sender, og sendetilgangen kan ikke lese tilbake den Gmail
+  valgte. Et svar på et svar sendt fra Gmail trådes gjennom de tidligere meldingene det viser
+  til; et svar på en første melding trådes bare hvis Gmail beholdt Vantigos Message-ID.
+  Sjekk det én gang i organisasjonen som over, med en ny samtale; referansen fører det under
+  U6.
+- **Personen ser *Må kobles til på nytt* med *samtykke mangler*.** Hen fjernet haken for
+  sending på Googles side, eller samtykkeskjermen viser ikke `gmail.send`: koble til på nytt
+  og tillat hvert punkt.
+- **En melding mislykkes med `connection_needed`.** Tilkoblingen er utløpt, trukket
+  tilbake eller har ikke lenger Gmail: personen kobler til på nytt og prøver igjen. Ingenting
+  sendes fra kanalen i mellomtiden.
+- **En melding mislykkes som `mailbox_denied`.** Gmail avviste en mottaker eller selve
+  meldingen.
 
 ## Kontoene
 

@@ -1,6 +1,6 @@
 ---
 title: Communications
-description: Shared mailboxes, conversations with customers, receiving and sending email and suppressions — channels on SMTP or on a Microsoft 365 shared mailbox, mail received into a Microsoft 365 channel, reply and reply all, switching a channel to Microsoft 365, and the size a Microsoft 365 channel sends — and chat conversations on a Facebook Messenger channel, with answer options and the window in which a reply can be sent.
+description: Shared mailboxes, conversations with customers, receiving and sending email and suppressions — channels on SMTP or on a Microsoft 365 shared mailbox, mail received into a Microsoft 365 channel, reply and reply all, sending from your own Outlook or Gmail address, switching a channel to Microsoft 365, and the size a Microsoft 365 channel sends — and chat conversations on a Facebook Messenger channel, with answer options and the window in which a reply can be sent.
 sidebar:
   order: 80
 sources:
@@ -123,12 +123,14 @@ unavailable." — the administrator's side of that is under
 Choose **New conversation** in the toolbar to begin a new customer conversation: enter the
 recipient's email address in **To**, the **Subject**, and write your message.
 
-If you have connected your own Outlook under **Settings → Connections** (with the Mail
-permission granted), you can check **Send from my Outlook address (`you@yourcompany.com`)**
-— the checkbox names the service your own address is sent through. The
-email is sent through your personal Microsoft 365 mailbox, so it appears in your own Sent
-Items. Customer replies are still directed to the channel mailbox (`Reply-To`), keeping
-the conversation threaded in the shared inbox for your team.
+If you have connected your own mailbox under **Settings → Connections** — Outlook with
+the Mail permission granted, or Google with **Gmail** among its features — you can check
+**Send from my Outlook address (`you@yourcompany.com`)** or **Send from my Gmail address
+(`you@yourcompany.com`)**: the checkbox names the service your own address is sent through.
+The email is sent through your own mailbox, so it appears in your own **Sent Items** in
+Microsoft 365 or **Sent** in Gmail. Customer replies are still directed to the channel
+mailbox (`Reply-To`), keeping the conversation threaded in the shared inbox for your team.
+This works on any channel, whichever service the channel itself uses.
 
 ## Reply to a customer
 
@@ -137,26 +139,39 @@ the reply goes to ("Replying to …"): the sender of the customer's latest email
 email was also sent to others in copy (Cc), a **Reply mode** selector offers **Reply**,
 to the sender alone, or **Reply all · N**, which copies them too — the shared mailbox
 itself left out. By default, the reply is sent from the channel the conversation belongs to.
-If you have connected your own Outlook with the Mail permission, you can also check
-**Send from my Outlook address (`you@yourcompany.com`)** to send through your personal mailbox
-instead, with customer replies arriving back in the shared channel. It is sent as an answer
+If you have connected your own Outlook with the Mail permission, or your own Google
+account with Gmail, you can also check **Send from my Outlook address
+(`you@yourcompany.com`)** or **Send from my Gmail address (`you@yourcompany.com`)** to send
+through your own mailbox instead, with customer replies arriving back in the shared channel. It is sent as an answer
 to the customer's email, so it lands in the same thread in their mail program.
 
 ### Personal sending and retrying
 
 When **Send from my … address** is checked:
 - The `From` address is your directory email and display name, and the email lands in your
-  personal Sent Items in Microsoft 365.
+  own Sent Items in Microsoft 365, or your own **Sent** in Gmail.
 - The `Reply-To` address is the channel's address and display name, so replies from the
   customer arrive in the shared channel and thread into the conversation.
-- If your Outlook connection needs reconnecting, the composer offers an inline
-  **Connect Outlook** or **Reconnect Outlook** button. Once Microsoft answers, you are back
-  in the same conversation, with the filters you had.
-- If sending fails because your Outlook connection expired or needs multi-factor authentication,
-  the message card displays:
-  *Sending failed because your mail connection needs reconnecting.* with a **Reconnect Outlook**
-  button and a **Retry send** button. Once you have reconnected Outlook, choose **Retry send**
-  to queue the message again.
+- The message is never sent from the channel instead: if your own mailbox cannot send it,
+  it fails, and you choose what to do.
+- If your connection does not allow sending yet, or needs reconnecting, the composer offers
+  an inline button: **Connect Outlook** or **Reconnect Outlook**, or **Connect Google** or
+  **Reconnect Google**. A Google connection made for the calendar alone shows **Connect
+  Google** here too: it asks Google for your consent to send as you (Gmail), keeping the
+  calendar. Once Microsoft or Google answers, you are back in the same conversation, with
+  the filters you had.
+- If sending fails because your connection expired, was refused, needs multi-factor
+  authentication or no longer allows sending, the message card displays:
+  *Sending failed because your mail connection needs reconnecting.* with a **Reconnect
+  Outlook** or **Reconnect Google** button and a **Retry send** button. Once you have
+  reconnected, choose **Retry send** to queue the message again.
+- A message sent from your own address can be about 3 MB in all, attachments included,
+  whichever service sends it.
+- **Gmail and threading.** Gmail may give a message it sends its own Message-ID, and
+  Vantigo cannot read it back from your mailbox — it is only allowed to send. A customer's
+  answer to a **reply** you sent from Gmail still threads, by the earlier messages it
+  names. An answer to a **new conversation** you started from Gmail threads only if Gmail
+  kept Vantigo's Message-ID; otherwise it arrives as a new conversation in the channel.
 
 1. Write the message in the editor; bold, italic and bullet lists are available.
 2. **Attach file** stages a file. It appears as a badge with its name: green when it

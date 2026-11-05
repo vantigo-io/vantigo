@@ -123,8 +123,22 @@ organisation is not finished: tell your administrator.
 
 The **Google** card is the same for a company on Google Workspace: you connect your own
 Google account once, and Vantigo keeps the connection until you disconnect it, leave, or
-your administrator turns it off. Nothing uses it yet: calendar sync to Google Calendar and
-sending from your Gmail address come in later releases, each on this one connection.
+your administrator turns it off. Two features use it, each with its own consent on
+Google's page: **Calendar** — the calendar's
+[sync with Google Calendar](/en/user/calendar/#sync-with-google-calendar) — and **Gmail** —
+sending a message in Communications from your own Gmail address
+([Send from your own address](/en/user/communications/#personal-sending-and-retrying)), with
+the customer's answer directed to the shared channel. Gmail lets Vantigo **send** as you and
+nothing else: it never reads your mailbox.
+
+### Add Gmail to your connection
+
+Connecting from the calendar asks only for the calendar. To send from your Gmail address,
+choose **Connect Google** where Communications offers it — beside **Send from my address**
+in the composer, or on the Inbox — and allow sending on Google's page. Google asks again for
+the calendar too, so the connection keeps both; if you untick an item, that feature is not
+granted and the button stays. Once Gmail is granted, the card's **Used by:** lists *Gmail*,
+and the composer offers **Send from my Gmail address (`you@yourcompany.com`)**.
 
 The **Google** card offers a connection only when two things hold:
 
@@ -155,8 +169,8 @@ account, an account from another organisation — is refused, and nothing is con
 ### Connected to Google
 
 The card says **Connected as** and your account's address, **Since** the day you
-connected, and **Used by:** the features the connection serves: *Calendar* today, *Gmail* once your
-organisation uses it to send. Choose **Disconnect**, then confirm, to stop: Vantigo
+connected, and **Used by:** the features the connection serves: *Calendar*, *Gmail*, or
+both. Choose **Disconnect**, then confirm, to stop: Vantigo
 stops using your Google account until you connect again, and later, once nothing needs
 it, tells Google to forget the connection. Disconnecting does not sign you out of
 Google or of Vantigo. You can also end the connection yourself in your Google account's
@@ -169,7 +183,7 @@ security page, under the apps with access to your account; Vantigo then shows
 | --- | --- |
 | *Google no longer accepts the connection: it was revoked, it expired, or your password changed. Connect again.* | You removed Vantigo's access in your Google account, the connection went unused for six months, or a password change ended it. |
 | *Your organisation's Google policy blocks the connection. Ask your Google Workspace administrator.* | An administrator restricted Vantigo's web client in the Admin console, or your account is outside the organisation the app is for. |
-| *Google did not grant everything Vantigo asked for. Connect again and allow every item on Google's page.* | You, or a change at Google, removed part of what the connection needs. |
+| *Google did not grant everything Vantigo asked for. Connect again and allow every item on Google's page.* | You, or a change at Google, removed part of what the connection needs. A message you were sending from Gmail then fails with *Sending failed because your mail connection needs reconnecting.*; connect again and choose **Retry send**. |
 | *Sign in to Google again to keep the connection.* | Google refused the connection for another reason. |
 
 Only you see this. Your administrator sees how many people wait to reconnect on the

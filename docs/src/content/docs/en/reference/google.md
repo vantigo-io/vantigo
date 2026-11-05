@@ -1,6 +1,6 @@
 ---
 title: "Google Workspace module"
-description: "Google Workspace as a connection to one organisation through a service account's domain-wide delegation — the foundation: the module and why it requires Staff; the schema; the page and its four tabs; the permission and the Owner policy; the connection, the admin to impersonate and the credential kind under If-Match; the key file's rules, the keys in the plural, their try order and a refused key; the Internal web client and its secret; the guarded client, its fixed hosts and its limits; the delegated token, its cache and the one seam; Test connection, the needed and the unexpected scopes, and the statuses and their reasons; the events; the refusals and the endpoints; and the unverified items U2 and U14 — and the accounts (delivery B): the provisioner google and its status, the accounts and groups tables and the account rules, the correlation on the organization external id and the adoption, the address, the mapping, the first password, the licences, the leaver's steps, the delete, the groups' three traits, the photo at 96 px, and the unverified items U11, U12, U13, U16 and U19 — and connecting existing users (delivery C): the directory search identity serves, its two prefix queries, the exact matches by primary email, alias and employee number, their bounds, the announced link keyed by the Directory id, the Sign-in and Provisioning steps, and the unverified items U1 and U4 — and the person's own Google connection (delivery D): the connections table and the switch, the flow with its two cookies, PKCE and the ID token's checks, the features and the scopes as answered, the certain account checked three times, the states, the refresh and its failures, the closes, google-sweep, the codes, the endpoints and their limits, and the unverified items U1 and U9 — and calendar sync on the person's connection (delivery E): the MailboxCalendar google, its status and footing, the marker, the calendars the module makes, the batch endpoint, the delta with its sync token and link, ShowAs, the write-back's reads, the push channels and the anonymous notifications endpoint, and the unverified items U5, U7, U8 and U18 — and Gmail mail channels (delivery F): the Owner's Mail channels switch and its status, the two Gmail scopes and whom the test asks them as, the ChannelMailbox google and its status, channel_mailboxes, Check and its refusals, Send through the upload endpoint and the Message-ID read back, the delta over history.list and its g1. link, Raw, the labels for marks and folders, the refusals, the limits and the quota, and the unverified items U6, U10, U15 and U17."
+description: "Google Workspace as a connection to one organisation through a service account's domain-wide delegation — the foundation: the module and why it requires Staff; the schema; the page and its four tabs; the permission and the Owner policy; the connection, the admin to impersonate and the credential kind under If-Match; the key file's rules, the keys in the plural, their try order and a refused key; the Internal web client and its secret; the guarded client, its fixed hosts and its limits; the delegated token, its cache and the one seam; Test connection, the needed and the unexpected scopes, and the statuses and their reasons; the events; the refusals and the endpoints; and the unverified items U2 and U14 — and the accounts (delivery B): the provisioner google and its status, the accounts and groups tables and the account rules, the correlation on the organization external id and the adoption, the address, the mapping, the first password, the licences, the leaver's steps, the delete, the groups' three traits, the photo at 96 px, and the unverified items U11, U12, U13, U16 and U19 — and connecting existing users (delivery C): the directory search identity serves, its two prefix queries, the exact matches by primary email, alias and employee number, their bounds, the announced link keyed by the Directory id, the Sign-in and Provisioning steps, and the unverified items U1 and U4 — and the person's own Google connection (delivery D): the connections table and the switch, the flow with its two cookies, PKCE and the ID token's checks, the features and the scopes as answered, the certain account checked three times, the states, the refresh and its failures, the closes, google-sweep, the codes, the endpoints and their limits, and the unverified items U1 and U9 — and calendar sync on the person's connection (delivery E): the MailboxCalendar google, its status and footing, the marker, the calendars the module makes, the batch endpoint, the delta with its sync token and link, ShowAs, the write-back's reads, the push channels and the anonymous notifications endpoint, and the unverified items U5, U7, U8 and U18 — and Gmail mail channels (delivery F): the Owner's Mail channels switch and its status, the two Gmail scopes and whom the test asks them as, the ChannelMailbox google and its status, channel_mailboxes, Check and its refusals, Send through the upload endpoint and the Message-ID read back, the delta over history.list and its g1. link, Raw, the labels for marks and folders, the refusals, the limits and the quota, and the unverified items U6, U10, U15 and U17 — and sending from a person's own Gmail (delivery G): the PersonalMailbox google named Gmail, its status and reasons, Send on the person's own token for the mail feature through the upload endpoint into their Sent, the Message-ID read back only by a token that reads, the refusals, and the unverified items U6 and U9 for G."
 sources:
   - apps/server/internal/google
   - apps/google/frontend
@@ -41,8 +41,9 @@ calendar](#the-mailbox-calendar)): the calendar syncs a person's copies with the
 Google Calendar on that connection (E). It fills `contracts.ChannelMailbox` under the same
 key ([mail channels](#mail-channels)): behind the Owner's Mail channels switch,
 Communications' channels send from and read the organisation's licensed Gmail mailboxes
-through domain-wide delegation (F). Sending from a person's own Gmail comes in a later
-delivery. Every call takes its token from the one seam
+through domain-wide delegation (F). It fills `contracts.PersonalMailbox` under the same
+key ([personal sending](#personal-sending)): a person sends a conversation's message from
+their own Gmail address on their own connection (G). Every call takes its token from the one seam
 [`tokenSource`](#the-delegated-token) — the person's own token through the same
 interface. `MODULES` refuses `google` without
 `staff` (`google requires staff`): Staff's accounts worker is the provisioner's only
@@ -601,8 +602,8 @@ A connect names a **feature**, never a scope:
 Every connect also asks `openid email profile`, and the scopes of every feature the
 person's live row already holds, so the answer never depends on Google returning the
 union of an incremental grant. A row's features are those whose every scope is in
-`scopes`. In this release the host's card and button ask for `calendar`; `mail` is in the
-contract for delivery G.
+`scopes`. The calendar's button asks for `calendar`; Communications' composer and inbox
+ask for `mail` ([personal sending](#personal-sending)).
 
 ### The flow
 
@@ -1105,6 +1106,66 @@ the mailbox keeps answers 404), `labels.list` and `labels.create`, and the uploa
 `messages.send`, which threads a reply by its `In-Reply-To` and, when told to, replaces the
 Message-ID, as Gmail is reported to.
 
+## Personal sending
+
+`google` fills `contracts.PersonalMailbox` under `Key() = "google"`, `DisplayName() =
+"Gmail"` (`personal_mailbox.go`; design G35, on the Outlook design's M20 and Q5–Q7).
+Communications asks every provider's `Status` and records the one that answered with the
+message (`send_provider`), sending through it alone; Google answers `no_account` for a
+person whose directory account is not Google's.
+
+### Status
+
+From the module's rows and Staff's `DirectoryAccount`, no network, in order:
+
+| When | `Reason` |
+| --- | --- |
+| no principal; Connection for people off, or the web client not ready (`personalOffered`) | `unavailable` |
+| no [certain account](#the-certain-account) | `no_account` |
+| no live row of the caller's, a row of another account, a closing one | `not_connected` |
+| a row in `reconnect` | `reconnect`, `ErrorCode` the row's (`sign_in_again` when none) |
+| a row without `gmail.send` (connected for the calendar alone) | `not_connected` |
+| otherwise | available |
+
+Past `no_account`, `Mailbox` is the account's Directory id and `Address` its primary
+email: the `From` the outbox renders.
+
+### Send
+
+`Send(mime, bcc)` on `contracts.UserID(ctx)` — the author, `contracts.AsUser` in the
+outbox. Before any call: over `MaxPersonalMessageBytes` (3 000 000 bytes of MIME, P4 — the
+same for every provider) is `ErrMailTooLarge`; the switch off or the web client not ready,
+or no certain account, is `ErrConnectionNeeded` (`closing`); no live row of the caller's,
+or one of another account, `ErrConnectionNeeded` (`not_connected`); a blind copy the MIME's
+`Bcc:` header does not carry, `ErrBccUnsupported`. Then the person's token for the `mail`
+feature ([the token and its failures](#the-token-and-its-failures)): the account checked
+on use, the revision-guarded refresh; a row without `gmail.send` answers
+`ErrConnectionNeeded` (`consent_missing`) **without moving the row**, so the calendar keeps
+it. The MIME is uploaded through the same function as a channel's
+([Send](#send)) — `messages.send` with `uploadType=media`, made once, the sized budget,
+`quotaUser` the person's Directory id — and Gmail files it under the person's **Sent**.
+`Reply-To` is the channel, written into the MIME by Communications; nothing is ever sent
+through the service account or from the channel instead.
+
+It answers `SentMessage{ThreadID}`: Gmail's thread in the **person's** mailbox, which
+Communications records as `providerThreadId` and which threading, always within the
+channel, never meets. **The Message-ID is not read back** with the `mail` feature:
+`users.messages.get` needs `gmail.metadata`, `gmail.readonly`, `gmail.modify` or
+`https://mail.google.com/`, and `gmail.send` reads nothing. A connection whose granted
+scopes hold one of those has it read back as a channel's is; none does in this release.
+
+| Google answers | The contract | At Communications |
+| --- | --- | --- |
+| the token refused at a refresh, the account no longer usable, `gmail.send` missing | `ErrConnectionNeeded` with the code | `connection_needed`, failed at once; the person reconnects and retries |
+| a 401 after a fresh token | the row to `reconnect` (`sign_in_again`) at the token's revision; `ErrConnectionNeeded` | `connection_needed` |
+| the web client not set up, or refused | `ErrMailboxUnavailable` | held |
+| a 400 (a recipient or the message refused), a 403 that is no usage limit | `ErrMailboxDenied` | `mailbox_denied` |
+| a 413 | `ErrMailTooLarge` | `too_large` |
+| a usage limit past the one wait, a 5xx, no answer | `ErrMailboxUnavailable` | held, never sent another way |
+
+Nothing is logged of the message, an address, a token or Google's words: the provider
+names the person by their Directory id.
+
 ## The events
 
 Every write the module makes is a row in `google.events`, read newest first by
@@ -1286,6 +1347,19 @@ Four concern delivery F, built on the design's defensive path before they are se
 Besides: `licenseAssignments` is addressed by the user's primary email, as its
 reference documents; and the language codes written are `no` and `en-GB`.
 
+Two concern delivery G:
+
+- **U6 for a personal send.** The `mail` feature's `gmail.send` cannot read the
+  Message-ID back (Google's reference for `users.messages.get` admits no send scope), so
+  it is recorded from the reference, not the tenant: if Gmail replaces ours, a customer's
+  answer to a **new** conversation sent from a person's Gmail does not thread by its
+  `In-Reply-To` and starts a new conversation in the channel; an answer to a personal
+  **reply** threads by its `References`, which carry the customer's own earlier
+  Message-ID. If Gmail keeps ours, both thread. Asking `gmail.metadata` with the feature
+  would close it, at the price of reading every message's headers in the person's mailbox.
+- **U9** again: a connect for `mail` asks the held features' scopes again; a `scope`
+  answered without `gmail.send` is `consent_missing`, never assumed.
+
 ## Testing
 
 The module's tests run against `googletest`, a fake Google: its token endpoint checks the
@@ -1303,5 +1377,9 @@ events with `privateExtendedProperty`, windows, pages and sync tokens
 and `channels.stop` — to the person's own access token. `internal/integration` composes
 the calendar and this module together and drives the calendar's own worker against it;
 for mail channels it serves Gmail ([what this fake proves](#what-this-fake-proves)), and
-composes Communications with this module to drive a channel's create, send, sync and marks. The sweep's tests run on a pool of one connection. It comes in through `Deps.HTTPTransport`, so the
+composes Communications with this module to drive a channel's create, send, sync and marks,
+and a person's own send — a new conversation and a reply into their Sent, the answer
+threading back, a refused connection failing at once and the retry — beside a fake
+Entra provider. The fake's Gmail serves a person's own token, its subject the Directory
+id, as the user's mailbox. The sweep's tests run on a pool of one connection. It comes in through `Deps.HTTPTransport`, so the
 host guard runs in every test.
