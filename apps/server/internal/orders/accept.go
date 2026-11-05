@@ -57,7 +57,7 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 	if err != nil {
 		return nil, fmt.Errorf("orders: read quote %d: %w", req.Id, err)
 	}
-	if err := judgeAnswerable(quote, body.Revision); err != nil {
+	if err := judgeAnswerable(quote, body.Revision, body.ExpectedUpdatedAt); err != nil {
 		return answer(err, resp)
 	}
 	quoteLines, err := linesOf(ctx, q, ownerQuote, quote.ID)
@@ -79,14 +79,19 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 	// Accept and confirm judges the customer as a confirm does, from the
 	// billing profile read before the transaction.
 	var customer *contracts.CustomerBillingProfile
+	var p printer
 	if confirm {
 		if customer, err = s.billingProfile(ctx, quote.CustomerID); err != nil {
 			return answer(err, resp)
+		}
+		if p, err = s.readPrinter(ctx); err != nil {
+			return nil, err
 		}
 	}
 
 	var out gen.OrdersAccepted
 	var confirmed *store.OrdersOrder
+	var printed []byte
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		if err := s.lockLines(ctx, tx, invalidAcceptTitle, lines); err != nil {
 			return err
@@ -95,7 +100,7 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 		if err != nil {
 			return fmt.Errorf("orders: lock quote %d: %w", quote.ID, err)
 		}
-		if err := judgeAnswerable(locked, body.Revision); err != nil {
+		if err := judgeAnswerable(locked, body.Revision, body.ExpectedUpdatedAt); err != nil {
 			return err
 		}
 		order, orderLines, err := s.createOrder(ctx, tx, txq, CreateOrder{
@@ -110,6 +115,9 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 		}
 		if confirm {
 			if order, err = confirmOrderTx(ctx, s, tx, txq, order, orderLines, by, customer); err != nil {
+				return err
+			}
+			if printed, err = p.confirmation(order, orderLines, s.deps.Clock()); err != nil {
 				return err
 			}
 			confirmed = &order
@@ -132,7 +140,7 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 		return answer(err, resp)
 	}
 	if confirmed != nil && afterOrderConfirmed != nil {
-		afterOrderConfirmed(ctx, s, *confirmed)
+		afterOrderConfirmed(ctx, s, *confirmed, printed)
 	}
 	return gen.AcceptQuote200JSONResponse(out), nil
 }

@@ -269,6 +269,16 @@ func withLinesAndMailings(ctx context.Context, q *store.Queries, kind string, id
 // confirmed order keeps its snapshot, as Invoices keeps an issued invoice's;
 // orders.orders reports 0, and the order numbers kept are logged — the
 // answer carries counts only. Run again, it reports zeros.
+//
+// The stored PDFs print the person too. A confirmed order's are bookkeeping
+// material and are kept with it through its retention; a quote's — a sent
+// quote's, the only quotes that have any — are no record and go with the
+// quote. Deleting an object is a call out of the database, which this
+// transaction may not make, so the erase records the customer whenever a
+// stored PDF of theirs exists, and the orders.retention worker deletes the
+// stored PDFs (objects and orders.documents rows) of every anonymised quote
+// and order of theirs on its next cycle: the quotes' at once, a confirmed
+// order's once its retention has run and it was anonymised.
 func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, customerID int32) ([]contracts.ErasedData, error) {
 	now := p.clock()
 	q := store.New(tx)
@@ -294,10 +304,16 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 	if err != nil {
 		return nil, fmt.Errorf("orders: read customer %d's kept orders: %w", customerID, err)
 	}
-	if len(kept) > 0 {
+	documents, err := q.CustomerHasDocuments(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("orders: read whether customer %d has stored PDFs: %w", customerID, err)
+	}
+	if len(kept) > 0 || documents {
 		if err := q.RecordErasure(ctx, store.RecordErasureParams{CustomerID: customerID, RequestedAt: now}); err != nil {
 			return nil, fmt.Errorf("orders: record customer %d's erasure: %w", customerID, err)
 		}
+	}
+	if len(kept) > 0 {
 		p.logger.InfoContext(ctx, "orders: confirmed orders are kept as bookkeeping material until their retention has run (bokføringsloven § 13); orders.retention anonymises them then",
 			"customer_id", customerID, "order_numbers", kept)
 	}

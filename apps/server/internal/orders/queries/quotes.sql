@@ -97,6 +97,15 @@ SET status = 'accepted', accepted_at = sqlc.arg(now), accepted_into_kind = sqlc.
 WHERE id = sqlc.arg(id)
 RETURNING *;
 
+-- name: RestoreAcceptedQuote :one
+-- RestoreAcceptedQuote puts a quote accepted into an order back to sent when
+-- that draft order is deleted, so it can be accepted again; the expiry worker
+-- expires it as any sent quote when its valid-until has passed.
+UPDATE orders.quotes
+SET status = 'sent', accepted_at = NULL, accepted_into_kind = NULL, accepted_into_id = NULL, updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id) AND status = 'accepted' AND accepted_into_kind = 'order' AND accepted_into_id = sqlc.arg(order_id)::bigint
+RETURNING *;
+
 -- name: DeclineQuoteRow :one
 UPDATE orders.quotes
 SET status = 'declined', declined_at = sqlc.arg(now), decline_reason = sqlc.narg(reason), updated_at = sqlc.arg(now)

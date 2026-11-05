@@ -30,10 +30,11 @@ import (
 
 func init() {
 	confirmOrderTx = confirmTx
-	afterOrderConfirmed = func(ctx context.Context, s *server, order store.OrdersOrder) {
-		if _, _, err := s.ensureConfirmation(context.WithoutCancel(ctx), order.ID); err != nil {
+	afterOrderConfirmed = func(ctx context.Context, s *server, order store.OrdersOrder, body []byte) {
+		if _, _, err := s.storeConfirmation(context.WithoutCancel(ctx), order, body); err != nil {
 			// The confirmation is still printed and stored by the first
-			// download or send of this version (ensureConfirmation).
+			// download or send of this version (ensureConfirmation), while
+			// the order is at it.
 			s.deps.Logger.WarnContext(ctx, "orders: a confirmation's PDF could not be stored", "order_id", order.ID, "error", err.Error())
 		}
 	}
@@ -111,9 +112,11 @@ func orderAnswers[R any](bad func(gen.OrdersProblem) R, nf func() R, cf func(gen
 // ConfirmSalesOrder Confirm an order
 // (POST /api/v1/orders/orders/{id}/confirm)
 //
-// The customer's billing profile is read before the transaction, which locks
-// the lines' variants first, then the order, and confirms it (confirmTx);
-// the confirmation's PDF is stored after the commit (O24).
+// The customer's billing profile, the seller and the time zone are read
+// before the transaction, which locks the lines' variants first, then the
+// order, confirms it (confirmTx) and prints the confirmation from the rows it
+// confirmed; the PDF is stored after the commit (O24), at the version the
+// confirm produced.
 func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrderRequestObject) (gen.ConfirmSalesOrderResponseObject, error) {
 	resp := orderAnswers(
 		func(p gen.OrdersProblem) gen.ConfirmSalesOrderResponseObject {
@@ -130,7 +133,7 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 	if err != nil {
 		return answer(err, resp)
 	}
-	if err := judgeVersion(cur, req.Body.Version); err != nil {
+	if err := judgeVersion(cur, req.Body.Version, req.Body.ExpectedUpdatedAt); err != nil {
 		return answer(err, resp)
 	}
 	customer, err := s.billingProfile(ctx, cur.CustomerID)
@@ -141,7 +144,12 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 	if err != nil {
 		return nil, err
 	}
+	p, err := s.readPrinter(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var confirmed store.OrdersOrder
+	var printed []byte
 	var out gen.OrdersOrder
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		if err := s.lockLines(ctx, tx, invalidConfirmTitle, pricedLinesOf(lines)); err != nil {
@@ -151,7 +159,7 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 		if err != nil {
 			return err
 		}
-		if err := judgeVersion(o, req.Body.Version); err != nil {
+		if err := judgeVersion(o, req.Body.Version, req.Body.ExpectedUpdatedAt); err != nil {
 			return err
 		}
 		locked, err := linesOf(ctx, txq, ownerOrder, o.ID)
@@ -161,13 +169,16 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 		if confirmed, err = confirmTx(ctx, s, tx, txq, o, locked, by, customer); err != nil {
 			return err
 		}
+		if printed, err = p.confirmation(confirmed, locked, s.deps.Clock()); err != nil {
+			return err
+		}
 		out = orderView(confirmed, locked)
 		return nil
 	})
 	if err != nil {
 		return answer(err, resp)
 	}
-	afterOrderConfirmed(ctx, s, confirmed)
+	afterOrderConfirmed(ctx, s, confirmed, printed)
 	return gen.ConfirmSalesOrder200JSONResponse(out), nil
 }
 
@@ -175,7 +186,7 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 // version, and writes it with write, which answers the order as it now is
 // and the actions to log; the entry is logged at the order's version after
 // the write. It answers the order as the API does.
-func (s *server) changeOrder(ctx context.Context, id int64, version int32, lockVariants bool,
+func (s *server) changeOrder(ctx context.Context, id int64, version int32, expected time.Time, lockVariants bool,
 	write func(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.OrdersOrder, lines []store.OrdersLine) (store.OrdersOrder, []changeAction, error)) (gen.OrdersOrder, error) {
 	by, err := s.actorFor(ctx)
 	if err != nil {
@@ -189,14 +200,19 @@ func (s *server) changeOrder(ctx context.Context, id int64, version int32, lockV
 	}
 	var out gen.OrdersOrder
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
-		if err := s.lockLines(ctx, tx, invalidOrderTitle, pricedLinesOf(before)); err != nil {
-			return err
+		// The variants are locked to hold them while the lines change, not
+		// to judge them: a line's variant gone from the catalog is no
+		// refusal here.
+		if ids := variantIDsOf(pricedLinesOf(before)); len(ids) > 0 {
+			if _, err := s.lockVariants(ctx, tx, ids); err != nil {
+				return err
+			}
 		}
 		o, err := lockOrder(ctx, txq, id)
 		if err != nil {
 			return err
 		}
-		if err := judgeVersion(o, version); err != nil {
+		if err := judgeVersion(o, version, expected); err != nil {
 			return err
 		}
 		lines, err := linesOf(ctx, txq, ownerOrder, id)
@@ -241,7 +257,7 @@ func (s *server) HoldSalesOrder(ctx context.Context, req gen.HoldSalesOrderReque
 	if f.failed() {
 		return gen.HoldSalesOrder400ApplicationProblemPlusJSONResponse(invalid(invalidHoldTitle, f)), nil
 	}
-	out, err := s.changeOrder(ctx, req.Id, req.Body.Version, false,
+	out, err := s.changeOrder(ctx, req.Id, req.Body.Version, req.Body.ExpectedUpdatedAt, false,
 		func(ctx context.Context, _ pgx.Tx, txq *store.Queries, o store.OrdersOrder, _ []store.OrdersLine) (store.OrdersOrder, []changeAction, error) {
 			if err := judgeConfirmed(o); err != nil {
 				return o, nil, err
@@ -268,7 +284,7 @@ func (s *server) ReleaseSalesOrder(ctx context.Context, req gen.ReleaseSalesOrde
 		func(p gen.OrdersProblem) gen.ReleaseSalesOrderResponseObject {
 			return gen.ReleaseSalesOrder409ApplicationProblemPlusJSONResponse(p)
 		})
-	out, err := s.changeOrder(ctx, req.Id, req.Body.Version, false,
+	out, err := s.changeOrder(ctx, req.Id, req.Body.Version, req.Body.ExpectedUpdatedAt, false,
 		func(ctx context.Context, _ pgx.Tx, txq *store.Queries, o store.OrdersOrder, _ []store.OrdersLine) (store.OrdersOrder, []changeAction, error) {
 			if !o.OnHold {
 				return o, nil, nil
@@ -287,8 +303,8 @@ func (s *server) ReleaseSalesOrder(ctx context.Context, req gen.ReleaseSalesOrde
 
 // setLocked is lock and unlock (O18): a confirmed order only; one already so
 // is answered as it is, and nothing is logged.
-func (s *server) setLocked(ctx context.Context, id int64, version int32, locked bool) (gen.OrdersOrder, error) {
-	return s.changeOrder(ctx, id, version, false,
+func (s *server) setLocked(ctx context.Context, id int64, version int32, expected time.Time, locked bool) (gen.OrdersOrder, error) {
+	return s.changeOrder(ctx, id, version, expected, false,
 		func(ctx context.Context, _ pgx.Tx, txq *store.Queries, o store.OrdersOrder, _ []store.OrdersLine) (store.OrdersOrder, []changeAction, error) {
 			if err := judgeConfirmed(o); err != nil {
 				return o, nil, err
@@ -311,7 +327,7 @@ func (s *server) setLocked(ctx context.Context, id int64, version int32, locked 
 // LockSalesOrder Lock an order
 // (POST /api/v1/orders/orders/{id}/lock)
 func (s *server) LockSalesOrder(ctx context.Context, req gen.LockSalesOrderRequestObject) (gen.LockSalesOrderResponseObject, error) {
-	out, err := s.setLocked(ctx, req.Id, req.Body.Version, true)
+	out, err := s.setLocked(ctx, req.Id, req.Body.Version, req.Body.ExpectedUpdatedAt, true)
 	if err != nil {
 		return answer(err, orderAnswers(nil,
 			func() gen.LockSalesOrderResponseObject { return gen.LockSalesOrder404Response{} },
@@ -325,7 +341,7 @@ func (s *server) LockSalesOrder(ctx context.Context, req gen.LockSalesOrderReque
 // UnlockSalesOrder Unlock an order
 // (POST /api/v1/orders/orders/{id}/unlock)
 func (s *server) UnlockSalesOrder(ctx context.Context, req gen.UnlockSalesOrderRequestObject) (gen.UnlockSalesOrderResponseObject, error) {
-	out, err := s.setLocked(ctx, req.Id, req.Body.Version, false)
+	out, err := s.setLocked(ctx, req.Id, req.Body.Version, req.Body.ExpectedUpdatedAt, false)
 	if err != nil {
 		return answer(err, orderAnswers(nil,
 			func() gen.UnlockSalesOrderResponseObject { return gen.UnlockSalesOrder404Response{} },
@@ -340,16 +356,21 @@ func (s *server) UnlockSalesOrder(ctx context.Context, req gen.UnlockSalesOrderR
 // (POST /api/v1/orders/orders/{id}/cancel)
 //
 // A draft or a confirmed order with nothing delivered or invoiced is
-// cancelled (O18); after that the order has progress (order_has_progress) and
+// cancelled (O18) — a locked one is unlocked first (order_locked); after that the order has progress (order_has_progress) and
 // Cancel remaining is the way. orders.sales_order.cancelled.v1 is published
 // for an order that was confirmed — a draft was never on the customer's
 // timeline.
 func (s *server) CancelSalesOrder(ctx context.Context, req gen.CancelSalesOrderRequestObject) (gen.CancelSalesOrderResponseObject, error) {
-	out, err := s.changeOrder(ctx, req.Id, req.Body.Version, true,
+	out, err := s.changeOrder(ctx, req.Id, req.Body.Version, req.Body.ExpectedUpdatedAt, true,
 		func(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.OrdersOrder, lines []store.OrdersLine) (store.OrdersOrder, []changeAction, error) {
 			if o.Status == orderCancelled {
 				return o, nil, conflict(codeOrderNotConfirmed, "The order is cancelled",
 					fmt.Sprintf("Order %d is cancelled already.", o.Number))
+			}
+			if o.Status == orderConfirmed {
+				if err := judgeUnlocked(o); err != nil {
+					return o, nil, err
+				}
 			}
 			if hasProgress(lines) {
 				return o, nil, conflict(codeOrderHasProgress, "The order has progress",
@@ -387,7 +408,7 @@ func (s *server) CancelSalesOrder(ctx context.Context, req gen.CancelSalesOrderR
 // bumped, the derived statuses recomputed, cancelled_remaining logged per line
 // and orders.sales_order.changed.v1 published; otherwise nothing is written.
 func (s *server) CancelSalesOrderRemaining(ctx context.Context, req gen.CancelSalesOrderRemainingRequestObject) (gen.CancelSalesOrderRemainingResponseObject, error) {
-	out, err := s.changeOrder(ctx, req.Id, req.Body.Version, true,
+	out, err := s.changeOrder(ctx, req.Id, req.Body.Version, req.Body.ExpectedUpdatedAt, true,
 		func(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.OrdersOrder, lines []store.OrdersLine) (store.OrdersOrder, []changeAction, error) {
 			if err := judgeConfirmed(o); err != nil {
 				return o, nil, err

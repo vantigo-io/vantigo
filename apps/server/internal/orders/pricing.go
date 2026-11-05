@@ -100,6 +100,9 @@ type pricedLine struct {
 	amounts           docmath.LineAmounts
 	externalLineID    *string
 	optional          bool
+	// frozen is a confirmed order's kept line priced from its own row
+	// (keptFrozen): its variant is held by lockLines, not judged.
+	frozen bool
 }
 
 // pricedLineOf is a stored line as it would be written again, unchanged:
@@ -228,6 +231,43 @@ type priceOptions struct {
 	pricesIncludeVat bool
 	allowOptional    bool
 	repriceKept      bool
+	// frozenKept prices a confirmed order's kept lines from their own rows
+	// (keptFrozen).
+	frozenKept bool
+}
+
+// keptFrozen reports whether a confirmed order's save keeps line l over its
+// stored row old as frozen (O16, O26): a product line naming the same variant
+// (or none, free text, as before) and no other packaging. Such a line keeps
+// its item, SKU, catalog name, unit and VAT code, rate and category as they
+// were confirmed — the catalog is not read for it, so a variant deleted or
+// re-categorised since changes nothing — and takes only what O26 lets a save
+// change: its quantity, price, discount and text.
+func keptFrozen(l lineInput, old store.OrdersLine) bool {
+	return l.kind == kindProduct && old.Kind == kindProduct && equalInt32(l.variantID, old.VariantID) &&
+		(l.packagingID == nil || (equalInt32(l.packagingID, old.PackagingID) && old.PackagingQuantity.Valid && old.Quantity.Valid))
+}
+
+// judgeKinds refuses a save that changes a kept line's kind
+// (line_kind_changed): a line keeps its kind for as long as it keeps its id;
+// a client removes it and adds a new one instead.
+func judgeKinds(in []lineInput, existing []store.OrdersLine) error {
+	old := byID(existing)
+	for _, l := range in {
+		if l.id == nil {
+			continue
+		}
+		if o, ok := old[*l.id]; ok && o.Kind != l.kind {
+			return lineKindChanged(o)
+		}
+	}
+	return nil
+}
+
+// lineKindChanged is the refusal of a kept line whose kind changed.
+func lineKindChanged(o store.OrdersLine) error {
+	return conflict(codeLineKindChanged, "A line's kind cannot change",
+		fmt.Sprintf("Line %d is a %s; a line keeps its kind. Remove it and add a new line instead.", o.Position, o.Kind))
 }
 
 // priceLines prices every line in (O16), over existing — the document's
@@ -312,9 +352,15 @@ func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOpt
 	}
 	p.optional = l.optional
 
-	// The catalog item and its snapshot.
+	frozen := opts.frozenKept && old != nil && keptFrozen(l, *old)
+	p.frozen = frozen
+
+	// The catalog item and its snapshot: a frozen line's from its row.
 	var variant *contracts.VariantEntry
-	if l.variantID != nil {
+	switch {
+	case frozen && old.VariantID != nil:
+		p.variantID, p.sku, p.name, p.unit = old.VariantID, old.Sku, old.Name, old.Unit
+	case l.variantID != nil:
 		v, ok := r.variants[*l.variantID]
 		if !ok {
 			return p, codeVariantNotFound, fmt.Sprintf("Variant %d is not in the catalog.", *l.variantID)
@@ -327,7 +373,7 @@ func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOpt
 		if l.description == nil && (old == nil || old.VariantID == nil || *old.VariantID != v.ID) {
 			p.description = v.Description
 		}
-	} else {
+	default:
 		oldName := ""
 		if old != nil && old.VariantID == nil {
 			oldName = deref(old.Name)
@@ -341,7 +387,13 @@ func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOpt
 		}
 		p.name = textPtr(name)
 	}
-	if l.unit != nil || variant == nil {
+	switch {
+	case frozen:
+		if l.unit != nil && strings.TrimSpace(*l.unit) != old.Unit {
+			return p, codeLineInvalid, "A confirmed order's line keeps its unit; add a new line instead."
+		}
+		p.unit = old.Unit
+	case l.unit != nil || variant == nil:
 		oldUnit := ""
 		if old != nil {
 			oldUnit = old.Unit
@@ -353,14 +405,23 @@ func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOpt
 		p.unit = unit
 	}
 
-	// The VAT code: a catalog line's from its category (O16), a free-text
-	// line's as picked, else the standard category's.
+	// The VAT code: a frozen line's as it was confirmed, a catalog line's
+	// from its category (O16), a free-text line's as picked, else the
+	// standard category's.
+	if frozen {
+		if l.vatCodeID != nil && !equalInt32(l.vatCodeID, old.VatCodeID) {
+			return p, codeLineInvalid, "A confirmed order's line keeps its VAT code; add a new line instead."
+		}
+		p.vatCodeID, p.vatCode, p.vatRate, p.vatCategory = old.VatCodeID, old.VatCode, ratOf(old.VatRatePercent), old.VatCategory
+	}
 	var code *contracts.VATCodeEntry
-	if variant != nil {
+	switch {
+	case frozen:
+	case variant != nil:
 		if c, ok := r.taxes[variant.TaxCategoryID]; ok {
 			code = &c
 		}
-	} else {
+	default:
 		switch {
 		case l.vatCodeID != nil:
 			if code = r.code(*l.vatCodeID); code == nil {
@@ -382,6 +443,21 @@ func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOpt
 
 	// The quantity, through a packaging when one is named (O15).
 	switch {
+	case frozen && l.packagingID != nil:
+		// The packaging the line was confirmed in, its size from the row.
+		if l.packagingQuantity == nil {
+			return p, codeQuantityInvalid, "A line entered in a packaging needs how many of it."
+		}
+		count, msg := parseQuantity(*l.packagingQuantity)
+		if msg != "" {
+			return p, codeQuantityInvalid, msg
+		}
+		size := new(big.Rat).Quo(ratOf(old.Quantity), ratOf(old.PackagingQuantity))
+		p.packagingID, p.packagingQuantity = old.PackagingID, count
+		p.quantity = new(big.Rat).Mul(count, size)
+		if p.quantity.Cmp(maxQuantity) > 0 {
+			return p, codeQuantityInvalid, "The quantity is too large."
+		}
 	case l.packagingID != nil:
 		if variant == nil {
 			return p, codePackagingNotFound, "A free-text line has no packagings."
@@ -622,7 +698,7 @@ func (s *server) lockLines(ctx context.Context, tx pgx.Tx, title string, lines [
 	}
 	var failures []lineFailure
 	for i, l := range lines {
-		if l.variantID != nil && !present[*l.variantID] {
+		if l.variantID != nil && !present[*l.variantID] && !l.frozen {
 			failures = append(failures, lineFailure{index: i, code: codeVariantNotFound,
 				detail: fmt.Sprintf("Variant %d is no longer in the catalog.", *l.variantID)})
 		}

@@ -421,6 +421,9 @@ func (s *server) priceInputs(ctx context.Context, inputs *[]lineInput, skipped *
 }
 
 func (s *server) priceInputsAt(ctx context.Context, inputs *[]lineInput, skipped *[]gen.OrdersSkippedLine, existing []store.OrdersLine, h header, reprice bool, at time.Time) ([]pricedLine, error) {
+	if err := judgeKinds(*inputs, existing); err != nil {
+		return nil, err
+	}
 	reads, err := s.readPricing(ctx, *inputs, h.Currency, at)
 	if err != nil {
 		return nil, err
@@ -455,7 +458,7 @@ func (s *server) UpdateQuote(ctx context.Context, req gen.UpdateQuoteRequestObje
 		return gen.UpdateQuote400ApplicationProblemPlusJSONResponse(invalid(invalidQuoteTitle, f)), nil
 	}
 	body := *req.Body
-	cur, curLines, err := s.draftQuote(ctx, req.Id, body.Revision)
+	cur, curLines, err := s.draftQuote(ctx, req.Id, body.Revision, body.ExpectedUpdatedAt)
 	if err != nil {
 		return answer(err, resp)
 	}
@@ -487,7 +490,7 @@ func (s *server) UpdateQuote(ctx context.Context, req gen.UpdateQuoteRequestObje
 	}
 	var out gen.OrdersQuote
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
-		row, lines, err := s.saveDraftQuote(ctx, tx, txq, req.Id, body.Revision, h, priced, validUntil, cur.TemplateID)
+		row, lines, err := s.saveDraftQuote(ctx, tx, txq, req.Id, body.Revision, body.ExpectedUpdatedAt, h, priced, validUntil, cur.TemplateID)
 		if err != nil {
 			return err
 		}
@@ -500,27 +503,33 @@ func (s *server) UpdateQuote(ctx context.Context, req gen.UpdateQuoteRequestObje
 	return gen.UpdateQuote200JSONResponse(out), nil
 }
 
-// draftQuote reads a quote and its lines for a write that needs a draft at
-// revision: notFound, quote_not_draft or version_conflict otherwise.
-func (s *server) draftQuote(ctx context.Context, id int64, revision int32) (store.OrdersQuote, []store.OrdersLine, error) {
-	q := store.New(s.deps.Pool)
-	row, err := q.GetQuote(ctx, id)
-	if noRows(err) {
-		return row, nil, notFound()
-	}
-	if err != nil {
-		return row, nil, fmt.Errorf("orders: read quote %d: %w", id, err)
-	}
-	if err := judgeDraft(row, revision); err != nil {
-		return row, nil, err
-	}
-	lines, err := linesOf(ctx, q, ownerQuote, id)
+// draftQuote reads a quote and its lines, in one snapshot, for a write that
+// needs a draft at revision and as it was at expected: notFound,
+// quote_not_draft or version_conflict otherwise.
+func (s *server) draftQuote(ctx context.Context, id int64, revision int32, expected time.Time) (store.OrdersQuote, []store.OrdersLine, error) {
+	var row store.OrdersQuote
+	var lines []store.OrdersLine
+	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
+		var err error
+		row, err = q.GetQuote(ctx, id)
+		if noRows(err) {
+			return notFound()
+		}
+		if err != nil {
+			return fmt.Errorf("orders: read quote %d: %w", id, err)
+		}
+		if err := judgeDraft(row, revision, expected); err != nil {
+			return err
+		}
+		lines, err = linesOf(ctx, q, ownerQuote, id)
+		return err
+	})
 	return row, lines, err
 }
 
 // judgeDraft refuses a write to a quote that is not a draft, or not at the
-// revision the client read.
-func judgeDraft(row store.OrdersQuote, revision int32) error {
+// revision the client read, or written since the client read it (judgeFresh).
+func judgeDraft(row store.OrdersQuote, revision int32, expected time.Time) error {
 	if row.Status != quoteDraft {
 		return conflict(codeQuoteNotDraft, "The quote is not a draft",
 			fmt.Sprintf("Quote %d is %s; only a draft can be changed. Revise it first.", row.Number, row.Status))
@@ -528,7 +537,7 @@ func judgeDraft(row store.OrdersQuote, revision int32) error {
 	if row.Revision != revision {
 		return versionConflict("quote's revision", row.Revision, revision)
 	}
-	return nil
+	return judgeFresh("quote", row.UpdatedAt, expected)
 }
 
 // repriceKept reports whether a draft's kept catalog lines are priced again
@@ -547,7 +556,7 @@ func (s *server) repriceKept(ctx context.Context, fromCurrency, toCurrency strin
 
 // saveDraftQuote writes a draft's new header and lines on tx: the variants'
 // locks first (MB rule 21), then the quote's, judged again under it.
-func (s *server) saveDraftQuote(ctx context.Context, tx pgx.Tx, txq *store.Queries, id int64, revision int32, h header, priced []pricedLine, validUntil pgtype.Date, templateID *int64) (store.OrdersQuote, []store.OrdersLine, error) {
+func (s *server) saveDraftQuote(ctx context.Context, tx pgx.Tx, txq *store.Queries, id int64, revision int32, expected time.Time, h header, priced []pricedLine, validUntil pgtype.Date, templateID *int64) (store.OrdersQuote, []store.OrdersLine, error) {
 	if err := s.lockLines(ctx, tx, invalidQuoteTitle, priced); err != nil {
 		return store.OrdersQuote{}, nil, err
 	}
@@ -558,7 +567,7 @@ func (s *server) saveDraftQuote(ctx context.Context, tx pgx.Tx, txq *store.Queri
 	if err != nil {
 		return locked, nil, fmt.Errorf("orders: lock quote %d: %w", id, err)
 	}
-	if err := judgeDraft(locked, revision); err != nil {
+	if err := judgeDraft(locked, revision, expected); err != nil {
 		return locked, nil, err
 	}
 	row, err := txq.UpdateQuoteDraft(ctx, updateQuoteParams(id, h, totalsOfPriced(priced), validUntil, templateID, s.deps.Clock()))
@@ -573,6 +582,7 @@ func (s *server) saveDraftQuote(ctx context.Context, tx pgx.Tx, txq *store.Queri
 // (DELETE /api/v1/orders/quotes/{id})
 //
 // Only a quote never sent is deleted (O54); its number is left a gap (O12).
+// expectedUpdatedAt is the quote as the client read it (version_conflict).
 func (s *server) DeleteQuote(ctx context.Context, req gen.DeleteQuoteRequestObject) (gen.DeleteQuoteResponseObject, error) {
 	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		row, err := txq.LockQuote(ctx, req.Id)
@@ -585,6 +595,9 @@ func (s *server) DeleteQuote(ctx context.Context, req gen.DeleteQuoteRequestObje
 		if row.Status != quoteDraft || row.SentAt != nil || row.Revision > 1 {
 			return conflict(codeQuoteNotDraft, "The quote cannot be deleted",
 				fmt.Sprintf("Quote %d has been sent; a sent quote is kept. Cancel it instead.", row.Number))
+		}
+		if err := judgeFresh("quote", row.UpdatedAt, req.Params.ExpectedUpdatedAt); err != nil {
+			return err
 		}
 		if err := txq.DeleteLinesOf(ctx, store.DeleteLinesOfParams{OwnerKind: ownerQuote, OwnerID: row.ID}); err != nil {
 			return fmt.Errorf("orders: delete quote %d's lines: %w", row.ID, err)
@@ -606,11 +619,27 @@ func (s *server) DeleteQuote(ctx context.Context, req gen.DeleteQuoteRequestObje
 }
 
 // changeQuoteState locks a quote, judges it with judge and writes it with
-// write, on one transaction, and answers it as the API does.
-func (s *server) changeQuoteState(ctx context.Context, id int64, judge func(store.OrdersQuote) error,
+// write, on one transaction, and answers it as the API does. lockVariants
+// locks its lines' variants first (MB rule 21), for a write that opens the
+// quote again — an open quote holds its variants against a delete (O30).
+func (s *server) changeQuoteState(ctx context.Context, id int64, lockVariants bool, judge func(store.OrdersQuote) error,
 	write func(ctx context.Context, txq *store.Queries, row store.OrdersQuote) (store.OrdersQuote, error)) (gen.OrdersQuote, error) {
+	var ids []int32
+	if lockVariants {
+		lines, err := linesOf(ctx, store.New(s.deps.Pool), ownerQuote, id)
+		if err != nil {
+			return gen.OrdersQuote{}, err
+		}
+		ids = variantIDsOf(pricedLinesOf(lines))
+	}
 	var out gen.OrdersQuote
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err := s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+		// Held, not judged: a variant gone from the catalog is no refusal.
+		if len(ids) > 0 {
+			if _, err := s.lockVariants(ctx, tx, ids); err != nil {
+				return err
+			}
+		}
 		row, err := txq.LockQuote(ctx, id)
 		if noRows(err) {
 			return notFound()
@@ -631,8 +660,8 @@ func (s *server) changeQuoteState(ctx context.Context, id int64, judge func(stor
 }
 
 // judgeAnswerable refuses a quote that is not out with the customer — sent,
-// or expired (O20) — or not at revision.
-func judgeAnswerable(row store.OrdersQuote, revision int32) error {
+// or expired (O20) — or not at revision, or written since expected.
+func judgeAnswerable(row store.OrdersQuote, revision int32, expected time.Time) error {
 	switch row.Status {
 	case quoteSent, quoteExpired:
 	case quoteAccepted:
@@ -645,7 +674,7 @@ func judgeAnswerable(row store.OrdersQuote, revision int32) error {
 	if row.Revision != revision {
 		return versionConflict("quote's revision", row.Revision, revision)
 	}
-	return nil
+	return judgeFresh("quote", row.UpdatedAt, expected)
 }
 
 // ReviseQuote Revise a sent quote
@@ -657,8 +686,10 @@ func (s *server) ReviseQuote(ctx context.Context, req gen.ReviseQuoteRequestObje
 			return gen.ReviseQuote409ApplicationProblemPlusJSONResponse(p)
 		},
 	}
-	out, err := s.changeQuoteState(ctx, req.Id,
-		func(row store.OrdersQuote) error { return judgeAnswerable(row, req.Body.Revision) },
+	out, err := s.changeQuoteState(ctx, req.Id, true,
+		func(row store.OrdersQuote) error {
+			return judgeAnswerable(row, req.Body.Revision, req.Body.ExpectedUpdatedAt)
+		},
 		func(ctx context.Context, txq *store.Queries, row store.OrdersQuote) (store.OrdersQuote, error) {
 			return txq.ReviseQuoteRow(ctx, store.ReviseQuoteRowParams{ID: row.ID, Now: s.deps.Clock()})
 		})
@@ -691,8 +722,10 @@ func (s *server) DeclineQuote(ctx context.Context, req gen.DeclineQuoteRequestOb
 	if f.failed() {
 		return gen.DeclineQuote400ApplicationProblemPlusJSONResponse(invalid(invalidQuoteTitle, f)), nil
 	}
-	out, err := s.changeQuoteState(ctx, req.Id,
-		func(row store.OrdersQuote) error { return judgeAnswerable(row, req.Body.Revision) },
+	out, err := s.changeQuoteState(ctx, req.Id, false,
+		func(row store.OrdersQuote) error {
+			return judgeAnswerable(row, req.Body.Revision, req.Body.ExpectedUpdatedAt)
+		},
 		func(ctx context.Context, txq *store.Queries, row store.OrdersQuote) (store.OrdersQuote, error) {
 			return txq.DeclineQuoteRow(ctx, store.DeclineQuoteRowParams{ID: row.ID, Now: ptr(s.deps.Clock()), Reason: reason})
 		})
@@ -711,7 +744,7 @@ func (s *server) CancelQuote(ctx context.Context, req gen.CancelQuoteRequestObje
 			return gen.CancelQuote409ApplicationProblemPlusJSONResponse(p)
 		},
 	}
-	out, err := s.changeQuoteState(ctx, req.Id,
+	out, err := s.changeQuoteState(ctx, req.Id, false,
 		func(row store.OrdersQuote) error {
 			switch row.Status {
 			case quoteDraft, quoteSent:
@@ -725,7 +758,7 @@ func (s *server) CancelQuote(ctx context.Context, req gen.CancelQuoteRequestObje
 			if row.Revision != req.Body.Revision {
 				return versionConflict("quote's revision", row.Revision, req.Body.Revision)
 			}
-			return nil
+			return judgeFresh("quote", row.UpdatedAt, req.Body.ExpectedUpdatedAt)
 		},
 		func(ctx context.Context, txq *store.Queries, row store.OrdersQuote) (store.OrdersQuote, error) {
 			return txq.CancelQuoteRow(ctx, store.CancelQuoteRowParams{ID: row.ID, Now: ptr(s.deps.Clock())})

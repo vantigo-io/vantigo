@@ -6,8 +6,12 @@ package orders
 // kept under bokføringsloven § 13 until 3 years and 6 months after the end of
 // the financial year (the calendar year, in the business time zone) in which
 // the order was cancelled, or was done (confirmed, delivered and invoiced;
-// the order's last change stands for when it became done). An erasure with
-// nothing left to wait for is marked complete. It deletes nothing.
+// the order's last change stands for when it became done). Done is
+// confirmed with every product line's cancelled and invoiced covering what
+// was ordered (isDone), so an order whose remainder was cancelled whole is
+// done too. It then deletes the stored PDFs of the person's anonymised quotes
+// and orders — they print the person — and marks an erasure with nothing
+// left to wait for complete.
 //
 // One replica runs a cycle: the cycle takes an advisory lease on a pooled
 // connection of its own and runs every statement on that connection, so it
@@ -20,6 +24,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/orders/store"
 )
@@ -116,15 +121,49 @@ func (w *retentionWorker) cycle(ctx context.Context) (bool, int64, error) {
 			if _, err := q.BlankCustomerMailings(ctx, id); err != nil {
 				return fmt.Errorf("orders: blank customer %d's sends: %w", id, err)
 			}
-			if _, err := q.CompleteErasure(ctx, store.CompleteErasureParams{CustomerID: id, Now: &now}); err != nil {
-				return fmt.Errorf("orders: complete customer %d's erasure: %w", id, err)
-			}
 			total += n
 			return nil
 		})
 		if err != nil {
 			return true, total, err
 		}
+		if err := w.deleteErasedDocuments(ctx, conn, id); err != nil {
+			return true, total, err
+		}
+		if _, err := store.New(conn).CompleteErasure(ctx, store.CompleteErasureParams{CustomerID: id, Now: &now}); err != nil {
+			return true, total, fmt.Errorf("orders: complete customer %d's erasure: %w", id, err)
+		}
 	}
 	return true, total, nil
+}
+
+// deleteErasedDocuments deletes the stored PDFs of a customer's anonymised
+// quotes and orders (O29, O54): each object from the store first, outside
+// any transaction, then its row — its sends unlinked, and kept — so a cycle
+// cut short between the two deletes the object again, which succeeds, next
+// time.
+func (w *retentionWorker) deleteErasedDocuments(ctx context.Context, conn *pgxpool.Conn, customerID int32) error {
+	docs, err := store.New(conn).ErasedDocuments(ctx, customerID)
+	if err != nil {
+		return fmt.Errorf("orders: read customer %d's erased PDFs: %w", customerID, err)
+	}
+	for _, d := range docs {
+		if err := w.s.objectDelete(ctx, d.StorageKey); err != nil {
+			return fmt.Errorf("orders: delete stored PDF %d: %w", d.ID, err)
+		}
+		err := pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
+			q := store.New(tx)
+			if err := q.DetachDocumentMailings(ctx, &d.ID); err != nil {
+				return fmt.Errorf("orders: unlink stored PDF %d's sends: %w", d.ID, err)
+			}
+			if _, err := q.DeleteDocumentRow(ctx, d.ID); err != nil {
+				return fmt.Errorf("orders: delete stored PDF %d's row: %w", d.ID, err)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

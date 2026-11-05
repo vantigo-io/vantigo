@@ -219,7 +219,7 @@ func (s *server) SendQuote(ctx context.Context, req gen.SendQuoteRequestObject) 
 	if !ok {
 		return answer(sendingDisabled(), resp)
 	}
-	out, err := s.freezeQuote(ctx, req.Id, *req.Body.Revision, req.Body.ValidUntil, &quoteMail{channel: channel, req: send})
+	out, err := s.freezeQuote(ctx, req.Id, *req.Body.Revision, req.Body.ExpectedUpdatedAt, req.Body.ValidUntil, &quoteMail{channel: channel, req: send})
 	if err != nil {
 		return answer(err, resp)
 	}
@@ -241,7 +241,7 @@ func (s *server) MarkQuoteSent(ctx context.Context, req gen.MarkQuoteSentRequest
 	if f := s.unknownProperties(ctx, markSentInputSchema); f.failed() {
 		return gen.MarkQuoteSent400ApplicationProblemPlusJSONResponse(invalid(invalidSendTitle, f)), nil
 	}
-	out, err := s.freezeQuote(ctx, req.Id, req.Body.Revision, req.Body.ValidUntil, nil)
+	out, err := s.freezeQuote(ctx, req.Id, req.Body.Revision, req.Body.ExpectedUpdatedAt, req.Body.ValidUntil, nil)
 	if err != nil {
 		return answer(err, resp)
 	}
@@ -262,7 +262,7 @@ type quoteMail struct {
 // logged and orders.quote.sent.v1 published. A quote that changed while it
 // was being sent is refused (version_conflict); a mail that went out is
 // still logged.
-func (s *server) freezeQuote(ctx context.Context, id int64, revision int32, validUntilIn *openapi_types.Date, m *quoteMail) (gen.OrdersQuote, error) {
+func (s *server) freezeQuote(ctx context.Context, id int64, revision int32, expected time.Time, validUntilIn *openapi_types.Date, m *quoteMail) (gen.OrdersQuote, error) {
 	q := store.New(s.deps.Pool)
 	quote, err := q.GetQuote(ctx, id)
 	if noRows(err) {
@@ -271,7 +271,7 @@ func (s *server) freezeQuote(ctx context.Context, id int64, revision int32, vali
 	if err != nil {
 		return gen.OrdersQuote{}, fmt.Errorf("orders: read quote %d: %w", id, err)
 	}
-	if err := judgeDraft(quote, revision); err != nil {
+	if err := judgeDraft(quote, revision, expected); err != nil {
 		return gen.OrdersQuote{}, err
 	}
 	lines, err := linesOf(ctx, q, ownerQuote, id)
@@ -356,7 +356,7 @@ func (s *server) freezeQuote(ctx context.Context, id int64, revision int32, vali
 		if err != nil {
 			return fmt.Errorf("orders: lock quote %d: %w", id, err)
 		}
-		if err := judgeDraft(locked, revision); err != nil {
+		if err := judgeDraft(locked, revision, expected); err != nil {
 			return err
 		}
 		if !locked.UpdatedAt.Equal(quote.UpdatedAt) {

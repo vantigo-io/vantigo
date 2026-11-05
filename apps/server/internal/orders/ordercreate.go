@@ -126,8 +126,10 @@ var confirmOrderTx func(ctx context.Context, s *server, tx pgx.Tx, txq *store.Qu
 	by actor, customer *contracts.CustomerBillingProfile) (store.OrdersOrder, error)
 
 // afterOrderConfirmed is what follows a confirmation's commit, outside any
-// transaction: storing the confirmation's PDF (O24). lifecycle.go sets it.
-var afterOrderConfirmed func(ctx context.Context, s *server, order store.OrdersOrder)
+// transaction: storing the confirmation's PDF (O24), printed as body inside
+// the confirm's transaction from the rows it confirmed, at the version the
+// confirm produced. lifecycle.go sets it.
+var afterOrderConfirmed func(ctx context.Context, s *server, order store.OrdersOrder, body []byte)
 
 // orderView is an order with its lines as the API answers it (O13, O18).
 func orderView(o store.OrdersOrder, lines []store.OrdersLine) gen.OrdersOrder {
@@ -136,7 +138,7 @@ func orderView(o store.OrdersOrder, lines []store.OrdersLine) gen.OrdersOrder {
 		Id: o.ID, Number: o.Number, Status: gen.OrdersOrderStatus(o.Status), OnHold: o.OnHold, HoldReason: o.HoldReason,
 		Locked: o.Locked, Version: o.Version, DeliveryStatus: gen.OrdersOrderDeliveryStatus(o.DeliveryStatus),
 		InvoiceStatus: gen.OrdersOrderInvoiceStatus(o.InvoiceStatus),
-		Done:          o.Status == orderConfirmed && o.DeliveryStatus == "delivered" && o.InvoiceStatus == "invoiced",
+		Done:          isDone(o, lines),
 		Customer:      snapshotOut(h), DefaultRecipient: defaultRecipient(h), YourReference: o.YourReference, Currency: o.Currency, PricesIncludeVat: o.PricesIncludeVat,
 		PaymentTermsDays: o.PaymentTermsDays, DiscountVisible: o.DiscountVisible, Language: gen.OrdersOrderLanguage(o.Language),
 		IntroText: o.IntroText, ClosingText: o.ClosingText, InternalNote: o.InternalNote,

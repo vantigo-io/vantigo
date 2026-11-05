@@ -1,8 +1,9 @@
 package orders
 
 // An order's confirmations (orders design O24, O25, O26): the PDF of each
-// confirmed version, stored once — after the confirm's commit, and by the
-// first download or send of a later version — the pro forma, the send by
+// confirmed version, stored once — printed inside the confirm's transaction
+// from its rows and stored after its commit, and by the first download or
+// send of a later version, printed from one snapshot — the pro forma, the send by
 // e-mail, and the lists of the stored PDFs and the sends. A send changes no
 // state of the order: it mails the stored confirmation of the order's current
 // version, synchronously and outside any transaction, and logs it; a
@@ -13,7 +14,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/orders/gen"
 	"github.com/vantigo-io/vantigo/server/internal/orders/store"
@@ -21,45 +24,88 @@ import (
 
 // ensureConfirmation answers the stored confirmation of an order's current
 // version and its bytes, rendering, storing and recording it first when it is
-// not stored yet. Every step is outside any transaction but the row's insert;
-// two racing it store the same bytes and record one row.
+// not stored yet. The order, its lines and the stored row are read in one
+// snapshot, so what is printed is the version it is recorded as; every other
+// step is outside any transaction but the row's insert.
 func (s *server) ensureConfirmation(ctx context.Context, orderID int64) (store.OrdersDocument, []byte, error) {
-	q := store.New(s.deps.Pool)
-	o, lines, err := readOrder(ctx, q, orderID)
+	var o store.OrdersOrder
+	var lines []store.OrdersLine
+	var doc store.OrdersDocument
+	found := false
+	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
+		var err error
+		if o, lines, err = readOrder(ctx, q, orderID); err != nil {
+			return err
+		}
+		doc, err = q.DocumentOf(ctx, store.DocumentOfParams{OwnerKind: ownerOrder, OwnerID: o.ID, Kind: docConfirmation, Version: o.Version})
+		switch {
+		case err == nil:
+			found = true
+		case !noRows(err):
+			return fmt.Errorf("orders: read order %d's confirmation: %w", o.ID, err)
+		}
+		return nil
+	})
 	if err != nil {
-		return store.OrdersDocument{}, nil, err
+		return doc, nil, err
 	}
-	key := store.DocumentOfParams{OwnerKind: ownerOrder, OwnerID: o.ID, Kind: docConfirmation, Version: o.Version}
-	doc, err := q.DocumentOf(ctx, key)
-	switch {
-	case err == nil:
+	if found {
 		body, err := s.loadDocument(ctx, doc)
 		return doc, body, err
-	case !noRows(err):
-		return doc, nil, fmt.Errorf("orders: read order %d's confirmation: %w", o.ID, err)
 	}
 	if o.Status == orderDraft {
 		return doc, nil, conflict(codeOrderNotConfirmed, "The order is not confirmed",
 			fmt.Sprintf("Order %d is a draft; confirm it first.", o.Number))
 	}
-	seller, err := s.seller(ctx)
+	p, err := s.readPrinter(ctx)
 	if err != nil {
 		return doc, nil, err
+	}
+	body, err := p.confirmation(o, lines, s.deps.Clock())
+	if err != nil {
+		return doc, nil, err
+	}
+	return s.storeConfirmation(ctx, o, body)
+}
+
+// printer is what printing a confirmation needs from outside the module —
+// the seller and the business time zone — read before any transaction, so a
+// confirmation can be printed inside one (rendering is pure).
+type printer struct {
+	seller contracts.SellerProfile
+	zone   *time.Location
+}
+
+func (s *server) readPrinter(ctx context.Context) (printer, error) {
+	seller, err := s.seller(ctx)
+	if err != nil {
+		return printer{}, err
 	}
 	zone, err := s.businessZone(ctx)
 	if err != nil {
-		return doc, nil, err
+		return printer{}, err
 	}
-	body, err := renderOrderConfirmation(o, lines, seller, dayOf(s.deps.Clock(), zone), false)
-	if err != nil {
-		return doc, nil, err
-	}
+	return printer{seller: seller, zone: zone}, nil
+}
+
+// confirmation prints o with lines, as they are, dated at's day.
+func (p printer) confirmation(o store.OrdersOrder, lines []store.OrdersLine, at time.Time) ([]byte, error) {
+	return renderOrderConfirmation(o, lines, p.seller, dayOf(at, p.zone), false)
+}
+
+// storeConfirmation stores body as the confirmation of o at o's version and
+// records it, outside any transaction but the row's insert; two racing it
+// store the same bytes and record one row, and the loser answers the
+// winner's.
+func (s *server) storeConfirmation(ctx context.Context, o store.OrdersOrder, body []byte) (store.OrdersDocument, []byte, error) {
+	q := store.New(s.deps.Pool)
 	stored, err := s.storeDocument(ctx, ownerOrder, o.ID, o.Number, docConfirmation, o.Version, body)
 	if err != nil {
-		return doc, nil, err
+		return store.OrdersDocument{}, nil, err
 	}
-	doc, err = recordDocument(ctx, q, ownerOrder, o.ID, docConfirmation, o.Version, stored, s.deps.Clock())
+	doc, err := recordDocument(ctx, q, ownerOrder, o.ID, docConfirmation, o.Version, stored, s.deps.Clock())
 	if db.IsUniqueViolation(err, "ux_documents_owner_version") {
+		key := store.DocumentOfParams{OwnerKind: ownerOrder, OwnerID: o.ID, Kind: docConfirmation, Version: o.Version}
 		if doc, err = q.DocumentOf(ctx, key); err != nil {
 			return doc, nil, fmt.Errorf("orders: read order %d's confirmation: %w", o.ID, err)
 		}
@@ -116,39 +162,54 @@ func (s *server) renderOrderNow(ctx context.Context, o store.OrdersOrder, lines 
 // confirmation — storing it first when it is not yet — and a cancelled one
 // its last version's when stored, else prints now.
 func (s *server) GetSalesOrderPdf(ctx context.Context, req gen.GetSalesOrderPdfRequestObject) (gen.GetSalesOrderPdfResponseObject, error) {
-	q := store.New(s.deps.Pool)
-	o, lines, err := readOrder(ctx, q, req.Id)
+	// The order, its lines and the stored PDF asked for, in one snapshot.
+	var o store.OrdersOrder
+	var lines []store.OrdersLine
+	var doc *store.OrdersDocument
+	var version int32
+	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
+		var err error
+		if o, lines, err = readOrder(ctx, q, req.Id); err != nil {
+			return err
+		}
+		version = o.Version
+		if req.Params.Version != nil {
+			version = *req.Params.Version
+		}
+		d, err := q.DocumentOf(ctx, store.DocumentOfParams{OwnerKind: ownerOrder, OwnerID: o.ID, Kind: docConfirmation, Version: version})
+		switch {
+		case err == nil:
+			doc = &d
+		case !noRows(err):
+			return fmt.Errorf("orders: read order %d's confirmation: %w", o.ID, err)
+		}
+		return nil
+	})
 	if err != nil {
 		return answer(err, answers[gen.GetSalesOrderPdfResponseObject]{notFound: func() gen.GetSalesOrderPdfResponseObject { return gen.GetSalesOrderPdf404Response{} }})
 	}
-	version := o.Version
 	var body []byte
 	switch {
-	case req.Params.Version != nil:
-		version = *req.Params.Version
-		doc, err := q.DocumentOf(ctx, store.DocumentOfParams{OwnerKind: ownerOrder, OwnerID: o.ID, Kind: docConfirmation, Version: version})
-		if noRows(err) {
-			return gen.GetSalesOrderPdf404Response{}, nil
-		}
-		if err != nil {
-			return nil, fmt.Errorf("orders: read order %d's confirmation: %w", o.ID, err)
-		}
-		if body, err = s.loadDocument(ctx, doc); err != nil {
+	case doc != nil:
+		if body, err = s.loadDocument(ctx, *doc); err != nil {
 			return nil, err
 		}
+	case req.Params.Version != nil:
+		return gen.GetSalesOrderPdf404Response{}, nil
 	case o.Status == orderConfirmed:
-		if _, body, err = s.ensureConfirmation(ctx, o.ID); err != nil {
+		// The current version, not stored yet: printed from the snapshot.
+		p, err := s.readPrinter(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if body, err = p.confirmation(o, lines, s.deps.Clock()); err != nil {
+			return nil, err
+		}
+		if _, body, err = s.storeConfirmation(ctx, o, body); err != nil {
 			return nil, err
 		}
 	default:
-		doc, err := q.DocumentOf(ctx, store.DocumentOfParams{OwnerKind: ownerOrder, OwnerID: o.ID, Kind: docConfirmation, Version: version})
-		switch {
-		case err == nil:
-			body, err = s.loadDocument(ctx, doc)
-		case noRows(err):
-			body, err = s.renderOrderNow(ctx, o, lines, false)
-		}
-		if err != nil {
+		if body, err = s.renderOrderNow(ctx, o, lines, false); err != nil {
 			return nil, err
 		}
 	}
@@ -163,7 +224,13 @@ func (s *server) GetSalesOrderPdf(ctx context.Context, req gen.GetSalesOrderPdfR
 // GetSalesOrderProforma Download a pro forma of an order
 // (GET /api/v1/orders/orders/{id}/proforma)
 func (s *server) GetSalesOrderProforma(ctx context.Context, req gen.GetSalesOrderProformaRequestObject) (gen.GetSalesOrderProformaResponseObject, error) {
-	o, lines, err := readOrder(ctx, store.New(s.deps.Pool), req.Id)
+	var o store.OrdersOrder
+	var lines []store.OrdersLine
+	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
+		var err error
+		o, lines, err = readOrder(ctx, q, req.Id)
+		return err
+	})
 	if err != nil {
 		return answer(err, answers[gen.GetSalesOrderProformaResponseObject]{notFound: func() gen.GetSalesOrderProformaResponseObject { return gen.GetSalesOrderProforma404Response{} }})
 	}
@@ -208,7 +275,7 @@ func (s *server) SendSalesOrder(ctx context.Context, req gen.SendSalesOrderReque
 	if err := judgeConfirmed(o); err != nil {
 		return answer(err, resp)
 	}
-	if err := judgeVersion(o, *req.Body.Version); err != nil {
+	if err := judgeVersion(o, *req.Body.Version, req.Body.ExpectedUpdatedAt); err != nil {
 		return answer(err, resp)
 	}
 	channel, ok, err := s.sendingChannel(ctx)

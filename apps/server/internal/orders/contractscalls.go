@@ -260,6 +260,13 @@ func (s *server) objectGet(ctx context.Context, key string) (io.ReadCloser, erro
 	return s.objects.Get(ctx, key)
 }
 
+func (s *server) objectDelete(ctx context.Context, key string) error {
+	if err := noteContractCall(ctx, "Storage.Delete"); err != nil {
+		return err
+	}
+	return s.objects.Delete(ctx, key)
+}
+
 func (s *server) objectExists(ctx context.Context, key string) (bool, error) {
 	if err := noteContractCall(ctx, "Storage.Exists"); err != nil {
 		return false, err
