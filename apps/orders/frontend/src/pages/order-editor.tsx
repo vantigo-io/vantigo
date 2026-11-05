@@ -41,6 +41,7 @@ import {
   updateOrder,
 } from "../api/orders";
 import { isVersionConflict, NotFoundError, ORDERS_QUERY_KEY, refusalCode, refusedLines } from "../api/request";
+import { estimateShipping } from "../api/shipping";
 import type { DeliveredLine, Order } from "../api/types";
 import { overrideOf } from "../api/warnings";
 import { ChangeLog } from "../components/change-log";
@@ -57,6 +58,7 @@ import { NewDocument } from "../components/new-document";
 import { PdfButton } from "../components/pdf-button";
 import { ReasonDialog } from "../components/reason-dialog";
 import { SendDialog } from "../components/send-dialog";
+import { OrderShipmentsCard } from "../components/shipments-card";
 import { DeliveryBadge, InvoiceBadge, OrderFlags, OrderStatusBadge } from "../components/status-badges";
 import { TotalsCard } from "../components/totals-card";
 import { WarningBanners } from "../components/warning-banners";
@@ -621,6 +623,7 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
             confirmed={confirmed}
             access={access}
             refused={editor.refused}
+            onEstimate={editable ? () => estimateShipping({ orderId: order.id }) : undefined}
           />
           <TotalsCard totals={order.totals} currency={order.currency} stale={editor.stale} />
           {order.origin.prepaidAmount != null && (
@@ -637,6 +640,7 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
           blocked={order.onHold ? t("heldTakesNoDelivery") : !openToShip ? t("nothingToShip") : needsSave}
         />
       )}
+      {confirmed && atSite && <OrderShipmentsCard orderId={order.id} />}
       {!draft && <InvoicesCard invoices={order.invoices} canViewInvoices={access.canViewInvoices} />}
       {!draft && <ChangeLog changes={changes.data?.items ?? []} lines={order.lines} />}
       <DocumentsCard

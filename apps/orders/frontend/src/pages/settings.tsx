@@ -25,6 +25,7 @@ import { ApiValidationError, isVersionConflict } from "../api/request";
 import { settingsQueryOptions, updateSettings } from "../api/settings";
 import type { FinalPeriod, MailText, Settings } from "../api/types";
 import { ConflictAlert } from "../components/conflict-alert";
+import { VariantPicker } from "../components/variant-picker";
 import { WarningsCard } from "../components/warnings-card";
 import "../i18n";
 import { noOrdersAccess, type OrdersAccess } from "../lib/access";
@@ -32,7 +33,7 @@ import { refusalMessage } from "../lib/errors";
 import { useOrdersFormat } from "../lib/format";
 import { FINAL_PERIODS } from "../lib/plan";
 
-const mailKinds = ["quote", "confirmation"] as const;
+const mailKinds = ["quote", "confirmation", "shipping_notice"] as const;
 const languages = ["nb", "en"] as const;
 
 /**
@@ -77,6 +78,13 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [conflict, setConflict] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // The freight product (O53) as the picker shows it: named by its id until
+  // one is picked here.
+  const [freight, setFreight] = useState<{ variantId: number; sku: string | null; name: string } | null>(
+    settings.freightVariantId == null
+      ? null
+      : { variantId: settings.freightVariantId, sku: null, name: `#${settings.freightVariantId}` },
+  );
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     setValues((current) => ({ ...current, [key]: value }));
     setErrors((current) => ({ ...current, [key]: "" }));
@@ -100,6 +108,9 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
         subscriptionFinalPeriodDefault: values.subscriptionFinalPeriodDefault,
         sendChannelId: values.sendChannelId ?? null,
         defaultSiteId: values.defaultSiteId ?? null,
+        freightVariantId: values.freightVariantId ?? null,
+        freightMarkupPercent: Number(values.freightMarkupPercent) || 0,
+        shippingNoticeOnBook: values.shippingNoticeOnBook,
         // An override left empty falls back to the built-in text (O25), so it is not sent.
         mailTexts: values.mailTexts.filter((text) => text.subject.trim() !== "" || text.body.trim() !== ""),
       }),
@@ -258,6 +269,49 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
             disabled={!manage}
             checked={values.confirmationOnConfirm}
             onChange={(e) => set("confirmationOnConfirm", e.currentTarget.checked)}
+          />
+        </Stack>
+      </Card>
+      <Card withBorder padding="lg" data-testid="shipping-settings-card">
+        <Stack>
+          <Title order={4}>{t("shippingSettings")}</Title>
+          <Stack gap={4} maw={420}>
+            <Text size="sm" fw={500}>
+              {t("freightProduct")}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {t("freightProductHint")}
+            </Text>
+            <VariantPicker
+              label={t("freightProduct")}
+              currency="NOK"
+              disabled={!manage}
+              value={freight}
+              error={errors.freightVariantId}
+              onChange={(variant) => {
+                setFreight(variant);
+                set("freightVariantId", variant ? variant.variantId : null);
+              }}
+            />
+          </Stack>
+          <NumberInput
+            label={t("freightMarkup")}
+            maw={220}
+            min={0}
+            max={500}
+            decimalScale={2}
+            suffix=" %"
+            disabled={!manage}
+            value={values.freightMarkupPercent}
+            error={errors.freightMarkupPercent}
+            onChange={(value) => set("freightMarkupPercent", value === "" ? "" : Number(value))}
+            data-assist="orders.settings.freight-markup"
+          />
+          <Switch
+            label={t("shippingNoticeOnBook")}
+            disabled={!manage}
+            checked={values.shippingNoticeOnBook}
+            onChange={(e) => set("shippingNoticeOnBook", e.currentTarget.checked)}
           />
         </Stack>
       </Card>

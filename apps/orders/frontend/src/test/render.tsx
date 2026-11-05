@@ -38,6 +38,7 @@ import { OrdersPage } from "../pages/orders";
 import { QuoteEditorPage } from "../pages/quote-editor";
 import { QuotesPage } from "../pages/quotes";
 import { SettingsPage } from "../pages/settings";
+import { ShippingSettingsPage } from "../pages/shipping-settings";
 import { SubscriptionEditorPage } from "../pages/subscription-editor";
 import { SubscriptionsPage } from "../pages/subscriptions";
 import { TemplatesPage } from "../pages/templates";
@@ -169,3 +170,6 @@ export const renderRoute = (url: string, access: Partial<OrdersAccess> = {}) =>
 /** Mounts the customer page's panel at `/here`, beside the editors its buttons and rows lead to. */
 export const renderPanel = (props: { customerId: number; canCreateQuote: boolean; canCreateOrder: boolean }) =>
   mount("/here", fullAccess, <CustomerOrdersPanel {...props} />);
+
+/** Mounts Integrations › Shipping's page at `/here`, as the host does at /workspace/shipping. */
+export const renderShippingSettings = () => mount("/here", fullAccess, <ShippingSettingsPage />);

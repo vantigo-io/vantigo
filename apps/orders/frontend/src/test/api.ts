@@ -72,7 +72,7 @@ export const commonAnswers = (call: Call, settings?: unknown, meta?: unknown): R
         { id: "00000000-0000-4000-8000-000000000002", displayName: "Per Selger" },
       ],
     });
-  if (/\/(documents|mailings|changes)$/.test(url)) return jsonResponse(200, { items: [] });
+  if (/\/(documents|mailings|changes|shipments)$/.test(url)) return jsonResponse(200, { items: [] });
   if (url === "/api/v1/orders/settings" && settings) return jsonResponse(200, settings);
   if (url.startsWith("/api/v1/orders/templates")) return jsonResponse(200, { items: [] });
   if (url === "/api/v1/invoices/vat-codes")

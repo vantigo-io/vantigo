@@ -6,6 +6,7 @@ import {
   IconHelp,
   IconSettings,
   IconShieldCheck,
+  IconTruckDelivery,
 } from "@tabler/icons-react";
 import type { NavItem } from "./navigation";
 
@@ -50,6 +51,13 @@ export const accountMenuSections: readonly AccountMenuSection[] = [
         icon: IconBrandGoogle,
         module: "google",
         requiredPermissions: ["google:manage"],
+      },
+      {
+        label: "navigation.shipping",
+        to: "/workspace/shipping",
+        icon: IconTruckDelivery,
+        module: "orders",
+        requiredPermissions: ["orders:carriers-manage"],
       },
     ],
   },

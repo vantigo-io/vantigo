@@ -710,6 +710,15 @@ export const areas: readonly AreaDefinition[] = [
             module: "google",
             requiredPermissions: ["google:manage"],
           },
+          // The carrier accounts Orders books shipments with (orders design O51), behind
+          // orders:carriers-manage while the module is on.
+          {
+            label: "navigation.shipping",
+            to: "/workspace/shipping",
+            icon: IconTruckDelivery,
+            module: "orders",
+            requiredPermissions: ["orders:carriers-manage"],
+          },
           // The AI plan Vantigo provisioned and the model each task uses (Integrations
           // design T13): the Owner's, and present only while the instance has an AI
           // provider, which the root layout learns from GET /owner/ai/settings.

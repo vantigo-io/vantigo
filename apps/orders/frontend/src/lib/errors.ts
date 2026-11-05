@@ -15,6 +15,9 @@ export const hasWords = (key: string): boolean => key in ordersCatalog.en;
  */
 export const refusalMessage = (error: unknown, t: Translate): string => {
   const code = refusalCode(error);
+  // A carrier's refusal is said in the carrier's own words (O50), after ours.
+  if (code === "carrier_refused" && error instanceof Error && error.message)
+    return `${t("refusal.carrier_refused")} ${error.message}`;
   if (code && hasWords(`refusal.${code}`)) return t(`refusal.${code}`);
   if (error instanceof ApiValidationError) {
     const first = Object.values(error.errors)[0];
