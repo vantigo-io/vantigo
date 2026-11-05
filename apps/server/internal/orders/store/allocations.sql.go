@@ -441,6 +441,35 @@ func (q *Queries) LockAllocationsByIDs(ctx context.Context, ids []int64) ([]Orde
 	return items, nil
 }
 
+const lockOrderDraftAllocations = `-- name: LockOrderDraftAllocations :many
+SELECT id FROM orders.invoice_allocations
+WHERE order_id = $1 AND state = 'draft'
+ORDER BY id FOR UPDATE
+`
+
+// LockOrderDraftAllocations takes an order's draft allocations FOR UPDATE
+// in id order, after the order and its lines: the order page's Release
+// draft allocations, before it writes them.
+func (q *Queries) LockOrderDraftAllocations(ctx context.Context, orderID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, lockOrderDraftAllocations, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockOrderLinesByIDs = `-- name: LockOrderLinesByIDs :many
 SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name FROM orders.lines
 WHERE id = ANY($1::bigint[]) AND owner_kind = 'order'
@@ -696,7 +725,9 @@ type ReleaseDraftAllocationsParams struct {
 }
 
 // ReleaseDraftAllocations turns the named allocations still draft released
-// (O36); one invoiced or released already is left as it is.
+// (O36); one invoiced or released already is left as it is. The caller
+// holds their orders, lines and the allocations themselves, in that order
+// (LockAllocationsByIDs), so the rows it writes are already its own.
 func (q *Queries) ReleaseDraftAllocations(ctx context.Context, arg ReleaseDraftAllocationsParams) ([]int64, error) {
 	rows, err := q.db.Query(ctx, releaseDraftAllocations, arg.Now, arg.Ids)
 	if err != nil {
@@ -731,7 +762,8 @@ type ReleaseOrderDraftAllocationsParams struct {
 
 // ReleaseOrderDraftAllocations turns every draft allocation of an order
 // released: the order page's Release draft allocations (O36). The caller
-// holds the order's row.
+// holds the order's row, its lines and those allocations
+// (LockOrderDraftAllocations).
 func (q *Queries) ReleaseOrderDraftAllocations(ctx context.Context, arg ReleaseOrderDraftAllocationsParams) ([]int64, error) {
 	rows, err := q.db.Query(ctx, releaseOrderDraftAllocations, arg.Now, arg.OrderID)
 	if err != nil {
@@ -783,40 +815,6 @@ func (q *Queries) StampAllocationsInvoiced(ctx context.Context, arg StampAllocat
 		arg.InvoicedByDisplay,
 		arg.Ids,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const sweepDraftAllocations = `-- name: SweepDraftAllocations :many
-UPDATE orders.invoice_allocations
-SET state = 'released', released_at = $1, updated_at = $1
-WHERE state = 'draft' AND updated_at < $2
-RETURNING id
-`
-
-type SweepDraftAllocationsParams struct {
-	Now    *time.Time
-	Cutoff time.Time
-}
-
-// SweepDraftAllocations releases every draft allocation untouched since
-// before cutoff: the daily orders.allocation_sweep (O36).
-func (q *Queries) SweepDraftAllocations(ctx context.Context, arg SweepDraftAllocationsParams) ([]int64, error) {
-	rows, err := q.db.Query(ctx, sweepDraftAllocations, arg.Now, arg.Cutoff)
 	if err != nil {
 		return nil, err
 	}

@@ -271,18 +271,29 @@ func (p *billableOrders) Allocations(ctx context.Context, ids []int64) ([]contra
 	return out, nil
 }
 
-// ReleaseAllocations turns the named draft allocations released, in one
-// statement; one invoiced, released or missing is left as it is, so a
-// repeat is harmless.
+// ReleaseAllocations turns the named draft allocations released on one
+// transaction of its own; one invoiced, released or missing is left as it
+// is, so a repeat is harmless. It takes its locks in the order every writer
+// of an allocation does (O38): the allocations' orders, their lines, then
+// the allocations, each in id order (lockAllocationRows) — so it waits on an
+// issue's holder or an Allocate rather than crossing one.
 func (p *billableOrders) ReleaseAllocations(ctx context.Context, ids []int64) error {
 	if err := contracts.ValidateAllocationIDs(ids); err != nil {
 		return err
 	}
-	now := p.clock()
-	if _, err := store.New(p.pool).ReleaseDraftAllocations(ctx, store.ReleaseDraftAllocationsParams{Now: &now, Ids: ids}); err != nil {
-		return fmt.Errorf("orders: release draft allocations: %w", err)
-	}
-	return nil
+	sorted := slices.Clone(ids)
+	slices.Sort(sorted)
+	return db.WithTx(ctx, p.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		q := store.New(tx)
+		if _, err := lockAllocationRows(ctx, q, sorted); err != nil {
+			return err
+		}
+		now := p.clock()
+		if _, err := q.ReleaseDraftAllocations(ctx, store.ReleaseDraftAllocationsParams{Now: &now, Ids: sorted}); err != nil {
+			return fmt.Errorf("orders: release draft allocations: %w", err)
+		}
+		return nil
+	})
 }
 
 // allocationOf is an allocation as the contract answers it. The order's

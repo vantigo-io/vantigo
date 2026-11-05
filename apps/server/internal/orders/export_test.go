@@ -150,17 +150,6 @@ func RunQuoteExpiryCycle(ctx context.Context, d module.Deps) (int64, error) {
 	return (&quoteExpiryWorker{s: s}).cycle(ctx)
 }
 
-// RunAllocationSweepCycle runs one cycle of the orders.allocation_sweep
-// worker over d and answers whether it won the lease and how many draft
-// allocations it released.
-func RunAllocationSweepCycle(ctx context.Context, d module.Deps) (bool, int, error) {
-	s, err := newServer(d)
-	if err != nil {
-		return false, 0, err
-	}
-	return (&allocationSweepWorker{s: s}).cycle(ctx)
-}
-
 // AllocationAmount exposes the amount an allocation is written with.
 var AllocationAmount = allocationAmount
 

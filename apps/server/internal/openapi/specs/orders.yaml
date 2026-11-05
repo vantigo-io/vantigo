@@ -1179,9 +1179,14 @@ components:
             type: object
         OrdersOrderInvoice:
             additionalProperties: false
-            description: "An invoice issued from an order (O41): its id and number in Invoices, its issue date, the net amount of the order it bills and its state — invoiced, or released when a credit note gave all of it back."
+            description: "An invoice issued from an order (O41): its id and number in Invoices, its issue date, the net amount of the order it still bills (amount — its allocations still invoiced), the net amount credit notes gave back (releasedAmount — its allocations released since), and its state — invoiced, or released when a credit note gave all of it back."
             properties:
                 amount:
+                    description: The net amount of the order this invoice still bills — the sum of its allocations still invoiced, in the order's currency; 0 once a credit note gave all of it back.
+                    format: double
+                    type: number
+                releasedAmount:
+                    description: The net amount of the order credit notes gave back of this invoice — the sum of its allocations released since — 0 when none was.
                     format: double
                     type: number
                 currency:
@@ -1206,6 +1211,7 @@ components:
                 - invoiceNumber
                 - issueDate
                 - amount
+                - releasedAmount
                 - currency
                 - state
             type: object

@@ -90,27 +90,30 @@ ORDER BY a.id;
 
 -- name: ReleaseDraftAllocations :many
 -- ReleaseDraftAllocations turns the named allocations still draft released
--- (O36); one invoiced or released already is left as it is.
+-- (O36); one invoiced or released already is left as it is. The caller
+-- holds their orders, lines and the allocations themselves, in that order
+-- (LockAllocationsByIDs), so the rows it writes are already its own.
 UPDATE orders.invoice_allocations
 SET state = 'released', released_at = sqlc.arg(now), updated_at = sqlc.arg(now)
 WHERE id = ANY(sqlc.arg(ids)::bigint[]) AND state = 'draft'
 RETURNING id;
 
+-- name: LockOrderDraftAllocations :many
+-- LockOrderDraftAllocations takes an order's draft allocations FOR UPDATE
+-- in id order, after the order and its lines: the order page's Release
+-- draft allocations, before it writes them.
+SELECT id FROM orders.invoice_allocations
+WHERE order_id = sqlc.arg(order_id) AND state = 'draft'
+ORDER BY id FOR UPDATE;
+
 -- name: ReleaseOrderDraftAllocations :many
 -- ReleaseOrderDraftAllocations turns every draft allocation of an order
 -- released: the order page's Release draft allocations (O36). The caller
--- holds the order's row.
+-- holds the order's row, its lines and those allocations
+-- (LockOrderDraftAllocations).
 UPDATE orders.invoice_allocations
 SET state = 'released', released_at = sqlc.arg(now), updated_at = sqlc.arg(now)
 WHERE order_id = sqlc.arg(order_id) AND state = 'draft'
-RETURNING id;
-
--- name: SweepDraftAllocations :many
--- SweepDraftAllocations releases every draft allocation untouched since
--- before cutoff: the daily orders.allocation_sweep (O36).
-UPDATE orders.invoice_allocations
-SET state = 'released', released_at = sqlc.arg(now), updated_at = sqlc.arg(now)
-WHERE state = 'draft' AND updated_at < sqlc.arg(cutoff)
 RETURNING id;
 
 -- name: OrderAllocations :many

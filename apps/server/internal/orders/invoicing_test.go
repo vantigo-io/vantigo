@@ -23,8 +23,8 @@ import (
 )
 
 // The tests of invoicing from orders on Orders' side (orders design O26,
-// O36–O38, O41, §12 B): the allocations, the holder, the sweep, and the
-// rules a draft allocation sets on the order.
+// O36–O38, O41, §12 B): the allocations, the holder, the release's lock
+// order, and the rules a draft allocation sets on the order.
 
 // allocate allocates qty of a line and answers the one allocation, failing
 // the test on any error.
@@ -224,8 +224,10 @@ func TestInvoicedWork_MarkAndRelease(t *testing.T) {
 	})
 	got = orderOf(t, c.Do(http.MethodGet, orderPath(o.Id), nil))
 	if got.Lines[0].QtyInvoiced != 6 || got.InvoiceStatus != gen.OrdersOrderInvoiceStatusPartial ||
-		len(got.Invoices) != 1 || got.Invoices[0].State != gen.OrdersOrderInvoiceStateInvoiced || got.Invoices[0].Amount != 1000 {
-		t.Errorf("after one credit: %+v, invoices %+v; want 6 invoiced, partial, the invoice still invoiced", got.Lines[0], got.Invoices)
+		len(got.Invoices) != 1 || got.Invoices[0].State != gen.OrdersOrderInvoiceStateInvoiced || got.Invoices[0].Amount != 600 ||
+		got.Invoices[0].ReleasedAmount != 400 {
+		t.Errorf("after one credit: %+v, invoices %+v; want 6 invoiced, partial, the invoice still invoiced at 600, 400 released",
+			got.Lines[0], got.Invoices)
 	}
 	page, err := p.DueOrders(context.Background(), contracts.DueOrdersRequest{OrderIDs: []int64{o.Id}})
 	if err != nil || len(page.Orders) != 1 || page.Orders[0].Lines[0].ToInvoice != "4.000" {
@@ -235,8 +237,60 @@ func TestInvoicedWork_MarkAndRelease(t *testing.T) {
 		return holder.ReleaseInvoiced(ctx, tx, credit, []contracts.WorkSource{sourceOf(b)})
 	})
 	got = orderOf(t, c.Do(http.MethodGet, orderPath(o.Id), nil))
-	if got.Lines[0].QtyInvoiced != 0 || got.InvoiceStatus != gen.OrdersOrderInvoiceStatusNone || got.Invoices[0].State != gen.OrdersOrderInvoiceStateReleased {
-		t.Errorf("after the full credit: %+v, invoices %+v; want nothing invoiced and the invoice released", got.Lines[0], got.Invoices)
+	if got.Lines[0].QtyInvoiced != 0 || got.InvoiceStatus != gen.OrdersOrderInvoiceStatusNone || got.Invoices[0].State != gen.OrdersOrderInvoiceStateReleased ||
+		got.Invoices[0].Amount != 0 || got.Invoices[0].ReleasedAmount != 1000 {
+		t.Errorf("after the full credit: %+v, invoices %+v; want nothing invoiced and the invoice released, 0 billed and 1000 released",
+			got.Lines[0], got.Invoices)
+	}
+}
+
+// ReleaseAllocations takes the order, the lines and then the allocations, as
+// the holder does (O38): while an issue's holder holds an order, a release of
+// another allocation of it waits on the order's row rather than locking
+// allocations out of order, and then releases it; a release naming the
+// invoiced one leaves it.
+func TestReleaseAllocations_WaitsOnTheHolderInLockOrder(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	c := h.SignIn(t, boss...)
+	p := orders.Module().BillableOrders(h.Deps())
+	o := confirmOrder(t, c, createOrder(t, c, custBusiness, productLine(varBolt, 10), productLine(varBolt, 5)))
+	a := allocate(t, p, o.Lines[0].Id, "4")
+	b := allocate(t, p, o.Lines[1].Id, "5")
+	holder := orders.Module().InvoicedWork(h.Deps())
+	ctx := context.Background()
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := holder.MarkInvoiced(ctx, tx, invoiceRef(h, 7, 7), []contracts.WorkSource{sourceOf(a)}); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- p.ReleaseAllocations(ctx, []int64{b.ID}) }()
+	select {
+	case err := <-done:
+		t.Fatalf("the release finished (%v) while the holder held the order", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("release: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the release never finished")
+	}
+	if err := p.ReleaseAllocations(ctx, []int64{a.ID, b.ID}); err != nil {
+		t.Fatalf("a release naming the invoiced one: %v", err)
+	}
+	got, err := p.Allocations(ctx, []int64{a.ID, b.ID})
+	if err != nil || len(got) != 2 || got[0].State != contracts.AllocationInvoiced || got[1].State != contracts.AllocationReleased {
+		t.Errorf("allocations %+v, %v; want the stamped one invoiced and the other released", got, err)
 	}
 }
 
@@ -292,38 +346,6 @@ func TestInvoicedWork_Refusals(t *testing.T) {
 	}
 	if n := eventsNamed(t, h, "orders.sales_order.invoiced", o.Id); n != 1 {
 		t.Errorf("%d invoiced events; want only the first issue's", n)
-	}
-}
-
-// The sweep releases a draft untouched for 30 days and leaves a fresh one
-// and an invoiced one (O36).
-func TestAllocationSweep_ReleasesStaleDrafts(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t, harnessOptions{})
-	c := h.SignIn(t, boss...)
-	p := orders.Module().BillableOrders(h.Deps())
-	o := confirmOrder(t, c, createOrder(t, c, custBusiness, productLine(varBolt, 10)))
-	lineID := o.Lines[0].Id
-	stale := allocate(t, p, lineID, "1")
-	invoiced := allocate(t, p, lineID, "1")
-	if err := mark(t, h, invoiceRef(h, 9, 9), sourceOf(invoiced)); err != nil {
-		t.Fatal(err)
-	}
-	h.Advance(31 * 24 * time.Hour)
-	fresh := allocate(t, p, lineID, "1")
-	won, n, err := orders.RunAllocationSweepCycle(context.Background(), h.Deps())
-	if err != nil || !won {
-		t.Fatalf("sweep: %v, won %v", err, won)
-	}
-	got, err := p.Allocations(context.Background(), []int64{stale.ID, invoiced.ID, fresh.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got[0].State != contracts.AllocationReleased || got[1].State != contracts.AllocationInvoiced || got[2].State != contracts.AllocationDraft {
-		t.Errorf("states %s %s %s; want released, invoiced, draft", got[0].State, got[1].State, got[2].State)
-	}
-	if n < 1 {
-		t.Errorf("the sweep released %d", n)
 	}
 }
 
