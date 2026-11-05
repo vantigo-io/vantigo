@@ -1383,14 +1383,24 @@ module's locks. In the app the wizard is **From orders** (`/invoices/new/from-or
 ([the user guide](/en/user/invoices/#invoicing-orders)). Everything here asks for
 `invoices:access` and `invoices:create`; Orders' permissions are not asked.
 
+**Subscriptions** (Orders' delivery S, O43) reach this module through the same seam: a
+subscription is a `DueOrder` of `kind` `subscription` whose lines are its due periods'
+lines, each with its `periodStart` and `periodEnd`, and `Allocate` takes
+`{SubscriptionID, Through}` and allocates every period due through the date
+([Subscriptions](/en/reference/orders/#subscriptions)). An order and a subscription are
+numbered apart, so the wizard keys a document by its kind and id together.
+
 ### The due list
 
 `GET /from-orders/due` takes exactly one of `customerId` (one or more, at most 100),
-`orderId` (one or more, at most 5 000) and `every=true`, and an optional `until` — the
-last delivery date an order may have; an order with none is always due. A 400 for none
+the documents — `orderId` and `subscriptionId`, one or more, at most 5 000 together — and
+`every=true`, and an optional `until` — the last delivery date an order may have, an order
+with none always due, and the date a subscription's periods are due through, Orders'
+today when absent. A customer's subscriptions with periods due are listed with their
+orders. A 400 for none
 or more than one of the three, or an id named twice; 409 **`orders_unavailable`** when
 Orders is off. It answers Orders' `DueOrders` as `{orders[], warnings[]}`: each order its
-`id`, `number`, `customerId` and `customerName` (from the customer directory, absent when
+`kind` (`order` or `subscription`), `id`, `number`, `customerId` and `customerName` (from the customer directory, absent when
 it does not know the customer), `currency`, `projectId`, `yourReference`, `deliveryDate`,
 `deliveryName` and `deliveryAddress`, `paymentTermsDays`, and `blocked` when it cannot be
 invoiced now — `draft` or `on_hold`, as Orders answers it, or **`currency_not_supported`**,
@@ -1398,25 +1408,34 @@ set here for an order in another currency than the settings' `defaultCurrency`, 
 wizard shows greyed with its reason; each line its `lineId`, `position`,
 `description`, `unit`, `toInvoice` (ordered − cancelled − invoiced − draft-allocated,
 three decimals), `unitPrice` (eight decimals), `discountPercent`, `vatCodeId`,
-`invoicePolicy` and `amount`, docmath's net of `toInvoice`. `orders_truncated` warns when
+`invoicePolicy` and `amount`, docmath's net of `toInvoice` — and a subscription's line its
+`periodStart` and `periodEnd`, listed once per due period, a pro-rated first period at its
+pro-rated unit price. The wizard names a subscription "Abonnement 3001 – januar 2027"
+(*Subscription 3001 – January 2027*), its periods by month, and invoices each period
+whole. `orders_truncated` warns when
 Orders had more than 5 000 lines and the last orders are left out. Nothing is written and
 nothing allocated.
 
 ### From orders to drafts
 
-`POST /from-orders` takes `{lines: [{orderId, lineId, quantity}], combine}` and answers
-201 with `{invoices: [{invoiceId, customerId, orderIds, orderNumbers, separatedBy}]}`.
+`POST /from-orders` takes `{lines: [{orderId, lineId, quantity}], subscriptions:
+[{subscriptionId, through}], combine}` and answers 201 with `{invoices: [{invoiceId,
+customerId, orderIds, orderNumbers, subscriptionIds, subscriptionNumbers, separatedBy}]}`.
+The wizard sends a subscription through the reader's today.
 One core, `fromOrders` ([`from_orders.go`](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/invoices/from_orders.go)),
 serves the handler and the billing run. **In order**, every read before any write:
 
-1. **The body** (400 on the field): 1 to 5 000 lines, each a positive `orderId` and
-   `lineId`, no line twice, a `quantity` above zero with at most three decimals.
+1. **The body** (400 on the field): 1 to 5 000 lines and subscriptions together, each line
+   a positive `orderId` and `lineId`, no line twice, a `quantity` above zero with at most
+   three decimals; each subscription positive and named once.
 2. **409 `orders_unavailable`** when Orders is off.
 3. **`DueOrders`** for the orders named (`too_many_sources` past 5 000 lines), and each
    line judged against it, the first refused named in **`orderLineId`**: its order not
    due or gone, or the line not one of it left to invoice — **`line_not_invoiceable`**;
    the order a draft or on hold — **`order_blocked`**; a quantity above `toInvoice` —
-   **`allocation_exceeds_open`**.
+   **`allocation_exceeds_open`**. `DueOrders` for the subscriptions named, through each
+   one's date — apart from the orders', whose `Until` bounds a delivery date — each with a
+   period due (**`no_orders_due`** otherwise).
 4. **The settings, each customer's billing profile and the customer gates**
    ([Drafts](#drafts)); an order in another currency than the settings' —
    **`currency_not_nok`**, the whole request refused: the due list offers no such order,
@@ -1425,7 +1444,8 @@ serves the handler and the billing run. **In order**, every read before any writ
    counted — **`too_many_lines`**; the orders' projects' codes, when Projects is on.
 5. **`Allocate`** on Orders, which judges every line again under its locks and answers
    `allocation_exceeds_open` or `line_not_invoiceable` for the first it refuses — with
-   `orderLineId`, nothing allocated. **The ledger** records every allocation it answered at
+   `orderLineId`, nothing allocated — and `subscription_not_invoiceable` or `nothing_due`
+   for a subscription. **The ledger** records every allocation it answered at
    once, on a statement of its own, before anything else can fail
    ([Releases](#releases)). **From here every way out but success releases the
    allocations again** (`ReleaseAllocations`, after the failing step).
@@ -1440,7 +1460,8 @@ the customer's drafts answers `separatedBy` — `currency`, `your_reference`, `p
 `payment_terms`, `delivery_address` — naming what set it apart from the customer's
 others. A draft states one place of delivery, so the address is part of the key,
 normalised: each part trimmed, its inner spaces collapsed and its case folded, the
-country in capitals (`addressKey`); the delivery name is not.
+country in capitals (`addressKey`); the delivery name is not. A subscription groups as an
+order does, after the customer's orders.
 
 **A line per allocation**, at the order line's description, unit, quantity, unit price at
 its **eight decimals**, discount and VAT code, naming the allocation as its one source;
@@ -1454,14 +1475,16 @@ lock — is **409 `line_holds_order_allocation`**, with `linePosition`, `sourceK
 `sourceId`; its description may change. To bill another quantity the user removes the
 line, which releases the allocation, and invoices the order again. On a draft of several orders each
 order's lines are opened by a **section line** — "Ordre 2210, Deres ref. PO-1", "Order
-2210, your ref. PO-1" in English — at 1 × 0.00 at the VAT code of the order's first line,
-naming no source.
+2210, your ref. PO-1" in English, "Abonnement 3001" / "Subscription 3001" for a
+subscription — at 1 × 0.00 at the VAT code of the document's first line, naming no
+source. A subscription's lines come period by period, each line's text its description
+and its period — "Support, januar 2027".
 
 **The header** (`headerOf`): your reference from the orders, else the customer's buyer
 reference; their payment terms, else the settings' default; the order number as
-`order_reference` only when the draft holds one order; the delivery date the latest of
+`order_reference` only when the draft holds one order — none for a subscription; the delivery date the latest of
 the orders', today when none has one — or, for a subscription period (delivery S), the
-span of the periods as `deliveryFrom`–`deliveryTo`; the delivery address only when every
+span of the periods as `deliveryFrom`–`deliveryTo`, which takes the orders' delivery dates in too; the delivery address only when every
 order has the same complete one (a first line, a city and a two-letter country); and the
 project when the orders carry one.
 
@@ -1552,8 +1575,8 @@ app the pages are **Billing runs** (`/invoices/billing-runs`), under `invoices:c
 ([the user guide](/en/user/invoices/#run-billing-for-every-customer)).
 
 A run has a **source** (orders design O40): `consumption`, all of the above, or
-`orders` — every customer with order lines due, invoiced through the From orders
-wizard's core (`fromOrders`, [From orders to drafts](#from-orders-to-drafts)) one invoice
+`orders` — every customer with order lines or subscription periods due, invoiced through
+the From orders wizard's core (`fromOrders`, [From orders to drafts](#from-orders-to-drafts)) one invoice
 per order or, with **`combine`**, combined per customer as the wizard combines. Invoices
 cannot read Orders' settings, so the run carries `combine` itself; Orders' own
 `combineByDefault` is not read. What differs for orders is said in each step below.
@@ -1670,7 +1693,8 @@ another currency than NOK and were left out (currency_not_supported).* — on a 
 **`currency_not_supported`** when only such orders were due;
 **`orders_held_by_drafts`** when a draft of the customer holds an order allocation —
 what is left is on drafts already; else `no_orders_due`. Every line of every other order
-not blocked is invoiced in full by `fromOrders` with the run's `combine` — its
+not blocked is invoiced in full — and every subscription's periods due through
+`through` — by `fromOrders` with the run's `combine` — its
 allocations recorded in the ledger under the item —, each draft recorded on the item at
 once and — when the run issues — issued by `issueDraft` for today. A wizard refusal skips the
 item with its code, an issue refusal fails it, an error is retried as below. A run of

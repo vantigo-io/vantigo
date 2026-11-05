@@ -1515,7 +1515,23 @@ Customers and Invoices; Inventory and Communications stay optional.
   [Invoices](docs/src/content/docs/en/user/invoices.md#invoicing-orders) and the
   references ([Orders](docs/src/content/docs/en/reference/orders.md#invoicing-from-orders),
   [Invoices](docs/src/content/docs/en/reference/invoices.md#invoicing-orders)).
-- **S — Subscriptions.** Recurring lines invoiced per period.
+- **S — Subscriptions (done).** Subscriptions of services — a plan of interval
+  (monthly, quarterly, half-yearly, yearly), billing in advance or in arrears, start,
+  end, notice and invoice day — made by hand or by accepting a quote as one, activated,
+  changed from the next unbilled period through dated lines, paused, resumed (the
+  periods between skipped), ended and cancelled, with a change log and the
+  `orders.subscription.started`, `changed` and `ended` events. The period calendar runs
+  from the first of the start's month, a partial first period pro-rated by days to the
+  øre; a period is due from its first day in advance, its last in arrears, never more
+  than twelve months ahead. Each period is billed through `contracts.BillableOrders` as
+  allocations of kind `subscription_period` behind a unique live index, so a full credit
+  of one period makes it alone due again; `billed_through` is derived by the
+  invoiced-work holder. Invoices' From orders wizard and its billing run of orders take
+  the due periods ("Abonnement 3001 – januar 2027"), the header spanning them; the
+  customer's Orders tab lists the subscriptions and their value per year. On migration
+  `00124`. Documented in [Orders](docs/src/content/docs/en/user/orders.md#subscriptions)
+  and the references ([Orders](docs/src/content/docs/en/reference/orders.md#subscriptions),
+  [Invoices](docs/src/content/docs/en/reference/invoices.md#invoicing-orders)).
 - **C — Deliveries and stock.** `contracts.Stock` and `StockLedger`, reservations made
   synchronously on the order's transaction, and deliveries.
 - **D — Shipping.** Carriers (Bring first), shipments and the shipping line, revised
