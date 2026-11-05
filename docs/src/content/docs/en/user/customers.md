@@ -84,10 +84,12 @@ customer number. Beside them are the actions **Edit customer**, **Change type**,
 **Merge…**, **Archive customer** or **Restore customer**, **Personal data** (private
 persons only) and **Open in inbox**, each shown only with the permission it needs.
 
-A row of tabs — **Overview**, **Energy**, **Projects** and **Invoices** — appears when
-more than one is available to you. The three module tabs show that module's own panel
-for this customer and need the module on and a permission in it
-(`energy:metering-points-view`, `projects:access`, `invoices:access`).
+A row of tabs — **Overview**, **Energy**, **Projects**, **Invoices** and **Orders** —
+appears when more than one is available to you. The four module tabs show that module's
+own panel for this customer and need the module on and a permission in it
+(`energy:metering-points-view`, `projects:access`, `invoices:access`, `orders:access`).
+The **Orders** tab shows the customer's open quotes and orders with **New quote** and
+**New order** ([the customer's Orders tab](/en/user/orders/#the-customers-orders-tab)).
 
 **Overview** opens with the **Customer 360** panel: **Open projects**, **Unbilled
 hours**, **Expenses ready to invoice**, **Outstanding**, **Invoiced this year** and
