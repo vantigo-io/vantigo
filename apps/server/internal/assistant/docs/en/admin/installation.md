@@ -284,7 +284,8 @@ it needs —, the customers registry workers, the
 customers import worker `customers-import`, the energy import worker `energy-import`, the energy spot price worker
 `energy-spot-prices` when `ENERGY_SPOT_PRICE_SERVICE_URL` is set or `ENERGY_SPOT_PRICE_FEED_ENABLED=1`, the invoices EHF workers `invoices-ehf` and `invoices-ehf-events` when
 `INVOICES_EHF_ENABLED` is on, the invoices reminder worker `invoices-reminders`,
-always, the invoices billing worker `invoices-billing`, always, the invoices payments worker `invoices-payments` when
+always, the invoices billing worker `invoices-billing`, always, the invoices order allocations reconcile
+`invoices.allocation_reconcile`, always, the invoices payments worker `invoices-payments` when
 `INVOICES_VIPPS_ENABLED` is on, the calendar cancellations worker
 `calendar-cancellations` unless `CALENDAR_CANCELLATIONS_ENABLED=0`, the calendar
 subscriptions worker `calendar-subscriptions` unless `CALENDAR_SUBSCRIPTIONS_ENABLED=0`, and the
@@ -323,9 +324,9 @@ you use, retention cleanup, the registry workers, the EHF events worker, the
 calendar cancellations worker, `entra-outlook-sweep` and `assistant-retention` take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
 the `invoices-ehf` worker, the `invoices-reminders` worker, the `invoices-billing` worker,
 the `invoices-payments` worker, `communications-mailbox-sync`, the calendar subscriptions and mailbox sync workers and `events.dispatch` instead take one row at a time under a time-limited lease, so any number of
-instances share the work without sending anything twice. `google-sweep` takes neither:
-each of its steps claims its rows in one statement, so two instances never handle the
-same connection. The reminder worker sends one letter at a time, at most one a
+instances share the work without sending anything twice. `google-sweep` and
+`invoices.allocation_reconcile` take neither: each of their steps claims its rows in one
+statement, so two instances never handle the same row. The reminder worker sends one letter at a time, at most one a
 second per instance, and each send must finish well inside its 60-second lease
 ([The reminder worker and mail](/en/admin/payments/#the-reminder-worker-and-mail)).
 The payments worker polls every second and handles every Vipps payment that is due in
@@ -882,13 +883,19 @@ table of what draft and issued invoices hold of each order line, empty, and
 `00122_invoices_order_sources.sql`, which lets an invoice line name an order line's
 allocation and gives a billing run its source — every run made before it invoices
 consumption. No permission and no setting is new: the **Invoice** button on an order and
-Invoices' **From orders** wizard ask Invoices' `invoices:access` and `invoices:create`. With
-Orders on it starts one more worker, `orders.allocation_sweep`: once a day, under a
-PostgreSQL advisory lock so one instance runs it, it releases the order quantities draft
-invoices have held for 30 days — the backstop for a draft deleted while Orders could not
-be told, and the reason a draft invoice of an order should be issued within 30 days. It needs nothing of its own and sends nothing.
-Rolling `00122` back is refused while an invoice line names an order line or a billing run
-invoices orders; rolling `00121` back drops what the invoices held.
+Invoices' **From orders** wizard ask Invoices' `invoices:access` and `invoices:create`.
+`00123_invoices_order_allocation_ledger.sql` adds Invoices' record of the order
+quantities it took, empty, and Invoices starts one more worker, always,
+`invoices.allocation_reconcile`: every 10 minutes it gives back to Orders what Invoices
+took over an hour ago and no draft invoice holds — the backstop for a draft deleted while
+Orders could not be told, a customer's drafts deleted by an anonymisation, or a wizard
+or billing run interrupted halfway. A draft invoice that still exists keeps what it holds
+however old it is. The worker claims its rows in one statement, so any number of
+instances can run it, needs nothing of its own and sends nothing; with Orders off it does
+nothing. Rolling `00123` back drops the record, and what it would have given back stays
+held until someone releases it on the order; rolling `00122` back is refused while an
+invoice line names an order line or a billing run invoices orders; rolling `00121` back
+drops what the invoices held.
 
 **The release with Staff competence.** It brings `00066_staff_competence.sql`: the
 competence catalogue — five categories and fifteen Norwegian certificates seeded — and

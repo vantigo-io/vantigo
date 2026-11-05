@@ -643,18 +643,21 @@ siden av **Ny faktura** øverst i fakturalisten, som vises når Ordre-modulen er
 1. **Ordre.** Fra en ordre er den allerede valgt. Ellers velger du **Legg til en kunde** —
    én eller flere — og hver ordre deres med linjer som gjenstår å fakturere, vises med
    nummer, **Deres ref.** og **Levering**-dato, avkrysset. Fjern krysset for dem som skal
-   vente. En ordre som ikke kan faktureres nå, sier hvorfor: *Ordren er et utkast: bekreft
-   den før den faktureres.* eller *Ordren er satt på vent.*
+   vente. En ordre som ikke kan faktureres nå, er grået ut og sier hvorfor: *Ordren er et
+   utkast: bekreft den før den faktureres.*, *Ordren er satt på vent.* eller — for en ordre
+   i en annen valuta enn fakturainnstillingenes — *Ordren er i en annen valuta enn
+   fakturaene lages i, så den kan ikke faktureres her.*
 2. **Linjer.** Linjene til hver valgte ordre, med **Gjenstår å fakturere**, **Faktureres
    nå**, **Gjenstår etter**, enhetsprisen og **Beløp**. **Faktureres nå** starter med alt
    som gjenstår. Sett det ned for å fakturere deler av en linje — **delfakturering**: det
    som gjenstår, blir stående på ordren til senere. Sett det til 0 for å la linjen være.
    Nederst summeres linjene som er valgt.
 3. **Fakturaer.** **Én faktura per ordre** eller **Samlefaktura per kunde**: en kundes
-   ordre samles på én faktura når de har samme valuta, deres referanse, prosjekt og
-   betalingsbetingelser. Steget viser fakturaene som lages, og sier hva som holdt to av en
-   kundes ordre atskilt — *Holdes atskilt fra kundens andre faktura på grunn av deres
-   referanse.*
+   ordre samles på én faktura når de har samme valuta, deres referanse, prosjekt,
+   betalingsbetingelser og leveringsadresse — en faktura oppgir ett leveringssted, og en
+   adresse skrevet med andre mellomrom eller store bokstaver er det samme stedet. Steget
+   viser fakturaene som lages, og sier hva som holdt to av en kundes ordre atskilt —
+   *Holdes atskilt fra kundens andre faktura på grunn av leveringsadresse.*
 
 Velg **Lag utkastene**. Ett utkast åpnes med en gang; flere listes opp — *Utkast 1042:
 ordre 2210* — så du kan åpne og sjekke dem ett for ett. Ingenting er utstedt ennå.
@@ -675,14 +678,20 @@ ordre 2210* — så du kan åpne og sjekke dem ett for ett. Ingenting er utstedt
 
 ### Redigere, slette, utstede og kreditere det
 
-- **Rediger det** som et hvilket som helst utkast. Fjerner du en linje, gis antallet
-  tilbake til ordren ved **Lagre**, og ordren tilbyr det til fakturering igjen.
+- **Rediger det** som et hvilket som helst utkast, med én regel: en linje som fakturerer en
+  ordre, beholder ordrelinjens antall, enhetspris, rabatt og mva-kode — de feltene er
+  låst, og bare beskrivelsen kan endres. For å fakturere et annet antall fjerner du
+  linjen og fakturerer ordren på nytt. Fjerner du en linje, gis antallet tilbake til
+  ordren ved **Lagre**, og ordren tilbyr det til fakturering igjen.
 - **Slett utkastet**, så går alle antallene det holdt, tilbake til ordrene med en gang.
+  Svarer ikke Ordre akkurat da, gir Vantigo dem tilbake av seg selv i løpet av den neste
+  timen eller så. Et utkast du beholder, holder antallene sine så lenge det finnes.
 - **Utsted det** som en hvilken som helst faktura. Utstedelsen merker linjene som
   fakturert på ordrene: kortet **Fakturaer** på hver ordre viser fakturaen. Den avvises,
   med linjen nevnt, når ordrelinjen er endret siden utkastet ble laget — noen har frigjort
-  det fakturautkastet holder i Ordre, for eksempel, eller ordren er satt på vent. Slett
-  utkastet og fakturer ordren på nytt.
+  det fakturautkastet holder i Ordre, for eksempel, eller ordren er satt på vent — eller
+  når linjen ikke lenger fakturerer det ordren satte av. Slett utkastet og fakturer ordren
+  på nytt.
 - **Krediter det** som en hvilken som helst faktura. Hver linje en kreditnota returnerer
   fullt ut — alene eller sammen med kreditnotaene før den — gir antallet tilbake til
   ordren, så det kan faktureres igjen.
@@ -701,14 +710,21 @@ gjenstår å fakturere, for alle kunder — eller kundene du nevner — i én om
    gjenstår å fakturere på en ordre levert innen denne dagen, eller uten leveringsdato,
    faktureres i sin helhet.*
 3. **Samle kundens ordre (samlefaktura)** — med kryss samles en kundes ordre på én faktura
-   der de har samme valuta, deres referanse, prosjekt og betalingsbetingelser; uten kryss
-   får hver ordre sin egen.
+   der de har samme valuta, deres referanse, prosjekt, betalingsbetingelser og
+   leveringsadresse; uten kryss får hver ordre sin egen.
 4. **Utsted fakturaene** og **Kunde-ID-er** som for forbruk, og så **Start kjøringen**.
 
-En ordre på vent eller som fortsatt er et utkast, tas ikke med. Kjøringen avvises når
-Ordre-modulen er slått av, eller når *Ingen kunde har ordrelinjer som gjenstår å
-fakturere til og med den dagen.* En kundes rad blir **Hoppet over**, med grunnen i ord, når
-ingenting gjenstår for kunden, eller en ordre eller en linje ikke kan faktureres.
+En ordre på vent eller som fortsatt er et utkast, tas ikke med. Det gjør heller ikke en
+ordre i en annen valuta enn fakturainnstillingenes: kundens rad nevner den — *Orders 2212
+(EUR) are in another currency …* — og blir **Hoppet over** med *Kundens ordre som skal
+faktureres, er i en annen valuta enn fakturaene lages i, og ble utelatt.* når ingenting
+annet skulle faktureres. Kjøringen avvises når Ordre-modulen er slått av, eller når *Ingen
+kunde har ordrelinjer som gjenstår å fakturere til og med den dagen.* En kundes rad blir
+**Hoppet over**, med grunnen i ord, når ingenting gjenstår for kunden — *Det kundens ordre
+har igjen å fakturere, ligger allerede på fakturautkast. Utsted eller slett de
+utkastene.* når utkast holder det — eller en ordre eller en linje ikke kan faktureres. En
+kunde som kjøringen prøver på nytt etter et avbrudd, faktureres fullt ut: det det
+avbrutte forsøket hadde tatt, gis tilbake først.
 
 ### Når veiviseren for ordre avviser
 
@@ -720,7 +736,7 @@ linjen når det gjelder én — *Ordre 2210, linje 3: …*:
 - *Det er mer enn det som gjenstår å fakturere på linjen. Sett ned antallet.* — noen har
   fakturert deler av den i mellomtiden.
 - *Linjen kan ikke lenger faktureres: den er allerede fakturert, eller ordren er endret.*
-- ordren er ikke i NOK, mva-koden på linjen tilbys ikke lenger, en faktura ville fått mer
+- en ordre er ikke i NOK (velg bare ordrene veiviseren tilbyr), mva-koden på linjen tilbys ikke lenger, en faktura ville fått mer
   enn 500 linjer (velg færre linjer, eller én faktura per ordre), eller kunden kan ikke
   faktureres, som for **Ny faktura**.
 
@@ -747,7 +763,7 @@ før du forhåndsviser eller utsteder*.
   på alvor: et utstedt dokument uten noen av dem kan aldri sendes som EHF, bare
   krediteres og utstedes på nytt.
 - **Linjer**: **Legg til en linje**, deretter **Beskrivelse**, **Antall** (inntil tre
-  desimaler), **Enhet**, **Enhetspris** (inntil fire desimaler, åtte på en linje som fakturerer strømforbruk), **Rabatt %** og
+  desimaler), **Enhet**, **Enhetspris** (inntil fire desimaler, åtte på en linje som fakturerer strømforbruk eller en ordre), **Rabatt %** og
   **Mva-kode** fra kodene som tilbys på nye linjer; **Beløp** er linjens nettobeløp.
   Pilene flytter en linje, søppelbøtta fjerner den. En linje med en kode som siden er
   tatt ut av listen, viser den fortsatt, merket *(tilbys ikke lenger)*.
