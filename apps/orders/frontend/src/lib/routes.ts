@@ -12,11 +12,18 @@ export const SUBSCRIPTION_ROUTE_PATH = "/orders/subscriptions/$subscriptionId";
 export const TEMPLATES_ROUTE_PATH = "/orders/templates";
 export const SETTINGS_ROUTE_PATH = "/orders/settings";
 export const ANALYSIS_ROUTE_PATH = "/orders/analysis";
+export const DELIVERIES_ROUTE_PATH = "/orders/deliveries";
+export const DELIVERY_ROUTE_PATH = "/orders/deliveries/$deliveryId";
 
 export const quoteLinkOptions = (quoteId: number) => ({ to: QUOTE_ROUTE_PATH, params: { quoteId: String(quoteId) } });
 export const salesOrderLinkOptions = (orderId: number) => ({
   to: SALES_ORDER_ROUTE_PATH,
   params: { orderId: String(orderId) },
+});
+
+export const deliveryLinkOptions = (deliveryId: number) => ({
+  to: DELIVERY_ROUTE_PATH,
+  params: { deliveryId: String(deliveryId) },
 });
 
 export const subscriptionLinkOptions = (subscriptionId: number) => ({

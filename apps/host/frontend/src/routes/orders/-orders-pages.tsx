@@ -2,6 +2,8 @@ import { useParams, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton } from "@vantigo/frontend-shell";
 import type { OrdersAccess } from "@vantigo/orders-ui";
 import { AnalysisPage } from "@vantigo/orders-ui/pages/analysis";
+import { DeliveriesPage } from "@vantigo/orders-ui/pages/deliveries";
+import { DeliveryEditorPage } from "@vantigo/orders-ui/pages/delivery-editor";
 import { OrderEditorPage } from "@vantigo/orders-ui/pages/order-editor";
 import { OrdersPage } from "@vantigo/orders-ui/pages/orders";
 import { QuoteEditorPage } from "@vantigo/orders-ui/pages/quote-editor";
@@ -31,6 +33,7 @@ export const TemplatesRoutePage = withAccess((access) => <TemplatesPage access={
 export const SettingsRoutePage = withAccess((access) => <SettingsPage access={access} />);
 export const AnalysisRoutePage = withAccess((access) => <AnalysisPage access={access} />);
 export const SubscriptionsRoutePage = withAccess((access) => <SubscriptionsPage access={access} />);
+export const DeliveriesRoutePage = withAccess((access) => <DeliveriesPage access={access} />);
 
 const QuoteEditor = ({ access }: { access: OrdersAccess }) => {
   const { quoteId } = useParams({ from: "/orders/quotes/$quoteId" });
@@ -65,3 +68,10 @@ const NewSubscription = ({ access }: { access: OrdersAccess }) => {
 
 export const SubscriptionRoutePage = withAccess((access) => <SubscriptionEditor access={access} />);
 export const NewSubscriptionRoutePage = withAccess((access) => <NewSubscription access={access} />);
+
+const DeliveryEditor = ({ access }: { access: OrdersAccess }) => {
+  const { deliveryId } = useParams({ from: "/orders/deliveries/$deliveryId" });
+  return <DeliveryEditorPage deliveryId={Number(deliveryId)} access={access} />;
+};
+
+export const DeliveryRoutePage = withAccess((access) => <DeliveryEditor access={access} />);

@@ -19,6 +19,7 @@ import { IconAlertCircle, IconDeviceFloppy } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import { sitesQueryOptions } from "../api/deliveries";
 import { metaQueryOptions } from "../api/meta";
 import { ApiValidationError, isVersionConflict } from "../api/request";
 import { settingsQueryOptions, updateSettings } from "../api/settings";
@@ -39,7 +40,8 @@ const languages = ["nb", "en"] as const;
  * how long a quote is valid and the default payment terms; the channel
  * documents are sent from, whether a confirmation is mailed on confirm and
  * whether orders are combined on one invoice by default, and how a
- * subscription's final period is billed by default; and the mail texts per
+ * subscription's final period is billed by default, and the site a new order
+ * is fulfilled from (O46); and the mail texts per
  * kind and language, empty for the built-in ones.
  */
 export const SettingsPage = ({ access = noOrdersAccess }: { access?: OrdersAccess }) => {
@@ -97,6 +99,7 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
         combineByDefault: values.combineByDefault,
         subscriptionFinalPeriodDefault: values.subscriptionFinalPeriodDefault,
         sendChannelId: values.sendChannelId ?? null,
+        defaultSiteId: values.defaultSiteId ?? null,
         // An override left empty falls back to the built-in text (O25), so it is not sent.
         mailTexts: values.mailTexts.filter((text) => text.subject.trim() !== "" || text.body.trim() !== ""),
       }),
@@ -113,6 +116,13 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
       notifications.show({ color: "red", title: t("couldNotSave"), message: refusalMessage(error, t) });
     },
   });
+  // The sites are Inventory's, offered while it keeps stock (O46).
+  const meta = useQuery(metaQueryOptions());
+  const stockKept = meta.data?.stockKept === true;
+  const sites = useQuery({ ...sitesQueryOptions(), enabled: stockKept });
+  const siteOptions = (sites.data?.items ?? [])
+    .filter((site) => (site.active && site.fulfilsOrders) || site.id === values.defaultSiteId)
+    .map((site) => ({ value: String(site.id), label: `${site.code} · ${site.name}` }));
   // The channels come with the settings, as Communications answers them (O25).
   const channelOptions = settings.sendChannels.map((channel) => ({
     value: channel.id,
@@ -206,6 +216,21 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
             onChange={(value) => value && set("subscriptionFinalPeriodDefault", value as FinalPeriod)}
             data-assist="orders.settings.final-period"
           />
+          {stockKept && (
+            <Select
+              label={t("defaultSite")}
+              description={t("defaultSiteHint")}
+              placeholder={t("noSite")}
+              maw={360}
+              clearable
+              disabled={!manage}
+              data={siteOptions}
+              value={values.defaultSiteId == null ? null : String(values.defaultSiteId)}
+              error={errors.defaultSiteId}
+              onChange={(value) => set("defaultSiteId", value ? Number(value) : null)}
+              data-assist="orders.settings.default-site"
+            />
+          )}
         </Stack>
       </Card>
       <Card withBorder padding="lg" data-testid="sending-card">

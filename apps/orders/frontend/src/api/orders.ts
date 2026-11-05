@@ -83,6 +83,9 @@ export const markDelivered = (id: number, read: OrderRead, lines: DeliveredLine[
 export const undoDelivered = (id: number, read: OrderRead, lines: DeliveredLine[]) =>
   send<Order>(`${base}/${id}/undo-delivered`, json("POST", { ...token(read), lines }));
 export const sendOrder = (id: number, input: SendInput) => send<Order>(`${base}/${id}/send`, json("POST", input));
+/** Reserve now (O46): what of each goods line's open quantity is not reserved yet, at the order's site. */
+export const reserveOrder = (id: number, read: OrderRead) =>
+  send<Order>(`${base}/${id}/reserve`, json("POST", token(read)));
 
 /** Where an order confirmation's PDF is: a version's stored one, or the current one printed now (O24). */
 export const orderPdfUrl = (id: number, version?: number) =>

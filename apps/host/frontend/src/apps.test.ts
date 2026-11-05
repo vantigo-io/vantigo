@@ -125,6 +125,7 @@ describe("the app registry", () => {
       "/invoices/settings",
       "/orders/quotes",
       "/orders/orders",
+      "/orders/deliveries",
       "/orders/subscriptions",
       "/orders/analysis",
       "/orders/templates",
