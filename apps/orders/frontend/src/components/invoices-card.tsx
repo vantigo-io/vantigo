@@ -16,8 +16,8 @@ export interface InvoicesCardProps {
 /**
  * The invoices issued from an order (orders design O41), from Orders' own
  * allocations: each one's number — linking to Invoices when the caller can
- * open it — its date, the part of the order it bills, net of VAT, and
- * whether a credit note gave all of it back.
+ * open it — its date, the part of the order it still bills, net of VAT,
+ * what credit notes gave back of it, and whether they gave all of it back.
  */
 export const InvoicesCard = ({ invoices, canViewInvoices }: InvoicesCardProps) => {
   const { t, money, date } = useOrdersFormat();
@@ -62,6 +62,11 @@ export const InvoicesCard = ({ invoices, canViewInvoices }: InvoicesCardProps) =
                       <Text size="sm" ff="monospace">
                         {money(invoice.amount, invoice.currency)}
                       </Text>
+                      {invoice.releasedAmount > 0 && (
+                        <Text size="xs" c="dimmed" ff="monospace">
+                          {t("creditedAmount", { amount: money(invoice.releasedAmount, invoice.currency) })}
+                        </Text>
+                      )}
                     </Table.Td>
                     <Table.Td>
                       <Badge variant="light" color={stateColours[invoice.state] ?? "gray"}>

@@ -330,7 +330,8 @@ describe("invoicing an order", () => {
             invoiceId: 77,
             invoiceNumber: 10042,
             issueDate: "2026-11-04",
-            amount: 1250,
+            amount: 1000,
+            releasedAmount: 250,
             currency: "NOK",
             state: "invoiced",
           },
@@ -338,7 +339,8 @@ describe("invoicing an order", () => {
             invoiceId: 78,
             invoiceNumber: 10043,
             issueDate: "2026-11-05",
-            amount: 300,
+            amount: 0,
+            releasedAmount: 300,
             currency: "NOK",
             state: "released",
           },
@@ -350,6 +352,7 @@ describe("invoicing an order", () => {
     const card = await screen.findByTestId("invoices-card");
     expect(within(card).getByRole("link", { name: "10042" })).toHaveAttribute("href", "/invoices/77");
     expect(card).toHaveTextContent("Credited");
+    expect(card).toHaveTextContent(/250[.,]00 credited/);
   });
 
   it("names an invoice without a link for a caller who cannot open Invoices", async () => {
@@ -361,6 +364,7 @@ describe("invoicing an order", () => {
             invoiceNumber: 10042,
             issueDate: "2026-11-04",
             amount: 1250,
+            releasedAmount: 0,
             currency: "NOK",
             state: "invoiced",
           },

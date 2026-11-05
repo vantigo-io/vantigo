@@ -596,6 +596,7 @@ export const ordersCatalog = {
     invoiceDate: "Invoice date",
     "orderInvoiceState.invoiced": "Invoiced",
     "orderInvoiceState.released": "Credited",
+    creditedAmount: "{{amount}} credited",
     "changeAction.draft_allocations_released": "Released from draft invoices",
   },
   nb: {
@@ -1170,6 +1171,7 @@ export const ordersCatalog = {
     invoiceDate: "Fakturadato",
     "orderInvoiceState.invoiced": "Fakturert",
     "orderInvoiceState.released": "Kreditert",
+    creditedAmount: "{{amount}} kreditert",
     "changeAction.draft_allocations_released": "Frigjort fra fakturautkast",
   },
 } satisfies CatalogResources;
