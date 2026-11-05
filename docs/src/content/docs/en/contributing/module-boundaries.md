@@ -114,7 +114,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    matches; provider-gated, rule 12), `Products` (`contracts.ProductCatalog`,
    products; a `VariantEntry` carries its product's tax category, description, category id and
    name, and its option values, so Orders prices, groups and builds the variant grid without a
-   second read), `Projects` (`contracts.ProjectDirectory`, projects, incl. the
+   second read; `ProductImages(productID, use)` and `OpenProductImage(imageID)` read a
+   product's images — a `ProductImage` names a picture and never where it is kept — and,
+   like the rest of the catalog, check no user permission: the caller's own picker does),
+   `Projects` (`contracts.ProjectDirectory`, projects, incl. the
    consumer-gated `ProjectsByStatus`), `Actuals`
    (`contracts.ProjectActuals`, time), `Timesheets` (`contracts.Timesheets`, time — the
    hours a user logged in a week, consumer-gated), `Expenses`

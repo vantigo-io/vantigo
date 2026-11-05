@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/invoices/print_batches.go
   - apps/server/internal/staff/objects.go
   - apps/server/internal/customers/objects.go
+  - apps/server/internal/products/objects.go
 ---
 Objektlagring er applikasjonsporten Kommunikasjon mellomlagrer og serverer vedlegg
 gjennom. Moduler snakker aldri med en leverandør-SDK: de får et `ObjectStore` avgrenset
@@ -135,7 +136,10 @@ fysiske nøkkel er `staff/people/<personId>/<uuid>` ([Ansatte](/en/reference/sta
 omfanget `customers`: et vedleggs relative nøkkel er `attachments/<uuid>`, så dets fysiske
 nøkkel er `customers/attachments/<uuid>` — en nøkkel som ikke navngir noen kunde, siden en
 sammenslåing flytter vedleggets rad til kunden som overlever, og lageret ikke kan gi nytt
-navn ([Kunder](/en/reference/customers/#attachments)). Et avgrenset lager
+navn ([Kunder](/en/reference/customers/#attachments)). Produkter bruker omfanget
+`products-images`: et produktbildes relative nøkkel er `<productId>/<uuid>` og miniatyrbildets
+`<productId>/<uuid>-thumb`, så de fysiske nøklene er `products-images/<productId>/<uuid>` og
+`products-images/<productId>/<uuid>-thumb` ([Produkter](/en/reference/products/#images)). Et avgrenset lager
 avviser en relativ nøkkel som er lik omfanget sitt eller allerede begynner med
 `{scope}/`: kallere sender bare relative nøkler og må aldri bygge prefikset selv.
 
