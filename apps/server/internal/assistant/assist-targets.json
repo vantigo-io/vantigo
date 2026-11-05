@@ -285,6 +285,11 @@
     "description": "The button above the quote list that starts a new quote."
   },
   {
+    "key": "orders.settings.final-period",
+    "route": "/orders/settings",
+    "description": "The final period a new subscription takes: the period the end falls in billed in full, or pro-rated to the end date."
+  },
+  {
     "key": "orders.settings.save",
     "route": "/orders/settings",
     "description": "Saves the Orders settings: number series, validity, payment terms, the send channel and the mail texts."
@@ -308,6 +313,16 @@
     "key": "orders.subscription.end",
     "route": "/orders/subscriptions/{subscriptionId}",
     "description": "Sets the subscription's end; its period is the last one billed."
+  },
+  {
+    "key": "orders.subscription.end-final-period",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "description": "In the End dialog: bill the last period in full or pro-rated to the end date, pre-selected from the subscription's setting."
+  },
+  {
+    "key": "orders.subscription.final-period",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "description": "Whether the period the end falls in is billed in full or pro-rated to the end date; editable while the subscription runs."
   },
   {
     "key": "orders.subscription.pause",
