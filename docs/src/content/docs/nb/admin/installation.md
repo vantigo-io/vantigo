@@ -339,7 +339,8 @@ Betalingsjobben ser etter arbeid hvert sekund og behandler alle Vipps-betalinger
 klare, i hver syklus
 ([Betalingsjobben](/nb/admin/payments/#betalingsjobben)).
 Faktureringsjobben har ingen innstillinger: den utfører fakturakjøringene folk lager
-under **Fakturaer → Fakturakjøringer**, ser etter arbeid hvert 5. sekund og lager — og,
+under **Fakturaer → Fakturakjøringer** — av forbruk, eller av ordre når Ordre er slått
+på —, ser etter arbeid hvert 5. sekund og lager — og,
 når kjøringen ber om det, utsteder — én kundes fakturaer om gangen, høyst fem kunder
 per syklus, hver under en lås på 10 minutter; den sender ingenting
 ([Billing runs](/en/reference/invoices/#billing-runs)).
@@ -909,6 +910,22 @@ noen lager tilbud, koble avgiftskategoriene i Produkter til mva-koder i Fakturae
 en avsenderkanal ([Ordre](/nb/admin/orders/)). Å rulle migreringen tilbake fjerner
 skjemaet med hvert tilbud, hver ordre og hver mal; de lagrede PDF-ene blir liggende i
 objektlageret.
+
+**Utgivelsen med fakturering fra ordre.** Den har `00121_orders_allocations.sql`, tabellen
+over hva fakturautkast og utstedte fakturaer holder av hver ordrelinje, tom, og
+`00122_invoices_order_sources.sql`, som lar en fakturalinje vise til en ordrelinjes
+allokering og gir en fakturakjøring en kilde — alle kjøringer laget før den, fakturerer
+forbruk. Ingen rettighet og ingen innstilling er ny: knappen **Fakturer** på en ordre og
+veiviseren **Fra ordre** i Fakturaer krever `invoices:access` og `invoices:create` i
+Fakturaer. Med Ordre
+slått på starter den én arbeider til, `orders.allocation_sweep`: én gang i døgnet, under en
+rådgivende lås (advisory lock) i PostgreSQL så én instans kjører den, frigjør den
+ordreantall som fakturautkast har holdt i 30 dager — sikkerhetsnettet for et utkast som ble
+slettet mens Ordre ikke kunne få beskjed, og grunnen til at et fakturautkast av en ordre
+bør utstedes innen 30 dager.
+Den trenger ingenting eget og sender ingenting. Å rulle `00122` tilbake avvises så lenge
+en fakturalinje viser til en ordrelinje eller en fakturakjøring fakturerer ordre; å rulle
+`00121` tilbake fjerner det fakturaene holdt.
 
 **Utgivelsen med kompetanse i Ansatte.** Den har `00066_staff_competence.sql`:
 kompetansekatalogen — fem kategorier og femten norske sertifikater forhåndsdefinert — og

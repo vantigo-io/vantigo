@@ -1,6 +1,6 @@
 ---
 title: "Orders module"
-description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, PDFs, sending and the cover mail, the events, the handler and the three workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, the refusal codes, the assist targets and every endpoint with its permission and status codes."
+description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, PDFs, sending and the cover mail, the events, the handler and the four workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, the refusal codes, the assist targets and every endpoint with its permission and status codes."
 sources:
   - apps/server/internal/orders
   - apps/orders/frontend
@@ -8,6 +8,8 @@ sources:
   - apps/server/internal/openapi/specs/orders.yaml
   - apps/server/internal/db/migrations/00119_orders_baseline.sql
   - apps/server/internal/db/migrations/00120_orders_warnings.sql
+  - apps/server/internal/db/migrations/00121_orders_allocations.sql
+  - apps/server/internal/contracts/billable_orders.go
   - apps/server/internal/contracts/events_orders.go
   - apps/host/frontend/src/routes/orders
   - apps/host/frontend/src/routes/customers/-customer-orders-tab.tsx
@@ -18,11 +20,11 @@ customers: their header and lines, their prices and totals, their PDFs, their se
 an order's life from draft to confirmed, delivered and cancelled. In Norwegian the app is
 **Ordre**. The design is
 [`2026-11-05-orders-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-05-orders-design.md)
-(decisions O1–O54); this page describes delivery A, quotes and orders, and delivery A2,
+(decisions O1–O54); this page describes delivery A, quotes and orders, delivery A2,
 selling comfort — sales warnings, packagings and the variant grid, and the analysis
-views. Invoicing from
-orders (B), subscriptions (S), deliveries from stock (C) and shipping (D) come later and
-are described as they land.
+views — and delivery B, invoicing from orders ([Invoicing from orders](#invoicing-from-orders)).
+Subscriptions (S), deliveries from stock (C) and shipping (D) come later and are
+described as they land.
 
 ## The module
 
@@ -44,7 +46,9 @@ The schema holds `settings` (one row), `counters` (one per number series), `quot
 PDFs), `mailings` (every send) and `erasures` (the customers whose confirmed orders wait for
 their retention to run) — migration `00119` — and `customer_warnings` and
 `product_warnings` (one sales warning per customer and per product, migration `00120`,
-which also gives every line its `product_id` and `packaging_name` snapshots).
+which also gives every line its `product_id` and `packaging_name` snapshots) — and
+`invoice_allocations`, what invoices hold of each order line (migration `00121`,
+[Invoicing from orders](#invoicing-from-orders)).
 
 ## Permissions
 
@@ -52,7 +56,7 @@ which also gives every line its `product_id` and `packaging_name` snapshots).
 | --- | --- | --- | --- | --- |
 | `orders:access` | Use Orders | See the app; read quotes, orders, templates, the customer summary, the salespeople and the catalog search | no | yes |
 | `orders:quotes-manage` | Manage quotes | Create, edit, send, mark as sent, revise, accept, decline, cancel, copy and delete quotes; apply a template | no | yes |
-| `orders:sales-manage` | Manage orders | Create and edit orders, hold and release, cancel and cancel what remains, register and undo delivered, send the confirmation, delete a draft | no | yes |
+| `orders:sales-manage` | Manage orders | Create and edit orders, hold and release, cancel and cancel what remains, register and undo delivered, send the confirmation, release the draft allocations, delete a draft | no | yes |
 | `orders:sales-confirm` | Confirm orders | Confirm, lock and unlock; accept a quote into a confirmed order | no | yes |
 | `orders:settings` | Manage Orders settings | The settings, the number series, the quote templates and the sales warnings; overriding a block warning | no | no |
 | `orders:subscriptions-manage` | Manage subscriptions | Subscriptions — first asked for by delivery S | no | yes |
@@ -67,8 +71,10 @@ asks for them yet.
 
 The screens read other modules over HTTP and need their keys too: the customer picker
 `customers:view`, a customer's contacts `customers:contacts-view` with
-`customers:associations-view`, a free-text line's VAT codes `invoices:access` and the
-project picker `projects:access`. The catalog search a line is picked from is Orders' own
+`customers:associations-view`, a free-text line's VAT codes `invoices:access`, the
+project picker `projects:access`, the order page's **Invoice** — Invoices' From orders
+wizard — `invoices:access` and `invoices:create`, and the links of its **Invoices** card
+`invoices:access`. The catalog search a line is picked from is Orders' own
 (`GET /variants`) and needs no Products key.
 
 ## The document header
@@ -274,18 +280,18 @@ two derived statuses:
 - **Done**: confirmed, with at least one product line, and every product line
   satisfied — its cancelled plus invoiced quantity covers what was ordered, and so does
   its cancelled plus the larger of delivered and invoiced. A remainder cancelled whole is
-  done; a line delivered and not invoiced is not. Until invoicing from orders comes with
-  delivery B nothing is invoiced, so only an order whose product lines are all cancelled
-  in full is done. The list's `done` and `open` filters and the retention clock use the
-  same rule.
+  done; a line delivered and not invoiced is not. The invoiced quantity is what issued
+  invoices stamped ([Invoicing from orders](#invoicing-from-orders)), so an order becomes
+  done at an invoice's issue. The list's `done` and `open` filters and the retention clock
+  use the same rule.
 
 | Operation | Takes | Refused with |
 | --- | --- | --- |
 | Confirm | a draft | `order_not_draft` (409); `customer_disabled`, `order_empty` (no product line), `line_unpriced`, `vat_code_unmapped` (400); `blocked_by_warning` (409, [Sales warnings](#sales-warnings)) |
 | Hold, release | a confirmed order | `order_not_confirmed` (409). Release of an order not on hold answers it unchanged |
 | Lock, unlock | a confirmed order | `order_not_confirmed` (409) |
-| Cancel | a draft, or a confirmed, unlocked order with nothing delivered or invoiced | `order_locked` (409) for a locked one — unlock it first; `order_has_progress` (409) once anything is delivered or invoiced; `order_not_confirmed` (409) for one already cancelled |
-| Cancel the rest | a confirmed, unlocked order | `order_not_confirmed`, `order_locked` (409) |
+| Cancel | a draft, or a confirmed, unlocked order with nothing delivered or invoiced | `order_locked` (409) for a locked one — unlock it first; `order_has_progress` (409) once anything is delivered or invoiced; `order_not_confirmed` (409) for one already cancelled; `order_in_draft_invoice` (409) while a draft allocation holds part of it |
+| Cancel the rest | a confirmed, unlocked order | `order_not_confirmed`, `order_locked`, `order_in_draft_invoice` (409) |
 | Delete | a draft | `order_not_draft` (409). A draft accepted from a quote puts that quote back to `sent` |
 
 **Confirm** freezes the snapshot and the prices, prints the confirmation inside its
@@ -310,11 +316,15 @@ catalog lines are priced again when the currency or the day moved. A confirmed, 
 order (`order_locked`, 409, when locked) takes only what O26 allows:
 
 - lines added;
-- a line's quantity, down to the larger of what is delivered and invoiced
-  (`quantity_below_progress`, 400);
+- a line's quantity, down to the larger of what is delivered and what is invoiced plus
+  draft-allocated, plus what is cancelled (`quantity_below_progress`, 400);
 - a line's price, discount and text, while nothing of it is invoiced (`line_invoiced`,
-  409);
-- a line with no delivery and no invoice removed (`line_has_progress`, 409, otherwise);
+  409) — and its price and discount while no draft allocation holds part of it
+  (`line_in_draft_invoice`, 409);
+- a line with no delivery, no invoice and no allocation that keeps it — a draft, an
+  invoiced one, or a released one an invoice stamped — removed (`line_has_progress`, 409,
+  otherwise); a removed line's released allocations no invoice stamped are deleted with
+  it;
 - the delivery date, the delivery address, the contact, your reference and the internal
   note.
 
@@ -329,8 +339,7 @@ code, rate and category it was confirmed with, and the catalog is not read for i
 variant renamed, re-categorised or deleted since changes nothing and refuses nothing. A
 save that gives such a line another unit or VAT code is `line_invalid` (400): add a new
 line instead. Only its quantity, price, discount and text change, and a catalog line keeps
-its frozen price unless the save names a new one. `line_in_draft_invoice` is declared in the contract for delivery B and is
-not raised yet.
+its frozen price unless the save names a new one.
 
 ### Versions and the change log
 
@@ -346,8 +355,10 @@ list of typed actions, each with the line it is about where it is about one and 
 before and after as text: `line_added`, `line_removed`, `quantity_changed`,
 `price_changed`, `discount_changed`, `text_changed`, `delivery_changed`,
 `contact_changed`, `reference_changed`, `cancelled_remaining`, `held`, `released`,
-`locked`, `unlocked`, `delivered_marked`, `delivered_undone` and `warning_overridden` (a
-block warning overridden at confirm: from is the warning, to the reason).
+`locked`, `unlocked`, `delivered_marked`, `delivered_undone`, `warning_overridden` (a
+block warning overridden at confirm: from is the warning, to the reason) and
+`draft_allocations_released` (to is how many were released). An invoice's issue and a
+credit note's release are not logged: the order's **Invoices** list is their record.
 
 ### Delivered by hand
 
@@ -361,6 +372,127 @@ the request is judged at once. Each marking logs `delivered_marked` or `delivere
 and recomputes the delivery status. A locked order still takes it; an order on hold takes
 neither (`order_on_hold`, 409) — release it first. Marking and undoing lock the lines'
 variants, since an open line holds its variant against a delete.
+
+## Invoicing from orders
+
+Delivery B (O36–O41) invoices orders in **Invoices**: its From orders wizard and its
+billing run of orders ([Invoicing orders](/en/reference/invoices/#invoicing-orders)) read
+what is due through this module's **`contracts.BillableOrders`**, hold what they put on a
+draft as **allocations**, and the issue stamps them through this module's
+**invoiced-work holder**. Orders never reads Invoices for it, and no permission of this
+module is asked: the wizard needs `invoices:access` and `invoices:create`.
+
+### Allocations
+
+`orders.invoice_allocations` (migration `00121_orders_allocations.sql`) holds what part of
+an order line an invoice bills (O36). An invoice line holds one live source, and a line
+may be invoiced in several parts, so the source an invoice line names is an allocation —
+kind `orders.allocation` (`contracts.WorkSourceOrderAllocation`) — never the line. A row
+carries its line and order, its `kind` (`order_line` in B; `subscription_period`, with
+its period, is delivery S's), its `quantity` (three decimals), the line's `unit_price`
+(eight decimals) and `discount_percent` and `vat_code_id` when it was made, its `amount` —
+docmath's line net of those three numbers (O37), so the invoice line built from them
+always nets the same —, its `state` and `revision` (1: a row is never rewritten), and an
+invoice's stamp.
+
+| State | Means | Moves to |
+| --- | --- | --- |
+| `draft` | A draft invoice holds the quantity; it is not offered again | `invoiced` by the issue; `released` by the release after a draft is deleted or its line removed, by the order's [release](#release-draft-allocations), or by the [sweep](#workers) |
+| `invoiced` | Stamped by an issued invoice: `invoice_id`, `invoice_number`, `issue_date`, `invoiced_at`, `invoiced_by` and `invoiced_by_display` | `released` by the credit note that returns its invoice line in full |
+| `released` | Its quantity went back to the line; a credited one keeps the invoice's stamp as the order's history | — |
+
+What a line has **to invoice** is, for a line invoiced on order (`invoice_policy`
+`order`, every line in B), **ordered − cancelled − invoiced − draft-allocated**, never
+below 0; on delivery (`delivery`) it will be delivered − invoiced − draft-allocated,
+delivery C's. The order answers each line's `qtyDraftAllocated`.
+
+### The billable read
+
+`contracts.BillableOrders` (`billable_orders.go`, `Module().BillableOrders`,
+`Deps.BillableOrders`) is a single-provider slot resolved after `Consumption`, only from
+the enabled modules — nil when Orders is off. It reads and writes on the pool and the
+clock and never reads a directory; its caller never calls it under a lock of its own.
+
+- **`DueOrders`** — the orders a request names (`CustomerIDs`, `OrderIDs` or `Every`,
+  exactly one), each with its lines left to invoice: number, customer, currency, project,
+  your reference, delivery date, delivery name and address, payment terms and, per line,
+  its position, text, unit, `ToInvoice`, unit price, discount, VAT code, invoice policy and
+  amount. `Until` bounds the orders by their delivery date, on or before; an order with
+  none is always due. A draft order and one on hold are answered with `Blocked` (`draft`,
+  `on_hold`), so the caller can say why. At most 5 000 lines (`MaxBillableRows`), `More`
+  set when there were more. It writes nothing.
+- **`Allocate`** — a provider command (module boundaries rule 5): a new draft allocation
+  per line named, on one transaction of its own. It reads the lines' orders, then locks
+  the orders `FOR UPDATE` in id order, then the lines, so two Allocates serialise on the
+  orders and the second sees what the first allocated; it locks no variant (MB rule 21
+  does not apply — an allocation writes no line). Each line is judged under the locks, the
+  first refusal answering and nothing written — an `AllocationRefusal` with the line and
+  a code: **`line_not_invoiceable`** for a line that is not a priced product line with a
+  VAT code invoiced on order, or whose order is a draft, on hold or cancelled;
+  **`allocation_exceeds_open`** for a quantity above what the line has to invoice. The
+  allocation names its order's project only while Projects is composed.
+- **`Allocations`** — the allocations named, as they stand; a missing id is absent.
+- **`ReleaseAllocations`** — a provider command: the named drafts released in one
+  statement; one invoiced, released or missing is left as it is, so a repeat is harmless.
+
+### The invoiced-work holder
+
+Kind `orders.allocation`, last in `contracts.InvoicedWorkOrder` (after Projects, Expenses,
+Time and Energy: an invoice may mix a project's hours and an order's lines). It runs on
+the issue's transaction, and on a credit note's, with `Deps.Logger` and nothing else, and
+is composed whatever `MODULES` says.
+
+- **`MarkInvoiced`** locks the sources' orders by id, then their lines, then the
+  allocations, each in id order, and judges each allocation as it stands, in the
+  contract's order: **`source_already_invoiced`**; then **`source_not_invoiceable`** —
+  missing, released, its order no longer confirmed or on hold, its line no longer
+  invoiceable, or its quantity beyond what the line has open (ordered − cancelled −
+  invoiced, the allocations before it in this issue counted); then **`source_changed`** —
+  a revision, currency or exact amount other than the source's. The first refusal rolls
+  the issue back. Otherwise every allocation is stamped with the `InvoiceRef`, its
+  quantity added to its line's `qty_invoiced`, each order's invoice status recomputed and
+  its `updated_at` moved to `IssuedAt` — its version is not bumped and nothing is logged,
+  as for a delivery marking — and **`orders.sales_order.invoiced`** published once per
+  order ([Events](#events)): the one holder that publishes (module boundaries rule 10).
+- **`ReleaseInvoiced`**, on the credit note that returns an allocation's invoice line in
+  full — the last of several partial credits included — locks the same way and moves each
+  allocation carrying that invoice's stamp to `released`, the stamp kept; its quantity is
+  taken off the line's invoiced, so it is to invoice again, and the invoice status
+  recomputed. One without the stamp is left as it is, with a warning logged: a credit
+  note is never blocked. Nothing is published.
+
+### Release draft allocations
+
+`POST /orders/{id}/release-draft-allocations` (`orders:sales-manage`, the version and
+`expectedUpdatedAt` as every write) releases every draft allocation of the order at once,
+so its quantities are offered to invoice again. A draft invoice still holding one is then
+refused at its issue (`source_not_invoiceable`). It is logged as
+`draft_allocations_released` with how many, at the version it found, and moves the
+order's `updatedAt`; an order with none is answered as it is, and nothing is logged.
+
+Invoices releases the allocations a draft held after the delete — or the save that
+dropped a line — has committed, best effort; it does not when a customer's anonymisation
+deletes the drafts. What a failed release leaves, [`orders.allocation_sweep`](#workers)
+releases.
+
+### The rules a draft allocation sets
+
+A draft allocation is progress on its line, and the order keeps to it (O26): a confirmed
+line's quantity goes no lower than the larger of delivered and invoiced + draft-allocated,
+plus cancelled (`quantity_below_progress`); its price and discount do not change
+(`line_in_draft_invoice`, 409); the line is not removed (`line_has_progress`); and the
+order is neither cancelled nor its rest cancelled (`order_in_draft_invoice`, 409). Each
+answer says how to proceed: issue or delete the draft, or release the allocations.
+
+### The order page
+
+`GET /orders/{id}` answers `invoices[]`: every invoice that stamped an allocation of the
+order, in the order they were first stamped — `invoiceId`, `invoiceNumber`, `issueDate`,
+`amount` (the net it billed of this order, in the order's currency), `currency` and
+`state`, `invoiced`, or `released` once every allocation of it was given back by a credit
+note. The page shows it as the **Invoices** card, and **Invoice** — needing
+`invoices:access` and `invoices:create`, disabled on hold, with nothing left to invoice or
+with unsaved changes — opens Invoices' wizard at `/invoices/new/from-orders?orderId=`.
 
 ## PDFs
 
@@ -434,6 +566,7 @@ each on the transaction that makes the change and while it holds the document's 
 | `orders.sales_order.confirmed` | An order is confirmed | `orderId`, `number`, `version`, `customerId`, `currency`, `netTotal`, `confirmedAt` |
 | `orders.sales_order.cancelled` | A confirmed order is cancelled | `orderId`, `number`, `customerId`, `cancelledAt` |
 | `orders.sales_order.changed` | A confirmed order is edited, or the rest cancelled, at a new version | `orderId`, `number`, `version`, `customerId`, `changedAt` |
+| `orders.sales_order.invoiced` | An invoice's issue stamped allocations of the order — once per order the invoice bills, by the [holder](#the-invoiced-work-holder) on the issue's transaction | `orderId`, `number`, `customerId`, `invoiceId`, `invoiceNumber`, `invoicedAt` (the issue's time) |
 
 Customers writes the first four on the customer's timeline
 ([the timeline](/en/reference/customers/#the-timeline)).
@@ -456,6 +589,7 @@ event, so a retried delivery queues nothing twice. The mail itself is sent by
 | `orders.mail` | every 10 seconds, up to 10 rows a cycle | Sends the queued mailings. A row is claimed under a two-minute lease (`SKIP LOCKED`), so two replicas never take one row; the stored PDF is read and mailed outside any transaction. A failure counts the attempt and waits 30 seconds, doubled per attempt, at most an hour; the eighth failure fails the row. A row that can never go — no recipient, sending disabled, the document gone, the order cancelled — fails at once. |
 | `orders.retention` | daily, one replica under an advisory lease | Anonymises the kept confirmed orders of erased customers once their retention has run, blanks their sends, and deletes the stored PDFs of every anonymised quote and order of theirs ([Retention](#retention)). |
 | `orders.quote_expiry` | daily | Moves every sent quote whose valid-until day is before today, in the business time zone, to `expired`, in one statement. It publishes no event. |
+| `orders.allocation_sweep` | daily, one replica under an advisory lease | Releases every draft allocation not written for 30 days — Energy's horizon for a draft settlement —, the backstop for a release that never arrived after a draft invoice was deleted. A draft invoice still holding one is refused at issue (`source_not_invoiceable`) and drafted again. Its one statement locks only what it releases: an issue stamping one holds it, so the sweep waits and skips it. |
 
 Each is safe on a pool of one connection.
 
@@ -492,6 +626,8 @@ one, and is composed whether or not `orders` is enabled.
   `orders.quotes`, `orders.draftOrders`, `orders.orders` (always 0), `orders.mailings` and
   `orders.warnings` — the customer's sales warning is deleted; run again, it reports
   zeros.
+- **Invoiced work** (O38): [the invoiced-work holder](#the-invoiced-work-holder) stamps
+  and releases the allocations inside an invoice's issue and a credit note's.
 - **Variant delete** (O30): Products' delete of a variant is refused while an open
   document names it — a draft or sent quote, or an order not cancelled with a line of it
   that is not delivered or not invoiced in full — as an `open_documents` hold with the
@@ -523,8 +659,8 @@ is left unanonymised and no stored PDF of theirs remains.
 - **Open quotes** — the draft and sent quotes, counted, at their net totals;
 - **Ordered, not delivered** — the confirmed orders with something left to deliver,
   counted, each line's open quantity valued at its net amount over its quantity;
-- **Delivered, not invoiced** — valued the same way. Until invoicing from orders comes
-  with delivery B, this is everything delivered.
+- **Delivered, not invoiced** — delivered less what issued invoices stamped invoiced,
+  valued the same way.
 
 The customer page's **Orders** tab shows it above the customer's open quotes and orders.
 The tab needs the `orders` module and `orders:access`; **New quote** needs
@@ -651,7 +787,7 @@ a bare 400.
 | `order_empty` | 400 | Confirm: no product line |
 | `customer_disabled` | 400 | The customer is gone, merged away, disabled or archived |
 | `project_customer_mismatch` | 400 | The project belongs to another customer |
-| `quantity_below_progress` | 400 | A confirmed line's quantity below what is delivered or invoiced |
+| `quantity_below_progress` | 400 | A confirmed line's quantity below what is delivered, or invoiced and draft-allocated, plus cancelled |
 | `over_delivery` | 400 | More delivered than ordered less cancelled |
 | `undo_exceeds_delivered` | 400 | More taken back than delivered |
 | `delivered_below_invoiced` | 400 | Delivered taken below invoiced |
@@ -669,8 +805,9 @@ a bare 400.
 | `line_kind_changed` | 409 | A kept line given another kind: remove it and add a new line |
 | `order_has_progress` | 409 | Something is delivered or invoiced: cancel the rest instead |
 | `line_invoiced` | 409 | The price, discount or text of an invoiced line |
-| `line_has_progress` | 409 | Removing a line with deliveries or invoices |
-| `line_in_draft_invoice` | 409 | Declared for delivery B; not raised yet |
+| `line_has_progress` | 409 | Removing a line with deliveries, invoices or an allocation that keeps it |
+| `line_in_draft_invoice` | 409 | The price or discount of a line a draft allocation holds part of |
+| `order_in_draft_invoice` | 409 | Cancelling an order, or its rest, while a draft allocation holds part of it |
 | `client_request_reused` | 409 | The `clientRequestId` made a document for another customer |
 | `template_name_taken` | 409 | Another template has the name |
 | `blocked_by_warning` | 409 | A block warning on the customer or a product refuses send, mark as sent, confirm or accept into a confirmed order; the detail names it ([Sales warnings](#sales-warnings)) |
@@ -689,7 +826,7 @@ a bare 400.
 | `defaultPaymentTermsDays` | 14 | 0–365; a customer's own terms win |
 | `sendChannelId` | none | A Communications channel (`send_channel_unknown`); none sends nothing |
 | `confirmationOnConfirm` | off | Queue the confirmation when an order is confirmed ([The handler](#the-handler)) |
-| `combineByDefault` | off | Kept for invoicing from orders (delivery B) |
+| `combineByDefault` | off | Not read by Invoices: the From orders wizard starts at one invoice per order and a billing run of orders carries its own `combine`, so it has no effect yet |
 | `mailTexts` | none | One subject and body per kind and language ([Sending](#sending)) |
 
 The answer also lists the send channels Communications offers and whether sending is
@@ -736,7 +873,10 @@ Omitting `orders` means the module contributes no route and no permission; its p
 answer the `/api` catch-all 404 and the switcher tile and the customer's Orders tab are
 not shown. The schema is migrated regardless, and the holders run whatever `MODULES`
 says: a merge, an export or an erasure of a customer still reaches their quotes and
-orders, and Products still refuses to delete a variant an open document names.
+orders, and Products still refuses to delete a variant an open document names. The
+invoiced-work holder is composed whatever `MODULES` says, so a credit note still releases
+the allocations of an invoice issued while Orders was on; `contracts.BillableOrders` is
+nil without the module, and Invoices' From orders answers `orders_unavailable`.
 
 ## Endpoints
 
@@ -770,15 +910,16 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `GET /orders` | access | 200 — newest first, by customer, status, delivery and invoice status, open or done, salesperson and a search; 400 paging |
 | `POST /orders` | sales-manage | 201; 200 a repeat; 400; 409 `client_request_reused`; 503 |
 | `GET /orders/{id}` | access | 200 with lines, buckets and totals; 404 |
-| `PUT /orders/{id}` | sales-manage | 200; 400 incl. `quantity_below_progress`, `line_invalid`; 404; 409 `version_conflict`, `order_locked`, `line_invoiced`, `line_has_progress`, `line_kind_changed`; 503 |
+| `PUT /orders/{id}` | sales-manage | 200; 400 incl. `quantity_below_progress`, `line_invalid`; 404; 409 `version_conflict`, `order_locked`, `line_invoiced`, `line_in_draft_invoice`, `line_has_progress`, `line_kind_changed`; 503 |
 | `DELETE /orders/{id}` | sales-manage | 204 — a draft accepted from a quote puts the quote back to `sent`; 404; 409 `order_not_draft`, `version_conflict` (`expectedUpdatedAt` in the query) |
 | `POST /orders/{id}/confirm` | sales-confirm (+ settings to override) | 200; 400 `customer_disabled`, `order_empty`, `line_unpriced`, `vat_code_unmapped`, `overrideReason`; 404; 409 `order_not_draft`, `blocked_by_warning` |
 | `POST /orders/{id}/hold` | sales-manage | 200; 400 reason; 404; 409 `order_not_confirmed` |
 | `POST /orders/{id}/release` | sales-manage | 200; 404; 409 |
 | `POST /orders/{id}/lock` | sales-confirm | 200; 404; 409 `order_not_confirmed` |
 | `POST /orders/{id}/unlock` | sales-confirm | 200; 404; 409 |
-| `POST /orders/{id}/cancel` | sales-manage | 200; 404; 409 `order_locked`, `order_has_progress` |
-| `POST /orders/{id}/cancel-remaining` | sales-manage | 200; 404; 409 `order_not_confirmed`, `order_locked` |
+| `POST /orders/{id}/cancel` | sales-manage | 200; 404; 409 `order_locked`, `order_has_progress`, `order_in_draft_invoice` |
+| `POST /orders/{id}/cancel-remaining` | sales-manage | 200; 404; 409 `order_not_confirmed`, `order_locked`, `order_in_draft_invoice` |
+| `POST /orders/{id}/release-draft-allocations` | sales-manage | 200 — [every draft allocation released](#release-draft-allocations); 404; 409 `version_conflict` |
 | `POST /orders/{id}/mark-delivered` | sales-manage | 200; 400 `over_delivery` and the line codes; 404; 409 `order_not_confirmed`, `order_on_hold` |
 | `POST /orders/{id}/undo-delivered` | sales-manage | 200; 400; 404; 409 `order_on_hold` |
 | `POST /orders/{id}/send` | sales-manage | 200; 400; 404; 409 `order_not_confirmed`; 503 `sending_disabled`, `mail_failed` |

@@ -1,6 +1,6 @@
 ---
 title: Orders
-description: The Orders app — make a quote, from the app, a customer's page or a template; add product, free-text, section and note lines, optional lines and discounts; send it or mark it as sent, revise, accept, decline, cancel and copy it; make an order, confirm it, change it after confirming, put it on hold, lock it, cancel it or its rest, register what is delivered, send the order confirmation and print a pro forma; the change log; lines in packagings and from the variant grid; customer and product warnings and overriding a block; the sales analysis; the customer's Orders tab; and what a refusal means.
+description: The Orders app — make a quote, from the app, a customer's page or a template; add product, free-text, section and note lines, optional lines and discounts; send it or mark it as sent, revise, accept, decline, cancel and copy it; make an order, confirm it, change it after confirming, put it on hold, lock it, cancel it or its rest, register what is delivered, send the order confirmation and print a pro forma; invoice it, see its invoices and release what draft invoices hold; the change log; lines in packagings and from the variant grid; customer and product warnings and overriding a block; the sales analysis; the customer's Orders tab; and what a refusal means.
 sidebar:
   order: 55
 sources:
@@ -11,8 +11,7 @@ sources:
 
 The Orders app is where you make quotes for your customers and take their orders. In
 Norwegian the app is **Ordre**. A **quote** is an offer the customer can accept; an
-**order** is what the customer has bought, which you confirm, deliver and — once invoicing
-from orders arrives — invoice.
+**order** is what the customer has bought, which you confirm, deliver and invoice.
 
 ## The app and its sidebar
 
@@ -29,8 +28,7 @@ and total. Narrow it with the search (number, customer or reference), **Status**
 way, with **Open**, **All** or **Done**, and the **Delivery** and **Invoicing** filters;
 an order is done when it is confirmed and every product line is invoiced or cancelled in
 full. An order whose remaining quantities were all cancelled is done; one delivered but not
-yet invoiced is still open. Until invoicing from orders arrives, only an order whose lines
-are all cancelled is done.
+yet invoiced is still open.
 
 ## Make a quote
 
@@ -217,9 +215,9 @@ shows that version. An order cancelled before its confirmation went out gets non
 ## Change a confirmed order
 
 A confirmed order takes changes to what is not yet delivered or invoiced: add lines;
-lower a line's quantity, but not below what is delivered or invoiced; change a line's
-price, discount or text while nothing of it is invoiced; remove a line with no deliveries
-or invoices; and change the delivery date, the delivery address, the contact person, your
+lower a line's quantity, but not below what is delivered, invoiced or on a draft invoice;
+change a line's price, discount or text while nothing of it is invoiced or on a draft
+invoice; remove a line with no deliveries, invoices or draft invoices; and change the delivery date, the delivery address, the contact person, your
 reference and the internal note. The customer, currency, VAT mode, payment terms,
 language, texts, project and salesperson are fixed once it is confirmed.
 
@@ -245,6 +243,9 @@ hold**, **Registered delivered** and so on.
 - **More actions** → **Cancel the rest**, once something is: every line's quantity not yet
   delivered or invoiced is cancelled. This is not undone.
 
+Neither cancel is taken while a draft invoice holds part of the order: issue or delete the
+draft first, or [release what it holds](#release-what-draft-invoices-hold).
+
 Holding, locking and registering deliveries do not change the version.
 
 ## Register what is delivered
@@ -256,6 +257,64 @@ line left at 0 is not changed, and you cannot deliver more than is left. **More 
 **Undo delivered** takes quantities back (**Take back**). Each line shows its progress —
 "3 of 5 delivered" — and the order its delivery status: **Not delivered**, **Partly
 delivered** or **Delivered**.
+
+## Invoice an order
+
+An order is invoiced in Invoices, from its lines: you choose how much of each line to
+invoice, and the invoice's issue marks it invoiced on the order. Lines are invoiced on
+order — what is ordered can be invoiced as soon as the order is confirmed, delivered or
+not.
+
+1. On a confirmed order, choose **Invoice**. It needs **Use Invoices** and **Create
+   invoices** in Invoices, and is not offered without them. It is disabled, saying why,
+   while the order is on hold ("An order on hold is not invoiced. Release it first."),
+   when nothing is left to invoice ("Nothing is left to invoice.") and while you have
+   unsaved changes ("Save your changes first").
+2. Invoices' **Invoice from orders** opens with the order chosen. Pick how much of each
+   line to invoice — all that is left, or less to invoice part of a line — and choose
+   **Create the drafts**
+   ([Invoice from orders](/en/user/invoices/#invoicing-orders)).
+3. Check the draft in Invoices and issue it. Until then the draft **holds** the quantities
+   it bills: each line's progress shows "2 on draft invoices", and they are not offered
+   to invoice again.
+
+When the invoice is issued, the line's invoiced quantity grows by what it billed and the
+order's invoicing status becomes **Partly invoiced** or **Invoiced**. An order is done
+once it is confirmed and every product line is invoiced or cancelled in full — register
+the deliveries too, for the **Delivery** status and the backlog.
+
+Deleting the draft in Invoices gives the quantities back at once: they are offered to
+invoice again. So does a credit note that returns an invoice line in full — the order's
+invoiced quantity goes back down, and the line can be invoiced again.
+
+### While a draft invoice holds part of the order
+
+A draft invoice is a promise of what will be invoiced, so the order keeps to it:
+
+- a line's quantity cannot go below what is delivered, invoiced or on a draft invoice;
+- a line's price and discount cannot change while part of it is on a draft invoice;
+- a line on a draft invoice cannot be removed;
+- the order cannot be cancelled, nor its rest.
+
+Issue or delete the draft in Invoices, or release what it holds.
+
+### Release what draft invoices hold
+
+When a draft invoice should not be issued after all — someone made it and forgot it, say
+— choose **More actions** → **Release draft allocations** on the order. Every quantity
+draft invoices hold of the order is offered to invoice again at once. A draft invoice that
+still holds part of it is then refused when someone issues it; delete it and invoice the
+order again. The **Change log** records it as **Released from draft invoices**.
+
+What a draft invoice holds is given back by itself 30 days after the draft was made from the order, whether or not someone edited the draft since; issuing it after that is refused. Issue a draft invoice within 30 days, or make it again.
+
+### The Invoices card
+
+A confirmed order's page has an **Invoices** card listing every invoice issued from it:
+**Invoice no.**, **Invoice date**, **Net amount** — what the invoice billed of this order —
+and **Status**, **Invoiced** or, once credit notes returned all of it, **Credited**. With
+**Use Invoices** the number links to the invoice. Until something is invoiced the card says
+"Nothing is invoiced yet."
 
 ## Sales analysis
 
@@ -301,9 +360,13 @@ confirmed or cancelled ([the timeline](/en/user/customers/#the-timeline)).
 | The order has no product lines | Add at least one product line before confirming. |
 | The customer is disabled or archived | Enable the customer in Customers, or use another. |
 | The project belongs to another customer | Pick one of this customer's projects, or none. |
-| A quantity cannot go below what is delivered or invoiced | Cancel the rest instead, or undo the delivery first. |
+| A quantity cannot go below what is delivered, invoiced or on a draft invoice. | Cancel the rest instead, undo the delivery first, or issue or delete the draft invoice. |
 | The price of an invoiced line cannot change | The line is invoiced: leave it as it is. |
-| A line with deliveries or invoices cannot be removed | Lower its quantity, or cancel the rest. |
+| A line with deliveries, invoices or a draft invoice cannot be removed. | Lower its quantity, or cancel the rest. |
+| Part of the line is on a draft invoice: its price and discount cannot change until the draft is issued or deleted. | Issue or delete the draft invoice in Invoices, or **Release draft allocations**, then change the price. |
+| Part of the order is on a draft invoice. Issue or delete the draft, or choose Release draft allocations in the order's menu. | Do as it says: an order is not cancelled while a draft invoice holds part of it. |
+| That is more than is left to invoice. | Someone invoiced the line meanwhile. Reload and invoice what is left. |
+| The line cannot be invoiced now: its order is a draft, on hold or cancelled. | Confirm the order, or release it from hold, and invoice again. |
 | Something is delivered or invoiced: cancel the rest instead | Use **Cancel the rest**. |
 | The order is locked. | Someone with the permission to confirm must **Unlock** it — also before it can be cancelled. |
 | The order is on hold. Release it before registering delivery. | Choose **Release**, then register or undo the delivery. |

@@ -126,7 +126,11 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    `BillableMilestones` (`contracts.BillableMilestones`, projects) — `Consumption`
    (`contracts.ConsumptionProvider`, energy — the settlements a customer owes for its
    metering points, what a consumption invoice is built from; optional for its
-   consumer, nil when Energy is off; its `Settle` is a provider command, below), and `Workforce`
+   consumer, nil when Energy is off; its `Settle` is a provider command, below),
+   `BillableOrders` (`contracts.BillableOrders`, orders — the order lines due to be
+   invoiced and the allocations an invoice line is built from; optional for its
+   consumer, nil when Orders is off; its `Allocate` and `ReleaseAllocations` are
+   provider commands, below), and `Workforce`
    (`contracts.Workforce`, staff — the competence catalogue, who holds which competence
    valid on a date, the people in employment and their capacity over a window, the
    caller's own person, its own account in an external directory, and how a proposed
@@ -146,8 +150,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    own schema, on the provider's own transaction, and is named a command for it; the
    caller makes it on the provider's pool before it opens a transaction of its own, as
    any contract call (rule 21), and nothing of the caller's is written by it. Energy's
-   `ConsumptionProvider.Settle` is the first; Orders' `BillableOrders.Allocate` and
-   `ReleaseAllocations` are the next ones planned. A write into another module's schema
+   `ConsumptionProvider.Settle` is the first; Orders' `BillableOrders.Allocate` (a
+   new draft allocation per order line, under the orders' and lines' locks on Orders'
+   own transaction) and `ReleaseAllocations` (the named drafts released, a repeat
+   harmless) are the second and third. A write into another module's schema
    is never a provider command: it is a sanctioned direction of its own, with its own rule here.
    `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
@@ -160,8 +166,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    owning both, from its own tables only) and the three `Billable*` are resolved last, after
    `Projects` and `Directory`, so those providers' *constructors* are allowed to read
    the project directory or the customer directory (none does, but a future
-   provider could), and `Consumption` right after the three `Billable*` (its provider
-   never reads a directory while it serves). `Workforce` is resolved after the business calendar — by Compose
+   provider could), and `Consumption` right after the three `Billable*`, then
+   `BillableOrders` (their providers never read a directory while they serve). `Workforce` is resolved after the business calendar — by Compose
    after the line-level reads, by `module.Workers` after `Users` and `Accounts`
    (`withWorkforce`) — so its provider reads `Deps.Calendar` while it is built, and a
    worker-mode `Deps` answers who holds what as a composed one does. `OutboundMail` is
@@ -348,7 +354,7 @@ lag, never what must refuse — go through the platform's domain-events outbox,
 10. **Work marked invoiced, inside the issue.** The third sanctioned cross-module
     direction, made for invoicing work: `contracts.InvoicedWorkHolder`. A module whose
     rows an invoice is built from — Time's entries, Expenses' lines, Projects' billing
-    milestones, Energy's settlements — declares `Module.InvoicedWork`, and Invoices calls the holders
+    milestones, Energy's settlements, Orders' invoice allocations — declares `Module.InvoicedWork`, and Invoices calls the holders
     **inside its issue's transaction**, which already holds the document, the settings
     row, the number counter and, for a credit note, its original locked: after every
     check and the number, before the document is written. `MarkInvoiced` judges each
@@ -356,8 +362,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     (`source_already_invoiced`), then still approved, ready or billable
     (`source_not_invoiceable`), then unchanged since the draft took it — the revision
     and amount for Time and Projects, the billing facts for Expenses, the settlement
-    recomputed and then its revision, currency and amount for Energy
-    (`source_changed`), amounts compared exactly, by value — and stamps it with the
+    recomputed and then its revision, currency and amount for Energy, the revision,
+    currency and amount for Orders (`source_changed`), amounts compared exactly, by value — and stamps it with the
     invoice's id and number at the issue's time; `ReleaseInvoiced` takes the stamp back
     in the issue of the credit note that returns the source's line in full. A source a holder will
     not stamp is answered as a `*contracts.WorkSourceRefusal`, and the issue refuses
@@ -379,8 +385,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     row, the counter, then a credit note's original — and then the source modules in one
     fixed order: Projects (the project rows, then their milestones), Expenses (the
     claims, then the lines, by id), Time (the entries, by id), Energy (the settlements,
-    by id — an energy row never shares a transaction with work, so its place, last,
-    only has to be fixed). No source module ever
+    by id — an energy row never shares a transaction with work, so its place only has
+    to be fixed), Orders (the orders, then their lines, then the allocations, each by
+    id — last, after every kind of work, since one invoice may bill a project's hours
+    and an order's lines). No source module ever
     locks a row of `invoices`, and a transaction that locks both an invoices document
     and a source module's row takes the document first — which is why the customers
     merge and anonymisation call the holders of the modules that provide invoiced work
@@ -410,7 +418,11 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     [The invoiced-work holder](/en/reference/energy/#the-invoiced-work-holder)), whose
     holder runs its own recomputation of a settlement under its lock with
     `InvoiceRef.IssuedAt` as now — a read of its own schema on the caller's
-    transaction, not a clock or a contract.
+    transaction, not a clock or a contract, and orders (`orders.allocation`,
+    [The invoiced-work holder](/en/reference/orders/#the-invoiced-work-holder)), the
+    one holder that publishes — `orders.sales_order.invoiced`, once per order, on the
+    issue's transaction. An order allocation's project is not judged by the issue: only
+    work's is, so a draft of orders alone needs no project directory.
 11. **Staff writes identity's accounts.** The fourth sanctioned cross-module
     direction, staff → identity, made for the accounts of the people Staff
     registers: `contracts.AccountProvisioning`, in the single-provider slot
@@ -1500,9 +1512,12 @@ issued, `projects_unavailable`), the user directory (the issuer's name a holder'
 timeline event carries) and the three billable reads (`BillableHours`,
 `BillableExpenses`, `BillableMilestones`: whether a draft's work is still billable as
 it was taken, on `GET` and before a refresh — a kind whose module is off is not
-judged), all on the pool and never under a lock; products and energy it does not
-read. Inside an issue's transaction it calls the invoiced-work holders of time,
-expenses and projects (rule 10) — the one call it makes under a lock. It sends mail
+judged), and Orders' `BillableOrders` (the order lines due, and the allocations its
+From orders wizard has Orders write and release with the provider commands
+`Allocate` and `ReleaseAllocations`), all on the pool and never under a lock; products
+it does not read. Inside an issue's transaction it calls the invoiced-work holders —
+time, expenses, projects, energy and orders, in `contracts.InvoicedWorkOrder` (rule
+10) — the one call it makes under a lock. It sends mail
 only through the platform's SMTP seam, never under a lock, and provides two
 single-provider contracts, `Receivables` and `SalesTax` — its VAT codes, the VAT code
 each of Products' tax categories maps to, and its seller block, each read from its own

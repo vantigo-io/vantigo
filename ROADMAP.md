@@ -1501,8 +1501,20 @@ Customers and Invoices; Inventory and Communications stay optional.
   [Orders](docs/src/content/docs/en/user/orders.md),
   [administration](docs/src/content/docs/en/admin/orders.md) and the
   [reference](docs/src/content/docs/en/reference/orders.md).
-- **B — Invoicing from orders.** Allocations, `contracts.BillableOrders`, the
-  invoiced-work holder, the wizard and the billing run.
+- **B — Invoicing from orders (done).** Allocations — what draft and issued invoices
+  hold of each order line — with `contracts.BillableOrders` (the due lines, and
+  `Allocate` and `ReleaseAllocations` as provider commands) and Orders' invoiced-work
+  holder, last in the lock order, which stamps the lines invoiced and publishes
+  `orders.sales_order.invoiced`; a full credit gives the quantities back. Invoices' From
+  orders wizard — part invoicing (delfakturering), one invoice per order or combined per
+  customer (samlefaktura) — and a billing run of orders; the order page's **Invoice**,
+  its **Invoices** card and **Release draft allocations**; a draft invoice's hold on
+  edits and cancels; and the `orders.allocation_sweep` worker, on migrations `00121` and
+  `00122`. An order invoiced in full on one invoice totals what the order does. Documented
+  in [Orders](docs/src/content/docs/en/user/orders.md),
+  [Invoices](docs/src/content/docs/en/user/invoices.md#invoicing-orders) and the
+  references ([Orders](docs/src/content/docs/en/reference/orders.md#invoicing-from-orders),
+  [Invoices](docs/src/content/docs/en/reference/invoices.md#invoicing-orders)).
 - **S — Subscriptions.** Recurring lines invoiced per period.
 - **C — Deliveries and stock.** `contracts.Stock` and `StockLedger`, reservations made
   synchronously on the order's transaction, and deliveries.
