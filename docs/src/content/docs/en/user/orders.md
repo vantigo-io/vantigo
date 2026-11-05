@@ -341,8 +341,10 @@ subscriptions.
 2. Pick the **Customer**, and the plan: the **Interval** (**Monthly**, **Quarterly**,
    **Half-yearly** or **Yearly**), **Billing** — **In advance**, a period billed from its
    first day, or **In arrears**, from its last — the **Start**, an **End** if it has one,
-   the **Notice (months)** and the **Invoice day**. The notice and the invoice day are
-   printed for the customer; they do not change what is billed when.
+   the **Notice (months)**, the **Invoice day** and the **Final period when a subscription
+   ends** ([End](#pause-resume-end-and-cancel)); left empty, it is the one the Orders
+   settings give. The notice and the invoice day are printed for the customer; they do not
+   change what is billed when.
 3. Choose **Create subscription**. The draft opens; add its lines as on a quote, and
    **Save**.
 4. Choose **Activate**. The subscription is checked as an order is at confirm — every
@@ -384,8 +386,12 @@ version starts that day. The lines a change ended are listed under **Earlier lin
 change is never pro-rated, and the **Change log** records it with the period it takes
 effect from.
 
+If the change is from an earlier period than a change you saved before, the new one
+replaces the old from its own date: a line is never billed twice in a period.
+
 The customer, the currency and the plan's interval, billing and start are fixed once the
-subscription is active.
+subscription is active; the **Final period when a subscription ends** can still be
+changed.
 
 ### Pause, resume, end and cancel
 
@@ -393,8 +399,18 @@ subscription is active.
   a later one. The periods before it are still billed.
 - **Resume** restarts billing from a period start you choose. The periods between the
   pause and it are **Skipped**, and never billed.
-- **End** sets the end date: the period it falls in is the last one billed. It cannot be
-  before a period already on an invoice or a draft invoice — credit that first.
+- **End** sets the end date: the period it falls in is the last one billed. When the end
+  is not that period's last day, choose how it is billed under **Final period when a
+  subscription ends**, pre-selected from the subscription's own setting:
+  - **Full period** bills the whole period;
+  - **Pro-rated to the end date** bills the period from its first day to the end date,
+    inclusive, as a share of the full period's days — a monthly subscription of 310.00
+    ended on 15 August bills 15/31 of August, 150.00, for 1–15 August.
+
+  The end cannot be before a period already on an invoice or a draft invoice — credit
+  that first. A last period already on an invoice or a draft invoice can only be billed
+  in full: to pro-rate it, credit it first. The choice is kept on the subscription and
+  shown in the **Change log**.
 - **Cancel subscription** cancels a draft, or an active subscription nothing of which is
   billed yet. One with invoiced periods is ended instead.
 
@@ -459,3 +475,4 @@ confirmed or cancelled ([the timeline](/en/user/customers/#the-timeline)).
 | A document takes at most 500 lines | Split it in two. |
 | A warning blocks this | A customer or product on the document has a block warning. Someone who manages the Orders settings can **Override the warning** with a reason, or change the warning. |
 | The packaging is not one of the product's | Pick the product again and choose one of its packagings, or enter the quantity in the unit. |
+| The final period is already on an invoice or a draft invoice and cannot be pro-rated. | Choose **Full period**, or credit the period — or delete the draft invoice — first. |

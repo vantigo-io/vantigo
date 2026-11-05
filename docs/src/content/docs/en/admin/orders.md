@@ -1,6 +1,6 @@
 ---
 title: Orders
-description: Turning Orders on — the modules it requires, mapping Products' tax categories to VAT codes, the nine permissions and the roles to build from them — and keeping its settings — the number series, quote validity, payment terms, the send channel, the confirmation on confirm and the mail texts — its quote templates and its sales warnings, who sees the sales analysis, who keeps subscriptions, and who invoices orders and subscriptions; how to verify it, and what can go wrong.
+description: Turning Orders on — the modules it requires, mapping Products' tax categories to VAT codes, the nine permissions and the roles to build from them — and keeping its settings — the number series, quote validity, payment terms, the send channel, the confirmation on confirm the mail texts and a subscription's final period — its quote templates and its sales warnings, who sees the sales analysis, who keeps subscriptions, and who invoices orders and subscriptions; how to verify it, and what can go wrong.
 sidebar:
   order: 48
 sources:
@@ -107,7 +107,12 @@ Whoever invoices needs no Orders permission to do it; the order's **Invoices** c
   otherwise), **Payment terms** (days, 14 unless changed, used when the customer has none
   of its own) and **Combine orders on one invoice by default**, which has no effect yet:
   Invoices' **From orders** wizard starts at one invoice per order, and a billing run of
-  orders combines as the run is told.
+  orders combines as the run is told. **Final period when a subscription ends** is what a
+  new subscription takes for the period its end falls in, when the end is not that
+  period's last day: **Full period** (unless changed) bills the whole period, **Pro-rated
+  to the end date** bills it by its days to the end. Each subscription keeps its own,
+  which can be changed on it and when it is ended; changing the default changes no
+  existing subscription.
 - **Sending** — the **Send channel**: the Communications mailbox quotes and order
   confirmations are sent from, or **None — nothing is sent**. **Send the order
   confirmation when an order is confirmed** e-mails it by itself to the order's contact

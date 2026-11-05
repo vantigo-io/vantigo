@@ -685,8 +685,10 @@ ordre 2210* — så du kan åpne og sjekke dem ett for ett. Ingenting er utstedt
   leveringsadressen når alle ordrene har den samme fullstendige, og ordrenes prosjekt.
 - **Et abonnements periode** er en linje med abonnementslinjens tekst og perioden —
   *Support, januar 2027* — og leveringen i hodet er en **Leveringsperiode** fra første
-  periodes første dag til siste periodes siste. En forholdsmessig første periode
-  fakturerer sin andel med en enhetspris på opptil åtte desimaler, uten rabatt. På en
+  periodes første dag til siste periodes siste. En forholdsmessig første periode — og en
+  siste periode fordelt forholdsmessig til abonnementets sluttdato, som går til
+  sluttdatoen (*Support, 1.–15. aug. 2026*) — fakturerer sin andel med en enhetspris på
+  opptil åtte desimaler, uten rabatt. På en
   samlefaktura innledes et abonnements linjer med *Abonnement 3001* (*Subscription 3001*
   på engelsk).
 

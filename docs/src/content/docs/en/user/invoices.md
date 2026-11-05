@@ -679,8 +679,10 @@ order 2210* — to open and check one by one. Nothing is issued yet.
   orders' project.
 - **A subscription's period** is a line with the subscription line's text and the period —
   *Support, januar 2027* — and the header's delivery is a **Delivery period** from the
-  first period's first day to the last one's last. A pro-rated first period bills its
-  share at a unit price of up to eight decimals, with no discount. On a combined
+  first period's first day to the last one's last. A pro-rated first period — and a last
+  period pro-rated to the subscription's end, which runs to the end date (*Support,
+  1.–15. aug. 2026*) — bills its share at a unit price of up to eight decimals, with no
+  discount. On a combined
   invoice a subscription's lines open with *Abonnement 3001* (*Subscription 3001* in
   English).
 

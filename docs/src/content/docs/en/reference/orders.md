@@ -437,7 +437,8 @@ clock and never reads a directory; its caller never calls it under a lock of its
   none is always due. A draft order and one on hold are answered with `Blocked` (`draft`,
   `on_hold`), so the caller can say why. A subscription answers its due periods' lines
   ([Billing a period](#billing-a-period)), each with its `PeriodStart` and `PeriodEnd` —
-  `Until` is then the date the periods are due through, the provider's today when zero.
+  `Until` is then the date the periods are due through, today in the business time zone
+  when zero; the twelve-month limit is judged from that day too.
   At most 5 000 lines (`MaxBillableRows`), `More` set when there were more. It writes
   nothing.
 - **`Allocate`** — a provider command (module boundaries rule 5): a new draft allocation
@@ -552,6 +553,7 @@ origin is O27's: `manual` by hand, `quote` when a quote was accepted into it.
 | `endDate` | a day or none | Set by [End](#pause-resume-end-and-cancel) once active; on or after the start |
 | `noticeMonths` | 0–12 | Informational, printed |
 | `invoiceDay` | 1–28 or none (the period's first day) | Informational, printed: it does not change what is due |
+| `finalPeriod` | `full`, `prorated` | How the period the end falls in is billed ([The final period](#the-final-period)); a new subscription takes the settings' `subscriptionFinalPeriodDefault` unless its create or plan names one; editable while active, paused or ended |
 
 **The states:** `draft`, `active`, `paused` (with `pausedFrom`), `ended` (with an
 `endDate`; its periods up to the end are still billed) and `cancelled`. `version` is the
@@ -565,9 +567,11 @@ lines, sections and notes; no optional lines (`optional_not_allowed`). They are 
 `valid_from` and `valid_to`, both inclusive and NULL open, and a line bills a period when
 it is in force on the period's first day. A draft's lines are undated. A subscription's
 lines share positions across their dated versions, so `ux_lines_owner_position` holds
-for the other owners only. The answer's `lines` are those in force from the latest change
-on (`valid_to` NULL), its `totals` a full period's at them, and `earlierLines` the ones a
-change ended.
+for the other owners only. A line's versions form a **chain**: `chain_id` is NULL on the
+first and the first's id on every later one, so a change finds every version of the line
+it changes, and at any date exactly one version of a line is in force. The answer's
+`lines` are those in force from the latest change on (`valid_to` NULL), its `totals` a
+full period's at them, and `earlierLines` the ones a change ended.
 
 ### The period calendar
 
@@ -575,16 +579,40 @@ The periods run from the **first of the start's month** by the interval: period 
 covers [anchor + *k*·*n* months, anchor + (*k*+1)·*n* months − 1 day], so a month ends on
 its last day, February on the 28th or, in a leap year, the 29th. The first period begins
 on the start date itself. A period starting after the end date is not one of the
-subscription's; the period the end falls in is billed in full.
+subscription's; the period the end falls in is billed as `finalPeriod` says ([The final
+period](#the-final-period)).
 
 **Proration.** When the start is not the first of a month, the first period is
 **partial**, and each line bills docmath's net of the full period times the period's days
-over the full period's days, rounded to øre — the only pro-rating of this phase. It is
+over the full period's days, rounded to øre — with a pro-rated final period, the only
+pro-rating of this phase. It is
 billed as the line's quantity at a unit price of that amount ÷ the quantity at eight
 decimals and no discount, so docmath, which Invoices builds its line by, reproduces the
 amount exactly (O37); where eight decimals cannot carry it, as a quantity of 1 at the
 amount. A monthly subscription started on 31 January bills 1/31 of the month for the
 period 31 January–31 January, then whole months.
+
+### The final period
+
+When the end is not the last day of the period it falls in, `finalPeriod` says how that
+period is billed (owner, 2026-11-06):
+
+- **`full`** — the whole period, to its last day, as any other;
+- **`prorated`** — the period **ends on the end date**, and each line bills its days from
+  the period's start to the end, inclusive, over the full period's days, to øre, at the
+  same eight-decimal unit price as a partial first period (a quantity of 1 when eight
+  decimals cannot carry it). A period both first and final pro-rates over its actual
+  span, from the start to the end. The period's `end`, its allocation's `period_end` and
+  the invoice line's period are the end date, and it is answered `partial`.
+
+A new subscription takes the settings' `subscriptionFinalPeriodDefault` (`full` until it
+is set) unless its create, or the plan of a quote accepted into it, names one.
+[End](#pause-resume-end-and-cancel) may name one; the subscription's own applies when it
+does not, and the one used is stored on the subscription and logged (`final_period`).
+`prorated` is refused with `final_period_billed` (409) while the final period has a live
+allocation — draft or invoiced — and the end is not its last day: the user credits it
+first. `full` is always allowed. A save of the plan that makes an ended subscription's
+final period `prorated` is judged the same way.
 
 ### Billing a period
 
@@ -618,7 +646,7 @@ line ([Invoicing orders](/en/reference/invoices/#invoicing-orders)).
 from the first period, of periods **invoiced** — every line in force on the period's
 first day has an invoiced allocation for it — or **skipped**; NULL when the first is
 neither. It is stored for the lists and derived again by the holder at every issue and
-credit, and at a resume.
+credit, at a resume and at the end of a paused subscription.
 
 The subscription's page answers `periods`: from the first through the later of today and
 the last period billed or skipped, and three more, bounded by the end (at most 120, the
@@ -634,7 +662,8 @@ A draft's `PUT` replaces its header, plan and lines whole. An activated subscrip
 address, salesperson, project, payment terms, language and discount visibility, and
 `noticeMonths` and `invoiceDay`; the customer, the currency, the VAT mode
 (`subscription_not_editable`, 400) and the plan's interval, billing, start and end are
-fixed. Its lines are as they are to be from **`effectiveFrom`** on — a period start
+fixed; `finalPeriod` is not ([The final period](#the-final-period)). Its lines are as
+they are to be from **`effectiveFrom`** on — a period start
 (`not_a_period_start`, 400) no earlier than `nextChangeFrom`, the period after the last
 with a live allocation (`change_in_billed_period`, 409), which is the default:
 
@@ -643,9 +672,14 @@ with a live allocation (`change_in_billed_period`, 409), which is the default:
   day before (`valid_to`) and a new row starts on `effectiveFrom` in its place, with what
   the old one was valid to;
 - a line removed ends the day before;
-- a line added starts on `effectiveFrom`.
+- a line added starts on `effectiveFrom`;
+- a changed or removed line's other versions still in force on or after `effectiveFrom`
+  — a version an earlier-saved change scheduled for a later period start, and the version
+  before it, which that change ended later — end the day before too, so a change saved
+  from a date before one already scheduled replaces it.
 
-A line that would end before it started — changed again from its own first period — is
+A save that changes no line judges no `effectiveFrom`. A line that would end before it
+started — changed again from its own first period — is
 deleted, or, when an allocation once named it, kept with `valid_to` the day before its
 `valid_from`. Kept lines are priced from their own rows, as a confirmed order's are. A
 change is never pro-rated. It is logged with `effective_from` and the lines' actions,
@@ -658,11 +692,11 @@ bumps the version and publishes `orders.subscription.changed`.
 | `activate` | `draft` (`subscription_not_draft`) | Judges the customer (`customer_disabled`), a product line (`subscription_empty`), every product line priced (`line_unpriced`) with a VAT code (`vat_code_unmapped`) and still a service (`subscription_goods_not_allowed`); records who and when; publishes `orders.subscription.started` |
 | `pause` | `active` (`subscription_not_active`) | Billing stops from `from` — a period start with no live allocation in it or after it — else the first period starting after today, or the first without a live allocation when later; publishes `orders.subscription.changed` |
 | `resume` | `paused` (`subscription_not_paused`) | Billing restarts from `from`, a period start on or after the pause; every period between is written to `orders.subscription_skips`; publishes `orders.subscription.changed` |
-| `end` | `active`, `paused` or `ended` (`subscription_not_active`) | Sets `endDate`, on or after the last day of the last period with a live allocation (`end_before_billed`); a paused one's periods from the pause to the end are skipped; status `ended`; publishes `orders.subscription.ended` |
+| `end` | `active`, `paused` or `ended` (`subscription_not_active`) | Sets `endDate`, with no period with a live allocation starting after it (`end_before_billed`), and `finalPeriod` — the one asked, else the subscription's own — refused `final_period_billed` when it is `prorated` and the final period has a live allocation ([The final period](#the-final-period)); a paused one's periods from the pause to the end are skipped and billed through derived again; status `ended`; publishes `orders.subscription.ended` |
 | `cancel` | `draft`; `active` or `paused` with no live allocation (`subscription_billed`) | Status `cancelled`; an activated one publishes `orders.subscription.ended` with `status` `cancelled` (`subscription_not_cancellable` otherwise) |
 
 Each is logged on the change log (`activated`, `paused`, `resumed`, `ended`,
-`cancelled`).
+`cancelled`); an end also logs `final_period`, from the subscription's to the one used.
 
 ### Accept a quote as a subscription
 
@@ -815,8 +849,9 @@ one, and is composed whether or not `orders` is enabled.
   and releases the allocations inside an invoice's issue and a credit note's.
 - **Variant delete** (O30): Products' delete of a variant is refused while an open
   document names it — a draft or sent quote, an order not cancelled with a line of it
-  that is not delivered or not invoiced in full, or a draft, active or paused subscription
-  whose lines in force from its latest change on name it — as an `open_documents` hold
+  that is not delivered or not invoiced in full, or a subscription still to bill — draft,
+  active or paused, or ended on or after today — with a line of it in force on or after
+  today — as an `open_documents` hold
   with the count. A change of a product to a service is never held. A template is no document: a
   variant gone from it is skipped when it is applied.
 
@@ -1014,7 +1049,8 @@ a bare 400.
 | `subscription_billed` | 409 | Cancelling a subscription with a live allocation: end it instead |
 | `subscription_empty` | 409 | Activating a subscription with no product line |
 | `change_in_billed_period` | 409 | A change or a pause from a period that, or a later one, has a live allocation |
-| `end_before_billed` | 409 | An end before the last day of the last period with a live allocation: credit it first |
+| `end_before_billed` | 409 | An end before the first day of a period with a live allocation: credit it first |
+| `final_period_billed` | 409 | A `prorated` final period, at End or in a save of the plan, while the period the end falls in has a live allocation: bill it in full, or credit it first |
 | `dependency_unavailable` | 503 | Customers, Products or Invoices is not composed |
 | `sending_disabled` | 503 | Communications is off, or no channel that can send is chosen |
 | `mail_failed` | 503 | The mail provider did not take the e-mail; nothing changed, the failed send is listed |
@@ -1032,6 +1068,7 @@ a bare 400.
 | `confirmationOnConfirm` | off | Queue the confirmation when an order is confirmed ([The handler](#the-handler)) |
 | `combineByDefault` | off | Not read by Invoices: the From orders wizard starts at one invoice per order and a billing run of orders carries its own `combine`, so it has no effect yet |
 | `mailTexts` | none | One subject and body per kind and language ([Sending](#sending)) |
+| `subscriptionFinalPeriodDefault` | `full` | The final period a new subscription takes, `full` or `prorated` ([The final period](#the-final-period)); a save that leaves it out keeps it |
 
 The answer also lists the send channels Communications offers and whether sending is
 available. `GET /meta` gives every holder of `orders:access` what the screens need of it:
@@ -1057,6 +1094,7 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `orders.order.confirm` | `/orders/orders/{orderId}` | Confirm |
 | `orders.templates.new` | `/orders/templates` | New template |
 | `orders.settings.save` | `/orders/settings` | Save the settings |
+| `orders.settings.final-period` | `/orders/settings` | Final period when a subscription ends |
 | `orders.customer.new-quote` | `/customers/{customerId}/orders` | New quote on the customer's Orders tab |
 | `orders.customer.new-order` | `/customers/{customerId}/orders` | New order on the customer's Orders tab |
 | `orders.lines.add-from-grid` | `/orders/quotes/{quoteId}` | Add from grid, under a quote's or an order's lines |
@@ -1073,6 +1111,8 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `orders.subscription.resume` | `/orders/subscriptions/{subscriptionId}` | Resume |
 | `orders.subscription.end` | `/orders/subscriptions/{subscriptionId}` | End |
 | `orders.subscription.effective-from` | `/orders/subscriptions/{subscriptionId}` | Changes take effect from |
+| `orders.subscription.final-period` | `/orders/subscriptions/{subscriptionId}` | Final period when a subscription ends, in the plan |
+| `orders.subscription.end-final-period` | `/orders/subscriptions/{subscriptionId}` | The final period, in the End dialog |
 
 ## Enabling and disabling
 
@@ -1144,11 +1184,11 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `GET /subscriptions` | access | 200 — newest first, by customer, status and a search; 400 paging |
 | `POST /subscriptions` | subscriptions-manage | 201; 200 a repeat; 400 fields, plan, lines, `subscription_goods_not_allowed`, `customer_disabled`; 409 `client_request_reused`; 503 |
 | `GET /subscriptions/{id}` | access | 200 with lines, earlier lines, periods and billed through; 404 |
-| `PUT /subscriptions/{id}` | subscriptions-manage | 200; 400 incl. `subscription_not_editable`, `not_a_period_start`; 404; 409 `version_conflict`, `change_in_billed_period`, `subscription_not_editable` (cancelled), `line_kind_changed`; 503 |
+| `PUT /subscriptions/{id}` | subscriptions-manage | 200; 400 incl. `subscription_not_editable`, `not_a_period_start`; 404; 409 `version_conflict`, `change_in_billed_period`, `subscription_not_editable` (cancelled), `line_kind_changed`, `final_period_billed`; 503 |
 | `POST /subscriptions/{id}/activate` | subscriptions-manage | 200; 400 `customer_disabled`, `line_unpriced`, `vat_code_unmapped`, `subscription_goods_not_allowed`; 404; 409 `subscription_not_draft`, `subscription_empty` |
 | `POST /subscriptions/{id}/pause` | subscriptions-manage | 200; 400 `not_a_period_start`; 404; 409 `subscription_not_active`, `change_in_billed_period` |
 | `POST /subscriptions/{id}/resume` | subscriptions-manage | 200; 400 `not_a_period_start`, before the pause; 404; 409 `subscription_not_paused` |
-| `POST /subscriptions/{id}/end` | subscriptions-manage | 200; 400 before the start; 404; 409 `subscription_not_active`, `end_before_billed` |
+| `POST /subscriptions/{id}/end` | subscriptions-manage | 200; 400 before the start; 404; 409 `subscription_not_active`, `end_before_billed`, `final_period_billed` |
 | `POST /subscriptions/{id}/cancel` | subscriptions-manage | 200; 404; 409 `subscription_billed`, `subscription_not_cancellable` |
 | `GET /subscriptions/{id}/changes` | access | 200 the change log; 404 |
 | `GET /templates` | access | 200 by name; `includeArchived` |
