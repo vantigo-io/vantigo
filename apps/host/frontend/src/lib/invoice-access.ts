@@ -42,6 +42,12 @@ export const useInvoiceAccess = () => {
     canChangeReminderPolicy:
       hasPermissions(authorization.data?.permissions, ["invoices:access"]) &&
       hasPermissions(authorization.data?.permissions, ["invoices:payments"]),
+    // The settings page names Products' tax categories from the products API,
+    // which needs the module on and products:tax-categories-view (orders
+    // design O7).
+    canReadTaxCategories:
+      enabledModuleKeys().includes("products") &&
+      hasPermissions(authorization.data?.permissions, ["products:tax-categories-view"]),
     userDisplayName: session.data?.user.displayName,
     userId: session.data?.user.id,
   };

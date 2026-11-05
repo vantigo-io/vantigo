@@ -46,6 +46,12 @@ import { type InvoicesMeta, invoicesMetaQueryOptions } from "../api/meta";
 import { ApiConflictError, ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
 import { type InvoiceSettings, invoiceSettingsQueryOptions, updateInvoiceSettings } from "../api/settings";
 import {
+  deleteTaxCategoryVatCode,
+  productTaxCategoriesQueryOptions,
+  putTaxCategoryVatCode,
+  taxCategoryVatCodesQueryOptions,
+} from "../api/tax-categories";
+import {
   addVatCodeRate,
   createVatCode,
   deleteVatCodeRate,
@@ -87,6 +93,12 @@ const defaultRate = (category: string): number => (category === "S" ? 25 : 0);
 export interface SettingsPageProps {
   /** The signed-in user, so a review or a rate of theirs says "you". */
   currentUserId?: string;
+  /**
+   * Whether the products module is on and the caller holds
+   * `products:tax-categories-view`, which naming Products' tax categories
+   * needs (orders design O7). The host reads it.
+   */
+  canReadTaxCategories?: boolean;
 }
 
 /**
@@ -99,7 +111,7 @@ export interface SettingsPageProps {
  * access changed under it is told why rather than shown a form every save of
  * which is refused.
  */
-export const SettingsPage = ({ currentUserId }: SettingsPageProps = {}) => {
+export const SettingsPage = ({ currentUserId, canReadTaxCategories = false }: SettingsPageProps = {}) => {
   const { t, date } = useInvoiceFormat();
   const meta = useQuery(invoicesMetaQueryOptions());
   return (
@@ -113,7 +125,7 @@ export const SettingsPage = ({ currentUserId }: SettingsPageProps = {}) => {
       {meta.isPending && <ContentSkeleton rows={6} rowHeight={48} />}
       {meta.data &&
         (meta.data.capabilities.canManage ? (
-          <Settings today={meta.data.today} currentUserId={currentUserId} />
+          <Settings today={meta.data.today} currentUserId={currentUserId} canReadTaxCategories={canReadTaxCategories} />
         ) : (
           <Alert color="gray" icon={<IconLock size={16} />}>
             {t("settingsNeedManage")}
@@ -123,7 +135,15 @@ export const SettingsPage = ({ currentUserId }: SettingsPageProps = {}) => {
   );
 };
 
-const Settings = ({ today, currentUserId }: { today: string; currentUserId?: string }) => {
+const Settings = ({
+  today,
+  currentUserId,
+  canReadTaxCategories,
+}: {
+  today: string;
+  currentUserId?: string;
+  canReadTaxCategories: boolean;
+}) => {
   const { t, date } = useInvoiceFormat();
   const settings = useQuery(invoiceSettingsQueryOptions());
   // The settings the unsaved edits were made on. While there are any, the form
@@ -150,6 +170,7 @@ const Settings = ({ today, currentUserId }: { today: string; currentUserId?: str
         />
       )}
       <VatCodesSection />
+      <TaxCategoriesCard canReadNames={canReadTaxCategories} />
       <ReminderSettingsCard today={today} currentUserId={currentUserId} />
       <CollectionRatesCard today={today} currentUserId={currentUserId} />
       <VippsSettingsCard />
@@ -1002,6 +1023,99 @@ const VatCodesSection = () => {
           onClose={() => setModal(null)}
         />
       )}
+    </Card>
+  );
+};
+
+/**
+ * Products' tax categories, each with the VAT code it is invoiced at (orders
+ * design O7). A category with none has no VAT code — there is no default. The
+ * names come from the products API when the caller may read it; otherwise a
+ * category already mapped is listed by its id, and one Products no longer has
+ * stays listed so its mapping can be removed. A change saves at once.
+ */
+const TaxCategoriesCard = ({ canReadNames }: { canReadNames: boolean }) => {
+  const { t, date } = useInvoiceFormat();
+  const queryClient = useQueryClient();
+  const mappings = useQuery(taxCategoryVatCodesQueryOptions());
+  const categories = useQuery({ ...productTaxCategoriesQueryOptions(), enabled: canReadNames });
+  const stored = new Map((mappings.data ?? []).map((m) => [m.taxCategoryId, m.vatCodeId]));
+  const options = useStoredCodeOptions(new Set(stored.values()));
+  const save = useMutation({
+    mutationFn: async ({ id, vatCodeId }: { id: number; vatCodeId: number | null }) => {
+      if (vatCodeId === null) await deleteTaxCategoryVatCode(id);
+      else await putTaxCategoryVatCode(id, vatCodeId);
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: t("taxCategories.couldNotSave"),
+        message: refusalMessage(error, t, date),
+      }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] }),
+  });
+  const named = new Map((categories.data ?? []).map((c) => [c.id, c.name]));
+  const rows = [
+    ...(categories.data ?? []).map((c) => ({ id: c.id, name: c.name })),
+    ...[...stored.keys()]
+      .filter((id) => !named.has(id))
+      .map((id) => ({ id, name: t(canReadNames ? "taxCategories.unknown" : "taxCategories.byId", { id }) })),
+  ];
+  const failed = mappings.error ?? categories.error;
+  return (
+    <Card withBorder data-testid="tax-categories-card">
+      <Stack>
+        <Title order={4}>{t("taxCategories.title")}</Title>
+        <Text size="sm" c="dimmed">
+          {t("taxCategories.description")}
+        </Text>
+        {!canReadNames && (
+          <Alert color="gray" icon={<IconInfoCircle size={16} />}>
+            {t("taxCategories.cannotReadNames")}
+          </Alert>
+        )}
+        {failed && (
+          <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("taxCategories.failedToLoad")}>
+            {refusalMessage(failed, t, date)}
+          </Alert>
+        )}
+        {(mappings.isPending || (canReadNames && categories.isPending)) && <ContentSkeleton rows={3} rowHeight={36} />}
+        {mappings.data && (!canReadNames || categories.data) && rows.length === 0 && (
+          <Text size="sm">{t("taxCategories.empty")}</Text>
+        )}
+        {mappings.data && rows.length > 0 && (
+          <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t("taxCategories.category")}</Table.Th>
+                <Table.Th>{t("taxCategories.vatCode")}</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {rows.map((row) => {
+                const current = stored.get(row.id);
+                return (
+                  <Table.Tr key={row.id}>
+                    <Table.Td>{row.name}</Table.Td>
+                    <Table.Td>
+                      <Select
+                        aria-label={t("taxCategories.vatCodeFor", { name: row.name })}
+                        placeholder={t("taxCategories.none")}
+                        data={options}
+                        clearable
+                        clearButtonProps={{ "aria-label": t("taxCategories.clear", { name: row.name }) }}
+                        disabled={save.isPending}
+                        value={current === undefined ? null : String(current)}
+                        onChange={(v) => save.mutate({ id: row.id, vatCodeId: v === null ? null : Number(v) })}
+                      />
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+        )}
+      </Stack>
     </Card>
   );
 };
