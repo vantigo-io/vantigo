@@ -440,8 +440,8 @@ Tillatelser er additive: en person har summen av rollenes tillatelser. Hva hver
 tillatelse låser opp i en app, er listet på appens referanseside, for eksempel
 [Customers](/en/reference/customers/), [Projects](/en/reference/projects/),
 [Time](/en/reference/time/), [Expenses](/en/reference/expenses/),
-[Invoices](/en/reference/invoices/), [Staff](/en/reference/staff/) og
-[Planning](/en/reference/planning/). Beskrivelsene i katalogen sier det navnet ikke
+[Invoices](/en/reference/invoices/), [Staff](/en/reference/staff/),
+[Planning](/en/reference/planning/) og [Orders](/en/reference/orders/). Beskrivelsene i katalogen sier det navnet ikke
 sier: I Fakturaer sender **Utstede fakturaer** også et dokument på e-post eller som
 EHF, avbryter eller avklarer EHF-sendingene, registrerer at en faktura er levert, lager
 eller trekker tilbake en Vipps-betalingslenke og tar imot en Vipps-betaling på stedet —
@@ -469,7 +469,12 @@ Administrasjon, kanalen invitasjoner til folk utenfor bedriften sendes fra, side
 avgjør hvem kundenes e-post kommer fra
 ([hvor invitasjonene sendes fra](/nb/user/calendar/#hvor-invitasjonene-sendes-fra)).
 **Administrer
-identitet** (`identity:manage`) er identitetsmodulens egen, eneste tillatelse.
+identitet** (`identity:manage`) er identitetsmodulens egen, eneste tillatelse. I Ordre
+krever hver rettighet **Bruke Ordre** i tillegg; **Bekrefte ordrer** aksepterer også et
+tilbud rett til en bekreftet ordre; **Håndtere innstillinger for Ordre** holder også
+tilbudsmalene og kan ikke delegeres; og **Håndtere abonnementer**, **Håndtere
+leveranser**, **Håndtere fraktselskaper** og **Se salgsanalyse** er listet for leveransene
+som kommer, og gjør ingenting ennå ([Ordre](/nb/admin/orders/#gi-folk-tilgang)).
 
 ### Tildelinger
 

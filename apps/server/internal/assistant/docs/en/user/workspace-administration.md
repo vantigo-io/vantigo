@@ -431,8 +431,8 @@ Permissions are additive: a person holds the union of their roles' permissions. 
 each permission unlocks in an app is listed in that app's reference page, for example
 [Customers](/en/reference/customers/), [Projects](/en/reference/projects/),
 [Time](/en/reference/time/), [Expenses](/en/reference/expenses/),
-[Invoices](/en/reference/invoices/), [Staff](/en/reference/staff/) and
-[Planning](/en/reference/planning/). The descriptions
+[Invoices](/en/reference/invoices/), [Staff](/en/reference/staff/),
+[Planning](/en/reference/planning/) and [Orders](/en/reference/orders/). The descriptions
 in the catalog say what a title does not: in Invoices, **Issue invoices** also sends a document by e-mail or as EHF
 and cancels or resolves its EHF transmissions, records that an invoice was handed
 over, makes or revokes a Vipps pay link and takes a Vipps payment on site — and, with
@@ -459,7 +459,12 @@ colleagues' calendars** a colleague's busy and free times, and **Manage Calendar
 settings**, marked sensitive and in the Administration category, the channel invitations to
 people outside the company are sent from, since it decides whose address customers' mail
 comes from ([where invitations are sent from](/en/user/calendar/#where-invitations-are-sent-from)). **Manage identity**
-(`identity:manage`) is the one permission of the identity module itself.
+(`identity:manage`) is the one permission of the identity module itself. In Orders, every
+permission needs **Use Orders** beside it; **Confirm orders** also accepts a quote straight
+into a confirmed order; **Manage Orders settings** keeps the quote templates as well and
+cannot be delegated; and **Manage subscriptions**, **Manage deliveries**, **Manage
+carriers** and **View sales analysis** are listed for the deliveries still to come and do
+nothing yet ([Orders](/en/admin/orders/#give-people-access)).
 
 ### Assignments
 

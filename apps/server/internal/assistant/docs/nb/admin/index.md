@@ -42,6 +42,11 @@ applikasjonen.
   tilgang til det med de fem rettighetene, og setter ansattnummerserien.
   Forretningstidssonen hver modul dømmer en dag etter, er arbeidsområdets, satt under
   [Administrasjon av arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet).
+- **Ordre.** [Ordre](/nb/admin/orders/) er på når `orders` står i `MODULES` ved siden av
+  `products`, `customers` og `invoices`, som den krever; de ni rettighetene,
+  nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen,
+  e-posttekstene og tilbudsmalene. Koble avgiftskategoriene i Produkter til mva-koder i
+  Fakturaer før noen lager tilbud.
 - **Kalender.** [Kalender](/nb/admin/calendar/) er på når `calendar` står i `MODULES`
   (eller `MODULES` ikke er satt), med tre rettigheter — `calendar:access` for å bruke den,
   `calendar:view-colleagues` for å se når kolleger er opptatt og ledige, og `calendar:manage`

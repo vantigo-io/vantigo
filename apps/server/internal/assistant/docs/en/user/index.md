@@ -16,7 +16,7 @@ shown.
 ## Apps and the switcher
 
 Each module is an **app** with its own sidebar: Customers, Projects, Time, Calendar,
-Expenses, Staff, Planning, Invoices, Communications, Products, Inventory and Energy — and Microsoft Entra ID
+Expenses, Staff, Planning, Invoices, Orders, Communications, Products, Inventory and Energy — and Microsoft Entra ID
 and Google Workspace, where an administrator connects the company's tenant or organisation. The [Assistant](/en/user/assistant/) is an app
 too, and also a panel that opens beside any screen with the button in the top bar or Cmd/Ctrl+J, and it can [show you where to click](/en/user/assistant/#show-me-how) in the main create flows. The app switcher in the top bar lists
 the apps you can open; **Home** is the dashboard, which opens with Calendar's **Today and
@@ -81,6 +81,7 @@ shorter than yours:
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |
 | [Inventory](/en/user/inventory/) | Overview, Movements, Receipts, Counts, Import opening balances |
+| [Orders](/en/user/orders/) | Quotes, Sales orders, Quote templates, Orders settings |
 | [Energy](/en/user/energy/) | Metering points |
 | [Microsoft Entra ID](/en/user/entra/) | Microsoft Entra ID (the connection's status and its six setup steps), for `entra:manage` |
 | [Google Workspace](/en/user/google-workspace/) | Google Workspace (the connection's status and its six setup steps), for `google:manage` |
@@ -97,7 +98,8 @@ points](/en/user/energy/#import-metering-points)).
 
 The search box in the top bar (or the keyboard shortcut shown in it) opens a spotlight
 that jumps to any screen you have access to, so you rarely need the switcher for a
-screen you know the name of.
+screen you know the name of. It also offers a few quick actions, such as Orders' **New quote**
+for those who may make quotes.
 
 ## Your account
 
