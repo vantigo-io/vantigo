@@ -99,3 +99,54 @@ type SalesOrderInvoiced struct {
 func (SalesOrderInvoiced) EventName() string     { return "orders.sales_order.invoiced" }
 func (SalesOrderInvoiced) EventVersion() int     { return 1 }
 func (e SalesOrderInvoiced) AggregateID() string { return strconv.FormatInt(e.OrderID, 10) }
+
+// SubscriptionStarted is orders.subscription.started v1: a subscription was
+// activated at Version (orders design O42), billed from StartDate.
+type SubscriptionStarted struct {
+	SubscriptionID int64     `json:"subscriptionId"`
+	Number         int64     `json:"number"`
+	Version        int32     `json:"version"`
+	CustomerID     int32     `json:"customerId"`
+	Currency       string    `json:"currency"`
+	Interval       string    `json:"interval"`
+	StartDate      string    `json:"startDate"`
+	StartedAt      time.Time `json:"startedAt"`
+}
+
+func (SubscriptionStarted) EventName() string     { return "orders.subscription.started" }
+func (SubscriptionStarted) EventVersion() int     { return 1 }
+func (e SubscriptionStarted) AggregateID() string { return strconv.FormatInt(e.SubscriptionID, 10) }
+
+// SubscriptionChanged is orders.subscription.changed v1: an active
+// subscription's lines were changed from a period on, or it was paused or
+// resumed, and is now at Version (orders design O44).
+type SubscriptionChanged struct {
+	SubscriptionID int64     `json:"subscriptionId"`
+	Number         int64     `json:"number"`
+	Version        int32     `json:"version"`
+	CustomerID     int32     `json:"customerId"`
+	Status         string    `json:"status"`
+	ChangedAt      time.Time `json:"changedAt"`
+}
+
+func (SubscriptionChanged) EventName() string     { return "orders.subscription.changed" }
+func (SubscriptionChanged) EventVersion() int     { return 1 }
+func (e SubscriptionChanged) AggregateID() string { return strconv.FormatInt(e.SubscriptionID, 10) }
+
+// SubscriptionEnded is orders.subscription.ended v1: a subscription was given
+// an end date — its last period billed is the one EndDate falls in — or an
+// active one with nothing billed was cancelled (Status "cancelled", EndDate
+// empty) (orders design O44).
+type SubscriptionEnded struct {
+	SubscriptionID int64     `json:"subscriptionId"`
+	Number         int64     `json:"number"`
+	Version        int32     `json:"version"`
+	CustomerID     int32     `json:"customerId"`
+	Status         string    `json:"status"`
+	EndDate        string    `json:"endDate,omitempty"`
+	EndedAt        time.Time `json:"endedAt"`
+}
+
+func (SubscriptionEnded) EventName() string     { return "orders.subscription.ended" }
+func (SubscriptionEnded) EventVersion() int     { return 1 }
+func (e SubscriptionEnded) AggregateID() string { return strconv.FormatInt(e.SubscriptionID, 10) }

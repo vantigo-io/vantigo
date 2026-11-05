@@ -35,6 +35,9 @@ const (
 	kindOrdersDraftOrders = "orders.draftOrders"
 	kindOrdersMailings    = "orders.mailings"
 	kindOrdersWarnings    = "orders.warnings"
+	// kindOrdersSubscriptions are the subscriptions (O42): re-pointed by a
+	// merge, and on an erase those never activated anonymised at once.
+	kindOrdersSubscriptions = "orders.subscriptions"
 )
 
 // customerReferenceHolder re-points a merged-away customer's quotes and
@@ -47,7 +50,7 @@ func newCustomerReferenceHolder(module.Deps) contracts.CustomerReferenceHolder {
 	return customerReferenceHolder{}
 }
 
-// RepointCustomer moves every quote and order of from to into, inside the
+// RepointCustomer moves every quote, order and subscription of from to into, inside the
 // merge's transaction. The snapshot is not touched: a frozen document keeps
 // the customer as it was. A write of a document holds only its own row (after
 // its variants'), so the merge waits for it, and never the other way round.
@@ -59,7 +62,7 @@ func newCustomerReferenceHolder(module.Deps) contracts.CustomerReferenceHolder {
 // never lifts a block.
 func (customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx, from, into int32) ([]contracts.RepointedReferences, error) {
 	if from == into {
-		return []contracts.RepointedReferences{{Kind: kindOrdersQuotes}, {Kind: kindOrdersOrders}, {Kind: kindOrdersWarnings}}, nil
+		return []contracts.RepointedReferences{{Kind: kindOrdersQuotes}, {Kind: kindOrdersOrders}, {Kind: kindOrdersWarnings}, {Kind: kindOrdersSubscriptions}}, nil
 	}
 	q := store.New(tx)
 	quotes, err := q.RepointCustomerQuotes(ctx, store.RepointCustomerQuotesParams{FromCustomerID: from, IntoCustomerID: into})
@@ -69,6 +72,10 @@ func (customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx, f
 	orders, err := q.RepointCustomerOrders(ctx, store.RepointCustomerOrdersParams{FromCustomerID: from, IntoCustomerID: into})
 	if err != nil {
 		return nil, fmt.Errorf("orders: re-point customer %d's orders to %d: %w", from, into, err)
+	}
+	subscriptions, err := q.RepointCustomerSubscriptions(ctx, store.RepointCustomerSubscriptionsParams{FromCustomerID: from, IntoCustomerID: into})
+	if err != nil {
+		return nil, fmt.Errorf("orders: re-point customer %d's subscriptions to %d: %w", from, into, err)
 	}
 	merged, err := q.MergeCustomerBlock(ctx, store.MergeCustomerBlockParams{FromCustomerID: from, IntoCustomerID: into})
 	if err != nil {
@@ -84,6 +91,7 @@ func (customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx, f
 	}
 	return []contracts.RepointedReferences{
 		{Kind: kindOrdersQuotes, Count: quotes}, {Kind: kindOrdersOrders, Count: orders}, {Kind: kindOrdersWarnings, Count: warnings},
+		{Kind: kindOrdersSubscriptions, Count: subscriptions},
 	}, nil
 }
 
@@ -112,6 +120,9 @@ func newCustomerPersonalData(d module.Deps) contracts.CustomerPersonalData {
 type exportedOrders struct {
 	Quotes []exportedDocument `json:"quotes"`
 	Orders []exportedDocument `json:"orders"`
+	// Subscriptions are the customer's subscriptions (O42), each with its
+	// plan and every dated line.
+	Subscriptions []exportedDocument `json:"subscriptions"`
 	// Warning is the customer's sales warning (O33), when it has one.
 	Warning *exportedWarning `json:"warning,omitempty"`
 }
@@ -123,25 +134,27 @@ type exportedWarning struct {
 }
 
 type exportedDocument struct {
-	Number          int64             `json:"number"`
-	Status          string            `json:"status"`
-	Revision        int32             `json:"revision,omitempty"`
-	Version         int32             `json:"version,omitempty"`
-	Currency        string            `json:"currency"`
-	NetTotal        string            `json:"netTotal"`
-	GrossTotal      string            `json:"grossTotal"`
-	CustomerName    string            `json:"customerName"`
-	InvoiceAddress  string            `json:"invoiceAddress,omitempty"`
-	DeliveryAddress string            `json:"deliveryAddress,omitempty"`
-	Contact         string            `json:"contact,omitempty"`
-	InvoiceEmail    string            `json:"invoiceEmail,omitempty"`
-	YourReference   string            `json:"yourReference,omitempty"`
-	IntroText       string            `json:"introText,omitempty"`
-	ClosingText     string            `json:"closingText,omitempty"`
-	InternalNote    string            `json:"internalNote,omitempty"`
-	CreatedAt       time.Time         `json:"createdAt"`
-	Lines           []exportedLine    `json:"lines"`
-	Mailings        []exportedMailing `json:"mailings"`
+	Number          int64     `json:"number"`
+	Status          string    `json:"status"`
+	Revision        int32     `json:"revision,omitempty"`
+	Version         int32     `json:"version,omitempty"`
+	Currency        string    `json:"currency"`
+	NetTotal        string    `json:"netTotal"`
+	GrossTotal      string    `json:"grossTotal"`
+	CustomerName    string    `json:"customerName"`
+	InvoiceAddress  string    `json:"invoiceAddress,omitempty"`
+	DeliveryAddress string    `json:"deliveryAddress,omitempty"`
+	Contact         string    `json:"contact,omitempty"`
+	InvoiceEmail    string    `json:"invoiceEmail,omitempty"`
+	YourReference   string    `json:"yourReference,omitempty"`
+	IntroText       string    `json:"introText,omitempty"`
+	ClosingText     string    `json:"closingText,omitempty"`
+	InternalNote    string    `json:"internalNote,omitempty"`
+	CreatedAt       time.Time `json:"createdAt"`
+	// Plan is a subscription's interval, billing, start and end.
+	Plan     string            `json:"plan,omitempty"`
+	Lines    []exportedLine    `json:"lines"`
+	Mailings []exportedMailing `json:"mailings"`
 }
 
 type exportedLine struct {
@@ -155,6 +168,8 @@ type exportedLine struct {
 	Discount    string `json:"discountPercent,omitempty"`
 	LineNet     string `json:"lineNet"`
 	Delivered   string `json:"delivered,omitempty"`
+	ValidFrom   string `json:"validFrom,omitempty"`
+	ValidTo     string `json:"validTo,omitempty"`
 }
 
 type exportedMailing struct {
@@ -181,6 +196,10 @@ func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID
 		if err != nil {
 			return fmt.Errorf("orders: read customer %d's orders: %w", customerID, err)
 		}
+		subscriptions, err := q.CustomerSubscriptions(ctx, customerID)
+		if err != nil {
+			return fmt.Errorf("orders: read customer %d's subscriptions: %w", customerID, err)
+		}
 		var warning *exportedWarning
 		w, err := q.CustomerWarning(ctx, customerID)
 		switch {
@@ -189,10 +208,10 @@ func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID
 		case !noRows(err):
 			return fmt.Errorf("orders: read customer %d's warning: %w", customerID, err)
 		}
-		if len(quotes) == 0 && len(orders) == 0 && warning == nil {
+		if len(quotes) == 0 && len(orders) == 0 && len(subscriptions) == 0 && warning == nil {
 			return nil
 		}
-		section = &exportedOrders{Quotes: []exportedDocument{}, Orders: []exportedDocument{}, Warning: warning}
+		section = &exportedOrders{Quotes: []exportedDocument{}, Orders: []exportedDocument{}, Subscriptions: []exportedDocument{}, Warning: warning}
 		quoteDocs := make([]exportedDocument, 0, len(quotes))
 		quoteIDs := make([]int64, 0, len(quotes))
 		for _, r := range quotes {
@@ -212,7 +231,20 @@ func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID
 		if section.Quotes, err = withLinesAndMailings(ctx, q, ownerQuote, quoteIDs, quoteDocs); err != nil {
 			return err
 		}
-		section.Orders, err = withLinesAndMailings(ctx, q, ownerOrder, orderIDs, orderDocs)
+		if section.Orders, err = withLinesAndMailings(ctx, q, ownerOrder, orderIDs, orderDocs); err != nil {
+			return err
+		}
+		subDocs := make([]exportedDocument, 0, len(subscriptions))
+		subIDs := make([]int64, 0, len(subscriptions))
+		for _, r := range subscriptions {
+			subIDs = append(subIDs, r.ID)
+			d := exportedOf(headerOfSubscription(r), r.Number, r.Status, r.Currency, r.NetTotal, r.GrossTotal, r.CreatedAt)
+			d.Version = r.Version
+			d.Plan = strings.TrimSpace(fmt.Sprintf("%s %s from %s %s", r.BillingInterval, r.Billing, r.StartDate.Time.Format(time.DateOnly),
+				deref(dateText(r.EndDate))))
+			subDocs = append(subDocs, d)
+		}
+		section.Subscriptions, err = withLinesAndMailings(ctx, q, ownerSubscription, subIDs, subDocs)
 		return err
 	})
 	if err != nil || section == nil {
@@ -280,6 +312,12 @@ func withLinesAndMailings(ctx context.Context, q *store.Queries, kind string, id
 				e.Delivered = v.FloatString(quantityPlaces)
 			}
 		}
+		if l.ValidFrom.Valid {
+			e.ValidFrom = l.ValidFrom.Time.Format(time.DateOnly)
+		}
+		if l.ValidTo.Valid {
+			e.ValidTo = l.ValidTo.Time.Format(time.DateOnly)
+		}
 		i := at[l.OwnerID]
 		docs[i].Lines = append(docs[i].Lines, e)
 	}
@@ -326,6 +364,9 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 	if err := q.LockCustomerOrders(ctx, customerID); err != nil {
 		return nil, fmt.Errorf("orders: lock customer %d's orders: %w", customerID, err)
 	}
+	if err := q.LockCustomerSubscriptions(ctx, customerID); err != nil {
+		return nil, fmt.Errorf("orders: lock customer %d's subscriptions: %w", customerID, err)
+	}
 	quotes, err := q.AnonymiseCustomerQuotes(ctx, store.AnonymiseCustomerQuotesParams{CustomerID: customerID, Now: &now})
 	if err != nil {
 		return nil, fmt.Errorf("orders: anonymise customer %d's quotes: %w", customerID, err)
@@ -333,6 +374,10 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 	drafts, err := q.AnonymiseCustomerOrders(ctx, store.AnonymiseCustomerOrdersParams{CustomerID: customerID, Now: &now})
 	if err != nil {
 		return nil, fmt.Errorf("orders: anonymise customer %d's draft orders: %w", customerID, err)
+	}
+	subscriptions, err := q.AnonymiseCustomerSubscriptions(ctx, store.AnonymiseCustomerSubscriptionsParams{CustomerID: customerID, Now: &now})
+	if err != nil {
+		return nil, fmt.Errorf("orders: anonymise customer %d's draft subscriptions: %w", customerID, err)
 	}
 	mailings, err := q.BlankCustomerMailings(ctx, customerID)
 	if err != nil {
@@ -346,11 +391,15 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 	if err != nil {
 		return nil, fmt.Errorf("orders: read customer %d's kept orders: %w", customerID, err)
 	}
+	keptSubscriptions, err := q.KeptSubscriptionNumbers(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("orders: read customer %d's kept subscriptions: %w", customerID, err)
+	}
 	documents, err := q.CustomerHasDocuments(ctx, customerID)
 	if err != nil {
 		return nil, fmt.Errorf("orders: read whether customer %d has stored PDFs: %w", customerID, err)
 	}
-	if len(kept) > 0 || documents {
+	if len(kept) > 0 || len(keptSubscriptions) > 0 || documents {
 		if err := q.RecordErasure(ctx, store.RecordErasureParams{CustomerID: customerID, RequestedAt: now}); err != nil {
 			return nil, fmt.Errorf("orders: record customer %d's erasure: %w", customerID, err)
 		}
@@ -359,12 +408,17 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 		p.logger.InfoContext(ctx, "orders: confirmed orders are kept as bookkeeping material until their retention has run (bokføringsloven § 13); orders.retention anonymises them then",
 			"customer_id", customerID, "order_numbers", kept)
 	}
+	if len(keptSubscriptions) > 0 {
+		p.logger.InfoContext(ctx, "orders: activated subscriptions are kept as bookkeeping material until 3 years and 6 months after the end of the financial year they ended in; orders.retention anonymises them then",
+			"customer_id", customerID, "subscription_numbers", keptSubscriptions)
+	}
 	return []contracts.ErasedData{
 		{Kind: kindOrdersQuotes, Count: quotes},
 		{Kind: kindOrdersDraftOrders, Count: drafts},
 		{Kind: kindOrdersOrders, Count: 0},
 		{Kind: kindOrdersMailings, Count: mailings},
 		{Kind: kindOrdersWarnings, Count: warnings},
+		{Kind: kindOrdersSubscriptions, Count: subscriptions},
 	}, nil
 }
 

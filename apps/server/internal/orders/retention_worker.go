@@ -118,6 +118,12 @@ func (w *retentionWorker) cycle(ctx context.Context) (bool, int64, error) {
 			if err != nil {
 				return fmt.Errorf("orders: anonymise customer %d's kept orders: %w", id, err)
 			}
+			if err := q.LockCustomerSubscriptions(ctx, id); err != nil {
+				return fmt.Errorf("orders: lock customer %d's subscriptions: %w", id, err)
+			}
+			if _, err := q.AnonymiseCustomerSubscriptions(ctx, store.AnonymiseCustomerSubscriptionsParams{CustomerID: id, Now: &now, Cutoff: &cutoff}); err != nil {
+				return fmt.Errorf("orders: anonymise customer %d's kept subscriptions: %w", id, err)
+			}
 			if _, err := q.BlankCustomerMailings(ctx, id); err != nil {
 				return fmt.Errorf("orders: blank customer %d's sends: %w", id, err)
 			}

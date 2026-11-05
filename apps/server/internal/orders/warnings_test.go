@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -187,10 +188,10 @@ func TestWarnings_BlockAndOverride(t *testing.T) {
 	mustStatus(t, res, http.StatusOK, "mark sent")
 	q2 = quoteOf(t, res)
 	expectRefusal(t, seller.Do(http.MethodPost, quotePath(q2.Id, "accept"), gen.OrdersAcceptInput{
-		ExpectedUpdatedAt: q2.UpdatedAt, Revision: q2.Revision, Into: gen.ConfirmedOrder,
+		ExpectedUpdatedAt: q2.UpdatedAt, Revision: q2.Revision, Into: gen.OrdersAcceptInputIntoConfirmedOrder,
 	}), http.StatusConflict, "blocked_by_warning", "accept and confirm")
 	res = chief.Do(http.MethodPost, quotePath(q2.Id, "accept"), gen.OrdersAcceptInput{
-		ExpectedUpdatedAt: q2.UpdatedAt, Revision: q2.Revision, Into: gen.ConfirmedOrder, OverrideWarnings: &yes, OverrideReason: str("OK"),
+		ExpectedUpdatedAt: q2.UpdatedAt, Revision: q2.Revision, Into: gen.OrdersAcceptInputIntoConfirmedOrder, OverrideWarnings: &yes, OverrideReason: str("OK"),
 	})
 	mustStatus(t, res, http.StatusOK, "accept and confirm with an override")
 
@@ -348,7 +349,7 @@ func TestWarnings_MergeAndErase(t *testing.T) {
 		erased, err = data.EraseCustomerData(ctx, tx, custBusiness)
 		return err
 	})
-	if last := erased[len(erased)-1]; last != (contracts.ErasedData{Kind: "orders.warnings", Count: 1}) {
+	if !slices.Contains(erased, contracts.ErasedData{Kind: "orders.warnings", Count: 1}) {
 		t.Errorf("erased %+v; want the warning", erased)
 	}
 	mustStatus(t, admin.Do(http.MethodGet, customerWarningPath(custBusiness), nil), http.StatusNotFound, "after the erase")

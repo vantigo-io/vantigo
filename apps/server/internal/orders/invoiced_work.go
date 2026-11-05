@@ -82,14 +82,17 @@ func (h *invoicedWorkHolder) MarkInvoiced(ctx context.Context, tx pgx.Tx, ref co
 	slices.SortFunc(sorted, func(a, b contracts.WorkSource) int { return cmp.Compare(a.ID, b.ID) })
 	invoiced := map[int64]*big.Rat{}
 	for _, l := range held.lines {
-		invoiced[l.ID] = ratOrZero(l.QtyInvoiced)
+		if l.OwnerKind == ownerOrder {
+			invoiced[l.ID] = ratOrZero(l.QtyInvoiced)
+		}
 	}
 	for _, source := range sorted {
 		if refusal := judgeAllocation(held, invoiced, source); refusal != nil {
 			return refusal
 		}
-		a := held.allocations[source.ID]
-		invoiced[a.LineID] = new(big.Rat).Add(invoiced[a.LineID], ratOrZero(a.Quantity))
+		if a := held.allocations[source.ID]; a.Kind == contracts.AllocationOrderLine {
+			invoiced[a.LineID] = new(big.Rat).Add(invoiced[a.LineID], ratOrZero(a.Quantity))
+		}
 	}
 	params := store.StampAllocationsInvoicedParams{
 		InvoiceID: &ref.ID, InvoiceNumber: &ref.Number, IssueDate: pgtype.Date{Time: ref.IssueDate, Valid: true},
@@ -108,6 +111,9 @@ func (h *invoicedWorkHolder) MarkInvoiced(ctx context.Context, tx pgx.Tx, ref co
 	}
 	orders, err := h.writeInvoiced(ctx, q, held, invoiced, ref.IssuedAt)
 	if err != nil {
+		return err
+	}
+	if err := writeBilledThrough(ctx, q, held, ref.IssuedAt); err != nil {
 		return err
 	}
 	for _, o := range orders {
@@ -142,12 +148,20 @@ func (h *invoicedWorkHolder) ReleaseInvoiced(ctx context.Context, tx pgx.Tx, ref
 	}
 	invoiced := map[int64]*big.Rat{}
 	for _, l := range held.lines {
-		invoiced[l.ID] = ratOrZero(l.QtyInvoiced)
+		if l.OwnerKind == ownerOrder {
+			invoiced[l.ID] = ratOrZero(l.QtyInvoiced)
+		}
 	}
 	release := make([]int64, 0, len(ids))
 	for _, id := range ids {
 		a, ok := held.allocations[id]
 		if ok && a.State == contracts.AllocationInvoiced && a.InvoiceID != nil && *a.InvoiceID == ref.ID {
+			if a.Kind == contracts.AllocationSubscriptionPeriod {
+				// A period has no line progress: its release makes the
+				// period due again (O43), and billed through is derived.
+				release = append(release, id)
+				continue
+			}
 			if _, ok := invoiced[a.LineID]; ok {
 				release = append(release, id)
 				left := new(big.Rat).Sub(invoiced[a.LineID], ratOrZero(a.Quantity))
@@ -184,45 +198,67 @@ func (h *invoicedWorkHolder) ReleaseInvoiced(ctx context.Context, tx pgx.Tx, ref
 	if len(released) != len(release) {
 		return fmt.Errorf("orders: released %d of %d allocations invoiced by invoice %d", len(released), len(release), ref.ID)
 	}
-	_, err = h.writeInvoiced(ctx, q, held, invoiced, ref.IssuedAt)
-	return err
+	if _, err = h.writeInvoiced(ctx, q, held, invoiced, ref.IssuedAt); err != nil {
+		return err
+	}
+	return writeBilledThrough(ctx, q, held, ref.IssuedAt)
 }
 
-// heldAllocations are the rows the holder locked: the orders, the lines and
-// the allocations, by id.
+// heldAllocations are the rows the holder locked: the orders, the
+// subscriptions, the lines and the allocations, by id.
 type heldAllocations struct {
-	orders      map[int64]store.OrdersOrder
-	lines       map[int64]store.OrdersLine
-	allocations map[int64]store.OrdersInvoiceAllocation
+	orders        map[int64]store.OrdersOrder
+	subscriptions map[int64]store.OrdersSubscription
+	lines         map[int64]store.OrdersLine
+	allocations   map[int64]store.OrdersInvoiceAllocation
 }
 
-// lockAllocationRows reads the allocations' orders and lines, then locks the
-// orders, the lines and the allocations, each in id order (O38): the order
-// every writer of an order takes its row in first, so the holder waits on an
-// edit, an Allocate or a release rather than crossing one.
+// lockAllocationRows reads the allocations' orders, subscriptions and lines,
+// then locks the orders, the subscriptions, the lines and the allocations,
+// each in id order (O38, O43): the order every writer of an order or a
+// subscription takes its row in first, so the holder waits on an edit, an
+// Allocate or a release rather than crossing one.
 func lockAllocationRows(ctx context.Context, q *store.Queries, ids []int64) (heldAllocations, error) {
 	refs, err := q.AllocationOrders(ctx, ids)
 	if err != nil {
 		return heldAllocations{}, fmt.Errorf("orders: read the invoiced allocations' orders: %w", err)
 	}
 	orderIDs := make([]int64, 0, len(refs))
+	subscriptionIDs := make([]int64, 0, len(refs))
 	lineIDs := make([]int64, 0, len(refs))
 	for _, r := range refs {
-		orderIDs = append(orderIDs, r.OrderID)
+		if r.OrderID != nil {
+			orderIDs = append(orderIDs, *r.OrderID)
+		}
+		if r.SubscriptionID != nil {
+			subscriptionIDs = append(subscriptionIDs, *r.SubscriptionID)
+		}
 		lineIDs = append(lineIDs, r.LineID)
 	}
 	slices.Sort(orderIDs)
+	slices.Sort(subscriptionIDs)
 	slices.Sort(lineIDs)
-	held := heldAllocations{orders: map[int64]store.OrdersOrder{}, lines: map[int64]store.OrdersLine{},
-		allocations: map[int64]store.OrdersInvoiceAllocation{}}
-	orders, err := q.LockOrdersByIDs(ctx, slices.Compact(orderIDs))
-	if err != nil {
-		return held, fmt.Errorf("orders: lock the invoiced allocations' orders: %w", err)
+	held := heldAllocations{orders: map[int64]store.OrdersOrder{}, subscriptions: map[int64]store.OrdersSubscription{},
+		lines: map[int64]store.OrdersLine{}, allocations: map[int64]store.OrdersInvoiceAllocation{}}
+	if len(orderIDs) > 0 {
+		orders, err := q.LockOrdersByIDs(ctx, slices.Compact(orderIDs))
+		if err != nil {
+			return held, fmt.Errorf("orders: lock the invoiced allocations' orders: %w", err)
+		}
+		for _, o := range orders {
+			held.orders[o.ID] = o
+		}
 	}
-	for _, o := range orders {
-		held.orders[o.ID] = o
+	if len(subscriptionIDs) > 0 {
+		subs, err := q.LockSubscriptionsByIDs(ctx, slices.Compact(subscriptionIDs))
+		if err != nil {
+			return held, fmt.Errorf("orders: lock the invoiced allocations' subscriptions: %w", err)
+		}
+		for _, s := range subs {
+			held.subscriptions[s.ID] = s
+		}
 	}
-	lines, err := q.LockOrderLinesByIDs(ctx, slices.Compact(lineIDs))
+	lines, err := q.LockLinesByIDs(ctx, slices.Compact(lineIDs))
 	if err != nil {
 		return held, fmt.Errorf("orders: lock the invoiced allocations' lines: %w", err)
 	}
@@ -254,7 +290,13 @@ func judgeAllocation(held heldAllocations, invoiced map[int64]*big.Rat, source c
 	if a.State != contracts.AllocationDraft {
 		return refuse(contracts.SourceNotInvoiceable, fmt.Sprintf("Allocation %d is %s", a.ID, a.State))
 	}
-	o, l := held.orders[a.OrderID], held.lines[a.LineID]
+	if a.Kind == contracts.AllocationSubscriptionPeriod {
+		return judgePeriodAllocation(held, a, source, refuse)
+	}
+	if a.OrderID == nil {
+		return refuse(contracts.SourceNotInvoiceable, fmt.Sprintf("Allocation %d bills no order", a.ID))
+	}
+	o, l := held.orders[*a.OrderID], held.lines[a.LineID]
 	if why := notInvoiceable(o, l); why != "" {
 		return refuse(contracts.SourceNotInvoiceable, why)
 	}
@@ -276,12 +318,80 @@ func judgeAllocation(held heldAllocations, invoiced map[int64]*big.Rat, source c
 	return nil
 }
 
+// judgePeriodAllocation judges a subscription period's allocation (O43): its
+// subscription still bills — not a draft and not cancelled — then its
+// revision, currency and exact amount. A period's quantity is no line's
+// progress, so nothing is open or not.
+func judgePeriodAllocation(held heldAllocations, a store.OrdersInvoiceAllocation, source contracts.WorkSource,
+	refuse func(code, detail string) *contracts.WorkSourceRefusal) *contracts.WorkSourceRefusal {
+	if a.SubscriptionID == nil {
+		return refuse(contracts.SourceNotInvoiceable, fmt.Sprintf("Allocation %d bills no subscription", a.ID))
+	}
+	sub, ok := held.subscriptions[*a.SubscriptionID]
+	switch {
+	case !ok:
+		return refuse(contracts.SourceNotInvoiceable, fmt.Sprintf("Allocation %d's subscription was not found", a.ID))
+	case sub.Status == subscriptionDraft || sub.Status == subscriptionCancelled:
+		return refuse(contracts.SourceNotInvoiceable, fmt.Sprintf("Subscription %d is %s", sub.Number, sub.Status))
+	}
+	if _, ok := held.lines[a.LineID]; !ok {
+		return refuse(contracts.SourceNotInvoiceable, fmt.Sprintf("Allocation %d's line was not found", a.ID))
+	}
+	amount, ok := new(big.Rat).SetString(source.Amount)
+	switch {
+	case a.Revision != source.Revision:
+		return refuse(contracts.SourceChanged, fmt.Sprintf("Allocation %d is at revision %d, not %d", a.ID, a.Revision, source.Revision))
+	case sub.Currency != source.Currency:
+		return refuse(contracts.SourceChanged, fmt.Sprintf("Allocation %d bills in %q, not %q", a.ID, sub.Currency, source.Currency))
+	case !ok || amount.Cmp(ratOrZero(a.Amount)) != 0:
+		return refuse(contracts.SourceChanged, fmt.Sprintf("Allocation %d's amount is %s, not %s", a.ID,
+			ratOrZero(a.Amount).FloatString(amountPlaces), source.Amount))
+	}
+	return nil
+}
+
+// writeBilledThrough recomputes and stores each held subscription's billed
+// through (O43) from its rows as they stand on q — after the allocations'
+// stamp or release — at at.
+func writeBilledThrough(ctx context.Context, q *store.Queries, held heldAllocations, at time.Time) error {
+	ids := slices.Collect(maps.Keys(held.subscriptions))
+	slices.Sort(ids)
+	for _, id := range ids {
+		if err := refreshBilledThrough(ctx, q, held.subscriptions[id], at); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// refreshBilledThrough derives one subscription's billed through from its
+// lines, allocations and skips on q and stores it when it moved.
+func refreshBilledThrough(ctx context.Context, q *store.Queries, sub store.OrdersSubscription, at time.Time) error {
+	sch, err := readSchedule(ctx, q, sub)
+	if err != nil {
+		return err
+	}
+	through := sch.billedThrough()
+	if equalDate(sub.BilledThrough, through) {
+		return nil
+	}
+	if _, err := q.SetSubscriptionBilledThrough(ctx, store.SetSubscriptionBilledThroughParams{
+		ID: sub.ID, BilledThrough: pgDate(through), Now: at,
+	}); err != nil {
+		return fmt.Errorf("orders: store subscription %d's billed through: %w", sub.ID, err)
+	}
+	return nil
+}
+
 // writeInvoiced stores each held line's invoiced quantity from invoiced and
 // each held order's invoice status from its lines, its updated_at moved to
 // at and its version left, and answers the orders in id order.
 func (h *invoicedWorkHolder) writeInvoiced(ctx context.Context, q *store.Queries, held heldAllocations, invoiced map[int64]*big.Rat,
 	at time.Time) ([]store.OrdersOrder, error) {
 	for _, l := range held.lines {
+		if l.OwnerKind != ownerOrder {
+			continue
+		}
 		if err := q.SetLineBuckets(ctx, store.SetLineBucketsParams{
 			ID: l.ID, QtyCancelled: l.QtyCancelled, QtyDelivered: l.QtyDelivered, QtyInvoiced: numeric(invoiced[l.ID], quantityPlaces),
 		}); err != nil {

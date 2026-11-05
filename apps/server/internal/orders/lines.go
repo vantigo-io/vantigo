@@ -12,7 +12,8 @@ import (
 // This file writes and reads a document's lines (O15): a save replaces them
 // whole, a line the editor names by id written again under that id.
 
-// The owners of lines.
+// The owners of lines; a subscription's is ownerSubscription
+// (subscription_schedule.go).
 const (
 	ownerQuote    = "quote"
 	ownerOrder    = "order"
@@ -48,8 +49,8 @@ func insertLine(ctx context.Context, txq *store.Queries, ownerKind string, owner
 		VatCodeID: l.vatCodeID, VatCode: l.vatCode, VatRatePercent: numeric(l.vatRate, ratePlaces), VatCategory: l.vatCategory,
 		LineGross: numeric(orZero(l.amounts.Gross), amountPlaces), LineAllowance: numeric(orZero(l.amounts.Allowance), amountPlaces),
 		LineNet: numeric(orZero(l.amounts.Net), amountPlaces), ExternalLineID: l.externalLineID,
-		InvoicePolicy: "order", Optional: l.optional && ownerKind != ownerOrder, DeliveryMethod: "manual",
-		ProductID: l.productID, PackagingName: l.packagingName,
+		InvoicePolicy: "order", Optional: l.optional && (ownerKind == ownerQuote || ownerKind == ownerTemplate), DeliveryMethod: "manual",
+		ProductID: l.productID, PackagingName: l.packagingName, ValidFrom: l.validFrom, ValidTo: l.validTo,
 	}
 	if l.kind != kindProduct {
 		p.PriceSource = nil
@@ -64,7 +65,7 @@ func insertLine(ctx context.Context, txq *store.Queries, ownerKind string, owner
 		PriceSource: p.PriceSource, VatCodeID: p.VatCodeID, VatCode: p.VatCode, VatRatePercent: p.VatRatePercent,
 		VatCategory: p.VatCategory, LineGross: p.LineGross, LineAllowance: p.LineAllowance, LineNet: p.LineNet,
 		ExternalLineID: p.ExternalLineID, InvoicePolicy: p.InvoicePolicy, Optional: p.Optional, DeliveryMethod: p.DeliveryMethod,
-		ProductID: p.ProductID, PackagingName: p.PackagingName,
+		ProductID: p.ProductID, PackagingName: p.PackagingName, ValidFrom: p.ValidFrom, ValidTo: p.ValidTo,
 	})
 }
 

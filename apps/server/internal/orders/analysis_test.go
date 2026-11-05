@@ -43,7 +43,7 @@ func TestAnalysis_HitRate(t *testing.T) {
 
 	accepted := markSent(t, c, createQuote(t, c, custBusiness, productLine(varBolt, 1)))
 	res := c.Do(http.MethodPost, quotePath(accepted.Id, "accept"), gen.OrdersAcceptInput{
-		ExpectedUpdatedAt: accepted.UpdatedAt, Revision: accepted.Revision, Into: gen.DraftOrder,
+		ExpectedUpdatedAt: accepted.UpdatedAt, Revision: accepted.Revision, Into: gen.OrdersAcceptInputIntoDraftOrder,
 	})
 	mustStatus(t, res, http.StatusOK, "accept")
 	declined := markSent(t, c, createQuote(t, c, custBusiness, productLine(varBolt, 2)))

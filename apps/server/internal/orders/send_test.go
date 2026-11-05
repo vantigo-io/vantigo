@@ -239,7 +239,7 @@ func TestMailWorker_SendsAQueuedMailingOnAPoolOfOne(t *testing.T) {
 	chooseChannel(t, h)
 	c := h.SignIn(t, quoter...)
 	q := markSent(t, c, createQuote(t, c, custBusiness, productLine(varBolt, 1)))
-	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.DraftOrder})
+	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.OrdersAcceptInputIntoDraftOrder})
 	mustStatus(t, res, http.StatusOK, "accept")
 	var a gen.OrdersAccepted
 	res.JSON(&a)
@@ -286,7 +286,7 @@ func TestMailWorker_BacksOffAndFails(t *testing.T) {
 	chooseChannel(t, h)
 	c := h.SignIn(t, quoter...)
 	q := markSent(t, c, createQuote(t, c, custBusiness, productLine(varBolt, 1)))
-	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.DraftOrder})
+	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.OrdersAcceptInputIntoDraftOrder})
 	mustStatus(t, res, http.StatusOK, "accept")
 	var a gen.OrdersAccepted
 	res.JSON(&a)

@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/docmath"
@@ -108,6 +109,9 @@ type pricedLine struct {
 	// frozen is a confirmed order's kept line priced from its own row
 	// (keptFrozen): its variant is held by lockLines, not judged.
 	frozen bool
+	// validFrom and validTo date a subscription's line (O44); NULL on every
+	// other owner's.
+	validFrom, validTo pgtype.Date
 }
 
 // pricedLineOf is a stored line as it would be written again, unchanged:

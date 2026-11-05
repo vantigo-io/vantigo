@@ -5,7 +5,8 @@ package orders
 // at their net totals; the confirmed orders' quantity still to deliver at its
 // net value, each line's open quantity at line_net over quantity; and what is
 // delivered and not invoiced — delivered less what issued invoices stamped
-// (O38) — valued the same way. Amounts are net of VAT.
+// (O38) — valued the same way; and the active and paused subscriptions at
+// their value per year (O42). Amounts are net of VAT.
 
 import (
 	"context"
@@ -44,6 +45,13 @@ func (s *server) GetOrdersCustomerSummary(ctx context.Context, req gen.GetOrders
 		if err != nil {
 			return fmt.Errorf("orders: sum customer %d's orders to invoice: %w", req.CustomerId, err)
 		}
+		subscriptions, err := q.ActiveSubscriptionSums(ctx, req.CustomerId)
+		if err != nil {
+			return fmt.Errorf("orders: sum customer %d's subscriptions: %w", req.CustomerId, err)
+		}
+		out.ActiveSubscriptions = currencySums(subscriptions, func(r store.ActiveSubscriptionSumsRow) (string, int32, pgtype.Numeric) {
+			return r.Currency, r.Documents, r.Amount
+		})
 		out.OpenQuotes = currencySums(quotes, func(r store.OpenQuoteSumsRow) (string, int32, pgtype.Numeric) {
 			return r.Currency, r.Documents, r.Amount
 		})

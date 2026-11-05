@@ -37,17 +37,34 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 	f := s.unknownProperties(ctx, acceptInputSchema)
 	body := *req.Body
 	if !body.Into.Valid() {
-		f.add("into", "into is draft_order or confirmed_order")
+		f.add("into", "into is draft_order, confirmed_order or subscription")
+	}
+	var pl plan
+	if body.Into == gen.OrdersAcceptInputIntoSubscription {
+		if body.Plan == nil {
+			f.add("plan", "A subscription needs its plan: interval, billing and start date")
+		} else {
+			pl = readPlan(&f, string(body.Plan.Interval), string(body.Plan.Billing), body.Plan.StartDate.Time, body.Plan.EndDate,
+				body.Plan.NoticeMonths, body.Plan.InvoiceDay)
+		}
+	} else if body.Plan != nil {
+		f.add("plan", "A plan is for an accept into a subscription")
 	}
 	override := s.readOverride(ctx, &f, body.OverrideWarnings, body.OverrideReason)
 	if f.failed() {
 		return gen.AcceptQuote400ApplicationProblemPlusJSONResponse(invalid(invalidAcceptTitle, f)), nil
 	}
-	confirm := body.Into == gen.ConfirmedOrder
+	confirm := body.Into == gen.OrdersAcceptInputIntoConfirmedOrder
 	if confirm {
 		if !s.has(ctx, permSalesConfirm) {
 			return gen.AcceptQuote403JSONResponse(apicommon.ForbiddenBody()), nil
 		}
+	}
+	if body.Into == gen.OrdersAcceptInputIntoSubscription {
+		if !s.has(ctx, permSubscriptionsManage) {
+			return gen.AcceptQuote403JSONResponse(apicommon.ForbiddenBody()), nil
+		}
+		return s.acceptIntoSubscription(ctx, req.Id, body, pl, resp)
 	}
 
 	q := store.New(s.deps.Pool)
@@ -142,7 +159,8 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 		if err != nil {
 			return err
 		}
-		out = gen.OrdersAccepted{Quote: quoteView(accepted, quoteLines, &order.Number, warnings), Order: orderView(order, orderLines, orderWarnings, nil)}
+		view := orderView(order, orderLines, orderWarnings, nil)
+		out = gen.OrdersAccepted{Quote: quoteView(accepted, quoteLines, &order.Number, warnings), Order: &view}
 		return nil
 	})
 	if err != nil {
@@ -184,4 +202,97 @@ func acceptedLines(lines []store.OrdersLine, chosen []int64) ([]pricedLine, erro
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+// acceptIntoSubscription is an accept into a subscription (O20, O42): the
+// quote's header and chosen lines, with their frozen prices, become a draft
+// subscription on plan, its origin channel quote and its source the quote at
+// its revision. Every catalog line must be a service
+// (subscription_goods_not_allowed); the catalog is read before the
+// transaction, which locks the variants first, then the quote.
+func (s *server) acceptIntoSubscription(ctx context.Context, id int64, body gen.OrdersAcceptInput, pl plan,
+	resp answers[gen.AcceptQuoteResponseObject]) (gen.AcceptQuoteResponseObject, error) {
+	q := store.New(s.deps.Pool)
+	quote, err := q.GetQuote(ctx, id)
+	if noRows(err) {
+		return gen.AcceptQuote404Response{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("orders: read quote %d: %w", id, err)
+	}
+	if err := judgeAnswerable(quote, body.Revision, body.ExpectedUpdatedAt); err != nil {
+		return answer(err, resp)
+	}
+	quoteLines, err := linesOf(ctx, q, ownerQuote, quote.ID)
+	if err != nil {
+		return nil, err
+	}
+	var chosen []int64
+	if body.OptionalLineIds != nil {
+		chosen = *body.OptionalLineIds
+	}
+	lines, err := acceptedLines(quoteLines, chosen)
+	if err != nil {
+		return answer(err, resp)
+	}
+	variants, err := s.catalogVariants(ctx, variantIDsOf(lines))
+	if err != nil {
+		return answer(err, resp)
+	}
+	if failures := judgeServices(lines, variants); len(failures) > 0 {
+		return answer(refuseLines(invalidAcceptTitle, failures), resp)
+	}
+	by, err := s.actorFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today, err := s.todayOf(ctx)
+	if err != nil {
+		return answer(err, resp)
+	}
+	var out gen.OrdersAccepted
+	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+		if err := s.lockLines(ctx, tx, invalidAcceptTitle, lines); err != nil {
+			return err
+		}
+		locked, err := txq.LockQuote(ctx, quote.ID)
+		if err != nil {
+			return fmt.Errorf("orders: lock quote %d: %w", quote.ID, err)
+		}
+		if err := judgeAnswerable(locked, body.Revision, body.ExpectedUpdatedAt); err != nil {
+			return err
+		}
+		sub, _, err := s.createSubscriptionRow(ctx, txq, subscriptionOrigin{
+			Channel: channelQuote, SourceModule: ptr(moduleName), SourceKind: ptr(ownerQuote),
+			SourceID: ptr(quoteSource(locked.ID, locked.Revision)),
+		}, headerOfQuote(locked), pl, lines, by)
+		if err != nil {
+			return err
+		}
+		now := s.deps.Clock()
+		accepted, err := txq.AcceptQuoteIntoSubscription(ctx, store.AcceptQuoteIntoSubscriptionParams{ID: locked.ID, Now: &now, IntoID: &sub.ID})
+		if err != nil {
+			return fmt.Errorf("orders: accept quote %d: %w", locked.ID, err)
+		}
+		if err := events.Publish(ctx, tx, moduleName, contracts.QuoteAccepted{
+			QuoteID: accepted.ID, Number: accepted.Number, Revision: accepted.Revision, CustomerID: accepted.CustomerID,
+			AcceptedIntoKind: ownerSubscription, AcceptedIntoID: sub.ID, AcceptedAt: now,
+		}, now); err != nil {
+			return err
+		}
+		warnings, err := documentWarnings(ctx, txq, accepted.CustomerID, quoteLines)
+		if err != nil {
+			return err
+		}
+		view, err := viewOn(ctx, txq, sub, today)
+		if err != nil {
+			return err
+		}
+		out = gen.OrdersAccepted{Quote: quoteView(accepted, quoteLines, &sub.Number, warnings), Subscription: &view}
+		return nil
+	})
+	if err != nil {
+		return answer(err, resp)
+	}
+	return gen.AcceptQuote200JSONResponse(out), nil
 }

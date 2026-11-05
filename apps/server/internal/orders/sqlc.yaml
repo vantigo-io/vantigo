@@ -9,6 +9,7 @@ sql:
       - ../db/migrations/00119_orders_baseline.sql
       - ../db/migrations/00120_orders_warnings.sql
       - ../db/migrations/00121_orders_allocations.sql
+      - ../db/migrations/00124_orders_subscriptions.sql
     queries: queries
     gen:
       go:

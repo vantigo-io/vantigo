@@ -113,6 +113,7 @@ const completeErasure = `-- name: CompleteErasure :execrows
 UPDATE orders.erasures SET completed_at = $1
 WHERE orders.erasures.customer_id = $2 AND completed_at IS NULL
   AND NOT EXISTS (SELECT 1 FROM orders.orders o WHERE o.customer_id = orders.erasures.customer_id AND o.anonymised_at IS NULL)
+  AND NOT EXISTS (SELECT 1 FROM orders.subscriptions s WHERE s.customer_id = orders.erasures.customer_id AND s.anonymised_at IS NULL)
   AND NOT EXISTS (SELECT 1 FROM orders.documents d
                   WHERE (d.owner_kind = 'quote' AND d.owner_id IN (SELECT q.id FROM orders.quotes q WHERE q.customer_id = orders.erasures.customer_id))
                      OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = orders.erasures.customer_id)))
@@ -124,7 +125,8 @@ type CompleteErasureParams struct {
 }
 
 // CompleteErasure marks an erasure done once none of the customer's orders
-// holds the person any more and no stored PDF of theirs is left.
+// and subscriptions holds the person any more and no stored PDF of theirs is
+// left.
 func (q *Queries) CompleteErasure(ctx context.Context, arg CompleteErasureParams) (int64, error) {
 	result, err := q.db.Exec(ctx, completeErasure, arg.Now, arg.CustomerID)
 	if err != nil {
@@ -450,7 +452,7 @@ func (q *Queries) KeptOrderNumbers(ctx context.Context, customerID int32) ([]int
 }
 
 const linesOfOwners = `-- name: LinesOfOwners :many
-SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name FROM orders.lines
+SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to FROM orders.lines
 WHERE owner_kind = $1 AND owner_id = ANY($2::bigint[])
 ORDER BY owner_id, position
 `
@@ -505,6 +507,8 @@ func (q *Queries) LinesOfOwners(ctx context.Context, arg LinesOfOwnersParams) ([
 			&i.DeliveryMethod,
 			&i.ProductID,
 			&i.PackagingName,
+			&i.ValidFrom,
+			&i.ValidTo,
 		); err != nil {
 			return nil, err
 		}
@@ -597,12 +601,17 @@ SELECT (
      JOIN orders.lines l ON l.owner_kind = 'order' AND l.owner_id = o.id
      WHERE l.variant_id = $1 AND o.status <> 'cancelled'
        AND (l.qty_delivered + l.qty_cancelled < l.quantity OR l.qty_invoiced + l.qty_cancelled < l.quantity))
+  + (SELECT count(DISTINCT s.id) FROM orders.subscriptions s
+     JOIN orders.lines l ON l.owner_kind = 'subscription' AND l.owner_id = s.id
+     WHERE l.variant_id = $1 AND s.status IN ('draft', 'active', 'paused') AND l.valid_to IS NULL)
 )::integer AS documents
 `
 
 // OpenDocumentsOfVariant is how many open documents name a variant (O30): a
-// draft or sent quote, and an order not cancelled with a line of it that is
-// not done — delivered or invoiced short of what is ordered less cancelled.
+// draft or sent quote, an order not cancelled with a line of it that is
+// not done — delivered or invoiced short of what is ordered less cancelled —
+// and a draft, active or paused subscription whose lines in force from its
+// latest change on name it (O42).
 // A template is no document: a variant gone from it is skipped when it is
 // applied (O23).
 func (q *Queries) OpenDocumentsOfVariant(ctx context.Context, variantID *int32) (int32, error) {

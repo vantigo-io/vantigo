@@ -26,7 +26,7 @@ import (
 // orderAllocations is every invoice allocation of an order on q, in id
 // order.
 func orderAllocations(ctx context.Context, q *store.Queries, orderID int64) ([]store.OrdersInvoiceAllocation, error) {
-	rows, err := q.OrderAllocations(ctx, orderID)
+	rows, err := q.OrderAllocations(ctx, &orderID)
 	if err != nil {
 		return nil, fmt.Errorf("orders: read order %d's invoice allocations: %w", orderID, err)
 	}
@@ -142,11 +142,11 @@ func (s *server) ReleaseSalesOrderDraftAllocations(ctx context.Context, req gen.
 			if _, err := txq.LockOrderLinesByIDs(ctx, lineIDs); err != nil {
 				return o, nil, fmt.Errorf("orders: lock order %d's lines: %w", o.ID, err)
 			}
-			if _, err := txq.LockOrderDraftAllocations(ctx, o.ID); err != nil {
+			if _, err := txq.LockOrderDraftAllocations(ctx, &o.ID); err != nil {
 				return o, nil, fmt.Errorf("orders: lock order %d's draft allocations: %w", o.ID, err)
 			}
 			now := s.deps.Clock()
-			released, err := txq.ReleaseOrderDraftAllocations(ctx, store.ReleaseOrderDraftAllocationsParams{OrderID: o.ID, Now: &now})
+			released, err := txq.ReleaseOrderDraftAllocations(ctx, store.ReleaseOrderDraftAllocationsParams{OrderID: &o.ID, Now: &now})
 			if err != nil {
 				return o, nil, fmt.Errorf("orders: release order %d's draft allocations: %w", o.ID, err)
 			}

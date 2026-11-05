@@ -159,7 +159,7 @@ func TestDeleteDraftOrder_PutsItsQuoteBack(t *testing.T) {
 	h := newHarness(t, harnessOptions{})
 	c := h.SignIn(t, append(boss, "orders:quotes-manage")...)
 	q := markSent(t, c, createQuote(t, c, custBusiness, productLine(varBolt, 1)))
-	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: q.UpdatedAt, Revision: 1, Into: gen.DraftOrder})
+	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: q.UpdatedAt, Revision: 1, Into: gen.OrdersAcceptInputIntoDraftOrder})
 	mustStatus(t, res, http.StatusOK, "accept")
 	var a gen.OrdersAccepted
 	res.JSON(&a)
@@ -169,7 +169,7 @@ func TestDeleteDraftOrder_PutsItsQuoteBack(t *testing.T) {
 	if back.Status != gen.OrdersQuoteStatusSent || back.AcceptedInto != nil || back.AcceptedAt != nil {
 		t.Fatalf("quote %+v; want it sent again, accepted into nothing", back)
 	}
-	mustStatus(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: back.UpdatedAt, Revision: 1, Into: gen.DraftOrder}),
+	mustStatus(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: back.UpdatedAt, Revision: 1, Into: gen.OrdersAcceptInputIntoDraftOrder}),
 		http.StatusOK, "accept again")
 	if n := eventsNamed(t, h, contracts.QuoteAccepted{}.EventName(), q.Id); n != 2 {
 		t.Errorf("%d accepted events, want one per accept", n)

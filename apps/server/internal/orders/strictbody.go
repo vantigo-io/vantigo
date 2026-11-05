@@ -165,6 +165,14 @@ const (
 
 	// The warnings' (O33).
 	warningInputSchema = "OrdersWarningInput"
+
+	// The subscriptions' (O42–O44).
+	subscriptionInputSchema  = "OrdersSubscriptionInput"
+	subscriptionUpdateSchema = "OrdersSubscriptionUpdate"
+	subscriptionPlanSchema   = "OrdersSubscriptionPlan"
+	pauseInputSchema         = "OrdersPauseInput"
+	resumeInputSchema        = "OrdersResumeInput"
+	endInputSchema           = "OrdersEndInput"
 )
 
 // closedSchemas are the request schemas whose handlers refuse a property the
@@ -175,24 +183,29 @@ var closedSchemas = []string{
 	mailTextSchema, templateInputSchema, templateLineInputSchema,
 	orderInputSchema, orderUpdateSchema, versionInputSchema, confirmInputSchema, holdInputSchema, deliveredInputSchema, deliveredLineSchema,
 	warningInputSchema,
+	subscriptionInputSchema, subscriptionUpdateSchema, subscriptionPlanSchema, pauseInputSchema, resumeInputSchema, endInputSchema,
 }
 
 // closedItems is, per closed request schema, its array properties whose
 // items are closed schemas of their own: a key the contract does not name
 // inside a line is refused on lines[i].<key>.
 var closedItems = map[string]map[string]string{
-	quoteInputSchema:     {"lines": lineInputSchema},
-	quoteUpdateSchema:    {"lines": lineInputSchema},
-	orderInputSchema:     {"lines": lineInputSchema},
-	orderUpdateSchema:    {"lines": lineInputSchema},
-	settingsInputSchema:  {"mailTexts": mailTextSchema},
-	templateInputSchema:  {"lines": templateLineInputSchema},
-	deliveredInputSchema: {"lines": deliveredLineSchema},
+	quoteInputSchema:         {"lines": lineInputSchema},
+	quoteUpdateSchema:        {"lines": lineInputSchema},
+	orderInputSchema:         {"lines": lineInputSchema},
+	orderUpdateSchema:        {"lines": lineInputSchema},
+	settingsInputSchema:      {"mailTexts": mailTextSchema},
+	templateInputSchema:      {"lines": templateLineInputSchema},
+	deliveredInputSchema:     {"lines": deliveredLineSchema},
+	subscriptionInputSchema:  {"lines": lineInputSchema},
+	subscriptionUpdateSchema: {"lines": lineInputSchema},
 }
 
 // closedObjects is, per closed schema, its object properties that are closed
-// schemas of their own; none in this phase.
-var closedObjects = map[string]map[string]string{}
+// schemas of their own: an accept's subscription plan (O20).
+var closedObjects = map[string]map[string]string{
+	acceptInputSchema: {"plan": subscriptionPlanSchema},
+}
 
 // checkClosedSchemas fails the mount unless the contract has every schema of
 // closedSchemas and closes each (additionalProperties false): the refusal
