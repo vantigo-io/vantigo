@@ -13,7 +13,7 @@ export interface MovementsSearch {
   siteId?: number;
   locationId?: number;
   variantId?: number;
-  kind?: "adjustment" | "move" | "receipt" | "count";
+  kind?: "adjustment" | "move" | "receipt" | "count" | "issue";
   from?: string;
   to?: string;
 }
@@ -21,7 +21,7 @@ const positive = (value: unknown): number | undefined => {
   const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
   return Number.isSafeInteger(n) && n > 0 ? n : undefined;
 };
-const kinds = ["adjustment", "move", "receipt", "count"] as const;
+const kinds = ["adjustment", "move", "receipt", "count", "issue"] as const;
 export const validateMovementsSearch = (search: Record<string, unknown>): MovementsSearch => ({
   siteId: positive(search.siteId),
   locationId: positive(search.locationId),

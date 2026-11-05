@@ -84,6 +84,11 @@ export const SitePage = () => {
                 {t(`siteKind_${site.data.kind}`)}
               </Badge>
             )}
+            {site.data?.fulfilsOrders && (
+              <Badge variant="light" color="indigo">
+                {t("fulfilsOrders")}
+              </Badge>
+            )}
             {site.data?.status === "archived" && (
               <Badge variant="light" color="yellow">
                 {t("status_archived")}

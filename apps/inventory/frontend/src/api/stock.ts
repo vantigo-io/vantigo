@@ -41,7 +41,7 @@ export type InventoryStockTotal = Schemas["InventoryStockTotal"];
 /** `GET /stock` answers at most this many variants at a time (I33). */
 export const MAX_STOCK_TOTAL_IDS = 100;
 
-/** Each variant's on hand across every location; a variant with none is absent from the answer (I33). */
+/** Each variant's on hand across every location, its reserved and available; a variant with neither stock nor a reservation is absent (I33). */
 export const stockTotalsQueryOptions = (variantIds: readonly number[]) =>
   queryOptions({
     queryKey: [INVENTORY_QUERY_KEY, "stock-totals", variantIds],

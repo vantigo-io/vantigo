@@ -58,7 +58,13 @@ export const locationLabel = (location: { fullCode: string; name?: string }) =>
   location.name ? `${location.fullCode} · ${location.name}` : location.fullCode;
 
 /** A movement kind's badge colour. */
-export const movementKindColor = { adjustment: "orange", move: "blue", receipt: "teal", count: "grape" } as const;
+export const movementKindColor = {
+  adjustment: "orange",
+  move: "blue",
+  receipt: "teal",
+  count: "grape",
+  issue: "indigo",
+} as const;
 
 /** A count status's badge colour. */
 export const countStatusColor = { counting: "blue", posted: "teal", cancelled: "gray" } as const;

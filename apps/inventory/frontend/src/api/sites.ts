@@ -48,5 +48,6 @@ export const siteUpdateOf = (site: InventorySite): InventorySiteUpdate => ({
   name: site.name,
   kind: site.kind,
   status: site.status,
+  fulfilsOrders: site.fulfilsOrders,
   ...(site.address ? { address: site.address } : {}),
 });

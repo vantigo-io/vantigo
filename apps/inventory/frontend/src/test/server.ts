@@ -21,6 +21,7 @@ export const sites = (): InventorySite[] => [
     rootLocationId: 10,
     locationCount: 0,
     revision: 1,
+    fulfilsOrders: true,
     address: { city: "Oslo", country: "NO" },
     createdAt: STAMP,
     updatedAt: STAMP,
@@ -34,6 +35,7 @@ export const sites = (): InventorySite[] => [
     rootLocationId: 20,
     locationCount: 0,
     revision: 1,
+    fulfilsOrders: false,
     createdAt: STAMP,
     updatedAt: STAMP,
   },
@@ -84,6 +86,13 @@ export interface Balance {
   onHand: number;
 }
 
+/** What orders have reserved of a variant at a site (orders design O45). */
+export interface Reservation {
+  variantId: number;
+  siteId: number;
+  quantity: number;
+}
+
 export interface InventoryServer {
   /** Fields of `/meta` over a caller who may do everything. */
   meta?: Partial<InventoryMeta>;
@@ -91,6 +100,7 @@ export interface InventoryServer {
   locations?: InventoryLocation[];
   variants?: InventoryVariantRef[];
   balances?: Balance[];
+  reservations?: Reservation[];
   movements?: InventoryMovement[];
   /** Answers `GET /products/{id}/stock` instead of working it out: a Service product's empty answer. */
   productStock?: Record<number, InventoryProductStock>;
@@ -105,6 +115,7 @@ export interface InventoryState {
   sites: InventorySite[];
   locations: InventoryLocation[];
   balances: Balance[];
+  reservations: Reservation[];
   movements: InventoryMovement[];
   counts: InventoryCount[];
 }
@@ -152,6 +163,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     sites: server.sites ?? sites(),
     locations: server.locations ?? locations(),
     balances: server.balances ?? [],
+    reservations: server.reservations ?? [],
     movements: server.movements ?? [],
     counts: server.counts ?? [],
   };
@@ -260,13 +272,21 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
       );
   const variantStock = (variant: InventoryVariantRef): InventoryVariantStock => {
     const rows = rowsOf(state.balances.filter((one) => one.variantId === variant.id));
+    const reservedAt = (siteId?: number) =>
+      state.reservations
+        .filter((one) => one.variantId === variant.id && (siteId === undefined || one.siteId === siteId))
+        .reduce((sum, one) => sum + one.quantity, 0);
     const perSite = state.sites
       .map((site) => {
         const here = rows.filter((row) => row.location.siteId === site.id);
-        return { site: siteRef(site), onHand: here.reduce((sum, row) => sum + row.onHand, 0), rows: here };
+        const onHand = here.reduce((sum, row) => sum + row.onHand, 0);
+        const reserved = reservedAt(site.id);
+        return { site: siteRef(site), onHand, reserved, available: onHand - reserved, rows: here };
       })
-      .filter((one) => one.rows.length > 0);
-    return { variant, totalOnHand: rows.reduce((sum, row) => sum + row.onHand, 0), sites: perSite };
+      .filter((one) => one.rows.length > 0 || one.reserved !== 0);
+    const totalOnHand = rows.reduce((sum, row) => sum + row.onHand, 0);
+    const totalReserved = reservedAt();
+    return { variant, totalOnHand, totalReserved, totalAvailable: totalOnHand - totalReserved, sites: perSite };
   };
   const move = (variantId: number, locationId: number, change: number) => {
     const balance = state.balances.find((one) => one.variantId === variantId && one.locationId === locationId);
@@ -325,6 +345,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
       const input = body as InventorySite;
       const site: InventorySite = {
         ...input,
+        fulfilsOrders: input.fulfilsOrders ?? input.kind === "warehouse",
         id: ++nextId,
         status: "active",
         rootLocationId: ++nextId,
@@ -527,13 +548,16 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
       if (ids.length > 100) return inventoryProblem(400, undefined, { detail: "At most 100 ids." });
       return jsonResponse(200, {
         totals: ids
-          .map((variantId) => ({
-            variantId,
-            onHand: state.balances
+          .map((variantId) => {
+            const onHand = state.balances
               .filter((one) => one.variantId === variantId)
-              .reduce((sum, one) => sum + one.onHand, 0),
-          }))
-          .filter((one) => one.onHand !== 0),
+              .reduce((sum, one) => sum + one.onHand, 0);
+            const reserved = state.reservations
+              .filter((one) => one.variantId === variantId)
+              .reduce((sum, one) => sum + one.quantity, 0);
+            return { variantId, onHand, reserved, available: onHand - reserved };
+          })
+          .filter((one) => one.onHand !== 0 || one.reserved !== 0),
       });
     }
     if (path === "/counts" && method === "GET") {

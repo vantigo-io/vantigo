@@ -42,6 +42,9 @@ export const inventoryCatalog = {
     siteDeleted: "Site deleted",
     siteKind: "Kind",
     siteKind_warehouse: "Warehouse",
+    fulfilsOrders: "Fulfils orders",
+    fulfilsOrdersHint:
+      "Orders reserve and deliver stock from this site. A warehouse does by default, a store does not.",
     siteKind_store: "Store",
     noSites: "No sites yet",
     noSitesHint: "Create a site — a warehouse or a store — to start placing stock.",
@@ -161,6 +164,10 @@ export const inventoryCatalog = {
     columnProduct: "Product",
     columnLocation: "Location",
     columnOnHand: "On hand",
+    reserved: "Reserved",
+    available: "Available",
+    reservedAvailable: "Reserved {{reserved}} · available {{available}}",
+    availableNegative: "More is reserved than lies here: corrections took the stock below what orders have reserved.",
 
     // Movements (I30)
     movementsDescription: "Every adjustment, move and receipt, newest first.",
@@ -170,6 +177,7 @@ export const inventoryCatalog = {
     kind_move: "Move",
     kind_receipt: "Receipt",
     kind_count: "Count",
+    kind_issue: "Issue",
     allKinds: "All kinds",
     postedBetween: "Posted between",
     dateInputFormat: "D MMM YYYY",
@@ -467,6 +475,9 @@ export const inventoryCatalog = {
     siteDeleted: "Lagersted slettet",
     siteKind: "Type",
     siteKind_warehouse: "Lager",
+    fulfilsOrders: "Leverer ordrer",
+    fulfilsOrdersHint:
+      "Ordrer reserverer og leverer varer fra dette lagerstedet. Et lager gjør det som standard, en butikk ikke.",
     siteKind_store: "Butikk",
     noSites: "Ingen lagersteder ennå",
     noSitesHint: "Opprett et lagersted – et lager eller en butikk – for å begynne å plassere varer.",
@@ -583,6 +594,11 @@ export const inventoryCatalog = {
     columnProduct: "Produkt",
     columnLocation: "Lokasjon",
     columnOnHand: "Beholdning",
+    reserved: "Reservert",
+    available: "Disponibelt",
+    reservedAvailable: "Reservert {{reserved}} · disponibelt {{available}}",
+    availableNegative:
+      "Mer er reservert enn det som ligger her: korreksjoner har tatt beholdningen under det ordrene har reservert.",
 
     movementsDescription: "Alle justeringer, flyttinger og varemottak, nyeste først.",
     movementNumber: "Bevegelse {{id}}",
@@ -591,6 +607,7 @@ export const inventoryCatalog = {
     kind_move: "Flytting",
     kind_receipt: "Varemottak",
     kind_count: "Varetelling",
+    kind_issue: "Uttak",
     allKinds: "Alle typer",
     postedBetween: "Bokført mellom",
     dateInputFormat: "D. MMM YYYY",

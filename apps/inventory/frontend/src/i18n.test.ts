@@ -53,10 +53,11 @@ describe("the inventory catalog", () => {
       ...locationKinds.map((value) => `locationKind_${value}`),
       ...statuses.map((value) => `status_${value}`),
       ...movementKinds.map((value) => `kind_${value}`),
-      // A count is posted from its counting screen, not from a new-movement
-      // form, so only the three posting kinds have the form's words.
+      // A count is posted from its counting screen and an issue by another
+      // module, not from a new-movement form, so only the three posting kinds
+      // have the form's words.
       ...movementKinds
-        .filter((value) => value !== "count")
+        .filter((value) => value !== "count" && value !== "issue")
         .flatMap((value) => [
           `new_${value}`,
           `newDescription_${value}`,
