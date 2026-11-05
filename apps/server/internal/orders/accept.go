@@ -1,0 +1,166 @@
+package orders
+
+import (
+	"context"
+	"fmt"
+	"slices"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/events"
+	"github.com/vantigo-io/vantigo/server/internal/module"
+	"github.com/vantigo-io/vantigo/server/internal/orders/gen"
+	"github.com/vantigo-io/vantigo/server/internal/orders/store"
+)
+
+// AcceptQuote Accept a quote
+// (POST /api/v1/orders/quotes/{id}/accept)
+//
+// A sent or expired quote is accepted once (O20), with the optional lines the
+// customer took (O21), into a draft order — or, with orders:sales-confirm, a
+// confirmed one. The order is made by createOrder (O28) from the quote's
+// header and the chosen lines with their frozen prices, its origin channel
+// quote and its source the quote at its revision (O27); the quote records
+// what it became and orders.quote.accepted.v1 is published, on one
+// transaction that locks the variants first, then the quote (MB rule 21).
+func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObject) (gen.AcceptQuoteResponseObject, error) {
+	resp := answers[gen.AcceptQuoteResponseObject]{
+		badRequest: func(p gen.OrdersProblem) gen.AcceptQuoteResponseObject {
+			return gen.AcceptQuote400ApplicationProblemPlusJSONResponse(p)
+		},
+		notFound: func() gen.AcceptQuoteResponseObject { return gen.AcceptQuote404Response{} },
+		conflict: func(p gen.OrdersProblem) gen.AcceptQuoteResponseObject {
+			return gen.AcceptQuote409ApplicationProblemPlusJSONResponse(p)
+		},
+	}
+	f := s.unknownProperties(ctx, acceptInputSchema)
+	body := *req.Body
+	if !body.Into.Valid() {
+		f.add("into", "into is draft_order or confirmed_order")
+	}
+	if f.failed() {
+		return gen.AcceptQuote400ApplicationProblemPlusJSONResponse(invalid(invalidAcceptTitle, f)), nil
+	}
+	confirm := body.Into == gen.ConfirmedOrder
+	if confirm {
+		if !s.has(ctx, permSalesConfirm) {
+			return gen.AcceptQuote403JSONResponse(apicommon.ForbiddenBody()), nil
+		}
+		if confirmOrderTx == nil {
+			return nil, module.ErrNotImplemented
+		}
+	}
+
+	q := store.New(s.deps.Pool)
+	quote, err := q.GetQuote(ctx, req.Id)
+	if noRows(err) {
+		return gen.AcceptQuote404Response{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("orders: read quote %d: %w", req.Id, err)
+	}
+	if err := judgeAnswerable(quote, body.Revision); err != nil {
+		return answer(err, resp)
+	}
+	quoteLines, err := linesOf(ctx, q, ownerQuote, quote.ID)
+	if err != nil {
+		return nil, err
+	}
+	var chosen []int64
+	if body.OptionalLineIds != nil {
+		chosen = *body.OptionalLineIds
+	}
+	lines, err := acceptedLines(quoteLines, chosen)
+	if err != nil {
+		return answer(err, resp)
+	}
+	by, err := s.actorFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var out gen.OrdersAccepted
+	var confirmed *store.OrdersOrder
+	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+		if err := s.lockLines(ctx, tx, invalidAcceptTitle, lines); err != nil {
+			return err
+		}
+		locked, err := txq.LockQuote(ctx, quote.ID)
+		if err != nil {
+			return fmt.Errorf("orders: lock quote %d: %w", quote.ID, err)
+		}
+		if err := judgeAnswerable(locked, body.Revision); err != nil {
+			return err
+		}
+		order, orderLines, err := s.createOrder(ctx, tx, txq, CreateOrder{
+			Origin: OrderOrigin{
+				Channel: channelQuote, SourceModule: ptr(moduleName), SourceKind: ptr(ownerQuote),
+				SourceID: ptr(quoteSource(locked.ID, locked.Revision)),
+			},
+			Header: headerOfQuote(locked), Lines: lines, CreatedBy: by,
+		})
+		if err != nil {
+			return err
+		}
+		if confirm {
+			if order, err = confirmOrderTx(ctx, s, tx, txq, order, orderLines, by); err != nil {
+				return err
+			}
+			confirmed = &order
+		}
+		now := s.deps.Clock()
+		accepted, err := txq.AcceptQuoteRow(ctx, store.AcceptQuoteRowParams{ID: locked.ID, Now: &now, IntoKind: ownerOrder, IntoID: order.ID})
+		if err != nil {
+			return fmt.Errorf("orders: accept quote %d: %w", locked.ID, err)
+		}
+		if err := events.Publish(ctx, tx, moduleName, contracts.QuoteAccepted{
+			QuoteID: accepted.ID, Number: accepted.Number, Revision: accepted.Revision, CustomerID: accepted.CustomerID,
+			AcceptedIntoKind: ownerOrder, AcceptedIntoID: order.ID, AcceptedAt: now,
+		}, now); err != nil {
+			return err
+		}
+		out = gen.OrdersAccepted{Quote: quoteView(accepted, quoteLines, &order.Number), Order: orderView(order, orderLines)}
+		return nil
+	})
+	if err != nil {
+		return answer(err, resp)
+	}
+	if confirmed != nil && afterOrderConfirmed != nil {
+		afterOrderConfirmed(ctx, s, *confirmed)
+	}
+	return gen.AcceptQuote200JSONResponse(out), nil
+}
+
+// acceptedLines are the lines an accept carries to the order (O21): every
+// line that is not optional, and the optional lines the customer took, as
+// ordinary lines with their frozen prices; the rest are dropped. A chosen id
+// that is not one of the quote's optional lines is refused.
+func acceptedLines(lines []store.OrdersLine, chosen []int64) ([]pricedLine, error) {
+	optional := map[int64]bool{}
+	for _, l := range lines {
+		if l.Optional {
+			optional[l.ID] = true
+		}
+	}
+	var f fieldErrors
+	for _, id := range chosen {
+		if !optional[id] {
+			f.add("optionalLineIds", fmt.Sprintf("Line %d is not one of the quote's optional lines", id))
+		}
+	}
+	if f.failed() {
+		return nil, refuseInvalid(invalidAcceptTitle, f)
+	}
+	out := make([]pricedLine, 0, len(lines))
+	for _, l := range lines {
+		if l.Optional && !slices.Contains(chosen, l.ID) {
+			continue
+		}
+		p := pricedLineOf(l)
+		p.optional = false
+		out = append(out, p)
+	}
+	return out, nil
+}
