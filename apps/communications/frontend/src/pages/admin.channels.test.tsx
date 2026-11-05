@@ -717,4 +717,92 @@ describe("admin channels", () => {
       expect(screen.getByText("Feilet: Postboksen finnes ikke lenger i Microsoft 365.")).toBeTruthy();
     });
   });
+
+  describe("Messenger channels", () => {
+    const metaProvider = {
+      key: "meta",
+      displayName: "Facebook Messenger",
+      type: "messenger" as const,
+      available: true,
+      reason: null,
+      warning: null,
+      maxMessageBytes: null,
+      endpoints: [
+        { address: "1001", displayName: "Acme Page", available: true, reason: null },
+        { address: "1002", displayName: "Old Page", available: false, reason: "token_rejected" },
+      ],
+    };
+    const messengerChannel = {
+      ...channel,
+      id: "channel-9",
+      type: "messenger" as const,
+      address: "1001",
+      displayName: "Acme Page",
+      provider: "meta" as const,
+      isDefault: true,
+      hasCredentials: false,
+      settings: null,
+      sync: { state: "active", error: null, lastSyncedAt: "2026-11-05T08:00:00Z" },
+    };
+
+    it("offers the type choice only while a messenger provider is available", async () => {
+      mocks.fetchChannels.mockResolvedValue([]);
+      renderPage();
+      fireEvent.click(await screen.findByRole("button", { name: "Add channel" }));
+      await screen.findByRole("textbox", { name: "SMTP host" });
+      expect(screen.queryByText("Facebook Messenger")).toBeNull();
+    });
+
+    it("creates a Messenger channel on a Page picked from the provider's endpoints", async () => {
+      mocks.fetchProviders.mockResolvedValue([smtpProvider, metaProvider]);
+      mocks.fetchChannels.mockResolvedValue([]);
+      renderPage();
+      fireEvent.click(await screen.findByRole("button", { name: "Add channel" }));
+      fireEvent.click(await screen.findByText("Facebook Messenger"));
+      fireEvent.click(await screen.findByRole("combobox", { name: /Facebook Page/ }));
+      // A Page the provider cannot use is listed, disabled, with its reason.
+      expect(await screen.findByText("Not available now (token_rejected)")).toBeTruthy();
+      fireEvent.click(await screen.findByRole("option", { name: /Acme Page/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Create channel" }));
+      await waitFor(() =>
+        expect(mocks.createChannel).toHaveBeenCalledWith({
+          type: "messenger",
+          address: "1001",
+          displayName: undefined,
+          provider: "meta",
+        }),
+      );
+    });
+
+    it("lists a Messenger channel by its Page, without the mailbox or SMTP actions", async () => {
+      mocks.fetchProviders.mockResolvedValue([smtpProvider, entraProvider, metaProvider]);
+      mocks.fetchChannels.mockResolvedValue([messengerChannel]);
+      renderPage();
+      expect(await screen.findByText("Acme Page")).toBeTruthy();
+      expect(screen.getByText("Facebook Messenger")).toBeTruthy();
+      expect(screen.getByText("Receiving")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: /Switch to/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: /Mailbox on close|on close/i })).toBeNull();
+      expect(screen.getByRole("button", { name: "Verify" })).toBeTruthy();
+    });
+
+    it("says an unavailable Messenger channel sends and receives nothing", async () => {
+      mocks.fetchProviders.mockResolvedValue([smtpProvider, metaProvider]);
+      mocks.fetchChannels.mockResolvedValue([{ ...messengerChannel, available: false }]);
+      renderPage();
+      expect(
+        await screen.findByText(
+          "Messenger channels through Facebook Messenger are not available, so this channel sends and receives nothing.",
+        ),
+      ).toBeTruthy();
+    });
+
+    it("never offers a messenger provider to switch an SMTP channel to", async () => {
+      mocks.fetchProviders.mockResolvedValue([smtpProvider, entraProvider, metaProvider]);
+      mocks.fetchChannels.mockResolvedValue([channel]);
+      renderPage();
+      expect(await screen.findByRole("button", { name: "Switch to Microsoft 365" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Switch to Facebook Messenger" })).toBeNull();
+    });
+  });
 });

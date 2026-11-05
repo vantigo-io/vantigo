@@ -1,6 +1,6 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { setLanguagePreference } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -241,6 +241,45 @@ describe("inbox", () => {
     fireEvent.click(screen.getByRole("button", { name: /Second question/ }));
     renderPage();
     expect(await screen.findByRole("heading", { name: "Second question" })).toBeTruthy();
+  });
+
+  it("shows a Messenger conversation as a chat, with its channel's icon on its row and a chat composer", async () => {
+    const chat = { ...conversation("c-chat", ""), subject: null, channelType: "messenger" as const };
+    const mail = { ...conversation("c-mail", "A mail"), channelType: "email" as const };
+    mocks.fetchConversations.mockResolvedValue(page([chat, mail]));
+    mocks.fetchConversation.mockResolvedValue(
+      detail("c-chat", "", {
+        subject: null,
+        channelType: "messenger",
+        replyWindow: { state: "closed", closesAt: "2026-01-02T00:00:00Z" },
+        componentLimits: {
+          maxText: 2000,
+          maxAnswerOptions: 13,
+          maxAnswerTitle: 20,
+          shareEmail: true,
+          maxCards: 10,
+          maxCardChoices: 3,
+          maxCardTitle: 80,
+          maxCardSubtitle: 80,
+          maxChoiceTitle: 20,
+        },
+      }),
+    );
+    mocks.search = { conversationId: "c-chat" };
+    renderPage();
+
+    // Each row carries its channel's icon.
+    const rows = await screen.findAllByRole("button", { name: /Preview for/ });
+    expect(within(rows[0] as HTMLElement).getByLabelText("Facebook Messenger")).toBeTruthy();
+    expect(within(rows[1] as HTMLElement).getByLabelText("E-mail")).toBeTruthy();
+    // The thread is chat bubbles titled by the participant, with no subject.
+    expect(await screen.findByRole("heading", { name: "Customer Example" })).toBeTruthy();
+    expect(await screen.findByText("Could you help me with this?")).toBeTruthy();
+    expect(document.querySelector(".chat-bubble")).not.toBeNull();
+    // The composer is the chat's: the window is closed, so it says so and cannot send.
+    expect(await screen.findByText("The customer must write again before you can answer here")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Bold/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Send reply" })).toBeDisabled();
   });
 
   it("puts the filters in the toolbar, with no side column and no mobile filters toggle", async () => {

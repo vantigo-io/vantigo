@@ -1,16 +1,19 @@
 import { queryOptions } from "@tanstack/react-query";
 import { request } from "./request";
 /**
- * A channel's provider: "smtp", or the key of a mailbox provider GET
- * /channel-providers lists (Google Workspace design G4). The module names no
- * mailbox provider: anything but "smtp" is one.
+ * A channel's provider: "smtp", or the key of a provider GET /channel-providers
+ * lists (Google Workspace design G4): a mailbox provider of an e-mail channel or
+ * a messenger provider of a Messenger channel (Messenger design N1), which the
+ * provider's type tells apart. The module names no provider.
  */
 export type ChannelProviderKey = "smtp" | (string & {});
+/** A channel's type: e-mail, or a Messenger chat through a Facebook Page (Messenger design N1). */
+export type ChannelType = "email" | "messenger";
 export type ChannelImportWindow = "from_now" | "last_30_days" | "last_90_days";
 export type ChannelOnClose = "none" | "read" | "move";
 export type Channel = {
   id: string;
-  type: "email";
+  type: ChannelType;
   address: string;
   displayName: string | null;
   createdAt: string;
@@ -18,7 +21,7 @@ export type Channel = {
   provider: ChannelProviderKey;
   isDefault: boolean;
   hasCredentials: boolean;
-  /** Whether the channel can send now: its provider is offered and, for SMTP, its credentials are stored. */
+  /** Whether the channel can send now: its provider is offered and, for SMTP, its credentials are stored, for a Messenger channel its Page is available. */
   available?: boolean;
   mailbox?: { id: string; onClose?: ChannelOnClose; folder?: string | null } | null;
   settings: {
@@ -27,7 +30,7 @@ export type Channel = {
     useSsl: boolean | null;
     username: string | null;
   } | null;
-  /** A mailbox channel's receive state; null for SMTP, which only sends. */
+  /** A mailbox or Messenger channel's receive state; null for SMTP, which only sends. */
   sync?: ChannelSync | null;
 };
 export type ChannelSync = {
@@ -36,16 +39,28 @@ export type ChannelSync = {
   error: string | null;
   lastSyncedAt: string | null;
 };
+/** A Page a messenger provider has connected, as the channel form's picker lists it. */
+export type ChannelEndpoint = {
+  /** The Page's id, which is a channel's address. */
+  address: string;
+  displayName: string;
+  available: boolean;
+  reason: string | null;
+};
 export type ChannelProvider = {
   key: string;
   displayName: string;
+  /** The channel type the provider serves; absent in an answer from before Messenger, which is e-mail. */
+  type?: ChannelType;
   available: boolean;
   reason: string | null;
   warning: "tenant_wide" | null;
   maxMessageBytes: number | null;
+  /** The Pages of a messenger provider; null for an e-mail provider. */
+  endpoints?: ChannelEndpoint[] | null;
 };
 export type CreateChannelRequest = {
-  type: "email";
+  type: ChannelType;
   address: string;
   displayName?: string;
   provider: ChannelProviderKey;

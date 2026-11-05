@@ -26,6 +26,10 @@ const messages: Record<string, string> = {
   verification_failed: "errorVerificationFailed",
   destination_rejected: "errorDestinationRejected",
   default_channel_conflict: "errorDefaultChannelConflict",
+  provider_type_mismatch: "errorProviderTypeMismatch",
+  messenger_off: "errorMessengerOff",
+  endpoint_unknown: "errorEndpointUnknown",
+  endpoint_unavailable: "errorEndpointUnavailable",
 };
 
 /**

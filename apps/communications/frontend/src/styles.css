@@ -133,3 +133,57 @@
     flex-direction: column;
   }
 }
+.chat-row {
+  display: flex;
+  margin-bottom: 10px;
+}
+.chat-row.outbound {
+  justify-content: flex-end;
+}
+.chat-bubble {
+  max-width: min(78%, 560px);
+  padding: 9px 13px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: 16px;
+  background: var(--mantine-color-white);
+}
+.chat-bubble.inbound {
+  border-bottom-left-radius: 4px;
+}
+.chat-bubble.outbound {
+  border-bottom-right-radius: 4px;
+  background: var(--mantine-color-vantigo-0);
+}
+.chat-bubble.internal_note {
+  background: #fff8df;
+  border-color: #f1d888;
+}
+.chat-image {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  margin-top: 8px;
+  border-radius: 10px;
+}
+.chat-image.placeholder {
+  width: 160px;
+  height: 100px;
+  background: var(--mantine-color-gray-1);
+}
+.chat-carousel {
+  max-width: 100%;
+}
+.chat-card {
+  flex: 0 0 180px;
+  width: 180px;
+}
+.chat-card-image {
+  display: block;
+  width: 100%;
+  height: 110px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.chat-card-image.placeholder {
+  background: var(--mantine-color-gray-1);
+}

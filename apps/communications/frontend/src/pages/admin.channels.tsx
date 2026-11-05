@@ -17,7 +17,13 @@ import {
 } from "../api/channels";
 import { ChannelForm } from "../components/ChannelForm";
 import { channelErrorMessage } from "../components/channelErrors";
-import { isMailboxProvider, providerText } from "../components/channelProviders";
+import {
+  isMailboxChannel,
+  isMailboxProvider,
+  isMessengerChannel,
+  mailboxProviders,
+  providerText,
+} from "../components/channelProviders";
 import { relative } from "../components/conversationHelpers";
 import "../i18n";
 
@@ -79,7 +85,7 @@ export function ChannelsPage() {
   const providersQuery = useQuery(channelProvidersQueryOptions());
   const providers = providersQuery.data ?? [];
   // The mailbox providers an SMTP channel can be switched to now.
-  const switchTargets = providers.filter((provider) => isMailboxProvider(provider.key) && provider.available);
+  const switchTargets = mailboxProviders(providers).filter((provider) => provider.available);
   const client = useQueryClient();
   const [opened, setOpened] = useState(false);
   const [switching, setSwitching] = useState<{ channel: Channel; provider: string } | null>(null);
@@ -229,9 +235,11 @@ export function ChannelsPage() {
                             {t("unavailable")}
                           </Badge>
                           <Text size="xs" c="dimmed">
-                            {isMailboxProvider(channel.provider)
-                              ? t("unavailableMailbox", { provider: providerLabel(channel.provider) })
-                              : t("unavailableSmtp")}
+                            {isMessengerChannel(channel)
+                              ? t("unavailableMessenger", { provider: providerLabel(channel.provider) })
+                              : isMailboxChannel(channel)
+                                ? t("unavailableMailbox", { provider: providerLabel(channel.provider) })
+                                : t("unavailableSmtp")}
                           </Text>
                         </>
                       )}
@@ -242,12 +250,12 @@ export function ChannelsPage() {
                         provider={providerLabel(channel.provider)}
                         providerKey={channel.provider}
                       />
-                      {isMailboxProvider(channel.provider) && channel.mailbox?.onClose === "read" && (
+                      {isMailboxChannel(channel) && channel.mailbox?.onClose === "read" && (
                         <Text size="xs" c="dimmed">
                           {t("onCloseSummaryRead")}
                         </Text>
                       )}
-                      {isMailboxProvider(channel.provider) && channel.mailbox?.onClose === "move" && (
+                      {isMailboxChannel(channel) && channel.mailbox?.onClose === "move" && (
                         <Text size="xs" c="dimmed">
                           {t("onCloseSummaryMove", { folder: channel.mailbox.folder || "Handled in Vantigo" })}
                         </Text>
@@ -270,12 +278,13 @@ export function ChannelsPage() {
                         >
                           {channel.isActive ? t("deactivate") : t("activate")}
                         </Button>
-                        {isMailboxProvider(channel.provider) && (
+                        {isMailboxChannel(channel) && (
                           <Button size="xs" variant="subtle" onClick={() => openEditOnClose(channel)}>
                             {t("editOnClose")}
                           </Button>
                         )}
-                        {!isMailboxProvider(channel.provider) &&
+                        {!isMessengerChannel(channel) &&
+                          !isMailboxProvider(channel.provider) &&
                           switchTargets.map((target) => (
                             <Button
                               key={target.key}

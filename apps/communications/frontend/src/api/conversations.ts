@@ -1,5 +1,6 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import { appUrl } from "@vantigo/frontend-shell";
+import type { ChannelType } from "./channels";
 import { request } from "./request";
 
 export type ConversationStatus = "open" | "closed" | "archived";
@@ -22,6 +23,8 @@ export type Attachment = {
   createdAt: string;
   downloadAvailable: boolean;
   downloadPath: string;
+  /** "file", or "card" for the image of one of the message's cards, which the carousel shows and the file list does not. */
+  role?: "file" | "card";
 };
 export type AttachmentUpload = {
   id: string;
@@ -48,6 +51,40 @@ export type Delivery = {
   error: string | null;
   acceptedAt: string | null;
 };
+/** One answer option of a message, or one choice of a card: an id unique within the message, and the title the person sees. */
+export type MessageChoice = { id: string; title: string };
+export type MessageCard = {
+  title: string;
+  subtitle?: string | null;
+  /** The card's image, an attachment of role card (response only). */
+  attachmentId?: string | null;
+  choices?: MessageChoice[] | null;
+};
+/** What a message on a Messenger channel carries beside its text (Messenger design N4). */
+export type MessageComponents = {
+  answerOptions?: MessageChoice[] | null;
+  shareEmail?: boolean | null;
+  cards?: MessageCard[] | null;
+};
+/** The answer an inbound message is, to an option of an earlier message (design N5). */
+export type MessageAnswer = { messageId: string; choiceId: string; title: string };
+/** What a message on a channel may carry, as its provider says (design N4). */
+export type ComponentLimits = {
+  maxText: number;
+  maxAnswerOptions: number;
+  maxAnswerTitle: number;
+  shareEmail: boolean;
+  maxCards: number;
+  maxCardChoices: number;
+  maxCardTitle: number;
+  maxCardSubtitle: number;
+  maxChoiceTitle: number;
+};
+/** Whether a reply may be sent in a Messenger conversation now (design N6). */
+export type ReplyWindow = {
+  state: "open" | "human_agent" | "closed";
+  closesAt: string | null;
+};
 export type ConversationMessage = {
   id: string;
   direction: "inbound" | "outbound" | "internal_note";
@@ -70,6 +107,12 @@ export type ConversationMessage = {
   fromAddress?: string | null;
   fromDisplayName?: string | null;
   replyToAddress?: string | null;
+  /** What the message carries beside its text; null for an e-mail message. */
+  components?: MessageComponents | null;
+  /** The answer an inbound message of a Messenger conversation is. */
+  answerTo?: MessageAnswer | null;
+  /** An outbound message sent from the platform itself, imported into the thread. */
+  echo?: boolean;
 };
 export type PersonalSender = {
   available: boolean;
@@ -83,6 +126,8 @@ export type PersonalSender = {
 export type ConversationListItem = {
   id: string;
   channelId: string;
+  /** The type of the conversation's channel; absent in an answer from before Messenger, which is e-mail. */
+  channelType?: ChannelType;
   subject: string | null;
   status: ConversationStatus;
   assignedUserId: string | null;
@@ -110,6 +155,10 @@ export type ConversationDetail = ConversationListItem & {
   channelAddress?: string;
   channelDisplayName?: string | null;
   personalSender?: PersonalSender;
+  /** What a message on a Messenger conversation may carry; null on a channel that takes no components. */
+  componentLimits?: ComponentLimits | null;
+  /** A Messenger conversation's reply window; null for e-mail. */
+  replyWindow?: ReplyWindow | null;
 };
 export type AiDraftResponse = {
   interactionId: string;
@@ -184,6 +233,7 @@ export const replyToConversation = (
     replyMode: "reply" | "reply_all";
     attachmentIds?: string[];
     sendFromPersonal?: boolean;
+    components?: MessageComponents;
   },
   idempotencyKey: string,
 ) =>
