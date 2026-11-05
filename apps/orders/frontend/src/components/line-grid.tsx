@@ -97,9 +97,10 @@ export const LineGrid = ({
         <Table.Td miw={260}>
           <Stack gap={4}>
             {line.catalog ? (
-              editable && !confirmed && access.canSearchProducts ? (
+              editable && (!confirmed || line.id === undefined) ? (
                 <VariantPicker
                   label={t("lineProduct", { position })}
+                  currency={currency}
                   value={line.variantId === null ? null : { variantId: line.variantId, sku: line.sku, name: line.name }}
                   onChange={(variant) =>
                     set(
@@ -444,16 +445,14 @@ export const LineGrid = ({
       </Table.ScrollContainer>
       {editable && (
         <Group gap="xs">
-          {access.canSearchProducts && (
-            <Button
-              size="xs"
-              variant="light"
-              leftSection={<IconPackage size={14} />}
-              onClick={() => add("product", true)}
-            >
-              {t("addProductLine")}
-            </Button>
-          )}
+          <Button
+            size="xs"
+            variant="light"
+            leftSection={<IconPackage size={14} />}
+            onClick={() => add("product", true)}
+          >
+            {t("addProductLine")}
+          </Button>
           <Button
             size="xs"
             variant="light"

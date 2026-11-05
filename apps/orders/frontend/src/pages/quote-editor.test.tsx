@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { commonAnswers, fakeServer, jsonResponse, refusal } from "../test/api";
-import { line, order, quote, settings } from "../test/fixtures";
+import { line, meta, order, quote, settings } from "../test/fixtures";
 import { renderRoute } from "../test/render";
 
 const url = "/api/v1/orders/quotes/1001";
@@ -11,12 +11,12 @@ const url = "/api/v1/orders/quotes/1001";
 const server = (
   current = quote(),
   writes: (call: { method: string; url: string; body: unknown }) => Response | undefined = () => undefined,
-  options: { settings?: unknown } = {},
+  options: { meta?: unknown } = {},
 ) =>
   fakeServer((call) => {
     if (call.method === "GET" && call.url === url) return jsonResponse(200, current);
     if (call.method !== "GET") return writes(call);
-    return commonAnswers(call, options.settings ?? settings());
+    return commonAnswers(call, settings(), options.meta ?? meta());
   });
 
 describe("the quote editor", () => {
@@ -197,7 +197,7 @@ describe("the quote editor", () => {
 
   it("says in the dialog that sending is off when the server refuses it", async () => {
     server(quote(), (call) => (call.url === `${url}/send` ? refusal(503, "sending_disabled") : undefined), {
-      settings: settings({ sendingAvailable: true }),
+      meta: meta({ sendingAvailable: true }),
     });
     renderRoute("/orders/quotes/1001");
 
@@ -214,7 +214,7 @@ describe("the quote editor", () => {
         call.url === `${url}/mark-sent`
           ? jsonResponse(200, quote({ status: "sent", updatedAt: "2026-11-05T10:00:00Z" }))
           : undefined,
-      { settings: settings({ sendingAvailable: false }) },
+      { meta: meta({ sendingAvailable: false }) },
     );
     renderRoute("/orders/quotes/1001");
 
@@ -321,6 +321,20 @@ describe("the quote editor", () => {
     fakeServer(() => undefined);
     renderRoute("/orders/quotes/1001");
     expect(await screen.findByText("Quote not found")).toBeInTheDocument();
+  });
+});
+
+describe("the quote's salesperson", () => {
+  it("picks another salesperson among those who may sell, and saves it", async () => {
+    const fake = server(quote(), (call) => (call.method === "PUT" ? jsonResponse(200, quote()) : undefined));
+    renderRoute("/orders/quotes/1001");
+
+    await userEvent.click(await screen.findByRole("combobox", { name: "Salesperson" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Per Selger" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fake.sent("PUT", url)).toBeDefined());
+    const body = fake.sent("PUT", url)?.body as Record<string, unknown> | undefined;
+    expect(body?.salespersonId).toBe("00000000-0000-4000-8000-000000000002");
   });
 });
 

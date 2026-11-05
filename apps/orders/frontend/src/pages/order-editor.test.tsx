@@ -200,6 +200,23 @@ describe("the order editor", () => {
     expect(body.lines[0]).toMatchObject({ id: 5001, quantity: 4 });
   });
 
+  it("links back to the quote it was accepted from, and sends to the invoice e-mail when there is no contact", async () => {
+    server(
+      confirmed({
+        sourceQuoteId: 1001,
+        origin: { channel: "quote", sourceKind: "quote", sourceId: "1001@2" },
+        defaultRecipient: "faktura@acme.no",
+        customer: { ...order().customer, contact: {}, contactId: null },
+      }),
+    );
+    renderRoute("/orders/orders/2001");
+
+    expect(await screen.findByRole("link", { name: "Open the quote" })).toHaveAttribute("href", "/orders/quotes/1001");
+    await userEvent.click(screen.getByRole("button", { name: /^Send/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText(/Recipient/)).toHaveValue("faktura@acme.no");
+  });
+
   it("says a stale version as a conflict to reload", async () => {
     server(confirmed(), (call) => (call.method === "PUT" ? refusal(409, "version_conflict") : undefined));
     renderRoute("/orders/orders/2001");

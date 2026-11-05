@@ -2,7 +2,7 @@ import { Select } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { type VariantOption, variantSearchQueryOptions } from "../api/products";
+import { type VariantOption, variantSearchQueryOptions } from "../api/variants";
 import { useOrdersFormat } from "../lib/format";
 
 export interface VariantPickerProps {
@@ -10,6 +10,8 @@ export interface VariantPickerProps {
   value: { variantId: number; sku: string | null; name: string } | null;
   onChange: (variant: VariantOption | null) => void;
   label: string;
+  /** The document's currency, the list price's. */
+  currency: string;
   disabled?: boolean;
   error?: string;
 }
@@ -17,16 +19,20 @@ export interface VariantPickerProps {
 const optionLabel = (v: { sku: string | null; name: string }) => (v.sku ? `${v.sku} · ${v.name}` : v.name);
 
 /**
- * A product variant searched by SKU or product name in the products module's
- * own list (`products:products-view`). Nothing is listed until something is
- * typed; the server prices the line once it is saved (O16).
+ * A product variant searched by SKU, product name or barcode through Orders'
+ * own catalog search (`orders:access`), goods and services of active
+ * products. Nothing is listed until something is typed; the server prices the
+ * line once it is saved (O16).
  */
-export const VariantPicker = ({ value, onChange, label, disabled, error }: VariantPickerProps) => {
+export const VariantPicker = ({ value, onChange, label, currency, disabled, error }: VariantPickerProps) => {
   const { t } = useOrdersFormat();
   const [search, setSearch] = useState("");
   const term = value && search === optionLabel(value) ? "" : search.trim();
   const [debounced] = useDebouncedValue(term, 250);
-  const { data, isFetching } = useQuery({ ...variantSearchQueryOptions(debounced), enabled: debounced !== "" });
+  const { data, isFetching } = useQuery({
+    ...variantSearchQueryOptions(debounced, currency),
+    enabled: debounced !== "",
+  });
   const found = debounced === "" ? [] : (data ?? []);
   const options = found.map((v) => ({ value: String(v.variantId), label: optionLabel(v) }));
   if (value && !options.some((o) => o.value === String(value.variantId)))

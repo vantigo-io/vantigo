@@ -19,7 +19,6 @@ import { IconAlertCircle, IconDeviceFloppy } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { channelsQueryOptions } from "../api/channels";
 import { ApiValidationError, isVersionConflict } from "../api/request";
 import { settingsQueryOptions, updateSettings } from "../api/settings";
 import type { MailText, Settings } from "../api/types";
@@ -70,7 +69,6 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [conflict, setConflict] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const channels = useQuery({ ...channelsQueryOptions(), enabled: access.canListChannels });
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     setValues((current) => ({ ...current, [key]: value }));
     setErrors((current) => ({ ...current, [key]: "" }));
@@ -108,7 +106,8 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
       notifications.show({ color: "red", title: t("couldNotSave"), message: refusalMessage(error, t) });
     },
   });
-  const channelOptions = (channels.data ?? []).map((channel) => ({
+  // The channels come with the settings, as Communications answers them (O25).
+  const channelOptions = settings.sendChannels.map((channel) => ({
     value: channel.id,
     label: channel.displayName ? `${channel.displayName} <${channel.address}>` : channel.address,
     disabled: channel.available === false && channel.id !== values.sendChannelId,
@@ -198,26 +197,17 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
               {t("sendingOffSettings")}
             </Alert>
           )}
-          {access.canListChannels ? (
-            <Select
-              label={t("sendChannel")}
-              description={t("sendChannelHint")}
-              placeholder={t("sendChannelNone")}
-              data={channelOptions}
-              clearable
-              disabled={!manage}
-              value={values.sendChannelId ?? null}
-              error={errors.sendChannelId}
-              onChange={(value) => set("sendChannelId", value)}
-            />
-          ) : (
-            <TextInput
-              label={t("sendChannel")}
-              description={t("sendChannelNoAccess")}
-              readOnly
-              value={values.sendChannelId ? t("channelChosen") : t("sendChannelNone")}
-            />
-          )}
+          <Select
+            label={t("sendChannel")}
+            description={t("sendChannelHint")}
+            placeholder={t("sendChannelNone")}
+            data={channelOptions}
+            clearable
+            disabled={!manage}
+            value={values.sendChannelId ?? null}
+            error={errors.sendChannelId}
+            onChange={(value) => set("sendChannelId", value)}
+          />
           <Switch
             label={t("confirmationOnConfirm")}
             description={t("confirmationOnConfirmHint")}

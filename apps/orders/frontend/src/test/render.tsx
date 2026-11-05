@@ -39,10 +39,8 @@ export const fullAccess: OrdersAccess = {
   canManageSettings: true,
   canViewCustomers: true,
   canViewContacts: true,
-  canSearchProducts: true,
   canReadVatCodes: true,
   canViewProjects: true,
-  canListChannels: true,
   userId: "00000000-0000-4000-8000-000000000001",
   userDisplayName: "Kari Selger",
 };

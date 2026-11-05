@@ -45,6 +45,11 @@ export type Settings = Schemas["OrdersSettings"];
 export type SettingsInput = Schemas["OrdersSettingsInput"];
 export type MailText = Schemas["OrdersMailText"];
 
+export type SendChannel = Schemas["OrdersSendChannel"];
+export type Meta = Schemas["OrdersMeta"];
+export type Salesperson = Schemas["OrdersSalesperson"];
+export type Variant = Schemas["OrdersVariant"];
+
 export type CustomerSummary = Schemas["OrdersCustomerSummary"];
 export type CurrencySum = Schemas["OrdersCurrencySum"];
 

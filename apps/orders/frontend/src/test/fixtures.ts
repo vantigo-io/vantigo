@@ -48,10 +48,12 @@ const customer = {
   deliveryAddressId: 7,
   contact: { name: "Ola Kunde", email: "ola@acme.no", phone: null },
   contactId: 9,
+  invoiceEmail: "faktura@acme.no",
 };
 
 const header = {
   customer,
+  defaultRecipient: "ola@acme.no",
   yourReference: "PO-77",
   currency: "NOK",
   pricesIncludeVat: false,
@@ -97,6 +99,15 @@ export const order = (overrides: Partial<Order> = {}): Order => ({
   ...overrides,
 });
 
+/** What GET /meta answers: sending on, a quote valid 30 days. */
+export const meta = (overrides: Record<string, unknown> = {}) => ({
+  sendingAvailable: true,
+  quoteValidityDays: 30,
+  defaultPaymentTermsDays: 14,
+  baseCurrency: "NOK",
+  ...overrides,
+});
+
 export const settings = (overrides: Record<string, unknown> = {}) => ({
   quoteSeriesStart: 1001,
   orderSeriesStart: 5001,
@@ -109,6 +120,17 @@ export const settings = (overrides: Record<string, unknown> = {}) => ({
   mailTexts: [],
   sendingAvailable: true,
   sendChannelId: null,
+  sendChannelState: "disabled",
+  sendChannels: [
+    {
+      id: "11111111-1111-4111-8111-111111111111",
+      address: "salg@firma.no",
+      displayName: "Salg",
+      provider: "smtp",
+      providerDisplayName: "SMTP",
+      available: true,
+    },
+  ],
   revision: 3,
   ...overrides,
 });

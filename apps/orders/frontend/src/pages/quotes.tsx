@@ -1,4 +1,4 @@
-import { Alert, Button, Chip, Group, Pagination, Stack, Switch, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Chip, Group, Pagination, Select, Stack, Switch, Text, TextInput } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
@@ -7,6 +7,7 @@ import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell
 import { useState } from "react";
 import { PAGE_SIZE } from "../api/list-query";
 import { type QuoteListFilters, quoteListQueryOptions } from "../api/quotes";
+import { salespeopleQueryOptions } from "../api/salespeople";
 import type { QuoteStatus } from "../api/types";
 import { CustomerPicker } from "../components/customer-picker";
 import { QuoteTable } from "../components/document-tables";
@@ -28,6 +29,7 @@ export const QuotesPage = ({ access = noOrdersAccess }: { access?: OrdersAccess 
   const [filters, setFilters] = useState<QuoteListFilters>({ page: 1 });
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 300);
+  const salespeople = useQuery(salespeopleQueryOptions());
   const list = useQuery(quoteListQueryOptions({ ...filters, q: debounced.trim() || undefined, pageSize: PAGE_SIZE }));
   const set = (next: Partial<QuoteListFilters>) =>
     setFilters((current) => ({ ...current, ...next, page: next.page ?? 1 }));
@@ -78,6 +80,15 @@ export const QuotesPage = ({ access = noOrdersAccess }: { access?: OrdersAccess 
               onChange={(id) => set({ customerId: id ?? undefined })}
             />
           )}
+          <Select
+            label={t("salesperson")}
+            placeholder={t("anySalesperson")}
+            clearable
+            searchable
+            data={(salespeople.data ?? []).map((p) => ({ value: p.id, label: p.displayName }))}
+            value={filters.salespersonId ?? null}
+            onChange={(value) => set({ salespersonId: value ?? undefined })}
+          />
           {access.userId && (
             <Switch
               label={t("onlyMine")}
