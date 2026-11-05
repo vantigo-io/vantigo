@@ -37,6 +37,12 @@ const (
 	codeSeriesStartTooLow       = "series_start_too_low"
 	codeSendChannelUnknown      = "send_channel_unknown"
 	codeTemplateNameTaken       = "template_name_taken"
+	codeOrderNotDraft           = "order_not_draft"
+	codeOrderNotConfirmed       = "order_not_confirmed"
+	codeOrderLocked             = "order_locked"
+	codeOrderHasProgress        = "order_has_progress"
+	codeLineInvoiced            = "line_invoiced"
+	codeLineHasProgress         = "line_has_progress"
 
 	// A line's codes (OrdersProblemLine.code).
 	codeVariantNotFound   = "variant_not_found"
@@ -46,6 +52,13 @@ const (
 	codeDiscountInvalid   = "discount_invalid"
 	codeVATCodeUnknown    = "vat_code_unknown"
 	codeLineInvalid       = "line_invalid"
+
+	// An order line's progress codes (O26, O32).
+	codeQuantityBelowProgress  = "quantity_below_progress"
+	codeOverDelivery           = "over_delivery"
+	codeUndoExceedsDelivered   = "undo_exceeds_delivered"
+	codeDeliveredBelowInvoiced = "delivered_below_invoiced"
+	codeLineNotFound           = "line_not_found"
 )
 
 // The titles this module's validation problems carry.
@@ -57,6 +70,9 @@ const (
 	invalidSendTitle     = "Invalid send"
 	invalidQueryTitle    = "Invalid query"
 	invalidAcceptTitle   = "Invalid accept"
+	invalidConfirmTitle  = "The order cannot be confirmed"
+	invalidDeliveryTitle = "Invalid delivery"
+	invalidHoldTitle     = "Invalid hold"
 )
 
 // errDependencyUnavailable is every accessor's answer when the contract it

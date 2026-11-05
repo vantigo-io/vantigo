@@ -15,14 +15,8 @@ import (
 var recorder = contracttest.NewForModule("orders")
 
 // pending is the operations not built yet, which the gate lets go uncovered:
-// the orders lane's (delivery A, lane 2).
-var pending = []string{
-	"getOrdersCustomerSummary", "listSalesOrders", "createSalesOrder", "deleteSalesOrder", "getSalesOrder",
-	"updateSalesOrder", "cancelSalesOrder", "cancelSalesOrderRemaining", "listSalesOrderChanges", "confirmSalesOrder",
-	"listSalesOrderDocuments", "holdSalesOrder", "lockSalesOrder", "listSalesOrderMailings", "markSalesOrderDelivered",
-	"getSalesOrderPdf", "getSalesOrderProforma", "releaseSalesOrder", "sendSalesOrder", "undoSalesOrderDelivered",
-	"unlockSalesOrder",
-}
+// none.
+var pending []string
 
 // pdfModels is every PDF model built, for the tests that read what a PDF
 // says (the bytes are embedded-subset and cannot be read back).

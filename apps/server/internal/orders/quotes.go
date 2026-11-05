@@ -55,7 +55,7 @@ func quoteView(q store.OrdersQuote, lines []store.OrdersLine, acceptedNumber *in
 	h := headerOfQuote(q)
 	out := gen.OrdersQuote{
 		Id: q.ID, Number: q.Number, Status: gen.OrdersQuoteStatus(q.Status), Revision: q.Revision,
-		Customer: snapshotOut(h), YourReference: q.YourReference, Currency: q.Currency, PricesIncludeVat: q.PricesIncludeVat,
+		Customer: snapshotOut(h), DefaultRecipient: defaultRecipient(h), YourReference: q.YourReference, Currency: q.Currency, PricesIncludeVat: q.PricesIncludeVat,
 		PaymentTermsDays: q.PaymentTermsDays, DiscountVisible: q.DiscountVisible, Language: gen.OrdersQuoteLanguage(q.Language),
 		IntroText: q.IntroText, ClosingText: q.ClosingText, InternalNote: q.InternalNote,
 		Origin: gen.OrdersOrigin{
@@ -123,7 +123,7 @@ func insertQuoteParams(h header, t docTotals) store.InsertQuoteParams {
 		DeliveryAddressID: h.DeliveryAddressID, DeliveryName: h.DeliveryName, DeliveryAddressLine1: h.DeliveryAddressLine1,
 		DeliveryAddressLine2: h.DeliveryAddressLine2, DeliveryPostalCode: h.DeliveryPostalCode, DeliveryCity: h.DeliveryCity,
 		DeliveryCountry: h.DeliveryCountry, ContactID: h.ContactID, ContactName: h.ContactName, ContactEmail: h.ContactEmail,
-		ContactPhone: h.ContactPhone, YourReference: h.YourReference, SalespersonID: h.SalespersonID,
+		ContactPhone: h.ContactPhone, CustomerInvoiceEmail: h.CustomerInvoiceEmail, YourReference: h.YourReference, SalespersonID: h.SalespersonID,
 		SalespersonDisplay: h.SalespersonDisplay, ProjectID: h.ProjectID, Currency: h.Currency,
 		PricesIncludeVat: h.PricesIncludeVat, PaymentTermsDays: h.PaymentTermsDays, DiscountVisible: h.DiscountVisible,
 		Language: h.Language, IntroText: h.IntroText, ClosingText: h.ClosingText, InternalNote: h.InternalNote,
@@ -143,7 +143,7 @@ func updateQuoteParams(id int64, h header, t docTotals, validUntil pgtype.Date, 
 		DeliveryAddressID: p.DeliveryAddressID, DeliveryName: p.DeliveryName, DeliveryAddressLine1: p.DeliveryAddressLine1,
 		DeliveryAddressLine2: p.DeliveryAddressLine2, DeliveryPostalCode: p.DeliveryPostalCode, DeliveryCity: p.DeliveryCity,
 		DeliveryCountry: p.DeliveryCountry, ContactID: p.ContactID, ContactName: p.ContactName, ContactEmail: p.ContactEmail,
-		ContactPhone: p.ContactPhone, YourReference: p.YourReference, SalespersonID: p.SalespersonID,
+		ContactPhone: p.ContactPhone, CustomerInvoiceEmail: p.CustomerInvoiceEmail, YourReference: p.YourReference, SalespersonID: p.SalespersonID,
 		SalespersonDisplay: p.SalespersonDisplay, ProjectID: p.ProjectID, Currency: p.Currency,
 		PricesIncludeVat: p.PricesIncludeVat, PaymentTermsDays: p.PaymentTermsDays, DiscountVisible: p.DiscountVisible,
 		Language: p.Language, IntroText: p.IntroText, ClosingText: p.ClosingText, InternalNote: p.InternalNote,

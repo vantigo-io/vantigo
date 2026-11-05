@@ -527,6 +527,30 @@ func (e OrdersQuoteUpdateLanguage) Valid() bool {
 	}
 }
 
+// Defines values for OrdersSettingsSendChannelState.
+const (
+	Disabled    OrdersSettingsSendChannelState = "disabled"
+	Gone        OrdersSettingsSendChannelState = "gone"
+	Ready       OrdersSettingsSendChannelState = "ready"
+	Unavailable OrdersSettingsSendChannelState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSettingsSendChannelState enum.
+func (e OrdersSettingsSendChannelState) Valid() bool {
+	switch e {
+	case Disabled:
+		return true
+	case Gone:
+		return true
+	case Ready:
+		return true
+	case Unavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrdersSkippedLineReason.
 const (
 	Archived OrdersSkippedLineReason = "archived"
@@ -605,6 +629,24 @@ func (e OrdersTemplateLineInputKind) Valid() bool {
 	}
 }
 
+// Defines values for OrdersVariantProductType.
+const (
+	Goods   OrdersVariantProductType = "Goods"
+	Service OrdersVariantProductType = "Service"
+)
+
+// Valid indicates whether the value is a known member of the OrdersVariantProductType enum.
+func (e OrdersVariantProductType) Valid() bool {
+	switch e {
+	case Goods:
+		return true
+	case Service:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListSalesOrdersParamsStatus.
 const (
 	ListSalesOrdersParamsStatusCancelled ListSalesOrdersParamsStatus = "cancelled"
@@ -620,6 +662,48 @@ func (e ListSalesOrdersParamsStatus) Valid() bool {
 	case ListSalesOrdersParamsStatusConfirmed:
 		return true
 	case ListSalesOrdersParamsStatusDraft:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSalesOrdersParamsDeliveryStatus.
+const (
+	ListSalesOrdersParamsDeliveryStatusDelivered ListSalesOrdersParamsDeliveryStatus = "delivered"
+	ListSalesOrdersParamsDeliveryStatusNone      ListSalesOrdersParamsDeliveryStatus = "none"
+	ListSalesOrdersParamsDeliveryStatusPartial   ListSalesOrdersParamsDeliveryStatus = "partial"
+)
+
+// Valid indicates whether the value is a known member of the ListSalesOrdersParamsDeliveryStatus enum.
+func (e ListSalesOrdersParamsDeliveryStatus) Valid() bool {
+	switch e {
+	case ListSalesOrdersParamsDeliveryStatusDelivered:
+		return true
+	case ListSalesOrdersParamsDeliveryStatusNone:
+		return true
+	case ListSalesOrdersParamsDeliveryStatusPartial:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSalesOrdersParamsInvoiceStatus.
+const (
+	ListSalesOrdersParamsInvoiceStatusInvoiced ListSalesOrdersParamsInvoiceStatus = "invoiced"
+	ListSalesOrdersParamsInvoiceStatusNone     ListSalesOrdersParamsInvoiceStatus = "none"
+	ListSalesOrdersParamsInvoiceStatusPartial  ListSalesOrdersParamsInvoiceStatus = "partial"
+)
+
+// Valid indicates whether the value is a known member of the ListSalesOrdersParamsInvoiceStatus enum.
+func (e ListSalesOrdersParamsInvoiceStatus) Valid() bool {
+	switch e {
+	case ListSalesOrdersParamsInvoiceStatusInvoiced:
+		return true
+	case ListSalesOrdersParamsInvoiceStatusNone:
+		return true
+	case ListSalesOrdersParamsInvoiceStatusPartial:
 		return true
 	default:
 		return false
@@ -668,7 +752,7 @@ type OrdersAcceptInputInto string
 
 // OrdersAccepted The accepted quote and the document made from it.
 type OrdersAccepted struct {
-	// Order A sales order (O13, O18). version is bumped by every save and every change after confirmation (O26); done is derived: confirmed, delivered and invoiced.
+	// Order A sales order (O13, O18). version is the order's optimistic-concurrency token and the version its confirmation prints: a draft stays at 1 through its saves, and after confirmation every edit that changes it and every cancel-remaining bumps it, so a confirmation sent at version 2 or later prints as revised (O26). Hold, release, lock, unlock and delivery marking are logged at the version they found. done is derived: confirmed, delivered and invoiced.
 	Order OrdersOrder `json:"order"`
 
 	// Quote A quote (O13, O20). number stays across revisions; revision counts the sends.
@@ -747,7 +831,10 @@ type OrdersCustomerSnapshot struct {
 	ForeignId         *string       `json:"foreignId,omitempty"`
 
 	// InvoiceAddress A postal address snapshotted on the document; every field optional.
-	InvoiceAddress     OrdersAddress               `json:"invoiceAddress"`
+	InvoiceAddress OrdersAddress `json:"invoiceAddress"`
+
+	// InvoiceEmail The customer's invoice e-mail as the billing profile resolves it, snapshotted with the rest; a send's default recipient when the document names no contact (O25).
+	InvoiceEmail       *string                     `json:"invoiceEmail,omitempty"`
 	Name               string                      `json:"name"`
 	OrganisationNumber *string                     `json:"organisationNumber,omitempty"`
 	Type               *OrdersCustomerSnapshotType `json:"type,omitempty"`
@@ -863,6 +950,7 @@ type OrdersLinePriceSource string
 
 // OrdersLineInput A line as the editor saves it; the document's lines are replaced whole on save, a line naming its id kept as that line (O15). A product line with a variantId is priced from the catalog unless unitPrice is given, which makes the price manual (O16); entered including VAT when the document's prices include VAT (O19).
 type OrdersLineInput struct {
+	// Description A product line's description; the text of a section or a note line, which the PDF prints under its name.
 	Description *string `json:"description,omitempty"`
 
 	// DiscountPercent 0–100, at most two decimals.
@@ -874,7 +962,7 @@ type OrdersLineInput struct {
 	// Kind An open set (O15): product, section and note in this phase.
 	Kind OrdersLineInputKind `json:"kind"`
 
-	// Name A free-text line's name.
+	// Name A free-text product line's name, or a section's heading or a note's title; a section or a note keeps its text in description.
 	Name *string `json:"name,omitempty"`
 
 	// Optional Quotes only (O21).
@@ -941,7 +1029,18 @@ type OrdersMarkSentInput struct {
 	ValidUntil *openapi_types.Date `json:"validUntil,omitempty"`
 }
 
-// OrdersOrder A sales order (O13, O18). version is bumped by every save and every change after confirmation (O26); done is derived: confirmed, delivered and invoiced.
+// OrdersMeta What the Orders screens need of the settings, under orders:access.
+type OrdersMeta struct {
+	// BaseCurrency The deployment's currency, a document's when its customer names none (O13).
+	BaseCurrency            string `json:"baseCurrency"`
+	DefaultPaymentTermsDays int32  `json:"defaultPaymentTermsDays"`
+	QuoteValidityDays       int32  `json:"quoteValidityDays"`
+
+	// SendingAvailable Whether Send works now: Communications is on and the channel the settings choose can send (O25). False leaves Download and Mark as sent.
+	SendingAvailable bool `json:"sendingAvailable"`
+}
+
+// OrdersOrder A sales order (O13, O18). version is the order's optimistic-concurrency token and the version its confirmation prints: a draft stays at 1 through its saves, and after confirmation every edit that changes it and every cancel-remaining bumps it, so a confirmation sent at version 2 or later prints as revised (O26). Hold, release, lock, unlock and delivery marking are logged at the version they found. done is derived: confirmed, delivered and invoiced.
 type OrdersOrder struct {
 	CancelledAt *time.Time `json:"cancelledAt,omitempty"`
 	ClosingText string     `json:"closingText"`
@@ -953,10 +1052,13 @@ type OrdersOrder struct {
 	Currency    string        `json:"currency"`
 
 	// Customer The customer as the document holds it (O13, O14): refreshed on every save of a draft, frozen once a quote is sent or an order confirmed, after which only the delivery address and the contact change.
-	Customer        OrdersCustomerSnapshot    `json:"customer"`
-	DeliveryDate    *openapi_types.Date       `json:"deliveryDate,omitempty"`
-	DeliveryStatus  OrdersOrderDeliveryStatus `json:"deliveryStatus"`
-	DiscountVisible bool                      `json:"discountVisible"`
+	Customer OrdersCustomerSnapshot `json:"customer"`
+
+	// DefaultRecipient Who a send goes to unless the dialog says otherwise (O25): the contact's e-mail, else the customer's invoice e-mail; null when there is neither.
+	DefaultRecipient *string                   `json:"defaultRecipient,omitempty"`
+	DeliveryDate     *openapi_types.Date       `json:"deliveryDate,omitempty"`
+	DeliveryStatus   OrdersOrderDeliveryStatus `json:"deliveryStatus"`
+	DiscountVisible  bool                      `json:"discountVisible"`
 
 	// Done Confirmed, delivered and invoiced; shown as a tag, never stored (O18).
 	Done          bool                     `json:"done"`
@@ -978,8 +1080,11 @@ type OrdersOrder struct {
 	ProjectId        *int32       `json:"projectId,omitempty"`
 
 	// Salesperson A user as snapshotted on the document: the salesperson or an actor (O13, O29).
-	Salesperson *OrdersPerson     `json:"salesperson,omitempty"`
-	Status      OrdersOrderStatus `json:"status"`
+	Salesperson *OrdersPerson `json:"salesperson,omitempty"`
+
+	// SourceQuoteId The quote the order was accepted from, when its origin is one (channel quote); the same quote origin.sourceId names with its revision.
+	SourceQuoteId *int64            `json:"sourceQuoteId,omitempty"`
+	Status        OrdersOrderStatus `json:"status"`
 
 	// Totals The document's totals in its currency, leaving out a quote's optional lines (O17, O21).
 	Totals        OrdersTotals `json:"totals"`
@@ -1092,9 +1197,11 @@ type OrdersOrigin struct {
 	ExternalNumber   *string  `json:"externalNumber,omitempty"`
 	PaymentReference *string  `json:"paymentReference,omitempty"`
 	PrepaidAmount    *float64 `json:"prepaidAmount,omitempty"`
-	SourceId         *string  `json:"sourceId,omitempty"`
-	SourceKind       *string  `json:"sourceKind,omitempty"`
-	SourceModule     *string  `json:"sourceModule,omitempty"`
+
+	// SourceId The source's own id. A quote is named "<quoteId>@<revision>" ("1042@2": quote 1042 at its revision 2), for an order accepted from it (channel quote) and a quote copied from it (channel copy).
+	SourceId     *string `json:"sourceId,omitempty"`
+	SourceKind   *string `json:"sourceKind,omitempty"`
+	SourceModule *string `json:"sourceModule,omitempty"`
 }
 
 // OrdersPerson A user as snapshotted on the document: the salesperson or an actor (O13, O29).
@@ -1103,7 +1210,7 @@ type OrdersPerson struct {
 	UserId      *openapi_types.UUID `json:"userId,omitempty"`
 }
 
-// OrdersProblem An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, order_empty, customer_disabled, project_customer_mismatch, quantity_below_progress, over_delivery, and a line's codes in lines. 409: version_conflict (a stale version or revision), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_has_progress, line_invoiced, line_has_progress, line_in_draft_invoice, client_request_reused. 503: dependency_unavailable (a module Orders reads is not composed) and sending_disabled (Communications is off or no send channel is chosen). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// OrdersProblem An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version or revision), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_has_progress, line_invoiced, line_has_progress, line_in_draft_invoice, client_request_reused, template_name_taken. 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type OrdersProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1141,17 +1248,20 @@ type OrdersQuote struct {
 	Currency     string             `json:"currency"`
 
 	// Customer The customer as the document holds it (O13, O14): refreshed on every save of a draft, frozen once a quote is sent or an order confirmed, after which only the delivery address and the contact change.
-	Customer        OrdersCustomerSnapshot `json:"customer"`
-	DeclineReason   *string                `json:"declineReason,omitempty"`
-	DeclinedAt      *time.Time             `json:"declinedAt,omitempty"`
-	DeliveryDate    *openapi_types.Date    `json:"deliveryDate,omitempty"`
-	DiscountVisible bool                   `json:"discountVisible"`
-	Id              int64                  `json:"id"`
-	InternalNote    string                 `json:"internalNote"`
-	IntroText       string                 `json:"introText"`
-	Language        OrdersQuoteLanguage    `json:"language"`
-	Lines           []OrdersLine           `json:"lines"`
-	Number          int64                  `json:"number"`
+	Customer      OrdersCustomerSnapshot `json:"customer"`
+	DeclineReason *string                `json:"declineReason,omitempty"`
+	DeclinedAt    *time.Time             `json:"declinedAt,omitempty"`
+
+	// DefaultRecipient Who a send goes to unless the dialog says otherwise (O25): the contact's e-mail, else the customer's invoice e-mail; null when there is neither.
+	DefaultRecipient *string             `json:"defaultRecipient,omitempty"`
+	DeliveryDate     *openapi_types.Date `json:"deliveryDate,omitempty"`
+	DiscountVisible  bool                `json:"discountVisible"`
+	Id               int64               `json:"id"`
+	InternalNote     string              `json:"internalNote"`
+	IntroText        string              `json:"introText"`
+	Language         OrdersQuoteLanguage `json:"language"`
+	Lines            []OrdersLine        `json:"lines"`
+	Number           int64               `json:"number"`
 
 	// Origin Where the document came from (O27). channel is an open set: manual, quote and copy in this phase.
 	Origin           OrdersOrigin `json:"origin"`
@@ -1261,6 +1371,35 @@ type OrdersRevisionInput struct {
 	Revision int32 `json:"revision"`
 }
 
+// OrdersSalesperson A user who may sell.
+type OrdersSalesperson struct {
+	DisplayName string             `json:"displayName"`
+	Id          openapi_types.UUID `json:"id"`
+}
+
+// OrdersSalespersonList The salespeople, by display name.
+type OrdersSalespersonList struct {
+	Items []OrdersSalesperson `json:"items"`
+}
+
+// OrdersSendChannel One channel Orders may send from, as Communications answers it through contracts.OutboundMail (MB rule 17).
+type OrdersSendChannel struct {
+	Address string `json:"address"`
+
+	// Available Whether the channel can send now: its provider is offered and, for SMTP, its credentials are stored.
+	Available bool `json:"available"`
+
+	// DisplayName The channel's display name; empty when it has none.
+	DisplayName string             `json:"displayName"`
+	Id          openapi_types.UUID `json:"id"`
+
+	// Provider The provider's key: smtp or entra.
+	Provider string `json:"provider"`
+
+	// ProviderDisplayName The provider as an admin reads it: SMTP, Microsoft 365.
+	ProviderDisplayName string `json:"providerDisplayName"`
+}
+
 // OrdersSendInput A send from the dialog (O25): the recipient defaults to the contact's e-mail, else the customer's invoice e-mail. revision for a quote, version for an order.
 type OrdersSendInput struct {
 	Cc         *[]openapi_types.Email `json:"cc,omitempty"`
@@ -1285,8 +1424,17 @@ type OrdersSettings struct {
 	QuoteValidityDays       int32               `json:"quoteValidityDays"`
 	Revision                int32               `json:"revision"`
 	SendChannelId           *openapi_types.UUID `json:"sendChannelId,omitempty"`
-	SendingAvailable        bool                `json:"sendingAvailable"`
+
+	// SendChannelState What the stored sendChannelId is now: disabled (none chosen), ready (the channel can send), unavailable (it exists but cannot send now — its provider is off or an SMTP channel has no credentials) or gone (no active channel has the id, or Communications is off). Anything but ready sends nothing, and GET /meta answers sendingAvailable false.
+	SendChannelState OrdersSettingsSendChannelState `json:"sendChannelState"`
+
+	// SendChannels The channels sendChannelId may name: the active mail channels as Communications answers them (contracts.OutboundMail), with whether each can send now. Empty when Communications is off.
+	SendChannels     []OrdersSendChannel `json:"sendChannels"`
+	SendingAvailable bool                `json:"sendingAvailable"`
 }
+
+// OrdersSettingsSendChannelState What the stored sendChannelId is now: disabled (none chosen), ready (the channel can send), unavailable (it exists but cannot send now — its provider is off or an SMTP channel has no credentials) or gone (no active channel has the id, or Communications is off). Anything but ready sends nothing, and GET /meta answers sendingAvailable false.
+type OrdersSettingsSendChannelState string
 
 // OrdersSettingsInput Orders' settings, replaced whole. revision is the one the client read.
 type OrdersSettingsInput struct {
@@ -1422,6 +1570,42 @@ type OrdersTotals struct {
 	VatSummaries []OrdersVatSummary `json:"vatSummaries"`
 }
 
+// OrdersVariant A catalog variant as a line takes it (O16): its snapshot, its list price in the asked currency today (null when it has none, which leaves the line unpriced) and the VAT code its tax category maps to (null when it maps to none).
+type OrdersVariant struct {
+	Currency    string                   `json:"currency"`
+	Description string                   `json:"description"`
+	Id          int32                    `json:"id"`
+	Name        string                   `json:"name"`
+	Packagings  []OrdersVariantPackaging `json:"packagings"`
+
+	// Price The list price, net of VAT.
+	Price          *float64                 `json:"price,omitempty"`
+	ProductId      int32                    `json:"productId"`
+	ProductType    OrdersVariantProductType `json:"productType"`
+	Sku            string                   `json:"sku"`
+	Unit           string                   `json:"unit"`
+	VatCode        *string                  `json:"vatCode,omitempty"`
+	VatCodeId      *int32                   `json:"vatCodeId,omitempty"`
+	VatRatePercent *float64                 `json:"vatRatePercent,omitempty"`
+}
+
+// OrdersVariantProductType defines model for OrdersVariant.ProductType.
+type OrdersVariantProductType string
+
+// OrdersVariantList Variants matching a search, by SKU.
+type OrdersVariantList struct {
+	Items []OrdersVariant `json:"items"`
+}
+
+// OrdersVariantPackaging A packaging a line may be entered in (O15).
+type OrdersVariantPackaging struct {
+	Id   int32  `json:"id"`
+	Name string `json:"name"`
+
+	// Quantity Its content in the variant's unit.
+	Quantity float64 `json:"quantity"`
+}
+
 // OrdersVatSummary VAT per (category, rate) on the sum of the nets (O17).
 type OrdersVatSummary struct {
 	Category      string  `json:"category"`
@@ -1450,10 +1634,25 @@ type ListSalesOrdersParams struct {
 
 	// Open Only orders not done and not cancelled.
 	Open *bool `form:"open,omitempty" json:"open,omitempty"`
+
+	// DeliveryStatus Any of the delivery statuses; none means all.
+	DeliveryStatus *[]ListSalesOrdersParamsDeliveryStatus `form:"deliveryStatus,omitempty" json:"deliveryStatus,omitempty"`
+
+	// InvoiceStatus Any of the invoice statuses; none means all.
+	InvoiceStatus *[]ListSalesOrdersParamsInvoiceStatus `form:"invoiceStatus,omitempty" json:"invoiceStatus,omitempty"`
+
+	// Done true keeps only the done orders (confirmed, delivered and invoiced), false only those not done; absent keeps both.
+	Done *bool `form:"done,omitempty" json:"done,omitempty"`
 }
 
 // ListSalesOrdersParamsStatus defines parameters for ListSalesOrders.
 type ListSalesOrdersParamsStatus string
+
+// ListSalesOrdersParamsDeliveryStatus defines parameters for ListSalesOrders.
+type ListSalesOrdersParamsDeliveryStatus string
+
+// ListSalesOrdersParamsInvoiceStatus defines parameters for ListSalesOrders.
+type ListSalesOrdersParamsInvoiceStatus string
 
 // GetSalesOrderPdfParams defines parameters for GetSalesOrderPdf.
 type GetSalesOrderPdfParams struct {
@@ -1484,9 +1683,24 @@ type GetQuotePdfParams struct {
 	Revision *int32 `form:"revision,omitempty" json:"revision,omitempty"`
 }
 
+// ListOrdersSalespeopleParams defines parameters for ListOrdersSalespeople.
+type ListOrdersSalespeopleParams struct {
+	// Q Part of the display name, ignoring case.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+}
+
 // ListQuoteTemplatesParams defines parameters for ListQuoteTemplates.
 type ListQuoteTemplatesParams struct {
 	IncludeArchived *bool `form:"includeArchived,omitempty" json:"includeArchived,omitempty"`
+}
+
+// SearchOrdersVariantsParams defines parameters for SearchOrdersVariants.
+type SearchOrdersVariantsParams struct {
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Currency The document's currency, for the list price; the base currency when absent.
+	Currency *string `form:"currency,omitempty" json:"currency,omitempty"`
+	Limit    *int32  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // CreateSalesOrderJSONRequestBody defines body for CreateSalesOrder for application/json ContentType.
@@ -1566,6 +1780,9 @@ type ServerInterface interface {
 	// GetOrdersCustomerSummary Get a customer's orders summary
 	// (GET /api/v1/orders/customers/{customerId}/summary)
 	GetOrdersCustomerSummary(w http.ResponseWriter, r *http.Request, customerId int32)
+	// GetOrdersMeta Get what the Orders screens need
+	// (GET /api/v1/orders/meta)
+	GetOrdersMeta(w http.ResponseWriter, r *http.Request)
 	// ListSalesOrders List orders
 	// (GET /api/v1/orders/orders)
 	ListSalesOrders(w http.ResponseWriter, r *http.Request, params ListSalesOrdersParams)
@@ -1677,6 +1894,9 @@ type ServerInterface interface {
 	// SendQuote Send a quote by e-mail
 	// (POST /api/v1/orders/quotes/{id}/send)
 	SendQuote(w http.ResponseWriter, r *http.Request, id int64)
+	// ListOrdersSalespeople List the salespeople
+	// (GET /api/v1/orders/salespeople)
+	ListOrdersSalespeople(w http.ResponseWriter, r *http.Request, params ListOrdersSalespeopleParams)
 	// GetOrdersSettings Get the Orders settings
 	// (GET /api/v1/orders/settings)
 	GetOrdersSettings(w http.ResponseWriter, r *http.Request)
@@ -1698,6 +1918,9 @@ type ServerInterface interface {
 	// UpdateQuoteTemplate Save a quote template
 	// (PUT /api/v1/orders/templates/{id})
 	UpdateQuoteTemplate(w http.ResponseWriter, r *http.Request, id int64)
+	// SearchOrdersVariants Search the catalog for a line
+	// (GET /api/v1/orders/variants)
+	SearchOrdersVariants(w http.ResponseWriter, r *http.Request, params SearchOrdersVariantsParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1726,6 +1949,20 @@ func (siw *ServerInterfaceWrapper) GetOrdersCustomerSummary(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetOrdersCustomerSummary(w, r, customerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrdersMeta operation middleware
+func (siw *ServerInterfaceWrapper) GetOrdersMeta(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrdersMeta(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1831,6 +2068,45 @@ func (siw *ServerInterfaceWrapper) ListSalesOrders(w http.ResponseWriter, r *htt
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "open"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "open", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "deliveryStatus" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "deliveryStatus", r.URL.Query(), &params.DeliveryStatus, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "deliveryStatus"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "deliveryStatus", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "invoiceStatus" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "invoiceStatus", r.URL.Query(), &params.InvoiceStatus, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "invoiceStatus"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invoiceStatus", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "done" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "done", r.URL.Query(), &params.Done, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "done"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "done", Err: err})
 		}
 		return
 	}
@@ -2862,6 +3138,39 @@ func (siw *ServerInterfaceWrapper) SendQuote(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// ListOrdersSalespeople operation middleware
+func (siw *ServerInterfaceWrapper) ListOrdersSalespeople(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListOrdersSalespeopleParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrdersSalespeople(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetOrdersSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetOrdersSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -3015,6 +3324,65 @@ func (siw *ServerInterfaceWrapper) UpdateQuoteTemplate(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// SearchOrdersVariants operation middleware
+func (siw *ServerInterfaceWrapper) SearchOrdersVariants(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchOrdersVariantsParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "currency" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "currency", r.URL.Query(), &params.Currency, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "currency"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "currency", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchOrdersVariants(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -3136,6 +3504,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/customers/{customerId}/summary", wrapper.GetOrdersCustomerSummary)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/meta", wrapper.GetOrdersMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/orders", wrapper.ListSalesOrders)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders", wrapper.CreateSalesOrder)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/orders/orders/{id}", wrapper.DeleteSalesOrder)
@@ -3173,6 +3542,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/quotes/{id}/proforma", wrapper.GetQuoteProforma)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/quotes/{id}/revise", wrapper.ReviseQuote)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/quotes/{id}/send", wrapper.SendQuote)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/salespeople", wrapper.ListOrdersSalespeople)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/settings", wrapper.GetOrdersSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/orders/settings", wrapper.PutOrdersSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/templates", wrapper.ListQuoteTemplates)
@@ -3180,6 +3550,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/orders/templates/{id}", wrapper.DeleteQuoteTemplate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/templates/{id}", wrapper.GetQuoteTemplate)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/orders/templates/{id}", wrapper.UpdateQuoteTemplate)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/variants", wrapper.SearchOrdersVariants)
 
 	return m
 }
@@ -3223,6 +3594,55 @@ func (response GetOrdersCustomerSummary401JSONResponse) VisitGetOrdersCustomerSu
 type GetOrdersCustomerSummary403JSONResponse externalRef0.AuthErrorResponse
 
 func (response GetOrdersCustomerSummary403JSONResponse) VisitGetOrdersCustomerSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrdersMetaRequestObject struct {
+}
+
+type GetOrdersMetaResponseObject interface {
+	VisitGetOrdersMetaResponse(w http.ResponseWriter) error
+}
+
+type GetOrdersMeta200JSONResponse OrdersMeta
+
+func (response GetOrdersMeta200JSONResponse) VisitGetOrdersMetaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrdersMeta401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetOrdersMeta401JSONResponse) VisitGetOrdersMetaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrdersMeta403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetOrdersMeta403JSONResponse) VisitGetOrdersMetaResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6053,6 +6473,56 @@ func (response SendQuote503ApplicationProblemPlusJSONResponse) VisitSendQuoteRes
 	return err
 }
 
+type ListOrdersSalespeopleRequestObject struct {
+	Params ListOrdersSalespeopleParams
+}
+
+type ListOrdersSalespeopleResponseObject interface {
+	VisitListOrdersSalespeopleResponse(w http.ResponseWriter) error
+}
+
+type ListOrdersSalespeople200JSONResponse OrdersSalespersonList
+
+func (response ListOrdersSalespeople200JSONResponse) VisitListOrdersSalespeopleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrdersSalespeople401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListOrdersSalespeople401JSONResponse) VisitListOrdersSalespeopleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrdersSalespeople403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListOrdersSalespeople403JSONResponse) VisitListOrdersSalespeopleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetOrdersSettingsRequestObject struct {
 }
 
@@ -6505,11 +6975,92 @@ func (response UpdateQuoteTemplate409ApplicationProblemPlusJSONResponse) VisitUp
 	return err
 }
 
+type SearchOrdersVariantsRequestObject struct {
+	Params SearchOrdersVariantsParams
+}
+
+type SearchOrdersVariantsResponseObject interface {
+	VisitSearchOrdersVariantsResponse(w http.ResponseWriter) error
+}
+
+type SearchOrdersVariants200JSONResponse OrdersVariantList
+
+func (response SearchOrdersVariants200JSONResponse) VisitSearchOrdersVariantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchOrdersVariants400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response SearchOrdersVariants400ApplicationProblemPlusJSONResponse) VisitSearchOrdersVariantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchOrdersVariants401JSONResponse externalRef0.AuthErrorResponse
+
+func (response SearchOrdersVariants401JSONResponse) VisitSearchOrdersVariantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchOrdersVariants403JSONResponse externalRef0.AuthErrorResponse
+
+func (response SearchOrdersVariants403JSONResponse) VisitSearchOrdersVariantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchOrdersVariants503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response SearchOrdersVariants503ApplicationProblemPlusJSONResponse) VisitSearchOrdersVariantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetOrdersCustomerSummary Get a customer's orders summary
 	// (GET /api/v1/orders/customers/{customerId}/summary)
 	GetOrdersCustomerSummary(ctx context.Context, request GetOrdersCustomerSummaryRequestObject) (GetOrdersCustomerSummaryResponseObject, error)
+	// GetOrdersMeta Get what the Orders screens need
+	// (GET /api/v1/orders/meta)
+	GetOrdersMeta(ctx context.Context, request GetOrdersMetaRequestObject) (GetOrdersMetaResponseObject, error)
 	// ListSalesOrders List orders
 	// (GET /api/v1/orders/orders)
 	ListSalesOrders(ctx context.Context, request ListSalesOrdersRequestObject) (ListSalesOrdersResponseObject, error)
@@ -6621,6 +7172,9 @@ type StrictServerInterface interface {
 	// SendQuote Send a quote by e-mail
 	// (POST /api/v1/orders/quotes/{id}/send)
 	SendQuote(ctx context.Context, request SendQuoteRequestObject) (SendQuoteResponseObject, error)
+	// ListOrdersSalespeople List the salespeople
+	// (GET /api/v1/orders/salespeople)
+	ListOrdersSalespeople(ctx context.Context, request ListOrdersSalespeopleRequestObject) (ListOrdersSalespeopleResponseObject, error)
 	// GetOrdersSettings Get the Orders settings
 	// (GET /api/v1/orders/settings)
 	GetOrdersSettings(ctx context.Context, request GetOrdersSettingsRequestObject) (GetOrdersSettingsResponseObject, error)
@@ -6642,6 +7196,9 @@ type StrictServerInterface interface {
 	// UpdateQuoteTemplate Save a quote template
 	// (PUT /api/v1/orders/templates/{id})
 	UpdateQuoteTemplate(ctx context.Context, request UpdateQuoteTemplateRequestObject) (UpdateQuoteTemplateResponseObject, error)
+	// SearchOrdersVariants Search the catalog for a line
+	// (GET /api/v1/orders/variants)
+	SearchOrdersVariants(ctx context.Context, request SearchOrdersVariantsRequestObject) (SearchOrdersVariantsResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -6702,6 +7259,30 @@ func (sh *strictHandler) GetOrdersCustomerSummary(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetOrdersCustomerSummaryResponseObject); ok {
 		if err := validResponse.VisitGetOrdersCustomerSummaryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOrdersMeta operation middleware
+func (sh *strictHandler) GetOrdersMeta(w http.ResponseWriter, r *http.Request) {
+	var request GetOrdersMetaRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOrdersMeta(ctx, request.(GetOrdersMetaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOrdersMeta")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOrdersMetaResponseObject); ok {
+		if err := validResponse.VisitGetOrdersMetaResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7816,6 +8397,32 @@ func (sh *strictHandler) SendQuote(w http.ResponseWriter, r *http.Request, id in
 	}
 }
 
+// ListOrdersSalespeople operation middleware
+func (sh *strictHandler) ListOrdersSalespeople(w http.ResponseWriter, r *http.Request, params ListOrdersSalespeopleParams) {
+	var request ListOrdersSalespeopleRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListOrdersSalespeople(ctx, request.(ListOrdersSalespeopleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListOrdersSalespeople")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListOrdersSalespeopleResponseObject); ok {
+		if err := validResponse.VisitListOrdersSalespeopleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetOrdersSettings operation middleware
 func (sh *strictHandler) GetOrdersSettings(w http.ResponseWriter, r *http.Request) {
 	var request GetOrdersSettingsRequestObject
@@ -8006,6 +8613,32 @@ func (sh *strictHandler) UpdateQuoteTemplate(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateQuoteTemplateResponseObject); ok {
 		if err := validResponse.VisitUpdateQuoteTemplateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SearchOrdersVariants operation middleware
+func (sh *strictHandler) SearchOrdersVariants(w http.ResponseWriter, r *http.Request, params SearchOrdersVariantsParams) {
+	var request SearchOrdersVariantsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SearchOrdersVariants(ctx, request.(SearchOrdersVariantsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SearchOrdersVariants")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SearchOrdersVariantsResponseObject); ok {
+		if err := validResponse.VisitSearchOrdersVariantsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -20,7 +20,7 @@ INSERT INTO orders.orders (
     customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2,
     invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name,
     delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city,
-    delivery_country, contact_id, contact_name, contact_email, contact_phone, your_reference,
+    delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference,
     salesperson_id, salesperson_display, project_id, currency, prices_include_vat,
     payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note,
     delivery_date, net_total, vat_total, gross_total,
@@ -34,17 +34,17 @@ INSERT INTO orders.orders (
     $12, $13, $14, $15,
     $16, $17, $18,
     $19, $20, $21, $22,
-    $23, $24, $25,
-    $26, $27, $28, $29,
-    $30, $31, $32, $33,
-    $34, $35, $36, $37,
-    $38, $39, $40,
-    $41, $42, $43, $44,
-    $45, $46, $47,
-    $48, $49,
-    $50, $51, $52, $52
+    $23, $24, $25, $26,
+    $27, $28, $29, $30,
+    $31, $32, $33, $34,
+    $35, $36, $37, $38,
+    $39, $40, $41,
+    $42, $43, $44, $45,
+    $46, $47, $48,
+    $49, $50,
+    $51, $52, $53, $53
 )
-RETURNING id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at
+RETURNING id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
 `
 
 type InsertOrderParams struct {
@@ -72,6 +72,7 @@ type InsertOrderParams struct {
 	ContactName                *string
 	ContactEmail               *string
 	ContactPhone               *string
+	CustomerInvoiceEmail       *string
 	YourReference              string
 	SalespersonID              *uuid.UUID
 	SalespersonDisplay         *string
@@ -131,6 +132,7 @@ func (q *Queries) InsertOrder(ctx context.Context, arg InsertOrderParams) (Order
 		arg.ContactName,
 		arg.ContactEmail,
 		arg.ContactPhone,
+		arg.CustomerInvoiceEmail,
 		arg.YourReference,
 		arg.SalespersonID,
 		arg.SalespersonDisplay,
@@ -198,6 +200,7 @@ func (q *Queries) InsertOrder(ctx context.Context, arg InsertOrderParams) (Order
 		&i.ContactName,
 		&i.ContactEmail,
 		&i.ContactPhone,
+		&i.CustomerInvoiceEmail,
 		&i.YourReference,
 		&i.SalespersonID,
 		&i.SalespersonDisplay,
@@ -227,12 +230,13 @@ func (q *Queries) InsertOrder(ctx context.Context, arg InsertOrderParams) (Order
 		&i.CreatedByDisplay,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }
 
 const orderByID = `-- name: OrderByID :one
-SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at FROM orders.orders WHERE id = $1
+SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.orders WHERE id = $1
 `
 
 // OrderByID reads one order, for its PDF and its mail (pdfdocs.go,
@@ -277,6 +281,7 @@ func (q *Queries) OrderByID(ctx context.Context, id int64) (OrdersOrder, error) 
 		&i.ContactName,
 		&i.ContactEmail,
 		&i.ContactPhone,
+		&i.CustomerInvoiceEmail,
 		&i.YourReference,
 		&i.SalespersonID,
 		&i.SalespersonDisplay,
@@ -306,6 +311,7 @@ func (q *Queries) OrderByID(ctx context.Context, id int64) (OrdersOrder, error) 
 		&i.CreatedByDisplay,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }

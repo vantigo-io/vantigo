@@ -49,7 +49,7 @@ func (s *server) settingsView(ctx context.Context, q *store.Queries, st ordersSe
 		NextOrderNumber: nextOrder, QuoteValidityDays: st.quoteValidityDays, DefaultPaymentTermsDays: st.defaultPaymentTermsDays,
 		ConfirmationOnConfirm: st.confirmationOnConfirm, CombineByDefault: st.combineByDefault,
 		MailTexts: []gen.OrdersMailText{}, SendingAvailable: s.deps.OutboundMail != nil, Revision: st.revision,
-		SendChannelId: st.sendChannel,
+		SendChannelId: st.sendChannel, SendChannels: []gen.OrdersSendChannel{}, SendChannelState: gen.Disabled,
 	}
 	for _, t := range st.mailTexts {
 		out.MailTexts = append(out.MailTexts, gen.OrdersMailText{
@@ -72,6 +72,9 @@ func (s *server) GetOrdersSettings(ctx context.Context, _ gen.GetOrdersSettingsR
 		return err
 	})
 	if err != nil {
+		return nil, err
+	}
+	if err := s.sendChannelsView(ctx, &out); err != nil {
 		return nil, err
 	}
 	return gen.GetOrdersSettings200JSONResponse(out), nil
@@ -199,6 +202,9 @@ func (s *server) PutOrdersSettings(ctx context.Context, req gen.PutOrdersSetting
 	})
 	if err != nil {
 		return answer(err, resp)
+	}
+	if err := s.sendChannelsView(ctx, &out); err != nil {
+		return nil, err
 	}
 	return gen.PutOrdersSettings200JSONResponse(out), nil
 }

@@ -266,3 +266,46 @@ func (s *server) objectExists(ctx context.Context, key string) (bool, error) {
 	}
 	return s.objects.Exists(ctx, key)
 }
+
+// outboundChannels is every active channel Communications offers (O25, MB
+// rule 17), before any transaction; none when Communications is off.
+func (s *server) outboundChannels(ctx context.Context) ([]contracts.OutboundChannel, error) {
+	if err := noteContractCall(ctx, "OutboundMail.Channels"); err != nil {
+		return nil, err
+	}
+	if s.deps.OutboundMail == nil {
+		return nil, nil
+	}
+	return s.deps.OutboundMail.Channels(ctx)
+}
+
+// permissionHolders is the active users holding key, before any transaction.
+func (s *server) permissionHolders(ctx context.Context, key string) ([]contracts.Holder, error) {
+	if err := noteContractCall(ctx, "Users.PermissionHolders"); err != nil {
+		return nil, err
+	}
+	if s.deps.Users == nil {
+		return nil, nil
+	}
+	h, err := s.deps.Users.PermissionHolders(ctx, key)
+	if err != nil {
+		return nil, fmt.Errorf("orders: read the holders of %s: %w", key, err)
+	}
+	return h, nil
+}
+
+// searchVariants is the catalog's search for a line (O16), before any
+// transaction.
+func (s *server) searchVariants(ctx context.Context, q string, search contracts.VariantSearch) ([]contracts.VariantEntry, error) {
+	if err := noteContractCall(ctx, "Products.SearchVariants"); err != nil {
+		return nil, err
+	}
+	if s.deps.Products == nil {
+		return nil, errDependencyUnavailable
+	}
+	v, err := s.deps.Products.SearchVariants(ctx, q, search)
+	if err != nil {
+		return nil, fmt.Errorf("orders: search the catalog: %w", err)
+	}
+	return v, nil
+}

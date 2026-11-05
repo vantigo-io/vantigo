@@ -10,7 +10,6 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/events"
-	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/orders/gen"
 	"github.com/vantigo-io/vantigo/server/internal/orders/store"
 )
@@ -48,9 +47,6 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 		if !s.has(ctx, permSalesConfirm) {
 			return gen.AcceptQuote403JSONResponse(apicommon.ForbiddenBody()), nil
 		}
-		if confirmOrderTx == nil {
-			return nil, module.ErrNotImplemented
-		}
 	}
 
 	q := store.New(s.deps.Pool)
@@ -80,6 +76,14 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 	if err != nil {
 		return nil, err
 	}
+	// Accept and confirm judges the customer as a confirm does, from the
+	// billing profile read before the transaction.
+	var customer *contracts.CustomerBillingProfile
+	if confirm {
+		if customer, err = s.billingProfile(ctx, quote.CustomerID); err != nil {
+			return answer(err, resp)
+		}
+	}
 
 	var out gen.OrdersAccepted
 	var confirmed *store.OrdersOrder
@@ -105,7 +109,7 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 			return err
 		}
 		if confirm {
-			if order, err = confirmOrderTx(ctx, s, tx, txq, order, orderLines, by); err != nil {
+			if order, err = confirmOrderTx(ctx, s, tx, txq, order, orderLines, by, customer); err != nil {
 				return err
 			}
 			confirmed = &order

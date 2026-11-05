@@ -123,3 +123,57 @@ func QueueOrderMailing(ctx context.Context, d module.Deps, orderID int64, versio
 
 // MailBackoff exposes the worker's backoff.
 func MailBackoff(attempts int32) time.Duration { return mailBackoff(attempts) }
+
+// RunRetentionCycle runs one cycle of the orders.retention worker over d and
+// answers whether it won the lease and how many orders it anonymised.
+func RunRetentionCycle(ctx context.Context, d module.Deps) (bool, int64, error) {
+	s, err := newServer(d)
+	if err != nil {
+		return false, 0, err
+	}
+	return (&retentionWorker{s: s}).cycle(ctx)
+}
+
+// RetentionLeaseKey is the retention worker's advisory lease.
+const RetentionLeaseKey = retentionLeaseKey
+
+// RetentionCutoff exposes the retention's cutoff.
+func RetentionCutoff(now time.Time, zone *time.Location) time.Time { return retentionCutoff(now, zone) }
+
+// RunQuoteExpiryCycle runs one cycle of the orders.quote_expiry worker over d
+// and answers how many quotes it expired.
+func RunQuoteExpiryCycle(ctx context.Context, d module.Deps) (int64, error) {
+	s, err := newServer(d)
+	if err != nil {
+		return 0, err
+	}
+	return (&quoteExpiryWorker{s: s}).cycle(ctx)
+}
+
+// CreateChannelOrder runs the create command as a channel would (O27, O28):
+// an order for customer of one catalog line, its origin channel and external
+// id given; created is false when the channel's reference made one already.
+func CreateChannelOrder(ctx context.Context, d module.Deps, customerID int32, channel, externalID string, variant int32, qty float64) (int64, bool, error) {
+	s, err := newServer(d)
+	if err != nil {
+		return 0, false, err
+	}
+	var f fieldErrors
+	in := headerInput{CustomerID: customerID}
+	reads, err := s.readHeader(ctx, in, nil)
+	if err != nil {
+		return 0, false, err
+	}
+	h := resolveHeader(&f, in, nil, reads)
+	if f.failed() {
+		return 0, false, fmt.Errorf("header: %v", f.errs)
+	}
+	priced, err := s.priceOrderInputs(ctx, []lineInput{{kind: kindProduct, variantID: &variant, quantity: &qty}}, nil, h, false)
+	if err != nil {
+		return 0, false, err
+	}
+	o, _, created, err := s.createOrderOnce(ctx, CreateOrder{
+		Origin: OrderOrigin{Channel: channel, ExternalID: &externalID}, Header: h, Lines: priced,
+	})
+	return o.ID, created, err
+}
