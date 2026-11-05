@@ -3,7 +3,7 @@ import { notifications } from "@mantine/notifications";
 import { IconCircleCheck, IconDeviceFloppy, IconPlayerPause, IconX } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   cancelDelivery,
@@ -215,13 +215,13 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
           </Group>
         </Card>
       )}
-      <Card withBorder padding="lg">
+      <PageSection>
         <Stack gap="xs">
           <Title order={5}>{t("deliveryAddress")}</Title>
           <Text size="sm">{address || "—"}</Text>
         </Stack>
-      </Card>
-      <Card withBorder padding="lg">
+      </PageSection>
+      <PageSection>
         <Stack gap="md">
           <Title order={4}>{t("lines")}</Title>
           <Table.ScrollContainer minWidth={720}>
@@ -305,7 +305,7 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
             </Text>
           )}
         </Stack>
-      </Card>
+      </PageSection>
       <ShipmentsCard
         deliveryId={delivery.id}
         posted={delivery.status === "posted"}

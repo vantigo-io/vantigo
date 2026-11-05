@@ -2,7 +2,15 @@ import { ActionIcon, Alert, Box, Group, Select, Stack, Table, Tabs, Text } from 
 import { IconAlertCircle, IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, PageTabs, useI18n, useLocale } from "@vantigo/frontend-shell";
+import {
+  ContentSkeleton,
+  EmptyState,
+  PageHeader,
+  PageSection,
+  PageTabs,
+  useI18n,
+  useLocale,
+} from "@vantigo/frontend-shell";
 import { calendarQueryOptions, type StaffAbsence, type StaffCalendarPerson } from "../api/absence";
 import { type StaffAbsenceType, type StaffStructure, staffMetaQueryOptions } from "../api/meta";
 import { ApprovalsInbox } from "../components/approvals";
@@ -121,63 +129,65 @@ const AbsenceCalendar = ({
   const departments = structure?.departments.filter((one) => !one.archivedAt || one.id === departmentId) ?? [];
 
   return (
-    <Stack gap="md">
-      <Group justify="space-between" wrap="wrap" gap="sm">
-        <Group gap="xs" wrap="nowrap">
-          <ActionIcon
-            variant="default"
-            size="lg"
-            aria-label={t("previousMonth")}
-            onClick={() => onChange({ month: shiftMonth(month, -1) })}
-          >
-            <IconChevronLeft size={18} />
-          </ActionIcon>
-          <Text fw={600} miw={140} ta="center" aria-live="polite">
-            {title}
-          </Text>
-          <ActionIcon
-            variant="default"
-            size="lg"
-            aria-label={t("nextMonth")}
-            onClick={() => onChange({ month: shiftMonth(month, 1) })}
-          >
-            <IconChevronRight size={18} />
-          </ActionIcon>
+    <PageSection>
+      <Stack gap="md">
+        <Group justify="space-between" wrap="wrap" gap="sm">
+          <Group gap="xs" wrap="nowrap">
+            <ActionIcon
+              variant="default"
+              size="lg"
+              aria-label={t("previousMonth")}
+              onClick={() => onChange({ month: shiftMonth(month, -1) })}
+            >
+              <IconChevronLeft size={18} />
+            </ActionIcon>
+            <Text fw={600} miw={140} ta="center" aria-live="polite">
+              {title}
+            </Text>
+            <ActionIcon
+              variant="default"
+              size="lg"
+              aria-label={t("nextMonth")}
+              onClick={() => onChange({ month: shiftMonth(month, 1) })}
+            >
+              <IconChevronRight size={18} />
+            </ActionIcon>
+          </Group>
+          {departments.length > 0 && (
+            <Select
+              label={t("department")}
+              data={[
+                { value: "", label: t("allDepartments") },
+                ...departments.map((one) => ({ value: String(one.id), label: one.name })),
+              ]}
+              value={departmentId === undefined ? "" : String(departmentId)}
+              onChange={(value) => onChange({ departmentId: value ? Number(value) : undefined })}
+              allowDeselect={false}
+              w={{ base: "100%", xs: 240 }}
+            />
+          )}
         </Group>
-        {departments.length > 0 && (
-          <Select
-            label={t("department")}
-            data={[
-              { value: "", label: t("allDepartments") },
-              ...departments.map((one) => ({ value: String(one.id), label: one.name })),
-            ]}
-            value={departmentId === undefined ? "" : String(departmentId)}
-            onChange={(value) => onChange({ departmentId: value ? Number(value) : undefined })}
-            allowDeselect={false}
-            w={{ base: "100%", xs: 240 }}
+        <Text size="sm" c="dimmed">
+          {t("calendarLegend")}
+        </Text>
+        {calendar.isError && (
+          <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadCalendar")}>
+            {calendar.error.message}
+          </Alert>
+        )}
+        {calendar.isPending && <ContentSkeleton rows={4} rowHeight={32} />}
+        {calendar.data && calendar.data.people.length === 0 && <EmptyState title={t("calendarEmpty")} />}
+        {calendar.data && calendar.data.people.length > 0 && (
+          <MonthTable
+            title={t("calendarTable", { month: title })}
+            days={daysOf(from, to)}
+            holidays={calendar.data.publicHolidays}
+            people={calendar.data.people}
+            types={types}
           />
         )}
-      </Group>
-      <Text size="sm" c="dimmed">
-        {t("calendarLegend")}
-      </Text>
-      {calendar.isError && (
-        <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadCalendar")}>
-          {calendar.error.message}
-        </Alert>
-      )}
-      {calendar.isPending && <ContentSkeleton rows={4} rowHeight={32} />}
-      {calendar.data && calendar.data.people.length === 0 && <EmptyState title={t("calendarEmpty")} />}
-      {calendar.data && calendar.data.people.length > 0 && (
-        <MonthTable
-          title={t("calendarTable", { month: title })}
-          days={daysOf(from, to)}
-          holidays={calendar.data.publicHolidays}
-          people={calendar.data.people}
-          types={types}
-        />
-      )}
-    </Stack>
+      </Stack>
+    </PageSection>
   );
 };
 

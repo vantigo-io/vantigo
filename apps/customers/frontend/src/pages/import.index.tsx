@@ -1,10 +1,10 @@
-import { ActionIcon, Alert, Anchor, Badge, Box, Button, Card, Group, Loader, Stack, Table, Text } from "@mantine/core";
+import { ActionIcon, Alert, Anchor, Badge, Box, Button, Group, Loader, Stack, Table, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { type ChangeEvent, type DragEvent, useId, useState } from "react";
 import { downloadImportTemplate, isSessionExpired, saveCsv } from "../api/import-export";
 import {
@@ -121,7 +121,7 @@ export const ImportStartPage = () => {
         title={t("importTitle")}
         description={t("importPageIntro")}
       />
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Box
             p="lg"
@@ -170,9 +170,9 @@ export const ImportStartPage = () => {
             </Alert>
           )}
         </Stack>
-      </Card>
+      </PageSection>
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Text fw={600}>{t("importRecentTitle")}</Text>
           {imports.isPending ? (
@@ -237,7 +237,7 @@ export const ImportStartPage = () => {
             </Button>
           </Group>
         </Stack>
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

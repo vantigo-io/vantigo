@@ -1,8 +1,9 @@
-import { Alert, Button, Card, CopyButton, Group, Image, Stack, Text, Title } from "@mantine/core";
+import { Alert, Button, CopyButton, Group, Image, Stack, Text, Title } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconCopy, IconLink, IconLinkOff } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { PageSection } from "@vantigo/frontend-shell";
 import type { InvoiceDocument } from "../api/invoices";
 import { makePayLink, revokePayLink } from "../api/paylink";
 import { INVOICES_QUERY_KEY } from "../api/request";
@@ -64,7 +65,7 @@ export const PayLinkCard = ({ invoice, canIssue, payLinksAvailable }: PayLinkCar
       onConfirm: () => revoke.mutate(),
     });
   return (
-    <Card withBorder data-testid="pay-link-card">
+    <PageSection data-testid="pay-link-card">
       <Stack gap="xs">
         <Group justify="space-between">
           <Title order={4}>{t("payLink.title")}</Title>
@@ -123,6 +124,6 @@ export const PayLinkCard = ({ invoice, canIssue, payLinksAvailable }: PayLinkCar
           )
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

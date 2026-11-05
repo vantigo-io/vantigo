@@ -14,7 +14,7 @@ import {
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n, useShellLink } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n, useShellLink } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { unapproveTimeEntries } from "../api/approvals";
 import { deleteTimeEntry, type TimeEntry } from "../api/entries";
@@ -148,9 +148,9 @@ export const DayPage = ({ invoiceHref }: DayPageProps = {}) => {
       {isPending && <ContentSkeleton rows={3} rowHeight={72} />}
 
       {data && entries.length === 0 && (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <EmptyState title={t("noEntries")} description={t("noEntriesDescription")} />
-        </Card>
+        </PageSection>
       )}
 
       {entries.length > 0 && (

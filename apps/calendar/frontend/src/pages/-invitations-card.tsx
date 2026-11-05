@@ -1,8 +1,8 @@
-import { Alert, Badge, Button, Card, Group, Radio, Stack, Text, Title } from "@mantine/core";
+import { Alert, Badge, Button, Group, Radio, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   invitationSettingsQueryKey,
@@ -72,7 +72,7 @@ export const InvitationsCard = () => {
   const gone = chosen !== null && !channels.some((channel) => channel.id === chosen);
   const selected = gone || chosen === null ? OFF : chosen;
   return (
-    <Card withBorder component="section" aria-label={t("settings.invitations.title")}>
+    <PageSection component="section" aria-label={t("settings.invitations.title")}>
       <Stack>
         <Title order={4}>{t("settings.invitations.title")}</Title>
         {query.isError && (
@@ -149,6 +149,6 @@ export const InvitationsCard = () => {
           </>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

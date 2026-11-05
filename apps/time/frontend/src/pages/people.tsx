@@ -1,8 +1,8 @@
-import { Alert, Badge, Card, Group, Select, Stack, Table, Text } from "@mantine/core";
+import { Alert, Badge, Group, Select, Stack, Table, Text } from "@mantine/core";
 import { IconAlertCircle, IconLock } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { PEOPLE_DEFAULT_WEEKS, peopleOverviewQueryOptions, type TimePersonWeek } from "../api/people";
 import type { ApiError } from "../api/request";
 import "../i18n";
@@ -65,7 +65,7 @@ export const PeoplePage = () => {
         </Group>
       )}
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         {isError && !forbidden && (
           <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadPeople")}>
             {error.message}
@@ -111,7 +111,7 @@ export const PeoplePage = () => {
             </Table>
           </Table.ScrollContainer>
         )}
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

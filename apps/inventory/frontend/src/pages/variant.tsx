@@ -1,8 +1,8 @@
-import { Alert, Badge, Button, Card, Group, Stack, Text, Title } from "@mantine/core";
+import { Alert, Badge, Button, Group, Stack, Text, Title } from "@mantine/core";
 import { IconAdjustments, IconAlertCircle, IconPackage, IconPackageImport } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { inventoryMetaQueryOptions } from "../api/meta";
 import { variantStockQueryOptions } from "../api/stock";
 import { MovementList } from "../components/movement-list";
@@ -74,7 +74,7 @@ export const VariantStockPage = () => {
       ) : stock.isPending ? (
         <ContentSkeleton rows={4} />
       ) : (
-        <Card withBorder>
+        <PageSection>
           <Stack gap="md">
             <Group justify="space-between">
               <Title order={4}>{t("stockCardTitle")}</Title>
@@ -115,14 +115,14 @@ export const VariantStockPage = () => {
               ))
             )}
           </Stack>
-        </Card>
+        </PageSection>
       )}
-      <Card withBorder>
+      <PageSection>
         <Stack gap="sm">
           <Title order={4}>{t("navMovements")}</Title>
           <MovementList filter={{ variantId }} limit={20} />
         </Stack>
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

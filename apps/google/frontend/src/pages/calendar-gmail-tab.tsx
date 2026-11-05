@@ -1,6 +1,5 @@
-import { Card } from "@mantine/core";
 import { IconCalendar } from "@tabler/icons-react";
-import { EmptyState, useI18n } from "@vantigo/frontend-shell";
+import { EmptyState, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { PeopleConnectionCard } from "../components/people-connection";
 import "../i18n";
 import { TabFrame } from "./tab-frame";
@@ -18,13 +17,13 @@ export function GoogleCalendarGmailTab() {
       {({ connection, owner }) => (
         <>
           <PeopleConnectionCard connection={connection} owner={owner} />
-          <Card withBorder radius="md" padding="lg">
+          <PageSection>
             <EmptyState
               icon={IconCalendar}
               title={t("calendarGmailComingTitle")}
               description={t("calendarGmailComing")}
             />
-          </Card>
+          </PageSection>
         </>
       )}
     </TabFrame>

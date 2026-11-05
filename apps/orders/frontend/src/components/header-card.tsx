@@ -1,6 +1,5 @@
 import {
   Button,
-  Card,
   Collapse,
   Group,
   NumberInput,
@@ -18,6 +17,7 @@ import {
 import { DateInput } from "@mantine/dates";
 import { IconChevronDown, IconChevronRight, IconUserCheck } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
+import { PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { customerAddressesQueryOptions, customerContactsQueryOptions } from "../api/customers";
 import { sitesQueryOptions } from "../api/deliveries";
@@ -149,7 +149,7 @@ export const HeaderCard = ({
     });
 
   return (
-    <Card withBorder padding="lg" data-testid="header-card">
+    <PageSection data-testid="header-card">
       <Stack gap="md">
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md" verticalSpacing="sm">
           {editable.draft && access.canViewCustomers ? (
@@ -401,6 +401,6 @@ export const HeaderCard = ({
           </Collapse>
         </Stack>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

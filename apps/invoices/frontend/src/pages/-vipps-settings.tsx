@@ -1,21 +1,9 @@
-import {
-  Alert,
-  Badge,
-  Button,
-  Card,
-  Group,
-  PasswordInput,
-  SimpleGrid,
-  Stack,
-  Text,
-  TextInput,
-  Title,
-} from "@mantine/core";
+import { Alert, Badge, Button, Group, PasswordInput, SimpleGrid, Stack, Text, TextInput, Title } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { invoicesMetaQueryOptions } from "../api/meta";
 import { ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
@@ -150,7 +138,7 @@ const VippsForm = ({ stored }: { stored: VippsSettings }) => {
       return next;
     });
   return (
-    <Card withBorder data-testid="vipps-settings">
+    <PageSection data-testid="vipps-settings">
       <Stack>
         <Group justify="space-between">
           <Title order={4}>{t("vipps.title")}</Title>
@@ -231,6 +219,6 @@ const VippsForm = ({ stored }: { stored: VippsSettings }) => {
           </Button>
         </Group>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

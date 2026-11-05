@@ -2,7 +2,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Group,
   MultiSelect,
   SegmentedControl,
@@ -15,7 +14,7 @@ import {
 import { DateInput, MonthPickerInput, YearPickerInput } from "@mantine/dates";
 import { IconAlertCircle, IconCalendar, IconChartLine, IconFileImport } from "@tabler/icons-react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   type SpotPriceCoverageArea,
@@ -350,7 +349,7 @@ export const PricesPage = ({
         }
       />
       {canImport && <ImportPricesModal opened={importOpen} onClose={() => setImportOpen(false)} />}
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Group gap="sm">
             <Title order={3}>{t("pricesCoverage")}</Title>
@@ -408,9 +407,9 @@ export const PricesPage = ({
               </Table.ScrollContainer>
             ))}
         </Stack>
-      </Card>
+      </PageSection>
       {compared.length > 0 && (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <Stack gap="md">
             <Group gap="sm">
               <Title order={3}>{t("spotPrices")}</Title>
@@ -537,7 +536,7 @@ export const PricesPage = ({
                 </>
               ))}
           </Stack>
-        </Card>
+        </PageSection>
       )}
     </Stack>
   );

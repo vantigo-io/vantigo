@@ -1,9 +1,9 @@
-import { Alert, Anchor, Badge, Button, Card, Group, Pagination, Select, Stack, Table, Text } from "@mantine/core";
+import { Alert, Anchor, Badge, Button, Group, Pagination, Select, Stack, Table, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import {
   FOLLOW_UP_ASSIGNEES,
   FOLLOW_UP_STATES,
@@ -65,7 +65,7 @@ export const FollowUpsPage = ({ canManageTimeline }: { canManageTimeline?: boole
   return (
     <Stack gap="lg">
       <PageHeader title={t("followUps")} description={t("followUpsDescription")} />
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Group gap="sm" wrap="wrap">
             <Select
@@ -193,7 +193,7 @@ export const FollowUpsPage = ({ canManageTimeline }: { canManageTimeline?: boole
             </Group>
           )}
         </Stack>
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

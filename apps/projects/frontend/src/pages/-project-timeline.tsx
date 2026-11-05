@@ -1,7 +1,7 @@
-import { Alert, Card, Group, Pagination, Stack, Text, Timeline } from "@mantine/core";
+import { Alert, Group, Pagination, Stack, Text, Timeline } from "@mantine/core";
 import { IconAlertCircle, IconHistory } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { projectTimelineQueryOptions, type TimelineEntry } from "../api/projects";
 import "../i18n";
@@ -159,7 +159,7 @@ export const ProjectTimeline = ({ projectId }: { projectId: number }) => {
   const entries = data?.data ?? [];
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <Group gap="xs">
           <IconHistory size={18} aria-hidden="true" />
@@ -192,6 +192,6 @@ export const ProjectTimeline = ({ projectId }: { projectId: number }) => {
           </Group>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

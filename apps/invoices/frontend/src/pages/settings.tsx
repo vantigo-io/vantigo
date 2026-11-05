@@ -3,7 +3,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Checkbox,
   Group,
   List,
@@ -33,7 +32,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { type ChangeEvent, useState } from "react";
 import {
   type AccessPoint,
@@ -354,7 +353,7 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
           onReload={() => reload.mutate()}
         />
       )}
-      <Card withBorder>
+      <PageSection>
         <Stack>
           <Title order={4}>{t("seller")}</Title>
           <List spacing={4} size="sm" aria-label={t("completeness")}>
@@ -434,8 +433,8 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
             onChange={(v) => set("seriesStart", typeof v === "number" ? v : Number(v) || 1)}
           />
         </Stack>
-      </Card>
-      <Card withBorder data-testid="e-invoicing-card">
+      </PageSection>
+      <PageSection data-testid="e-invoicing-card">
         <Stack>
           <Title order={4}>{t("eInvoicing")}</Title>
           <Text size="sm" c="dimmed">
@@ -474,7 +473,7 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
           />
           {meta.data && <AccessPointSection meta={meta.data} />}
         </Stack>
-      </Card>
+      </PageSection>
       <SendingCard settings={settings} values={values} errors={errors} set={set} />
       <KidCard settings={settings} values={values} errors={errors} set={set} />
       <WorkCard stored={settings.workVatCodes} values={values} errors={errors} set={set} />
@@ -535,7 +534,7 @@ const KidCard = ({ settings, values, errors, set }: KidCardProps) => {
     return kid ? { tone: "default", words: t("kidPreview", { kid, number: next }) } : undefined;
   })();
   return (
-    <Card withBorder data-testid="kid-card">
+    <PageSection data-testid="kid-card">
       <Stack>
         <Title order={4}>{t("kid")}</Title>
         <Text size="sm" c="dimmed">
@@ -586,7 +585,7 @@ const KidCard = ({ settings, values, errors, set }: KidCardProps) => {
           </Alert>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -628,7 +627,7 @@ const EnergyCard = ({
   const options = useStoredCodeOptions(new Set(Object.values(stored)));
   const codes = values.energyVatCodes;
   return (
-    <Card withBorder data-testid="energy-card">
+    <PageSection data-testid="energy-card">
       <Stack>
         <Title order={4}>{t("consumptionToInvoice")}</Title>
         <Text size="sm" c="dimmed">
@@ -650,7 +649,7 @@ const EnergyCard = ({
           ))}
         </SimpleGrid>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -677,7 +676,7 @@ const WorkCard = ({
   const { t } = useInvoiceFormat();
   const options = useStoredCodeOptions(new Set(Object.values(stored)));
   return (
-    <Card withBorder data-testid="work-card">
+    <PageSection data-testid="work-card">
       <Stack>
         <Title order={4}>{t("workToInvoice")}</Title>
         <Text size="sm" c="dimmed">
@@ -714,7 +713,7 @@ const WorkCard = ({
           onChange={(v) => v && set("timesheetPersonLabel", v as InvoiceSettings["timesheetPersonLabel"])}
         />
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -841,7 +840,7 @@ const AccessPointForm = ({ meta, stored }: { meta: InvoicesMeta; stored: AccessP
     });
   const busy = save.isPending || verify.isPending || remove.isPending;
   return (
-    <Card withBorder data-testid="access-point">
+    <PageSection data-testid="access-point">
       <Stack>
         <Group justify="space-between">
           <Title order={5}>{t("accessPoint")}</Title>
@@ -932,7 +931,7 @@ const AccessPointForm = ({ meta, stored }: { meta: InvoicesMeta; stored: AccessP
           </Button>
         </Group>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -945,7 +944,7 @@ const VatCodesSection = () => {
   const [modal, setModal] = useState<CodeModal>(null);
   const today = meta.data?.today ?? "";
   return (
-    <Card withBorder>
+    <PageSection>
       <Stack>
         <Group justify="space-between">
           <Title order={4}>{t("vatCodes")}</Title>
@@ -1023,7 +1022,7 @@ const VatCodesSection = () => {
           onClose={() => setModal(null)}
         />
       )}
-    </Card>
+    </PageSection>
   );
 };
 
@@ -1063,7 +1062,7 @@ const TaxCategoriesCard = ({ canReadNames }: { canReadNames: boolean }) => {
   ];
   const failed = mappings.error ?? categories.error;
   return (
-    <Card withBorder data-testid="tax-categories-card">
+    <PageSection data-testid="tax-categories-card">
       <Stack>
         <Title order={4}>{t("taxCategories.title")}</Title>
         <Text size="sm" c="dimmed">
@@ -1117,7 +1116,7 @@ const TaxCategoriesCard = ({ canReadNames }: { canReadNames: boolean }) => {
           </Table>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 

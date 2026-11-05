@@ -1,10 +1,10 @@
-import { ActionIcon, Alert, Badge, Box, Button, Card, Group, Modal, Select, Stack, Table, Text } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Box, Button, Group, Modal, Select, Stack, Table, Text } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useId, useState } from "react";
 import {
   assignableUsersQueryOptions,
@@ -57,7 +57,7 @@ export const ProjectPeople = ({ projectId }: { projectId: number }) => {
   const people = assignments ?? [];
 
   return (
-    <Card withBorder padding="lg" radius="md" mt="md">
+    <PageSection mt="md">
       <Stack gap="md">
         <Group justify="space-between" wrap="wrap">
           <Text fw={600} component="h3" id={headingId}>
@@ -100,7 +100,7 @@ export const ProjectPeople = ({ projectId }: { projectId: number }) => {
       </Stack>
 
       <AddPersonModal projectId={projectId} opened={addOpen} onClose={() => setAddOpen(false)} />
-    </Card>
+    </PageSection>
   );
 };
 

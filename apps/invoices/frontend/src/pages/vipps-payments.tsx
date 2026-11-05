@@ -1,23 +1,10 @@
-import {
-  ActionIcon,
-  Alert,
-  Anchor,
-  Button,
-  Card,
-  Group,
-  Modal,
-  Stack,
-  Table,
-  Tabs,
-  Text,
-  Textarea,
-} from "@mantine/core";
+import { ActionIcon, Alert, Anchor, Button, Group, Modal, Stack, Table, Tabs, Text, Textarea } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconChevronLeft, IconChevronRight, IconDownload } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { appUrl, ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { appUrl, ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { downloadVippsPaymentsCsv, reconcileVippsDay, vippsPaymentsDayQueryOptions } from "../api/attempts";
 import { isSessionExpired, saveCsv } from "../api/export";
@@ -157,7 +144,7 @@ const VippsDay = ({ today, currency, canReconcile }: { today: string; currency: 
       )}
       {list.isPending && <ContentSkeleton rows={3} rowHeight={40} />}
       {data && (
-        <Card withBorder>
+        <PageSection>
           <Stack gap="sm">
             <Group gap="lg" data-testid="vipps-totals">
               <Text size="sm">{t("vippsDay.count", { count: data.count })}</Text>
@@ -238,7 +225,7 @@ const VippsDay = ({ today, currency, canReconcile }: { today: string; currency: 
               </Table.ScrollContainer>
             )}
           </Stack>
-        </Card>
+        </PageSection>
       )}
       {reconciling && <ReconcileModal day={day} onClose={() => setReconciling(false)} />}
     </>

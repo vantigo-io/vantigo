@@ -5,7 +5,6 @@ import {
   Badge,
   Box,
   Button,
-  Card,
   Group,
   Menu,
   SimpleGrid,
@@ -17,7 +16,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconDots, IconInfoCircle, IconLock, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, useI18n, useShellLink } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection, useI18n, useShellLink } from "@vantigo/frontend-shell";
 import { type ReactNode, useId, useState } from "react";
 import {
   type Economy,
@@ -193,7 +192,7 @@ const BudgetSection = ({ projectId }: { projectId: number }) => {
   }
 
   return (
-    <Card withBorder padding="lg" radius="md" data-testid="project-budget">
+    <PageSection data-testid="project-budget">
       <Stack gap="md">
         <Stack gap={2}>
           <Text fw={600} component="h3" id={headingId}>
@@ -332,7 +331,7 @@ const BudgetSection = ({ projectId }: { projectId: number }) => {
 
         <WorkTypeTable economy={economy} currency={currency} />
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -432,7 +431,7 @@ const ExpensesSection = ({ projectId }: { projectId: number }) => {
   const recorded = buckets.some(({ bucket }) => (bucket?.count ?? 0) > 0) || others.length > 0;
 
   return (
-    <Card withBorder padding="lg" radius="md" data-testid="project-expenses">
+    <PageSection data-testid="project-expenses">
       <Stack gap="md">
         <Stack gap={2}>
           <Text fw={600} component="h3" id={headingId}>
@@ -580,7 +579,7 @@ const ExpensesSection = ({ projectId }: { projectId: number }) => {
           {t("expensesNotInBudget", { budgetUsed: t("budgetUsed") })}
         </Text>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -730,7 +729,7 @@ const InvoicePlan = ({
     <>
       {plan && <HeadlineFigures totals={plan.totals} />}
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Group justify="space-between" wrap="wrap">
             <Stack gap={2}>
@@ -813,7 +812,7 @@ const InvoicePlan = ({
 
           {plan && <PlanFooter totals={plan.totals} />}
         </Stack>
-      </Card>
+      </PageSection>
 
       <MilestoneFormModal
         projectId={projectId}
@@ -870,13 +869,13 @@ const HeadlineFigures = ({ totals }: { totals: BillingMilestoneTotals }) => {
   const { money } = useEconomyFormat(totals.currency ?? undefined);
 
   return (
-    <Card withBorder padding="lg" radius="md" data-testid="milestone-totals">
+    <PageSection data-testid="milestone-totals">
       <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
         <Field label={t("plannedTotal")}>{money(totals.planned)}</Field>
         <Field label={t("readyTotal")}>{money(totals.ready)}</Field>
         <Field label={t("invoicedTotal")}>{money(totals.invoiced)}</Field>
       </SimpleGrid>
-    </Card>
+    </PageSection>
   );
 };
 

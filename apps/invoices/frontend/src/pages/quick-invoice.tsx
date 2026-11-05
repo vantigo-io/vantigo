@@ -3,7 +3,6 @@ import {
   Alert,
   Anchor,
   Button,
-  Card,
   Center,
   Group,
   Loader,
@@ -18,7 +17,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCircleCheck, IconDownload, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { appUrl, ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { appUrl, ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useEffect, useRef, useState } from "react";
 import {
   cancelPaymentRequest,
@@ -460,7 +459,7 @@ const QuickInvoice = ({ meta, canCreateCustomers }: { meta: InvoicesMeta; canCre
       )}
       <fieldset disabled={issue.isPending} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <Stack gap="md">
-          <Card withBorder>
+          <PageSection>
             <Stack gap="sm">
               <Group align="flex-end">
                 <div style={{ flex: 1 }}>
@@ -510,8 +509,8 @@ const QuickInvoice = ({ meta, canCreateCustomers }: { meta: InvoicesMeta; canCre
                 }}
               />
             </Stack>
-          </Card>
-          <Card withBorder>
+          </PageSection>
+          <PageSection>
             <Stack gap="sm">
               <Text fw={500}>{t("quick.lines")}</Text>
               {lines.map((l, i) => (
@@ -590,7 +589,7 @@ const QuickInvoice = ({ meta, canCreateCustomers }: { meta: InvoicesMeta; canCre
                 </Button>
               </Group>
             </Stack>
-          </Card>
+          </PageSection>
         </Stack>
       </fieldset>
       {failure?.kind === "alreadyIssued" && (

@@ -1,4 +1,5 @@
-import { Card, Group, SimpleGrid, Stack, Text, Title } from "@mantine/core";
+import { Group, SimpleGrid, Stack, Text, Title } from "@mantine/core";
+import { PageSection } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 
 export interface FieldGroupProps {
@@ -16,7 +17,7 @@ export interface FieldGroupProps {
  * groups on screen are exactly what the server let this reader see.
  */
 export const FieldGroup = ({ title, description, actions, children }: FieldGroupProps) => (
-  <Card withBorder radius="md" padding="lg" component="section" aria-label={title}>
+  <PageSection component="section" aria-label={title}>
     <Stack gap="sm">
       <Group justify="space-between" align="flex-start" wrap="wrap" gap="xs">
         <div>
@@ -33,7 +34,7 @@ export const FieldGroup = ({ title, description, actions, children }: FieldGroup
       </Group>
       {children}
     </Stack>
-  </Card>
+  </PageSection>
 );
 
 /** A label and its value; a value of undefined, null or "" is a field the response did not carry. */

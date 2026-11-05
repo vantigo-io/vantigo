@@ -1,9 +1,9 @@
-import { ActionIcon, Alert, Anchor, Button, Card, Divider, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Alert, Anchor, Button, Divider, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconAddressBook, IconMail, IconPencil, IconPhone, IconWorld } from "@tabler/icons-react";
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { EmptyState, useI18n } from "@vantigo/frontend-shell";
+import { EmptyState, PageSection, useI18n } from "@vantigo/frontend-shell";
 import type { ComponentType, ReactNode } from "react";
 import { useState } from "react";
 import {
@@ -48,7 +48,7 @@ export const CustomerContactCard = ({
   const [contactModalOpened, setContactModalOpened] = useState(false);
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="lg">
         <Group gap="xs">
           <IconAddressBook size={18} stroke={1.5} />
@@ -75,7 +75,7 @@ export const CustomerContactCard = ({
         customer={customer}
         onClose={() => setContactModalOpened(false)}
       />
-    </Card>
+    </PageSection>
   );
 };
 

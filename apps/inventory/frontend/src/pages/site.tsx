@@ -1,4 +1,4 @@
-import { ActionIcon, Alert, Badge, Button, Card, Group, Menu, Stack, Switch, Text } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Button, Group, Menu, Stack, Switch, Text } from "@mantine/core";
 import {
   IconAlertCircle,
   IconAlertTriangle,
@@ -14,7 +14,7 @@ import {
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { type InventoryLocation, siteLocationListQueryOptions } from "../api/locations";
 import { inventoryMetaQueryOptions } from "../api/meta";
@@ -194,7 +194,7 @@ export const SitePage = () => {
       ) : site.isPending || list.isPending ? (
         <ContentSkeleton rows={6} rowHeight={32} />
       ) : (
-        <Card withBorder>
+        <PageSection>
           <Stack gap="sm">
             <Group justify="space-between">
               <Text fw={500}>{t("locations")}</Text>
@@ -233,7 +233,7 @@ export const SitePage = () => {
               {t("locationCount", { count: site.data?.locationCount ?? 0 })}
             </Text>
           </Stack>
-        </Card>
+        </PageSection>
       )}
       {dialog?.type === "new" && (
         <LocationFormModal opened onClose={() => setDialog(undefined)} siteId={siteId} parentId={dialog.parent.id} />

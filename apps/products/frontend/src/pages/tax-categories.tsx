@@ -2,7 +2,6 @@ import {
   ActionIcon,
   Alert,
   Button,
-  Card,
   Group,
   Modal,
   NumberInput,
@@ -16,7 +15,7 @@ import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import "../i18n";
 import type { ApiError } from "../api/request";
@@ -90,7 +89,7 @@ export const TaxCategoriesPage = () => {
           {error}
         </Alert>
       )}
-      <Card withBorder>
+      <PageSection>
         <Table striped>
           <Table.Thead>
             <Table.Tr>
@@ -142,7 +141,7 @@ export const TaxCategoriesPage = () => {
             {t("taxCategories.noCategories")}
           </Text>
         )}
-      </Card>
+      </PageSection>
       <Modal
         opened={editing !== undefined}
         onClose={() => setEditing(undefined)}

@@ -2,7 +2,6 @@ import {
   ActionIcon,
   Alert,
   Badge,
-  Card,
   Code,
   CopyButton,
   Group,
@@ -13,7 +12,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { IconCheck, IconCopy, IconLock, IconRoute } from "@tabler/icons-react";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageSection, useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useId } from "react";
 
 /**
@@ -33,7 +32,7 @@ export const SectionCard = ({
 }) => {
   const id = useId();
   return (
-    <Card withBorder radius="md" padding="lg" component="section" aria-labelledby={id}>
+    <PageSection component="section" aria-labelledby={id}>
       <Group justify="space-between" mb="sm" wrap="nowrap" align="flex-start">
         <Group gap="sm" wrap="nowrap">
           {leading}
@@ -44,7 +43,7 @@ export const SectionCard = ({
         {badge}
       </Group>
       <Stack gap="sm">{children}</Stack>
-    </Card>
+    </PageSection>
   );
 };
 

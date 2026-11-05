@@ -1,5 +1,6 @@
-import { Anchor, Badge, Card, Stack, Table, Text, Title } from "@mantine/core";
+import { Anchor, Badge, Stack, Table, Text, Title } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
+import { PageSection } from "@vantigo/frontend-shell";
 import type { OrderInvoice } from "../api/types";
 import { hasWords } from "../lib/errors";
 import { useOrdersFormat } from "../lib/format";
@@ -22,7 +23,7 @@ export interface InvoicesCardProps {
 export const InvoicesCard = ({ invoices, canViewInvoices }: InvoicesCardProps) => {
   const { t, money, date } = useOrdersFormat();
   return (
-    <Card withBorder padding="lg" data-testid="invoices-card">
+    <PageSection data-testid="invoices-card">
       <Stack gap="md">
         <Title order={4}>{t("orderInvoices")}</Title>
         {invoices.length === 0 ? (
@@ -82,6 +83,6 @@ export const InvoicesCard = ({ invoices, canViewInvoices }: InvoicesCardProps) =
           </Table.ScrollContainer>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

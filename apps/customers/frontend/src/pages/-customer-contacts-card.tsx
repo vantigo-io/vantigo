@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   Button,
-  Card,
   Combobox,
   Divider,
   Group,
@@ -20,7 +19,7 @@ import { notifications } from "@mantine/notifications";
 import { IconPencil, IconPlus, IconUserOff, IconUsersGroup } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   attachCustomerContact,
@@ -109,7 +108,7 @@ export const CustomerContactsCard = ({
     });
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <Group justify="space-between">
           <Group gap="xs">
@@ -230,7 +229,7 @@ export const CustomerContactsCard = ({
         onClose={() => setAddModalOpened(false)}
       />
       <EditConnectionModal target={editing} onClose={() => setEditing(null)} />
-    </Card>
+    </PageSection>
   );
 };
 

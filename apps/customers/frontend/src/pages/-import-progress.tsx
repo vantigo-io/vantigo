@@ -1,8 +1,8 @@
-import { Alert, Button, Card, Group, Progress, Stack, Text } from "@mantine/core";
+import { Alert, Button, Group, Progress, Stack, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { IconAlertCircle, IconClock } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageSection, useI18n } from "@vantigo/frontend-shell";
 import { type CustomerImport, importQueryKey, stopImport } from "../api/imports";
 import "../i18n";
 
@@ -47,7 +47,7 @@ export const ImportProgress = ({ imp, now = () => Date.now() }: { imp: CustomerI
     now() - new Date(imp.requestedAt).getTime() > WAITING_FOR_WORKER_MS;
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <div>
           <Text fw={600}>{t(importing ? "importImportingTitle" : "importCheckingTitle")}</Text>
@@ -97,6 +97,6 @@ export const ImportProgress = ({ imp, now = () => Date.now() }: { imp: CustomerI
           </Button>
         </Group>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

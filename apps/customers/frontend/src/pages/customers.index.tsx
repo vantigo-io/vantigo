@@ -3,7 +3,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Group,
   Pagination,
   Select,
@@ -33,6 +32,7 @@ import {
   EmptyState,
   KpiCard,
   PageHeader,
+  PageSection,
   useDebouncedListSearch,
   useI18n,
 } from "@vantigo/frontend-shell";
@@ -332,7 +332,7 @@ export const CustomersPage = ({
         </SimpleGrid>
       )}
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Group align="end" wrap="wrap">
             <TextInput
@@ -567,7 +567,7 @@ export const CustomersPage = ({
             </>
           )}
         </Stack>
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

@@ -1,7 +1,7 @@
-import { ActionIcon, Alert, Button, Card, Group, List, Stack, Text } from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, List, Stack, Text } from "@mantine/core";
 import { IconAlertTriangle, IconPencil, IconReceipt } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageSection, useI18n } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { type CustomerBillingProfile, customerBillingProfileQueryOptions } from "../api/billing-profile";
@@ -48,7 +48,7 @@ export const CustomerBillingCard = ({
   const warnings = (profile?.warnings ?? []).filter((code) => KNOWN_BILLING_WARNING_CODES.includes(code));
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="lg">
         <Group justify="space-between">
           <Group gap="xs">
@@ -115,7 +115,7 @@ export const CustomerBillingCard = ({
           onClose={() => setModalOpened(false)}
         />
       )}
-    </Card>
+    </PageSection>
   );
 };
 

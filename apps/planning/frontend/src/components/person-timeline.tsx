@@ -1,7 +1,7 @@
-import { Alert, Badge, Card, Group, ScrollArea, Stack, Table, Text } from "@mantine/core";
+import { Alert, Badge, Group, ScrollArea, Stack, Table, Text } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { PlanningAllocation } from "../api/allocations";
 import { planningMetaQueryOptions } from "../api/meta";
@@ -71,7 +71,7 @@ export const PersonTimeline = ({ personId, from, to }: PersonTimelineProps) => {
 
   return (
     <Stack gap="md">
-      <Card withBorder padding="md" radius="md">
+      <PageSection>
         <ScrollArea type="auto">
           <Stack gap={6} miw={weeks.length * WEEK_WIDTH}>
             <div style={{ display: "grid", gridTemplateColumns: `repeat(${weeks.length}, minmax(0, 1fr))` }}>
@@ -165,10 +165,10 @@ export const PersonTimeline = ({ personId, from, to }: PersonTimelineProps) => {
             {t("selfTimelineNote")}
           </Text>
         )}
-      </Card>
+      </PageSection>
 
       {data.wishes.length > 0 && (
-        <Card withBorder padding="md" radius="md">
+        <PageSection>
           <Text fw={600} mb="xs">
             {t("openWishes")}
           </Text>
@@ -182,64 +182,68 @@ export const PersonTimeline = ({ personId, from, to }: PersonTimelineProps) => {
               </Group>
             ))}
           </Stack>
-        </Card>
+        </PageSection>
       )}
 
-      {data.allocations.length === 0 ? (
-        <EmptyState size="sm" title={t("noAllocationsInWindow")} />
-      ) : (
-        <Table.ScrollContainer minWidth={720}>
-          <Table verticalSpacing="xs" aria-label={t("allocations")}>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t("project")}</Table.Th>
-                <Table.Th>{t("period")}</Table.Th>
-                <Table.Th>{t("load")}</Table.Th>
-                <Table.Th>{t("status")}</Table.Th>
-                <Table.Th>{t("earliestRelease")}</Table.Th>
-                <Table.Th>{t("handoverFrom")}</Table.Th>
-                <Table.Th>{t("flags")}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {data.allocations.map((allocation) => (
-                <Table.Tr key={allocation.id}>
-                  <Table.Td>
-                    <Text size="sm" fw={500}>
-                      {format.projectName(allocation.project)}
-                    </Text>
-                    {allocation.title && (
-                      <Text size="xs" c="dimmed">
-                        {allocation.title}
-                      </Text>
-                    )}
-                  </Table.Td>
-                  <Table.Td>{format.range(allocation.fromDate, allocation.toDate)}</Table.Td>
-                  <Table.Td>{format.load(allocation.load, allocation.loadUnit)}</Table.Td>
-                  <Table.Td>
-                    <Badge variant="light" color={allocation.status === "confirmed" ? "blue" : "violet"} size="sm">
-                      {t(`status_${allocation.status}`)}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    {allocation.earliestRelease !== allocation.toDate ? format.date(allocation.earliestRelease) : NONE}
-                  </Table.Td>
-                  <Table.Td>{allocation.handoverStart ? format.date(allocation.handoverStart) : NONE}</Table.Td>
-                  <Table.Td>
-                    <Group gap={4}>
-                      {flagsOf(allocation.id).map((flag) => (
-                        <Badge key={`${flag.code}/${flag.date ?? ""}`} color="orange" variant="light" size="sm">
-                          {t(`flag_${flag.code}`, { date: flag.date ? format.date(flag.date) : "" })}
-                        </Badge>
-                      ))}
-                    </Group>
-                  </Table.Td>
+      <PageSection>
+        {data.allocations.length === 0 ? (
+          <EmptyState size="sm" title={t("noAllocationsInWindow")} />
+        ) : (
+          <Table.ScrollContainer minWidth={720}>
+            <Table verticalSpacing="xs" aria-label={t("allocations")}>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t("project")}</Table.Th>
+                  <Table.Th>{t("period")}</Table.Th>
+                  <Table.Th>{t("load")}</Table.Th>
+                  <Table.Th>{t("status")}</Table.Th>
+                  <Table.Th>{t("earliestRelease")}</Table.Th>
+                  <Table.Th>{t("handoverFrom")}</Table.Th>
+                  <Table.Th>{t("flags")}</Table.Th>
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      )}
+              </Table.Thead>
+              <Table.Tbody>
+                {data.allocations.map((allocation) => (
+                  <Table.Tr key={allocation.id}>
+                    <Table.Td>
+                      <Text size="sm" fw={500}>
+                        {format.projectName(allocation.project)}
+                      </Text>
+                      {allocation.title && (
+                        <Text size="xs" c="dimmed">
+                          {allocation.title}
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>{format.range(allocation.fromDate, allocation.toDate)}</Table.Td>
+                    <Table.Td>{format.load(allocation.load, allocation.loadUnit)}</Table.Td>
+                    <Table.Td>
+                      <Badge variant="light" color={allocation.status === "confirmed" ? "blue" : "violet"} size="sm">
+                        {t(`status_${allocation.status}`)}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      {allocation.earliestRelease !== allocation.toDate
+                        ? format.date(allocation.earliestRelease)
+                        : NONE}
+                    </Table.Td>
+                    <Table.Td>{allocation.handoverStart ? format.date(allocation.handoverStart) : NONE}</Table.Td>
+                    <Table.Td>
+                      <Group gap={4}>
+                        {flagsOf(allocation.id).map((flag) => (
+                          <Badge key={`${flag.code}/${flag.date ?? ""}`} color="orange" variant="light" size="sm">
+                            {t(`flag_${flag.code}`, { date: flag.date ? format.date(flag.date) : "" })}
+                          </Badge>
+                        ))}
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        )}
+      </PageSection>
       {canManage && (
         <AllocationSheet opened={editing !== undefined} onClose={() => setEditing(undefined)} allocation={editing} />
       )}

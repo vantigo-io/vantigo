@@ -1,7 +1,7 @@
-import { Alert, Anchor, Card, Select, Stack, Table, Text } from "@mantine/core";
+import { Alert, Anchor, Select, Stack, Table, Text } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n, useShellLink } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n, useShellLink } from "@vantigo/frontend-shell";
 import { type MyTask, myTasksQueryOptions } from "../api/tasks";
 import "../i18n";
 import { useProjectDates } from "../lib/dates";
@@ -21,7 +21,7 @@ export const MyTasksPage = () => {
     <Stack gap="lg">
       <PageHeader title={t("myTasks")} description={t("myTasksDescription")} />
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           {isError && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadMyTasks")}>
@@ -55,7 +55,7 @@ export const MyTasksPage = () => {
             </Table.ScrollContainer>
           )}
         </Stack>
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

@@ -1,8 +1,8 @@
-import { Alert, Badge, Button, Card, Group, Stack, Table, Text } from "@mantine/core";
+import { Alert, Badge, Button, Group, Stack, Table, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconArrowLeft, IconDownload } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { invoicesMetaQueryOptions } from "../api/meta";
 import { reminderRunQueryOptions } from "../api/overdue";
@@ -91,7 +91,7 @@ const RunDetail = ({ runId, currentUserId }: ReminderRunPageProps) => {
   ).filter(([, count]) => count > 0);
   return (
     <Stack gap="lg">
-      <Card withBorder>
+      <PageSection>
         <Stack gap={4}>
           <Text size="sm">{t("runPage.made", { date: date(run.runOn), who: who(run.createdBy) })}</Text>
           <Text size="sm">
@@ -116,7 +116,7 @@ const RunDetail = ({ runId, currentUserId }: ReminderRunPageProps) => {
             </RouteLink>
           )}
         </Stack>
-      </Card>
+      </PageSection>
       <Table.ScrollContainer minWidth={800}>
         <Table data-testid="run-letters">
           <Table.Thead>

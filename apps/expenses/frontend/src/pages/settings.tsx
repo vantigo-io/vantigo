@@ -3,7 +3,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Group,
   Input,
   NumberInput,
@@ -20,7 +19,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconArrowDown, IconArrowUp, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { type ExpenseCategory, expenseCategoriesQueryOptions, updateExpenseCategory } from "../api/categories";
 import { deleteExpenseRate, type ExpenseRate, expenseRatesQueryOptions, resetExpenseRateKind } from "../api/rates";
@@ -190,7 +189,7 @@ const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
   };
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <form onSubmit={form.onSubmit(submit)}>
         <Stack>
           <Title order={5}>{t("generalSettings")}</Title>
@@ -255,7 +254,7 @@ const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
           </Group>
         </Stack>
       </form>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -306,7 +305,7 @@ const RatesSection = ({ defaultCurrency }: { defaultCurrency: string }) => {
   const groups = groupRatesByKind(data);
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <Group justify="space-between">
           <Stack gap={0}>
@@ -416,7 +415,7 @@ const RatesSection = ({ defaultCurrency }: { defaultCurrency: string }) => {
 
         <RateFormModal state={modalState} defaultCurrency={defaultCurrency} onClose={() => setModalState(null)} />
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -451,7 +450,7 @@ const CategoriesSection = () => {
     change.mutate({ category, changes: { position: Math.max(1, category.position + by) } });
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <Group justify="space-between">
           <Stack gap={0}>
@@ -538,6 +537,6 @@ const CategoriesSection = () => {
 
         <CategoryFormModal state={modalState} onClose={() => setModalState(null)} />
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

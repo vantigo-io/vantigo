@@ -1,9 +1,9 @@
-import { Alert, Badge, Button, Card, Group, Pagination, SegmentedControl, Stack, Text, Title } from "@mantine/core";
+import { Alert, Badge, Button, Group, Pagination, SegmentedControl, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconChecks, IconLock, IconPencilDollar, IconReceiptOff } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   approveUnits,
@@ -205,9 +205,9 @@ export const ApprovalsPage = () => {
       {active.isPending && <ContentSkeleton rows={3} rowHeight={72} />}
 
       {forbidden && (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <EmptyState icon={IconLock} title={t("approvesNothing")} description={t("approvesNothingDescription")} />
-        </Card>
+        </PageSection>
       )}
 
       {pickedCount > 0 && (
@@ -241,13 +241,13 @@ export const ApprovalsPage = () => {
       {state === "waiting" &&
         queue.data &&
         (groups.length === 0 ? (
-          <Card withBorder padding="lg" radius="md">
+          <PageSection>
             <EmptyState
               icon={IconChecks}
               title={t("nothingToApprove")}
               description={t("nothingToApproveDescription")}
             />
-          </Card>
+          </PageSection>
         ) : (
           groups.map((group) => (
             <GroupCard
@@ -282,13 +282,13 @@ export const ApprovalsPage = () => {
         approvedClaims.data &&
         approvedEntries.length === 0 &&
         approvedTrips.length === 0 && (
-          <Card withBorder padding="lg" radius="md">
+          <PageSection>
             <EmptyState title={t("nothingApproved")} description={t("nothingApprovedDescription")} />
-          </Card>
+          </PageSection>
         )}
 
       {state === "approved" && approvedEntries.length > 0 && (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <Stack gap="sm">
             <EntryTable
               label={t("statusApproved")}
@@ -311,11 +311,11 @@ export const ApprovalsPage = () => {
               </Group>
             )}
           </Stack>
-        </Card>
+        </PageSection>
       )}
 
       {state === "approved" && approvedTrips.length > 0 && (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <Stack gap="sm">
             <Stack gap={0}>
               <Title order={5}>{t("travelClaims")}</Title>
@@ -343,7 +343,7 @@ export const ApprovalsPage = () => {
               </Group>
             )}
           </Stack>
-        </Card>
+        </PageSection>
       )}
 
       {state === "waiting" && pagination && pagination.totalPages > 1 && (
@@ -396,7 +396,7 @@ const GroupCard = ({
 }) => {
   const { t } = useI18n("expenses");
   return (
-    <Card withBorder padding="lg" radius="md" data-approval-group={group.user.userId}>
+    <PageSection data-approval-group={group.user.userId}>
       <Stack gap="sm">
         <Group justify="space-between" align="start" wrap="wrap">
           <Stack gap={2}>
@@ -444,6 +444,6 @@ const GroupCard = ({
           />
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

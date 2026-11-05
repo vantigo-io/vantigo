@@ -3,7 +3,6 @@ import {
   Alert,
   Box,
   Button,
-  Card,
   Checkbox,
   Group,
   ScrollArea,
@@ -17,7 +16,7 @@ import {
 } from "@mantine/core";
 import { IconAlertCircle, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type CustomerImport,
@@ -184,7 +183,7 @@ export const ImportMappingStep = ({ imp, capabilities }: { imp: CustomerImport; 
 
   return (
     <Stack gap="lg">
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Text fw={600}>{t("importWhatToDo")}</Text>
           <SegmentedControl
@@ -226,9 +225,9 @@ export const ImportMappingStep = ({ imp, capabilities }: { imp: CustomerImport; 
             onChange={(event) => update({ allowDuplicateIdentity: event.currentTarget.checked })}
           />
         </Stack>
-      </Card>
+      </PageSection>
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <div>
             <Text fw={600}>{t("importColumnsTitle")}</Text>
@@ -331,9 +330,9 @@ export const ImportMappingStep = ({ imp, capabilities }: { imp: CustomerImport; 
             </Group>
           </Stack>
         </Stack>
-      </Card>
+      </PageSection>
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <div>
             <Text fw={600}>{t("importPreviewTitle")}</Text>
@@ -419,7 +418,7 @@ export const ImportMappingStep = ({ imp, capabilities }: { imp: CustomerImport; 
             </Box>
           )}
         </Stack>
-      </Card>
+      </PageSection>
 
       {refusals.length > 0 && (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("importMappingRefused")}>

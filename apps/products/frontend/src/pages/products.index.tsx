@@ -1,21 +1,9 @@
-import {
-  ActionIcon,
-  Alert,
-  Badge,
-  Button,
-  Card,
-  Group,
-  Pagination,
-  Select,
-  Stack,
-  Table,
-  TextInput,
-} from "@mantine/core";
+import { ActionIcon, Alert, Badge, Button, Group, Pagination, Select, Stack, Table, TextInput } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useEffect, useState } from "react";
 import "../i18n";
 import { buildCategoryTree, categoriesQueryOptions } from "../api/categories";
@@ -119,7 +107,7 @@ export const ProductsPage = ({ extraColumns }: ProductsPageProps = {}) => {
         }
       />
       <ProductFormModal state={modalState} onClose={closeModal} />
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Group align="end">
             <TextInput
@@ -251,7 +239,7 @@ export const ProductsPage = ({ extraColumns }: ProductsPageProps = {}) => {
             </>
           )}
         </Stack>
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

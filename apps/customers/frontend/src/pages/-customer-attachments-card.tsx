@@ -1,8 +1,8 @@
-import { ActionIcon, Button, Card, FileButton, Group, Stack, Table, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Button, FileButton, Group, Stack, Table, Text, Tooltip } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconFileTypePdf, IconPaperclip, IconPhoto, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { type CustomerAttachment, customerAttachmentsQueryOptions, downloadAttachment } from "../api/attachments";
 import { saveCsv } from "../api/import-export";
@@ -40,7 +40,7 @@ export const CustomerAttachmentsCard = ({
   const typeLabel = (type: string) => t(eventTypeKey[type] ?? "timelineEvent");
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <Group justify="space-between">
           <Group gap="xs">
@@ -129,7 +129,7 @@ export const CustomerAttachmentsCard = ({
           </Table.ScrollContainer>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 

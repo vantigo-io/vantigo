@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   Button,
-  Card,
   Checkbox,
   Group,
   Input,
@@ -17,7 +16,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconTrash, IconWand } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useRef, useState } from "react";
 import { type Claim, type PerDiemSuggestedDay, perDiemSuggestion } from "../api/claims";
 import { createExpense, deleteExpense, type Expense, updateExpense } from "../api/entries";
@@ -60,7 +59,7 @@ export const PerDiemSection = ({ claim, days, lineCount, refusals }: PerDiemSect
   const room = CLAIM_LINE_CAP - lineCount;
 
   return (
-    <Card withBorder padding="lg" radius="md" data-testid="per-diem-section">
+    <PageSection data-testid="per-diem-section">
       <Stack gap="md">
         <Group justify="space-between" align="start" wrap="wrap">
           <Stack gap={0}>
@@ -130,7 +129,7 @@ export const PerDiemSection = ({ claim, days, lineCount, refusals }: PerDiemSect
       </Stack>
 
       <SuggestDaysModal claim={claim} opened={suggesting} room={room} onClose={() => setSuggesting(false)} />
-    </Card>
+    </PageSection>
   );
 };
 

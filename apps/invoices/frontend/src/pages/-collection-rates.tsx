@@ -3,7 +3,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Group,
   Modal,
   NumberInput,
@@ -19,7 +18,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageSection } from "@vantigo/frontend-shell";
 import dayjs from "dayjs";
 import { useState } from "react";
 import {
@@ -86,7 +85,7 @@ export const CollectionRatesCard = ({ today, currentUserId }: CollectionRatesCar
       onConfirm: () => remove.mutate(rate),
     });
   return (
-    <Card withBorder data-testid="collection-rates">
+    <PageSection data-testid="collection-rates">
       <Stack>
         <Group justify="space-between">
           <Title order={4}>{t("rates.title")}</Title>
@@ -182,7 +181,7 @@ export const CollectionRatesCard = ({ today, currentUserId }: CollectionRatesCar
           })}
       </Stack>
       {adding && <AddRateModal today={today} onClose={() => setAdding(false)} />}
-    </Card>
+    </PageSection>
   );
 };
 

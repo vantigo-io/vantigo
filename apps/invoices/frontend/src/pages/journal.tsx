@@ -3,7 +3,7 @@ import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconAlertTriangle, IconCircleCheck, IconDownload } from "@tabler/icons-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { downloadInvoicesCsv, isSessionExpired, saveCsv } from "../api/export";
 import { journalQueryOptions } from "../api/journal";
@@ -84,132 +84,141 @@ export const JournalPage = () => {
           </Button>
         }
       />
-      <Group>
-        <DateInput
-          label={t("issuedFrom")}
-          valueFormat={t("dateInputFormat")}
-          value={rangeFrom || null}
-          onChange={(d) => {
-            setFrom(d);
-            setPage(1);
-          }}
-        />
-        <DateInput
-          label={t("issuedTo")}
-          valueFormat={t("dateInputFormat")}
-          value={rangeTo || null}
-          onChange={(d) => {
-            setTo(d);
-            setPage(1);
-          }}
-        />
-      </Group>
-      {meta.isError && (
-        <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadMeta")}>
-          {refusalMessage(meta.error, t, date)}
-        </Alert>
-      )}
-      {journal.isError && (
-        <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadJournal")}>
-          {refusalMessage(journal.error, t, date)}
-        </Alert>
-      )}
-      {/* The range starts from meta's today, so without meta the journal is never asked for. */}
-      {!meta.isError && journal.isPending && <ContentSkeleton rows={4} rowHeight={40} />}
-      {data && meta.data && (
-        <>
-          {!checked ? (
-            <Alert color="gray" icon={<IconCircleCheck size={16} />}>
-              {t("noDocumentsInRange")}
-            </Alert>
-          ) : data.gaps.length === 0 ? (
-            <Alert color="green" icon={<IconCircleCheck size={16} />}>
-              {t("noGaps", { first: data.checkedFrom, last: data.checkedTo })}
-            </Alert>
-          ) : (
-            <Alert color="red" icon={<IconAlertTriangle size={16} />} title={t("gapsFound")}>
-              <Stack gap={4}>
-                <Text size="sm">{t("missingNumbers", { numbers: data.gaps.join(", ") })}</Text>
-                {data.gapsTruncated && <Text size="sm">{t("gapsTruncated")}</Text>}
-                <Text size="sm">{t("checkedRange", { first: data.checkedFrom, last: data.checkedTo })}</Text>
-                <Text size="sm">{t("seriesBrokenHint")}</Text>
-              </Stack>
+      <PageSection>
+        <Stack gap="md">
+          <Group>
+            <DateInput
+              label={t("issuedFrom")}
+              valueFormat={t("dateInputFormat")}
+              value={rangeFrom || null}
+              onChange={(d) => {
+                setFrom(d);
+                setPage(1);
+              }}
+            />
+            <DateInput
+              label={t("issuedTo")}
+              valueFormat={t("dateInputFormat")}
+              value={rangeTo || null}
+              onChange={(d) => {
+                setTo(d);
+                setPage(1);
+              }}
+            />
+          </Group>
+          {meta.isError && (
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadMeta")}>
+              {refusalMessage(meta.error, t, date)}
             </Alert>
           )}
-          {counterAhead && (
-            <Alert color="red" icon={<IconAlertTriangle size={16} />} title={t("counterAheadTitle")}>
-              <Stack gap={4}>
-                <Text size="sm">
-                  {t("counterAhead", { counter: data.counterLast, highest: data.highestIssued ?? t("notAvailable") })}
-                </Text>
-                <Text size="sm">{t("seriesBrokenHint")}</Text>
-              </Stack>
+          {journal.isError && (
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadJournal")}>
+              {refusalMessage(journal.error, t, date)}
             </Alert>
           )}
-          {/* The totals are in the installation's currency, meta's — each row keeps its own. */}
-          <Title order={4}>{t("totalsByCode")}</Title>
-          <Table>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t("safTCode")}</Table.Th>
-                <Table.Th>{t("category")}</Table.Th>
-                <Table.Th ta="right">{t("ratePercent")}</Table.Th>
-                <Table.Th ta="right">{t("taxableAmount")}</Table.Th>
-                <Table.Th ta="right">{t("vatTotal")}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {data.totals.byCode.map((c) => (
-                <Table.Tr key={`${c.safTCode}-${c.category}-${c.ratePercent}`}>
-                  <Table.Td>{c.safTCode}</Table.Td>
-                  <Table.Td>{c.category}</Table.Td>
-                  <Table.Td ta="right">{number(c.ratePercent, 2)}</Table.Td>
-                  <Table.Td ta="right">{money(c.taxableAmount, meta.data.currency)}</Table.Td>
-                  <Table.Td ta="right">{money(c.vatAmount, meta.data.currency)}</Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-          <Text fw={600}>
-            {t("journalTotals", {
-              net: money(data.totals.netTotal, meta.data.currency),
-              vat: money(data.totals.vatTotal, meta.data.currency),
-              gross: money(data.totals.grossTotal, meta.data.currency),
-            })}
-          </Text>
-          <Table>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t("number")}</Table.Th>
-                <Table.Th>{t("kind")}</Table.Th>
-                <Table.Th>{t("issueDate")}</Table.Th>
-                <Table.Th>{t("customer")}</Table.Th>
-                <Table.Th ta="right">{t("netTotal")}</Table.Th>
-                <Table.Th ta="right">{t("vatTotal")}</Table.Th>
-                <Table.Th ta="right">{t("grossTotal")}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {data.data.map((row) => (
-                <Table.Tr key={row.id}>
-                  <Table.Td>{row.number}</Table.Td>
-                  <Table.Td>
-                    {row.kind === "credit_note" ? t("creditNoteFor", { number: row.creditsNumber }) : t("kindInvoice")}
-                  </Table.Td>
-                  <Table.Td>{date(row.issueDate)}</Table.Td>
-                  <Table.Td>{row.buyerName}</Table.Td>
-                  <Table.Td ta="right">{money(row.netTotal, row.currency)}</Table.Td>
-                  <Table.Td ta="right">{money(row.vatTotal, row.currency)}</Table.Td>
-                  <Table.Td ta="right">{money(row.grossTotal, row.currency)}</Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-          {data.pagination.totalPages > 1 && (
-            <Pagination total={data.pagination.totalPages} value={page} onChange={setPage} />
+          {/* The range starts from meta's today, so without meta the journal is never asked for. */}
+          {!meta.isError && journal.isPending && <ContentSkeleton rows={4} rowHeight={40} />}
+          {data && meta.data && (
+            <>
+              {!checked ? (
+                <Alert color="gray" icon={<IconCircleCheck size={16} />}>
+                  {t("noDocumentsInRange")}
+                </Alert>
+              ) : data.gaps.length === 0 ? (
+                <Alert color="green" icon={<IconCircleCheck size={16} />}>
+                  {t("noGaps", { first: data.checkedFrom, last: data.checkedTo })}
+                </Alert>
+              ) : (
+                <Alert color="red" icon={<IconAlertTriangle size={16} />} title={t("gapsFound")}>
+                  <Stack gap={4}>
+                    <Text size="sm">{t("missingNumbers", { numbers: data.gaps.join(", ") })}</Text>
+                    {data.gapsTruncated && <Text size="sm">{t("gapsTruncated")}</Text>}
+                    <Text size="sm">{t("checkedRange", { first: data.checkedFrom, last: data.checkedTo })}</Text>
+                    <Text size="sm">{t("seriesBrokenHint")}</Text>
+                  </Stack>
+                </Alert>
+              )}
+              {counterAhead && (
+                <Alert color="red" icon={<IconAlertTriangle size={16} />} title={t("counterAheadTitle")}>
+                  <Stack gap={4}>
+                    <Text size="sm">
+                      {t("counterAhead", {
+                        counter: data.counterLast,
+                        highest: data.highestIssued ?? t("notAvailable"),
+                      })}
+                    </Text>
+                    <Text size="sm">{t("seriesBrokenHint")}</Text>
+                  </Stack>
+                </Alert>
+              )}
+              {/* The totals are in the installation's currency, meta's — each row keeps its own. */}
+              <Title order={4}>{t("totalsByCode")}</Title>
+              <Table>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{t("safTCode")}</Table.Th>
+                    <Table.Th>{t("category")}</Table.Th>
+                    <Table.Th ta="right">{t("ratePercent")}</Table.Th>
+                    <Table.Th ta="right">{t("taxableAmount")}</Table.Th>
+                    <Table.Th ta="right">{t("vatTotal")}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {data.totals.byCode.map((c) => (
+                    <Table.Tr key={`${c.safTCode}-${c.category}-${c.ratePercent}`}>
+                      <Table.Td>{c.safTCode}</Table.Td>
+                      <Table.Td>{c.category}</Table.Td>
+                      <Table.Td ta="right">{number(c.ratePercent, 2)}</Table.Td>
+                      <Table.Td ta="right">{money(c.taxableAmount, meta.data.currency)}</Table.Td>
+                      <Table.Td ta="right">{money(c.vatAmount, meta.data.currency)}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+              <Text fw={600}>
+                {t("journalTotals", {
+                  net: money(data.totals.netTotal, meta.data.currency),
+                  vat: money(data.totals.vatTotal, meta.data.currency),
+                  gross: money(data.totals.grossTotal, meta.data.currency),
+                })}
+              </Text>
+              <Table>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{t("number")}</Table.Th>
+                    <Table.Th>{t("kind")}</Table.Th>
+                    <Table.Th>{t("issueDate")}</Table.Th>
+                    <Table.Th>{t("customer")}</Table.Th>
+                    <Table.Th ta="right">{t("netTotal")}</Table.Th>
+                    <Table.Th ta="right">{t("vatTotal")}</Table.Th>
+                    <Table.Th ta="right">{t("grossTotal")}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {data.data.map((row) => (
+                    <Table.Tr key={row.id}>
+                      <Table.Td>{row.number}</Table.Td>
+                      <Table.Td>
+                        {row.kind === "credit_note"
+                          ? t("creditNoteFor", { number: row.creditsNumber })
+                          : t("kindInvoice")}
+                      </Table.Td>
+                      <Table.Td>{date(row.issueDate)}</Table.Td>
+                      <Table.Td>{row.buyerName}</Table.Td>
+                      <Table.Td ta="right">{money(row.netTotal, row.currency)}</Table.Td>
+                      <Table.Td ta="right">{money(row.vatTotal, row.currency)}</Table.Td>
+                      <Table.Td ta="right">{money(row.grossTotal, row.currency)}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+              {data.pagination.totalPages > 1 && (
+                <Pagination total={data.pagination.totalPages} value={page} onChange={setPage} />
+              )}
+            </>
           )}
-        </>
-      )}
+        </Stack>
+      </PageSection>
     </Stack>
   );
 };

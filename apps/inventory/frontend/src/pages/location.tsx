@@ -4,7 +4,6 @@ import {
   Anchor,
   Badge,
   Button,
-  Card,
   Group,
   Menu,
   SimpleGrid,
@@ -30,7 +29,7 @@ import {
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 import { locationContentsQueryOptions, locationQueryOptions, siteLocationsQueryOptions } from "../api/locations";
 import { inventoryMetaQueryOptions } from "../api/meta";
@@ -224,7 +223,7 @@ export const LocationPage = () => {
           </Group>
         }
       />
-      <Card withBorder>
+      <PageSection>
         <SimpleGrid cols={{ base: 2, sm: 4 }}>
           <Fact label={t("site")}>
             <Anchor size="sm" renderRoot={(props) => <Link {...siteLinkOptions(site.id)} {...props} />}>
@@ -235,8 +234,8 @@ export const LocationPage = () => {
           <Fact label={t("fullCode")}>{location.fullCode}</Fact>
           <Fact label={t("status")}>{t(`status_${location.status}`)}</Fact>
         </SimpleGrid>
-      </Card>
-      <Card withBorder>
+      </PageSection>
+      <PageSection>
         <Stack gap="xs">
           <Title order={4}>{t("children")}</Title>
           {children.length === 0 ? (
@@ -260,9 +259,9 @@ export const LocationPage = () => {
             </Group>
           )}
         </Stack>
-      </Card>
+      </PageSection>
       {canViewStock && (
-        <Card withBorder>
+        <PageSection>
           <Stack gap="sm">
             <Group justify="space-between">
               <Title order={4}>{t("contents")}</Title>
@@ -284,10 +283,10 @@ export const LocationPage = () => {
               <StockTable rows={contents.data} hideLocation={onlyHere} />
             )}
           </Stack>
-        </Card>
+        </PageSection>
       )}
       {canViewStock && (
-        <Card withBorder>
+        <PageSection>
           <Stack gap="sm">
             <Group justify="space-between">
               <Title order={4}>{t("navMovements")}</Title>
@@ -302,7 +301,7 @@ export const LocationPage = () => {
             </Group>
             <MovementList filter={{ locationId: location.id }} limit={20} />
           </Stack>
-        </Card>
+        </PageSection>
       )}
       {dialog === "edit" && (
         <LocationFormModal

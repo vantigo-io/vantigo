@@ -1,8 +1,8 @@
-import { Alert, Button, Card, Group, Radio, Stack, Text, Textarea } from "@mantine/core";
+import { Alert, Button, Group, Radio, Stack, Text, Textarea } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   POLICY_MODES,
@@ -35,7 +35,7 @@ export const ReminderPolicyCard = ({ customerId, canChange, currentUserId }: Rem
   const { t, date } = useInvoiceFormat();
   const policy = useQuery(reminderPolicyQueryOptions(customerId));
   return (
-    <Card withBorder padding="lg" radius="md" mt="md" data-testid="reminder-policy-card">
+    <PageSection mt="md" data-testid="reminder-policy-card">
       <Stack gap="sm">
         <Text fw={600} component="h3">
           {t("policy.title")}
@@ -53,7 +53,7 @@ export const ReminderPolicyCard = ({ customerId, canChange, currentUserId }: Rem
             <PolicyRead policy={policy.data} currentUserId={currentUserId} />
           ))}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 

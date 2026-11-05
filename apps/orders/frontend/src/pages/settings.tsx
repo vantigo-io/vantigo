@@ -1,7 +1,6 @@
 import {
   Alert,
   Button,
-  Card,
   Group,
   NumberInput,
   Select,
@@ -17,7 +16,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconDeviceFloppy } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { sitesQueryOptions } from "../api/deliveries";
 import { metaQueryOptions } from "../api/meta";
@@ -150,7 +149,7 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
           onReload={() => void queryClient.refetchQueries({ queryKey: settingsQueryOptions().queryKey })}
         />
       )}
-      <Card withBorder padding="lg">
+      <PageSection>
         <Stack>
           <Title order={4}>{t("numberSeries")}</Title>
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
@@ -179,8 +178,8 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
             {t("seriesHint")}
           </Text>
         </Stack>
-      </Card>
-      <Card withBorder padding="lg">
+      </PageSection>
+      <PageSection>
         <Stack>
           <Title order={4}>{t("defaults")}</Title>
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
@@ -243,8 +242,8 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
             />
           )}
         </Stack>
-      </Card>
-      <Card withBorder padding="lg" data-testid="sending-card">
+      </PageSection>
+      <PageSection data-testid="sending-card">
         <Stack>
           <Title order={4}>{t("sending")}</Title>
           {!settings.sendingAvailable && (
@@ -271,8 +270,8 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
             onChange={(e) => set("confirmationOnConfirm", e.currentTarget.checked)}
           />
         </Stack>
-      </Card>
-      <Card withBorder padding="lg" data-testid="shipping-settings-card">
+      </PageSection>
+      <PageSection data-testid="shipping-settings-card">
         <Stack>
           <Title order={4}>{t("shippingSettings")}</Title>
           <Stack gap={4} maw={420}>
@@ -314,8 +313,8 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
             onChange={(e) => set("shippingNoticeOnBook", e.currentTarget.checked)}
           />
         </Stack>
-      </Card>
-      <Card withBorder padding="lg">
+      </PageSection>
+      <PageSection>
         <Stack>
           <Title order={4}>{t("mailTexts")}</Title>
           <Text size="sm" c="dimmed">
@@ -365,7 +364,7 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
             ))}
           </Tabs>
         </Stack>
-      </Card>
+      </PageSection>
       {manage && (
         <Group justify="flex-end">
           <Button

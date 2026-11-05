@@ -1,7 +1,8 @@
-import { Badge, Button, Card, Group, List, Stack, Table, Text, Title } from "@mantine/core";
+import { Badge, Button, Group, List, Stack, Table, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconDownload } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { InvoiceDocument } from "../api/invoices";
 import {
@@ -133,7 +134,7 @@ export const RemindersCard = ({ invoice, canAct, currentUserId }: RemindersCardP
   });
   const statusLine = useLetterStatusLine(currentUserId);
   return (
-    <Card withBorder data-testid="reminders-card">
+    <PageSection data-testid="reminders-card">
       <Stack gap="xs">
         <Title order={4}>{t("reminder.title")}</Title>
         {invoice.nextAction && <NextActionPanel next={invoice.nextAction} currency={invoice.currency} />}
@@ -255,6 +256,6 @@ export const RemindersCard = ({ invoice, canAct, currentUserId }: RemindersCardP
         )}
       </Stack>
       {withdrawing && <WithdrawReminderModal letter={withdrawing} onClose={() => setWithdrawing(null)} />}
-    </Card>
+    </PageSection>
   );
 };

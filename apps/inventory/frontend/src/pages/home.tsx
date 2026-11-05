@@ -9,7 +9,7 @@ import {
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { inventoryMetaQueryOptions } from "../api/meta";
 import { type InventorySite, sitesQueryOptions } from "../api/sites";
@@ -118,9 +118,9 @@ export const InventoryHomePage = () => {
           </Group>
         }
       />
-      <Card withBorder>
+      <PageSection>
         <InventoryLookupField />
-      </Card>
+      </PageSection>
       {meta.error ? (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotLoad")}>
           {meta.error.message}

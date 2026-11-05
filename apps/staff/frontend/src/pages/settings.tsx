@@ -1,9 +1,9 @@
-import { Alert, Button, Card, Group, NumberInput, SimpleGrid, Stack, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Button, Group, NumberInput, SimpleGrid, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { staffMetaQueryOptions } from "../api/meta";
 import { STAFF_QUERY_KEY } from "../api/request";
@@ -197,7 +197,7 @@ const GeneralForm = ({ settings }: { settings: StaffSettings }) => {
       : undefined;
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <form onSubmit={form.onSubmit((values) => save.mutate(values))}>
         <Stack>
           <Title order={5}>{t("generalSettings")}</Title>
@@ -249,6 +249,6 @@ const GeneralForm = ({ settings }: { settings: StaffSettings }) => {
           </Group>
         </Stack>
       </form>
-    </Card>
+    </PageSection>
   );
 };

@@ -1,4 +1,5 @@
-import { Badge, Button, Card, Stack, Table, Text, Title } from "@mantine/core";
+import { Badge, Button, Stack, Table, Text, Title } from "@mantine/core";
+import { PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { FINISHED_ATTEMPT_STATES, type PaymentAttempt } from "../api/attempts";
 import type { InvoiceDocument } from "../api/invoices";
@@ -37,7 +38,7 @@ export const AttemptsCard = ({ invoice, canManage }: AttemptsCardProps) => {
   if (attempts.length === 0) return null;
   const amount = (value: number) => money(value, invoice.currency);
   return (
-    <Card withBorder data-testid="attempts-card">
+    <PageSection data-testid="attempts-card">
       <Stack gap="xs">
         <Title order={4}>{t("attempts.title")}</Title>
         <Table.ScrollContainer minWidth={720}>
@@ -119,6 +120,6 @@ export const AttemptsCard = ({ invoice, canManage }: AttemptsCardProps) => {
       {abandoning && (
         <AbandonModal attempt={abandoning} currency={invoice.currency} onClose={() => setAbandoning(null)} />
       )}
-    </Card>
+    </PageSection>
   );
 };

@@ -1,4 +1,5 @@
-import { Badge, Card, Group, Radio, Stack, Text, Title } from "@mantine/core";
+import { Badge, Group, Radio, Stack, Text, Title } from "@mantine/core";
+import { PageSection } from "@vantigo/frontend-shell";
 import type { InvoiceSettings } from "../api/settings";
 import "../i18n";
 import { useInvoiceFormat } from "../lib/format";
@@ -32,7 +33,7 @@ export const SendingCard = ({ settings, values, set, errors }: SendingCardProps)
   const gone = chosen !== null && !channels.some((channel) => channel.id === chosen);
   const selected = gone || chosen === null ? DISABLED : chosen;
   return (
-    <Card withBorder data-testid="sending-card">
+    <PageSection data-testid="sending-card">
       <Stack>
         <Title order={4}>{t("sending")}</Title>
         <Radio.Group
@@ -77,6 +78,6 @@ export const SendingCard = ({ settings, values, set, errors }: SendingCardProps)
           </Text>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

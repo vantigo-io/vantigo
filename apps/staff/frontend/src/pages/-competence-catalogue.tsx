@@ -3,7 +3,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Group,
   Modal,
   NumberInput,
@@ -20,7 +19,7 @@ import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   competenceCategoriesQueryOptions,
@@ -87,7 +86,7 @@ export const CompetenceCategoriesTable = () => {
   });
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <Group justify="space-between" align="flex-start">
           <Stack gap={0} maw={640}>
@@ -181,7 +180,7 @@ export const CompetenceCategoriesTable = () => {
           {modal && <CategoryForm key={modal.row?.id ?? "new"} row={modal.row} onClose={() => setModal(null)} />}
         </Modal>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -326,7 +325,7 @@ export const CompetencesTable = () => {
   const busy = (row: StaffCompetence) => change.isPending && change.variables?.row.id === row.id;
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <Group justify="space-between" align="flex-start">
           <Stack gap={0} maw={640}>
@@ -449,7 +448,7 @@ export const CompetencesTable = () => {
           )}
         </Modal>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 

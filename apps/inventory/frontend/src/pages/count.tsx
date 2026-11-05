@@ -3,7 +3,6 @@ import {
   Anchor,
   Badge,
   Button,
-  Card,
   Checkbox,
   Group,
   NumberInput,
@@ -22,7 +21,7 @@ import { IconAlertCircle, IconCircleCheck, IconScan, IconX } from "@tabler/icons
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useBlocker, useParams } from "@tanstack/react-router";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   cancelCount,
@@ -468,7 +467,7 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
         </Alert>
       )}
       {tab === "count" ? (
-        <Card withBorder>
+        <PageSection>
           <Stack gap="sm">
             <TextInput
               ref={scanRef}
@@ -650,18 +649,18 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
               </Table.ScrollContainer>
             )}
           </Stack>
-        </Card>
+        </PageSection>
       ) : (
         <Stack gap="md">
-          <Card withBorder>
+          <PageSection>
             <SimpleGrid cols={{ base: 2, sm: 4 }}>
               <Fact label={t("columnLines")}>{rows.length}</Fact>
               <Fact label={t("reviewCounted")}>{countedRows.length}</Fact>
               <Fact label={t("reviewUncounted")}>{rows.length - countedRows.length}</Fact>
               <Fact label={t("columnMoved")}>{moved.length}</Fact>
             </SimpleGrid>
-          </Card>
-          <Card withBorder>
+          </PageSection>
+          <PageSection>
             <Stack gap="sm">
               <Text fw={500}>{t("reviewDifferences")}</Text>
               {differences.length === 0 ? (
@@ -702,9 +701,9 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
                 </Table.ScrollContainer>
               )}
             </Stack>
-          </Card>
+          </PageSection>
           {movedPosting.length > 0 && (
-            <Card withBorder>
+            <PageSection>
               <Stack gap="sm">
                 <Text fw={500}>{t("reviewMoved", { count: movedPosting.length })}</Text>
                 <Text size="sm" c="dimmed">
@@ -728,9 +727,9 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
                   onChange={(event) => setAcceptMoved(event.currentTarget.checked)}
                 />
               </Stack>
-            </Card>
+            </PageSection>
           )}
-          <Card withBorder>
+          <PageSection>
             <Radio.Group
               label={t("uncountedLines")}
               description={t("uncountedHint")}
@@ -742,7 +741,7 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
                 <Radio value="zero" label={t("uncounted_zero")} />
               </Stack>
             </Radio.Group>
-          </Card>
+          </PageSection>
           {postError && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotPost")}>
               {postError}
@@ -768,7 +767,7 @@ const ClosedCount = ({ count }: { count: InventoryCount }) => {
   const { t, stamp, quantity } = useInventoryFormat();
   return (
     <Stack gap="md">
-      <Card withBorder>
+      <PageSection>
         <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }}>
           {count.postedAt && <Fact label={t("columnPostedAt")}>{stamp(count.postedAt)}</Fact>}
           {count.postedBy && <Fact label={t("columnPostedBy")}>{count.postedBy.displayName}</Fact>}
@@ -786,8 +785,8 @@ const ClosedCount = ({ count }: { count: InventoryCount }) => {
             </Fact>
           )}
         </SimpleGrid>
-      </Card>
-      <Card withBorder>
+      </PageSection>
+      <PageSection>
         <Table.ScrollContainer minWidth={560}>
           <Table striped verticalSpacing="xs">
             <Table.Thead>
@@ -822,7 +821,7 @@ const ClosedCount = ({ count }: { count: InventoryCount }) => {
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

@@ -1,4 +1,5 @@
-import { Badge, Button, Card, Group, Stack, Text, Title } from "@mantine/core";
+import { Badge, Button, Group, Stack, Text, Title } from "@mantine/core";
+import { PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { LetterLeft } from "../api/collection";
 import type { InvoiceDocument } from "../api/invoices";
@@ -32,7 +33,7 @@ export const HoldCard = ({ invoice, canAct, currentUserId, onLettersLeft }: Hold
   const hold = invoice.hold;
   const live = hold !== undefined && !hold.liftedAt;
   return (
-    <Card withBorder data-testid="hold-card">
+    <PageSection data-testid="hold-card">
       <Stack gap="xs">
         <Group justify="space-between">
           <Title order={4}>{t("hold.title")}</Title>
@@ -80,6 +81,6 @@ export const HoldCard = ({ invoice, canAct, currentUserId, onLettersLeft }: Hold
       </Stack>
       {modal === "hold" && <HoldModal invoice={invoice} onLettersLeft={onLettersLeft} onClose={() => setModal(null)} />}
       {modal === "lift" && <LiftModal invoice={invoice} onLettersLeft={onLettersLeft} onClose={() => setModal(null)} />}
-    </Card>
+    </PageSection>
   );
 };

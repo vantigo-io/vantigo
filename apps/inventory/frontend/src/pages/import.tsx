@@ -1,8 +1,8 @@
-import { Alert, Anchor, Badge, Button, Card, FileInput, Group, Select, Stack, Table, Text } from "@mantine/core";
+import { Alert, Anchor, Badge, Button, FileInput, Group, Select, Stack, Table, Text } from "@mantine/core";
 import { IconAlertCircle, IconCircleCheck, IconDownload, IconFileUpload } from "@tabler/icons-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { IMPORT_HEADER, type InventoryImportResult, importOpeningBalances } from "../api/imports";
 import { downloadBlob } from "../api/labels";
@@ -115,7 +115,7 @@ export const ImportPage = () => {
               </Anchor>
             </Alert>
           )}
-          <Card withBorder>
+          <PageSection>
             <Stack gap="md">
               <Text size="sm" c="dimmed">
                 {t("importHint")}
@@ -159,14 +159,14 @@ export const ImportPage = () => {
                 </Button>
               </Group>
             </Stack>
-          </Card>
+          </PageSection>
           {(dryRun.error || commit.error) && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("importFailed")}>
               {refusalMessage(t, (dryRun.error ?? commit.error) as Error)}
             </Alert>
           )}
           {checked && (
-            <Card withBorder>
+            <PageSection>
               <Stack gap="md">
                 <Group justify="space-between">
                   <Text fw={500}>
@@ -220,7 +220,7 @@ export const ImportPage = () => {
                   </Table>
                 </Table.ScrollContainer>
               </Stack>
-            </Card>
+            </PageSection>
           )}
         </>
       )}

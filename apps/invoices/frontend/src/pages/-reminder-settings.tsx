@@ -1,21 +1,9 @@
-import {
-  Alert,
-  Button,
-  Card,
-  Checkbox,
-  Group,
-  NumberInput,
-  Select,
-  SimpleGrid,
-  Stack,
-  Text,
-  Title,
-} from "@mantine/core";
+import { Alert, Button, Checkbox, Group, NumberInput, Select, SimpleGrid, Stack, Text, Title } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageSection } from "@vantigo/frontend-shell";
 import dayjs from "dayjs";
 import { useState } from "react";
 import {
@@ -83,7 +71,7 @@ export const ReminderSettingsCard = ({ today, currentUserId }: ReminderSettingsC
   const [editedFrom, setEditedFrom] = useState<ReminderSettings | null>(null);
   const shown = editedFrom ?? settings.data;
   return (
-    <Card withBorder data-testid="reminder-settings">
+    <PageSection data-testid="reminder-settings">
       <Stack>
         <Title order={4}>{t("reminderSettings.title")}</Title>
         <Text size="sm" c="dimmed">
@@ -107,7 +95,7 @@ export const ReminderSettingsCard = ({ today, currentUserId }: ReminderSettingsC
           />
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 

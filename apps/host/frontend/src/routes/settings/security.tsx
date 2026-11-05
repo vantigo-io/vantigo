@@ -1,10 +1,10 @@
-import { Alert, Badge, Button, Card, Group, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Badge, Button, Group, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconKey, IconLock, IconShieldLock } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { EmptyState, PageHeader, useTranslation } from "@vantigo/frontend-shell";
+import { EmptyState, PageHeader, PageSection, useTranslation } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import "../../i18n";
 import {
@@ -135,7 +135,7 @@ function SecurityForm() {
   return (
     <Stack gap="lg">
       {mfa.data?.mfaEnrollmentRequired && <MfaEnrolmentNotice />}
-      <Card withBorder>
+      <PageSection>
         <Stack>
           <Group justify="space-between">
             <div>
@@ -174,8 +174,8 @@ function SecurityForm() {
             </Stack>
           </form>
         </Stack>
-      </Card>
-      <Card withBorder>
+      </PageSection>
+      <PageSection>
         <Stack>
           <Group>
             <IconShieldLock size={22} />
@@ -238,8 +238,8 @@ function SecurityForm() {
             </Alert>
           )}
         </Stack>
-      </Card>
-      <Card withBorder>
+      </PageSection>
+      <PageSection>
         <Stack>
           <Group>
             <IconKey size={22} />
@@ -281,7 +281,7 @@ function SecurityForm() {
             {t("passkeyVerification")}
           </Text>
         </Stack>
-      </Card>
+      </PageSection>
       <ReauthModal
         opened={disableOpen}
         onClose={() => setDisableOpen(false)}

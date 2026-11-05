@@ -1,7 +1,7 @@
-import { Alert, Badge, Button, Card, Group, Modal, Select, Stack, Table, Text, TextInput } from "@mantine/core";
+import { Alert, Badge, Button, Group, Modal, Select, Stack, Table, Text, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   type Channel,
@@ -167,7 +167,7 @@ export function ChannelsPage() {
           {t("couldNotLoadChannels")}: {query.error.message}
         </Alert>
       )}
-      <Card withBorder radius="lg">
+      <PageSection>
         {query.isPending ? (
           <ContentSkeleton rows={4} rowHeight={52} />
         ) : (
@@ -268,7 +268,7 @@ export function ChannelsPage() {
             </Table>
           </Table.ScrollContainer>
         )}
-      </Card>
+      </PageSection>
       <ChannelForm
         opened={opened}
         onClose={() => setOpened(false)}

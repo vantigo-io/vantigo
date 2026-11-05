@@ -24,7 +24,7 @@ import {
   IconTemplate,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { projectQueryOptions } from "../api/projects";
 import { projectTasksQueryOptions, type Task } from "../api/tasks";
@@ -169,7 +169,7 @@ export const ProjectTasks = ({
         onSelectMilestone={setSelectedMilestoneId}
       />
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Group justify="space-between" wrap="wrap">
             <SegmentedControl
@@ -240,7 +240,7 @@ export const ProjectTasks = ({
               />
             ))}
         </Stack>
-      </Card>
+      </PageSection>
 
       <TaskFormModal projectId={projectId} state={modalState} onClose={() => setModalState(null)} />
       <ApplyTemplateModal

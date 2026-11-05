@@ -1,7 +1,7 @@
-import { Alert, Anchor, Badge, Box, Card, Group, SimpleGrid, Stack, Table, Text } from "@mantine/core";
+import { Alert, Anchor, Badge, Box, Group, SimpleGrid, Stack, Table, Text } from "@mantine/core";
 import { IconAlertCircle, IconClock } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, useI18n, useShellLink } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection, useI18n, useShellLink } from "@vantigo/frontend-shell";
 import { NotFoundError } from "../api/request";
 import { projectTimeSummaryQueryOptions } from "../api/stats";
 import "../i18n";
@@ -53,7 +53,7 @@ export const ProjectTimePanel = ({ projectId }: ProjectTimePanelProps) => {
 
   return (
     <Stack gap="md" mt="md">
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Group justify="space-between" wrap="wrap">
             <Stack gap={2}>
@@ -118,10 +118,10 @@ export const ProjectTimePanel = ({ projectId }: ProjectTimePanelProps) => {
             </Group>
           )}
         </Stack>
-      </Card>
+      </PageSection>
 
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <Stack gap="sm">
             <Text fw={600} component="h3">
               {t("byLine")}
@@ -147,9 +147,9 @@ export const ProjectTimePanel = ({ projectId }: ProjectTimePanelProps) => {
               </Table>
             )}
           </Stack>
-        </Card>
+        </PageSection>
 
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <Stack gap="sm">
             <Text fw={600} component="h3">
               {t("byPerson")}
@@ -175,7 +175,7 @@ export const ProjectTimePanel = ({ projectId }: ProjectTimePanelProps) => {
               </Table>
             )}
           </Stack>
-        </Card>
+        </PageSection>
       </SimpleGrid>
     </Stack>
   );

@@ -1,10 +1,10 @@
-import { ActionIcon, Alert, Badge, Button, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Button, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus, IconSend, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { type Claim, deleteClaim, expenseClaimQueryOptions } from "../api/claims";
 import { deleteExpense, type Expense, submitUnits } from "../api/entries";
@@ -212,9 +212,9 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
         {header}
         {refusalBanner}
         <Alert color="gray">{t("claimReadOnlyNotice")}</Alert>
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <ClaimDetails claim={claim} timeZone={zone} />
-        </Card>
+        </PageSection>
       </Stack>
     );
   }
@@ -239,7 +239,7 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
         }}
       />
 
-      <Card withBorder padding="lg" radius="md" data-testid="claim-trip">
+      <PageSection data-testid="claim-trip">
         <Stack gap="xs">
           <Group gap="xs" wrap="wrap">
             <ExpenseStatusBadge status={claim.status} />
@@ -278,9 +278,9 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
             </Text>
           )}
         </Stack>
-      </Card>
+      </PageSection>
 
-      <Card withBorder padding="lg" radius="md" data-testid="claim-totals">
+      <PageSection data-testid="claim-totals">
         <Stack gap={4}>
           <Title order={4}>{t("claimTotals")}</Title>
           <CurrencyTotals totals={claim.totals} />
@@ -294,7 +294,7 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
             </Stack>
           )}
         </Stack>
-      </Card>
+      </PageSection>
 
       <PerDiemSection claim={claim} days={perDiemDays} lineCount={claim.lines.length} refusals={lineRefusals} />
 
@@ -380,7 +380,7 @@ const LineSection = ({
   const editable = claim.capabilities.canEdit;
 
   return (
-    <Card withBorder padding="lg" radius="md" data-testid={`claim-${kind}-section`}>
+    <PageSection data-testid={`claim-${kind}-section`}>
       <Stack gap="md">
         <Group justify="space-between" align="start" wrap="wrap">
           <Stack gap={0}>
@@ -485,6 +485,6 @@ const LineSection = ({
           </Table.ScrollContainer>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

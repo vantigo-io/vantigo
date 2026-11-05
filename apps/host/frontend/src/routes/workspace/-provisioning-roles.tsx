@@ -1,7 +1,7 @@
-import { Alert, Badge, Button, Card, Checkbox, Group, Stack, Text, Title } from "@mantine/core";
+import { Alert, Badge, Button, Checkbox, Group, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { AuthorizationRole, PermissionDescriptor } from "../../api/authorization";
 import { listProvisioningRoles, replaceProvisioningRoles } from "../../api/provisioning-roles";
@@ -84,7 +84,7 @@ export const ProvisioningRolesSection = ({
   const toggle = (id: string, checked: boolean) =>
     setEdited(checked ? [...selected, id] : selected.filter((roleId) => roleId !== id));
   return (
-    <Card withBorder>
+    <PageSection>
       <Stack>
         <div>
           <Title order={3}>{t("admin.provisioningRoles")}</Title>
@@ -139,6 +139,6 @@ export const ProvisioningRolesSection = ({
           </>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

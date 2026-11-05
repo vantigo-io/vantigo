@@ -1,7 +1,7 @@
-import { Alert, Anchor, Button, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { Alert, Anchor, Button, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { IconInfoCircle, IconPlus } from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
-import { appUrl } from "@vantigo/frontend-shell";
+import { appUrl, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { InvoiceDocument } from "../api/invoices";
 import type { InvoicePayment } from "../api/payments";
@@ -44,7 +44,7 @@ export const PaymentsCard = ({ invoice, canRegister, today }: PaymentsCardProps)
   const payments = invoice.payments ?? [];
   const handoff = invoice.handoff && !invoice.handoff.withdrawnOn ? invoice.handoff : undefined;
   return (
-    <Card withBorder data-testid="payments-card">
+    <PageSection data-testid="payments-card">
       <Stack gap="xs">
         <Group justify="space-between">
           <Title order={4}>{t("payments")}</Title>
@@ -148,6 +148,6 @@ export const PaymentsCard = ({ invoice, canRegister, today }: PaymentsCardProps)
       </Stack>
       {registering && <RegisterPaymentModal invoice={invoice} today={today} onClose={() => setRegistering(false)} />}
       {removing && <RemovePaymentModal invoice={invoice} payment={removing} onClose={() => setRemoving(null)} />}
-    </Card>
+    </PageSection>
   );
 };

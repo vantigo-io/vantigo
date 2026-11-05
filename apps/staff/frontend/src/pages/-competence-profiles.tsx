@@ -3,7 +3,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Group,
   Modal,
   Select,
@@ -20,7 +19,7 @@ import { randomId } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   competenceCategoriesQueryOptions,
@@ -59,7 +58,7 @@ export const CompetenceProfilesTable = () => {
   const nameOf = (row: StaffCompetenceProfile) => competenceName(row, locale);
 
   return (
-    <Card withBorder padding="lg" radius="md" component="section" aria-label={t("competenceProfiles")}>
+    <PageSection component="section" aria-label={t("competenceProfiles")}>
       <Stack gap="md">
         <Group justify="space-between" align="flex-start">
           <Stack gap={0} maw={640}>
@@ -134,7 +133,7 @@ export const CompetenceProfilesTable = () => {
           {modal && <ProfileForm key={modal.row?.id ?? "new"} row={modal.row} onClose={() => setModal(null)} />}
         </Modal>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 

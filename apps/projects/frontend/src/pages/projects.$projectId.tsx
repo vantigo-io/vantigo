@@ -1,8 +1,8 @@
-import { Alert, Anchor, Badge, Button, Card, Group, Menu, SimpleGrid, Stack, Text } from "@mantine/core";
+import { Alert, Anchor, Badge, Button, Group, Menu, SimpleGrid, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconChevronDown, IconPencil } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, PageHeader, useI18n, useShellLink } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection, useI18n, useShellLink } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 import { type Project, type ProjectStatus, projectQueryOptions, setProjectStatus } from "../api/projects";
 import { Field } from "../components/field";
@@ -165,7 +165,7 @@ const ProjectDetailsCard = ({ projectId }: { projectId: number }) => {
   if (isPending) return <ContentSkeleton rows={4} rowHeight={40} />;
 
   return (
-    <Card withBorder padding="lg" radius="md" data-testid="project-details">
+    <PageSection data-testid="project-details">
       <Stack gap="md">
         <Text fw={600} component="h3">
           {t("projectDetails")}
@@ -191,6 +191,6 @@ const ProjectDetailsCard = ({ projectId }: { projectId: number }) => {
           </Field>
         </SimpleGrid>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

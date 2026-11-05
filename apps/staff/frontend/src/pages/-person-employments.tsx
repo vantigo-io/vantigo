@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Group, Modal, Stack, Text, Title } from "@mantine/core";
+import { Alert, Badge, Button, Group, Modal, Stack, Text, Title } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
@@ -11,7 +11,7 @@ import {
   IconRotateClockwise,
 } from "@tabler/icons-react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { EmptyState, useI18n } from "@vantigo/frontend-shell";
+import { EmptyState, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   deleteTerms,
@@ -250,7 +250,7 @@ const EmploymentCard = ({
     });
 
   return (
-    <Card withBorder radius="md" padding="lg" component="section" aria-label={title}>
+    <PageSection component="section" aria-label={title}>
       <Stack gap="md">
         <Group justify="space-between" align="flex-start" wrap="wrap" gap="xs">
           <Group gap="xs">
@@ -370,6 +370,6 @@ const EmploymentCard = ({
           />
         </>
       )}
-    </Card>
+    </PageSection>
   );
 };

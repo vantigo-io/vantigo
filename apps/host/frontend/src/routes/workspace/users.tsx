@@ -40,7 +40,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { AssistantPersonSwitch } from "@vantigo/assistant-ui";
-import { appUrl, ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { appUrl, ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useMemo, useState } from "react";
 import { createInvitation, listInvitations } from "../../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
@@ -675,7 +675,7 @@ const UsersPage = () => {
           </Card>
         </Anchor>
       </SimpleGrid>
-      <Card withBorder radius="md" p={0} style={{ overflow: "hidden" }}>
+      <PageSection padding={0} style={{ overflow: "hidden" }}>
         <Group p="md" justify="space-between">
           <TextInput
             label={t("admin.searchUsers")}
@@ -805,7 +805,7 @@ const UsersPage = () => {
             </SimpleGrid>
           </>
         )}
-      </Card>
+      </PageSection>
       <Modal opened={opened} onClose={close} title={editing ? t("admin.editUser") : t("admin.addAUser")} centered>
         <form onSubmit={form.onSubmit((v) => change.mutate(v))}>
           <Stack>

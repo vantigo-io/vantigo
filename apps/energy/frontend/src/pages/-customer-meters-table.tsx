@@ -1,7 +1,7 @@
-import { Badge, Card, Group, Table, Text, ThemeIcon, Tooltip } from "@mantine/core";
+import { Badge, Group, Table, Text, ThemeIcon, Tooltip } from "@mantine/core";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
-import { EmptyState, useI18n } from "@vantigo/frontend-shell";
+import { EmptyState, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { billingFacts, type ConnectionStatus, type CustomerMeteringPoint, type SupplyPeriod } from "../api/energy";
 import { taxClassKey, taxReasonKey } from "../lib/billing";
 import "../i18n";
@@ -86,61 +86,63 @@ export const CustomerMetersTable = ({ meters }: { meters: CustomerMeteringPoint[
       : t("notAvailable");
   if (meters.length === 0)
     return (
-      <Card withBorder>
+      <PageSection>
         <EmptyState title={t("noCustomerMeteringPoints")} description={t("attachToTrackConsumption")} />
-      </Card>
+      </PageSection>
     );
   return (
-    <Table.ScrollContainer minWidth={960}>
-      <Table striped highlightOnHover>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>{t("meteringPointId")}</Table.Th>
-            <Table.Th>{t("installationAddress")}</Table.Th>
-            <Table.Th>{t("priceArea")}</Table.Th>
-            <Table.Th>{t("expectedAnnualConsumption")}</Table.Th>
-            <Table.Th>{t("supplyPeriods")}</Table.Th>
-            <Table.Th>{t("electricityTaxClass")}</Table.Th>
-            <Table.Th>{t("status")}</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {meters.map(({ meteringPoint, supplyPeriods }) => (
-            <Table.Tr
-              key={meteringPoint.id}
-              style={{ cursor: "pointer" }}
-              onClick={() =>
-                void navigate({
-                  href: `/energy/metering-points/${meteringPoint.id}`,
-                })
-              }
-            >
-              <Table.Td>{meteringPoint.gsrn}</Table.Td>
-              <Table.Td>
-                {meteringPoint.address.streetAddress}, {meteringPoint.address.postalCode} {meteringPoint.address.city}
-              </Table.Td>
-              <Table.Td>{meteringPoint.priceArea}</Table.Td>
-              <Table.Td>{formatKwh(meteringPoint.expectedAnnualConsumptionKwh)}</Table.Td>
-              <Table.Td>
-                <SupplyPeriodCell
-                  periods={supplyPeriods}
-                  formatPeriod={formatPeriod}
-                  statusLabel={(status) => t(`supplyPeriodStatus${status}`)}
-                  notAvailable={t("notAvailable")}
-                />
-              </Table.Td>
-              <Table.Td>
-                <TaxClassCell point={meteringPoint} />
-              </Table.Td>
-              <Table.Td>
-                <Badge color={statusColor(meteringPoint.connectionStatus)}>
-                  {t(`connectionStatus${meteringPoint.connectionStatus}`)}
-                </Badge>
-              </Table.Td>
+    <PageSection padding={0}>
+      <Table.ScrollContainer minWidth={960}>
+        <Table striped highlightOnHover>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("meteringPointId")}</Table.Th>
+              <Table.Th>{t("installationAddress")}</Table.Th>
+              <Table.Th>{t("priceArea")}</Table.Th>
+              <Table.Th>{t("expectedAnnualConsumption")}</Table.Th>
+              <Table.Th>{t("supplyPeriods")}</Table.Th>
+              <Table.Th>{t("electricityTaxClass")}</Table.Th>
+              <Table.Th>{t("status")}</Table.Th>
             </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
+          </Table.Thead>
+          <Table.Tbody>
+            {meters.map(({ meteringPoint, supplyPeriods }) => (
+              <Table.Tr
+                key={meteringPoint.id}
+                style={{ cursor: "pointer" }}
+                onClick={() =>
+                  void navigate({
+                    href: `/energy/metering-points/${meteringPoint.id}`,
+                  })
+                }
+              >
+                <Table.Td>{meteringPoint.gsrn}</Table.Td>
+                <Table.Td>
+                  {meteringPoint.address.streetAddress}, {meteringPoint.address.postalCode} {meteringPoint.address.city}
+                </Table.Td>
+                <Table.Td>{meteringPoint.priceArea}</Table.Td>
+                <Table.Td>{formatKwh(meteringPoint.expectedAnnualConsumptionKwh)}</Table.Td>
+                <Table.Td>
+                  <SupplyPeriodCell
+                    periods={supplyPeriods}
+                    formatPeriod={formatPeriod}
+                    statusLabel={(status) => t(`supplyPeriodStatus${status}`)}
+                    notAvailable={t("notAvailable")}
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <TaxClassCell point={meteringPoint} />
+                </Table.Td>
+                <Table.Td>
+                  <Badge color={statusColor(meteringPoint.connectionStatus)}>
+                    {t(`connectionStatus${meteringPoint.connectionStatus}`)}
+                  </Badge>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
+    </PageSection>
   );
 };

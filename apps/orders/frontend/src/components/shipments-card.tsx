@@ -17,6 +17,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle, IconCoin, IconPlus, IconTrash, IconTruckDelivery } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { ORDERS_QUERY_KEY } from "../api/request";
 import {
@@ -100,7 +101,7 @@ export const ShipmentsCard = ({ deliveryId, posted, canManage }: ShipmentsCardPr
   if (!posted) return null;
   const items = shipments.data?.items ?? [];
   return (
-    <Card withBorder padding="lg" data-testid="shipments-card">
+    <PageSection data-testid="shipments-card">
       <Stack gap="md">
         <Group justify="space-between">
           <Title order={4}>{t("shipments")}</Title>
@@ -129,7 +130,7 @@ export const ShipmentsCard = ({ deliveryId, posted, canManage }: ShipmentsCardPr
           />
         ))}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -540,7 +541,7 @@ export const OrderShipmentsCard = ({ orderId }: { orderId: number }) => {
   const items = (shipments.data?.items ?? []).filter((s) => s.status !== "draft");
   if (items.length === 0) return null;
   return (
-    <Card withBorder padding="lg" data-testid="order-shipments">
+    <PageSection data-testid="order-shipments">
       <Stack gap="xs">
         <Title order={4}>{t("orderShipments")}</Title>
         {items.map((shipment) => (
@@ -563,6 +564,6 @@ export const OrderShipmentsCard = ({ orderId }: { orderId: number }) => {
           </Group>
         ))}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

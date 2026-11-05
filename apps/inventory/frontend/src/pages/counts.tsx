@@ -1,8 +1,8 @@
-import { Alert, Anchor, Badge, Button, Card, Group, Progress, Select, Stack, Table, Text } from "@mantine/core";
+import { Alert, Anchor, Badge, Button, Group, Progress, Select, Stack, Table, Text } from "@mantine/core";
 import { IconAlertCircle, IconClipboardList, IconPlus } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { countStatuses, countsQueryOptions, type InventoryCountStatus } from "../api/counts";
 import { inventoryMetaQueryOptions } from "../api/meta";
@@ -66,7 +66,7 @@ export const CountsPage = () => {
           {t("notAllowed_count")}
         </Alert>
       ) : (
-        <Card withBorder>
+        <PageSection>
           <Stack gap="md">
             <Group gap="sm">
               <Select
@@ -162,7 +162,7 @@ export const CountsPage = () => {
               </Table.ScrollContainer>
             )}
           </Stack>
-        </Card>
+        </PageSection>
       )}
       {opening && allowed && <OpenCountDialog opened onClose={closeOpening} siteId={siteId} />}
     </Stack>

@@ -1,8 +1,8 @@
-import { Accordion, Alert, Anchor, Button, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { Accordion, Alert, Anchor, Button, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { IconAlertCircle, IconPackage } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection } from "@vantigo/frontend-shell";
 import { inventoryMetaQueryOptions } from "../api/meta";
 import {
   type InventoryPackaging,
@@ -140,7 +140,7 @@ export const ProductStock = ({ productId }: ProductStockProps) => {
   const only = several ? undefined : variants[0]?.variant;
 
   return (
-    <Card withBorder>
+    <PageSection>
       <Stack gap="md">
         <Group justify="space-between">
           <Title order={4}>{t("stockCardTitle")}</Title>
@@ -236,6 +236,6 @@ export const ProductStock = ({ productId }: ProductStockProps) => {
           </>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

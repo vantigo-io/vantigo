@@ -1,21 +1,8 @@
-import {
-  Alert,
-  Button,
-  Card,
-  Checkbox,
-  Group,
-  List,
-  SimpleGrid,
-  Stack,
-  Switch,
-  Text,
-  TextInput,
-  Title,
-} from "@mantine/core";
+import { Alert, Button, Checkbox, Group, List, SimpleGrid, Stack, Switch, Text, TextInput, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { invoicesMetaQueryOptions } from "../api/meta";
 import {
@@ -157,7 +144,7 @@ const PaymentSettingsForm = ({
       return next;
     });
   return (
-    <Card withBorder data-testid="payment-settings">
+    <PageSection data-testid="payment-settings">
       <Stack>
         <Title order={4}>{t("paymentSettings.title")}</Title>
         <Switch
@@ -252,6 +239,6 @@ const PaymentSettingsForm = ({
           </Button>
         </Group>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

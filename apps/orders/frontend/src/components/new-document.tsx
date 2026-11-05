@@ -1,9 +1,9 @@
-import { Alert, Box, Button, Card, Group, Select, Stack, Text } from "@mantine/core";
+import { Alert, Box, Button, Group, Select, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconArrowRight, IconLock } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { createOrder } from "../api/orders";
 import { createQuote } from "../api/quotes";
@@ -81,7 +81,7 @@ export const NewDocument = ({ kind, customerId: preset, access }: NewDocumentPro
           {kind === "quote" ? t("mayNotCreateQuote") : t("mayNotCreateOrder")}
         </Alert>
       ) : (
-        <Card withBorder padding="xl" maw={560}>
+        <PageSection maw={560}>
           <Stack>
             <Text size="sm" c="dimmed">
               {kind === "quote" ? t("newQuoteHint") : t("newOrderHint")}
@@ -119,7 +119,7 @@ export const NewDocument = ({ kind, customerId: preset, access }: NewDocumentPro
               )}
             </Group>
           </Stack>
-        </Card>
+        </PageSection>
       )}
     </Stack>
   );

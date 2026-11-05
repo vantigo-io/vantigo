@@ -3,7 +3,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Checkbox,
   Group,
   NumberInput,
@@ -36,7 +35,7 @@ import {
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { LetterLeft } from "../api/collection";
 import { SETTLEMENT_KIND } from "../api/consumption";
@@ -646,7 +645,7 @@ const DraftEditor = ({
           </Stack>
         </Alert>
       )}
-      <Card withBorder>
+      <PageSection>
         <Stack>
           {credit || !canViewCustomers ? (
             <Text>
@@ -820,8 +819,8 @@ const DraftEditor = ({
             </Alert>
           )}
         </Stack>
-      </Card>
-      <Card withBorder>
+      </PageSection>
+      <PageSection>
         <Stack>
           <Group justify="space-between" wrap="wrap">
             <Title order={4}>{t("lines")}</Title>
@@ -1017,7 +1016,7 @@ const DraftEditor = ({
             gross={totals.gross}
           />
         </Stack>
-      </Card>
+      </PageSection>
       {!credit && (
         <TimesheetCard
           draft={draft}
@@ -1030,7 +1029,7 @@ const DraftEditor = ({
         />
       )}
       {credit && draft.sources?.wouldRelease !== undefined && <WouldRelease refs={draft.sources.wouldRelease} />}
-      <Card withBorder>
+      <PageSection>
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <Textarea
             label={t("note")}
@@ -1049,7 +1048,7 @@ const DraftEditor = ({
             onChange={(e) => touch(setInternalNote, "internalNote")(e.currentTarget.value)}
           />
         </SimpleGrid>
-      </Card>
+      </PageSection>
       {issuing && <IssueModal draft={draft} onClose={() => setIssuing(false)} />}
       {deducting && (
         <DeductModal
@@ -1163,7 +1162,7 @@ const TimesheetCard = ({
 }) => {
   const { t, number, date } = useInvoiceFormat();
   return (
-    <Card withBorder data-testid="timesheet-card">
+    <PageSection data-testid="timesheet-card">
       <Stack gap="xs">
         <Title order={4}>{t("timesheet")}</Title>
         <Checkbox
@@ -1208,7 +1207,7 @@ const TimesheetCard = ({
           </Table>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -1217,7 +1216,7 @@ const WouldRelease = ({ refs }: { refs: { kind: string; id: number }[] }) => {
   const { t } = useInvoiceFormat();
   const sourceName = useSourceName();
   return (
-    <Card withBorder data-testid="would-release">
+    <PageSection data-testid="would-release">
       <Stack gap="xs">
         <Title order={4}>{t("wouldReleaseTitle")}</Title>
         {refs.length === 0 ? (
@@ -1231,7 +1230,7 @@ const WouldRelease = ({ refs }: { refs: { kind: string; id: number }[] }) => {
           </>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -1410,7 +1409,7 @@ const IssuedDocument = ({
       <CreditsLink doc={doc} />
       {doc.pdfStored === false && <Alert color="yellow">{t("pdfNotStoredYet")}</Alert>}
       {doc.warnings.includes("issued_late") && <Alert color="yellow">{t("warning.issued_late")}</Alert>}
-      <Card withBorder>
+      <PageSection>
         <SimpleGrid cols={{ base: 1, sm: 3 }}>
           <Stack gap={2}>
             <Text fw={600}>{doc.buyer?.name}</Text>
@@ -1439,8 +1438,8 @@ const IssuedDocument = ({
             {doc.orderReference && <Text size="sm">{t("orderReferenceIs", { reference: doc.orderReference })}</Text>}
           </Stack>
         </SimpleGrid>
-      </Card>
-      <Card withBorder>
+      </PageSection>
+      <PageSection>
         <Table>
           <Table.Thead>
             <Table.Tr>
@@ -1482,9 +1481,9 @@ const IssuedDocument = ({
           open={doc.openAmount}
           refundDue={doc.refundDue}
         />
-      </Card>
+      </PageSection>
       {doc.kind === "invoice" && (
-        <Card withBorder>
+        <PageSection>
           <Stack gap="xs">
             <Title order={4}>{t("creditNotes")}</Title>
             {(doc.creditNotes ?? []).length === 0 ? (
@@ -1506,7 +1505,7 @@ const IssuedDocument = ({
             )}
             <Text size="sm">{t("uncreditedAmountIs", { amount: money(doc.uncreditedAmount ?? 0, doc.currency) })}</Text>
           </Stack>
-        </Card>
+        </PageSection>
       )}
       {doc.kind === "invoice" && <PaymentsCard invoice={doc} canRegister={canRegisterPayments} today={meta.today} />}
       {doc.kind === "invoice" && (

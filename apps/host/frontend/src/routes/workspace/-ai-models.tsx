@@ -1,7 +1,7 @@
 import { Alert, Badge, Card, Group, Select, Skeleton, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { type AiSettings, type AiTask, aiSettingsQueryKey, fetchAiSettings, updateAiTask } from "../../api/ai";
 import type { ApiError } from "../../api/request";
 import { NotFoundPage } from "../../components/errors";
@@ -135,7 +135,7 @@ export const AiModelsPage = () => {
       {settings.isError && !isNotConfigured(settings.error) && <Alert color="red">{t("admin.ai.loadFailed")}</Alert>}
       {data && (
         <>
-          <Card withBorder radius="md" padding="lg">
+          <PageSection>
             <Title order={3} fz="h4" mb="md">
               {t("admin.ai.plan")}
             </Title>
@@ -156,7 +156,7 @@ export const AiModelsPage = () => {
                 <Text>{data.keyConfigured ? t("admin.ai.keyConfigured") : t("admin.ai.keyNotConfigured")}</Text>
               </Fact>
             </Stack>
-          </Card>
+          </PageSection>
           {data.allowedModels.length <= 1 && <Alert color="blue">{t("admin.ai.lockedHint")}</Alert>}
           {data.modules.length === 0 && <Text c="dimmed">{t("admin.ai.noTasks")}</Text>}
           {data.modules.map((group) => (

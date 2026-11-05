@@ -1,9 +1,9 @@
-import { Alert, Badge, Button, Card, Group, Select, Stack, Table, Text, Tooltip } from "@mantine/core";
+import { Alert, Badge, Button, Group, Select, Stack, Table, Text, Tooltip } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconArchive, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   archiveTariff,
@@ -97,7 +97,7 @@ export const TariffsPage = ({ canManage = false }: { canManage?: boolean }) => {
           )
         }
       />
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Group>
             <Select
@@ -215,7 +215,7 @@ export const TariffsPage = ({ canManage = false }: { canManage?: boolean }) => {
             </Table.ScrollContainer>
           )}
         </Stack>
-      </Card>
+      </PageSection>
       {canManage && <TariffEditor state={editor} onClose={() => setEditor(null)} />}
     </Stack>
   );

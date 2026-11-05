@@ -1,8 +1,8 @@
-import { Alert, Anchor, Badge, Button, Card, Group, Stack, Switch, Table } from "@mantine/core";
+import { Alert, Anchor, Badge, Button, Group, Stack, Switch, Table } from "@mantine/core";
 import { IconAlertCircle, IconPlus } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { groupsQueryOptions } from "../api/groups";
 import { staffMetaQueryOptions } from "../api/meta";
@@ -36,7 +36,7 @@ export const GroupsPage = () => {
           </Button>
         }
       />
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Group justify="flex-end">
             <Switch
@@ -112,7 +112,7 @@ export const GroupsPage = () => {
             </Table.ScrollContainer>
           )}
         </Stack>
-      </Card>
+      </PageSection>
       <GroupFormModal opened={creating} onClose={() => setCreating(false)} />
     </Stack>
   );

@@ -22,7 +22,7 @@ import { notifications } from "@mantine/notifications";
 import { IconLock, IconPlus, IconTrash, IconUsers } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { ContentSkeleton, PageHeader, PageTabs, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection, PageTabs, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   type AuthorizationRole,
@@ -285,7 +285,7 @@ const RolesPage = () => {
         onChange={(section) => void navigate({ search: { section } })}
       >
         <Tabs.Panel value="roles" pt="xl">
-          <Card withBorder>
+          <PageSection>
             <Stack>
               <Group justify="space-between">
                 <div>
@@ -357,7 +357,7 @@ const RolesPage = () => {
                 </Stack>
               )}
             </Stack>
-          </Card>
+          </PageSection>
           {isOwner && roles.data && catalog.data && (
             <Stack mt="xl">
               <ProvisioningRolesSection customRoles={customRoles} catalog={catalog.data} />
@@ -366,7 +366,7 @@ const RolesPage = () => {
         </Tabs.Panel>
 
         <Tabs.Panel value="assignments" pt="xl">
-          <Card withBorder>
+          <PageSection>
             <Stack>
               <Title order={3}>{t("admin.userAssignments")}</Title>
               <Text size="sm" c="dimmed">
@@ -434,11 +434,11 @@ const RolesPage = () => {
                 </Text>
               )}
             </Stack>
-          </Card>
+          </PageSection>
         </Tabs.Panel>
 
         <Tabs.Panel value="delegations" pt="xl">
-          <Card withBorder>
+          <PageSection>
             <Stack>
               <Group justify="space-between">
                 <div>
@@ -492,7 +492,7 @@ const RolesPage = () => {
                 </>
               )}
             </Stack>
-          </Card>
+          </PageSection>
         </Tabs.Panel>
       </PageTabs>
       <Modal

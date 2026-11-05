@@ -2,7 +2,7 @@ import { Alert, Anchor, Badge, Button, Card, Group, SimpleGrid, Stack, Table, Te
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { intakeQueryOptions, type PlanningCoverage } from "../api/intake";
 import { planningMetaQueryOptions } from "../api/meta";
@@ -43,9 +43,9 @@ export const IntakePage = () => {
       )}
       {intake.isPending && <ContentSkeleton rows={4} rowHeight={56} />}
       {intake.data && intake.data.projects.length === 0 && (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <EmptyState title={t("noPlannedProjects")} description={t("noPlannedProjectsDescription")} />
-        </Card>
+        </PageSection>
       )}
       {intake.data?.projects.map((entry) => {
         const name = `${entry.project.code} ${entry.project.name}`;

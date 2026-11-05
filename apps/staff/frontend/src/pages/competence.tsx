@@ -20,7 +20,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import { IconAlertCircle, IconCheck } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, PageTabs, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, PageTabs, useI18n } from "@vantigo/frontend-shell";
 import {
   competenceCategoriesQueryOptions,
   competenceInterestsQueryOptions,
@@ -153,7 +153,7 @@ const Matrix = ({
 
   return (
     <Stack gap="md">
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }}>
           <Select
             label={t("competenceCategory")}
@@ -195,7 +195,7 @@ const Matrix = ({
           checked={verifiedOnly ?? false}
           onChange={(event) => onChange({ verifiedOnly: event.currentTarget.checked || undefined })}
         />
-      </Card>
+      </PageSection>
 
       {matrix.isError && (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadMatrix")}>

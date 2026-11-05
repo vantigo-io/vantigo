@@ -2,7 +2,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Grid,
   Group,
   NumberInput,
@@ -18,7 +17,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { IconDeviceFloppy, IconPlus, IconTemplate } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { isVersionConflict, ORDERS_QUERY_KEY } from "../api/request";
 import {
@@ -70,7 +69,7 @@ export const TemplatesPage = ({ access = noOrdersAccess }: { access?: OrdersAcce
       />
       <Grid gap="lg">
         <Grid.Col span={{ base: 12, md: 4 }}>
-          <Card withBorder padding="sm">
+          <PageSection>
             <Stack gap="sm">
               <Switch
                 label={t("showArchived")}
@@ -123,7 +122,7 @@ export const TemplatesPage = ({ access = noOrdersAccess }: { access?: OrdersAcce
                 </Table>
               )}
             </Stack>
-          </Card>
+          </PageSection>
         </Grid.Col>
         <Grid.Col span={{ base: 12, md: 8 }}>
           {selected === null ? (
@@ -224,7 +223,7 @@ const TemplateEditor = ({ template, access, onSaved, onDeleted }: { template?: T
   };
 
   return (
-    <Card withBorder padding="lg" data-testid="template-editor">
+    <PageSection data-testid="template-editor">
       <Stack gap="md">
         <Group justify="space-between">
           <Title order={4}>{template ? template.name : t("newTemplate")}</Title>
@@ -337,6 +336,6 @@ const TemplateEditor = ({ template, access, onSaved, onDeleted }: { template?: T
           {t("deleteTemplateHint", { name: template.name })}
         </ConfirmDialog>
       )}
-    </Card>
+    </PageSection>
   );
 };

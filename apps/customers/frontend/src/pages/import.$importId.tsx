@@ -1,10 +1,10 @@
-import { Alert, Button, Card, Group, Stack, Stepper, Text } from "@mantine/core";
+import { Alert, Button, Group, Stack, Stepper, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconDownload } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ContentSkeleton, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { isSessionExpired, saveCsv } from "../api/import-export";
 import {
   type CustomerImport,
@@ -116,7 +116,7 @@ const CheckResult = ({ imp }: { imp: CustomerImport }) => {
       onConfirm: () => run.mutate(),
     });
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <div>
           <Text fw={600}>{t("importCheckedTitle")}</Text>
@@ -139,7 +139,7 @@ const CheckResult = ({ imp }: { imp: CustomerImport }) => {
           </Button>
         </Group>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -148,7 +148,7 @@ const DoneResult = ({ imp }: { imp: CustomerImport }) => {
   const { t } = useI18n("customers");
   const stopped = imp.processed < imp.rows;
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <div>
           <Text fw={600}>{t(stopped ? "importStoppedTitle" : "importDoneTitle")}</Text>
@@ -171,7 +171,7 @@ const DoneResult = ({ imp }: { imp: CustomerImport }) => {
           </Button>
         </Group>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 

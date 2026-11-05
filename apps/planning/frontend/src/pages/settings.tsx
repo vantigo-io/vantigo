@@ -1,9 +1,9 @@
-import { Alert, Button, Card, Group, NumberInput, Select, SimpleGrid, Stack, Text } from "@mantine/core";
+import { Alert, Button, Group, NumberInput, Select, SimpleGrid, Stack, Text } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import type { PlanningLoadUnit } from "../api/meta";
 import { ApiValidationError, isRevisionConflict, PLANNING_QUERY_KEY } from "../api/request";
 import {
@@ -101,7 +101,7 @@ const SettingsForm = ({ settings }: { settings: PlanningSettings }) => {
   return (
     <form onSubmit={form.onSubmit((values) => save.mutate(values))}>
       <Stack gap="lg">
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <Stack>
             <Select
               label={t("setting_overbooking")}
@@ -126,15 +126,15 @@ const SettingsForm = ({ settings }: { settings: PlanningSettings }) => {
               {...form.getInputProps("defaultLoadUnit")}
             />
           </Stack>
-        </Card>
-        <Card withBorder padding="lg" radius="md">
+        </PageSection>
+        <PageSection>
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
             {number("unbookedThresholdPercent", 1, 100)}
             {number("unbookedHorizonWeeks", 1, 52)}
             {number("endingLeadWeeks", 1, 26)}
             {number("requestLeadDays", 0, 365)}
           </SimpleGrid>
-        </Card>
+        </PageSection>
         <Group justify="flex-end">
           <Button type="submit" loading={save.isPending}>
             {t("saveSettings")}

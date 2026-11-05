@@ -3,7 +3,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Group,
   Modal,
   Select,
@@ -18,7 +17,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, KpiCard, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, KpiCard, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import "../i18n";
 import {
@@ -165,7 +164,7 @@ export const CategoriesPage = () => {
           />
         </SimpleGrid>
       )}
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Text size="sm" c="dimmed">
             {t("categories.hierarchyDescription")}
@@ -242,7 +241,7 @@ export const CategoriesPage = () => {
             </>
           )}
         </Stack>
-      </Card>
+      </PageSection>
       <Modal
         opened={modalState !== null}
         onClose={() => setModalState(null)}

@@ -1,8 +1,9 @@
-import { Anchor, Button, Card, Group, Stack, Table, Text, Title, Tooltip } from "@mantine/core";
+import { Anchor, Button, Group, Stack, Table, Text, Title, Tooltip } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconTruckLoading } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { PageSection } from "@vantigo/frontend-shell";
 import { createDelivery, deliveryListQueryOptions } from "../api/deliveries";
 import { ORDERS_QUERY_KEY } from "../api/request";
 import { refusalMessage } from "../lib/errors";
@@ -40,7 +41,7 @@ export const DeliveriesCard = ({ orderId, canCreate, blocked }: DeliveriesCardPr
   });
   const items = deliveries.data?.items ?? [];
   return (
-    <Card withBorder padding="lg" data-testid="deliveries-card">
+    <PageSection data-testid="deliveries-card">
       <Stack gap="md">
         <Group justify="space-between">
           <Title order={4}>{t("orderDeliveries")}</Title>
@@ -96,6 +97,6 @@ export const DeliveriesCard = ({ orderId, canCreate, blocked }: DeliveriesCardPr
           </Table>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
