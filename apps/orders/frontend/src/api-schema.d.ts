@@ -62,6 +62,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/carrier-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List carrier accounts
+         * @description The carrier accounts (O51), never their credentials. Every Orders user may read them, to choose one for a shipment.
+         */
+        get: operations["listCarrierAccounts"];
+        put?: never;
+        /**
+         * Add a carrier account
+         * @description Adds a carrier account under Integrations (O51); its credentials are sealed and never answered. The carrier must be one SHIPPING_CARRIERS allows (carrier_unavailable).
+         */
+        post: operations["createCarrierAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/carrier-accounts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a carrier account
+         * @description A carrier account; never its credentials.
+         */
+        get: operations["getCarrierAccount"];
+        /**
+         * Save a carrier account
+         * @description Saves a carrier account (O51). Credentials absent keep the stored ones; given, they replace them and the account must be verified again. Archiving keeps the account on its shipments.
+         */
+        put: operations["updateCarrierAccount"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/carrier-accounts/{id}/pickup-points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List pickup points
+         * @description The carrier's pickup points near a postal code (O49), for a carrier with the capability; none otherwise.
+         */
+        get: operations["listPickupPoints"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/carrier-accounts/{id}/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a carrier account's services
+         * @description The products the account may book: Bring's from the adapter's data file.
+         */
+        get: operations["listCarrierServices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/carrier-accounts/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify a carrier account
+         * @description Makes the carrier's cheapest authenticated call with the stored keys and lists the services the account can book (O51); says when the user lacks the right to read prices.
+         */
+        post: operations["verifyCarrierAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/customers/{customerId}/summary": {
         parameters: {
             query?: never;
@@ -204,6 +312,30 @@ export interface paths {
          * @description Posts a draft delivery (O47): every line needs a location; Inventory issues the stock from the site in one movement, consuming the order lines' reservations; the order lines' delivered quantities grow, the back order is what remains, orders.delivery.posted.v1 is published and the packing slip is stored. Refused for an order on hold (order_on_hold), beyond what is open (over_delivery) or beyond what the location holds (insufficient_stock, naming every short line).
          */
         post: operations["postDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/deliveries/{id}/shipments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a delivery's shipments
+         * @description A delivery's shipments with their packages, documents and tracking (O50).
+         */
+        get: operations["listDeliveryShipments"];
+        put?: never;
+        /**
+         * Create a shipment
+         * @description Proposes a draft shipment of a posted delivery (O50): one package weighing the sum of the delivered variants' weights, the recipient the order's delivery address and contact, the site's default carrier account and its default service unless named. Refused for a delivery not posted (delivery_not_posted) or with no carrier account to use (no_carrier_account).
+         */
+        post: operations["createShipment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -576,6 +708,26 @@ export interface paths {
          * @description Sends the order confirmation of the current version by e-mail (O25), storing its PDF; a confirmation after a change prints as revised (O26).
          */
         post: operations["sendSalesOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/orders/{id}/shipments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an order's shipments
+         * @description Every shipment of the order's deliveries, with its tracking link (O52).
+         */
+        get: operations["listOrderShipments"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -978,6 +1130,174 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/shipments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a shipment
+         * @description A shipment with its packages, documents and tracking events (O50).
+         */
+        get: operations["getShipment"];
+        /**
+         * Save a shipment
+         * @description Saves a draft shipment: its account, service, value-added services, packages (1 to 20; grams and millimetres), pickup point and the contact the carrier notifies.
+         */
+        put: operations["updateShipment"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/shipments/{id}/book": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Book a shipment
+         * @description Books a draft shipment with the carrier (O50) under the idempotency key stored on it before the call, so a retried request books once; stores the consignment number, the package numbers, the tracking URL and the booked cost, then the label and the waybill; publishes orders.shipment.booked.v1; counts the order's shipping lines delivered; and, when the settings say so, queues the shipping notice to the order's contact. A carrier's refusal is 422 carrier_refused with its message, and the shipment stays a draft.
+         */
+        post: operations["bookShipment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/shipments/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a shipment
+         * @description Cancels a shipment (O50): a draft at once; a booked one through the carrier, whose answer is cancelled, not_supported — the shipment is voided in Vantigo and its label must not be used (Bring) — or too late (shipment_past_cancel).
+         */
+        post: operations["cancelShipment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/shipments/{id}/label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a shipment's label
+         * @description The carrier's label as it issued it (PDF), stored at booking (O52).
+         */
+        get: operations["getShipmentLabel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/shipments/{id}/rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a shipment's prices
+         * @description The carrier's options and prices for a draft shipment's packages and addresses (O49), cheapest first; estimates unless the carrier says otherwise.
+         */
+        get: operations["getShipmentRates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/shipments/{id}/waybill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a shipment's waybill
+         * @description The carrier's waybill (fraktbrev) as it issued it (PDF), stored at booking (O52); for a service whose label serves as the waybill, the label.
+         */
+        get: operations["getShipmentWaybill"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/shipping-estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Estimate a shipping line
+         * @description Asks the carrier for a shipping line's price (O53): the document's delivery address, the estimated weight of its goods lines, the default carrier account of the order's site (else the settings' default site's) and its default service, plus the settings' markup. Nothing is written.
+         */
+        post: operations["estimateShipping"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/shipping/site-defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the default carrier accounts
+         * @description The default carrier account per site (O51).
+         */
+        get: operations["getSiteCarrierDefaults"];
+        /**
+         * Save the default carrier accounts
+         * @description Replaces the default carrier account per site (O51): each an active account, each site once.
+         */
+        put: operations["putSiteCarrierDefaults"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/sites": {
         parameters: {
             query?: never;
@@ -1367,6 +1687,100 @@ export interface components {
             revision: number;
             /** Format: int64 */
             templateId: number;
+        };
+        /** @description A carrier account under Integrations (O51). The credentials are never answered: hasCredentials says whether they are stored. carrierAllowed is false when SHIPPING_CARRIERS withholds the carrier on this installation. */
+        OrdersCarrierAccount: {
+            /** @enum {string} */
+            carrier: "bring";
+            carrierAllowed: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            customerNumbers: string[];
+            defaultService?: string | null;
+            hasCredentials: boolean;
+            /** Format: int64 */
+            id: number;
+            name: string;
+            sender: components["schemas"]["OrdersCarrierSender"];
+            /** @enum {string} */
+            status: "active" | "archived";
+            /** @description The carrier's test mode: Bring's X-Bring-Test-Indicator. */
+            test: boolean;
+            /** Format: date-time */
+            updatedAt: string;
+            /**
+             * Format: date-time
+             * @description When Verify last passed with the stored keys; cleared when they change.
+             */
+            verifiedAt?: string | null;
+            /** Format: int32 */
+            version: number;
+        };
+        /** @description A carrier account to create or save (O51). credentials are write-only: on a save, absent keeps the stored ones. version is required on a save. */
+        OrdersCarrierAccountInput: {
+            /** @enum {string} */
+            carrier: "bring";
+            credentials?: components["schemas"]["OrdersCarrierCredentials"];
+            /** @description Bring: the first books parcels, a second (when given) cargo. */
+            customerNumbers: string[];
+            /** @description A product code of the carrier's services. */
+            defaultService?: string | null;
+            name: string;
+            sender?: components["schemas"]["OrdersCarrierSender"];
+            /** @enum {string} */
+            status?: "active" | "archived";
+            test: boolean;
+            /** Format: int32 */
+            version?: number;
+        };
+        /** @description The carrier accounts, the active ones first; carriers are the adapters SHIPPING_CARRIERS allows. */
+        OrdersCarrierAccountList: {
+            carriers: string[];
+            items: components["schemas"]["OrdersCarrierAccount"][];
+        };
+        /** @description Bring's Mybring user id (the login e-mail) and API key. Write-only: sealed when stored and never answered. */
+        OrdersCarrierCredentials: {
+            key: string;
+            uid: string;
+        };
+        /** @description The sender address an account books with; empty fields fall back to the seller's address. */
+        OrdersCarrierSender: {
+            city?: string | null;
+            /** @description ISO 3166-1 alpha-2. */
+            country?: string | null;
+            email?: string | null;
+            line1?: string | null;
+            line2?: string | null;
+            name?: string | null;
+            phone?: string | null;
+            postalCode?: string | null;
+        };
+        /** @description A product the carrier account may book. */
+        OrdersCarrierService: {
+            code: string;
+            /** @description The name in the caller's language. */
+            name: string;
+            nameEn: string;
+            nameNb: string;
+            /** @description Delivered to a pickup point. */
+            pickupPoint: boolean;
+            /** @enum {string} */
+            segment: "b2c" | "b2b" | "cargo" | "return";
+            /** @description Has a waybill (fraktbrev) apart from its labels; otherwise the label serves. */
+            waybill: boolean;
+        };
+        /** @description The products the account may book. */
+        OrdersCarrierServiceList: {
+            items: components["schemas"]["OrdersCarrierService"][];
+        };
+        /** @description What Verify learned (O51): ok, unauthorized (the carrier refused the keys), refused (the carrier refused the request, message says why) or unreachable. pricesAvailable is false when the user may not read the account's prices (Bring: the financial role is missing). */
+        OrdersCarrierVerification: {
+            message?: string | null;
+            notes: string[];
+            pricesAvailable: boolean;
+            /** @enum {string} */
+            result: "ok" | "unauthorized" | "refused" | "unreachable";
+            services: components["schemas"]["OrdersCarrierService"][];
         };
         /** @description One entry of an order's change log (O26). */
         OrdersChange: {
@@ -1759,10 +2173,10 @@ export interface components {
             /** @enum {string} */
             invoicePolicy: "order" | "delivery";
             /**
-             * @description An open set (O15): product, section and note in this phase.
+             * @description An open set (O15): product, section and note, and shipping (O53) — the freight the customer pays: quantity 1, invoiced on order, counted delivered when the order's first shipment is booked; quotes and orders only.
              * @enum {string}
              */
-            kind: "product" | "section" | "note";
+            kind: "product" | "section" | "note" | "shipping";
             /**
              * Format: double
              * @description The discount.
@@ -1863,10 +2277,10 @@ export interface components {
              */
             invoicePolicy?: "order" | "delivery";
             /**
-             * @description An open set (O15): product, section and note in this phase.
+             * @description An open set (O15): product, section and note, and shipping (O53) — the freight the customer pays: quantity 1, invoiced on order, counted delivered when the order's first shipment is booked; quotes and orders only.
              * @enum {string}
              */
-            kind: "product" | "section" | "note";
+            kind: "product" | "section" | "note" | "shipping";
             /** @description A free-text product line's name, or a section's heading or a note's title; a section or a note keeps its text in description. */
             name?: string;
             /** @description Quotes only (O21). */
@@ -1875,6 +2289,11 @@ export interface components {
             packagingId?: number | null;
             /** Format: double */
             packagingQuantity?: number | null;
+            /**
+             * @description carrier marks a shipping line's unitPrice as the carrier's estimate with the markup (POST /shipping-estimate, O53); absent, a typed price is manual.
+             * @enum {string}
+             */
+            priceSource?: "carrier";
             /**
              * Format: double
              * @description Greater than 0, at most three decimals.
@@ -1897,8 +2316,11 @@ export interface components {
         /** @description An override of a document kind's mail text in one language (O25); empty falls back to the built-in text. */
         OrdersMailText: {
             body: string;
-            /** @enum {string} */
-            kind: "quote" | "confirmation";
+            /**
+             * @description quote, confirmation, or shipping_notice — the e-mail a booked shipment queues (O52), which may name {number}, {seller}, {carrier}, {consignment} and {trackingUrl}.
+             * @enum {string}
+             */
+            kind: "quote" | "confirmation" | "shipping_notice";
             /** @enum {string} */
             language: "nb" | "en";
             subject: string;
@@ -2184,6 +2606,20 @@ export interface components {
             /** Format: uuid */
             userId?: string | null;
         };
+        /** @description A pickup point the carrier lists. */
+        OrdersPickupPoint: {
+            address: string;
+            city: string;
+            id: string;
+            locker: boolean;
+            name: string;
+            openingHours: string;
+            postalCode: string;
+        };
+        /** @description Pickup points near a postal code. */
+        OrdersPickupPointList: {
+            items: components["schemas"]["OrdersPickupPoint"][];
+        };
         /** @description An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, order_in_draft_invoice (a cancel while a draft invoice holds part of the order, O36), line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice (a price or discount change on a line a draft invoice holds part of, O26), client_request_reused, template_name_taken, blocked_by_warning (a block warning refuses send, mark as sent, confirm and accept into a confirmed order; detail holds its text, O33). 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         OrdersProblem: {
             code?: string | null;
@@ -2445,6 +2881,16 @@ export interface components {
              * @description The site a new order is fulfilled from (O46); null names none.
              */
             defaultSiteId?: number | null;
+            /**
+             * Format: double
+             * @description The markup on a carrier's estimate a shipping line takes (O53), 0–500 percent.
+             */
+            freightMarkupPercent: number;
+            /**
+             * Format: int32
+             * @description The freight product (a Service variant) whose name, price and VAT code a shipping line takes (O53); null for a free-text line.
+             */
+            freightVariantId?: number | null;
             mailTexts: components["schemas"]["OrdersMailText"][];
             /** Format: int64 */
             nextOrderNumber: number;
@@ -2468,6 +2914,8 @@ export interface components {
             /** @description The channels sendChannelId may name: the active mail channels as Communications answers them (contracts.OutboundMail), with whether each can send now. Empty when Communications is off. */
             sendChannels: components["schemas"]["OrdersSendChannel"][];
             sendingAvailable: boolean;
+            /** @description Booking a shipment queues the shipping notice to the order's contact (O52). */
+            shippingNoticeOnBook: boolean;
             subscriptionFinalPeriodDefault: components["schemas"]["OrdersFinalPeriod"];
         };
         /** @description Orders' settings, replaced whole. revision is the one the client read. */
@@ -2481,6 +2929,16 @@ export interface components {
              * @description The site a new order takes (O46): an active site of Inventory's that fulfils orders (site_not_fulfilling otherwise); null names none.
              */
             defaultSiteId?: number | null;
+            /**
+             * Format: double
+             * @description The markup on a carrier's estimate (O53), 0–500 percent with at most two decimals; absent keeps it.
+             */
+            freightMarkupPercent?: number;
+            /**
+             * Format: int32
+             * @description The freight product (O53): a variant of a Service product (freight_product_invalid otherwise); null names none, absent keeps it.
+             */
+            freightVariantId?: number | null;
             mailTexts: components["schemas"]["OrdersMailText"][];
             /** Format: int64 */
             orderSeriesStart: number;
@@ -2492,7 +2950,205 @@ export interface components {
             revision: number;
             /** Format: uuid */
             sendChannelId?: string | null;
+            /** @description Queue the shipping notice when a shipment is booked (O52); absent keeps it. */
+            shippingNoticeOnBook?: boolean;
             subscriptionFinalPeriodDefault?: components["schemas"]["OrdersFinalPeriod"];
+        };
+        /** @description A shipment of a posted delivery (O50). status is draft, booked, in_transit, delivered or cancelled; exception is tracking's flag beside it. voided is a cancel of a carrier with no cancel call: the shipment is void in Vantigo and its label must not be used. bookedCost is the carrier's estimate of the business's cost, never invoiced (the customer pays the order's shipping line). label and waybill say what is stored; waybillNeeded is false for a service whose label serves as the waybill. */
+        OrdersShipment: {
+            /** @description A booking was attempted and its outcome may be unknown; booking again asks the carrier first and books once. */
+            bookAttempted: boolean;
+            /** Format: date-time */
+            bookedAt?: string | null;
+            bookedBy?: components["schemas"]["OrdersPerson"];
+            /** Format: double */
+            bookedCost?: number | null;
+            bookedCostCurrency?: string | null;
+            bookedCostEstimate: boolean;
+            bookedService?: string | null;
+            /** Format: date-time */
+            cancelledAt?: string | null;
+            carrier: string;
+            /** Format: int64 */
+            carrierAccountId: number;
+            carrierAccountName: string;
+            consignmentNumber?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            deliveryId: number;
+            /** Format: int64 */
+            deliveryNumber: number;
+            events: components["schemas"]["OrdersShipmentEvent"][];
+            exception: boolean;
+            /** Format: int64 */
+            id: number;
+            label: boolean;
+            /** Format: int64 */
+            orderId: number;
+            /** Format: int64 */
+            orderNumber: number;
+            packages: components["schemas"]["OrdersShipmentPackage"][];
+            pickupPointId?: string | null;
+            /** Format: date-time */
+            plannedWindowEnd?: string | null;
+            /** Format: date-time */
+            plannedWindowStart?: string | null;
+            recipient: components["schemas"]["OrdersShipmentRecipient"];
+            service: string;
+            serviceName: string;
+            /** @enum {string} */
+            status: "draft" | "booked" | "in_transit" | "delivered" | "cancelled";
+            /** @description Booked in the carrier's test mode. */
+            test: boolean;
+            trackingUrl?: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+            vas: string[];
+            /** Format: int32 */
+            version: number;
+            voided: boolean;
+            waybill: boolean;
+            waybillNeeded: boolean;
+        };
+        /** @description A tracking event as the carrier reported it, with the state it folds onto. */
+        OrdersShipmentEvent: {
+            code: string;
+            /** Format: date-time */
+            occurredAt: string;
+            place: string;
+            /** @enum {string} */
+            state: "booked" | "in_transit" | "ready_for_pickup" | "delivered" | "returned" | "exception" | "cancelled";
+            text: string;
+        };
+        /** @description A new draft shipment of a posted delivery (O50): absent account and service take the site's default account and its default service. */
+        OrdersShipmentInput: {
+            /** Format: int64 */
+            carrierAccountId?: number | null;
+            service?: string | null;
+        };
+        /** @description Shipments, oldest first. */
+        OrdersShipmentList: {
+            items: components["schemas"]["OrdersShipment"][];
+        };
+        /** @description A package: weight in grams, dimensions in millimetres (0 when not given), and the carrier's package number once booked. */
+        OrdersShipmentPackage: {
+            content: string;
+            /** Format: int32 */
+            heightMm: number;
+            /** Format: int32 */
+            lengthMm: number;
+            packageNumber?: string | null;
+            /** Format: int32 */
+            position: number;
+            /** Format: int32 */
+            weightGrams: number;
+            /** Format: int32 */
+            widthMm: number;
+        };
+        /** @description A package of a draft shipment. */
+        OrdersShipmentPackageInput: {
+            content?: string;
+            /** Format: int32 */
+            heightMm?: number;
+            /** Format: int32 */
+            lengthMm?: number;
+            /** Format: int32 */
+            weightGrams: number;
+            /** Format: int32 */
+            widthMm?: number;
+        };
+        /** @description The recipient as the shipment was made: the order's delivery address, and the contact the carrier notifies. */
+        OrdersShipmentRecipient: {
+            city: string;
+            contact: string;
+            country: string;
+            email: string;
+            line1: string;
+            line2: string;
+            name: string;
+            phone: string;
+            postalCode: string;
+        };
+        /** @description A draft shipment's account, service, value-added services, packages, pickup point and the contact the carrier notifies. */
+        OrdersShipmentUpdate: {
+            /** Format: int64 */
+            carrierAccountId: number;
+            /**
+             * Format: date-time
+             * @description The updatedAt as the client read it.
+             */
+            expectedUpdatedAt: string;
+            packages: components["schemas"]["OrdersShipmentPackageInput"][];
+            pickupPointId?: string | null;
+            recipientContact?: string;
+            recipientEmail?: string;
+            recipientPhone?: string;
+            service: string;
+            vas?: string[];
+            /** Format: int32 */
+            version: number;
+        };
+        /** @description A shipping line's price from the carrier (O53): the cheapest option of the default service for the document's delivery address and the estimated weight of its goods lines, plus the settings' markup. unitPrice is as a line enters it — including VAT when the document's prices do — and is saved with priceSource carrier. The freight product, when the settings name one, gives the line's variant, name and VAT code. */
+        OrdersShippingEstimate: {
+            /** Format: int64 */
+            accountId: number;
+            accountName: string;
+            /**
+             * Format: double
+             * @description The carrier's price excluding VAT.
+             */
+            carrierPrice: number;
+            currency: string;
+            estimate: boolean;
+            /** Format: double */
+            markupPercent: number;
+            name: string;
+            /**
+             * Format: double
+             * @description The price excluding VAT with the markup.
+             */
+            netPrice: number;
+            service: string;
+            serviceName: string;
+            /** Format: double */
+            unitPrice: number;
+            /** Format: int32 */
+            variantId?: number | null;
+            /** Format: int32 */
+            vatCodeId?: number | null;
+            /** Format: int64 */
+            weightGrams: number;
+        };
+        /** @description The quote or the order a shipping line is estimated for: exactly one. */
+        OrdersShippingEstimateInput: {
+            /** Format: int64 */
+            orderId?: number | null;
+            /** Format: int64 */
+            quoteId?: number | null;
+        };
+        /** @description A product the carrier offers for the shipment, with its price excluding VAT and the VAT (O49). estimate is set when it is not the agreement price. */
+        OrdersShippingOption: {
+            currency: string;
+            estimate: boolean;
+            /** Format: date */
+            expectedDate?: string | null;
+            /** Format: date-time */
+            expiresAt?: string | null;
+            name: string;
+            /** Format: double */
+            price: number;
+            service: string;
+            /** Format: double */
+            vat: number;
+            /** Format: date-time */
+            windowEnd?: string | null;
+            /** Format: date-time */
+            windowStart?: string | null;
+        };
+        /** @description The carrier's options, cheapest first. */
+        OrdersShippingOptionList: {
+            items: components["schemas"]["OrdersShippingOption"][];
         };
         /** @description An Inventory site as Orders offers it (contracts.Stock, O46): an order is fulfilled from an active site that fulfils orders. */
         OrdersSite: {
@@ -2502,6 +3158,17 @@ export interface components {
             /** Format: int64 */
             id: number;
             name: string;
+        };
+        /** @description The carrier account a site's shipments and estimates use by default (O51). */
+        OrdersSiteCarrierDefault: {
+            /** Format: int64 */
+            accountId: number;
+            /** Format: int64 */
+            siteId: number;
+        };
+        /** @description The default carrier account per site, replaced whole; a site absent has none. */
+        OrdersSiteCarrierDefaults: {
+            items: components["schemas"]["OrdersSiteCarrierDefault"][];
         };
         /** @description Inventory's sites, by code; empty when Inventory keeps no stock. */
         OrdersSiteList: {
@@ -3182,6 +3849,427 @@ export interface operations {
             };
         };
     };
+    listCarrierAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersCarrierAccountList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    createCarrierAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersCarrierAccountInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersCarrierAccount"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — carrier_account_name_taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Service Unavailable — carrier_unavailable: the carrier is not allowed on this installation (SHIPPING_CARRIERS), or the account's keys cannot be read; carrier_unreachable: the carrier did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    getCarrierAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersCarrierAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such carrier account. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateCarrierAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersCarrierAccountInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersCarrierAccount"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such carrier account. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — version_conflict, carrier_account_name_taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Service Unavailable — carrier_unavailable: the carrier is not allowed on this installation (SHIPPING_CARRIERS), or the account's keys cannot be read; carrier_unreachable: the carrier did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    listPickupPoints: {
+        parameters: {
+            query: {
+                postalCode: string;
+                country?: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersPickupPointList"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such carrier account. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable — carrier_refused, with the carrier's message. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Service Unavailable — carrier_unavailable: the carrier is not allowed on this installation (SHIPPING_CARRIERS), or the account's keys cannot be read; carrier_unreachable: the carrier did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    listCarrierServices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersCarrierServiceList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such carrier account. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — carrier_unavailable: the carrier is not allowed on this installation (SHIPPING_CARRIERS), or the account's keys cannot be read; carrier_unreachable: the carrier did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    verifyCarrierAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersCarrierVerification"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such carrier account. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — carrier_unavailable: the carrier is not allowed on this installation (SHIPPING_CARRIERS), or the account's keys cannot be read; carrier_unreachable: the carrier did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
     getOrdersCustomerSummary: {
         parameters: {
             query?: never;
@@ -3709,6 +4797,131 @@ export interface operations {
                 };
             };
             /** @description Service Unavailable — dependency_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    listDeliveryShipments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersShipmentList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such delivery. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createShipment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersShipmentInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersShipment"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such delivery. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — delivery_not_posted, no_carrier_account, carrier_account_archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Service Unavailable — carrier_unavailable: the carrier is not allowed on this installation (SHIPPING_CARRIERS), or the account's keys cannot be read; carrier_unreachable: the carrier did not answer. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -4972,6 +6185,53 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["OrdersProblem"];
                 };
+            };
+        };
+    };
+    listOrderShipments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersShipmentList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -6344,6 +7604,620 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    getShipment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersShipment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such shipment. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateShipment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersShipmentUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersShipment"];
+                };
+            };
+            /** @description Bad Request — field errors; service_unknown. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such shipment. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — version_conflict, shipment_not_draft, carrier_account_archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Service Unavailable — carrier_unavailable: the carrier is not allowed on this installation (SHIPPING_CARRIERS), or the account's keys cannot be read; carrier_unreachable: the carrier did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    bookShipment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersVersionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersShipment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such shipment. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — version_conflict, shipment_not_draft, carrier_account_archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unprocessable — carrier_refused, with the carrier's message. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Service Unavailable — carrier_unavailable: the carrier is not allowed on this installation (SHIPPING_CARRIERS), or the account's keys cannot be read; carrier_unreachable: the carrier did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    cancelShipment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersVersionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersShipment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such shipment. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — version_conflict, shipment_past_cancel, shipment_not_cancellable. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Service Unavailable — carrier_unavailable: the carrier is not allowed on this installation (SHIPPING_CARRIERS), or the account's keys cannot be read; carrier_unreachable: the carrier did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    getShipmentLabel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such shipment, or no stored label. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getShipmentRates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersShippingOptionList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such shipment. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — shipment_not_draft. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unprocessable — carrier_refused, with the carrier's message. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Service Unavailable — carrier_unavailable: the carrier is not allowed on this installation (SHIPPING_CARRIERS), or the account's keys cannot be read; carrier_unreachable: the carrier did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    getShipmentWaybill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such shipment, or no stored waybill or label. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    estimateShipping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersShippingEstimateInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersShippingEstimate"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such quote or order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — no_carrier_account, address_missing. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unprocessable — carrier_refused, with the carrier's message. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Service Unavailable — carrier_unavailable: the carrier is not allowed on this installation (SHIPPING_CARRIERS), or the account's keys cannot be read; carrier_unreachable: the carrier did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    getSiteCarrierDefaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersSiteCarrierDefaults"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putSiteCarrierDefaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersSiteCarrierDefaults"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersSiteCarrierDefaults"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };

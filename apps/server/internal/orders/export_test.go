@@ -180,3 +180,13 @@ func CreateChannelOrder(ctx context.Context, d module.Deps, customerID int32, ch
 	})
 	return o.ID, created, err
 }
+
+// RunTrackingCycle runs one cycle of the orders.shipment_tracking worker over
+// d and answers how many shipments it polled.
+func RunTrackingCycle(ctx context.Context, d module.Deps) (int, error) {
+	s, err := newServer(d)
+	if err != nil {
+		return 0, err
+	}
+	return (&trackingWorker{s: s}).cycle(ctx)
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 
 	"github.com/google/uuid"
 
@@ -28,7 +29,13 @@ type ordersSettings struct {
 	// defaultSiteID is the Inventory site a new order is fulfilled from
 	// (O46), nil for none.
 	defaultSiteID *int64
-	revision      int32 // 0 while never saved
+	// freightVariantID is the freight product a shipping line takes (O53),
+	// nil for none; freightMarkup the percent added to a carrier's estimate;
+	// shippingNoticeOnBook whether booking queues the shipping notice (O52).
+	freightVariantID     *int32
+	freightMarkup        *big.Rat
+	shippingNoticeOnBook bool
+	revision             int32 // 0 while never saved
 }
 
 // mailTextOverride is one document kind's subject and body in one language,
@@ -43,7 +50,7 @@ type mailTextOverride struct {
 // defaultSettings are the settings before the first save.
 func defaultSettings() ordersSettings {
 	return ordersSettings{quoteSeriesStart: 1, orderSeriesStart: 1, quoteValidityDays: 30, defaultPaymentTermsDays: 14,
-		subscriptionFinalPeriodDefault: finalPeriodFull}
+		subscriptionFinalPeriodDefault: finalPeriodFull, freightMarkup: new(big.Rat), shippingNoticeOnBook: true}
 }
 
 // settingsOf is a stored row as the module reads it.
@@ -53,7 +60,8 @@ func settingsOf(row store.OrdersSetting) (ordersSettings, error) {
 		quoteValidityDays: row.QuoteValidityDays, defaultPaymentTermsDays: row.DefaultPaymentTermsDays,
 		sendChannel: row.SendChannel, confirmationOnConfirm: row.ConfirmationOnConfirm,
 		combineByDefault: row.CombineByDefault, subscriptionFinalPeriodDefault: row.SubscriptionFinalPeriodDefault,
-		defaultSiteID: row.DefaultSiteID, revision: row.Revision,
+		defaultSiteID: row.DefaultSiteID, freightVariantID: row.FreightVariantID, freightMarkup: ratOrZero(row.FreightMarkupPercent),
+		shippingNoticeOnBook: row.ShippingNoticeOnBook, revision: row.Revision,
 	}
 	if len(row.MailTexts) > 0 {
 		var texts []mailTextOverride

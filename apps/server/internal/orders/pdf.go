@@ -164,7 +164,13 @@ type pdfModel struct {
 	closing       string
 	footer        string
 	created       time.Time
+	// codes are a packing slip's shipments (O52): each consignment number
+	// printed as Code 128 beside its tracking URL as a QR code.
+	codes []pdfCode
 }
+
+// pdfCode is one shipment's codes on a packing slip.
+type pdfCode struct{ label, barcode, qr string }
 
 // pdfModelBuilt, when a test sets it, hears every model built: the PDF's text
 // is embedded-subset and cannot be read back from the bytes.

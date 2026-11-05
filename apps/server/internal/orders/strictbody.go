@@ -178,6 +178,17 @@ const (
 	deliveryInputSchema     = "OrdersDeliveryInput"
 	deliveryUpdateSchema    = "OrdersDeliveryUpdate"
 	deliveryLineInputSchema = "OrdersDeliveryLineInput"
+
+	// Shipping's (O49–O53).
+	carrierAccountInputSchema   = "OrdersCarrierAccountInput"
+	carrierCredentialsSchema    = "OrdersCarrierCredentials"
+	carrierSenderSchema         = "OrdersCarrierSender"
+	siteDefaultsSchema          = "OrdersSiteCarrierDefaults"
+	siteDefaultSchema           = "OrdersSiteCarrierDefault"
+	shipmentInputSchema         = "OrdersShipmentInput"
+	shipmentUpdateSchema        = "OrdersShipmentUpdate"
+	shipmentPackageInputSchema  = "OrdersShipmentPackageInput"
+	shippingEstimateInputSchema = "OrdersShippingEstimateInput"
 )
 
 // closedSchemas are the request schemas whose handlers refuse a property the
@@ -190,6 +201,8 @@ var closedSchemas = []string{
 	warningInputSchema,
 	subscriptionInputSchema, subscriptionUpdateSchema, subscriptionPlanSchema, pauseInputSchema, resumeInputSchema, endInputSchema,
 	deliveryInputSchema, deliveryUpdateSchema, deliveryLineInputSchema,
+	carrierAccountInputSchema, carrierCredentialsSchema, carrierSenderSchema, siteDefaultsSchema, siteDefaultSchema,
+	shipmentInputSchema, shipmentUpdateSchema, shipmentPackageInputSchema, shippingEstimateInputSchema,
 }
 
 // closedItems is, per closed request schema, its array properties whose
@@ -206,12 +219,15 @@ var closedItems = map[string]map[string]string{
 	subscriptionInputSchema:  {"lines": lineInputSchema},
 	subscriptionUpdateSchema: {"lines": lineInputSchema},
 	deliveryUpdateSchema:     {"lines": deliveryLineInputSchema},
+	siteDefaultsSchema:       {"items": siteDefaultSchema},
+	shipmentUpdateSchema:     {"packages": shipmentPackageInputSchema},
 }
 
 // closedObjects is, per closed schema, its object properties that are closed
 // schemas of their own: an accept's subscription plan (O20).
 var closedObjects = map[string]map[string]string{
-	acceptInputSchema: {"plan": subscriptionPlanSchema},
+	acceptInputSchema:         {"plan": subscriptionPlanSchema},
+	carrierAccountInputSchema: {"credentials": carrierCredentialsSchema, "sender": carrierSenderSchema},
 }
 
 // checkClosedSchemas fails the mount unless the contract has every schema of
@@ -232,4 +248,17 @@ func checkClosedSchemas(doc *openapi3.T) error {
 		}
 	}
 	return nil
+}
+
+// hasProperty reports whether the request body names a top-level property,
+// for a nullable field whose absence keeps what is stored and whose null
+// clears it — which the generated decoder reads alike.
+func hasProperty(ctx context.Context, name string) bool {
+	body, _ := ctx.Value(rawBodyKey{}).([]byte)
+	var properties map[string]json.RawMessage
+	if json.Unmarshal(body, &properties) != nil {
+		return false
+	}
+	_, ok := properties[name]
+	return ok
 }

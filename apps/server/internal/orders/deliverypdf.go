@@ -5,8 +5,9 @@ package orders
 // the location's full code, each with the site's locations holding its
 // variant — and the packing slip (pakkseddel), stored when the delivery is
 // posted: the lines with what was ordered, what this delivery takes and what
-// remains as back order, and the order's delivery address. The consignment's
-// carrier, number and tracking are delivery D's.
+// remains as back order, and the order's delivery address, and — once a
+// shipment is booked — each shipment's carrier, service and consignment
+// number, as text and Code 128, with its tracking URL as a QR code (O52).
 
 import (
 	"cmp"
@@ -17,6 +18,8 @@ import (
 	"time"
 
 	"github.com/johnfercher/maroto/v2"
+	"github.com/johnfercher/maroto/v2/pkg/components/code"
+	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/line"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/config"
@@ -39,6 +42,7 @@ type deliveryLabels struct {
 	date, deliveryAddress, yourRef, customerNumber, contact   string
 	description, location, holding, quantity, ordered         string
 	backOrder, unit, picked, notPicked                        string
+	shipment                                                  string
 }
 
 var deliveryLabelSets = map[string]deliveryLabels{
@@ -47,12 +51,14 @@ var deliveryLabelSets = map[string]deliveryLabels{
 		date: "Dato", deliveryAddress: "Leveringsadresse", yourRef: "Deres ref.", customerNumber: "Kundenr.", contact: "Kontakt",
 		description: "Beskrivelse", location: "Lokasjon", holding: "Lokasjoner med beholdning", quantity: "Antall",
 		ordered: "Bestilt", backOrder: "Restordre", unit: "Enhet", picked: "Plukket", notPicked: "Ikke valgt",
+		shipment: "Sending",
 	},
 	"en": {
 		pickList: "Pick list", packingSlip: "Packing slip", draft: "DRAFT", deliveryNumber: "Delivery %d", orderNumber: "Order %d",
 		date: "Date", deliveryAddress: "Delivery address", yourRef: "Your ref.", customerNumber: "Customer no.", contact: "Contact",
 		description: "Description", location: "Location", holding: "Locations holding stock", quantity: "Quantity",
 		ordered: "Ordered", backOrder: "Back order", unit: "Unit", picked: "Picked", notPicked: "Not chosen",
+		shipment: "Shipment",
 	},
 }
 
@@ -66,7 +72,13 @@ type deliveryPrintable struct {
 	locations map[int32][]contracts.StockLocation
 	seller    contracts.SellerProfile
 	date      time.Time
+	// shipments are the delivery's booked shipments, printed on the packing
+	// slip (O52).
+	shipments []shipmentPrint
 }
+
+// shipmentPrint is a booked shipment as a packing slip prints it.
+type shipmentPrint struct{ carrier, service, consignment, trackingURL string }
 
 // buildDeliveryModel is a delivery document as words.
 func buildDeliveryModel(p deliveryPrintable) pdfModel {
@@ -105,6 +117,13 @@ func buildDeliveryModel(p deliveryPrintable) pdfModel {
 	}
 	if h.YourReference != "" {
 		m.meta = append(m.meta, [2]string{l.yourRef, h.YourReference})
+	}
+	if p.kind == docPackingSlip {
+		for _, sh := range p.shipments {
+			text := strings.Join(nonEmpty(sh.carrier, sh.service, sh.consignment), " – ")
+			m.meta = append(m.meta, [2]string{l.shipment, text})
+			m.codes = append(m.codes, pdfCode{label: text, barcode: sh.consignment, qr: sh.trackingURL})
+		}
 	}
 
 	byLine := byID(p.lines)
@@ -217,6 +236,14 @@ func renderListPDF(m pdfModel, packingSlip bool) ([]byte, error) {
 	doc.AddRows(line.NewRow(4))
 	for _, kv := range m.meta {
 		doc.AddRow(4.5, text.NewCol(3, kv[0], bold), text.NewCol(9, kv[1]))
+	}
+	// Each shipment's consignment number as Code 128, its tracking URL as QR.
+	for _, c := range m.codes {
+		cols := []core.Col{code.NewBarCol(7, c.barcode, props.Barcode{Percent: 90, Proportion: props.Proportion{Width: 20, Height: 4}})}
+		if c.qr != "" {
+			cols = append(cols, col.New(2), code.NewQrCol(3, c.qr, props.Rect{Percent: 100, Center: true}))
+		}
+		doc.AddRow(24, cols...)
 	}
 	doc.AddRows(line.NewRow(4))
 	// The pick list leads with the location; the packing slip with the item.

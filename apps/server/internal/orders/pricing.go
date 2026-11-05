@@ -27,13 +27,24 @@ const (
 	kindProduct = "product"
 	kindSection = "section"
 	kindNote    = "note"
+	// kindShipping is the freight the customer pays (O53): priced like a
+	// product line, quantity 1, invoiced on order, and counted delivered when
+	// the order's first shipment is booked. Quotes and orders only.
+	kindShipping = "shipping"
 )
+
+// pricedKind reports whether a line of kind carries a price and an amount:
+// a product line or a shipping line.
+func pricedKind(kind string) bool { return kind == kindProduct || kind == kindShipping }
 
 // The price sources (O16, O53).
 const (
 	priceCatalog = "catalog"
 	priceManual  = "manual"
 	priceChannel = "channel"
+	// priceCarrier is a shipping line's price from the carrier's estimate
+	// with the markup (O53).
+	priceCarrier = "carrier"
 )
 
 // maxLines is how many lines one document may have (too_many_lines).
@@ -64,6 +75,9 @@ type lineInput struct {
 	// invoicePolicy is an order line's policy as the request names it (O48),
 	// nil when it names none.
 	invoicePolicy *string
+	// priceSource is carrier for a shipping line's estimated price (O53),
+	// nil otherwise.
+	priceSource *string
 }
 
 // lineInputsOf reads the API's lines.
@@ -80,6 +94,9 @@ func lineInputsOf(in []gen.OrdersLineInput) []lineInput {
 		}
 		if l.InvoicePolicy != nil {
 			li.invoicePolicy = ptr(string(*l.InvoicePolicy))
+		}
+		if l.PriceSource != nil {
+			li.priceSource = ptr(string(*l.PriceSource))
 		}
 		out = append(out, li)
 	}
@@ -148,7 +165,7 @@ func pricedLineOf(l store.OrdersLine) pricedLine {
 // computeAmounts sets a product line's amounts from its quantity, price and
 // discount (O17); a line without a price is 0 until it has one.
 func (p *pricedLine) computeAmounts() {
-	if p.kind != kindProduct || p.quantity == nil || p.unitPrice == nil {
+	if !pricedKind(p.kind) || p.quantity == nil || p.unitPrice == nil {
 		p.amounts = docmath.LineAmounts{Gross: new(big.Rat), Allowance: new(big.Rat), Net: new(big.Rat)}
 		return
 	}
@@ -176,7 +193,7 @@ func (s *server) readPricing(ctx context.Context, lines []lineInput, currency st
 	var ids []int32
 	freeText := false
 	for _, l := range lines {
-		if l.kind != kindProduct {
+		if !pricedKind(l.kind) {
 			continue
 		}
 		if l.variantID == nil {
@@ -259,6 +276,8 @@ type priceOptions struct {
 	// frozenKept prices a confirmed order's kept lines from their own rows
 	// (keptFrozen).
 	frozenKept bool
+	// allowShipping admits shipping lines (O53): quotes and orders.
+	allowShipping bool
 }
 
 // keptFrozen reports whether a confirmed order's save keeps line l over its
@@ -368,8 +387,22 @@ func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOpt
 		p.computeAmounts()
 		return p, "", ""
 	case kindProduct:
+	case kindShipping:
+		if !opts.allowShipping {
+			return p, codeLineInvalid, "A shipping line belongs on a quote or an order."
+		}
+		if l.optional {
+			return p, codeOptionalNotAllowed, "A shipping line cannot be optional."
+		}
+		if l.packagingID != nil {
+			return p, codePackagingNotFound, "A shipping line has no packaging."
+		}
+		if l.quantity != nil && *l.quantity != 1 {
+			return p, codeQuantityInvalid, "A shipping line's quantity is 1."
+		}
+		l.quantity = ptr(1.0)
 	default:
-		return p, codeLineInvalid, "A line is a product, a section or a note."
+		return p, codeLineInvalid, "A line is a product, a section, a note or shipping."
 	}
 
 	if l.optional && !opts.allowOptional {
@@ -519,7 +552,7 @@ func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOpt
 			return p, codeQuantityInvalid, msg
 		}
 		p.quantity = q
-	case old != nil && old.Kind == kindProduct && old.Quantity.Valid:
+	case old != nil && pricedKind(old.Kind) && old.Quantity.Valid:
 		p.quantity = ratOf(old.Quantity)
 	default:
 		return p, codeQuantityInvalid, "A product line needs a quantity."
@@ -555,6 +588,9 @@ func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOpt
 		}
 		p.unitPrice = price
 		p.priceSource = ptr(priceManual)
+		if p.kind == kindShipping && l.priceSource != nil && *l.priceSource == priceCarrier {
+			p.priceSource = ptr(priceCarrier)
+		}
 	case old != nil && keepsPrice(*old, p.variantID, opts.repriceKept):
 		p.unitPrice = ratOf(old.UnitPrice)
 		p.priceSource = old.PriceSource
@@ -572,7 +608,7 @@ func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOpt
 // that names none: a manual (or channel) price always, while the line keeps
 // its variant; a catalog price unless the currency or the day moved.
 func keepsPrice(old store.OrdersLine, variantID *int32, reprice bool) bool {
-	if !old.UnitPrice.Valid || old.Kind != kindProduct {
+	if !old.UnitPrice.Valid || !pricedKind(old.Kind) {
 		return false
 	}
 	sameVariant := (old.VariantID == nil && variantID == nil) ||
@@ -656,7 +692,7 @@ func sumLines(lines []taxable) docTotals {
 func totalsOfPriced(lines []pricedLine) docTotals {
 	var in []taxable
 	for _, l := range lines {
-		if l.kind == kindProduct && !l.optional {
+		if pricedKind(l.kind) && !l.optional {
 			in = append(in, taxable{net: l.amounts.Net, category: l.vatCategory, rate: l.vatRate})
 		}
 	}
@@ -666,7 +702,7 @@ func totalsOfPriced(lines []pricedLine) docTotals {
 func totalsOfRows(lines []store.OrdersLine) docTotals {
 	var in []taxable
 	for _, l := range lines {
-		if l.Kind == kindProduct && !l.Optional {
+		if pricedKind(l.Kind) && !l.Optional {
 			in = append(in, taxable{net: ratOrZero(l.LineNet), category: l.VatCategory, rate: ratOf(l.VatRatePercent)})
 		}
 	}
@@ -694,7 +730,7 @@ func totalsOut(t docTotals) gen.OrdersTotals {
 func sendable(lines []store.OrdersLine) []lineFailure {
 	var failures []lineFailure
 	for i, l := range lines {
-		if l.Kind != kindProduct {
+		if !pricedKind(l.Kind) {
 			continue
 		}
 		switch {

@@ -37,9 +37,9 @@ type stockInstallation struct {
 	site, loc int64
 }
 
-func newStockInstallation(t *testing.T) stockInstallation {
+func newStockInstallation(t *testing.T, opts ...modtest.Option) stockInstallation {
 	t.Helper()
-	h, c, _, _ := installInvoices(t, []string{modCustomers, modProducts, modInventory, modInvoices, modOrders}, deliveryPermissions)
+	h, c, _, _ := installInvoices(t, []string{modCustomers, modProducts, modInventory, modInvoices, modOrders}, deliveryPermissions, opts...)
 	standard := taxCategory(t, c, "Standard", 0.25, 1)
 	food := taxCategory(t, c, "Næringsmidler", 0.15, 2)
 	o := ordersInstallation{

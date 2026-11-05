@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/orders/store"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
@@ -75,7 +76,7 @@ func workers(d module.Deps) []worker.Worker {
 		}
 		return nil
 	}
-	return []worker.Worker{&mailWorker{s: s}, &retentionWorker{s: s}, &quoteExpiryWorker{s: s}}
+	return []worker.Worker{&mailWorker{s: s}, &retentionWorker{s: s}, &quoteExpiryWorker{s: s}, &trackingWorker{s: s}}
 }
 
 // mailWorker sends the queued mailings.
@@ -192,6 +193,10 @@ func (w *mailWorker) send(ctx context.Context, row store.OrdersMailing) (documen
 		return nil, version, nil, row.Subject, reasonSendingDisabled, true
 	}
 
+	if row.OwnerKind == ownerShipment {
+		return w.sendShippingNotice(ctx, row, settings, *channel)
+	}
+
 	// The document: its kind, number, language and totals, and its PDF.
 	var facts mailFacts
 	var fileName string
@@ -286,6 +291,60 @@ func (w *mailWorker) send(ctx context.Context, row store.OrdersMailing) (documen
 		return &doc.ID, version, channel, out.Subject, truncate(fmt.Sprintf("%s %s", reasonNotMailed, withoutAddress(err.Error(), row.Recipient)), 500), false
 	}
 	return &doc.ID, version, channel, truncate(out.Subject, 300), "", false
+}
+
+// sendShippingNotice sends a booked shipment's notice (O52): the order
+// number, the carrier, the consignment number and the tracking link, in the
+// order's language, with no attachment. A shipment cancelled since is not
+// notified.
+func (w *mailWorker) sendShippingNotice(ctx context.Context, row store.OrdersMailing, settings ordersSettings, channel uuid.UUID) (*int64, int32, *uuid.UUID, string, string, bool) {
+	s := w.s
+	q := store.New(s.deps.Pool)
+	sh, err := q.GetShipment(ctx, row.OwnerID)
+	if noRows(err) {
+		return nil, row.Version, &channel, row.Subject, reasonGone, true
+	}
+	if err != nil {
+		return nil, row.Version, &channel, row.Subject, "The shipment could not be read.", false
+	}
+	if sh.Status == shipmentCancelled {
+		return nil, row.Version, &channel, row.Subject, "The shipment was cancelled; its notice is not sent.", true
+	}
+	d, err := q.GetDelivery(ctx, sh.DeliveryID)
+	if err != nil {
+		return nil, row.Version, &channel, row.Subject, "The delivery could not be read.", false
+	}
+	order, err := q.OrderByID(ctx, d.OrderID)
+	if err != nil {
+		return nil, row.Version, &channel, row.Subject, "The order could not be read.", false
+	}
+	account, err := q.GetCarrierAccount(ctx, sh.CarrierAccountID)
+	if err != nil {
+		return nil, row.Version, &channel, row.Subject, "The carrier account could not be read.", false
+	}
+	seller, err := s.seller(ctx)
+	if err != nil {
+		return nil, row.Version, &channel, row.Subject, "The seller could not be read.", false
+	}
+	facts := shippingFacts{
+		language: order.Language, number: order.Number, seller: seller.LegalName, carrier: carrierName(account.Carrier),
+		consignment: deref(sh.ConsignmentNumber), trackingURL: deref(sh.TrackingUrl),
+	}
+	text := shippingNotice(facts, settings.mailText(docShippingNotice, noticeLanguage(order.Language)))
+	messageID := newMessageID()
+	if row.ProviderMessageID != nil {
+		messageID = *row.ProviderMessageID
+	}
+	out := mail.Outbound{
+		DisplayName: seller.LegalName, To: []string{row.Recipient}, Subject: text.subject, ReplyTo: seller.Email,
+		TextBody: text.body, MessageID: messageID,
+	}
+	sendCtx, cancel := context.WithTimeout(ctx, sendTimeout)
+	defer cancel()
+	if err := s.outboundSend(sendCtx, channel, out); err != nil {
+		return nil, row.Version, &channel, out.Subject, truncate(fmt.Sprintf("%s %s", reasonNotMailed, withoutAddress(err.Error(), row.Recipient)), 500), false
+	}
+	return nil, row.Version, &channel, truncate(out.Subject, 300), "", false
 }
 
 // withoutAddress is msg with the recipient's address taken out: a provider's

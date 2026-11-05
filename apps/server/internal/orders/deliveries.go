@@ -967,12 +967,19 @@ func (s *server) GetDeliveryPickList(ctx context.Context, req gen.GetDeliveryPic
 //
 // A posted delivery's is the stored one — stored now when its post could
 // not; a draft's, or a cancelled one's, is printed now with the draft mark.
+// Once a shipment of it is booked, it is printed now with each booked
+// shipment's carrier, service, consignment number and tracking (O52), dated
+// the day the delivery was posted.
 func (s *server) GetDeliveryPackingSlip(ctx context.Context, req gen.GetDeliveryPackingSlipRequestObject) (gen.GetDeliveryPackingSlipResponseObject, error) {
 	var r deliveryRead
 	var doc *store.OrdersDocument
+	var shipped []shipmentPrint
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
 		if r, err = readDelivery(ctx, q, req.Id); err != nil {
+			return err
+		}
+		if shipped, err = bookedShipmentsOf(ctx, q, r.d.ID, r.o.Language); err != nil {
 			return err
 		}
 		d, err := q.DocumentOf(ctx, store.DocumentOfParams{OwnerKind: ownerDelivery, OwnerID: r.d.ID, Kind: docPackingSlip, Version: 1})
@@ -990,7 +997,7 @@ func (s *server) GetDeliveryPackingSlip(ctx context.Context, req gen.GetDelivery
 		})
 	}
 	var body []byte
-	if doc != nil {
+	if doc != nil && len(shipped) == 0 {
 		if body, err = s.loadDocument(ctx, *doc); err != nil {
 			return nil, err
 		}
@@ -1004,11 +1011,11 @@ func (s *server) GetDeliveryPackingSlip(ctx context.Context, req gen.GetDelivery
 			date = dayOf(*r.d.PostedAt, p.zone)
 		}
 		if body, err = renderDeliveryDoc(deliveryPrintable{
-			kind: docPackingSlip, d: r.d, o: r.o, dlines: r.dlines, lines: r.lines, seller: p.seller, date: date,
+			kind: docPackingSlip, d: r.d, o: r.o, dlines: r.dlines, lines: r.lines, seller: p.seller, date: date, shipments: shipped,
 		}); err != nil {
 			return nil, err
 		}
-		if r.d.Status == deliveryPosted {
+		if r.d.Status == deliveryPosted && doc == nil && len(shipped) == 0 {
 			if _, err := s.storePackingSlip(ctx, r.d, body); err != nil {
 				return nil, err
 			}
@@ -1060,4 +1067,28 @@ func (s *server) ReserveSalesOrder(ctx context.Context, req gen.ReserveSalesOrde
 		return answer(err, resp)
 	}
 	return gen.ReserveSalesOrder200JSONResponse(out), nil
+}
+
+// bookedShipmentsOf are a delivery's booked shipments as its packing slip
+// prints them (O52), oldest first; a cancelled or draft shipment is left out.
+func bookedShipmentsOf(ctx context.Context, q *store.Queries, deliveryID int64, language string) ([]shipmentPrint, error) {
+	rows, err := q.ShipmentsOfDelivery(ctx, deliveryID)
+	if err != nil {
+		return nil, fmt.Errorf("orders: read delivery %d's shipments: %w", deliveryID, err)
+	}
+	var out []shipmentPrint
+	for _, sh := range rows {
+		if sh.ConsignmentNumber == nil || sh.Status == shipmentCancelled || sh.Status == shipmentDraft {
+			continue
+		}
+		a, err := q.GetCarrierAccount(ctx, sh.CarrierAccountID)
+		if err != nil {
+			return nil, fmt.Errorf("orders: read carrier account %d: %w", sh.CarrierAccountID, err)
+		}
+		out = append(out, shipmentPrint{
+			carrier: carrierName(a.Carrier), service: serviceName(a.Carrier, cmpOr(deref(sh.BookedService), sh.Service), language),
+			consignment: *sh.ConsignmentNumber, trackingURL: deref(sh.TrackingUrl),
+		})
+	}
+	return out, nil
 }

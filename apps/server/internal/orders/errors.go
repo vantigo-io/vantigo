@@ -266,10 +266,11 @@ func answerOf(err error) (int, gen.OrdersProblem, bool) {
 // status an operation does not declare is nil, and a refusal with it is a
 // 500 — a bug in the handler, never a silent mismatch with the contract.
 type answers[R any] struct {
-	badRequest  func(gen.OrdersProblem) R
-	notFound    func() R
-	conflict    func(gen.OrdersProblem) R
-	unavailable func(gen.OrdersProblem) R
+	badRequest    func(gen.OrdersProblem) R
+	notFound      func() R
+	conflict      func(gen.OrdersProblem) R
+	unprocessable func(gen.OrdersProblem) R
+	unavailable   func(gen.OrdersProblem) R
 }
 
 // answer turns err into the operation's typed response, or returns it as the
@@ -287,6 +288,8 @@ func answer[R any](err error, a answers[R]) (R, error) {
 		return a.notFound(), nil
 	case status == http.StatusConflict && a.conflict != nil:
 		return a.conflict(p), nil
+	case status == http.StatusUnprocessableEntity && a.unprocessable != nil:
+		return a.unprocessable(p), nil
 	case status == http.StatusServiceUnavailable && a.unavailable != nil:
 		return a.unavailable(p), nil
 	}

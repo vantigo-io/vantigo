@@ -127,6 +127,9 @@ func (w *retentionWorker) cycle(ctx context.Context) (bool, int64, error) {
 			if _, err := q.BlankCustomerMailings(ctx, id); err != nil {
 				return fmt.Errorf("orders: blank customer %d's sends: %w", id, err)
 			}
+			if _, err := q.AnonymiseCustomerShipments(ctx, id); err != nil {
+				return fmt.Errorf("orders: anonymise customer %d's shipments: %w", id, err)
+			}
 			total += n
 			return nil
 		})
@@ -169,6 +172,20 @@ func (w *retentionWorker) deleteErasedDocuments(ctx context.Context, conn *pgxpo
 		})
 		if err != nil {
 			return err
+		}
+	}
+	// The labels and waybills of the anonymised orders' shipments print the
+	// recipient (O50): they go the same way.
+	labels, err := store.New(conn).ErasedShipmentDocuments(ctx, customerID)
+	if err != nil {
+		return fmt.Errorf("orders: read customer %d's erased labels: %w", customerID, err)
+	}
+	for _, d := range labels {
+		if err := w.s.objectDelete(ctx, d.StorageKey); err != nil {
+			return fmt.Errorf("orders: delete stored label %d: %w", d.ID, err)
+		}
+		if _, err := store.New(conn).DeleteShipmentDocumentRow(ctx, d.ID); err != nil {
+			return fmt.Errorf("orders: delete stored label %d's row: %w", d.ID, err)
 		}
 	}
 	return nil

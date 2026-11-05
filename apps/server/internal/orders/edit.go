@@ -338,7 +338,7 @@ func judgeConfirmedLines(priced []pricedLine, current []store.OrdersLine, allocs
 			return nil, conflict(codeLineHasProgress, "The line has progress",
 				fmt.Sprintf("Line %d is delivered, invoiced, in a draft invoice or cancelled in part; its item cannot change. Add a new line instead.", o.Position))
 		}
-		if p.kind == kindProduct && p.quantity != nil {
+		if pricedKind(p.kind) && p.quantity != nil {
 			floor := new(big.Rat).Set(delivered)
 			if billed := new(big.Rat).Add(invoiced, drafted); billed.Cmp(floor) > 0 {
 				floor.Set(billed)

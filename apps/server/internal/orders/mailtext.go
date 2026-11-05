@@ -103,3 +103,58 @@ func coverMail(f mailFacts, override *mailTextOverride) mailText {
 	}
 	return mailText{subject: subject, body: body}
 }
+
+// docShippingNotice is the shipping notice's mail text kind (O52).
+const docShippingNotice = "shipping_notice"
+
+// shippingFacts are what a shipping notice says.
+type shippingFacts struct {
+	language, seller, carrier, consignment, trackingURL string
+	number                                              int64
+}
+
+// noticeLanguage is the mail text language of an order's language.
+func noticeLanguage(language string) string {
+	if language == "en" {
+		return "en"
+	}
+	return "nb"
+}
+
+// shippingNotice is the "your order has shipped" mail (O52), the override's
+// when the settings hold one for its language; an override may name
+// {number}, {seller}, {carrier}, {consignment} and {trackingUrl}.
+func shippingNotice(f shippingFacts, override *mailTextOverride) mailText {
+	lang := noticeLanguage(f.language)
+	var subject, body string
+	if lang == "en" {
+		subject = fmt.Sprintf("Your order %d has shipped", f.number)
+		body = fmt.Sprintf("Hello,\n\nYour order %d has been handed to %s with consignment number %s.\n", f.number, f.carrier, f.consignment)
+		if f.trackingURL != "" {
+			body += "\nTrack it here: " + f.trackingURL + "\n"
+		}
+		body += "\nKind regards\n"
+	} else {
+		subject = fmt.Sprintf("Ordre %d er sendt", f.number)
+		body = fmt.Sprintf("Hei,\n\nOrdre %d er levert til %s med sendingsnummer %s.\n", f.number, f.carrier, f.consignment)
+		if f.trackingURL != "" {
+			body += "\nSpor sendingen her: " + f.trackingURL + "\n"
+		}
+		body += "\nMed vennlig hilsen\n"
+	}
+	if f.seller != "" {
+		subject += " – " + f.seller
+		body += f.seller + "\n"
+	}
+	if override != nil {
+		fill := strings.NewReplacer("{number}", fmt.Sprint(f.number), "{seller}", f.seller, "{carrier}", f.carrier,
+			"{consignment}", f.consignment, "{trackingUrl}", f.trackingURL)
+		if s := strings.TrimSpace(override.Subject); s != "" {
+			subject = fill.Replace(s)
+		}
+		if b := strings.TrimSpace(override.Body); b != "" {
+			body = fill.Replace(b) + "\n"
+		}
+	}
+	return mailText{subject: subject, body: body}
+}

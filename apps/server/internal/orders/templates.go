@@ -109,9 +109,9 @@ func dropGone(in []lineInput, r pricingReads, skipped *[]gen.OrdersSkippedLine) 
 			reason := gen.OrdersSkippedLineReason("")
 			switch {
 			case !ok:
-				reason = gen.Deleted
+				reason = gen.OrdersSkippedLineReasonDeleted
 			case l.skipDiscontinued && v.ProductStatus == productDiscontinued:
-				reason = gen.Archived
+				reason = gen.OrdersSkippedLineReasonArchived
 			}
 			if reason != "" {
 				if skipped != nil {
@@ -533,7 +533,7 @@ func keptInputs(lines []store.OrdersLine) []lineInput {
 		if l.PackagingID != nil && l.PackagingQuantity.Valid {
 			in.packagingID, in.packagingQuantity = l.PackagingID, wirePtr(ratOf(l.PackagingQuantity), quantityPlaces)
 		}
-		if l.Kind != kindProduct {
+		if !pricedKind(l.Kind) {
 			in.name = l.Name
 		}
 		out = append(out, in)

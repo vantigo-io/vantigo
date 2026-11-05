@@ -448,7 +448,7 @@ func (s *server) priceInputsAt(ctx context.Context, inputs *[]lineInput, skipped
 	}
 	*inputs = dropGone(*inputs, reads, skipped)
 	priced, failures := priceLines(*inputs, byID(existing), reads, priceOptions{
-		pricesIncludeVat: h.PricesIncludeVat, allowOptional: true, repriceKept: reprice,
+		pricesIncludeVat: h.PricesIncludeVat, allowOptional: true, repriceKept: reprice, allowShipping: true,
 	})
 	if len(failures) > 0 {
 		return nil, refuseLines(invalidQuoteTitle, failures)
@@ -872,7 +872,7 @@ func copyInputs(lines []store.OrdersLine) []lineInput {
 	out := make([]lineInput, 0, len(lines))
 	for _, l := range lines {
 		in := lineInput{kind: l.Kind, variantID: l.VariantID, name: l.Name, description: ptr(l.Description), optional: l.Optional, skippable: true}
-		if l.Kind == kindProduct {
+		if pricedKind(l.Kind) {
 			in.unit = ptr(l.Unit)
 			in.quantity = wirePtr(ratOf(l.Quantity), quantityPlaces)
 			in.discount = wirePtr(ratOrZero(l.DiscountPercent), discountPlaces)
@@ -883,11 +883,14 @@ func copyInputs(lines []store.OrdersLine) []lineInput {
 			if l.UnitPrice.Valid && (l.PriceSource == nil || *l.PriceSource != priceCatalog) {
 				in.unitPriceNet = ratOf(l.UnitPrice)
 			}
+			if l.Kind == kindShipping && l.PriceSource != nil && *l.PriceSource == priceCarrier {
+				in.priceSource = l.PriceSource
+			}
 			if l.VariantID != nil {
 				in.vatCodeID = nil
 			}
 		}
-		if l.Kind != kindProduct {
+		if !pricedKind(l.Kind) {
 			in.name = l.Name
 		}
 		out = append(out, in)

@@ -98,7 +98,7 @@ func TestApplyQuoteTemplate_SkipsTheVariantsThatWentAway(t *testing.T) {
 		!got.Lines[2].Optional || *got.Lines[2].UnitPrice != 33.335 || got.IntroText != "Intro from the template" {
 		t.Errorf("applied %+v; want the quote's line, the override, the optional coffee at its list price, the intro", got)
 	}
-	if len(applied.Skipped) != 2 || applied.Skipped[0].Reason != gen.Archived || applied.Skipped[1].Reason != gen.Deleted || applied.Skipped[1].VariantId != varUnmapped {
+	if len(applied.Skipped) != 2 || applied.Skipped[0].Reason != gen.OrdersSkippedLineReasonArchived || applied.Skipped[1].Reason != gen.OrdersSkippedLineReasonDeleted || applied.Skipped[1].VariantId != varUnmapped {
 		t.Errorf("skipped %+v; want the discontinued and the deleted", applied.Skipped)
 	}
 	if got.Totals.Net != 420 {

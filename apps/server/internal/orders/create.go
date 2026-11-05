@@ -69,7 +69,7 @@ func (s *server) priceOrderInputs(ctx context.Context, inputs []lineInput, exist
 		return nil, err
 	}
 	priced, failures := priceLines(inputs, old, reads, priceOptions{
-		pricesIncludeVat: h.PricesIncludeVat, allowOptional: false, repriceKept: reprice, frozenKept: frozen,
+		pricesIncludeVat: h.PricesIncludeVat, allowOptional: false, repriceKept: reprice, frozenKept: frozen, allowShipping: true,
 	})
 	if len(failures) > 0 {
 		return nil, refuseLines(invalidOrderTitle, failures)

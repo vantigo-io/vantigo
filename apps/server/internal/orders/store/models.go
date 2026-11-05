@@ -11,6 +11,29 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type OrdersCarrierAccount struct {
+	ID                 int64
+	Carrier            string
+	Name               string
+	CustomerNumbers    []string
+	Credentials        []byte
+	Test               bool
+	SenderName         *string
+	SenderAddressLine1 *string
+	SenderAddressLine2 *string
+	SenderPostalCode   *string
+	SenderCity         *string
+	SenderCountry      *string
+	SenderPhone        *string
+	SenderEmail        *string
+	DefaultService     *string
+	Status             string
+	VerifiedAt         *time.Time
+	Version            int32
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
 type OrdersCounter struct {
 	CounterName string
 	NextValue   int64
@@ -160,6 +183,7 @@ type OrdersMailing struct {
 	SentByUserID      *uuid.UUID
 	SentByDisplay     *string
 	CreatedAt         time.Time
+	Kind              string
 }
 
 type OrdersOrder struct {
@@ -340,6 +364,86 @@ type OrdersSetting struct {
 	UpdatedAt                      time.Time
 	SubscriptionFinalPeriodDefault string
 	DefaultSiteID                  *int64
+	FreightVariantID               *int32
+	FreightMarkupPercent           pgtype.Numeric
+	ShippingNoticeOnBook           bool
+}
+
+type OrdersShipment struct {
+	ID                  int64
+	DeliveryID          int64
+	CarrierAccountID    int64
+	Service             string
+	Vas                 []string
+	Status              string
+	Exception           bool
+	ConsignmentNumber   *string
+	TrackingUrl         *string
+	DocumentRefs        []byte
+	BookedService       *string
+	BookedCost          pgtype.Numeric
+	BookedCostCurrency  *string
+	BookedCostEstimate  bool
+	PlannedWindowStart  *time.Time
+	PlannedWindowEnd    *time.Time
+	IdempotencyKey      uuid.UUID
+	BookAttemptedAt     *time.Time
+	RecipientName       string
+	RecipientLine1      string
+	RecipientLine2      string
+	RecipientPostalCode string
+	RecipientCity       string
+	RecipientCountry    string
+	RecipientContact    string
+	RecipientPhone      string
+	RecipientEmail      string
+	PickupPointID       *string
+	BookedAt            *time.Time
+	BookedByUserID      *uuid.UUID
+	BookedByDisplay     *string
+	CancelledAt         *time.Time
+	Voided              bool
+	LastTrackedAt       *time.Time
+	Version             int32
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+type OrdersShipmentDocument struct {
+	ID         int64
+	ShipmentID int64
+	Kind       string
+	StorageKey string
+	Format     string
+	CreatedAt  time.Time
+}
+
+type OrdersShipmentEvent struct {
+	ID          int64
+	ShipmentID  int64
+	Code        string
+	Text        string
+	Place       string
+	OccurredAt  time.Time
+	FoldedState string
+}
+
+type OrdersShipmentPackage struct {
+	ID            int64
+	ShipmentID    int64
+	Position      int32
+	WeightG       int32
+	LengthMm      int32
+	WidthMm       int32
+	HeightMm      int32
+	Content       string
+	PackageNumber *string
+}
+
+type OrdersSiteCarrierDefault struct {
+	SiteID    int64
+	AccountID int64
+	UpdatedAt time.Time
 }
 
 type OrdersSubscription struct {
