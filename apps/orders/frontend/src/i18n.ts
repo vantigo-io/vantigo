@@ -460,6 +460,10 @@ export const ordersCatalog = {
     "refusal.order_has_progress": "Something is delivered or invoiced: cancel the rest instead.",
     "refusal.line_invoiced": "The price of an invoiced line cannot change.",
     "refusal.line_has_progress": "A line with deliveries or invoices cannot be removed.",
+    "refusal.line_kind_changed": "A line keeps its kind. Remove it and add a new line instead.",
+    "refusal.order_on_hold": "The order is on hold. Release it before registering delivery.",
+    "refusal.mail_failed":
+      "The e-mail could not be sent. Nothing was changed; try again, or download the PDF and mark it as sent.",
     "refusal.line_in_draft_invoice":
       "The line is on a draft invoice: its price cannot change, nor its quantity go below it.",
     "refusal.client_request_reused": "This request was already used for something else. Try again.",
@@ -903,6 +907,10 @@ export const ordersCatalog = {
     "refusal.order_has_progress": "Noe er levert eller fakturert: kanseller resten i stedet.",
     "refusal.line_invoiced": "Prisen på en fakturert linje kan ikke endres.",
     "refusal.line_has_progress": "En linje med leveranser eller fakturaer kan ikke fjernes.",
+    "refusal.line_kind_changed": "En linje beholder typen sin. Fjern den og legg til en ny linje i stedet.",
+    "refusal.order_on_hold": "Ordren er satt på vent. Ta den av vent før du registrerer levering.",
+    "refusal.mail_failed":
+      "E-posten kunne ikke sendes. Ingenting ble endret; prøv igjen, eller last ned PDF-en og merk den som sendt.",
     "refusal.line_in_draft_invoice":
       "Linjen står på et fakturautkast: prisen kan ikke endres, og antallet kan ikke bli lavere.",
     "refusal.client_request_reused": "Denne forespørselen er allerede brukt til noe annet. Prøv igjen.",

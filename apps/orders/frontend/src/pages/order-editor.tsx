@@ -175,6 +175,7 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
     write: () =>
       updateOrder(order.id, {
         version: order.version,
+        expectedUpdatedAt: order.updatedAt,
         ...headerInput(editor.header),
         lines: editor.lines.map((line) => toLineInput(line, { quote: false })),
       }),
@@ -183,19 +184,19 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
   });
   const transition = useDocumentWrite({
     ...common,
-    write: (name: OrderTransition) => transitionOrder(order.id, name, order.version),
+    write: (name: OrderTransition) => transitionOrder(order.id, name, order),
     errorTitle: t("couldNotChangeOrder"),
   });
   const hold = useDocumentWrite({
     ...common,
-    write: (reason: string) => holdOrder(order.id, order.version, reason),
+    write: (reason: string) => holdOrder(order.id, order, reason),
     done: t("orderHeld"),
     errorTitle: t("couldNotChangeOrder"),
   });
   // The quantities dialog says its own refusal and stays open to be corrected.
   const delivered = useMutation({
     mutationFn: ({ mode, lines }: { mode: "mark" | "undo"; lines: DeliveredLine[] }) =>
-      (mode === "mark" ? markDelivered : undoDelivered)(order.id, order.version, lines),
+      (mode === "mark" ? markDelivered : undoDelivered)(order.id, order, lines),
     onSuccess: async (next, { mode }) => {
       queryClient.setQueryData(detailKey, next);
       await queryClient.invalidateQueries({
@@ -216,7 +217,8 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
     },
   });
   const send = useMutation({
-    mutationFn: (input: Parameters<typeof sendOrder>[1]) => sendOrder(order.id, { ...input, version: order.version }),
+    mutationFn: (input: Omit<Parameters<typeof sendOrder>[1], "expectedUpdatedAt">) =>
+      sendOrder(order.id, { ...input, version: order.version, expectedUpdatedAt: order.updatedAt }),
     onSuccess: async (sent) => {
       queryClient.setQueryData(detailKey, sent);
       await queryClient.invalidateQueries({
@@ -234,7 +236,7 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
     },
   });
   const remove = useMutation({
-    mutationFn: () => deleteOrder(order.id),
+    mutationFn: () => deleteOrder(order.id, order.updatedAt),
     onSuccess: async () => {
       queryClient.removeQueries({ queryKey: detailKey });
       await queryClient.invalidateQueries({ queryKey: [ORDERS_QUERY_KEY] });

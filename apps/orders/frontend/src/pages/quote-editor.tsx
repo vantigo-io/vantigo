@@ -166,6 +166,7 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
     write: () =>
       updateQuote(quote.id, {
         revision: quote.revision,
+        expectedUpdatedAt: quote.updatedAt,
         ...headerInput(editor.header),
         validUntil: editor.header.validUntil,
         lines: editor.lines.map((line) => toLineInput(line, { quote: true })),
@@ -174,7 +175,8 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
     errorTitle: t("couldNotSave"),
   });
   const send = useMutation({
-    mutationFn: (input: Parameters<typeof sendQuote>[1]) => sendQuote(quote.id, { ...input, revision: quote.revision }),
+    mutationFn: (input: Omit<Parameters<typeof sendQuote>[1], "expectedUpdatedAt">) =>
+      sendQuote(quote.id, { ...input, revision: quote.revision, expectedUpdatedAt: quote.updatedAt }),
     onSuccess: async (sent) => {
       queryClient.setQueryData(detailKey, sent);
       await queryClient.invalidateQueries({
@@ -194,25 +196,25 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
   });
   const markSent = useDocumentWrite({
     ...common,
-    write: () => markQuoteSent(quote.id, quote.revision, validUntilDefault),
+    write: () => markQuoteSent(quote.id, quote, validUntilDefault),
     done: t("quoteMarkedSent"),
     errorTitle: t("couldNotMarkSent"),
   });
   const revise = useDocumentWrite({
     ...common,
-    write: () => reviseQuote(quote.id, quote.revision),
+    write: () => reviseQuote(quote.id, quote),
     done: t("quoteRevised"),
     errorTitle: t("couldNotRevise"),
   });
   const decline = useDocumentWrite({
     ...common,
-    write: (reason: string) => declineQuote(quote.id, quote.revision, reason),
+    write: (reason: string) => declineQuote(quote.id, quote, reason),
     done: t("quoteDeclined"),
     errorTitle: t("couldNotDecline"),
   });
   const cancel = useDocumentWrite({
     ...common,
-    write: () => cancelQuote(quote.id, quote.revision),
+    write: () => cancelQuote(quote.id, quote),
     done: t("quoteCancelled"),
     errorTitle: t("couldNotCancel"),
   });
@@ -226,7 +228,7 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
     onError: (error) => editor.showRefusal(error, t("couldNotCopy")),
   });
   const remove = useMutation({
-    mutationFn: () => deleteQuote(quote.id),
+    mutationFn: () => deleteQuote(quote.id, quote.updatedAt),
     onSuccess: async () => {
       queryClient.removeQueries({ queryKey: detailKey });
       await queryClient.invalidateQueries({ queryKey: [ORDERS_QUERY_KEY] });
@@ -237,7 +239,7 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
   });
   const accept = useMutation({
     mutationFn: (input: { into: "draft_order" | "confirmed_order"; optionalLineIds: number[] }) =>
-      acceptQuote(quote.id, { revision: quote.revision, ...input }),
+      acceptQuote(quote.id, { revision: quote.revision, expectedUpdatedAt: quote.updatedAt, ...input }),
     onSuccess: async (accepted) => {
       queryClient.setQueryData(detailKey, accepted.quote);
       await queryClient.invalidateQueries({
@@ -251,7 +253,7 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
   });
   const apply = useMutation({
     mutationFn: ({ templateId, replace }: { templateId: number; replace: boolean }) =>
-      applyTemplate(quote.id, quote.revision, templateId, replace),
+      applyTemplate(quote.id, quote, templateId, replace),
     onSuccess: async (applied) => {
       queryClient.setQueryData(detailKey, applied.quote);
       await queryClient.invalidateQueries({
@@ -432,8 +434,8 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
                     color: "green",
                   })}
                 </span>
-                {quote.status === "sent" && stateButton(t("decline"), () => setDialog("decline"), { color: "red" })}
-                {quote.status === "sent" && stateButton(t("revise"), () => revise.mutate())}
+                {stateButton(t("decline"), () => setDialog("decline"), { color: "red" })}
+                {stateButton(t("revise"), () => revise.mutate())}
               </>
             )}
             {!draft && quote.status !== "sent" && quote.status !== "expired" && (
