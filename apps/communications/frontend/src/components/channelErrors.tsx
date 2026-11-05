@@ -1,6 +1,7 @@
 import { Anchor } from "@mantine/core";
 import { appUrl, type useI18n } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
+import { mailChannelsDocs, providerText } from "./channelProviders";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
@@ -32,7 +33,9 @@ const messages: Record<string, string> = {
  * never the code itself, nor the server's English message. `channel_exists`
  * is an address another channel has, `mailbox_exists` a mailbox another
  * channel on the same provider uses. `provider` is the mailbox provider's
- * name as GET /channel-providers answers it, for the refusals that name it.
+ * name as GET /channel-providers answers it, for the refusals that name it,
+ * and `providerKey` its key, for the refusals whose text and help link are
+ * the provider's own (providerText, mailChannelsDocs).
  */
 export function channelErrorMessage(
   error: unknown,
@@ -40,18 +43,23 @@ export function channelErrorMessage(
   locale: string,
   fallback = "errorChannelNotSaved",
   provider = "",
+  providerKey = "",
 ): ReactNode {
   const code = codeOf(error);
   if (statusOf(error) === 429) return t("errorRateLimited");
   if (code === "mailbox_denied")
     return (
       <>
-        <span>{t("errorMailboxDenied")}</span>{" "}
-        <Anchor href={appUrl(`/docs/${locale}/admin/entra/#mail-channels`)} target="_blank" rel="noopener noreferrer">
-          {t("errorMailboxDeniedLink")}
+        <span>{t(providerText("errorMailboxDenied", providerKey), { provider })}</span>{" "}
+        <Anchor
+          href={appUrl(`/docs/${locale}${mailChannelsDocs(providerKey)}`)}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {t(providerText("errorMailboxDeniedLink", providerKey), { provider })}
         </Anchor>
       </>
     );
   const key = code ? messages[code] : undefined;
-  return t(key ?? fallback, { provider });
+  return t(key ? providerText(key, providerKey) : fallback, { provider });
 }

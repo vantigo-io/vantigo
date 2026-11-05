@@ -58,6 +58,15 @@ const entraProvider = {
   maxMessageBytes: 3_000_000,
 };
 
+const googleProvider = {
+  key: "google",
+  displayName: "Google Workspace",
+  available: true,
+  reason: null,
+  warning: "tenant_wide",
+  maxMessageBytes: 25_000_000,
+};
+
 const apiError = (status: number, code: string, message = "server words") =>
   Object.assign(new Error(message), { status, code });
 
@@ -408,6 +417,95 @@ describe("admin channels", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create channel" }));
     const link = await screen.findByRole("link", { name: "How to give the application access" });
     expect(link.getAttribute("href")).toMatch(/\/docs\/en\/admin\/entra\/#mail-channels$/);
+  });
+
+  describe("a Google Workspace channel", () => {
+    const openGoogleForm = async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Add channel" }));
+      await screen.findByRole("textbox", { name: "SMTP host" });
+      await chooseProvider("Google Workspace");
+      fireEvent.change(screen.getByRole("textbox", { name: "Email address" }), {
+        target: { value: "post@example.com" },
+      });
+    };
+
+    it("warns that the delegation reaches every mailbox in the domain, beside Microsoft 365's own warning", async () => {
+      mocks.fetchProviders.mockResolvedValue([
+        smtpProvider,
+        { ...entraProvider, warning: "tenant_wide" },
+        googleProvider,
+      ]);
+      mocks.fetchChannels.mockResolvedValue([]);
+      renderPage();
+      expect(
+        await screen.findByText(
+          "Mail access through Google Workspace reaches every mailbox in the domain: domain-wide delegation cannot be limited to some mailboxes. While this shows, anyone who manages channels in Communications can send as any mailbox in the domain that is no person's own.",
+        ),
+      ).toBeTruthy();
+      expect(screen.getByText(/Limit it with RBAC for Applications/)).toBeTruthy();
+      expect(screen.getAllByText(/RBAC for Applications/)).toHaveLength(1);
+    });
+
+    it("warns about the domain-wide delegation in Norwegian", async () => {
+      setLanguagePreference("nb");
+      mocks.fetchProviders.mockResolvedValue([smtpProvider, googleProvider]);
+      mocks.fetchChannels.mockResolvedValue([]);
+      renderPage();
+      expect(
+        await screen.findByText(/^E-posttilgangen gjennom Google Workspace gjelder alle postboksene i domenet/),
+      ).toBeTruthy();
+      expect(screen.queryByText(/RBAC for Applications/)).toBeNull();
+    });
+
+    it("says which mailbox can be a channel, and refuses a person's own in Google's words", async () => {
+      mocks.fetchProviders.mockResolvedValue([smtpProvider, googleProvider]);
+      mocks.fetchChannels.mockResolvedValue([]);
+      mocks.createChannel.mockRejectedValue(apiError(422, "personal_mailbox"));
+      renderPage();
+      await openGoogleForm();
+      expect(
+        screen.getByText(/^The mailbox must be a licensed user of the organisation in Google Workspace/),
+      ).toBeTruthy();
+      expect(screen.queryByText(/shared mailbox in the application's scope/)).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Create channel" }));
+      expect(
+        await screen.findByText(
+          "This is a person's own mailbox in Google Workspace. Only a mailbox that is no person's own, such as post@, can be a channel.",
+        ),
+      ).toBeTruthy();
+    });
+
+    it("links a refused mailbox to the Google Workspace guide's mail channels", async () => {
+      mocks.fetchProviders.mockResolvedValue([smtpProvider, googleProvider]);
+      mocks.fetchChannels.mockResolvedValue([]);
+      mocks.createChannel.mockRejectedValue(apiError(422, "mailbox_denied"));
+      renderPage();
+      await openGoogleForm();
+      fireEvent.click(screen.getByRole("button", { name: "Create channel" }));
+      const link = await screen.findByRole("link", { name: "Mail channels in Google Workspace" });
+      expect(link.getAttribute("href")).toMatch(/\/docs\/en\/admin\/google-workspace\/#mail-channels$/);
+      expect(screen.getByText(/Check the user in the Google Admin console/)).toBeTruthy();
+      expect(screen.queryByText(/Exchange Online/)).toBeNull();
+    });
+
+    it("says a refused mailbox's sync in Google's words", async () => {
+      mocks.fetchProviders.mockResolvedValue([smtpProvider, googleProvider]);
+      mocks.fetchChannels.mockResolvedValue([
+        {
+          ...entraChannel,
+          provider: "google",
+          address: "denied@example.com",
+          displayName: null,
+          sync: { state: "failed", error: "mailbox_denied", lastSyncedAt: null },
+        },
+      ]);
+      renderPage();
+      expect(
+        await screen.findByText(
+          "Failed: Google Workspace refuses the mailbox. Check the user in the Google Admin console.",
+        ),
+      ).toBeTruthy();
+    });
   });
 
   it("says an SMTP channel's address already exists", async () => {
