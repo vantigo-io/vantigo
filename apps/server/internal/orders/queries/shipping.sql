@@ -51,8 +51,10 @@ SELECT * FROM orders.site_carrier_defaults ORDER BY site_id;
 -- name: SiteCarrierDefault :one
 SELECT account_id FROM orders.site_carrier_defaults WHERE site_id = sqlc.arg(site_id);
 
--- name: DeleteSiteCarrierDefaults :exec
-DELETE FROM orders.site_carrier_defaults;
+-- name: DeleteSiteCarrierDefaultsOf :exec
+-- DeleteSiteCarrierDefaultsOf clears the defaults of the sites a save names;
+-- the others keep theirs.
+DELETE FROM orders.site_carrier_defaults WHERE site_id = ANY(sqlc.arg(site_ids)::bigint[]);
 
 -- name: InsertSiteCarrierDefault :exec
 INSERT INTO orders.site_carrier_defaults (site_id, account_id, updated_at)
@@ -91,28 +93,42 @@ ORDER BY sh.id;
 
 -- name: UpdateShipmentDraft :one
 -- UpdateShipmentDraft saves a draft's account, service, value-added
--- services, pickup point and recipient contact, under its lock.
+-- services, pickup point and recipient contact, under its lock: never one
+-- whose booking's outcome is unresolved, which a retry books as it was.
 UPDATE orders.shipments SET
     carrier_account_id = sqlc.arg(carrier_account_id), service = sqlc.arg(service), vas = sqlc.arg(vas)::text[],
     pickup_point_id = sqlc.narg(pickup_point_id), recipient_contact = sqlc.arg(recipient_contact),
     recipient_phone = sqlc.arg(recipient_phone), recipient_email = sqlc.arg(recipient_email),
     version = version + 1, updated_at = sqlc.arg(now)
-WHERE id = sqlc.arg(id) AND status = 'draft'
+WHERE id = sqlc.arg(id) AND status = 'draft' AND book_attempted_at IS NULL
 RETURNING *;
 
 -- name: MarkShipmentBookAttempt :one
 -- MarkShipmentBookAttempt records, before the carrier is called, that a
 -- booking under the shipment's key is being made: a later attempt knows the
--- outcome of this one may be unknown and asks the carrier first.
-UPDATE orders.shipments SET book_attempted_at = sqlc.arg(now)
+-- outcome of this one may be unknown and asks the carrier first. It is the
+-- booking's lease: no row while an earlier attempt is later than
+-- @lease_before, and the version moves, so a client holding the version it
+-- was read at conflicts.
+UPDATE orders.shipments SET book_attempted_at = sqlc.arg(now), version = version + 1, updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id) AND status = 'draft'
+  AND (book_attempted_at IS NULL OR book_attempted_at <= sqlc.arg(lease_before))
+RETURNING *;
+
+-- name: ResetShipmentBookAttempt :one
+-- ResetShipmentBookAttempt takes back an attempt the carrier definitively
+-- refused — nothing was booked under its key — with a fresh key, so the draft
+-- can be changed and booked anew.
+UPDATE orders.shipments SET
+    book_attempted_at = NULL, idempotency_key = sqlc.arg(idempotency_key), version = version + 1, updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id) AND status = 'draft' AND book_attempted_at = sqlc.arg(attempted_at)
 RETURNING *;
 
 -- name: BookShipmentRow :one
 -- BookShipmentRow records the carrier's booking of a draft.
 UPDATE orders.shipments SET
     status = 'booked', consignment_number = sqlc.arg(consignment_number), tracking_url = sqlc.narg(tracking_url),
-    document_refs = sqlc.arg(document_refs),
+    document_refs = sqlc.arg(document_refs), label_in_mybring_only = sqlc.arg(label_in_mybring_only),
     booked_service = sqlc.arg(booked_service), booked_cost = sqlc.narg(booked_cost),
     booked_cost_currency = sqlc.narg(booked_cost_currency), booked_cost_estimate = sqlc.arg(booked_cost_estimate),
     planned_window_start = sqlc.narg(planned_window_start), planned_window_end = sqlc.narg(planned_window_end),
@@ -173,17 +189,27 @@ ORDER BY shipment_id, occurred_at DESC, id DESC;
 -- orders.shipment_tracking worker: one conditional UPDATE over a SKIP LOCKED
 -- pick, which moves last_tracked_at to @now — the lease — so two workers never
 -- poll one shipment, and a worker that dies leaves it due again at the next
--- interval. By account, so a cycle asks one carrier account per batch.
-UPDATE orders.shipments SET last_tracked_at = sqlc.arg(now)
-WHERE id IN (
-    SELECT s.id FROM orders.shipments s
+-- interval. The least recently tracked first, so a tail a cycle did not reach
+-- comes first in the next; each answers the last_tracked_at it had, for the
+-- worker to put back when the carrier was never asked.
+WITH picked AS (
+    SELECT s.id, s.last_tracked_at AS previous_tracked_at FROM orders.shipments s
     WHERE s.status IN ('booked', 'in_transit') AND s.booked_at >= sqlc.arg(since)
       AND (s.last_tracked_at IS NULL OR s.last_tracked_at <= sqlc.arg(due))
-    ORDER BY s.carrier_account_id, s.id
+    ORDER BY s.last_tracked_at NULLS FIRST, s.id
     LIMIT sqlc.arg(batch_size)::integer
     FOR UPDATE SKIP LOCKED
 )
-RETURNING *;
+UPDATE orders.shipments sh SET last_tracked_at = sqlc.arg(now)
+FROM picked
+WHERE sh.id = picked.id
+RETURNING sh.id, sh.carrier_account_id, sh.consignment_number, picked.previous_tracked_at;
+
+-- name: RestoreShipmentTracked :exec
+-- RestoreShipmentTracked puts back the last_tracked_at a claim moved, for a
+-- shipment the carrier was never asked about: it is due again at once.
+UPDATE orders.shipments SET last_tracked_at = sqlc.narg(previous)
+WHERE id = sqlc.arg(id) AND last_tracked_at = sqlc.arg(claimed);
 
 -- name: SetShipmentTracked :one
 -- SetShipmentTracked moves a booked or in-transit shipment to the state

@@ -59,6 +59,9 @@ const (
 	codeAddressMissing         = "address_missing"
 	codeCurrencyMismatch       = "currency_mismatch"
 	codeFreightProductInvalid  = "freight_product_invalid"
+	codeBookingInProgress      = "booking_in_progress"
+	codeBookingOutcomeUnknown  = "booking_outcome_unknown"
+	codeBookingUnresolved      = "booking_unresolved"
 )
 
 // customerNumberPattern is a carrier's customer number as Bring hands them
@@ -221,6 +224,16 @@ func (s *server) carrierOf(a store.OrdersCarrierAccount) (shipping.Carrier, erro
 		return c, nil
 	}
 	return nil, errCarrierWithheld
+}
+
+// carrierCapabilities are a carrier's capabilities without its keys, false
+// for a carrier this build has no adapter for.
+func carrierCapabilities(carrier string) (shipping.Capabilities, bool) {
+	switch carrier {
+	case carrierBring:
+		return bring.Capabilities(), true
+	}
+	return shipping.Capabilities{}, false
 }
 
 // accountView is an account as the API answers it: never its keys.
@@ -642,7 +655,9 @@ func siteDefaultsOut(rows []store.OrdersSiteCarrierDefault) gen.OrdersSiteCarrie
 // (PUT /api/v1/orders/shipping/site-defaults)
 //
 // Each site is one Inventory knows (judged through contracts.Stock before the
-// transaction), named once, with an active account.
+// transaction), named once, with an active account or none (null clears its
+// default). Only the sites named change: two people saving different sites at
+// once do not undo each other.
 func (s *server) PutSiteCarrierDefaults(ctx context.Context, req gen.PutSiteCarrierDefaultsRequestObject) (gen.PutSiteCarrierDefaultsResponseObject, error) {
 	f := s.unknownProperties(ctx, siteDefaultsSchema)
 	seen := map[int64]bool{}
@@ -663,25 +678,33 @@ func (s *server) PutSiteCarrierDefaults(ctx context.Context, req gen.PutSiteCarr
 	var rows []store.OrdersSiteCarrierDefault
 	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		var af fieldErrors
+		sites := make([]int64, 0, len(req.Body.Items))
 		for i, d := range req.Body.Items {
-			a, err := txq.GetCarrierAccount(ctx, d.AccountId)
+			sites = append(sites, d.SiteId)
+			if d.AccountId == nil {
+				continue
+			}
+			a, err := txq.GetCarrierAccount(ctx, *d.AccountId)
 			if noRows(err) || (err == nil && a.Status != accountActive) {
 				af.add(fmt.Sprintf("items[%d].accountId", i), "No active carrier account has that id")
 				continue
 			}
 			if err != nil {
-				return fmt.Errorf("orders: read carrier account %d: %w", d.AccountId, err)
+				return fmt.Errorf("orders: read carrier account %d: %w", *d.AccountId, err)
 			}
 		}
 		if af.failed() {
 			return refuseInvalid(invalidCarrierTitle, af)
 		}
-		if err := txq.DeleteSiteCarrierDefaults(ctx); err != nil {
+		if err := txq.DeleteSiteCarrierDefaultsOf(ctx, sites); err != nil {
 			return fmt.Errorf("orders: clear the default carrier accounts: %w", err)
 		}
 		now := s.deps.Clock()
 		for _, d := range req.Body.Items {
-			if err := txq.InsertSiteCarrierDefault(ctx, store.InsertSiteCarrierDefaultParams{SiteID: d.SiteId, AccountID: d.AccountId, Now: now}); err != nil {
+			if d.AccountId == nil {
+				continue
+			}
+			if err := txq.InsertSiteCarrierDefault(ctx, store.InsertSiteCarrierDefaultParams{SiteID: d.SiteId, AccountID: *d.AccountId, Now: now}); err != nil {
 				return fmt.Errorf("orders: save site %d's default carrier account: %w", d.SiteId, err)
 			}
 		}

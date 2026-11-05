@@ -5,9 +5,13 @@ package orders
 // delivery address, the estimated weight of its goods lines and the default
 // account and service of the order's site (a quote's: the settings' default
 // site), plus the settings' markup. The freight product, when the settings
-// name one, gives the line its variant, name and VAT code; the line is saved
-// with price_source carrier, and a price typed over it is manual. Nothing is
-// written here.
+// name one, gives the line its variant and name. Its VAT code follows the
+// goods (freightCode): the goods lines' when they share one, else the one
+// carrying the largest net share; with no goods line, the freight product's,
+// else the standard rate's. The line is saved with price_source carrier, and a
+// price typed over it is manual. Nothing is written here. Besides
+// orders:access the estimate needs the right to edit the document it is for:
+// orders:quotes-manage for a quote, orders:sales-manage for an order.
 
 import (
 	"context"
@@ -17,6 +21,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/orders/gen"
 	"github.com/vantigo-io/vantigo/server/internal/orders/store"
 	"github.com/vantigo-io/vantigo/server/internal/shipping"
@@ -46,6 +52,9 @@ func (s *server) EstimateShipping(ctx context.Context, req gen.EstimateShippingR
 	}
 	if f.failed() {
 		return gen.EstimateShipping400ApplicationProblemPlusJSONResponse(invalid(invalidShipmentTitle, f)), nil
+	}
+	if (b.QuoteId != nil && !s.has(ctx, permQuotesManage)) || (b.OrderId != nil && !s.has(ctx, permSalesManage)) {
+		return gen.EstimateShipping403JSONResponse(apicommon.ForbiddenBody()), nil
 	}
 
 	// The document, its lines, the site and the settings.
@@ -178,8 +187,9 @@ func (s *server) EstimateShipping(ctx context.Context, req gen.EstimateShippingR
 		CarrierPrice: wire(carrierPrice, amountPlaces), MarkupPercent: wire(markup, 2), NetPrice: wire(net, amountPlaces),
 		Currency: chosen.Price.Currency, Estimate: chosen.Estimate,
 	}
-	// The line's name, variant and VAT code: the freight product's, else the
-	// standard rate's — freight follows the VAT of the goods.
+	// The line's name and variant: the freight product's. Its VAT code
+	// follows the goods; with none, the freight product's, else the standard
+	// rate's.
 	name := "Frakt"
 	if h.Language == "en" {
 		name = "Shipping"
@@ -193,6 +203,9 @@ func (s *server) EstimateShipping(ctx context.Context, req gen.EstimateShippingR
 			code = &c
 		}
 	}
+	if goods := freightCode(lines); goods != nil {
+		code = goods
+	}
 	unit := net
 	if code != nil {
 		out.VatCodeId = &code.ID
@@ -202,4 +215,39 @@ func (s *server) EstimateShipping(ctx context.Context, req gen.EstimateShippingR
 	}
 	out.UnitPrice = wire(unit, amountPlaces)
 	return gen.EstimateShipping200JSONResponse(out), nil
+}
+
+// freightCode is the VAT code freight follows (O53): the priced goods lines'
+// code when they share one; when they do not, the code carrying the largest
+// net amount (the lowest id on a tie); nil when the document has no priced
+// goods line with a code. Optional lines are not counted.
+func freightCode(lines []store.OrdersLine) *contracts.VATCodeEntry {
+	net := map[int32]*big.Rat{}
+	codes := map[int32]contracts.VATCodeEntry{}
+	for _, l := range lines {
+		if l.Kind != kindProduct || l.Optional || l.VatCodeID == nil {
+			continue
+		}
+		id := *l.VatCodeID
+		if net[id] == nil {
+			net[id] = new(big.Rat)
+			codes[id] = contracts.VATCodeEntry{
+				ID: id, Code: deref(l.VatCode), RatePercent: ratOrZero(l.VatRatePercent).RatString(), Category: deref(l.VatCategory),
+			}
+		}
+		net[id].Add(net[id], ratOrZero(l.LineNet))
+	}
+	var best *contracts.VATCodeEntry
+	for id, n := range net {
+		c := codes[id]
+		switch {
+		case best == nil:
+		case n.Cmp(net[best.ID]) < 0:
+			continue
+		case n.Cmp(net[best.ID]) == 0 && id > best.ID:
+			continue
+		}
+		best = &c
+	}
+	return best
 }

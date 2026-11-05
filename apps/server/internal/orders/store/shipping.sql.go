@@ -16,20 +16,21 @@ import (
 const bookShipmentRow = `-- name: BookShipmentRow :one
 UPDATE orders.shipments SET
     status = 'booked', consignment_number = $1, tracking_url = $2,
-    document_refs = $3,
-    booked_service = $4, booked_cost = $5,
-    booked_cost_currency = $6, booked_cost_estimate = $7,
-    planned_window_start = $8, planned_window_end = $9,
-    booked_at = $10, booked_by_user_id = $11, booked_by_display = $12,
-    last_tracked_at = $10, version = version + 1, updated_at = $10
-WHERE id = $13 AND status = 'draft'
-RETURNING id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at
+    document_refs = $3, label_in_mybring_only = $4,
+    booked_service = $5, booked_cost = $6,
+    booked_cost_currency = $7, booked_cost_estimate = $8,
+    planned_window_start = $9, planned_window_end = $10,
+    booked_at = $11, booked_by_user_id = $12, booked_by_display = $13,
+    last_tracked_at = $11, version = version + 1, updated_at = $11
+WHERE id = $14 AND status = 'draft'
+RETURNING id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, label_in_mybring_only, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at
 `
 
 type BookShipmentRowParams struct {
 	ConsignmentNumber  *string
 	TrackingUrl        *string
 	DocumentRefs       []byte
+	LabelInMybringOnly bool
 	BookedService      *string
 	BookedCost         pgtype.Numeric
 	BookedCostCurrency *string
@@ -48,6 +49,7 @@ func (q *Queries) BookShipmentRow(ctx context.Context, arg BookShipmentRowParams
 		arg.ConsignmentNumber,
 		arg.TrackingUrl,
 		arg.DocumentRefs,
+		arg.LabelInMybringOnly,
 		arg.BookedService,
 		arg.BookedCost,
 		arg.BookedCostCurrency,
@@ -71,6 +73,7 @@ func (q *Queries) BookShipmentRow(ctx context.Context, arg BookShipmentRowParams
 		&i.ConsignmentNumber,
 		&i.TrackingUrl,
 		&i.DocumentRefs,
+		&i.LabelInMybringOnly,
 		&i.BookedService,
 		&i.BookedCost,
 		&i.BookedCostCurrency,
@@ -121,7 +124,7 @@ UPDATE orders.shipments SET
     status = 'cancelled', cancelled_at = $1, voided = $2, exception = false,
     version = version + 1, updated_at = $1
 WHERE id = $3 AND status IN ('draft', 'booked')
-RETURNING id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at
+RETURNING id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, label_in_mybring_only, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at
 `
 
 type CancelShipmentRowParams struct {
@@ -146,6 +149,7 @@ func (q *Queries) CancelShipmentRow(ctx context.Context, arg CancelShipmentRowPa
 		&i.ConsignmentNumber,
 		&i.TrackingUrl,
 		&i.DocumentRefs,
+		&i.LabelInMybringOnly,
 		&i.BookedService,
 		&i.BookedCost,
 		&i.BookedCostCurrency,
@@ -178,16 +182,18 @@ func (q *Queries) CancelShipmentRow(ctx context.Context, arg CancelShipmentRowPa
 }
 
 const claimTrackableShipments = `-- name: ClaimTrackableShipments :many
-UPDATE orders.shipments SET last_tracked_at = $1
-WHERE id IN (
-    SELECT s.id FROM orders.shipments s
+WITH picked AS (
+    SELECT s.id, s.last_tracked_at AS previous_tracked_at FROM orders.shipments s
     WHERE s.status IN ('booked', 'in_transit') AND s.booked_at >= $2
       AND (s.last_tracked_at IS NULL OR s.last_tracked_at <= $3)
-    ORDER BY s.carrier_account_id, s.id
+    ORDER BY s.last_tracked_at NULLS FIRST, s.id
     LIMIT $4::integer
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at
+UPDATE orders.shipments sh SET last_tracked_at = $1
+FROM picked
+WHERE sh.id = picked.id
+RETURNING sh.id, sh.carrier_account_id, sh.consignment_number, picked.previous_tracked_at
 `
 
 type ClaimTrackableShipmentsParams struct {
@@ -197,13 +203,22 @@ type ClaimTrackableShipmentsParams struct {
 	BatchSize int32
 }
 
+type ClaimTrackableShipmentsRow struct {
+	ID                int64
+	CarrierAccountID  int64
+	ConsignmentNumber *string
+	PreviousTrackedAt *time.Time
+}
+
 // ClaimTrackableShipments takes up to @batch_size booked or in-transit
 // shipments booked since @since and not tracked since @due, for the
 // orders.shipment_tracking worker: one conditional UPDATE over a SKIP LOCKED
 // pick, which moves last_tracked_at to @now — the lease — so two workers never
 // poll one shipment, and a worker that dies leaves it due again at the next
-// interval. By account, so a cycle asks one carrier account per batch.
-func (q *Queries) ClaimTrackableShipments(ctx context.Context, arg ClaimTrackableShipmentsParams) ([]OrdersShipment, error) {
+// interval. The least recently tracked first, so a tail a cycle did not reach
+// comes first in the next; each answers the last_tracked_at it had, for the
+// worker to put back when the carrier was never asked.
+func (q *Queries) ClaimTrackableShipments(ctx context.Context, arg ClaimTrackableShipmentsParams) ([]ClaimTrackableShipmentsRow, error) {
 	rows, err := q.db.Query(ctx, claimTrackableShipments,
 		arg.Now,
 		arg.Since,
@@ -214,47 +229,14 @@ func (q *Queries) ClaimTrackableShipments(ctx context.Context, arg ClaimTrackabl
 		return nil, err
 	}
 	defer rows.Close()
-	var items []OrdersShipment
+	var items []ClaimTrackableShipmentsRow
 	for rows.Next() {
-		var i OrdersShipment
+		var i ClaimTrackableShipmentsRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.DeliveryID,
 			&i.CarrierAccountID,
-			&i.Service,
-			&i.Vas,
-			&i.Status,
-			&i.Exception,
 			&i.ConsignmentNumber,
-			&i.TrackingUrl,
-			&i.DocumentRefs,
-			&i.BookedService,
-			&i.BookedCost,
-			&i.BookedCostCurrency,
-			&i.BookedCostEstimate,
-			&i.PlannedWindowStart,
-			&i.PlannedWindowEnd,
-			&i.IdempotencyKey,
-			&i.BookAttemptedAt,
-			&i.RecipientName,
-			&i.RecipientLine1,
-			&i.RecipientLine2,
-			&i.RecipientPostalCode,
-			&i.RecipientCity,
-			&i.RecipientCountry,
-			&i.RecipientContact,
-			&i.RecipientPhone,
-			&i.RecipientEmail,
-			&i.PickupPointID,
-			&i.BookedAt,
-			&i.BookedByUserID,
-			&i.BookedByDisplay,
-			&i.CancelledAt,
-			&i.Voided,
-			&i.LastTrackedAt,
-			&i.Version,
-			&i.CreatedAt,
-			&i.UpdatedAt,
+			&i.PreviousTrackedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -275,12 +257,14 @@ func (q *Queries) DeleteShipmentPackages(ctx context.Context, shipmentID int64) 
 	return err
 }
 
-const deleteSiteCarrierDefaults = `-- name: DeleteSiteCarrierDefaults :exec
-DELETE FROM orders.site_carrier_defaults
+const deleteSiteCarrierDefaultsOf = `-- name: DeleteSiteCarrierDefaultsOf :exec
+DELETE FROM orders.site_carrier_defaults WHERE site_id = ANY($1::bigint[])
 `
 
-func (q *Queries) DeleteSiteCarrierDefaults(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, deleteSiteCarrierDefaults)
+// DeleteSiteCarrierDefaultsOf clears the defaults of the sites a save names;
+// the others keep theirs.
+func (q *Queries) DeleteSiteCarrierDefaultsOf(ctx context.Context, siteIds []int64) error {
+	_, err := q.db.Exec(ctx, deleteSiteCarrierDefaultsOf, siteIds)
 	return err
 }
 
@@ -381,7 +365,7 @@ func (q *Queries) GetCarrierAccount(ctx context.Context, id int64) (OrdersCarrie
 }
 
 const getShipment = `-- name: GetShipment :one
-SELECT id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at FROM orders.shipments WHERE id = $1
+SELECT id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, label_in_mybring_only, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at FROM orders.shipments WHERE id = $1
 `
 
 func (q *Queries) GetShipment(ctx context.Context, id int64) (OrdersShipment, error) {
@@ -398,6 +382,7 @@ func (q *Queries) GetShipment(ctx context.Context, id int64) (OrdersShipment, er
 		&i.ConsignmentNumber,
 		&i.TrackingUrl,
 		&i.DocumentRefs,
+		&i.LabelInMybringOnly,
 		&i.BookedService,
 		&i.BookedCost,
 		&i.BookedCostCurrency,
@@ -515,7 +500,7 @@ INSERT INTO orders.shipments (
     $10, $11, $12, $13,
     $14, $15, $15
 )
-RETURNING id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at
+RETURNING id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, label_in_mybring_only, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at
 `
 
 type InsertShipmentParams struct {
@@ -566,6 +551,7 @@ func (q *Queries) InsertShipment(ctx context.Context, arg InsertShipmentParams) 
 		&i.ConsignmentNumber,
 		&i.TrackingUrl,
 		&i.DocumentRefs,
+		&i.LabelInMybringOnly,
 		&i.BookedService,
 		&i.BookedCost,
 		&i.BookedCostCurrency,
@@ -825,7 +811,7 @@ func (q *Queries) LockCarrierAccount(ctx context.Context, id int64) (OrdersCarri
 }
 
 const lockShipment = `-- name: LockShipment :one
-SELECT id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at FROM orders.shipments WHERE id = $1 FOR UPDATE
+SELECT id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, label_in_mybring_only, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at FROM orders.shipments WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LockShipment(ctx context.Context, id int64) (OrdersShipment, error) {
@@ -842,6 +828,7 @@ func (q *Queries) LockShipment(ctx context.Context, id int64) (OrdersShipment, e
 		&i.ConsignmentNumber,
 		&i.TrackingUrl,
 		&i.DocumentRefs,
+		&i.LabelInMybringOnly,
 		&i.BookedService,
 		&i.BookedCost,
 		&i.BookedCostCurrency,
@@ -874,21 +861,26 @@ func (q *Queries) LockShipment(ctx context.Context, id int64) (OrdersShipment, e
 }
 
 const markShipmentBookAttempt = `-- name: MarkShipmentBookAttempt :one
-UPDATE orders.shipments SET book_attempted_at = $1
+UPDATE orders.shipments SET book_attempted_at = $1, version = version + 1, updated_at = $1
 WHERE id = $2 AND status = 'draft'
-RETURNING id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at
+  AND (book_attempted_at IS NULL OR book_attempted_at <= $3)
+RETURNING id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, label_in_mybring_only, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at
 `
 
 type MarkShipmentBookAttemptParams struct {
-	Now *time.Time
-	ID  int64
+	Now         *time.Time
+	ID          int64
+	LeaseBefore *time.Time
 }
 
 // MarkShipmentBookAttempt records, before the carrier is called, that a
 // booking under the shipment's key is being made: a later attempt knows the
-// outcome of this one may be unknown and asks the carrier first.
+// outcome of this one may be unknown and asks the carrier first. It is the
+// booking's lease: no row while an earlier attempt is later than
+// @lease_before, and the version moves, so a client holding the version it
+// was read at conflicts.
 func (q *Queries) MarkShipmentBookAttempt(ctx context.Context, arg MarkShipmentBookAttemptParams) (OrdersShipment, error) {
-	row := q.db.QueryRow(ctx, markShipmentBookAttempt, arg.Now, arg.ID)
+	row := q.db.QueryRow(ctx, markShipmentBookAttempt, arg.Now, arg.ID, arg.LeaseBefore)
 	var i OrdersShipment
 	err := row.Scan(
 		&i.ID,
@@ -901,6 +893,7 @@ func (q *Queries) MarkShipmentBookAttempt(ctx context.Context, arg MarkShipmentB
 		&i.ConsignmentNumber,
 		&i.TrackingUrl,
 		&i.DocumentRefs,
+		&i.LabelInMybringOnly,
 		&i.BookedService,
 		&i.BookedCost,
 		&i.BookedCostCurrency,
@@ -999,6 +992,92 @@ func (q *Queries) QueueShippingNotice(ctx context.Context, arg QueueShippingNoti
 	return result.RowsAffected(), nil
 }
 
+const resetShipmentBookAttempt = `-- name: ResetShipmentBookAttempt :one
+UPDATE orders.shipments SET
+    book_attempted_at = NULL, idempotency_key = $1, version = version + 1, updated_at = $2
+WHERE id = $3 AND status = 'draft' AND book_attempted_at = $4
+RETURNING id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, label_in_mybring_only, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at
+`
+
+type ResetShipmentBookAttemptParams struct {
+	IdempotencyKey uuid.UUID
+	Now            time.Time
+	ID             int64
+	AttemptedAt    *time.Time
+}
+
+// ResetShipmentBookAttempt takes back an attempt the carrier definitively
+// refused — nothing was booked under its key — with a fresh key, so the draft
+// can be changed and booked anew.
+func (q *Queries) ResetShipmentBookAttempt(ctx context.Context, arg ResetShipmentBookAttemptParams) (OrdersShipment, error) {
+	row := q.db.QueryRow(ctx, resetShipmentBookAttempt,
+		arg.IdempotencyKey,
+		arg.Now,
+		arg.ID,
+		arg.AttemptedAt,
+	)
+	var i OrdersShipment
+	err := row.Scan(
+		&i.ID,
+		&i.DeliveryID,
+		&i.CarrierAccountID,
+		&i.Service,
+		&i.Vas,
+		&i.Status,
+		&i.Exception,
+		&i.ConsignmentNumber,
+		&i.TrackingUrl,
+		&i.DocumentRefs,
+		&i.LabelInMybringOnly,
+		&i.BookedService,
+		&i.BookedCost,
+		&i.BookedCostCurrency,
+		&i.BookedCostEstimate,
+		&i.PlannedWindowStart,
+		&i.PlannedWindowEnd,
+		&i.IdempotencyKey,
+		&i.BookAttemptedAt,
+		&i.RecipientName,
+		&i.RecipientLine1,
+		&i.RecipientLine2,
+		&i.RecipientPostalCode,
+		&i.RecipientCity,
+		&i.RecipientCountry,
+		&i.RecipientContact,
+		&i.RecipientPhone,
+		&i.RecipientEmail,
+		&i.PickupPointID,
+		&i.BookedAt,
+		&i.BookedByUserID,
+		&i.BookedByDisplay,
+		&i.CancelledAt,
+		&i.Voided,
+		&i.LastTrackedAt,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const restoreShipmentTracked = `-- name: RestoreShipmentTracked :exec
+UPDATE orders.shipments SET last_tracked_at = $1
+WHERE id = $2 AND last_tracked_at = $3
+`
+
+type RestoreShipmentTrackedParams struct {
+	Previous *time.Time
+	ID       int64
+	Claimed  *time.Time
+}
+
+// RestoreShipmentTracked puts back the last_tracked_at a claim moved, for a
+// shipment the carrier was never asked about: it is due again at once.
+func (q *Queries) RestoreShipmentTracked(ctx context.Context, arg RestoreShipmentTrackedParams) error {
+	_, err := q.db.Exec(ctx, restoreShipmentTracked, arg.Previous, arg.ID, arg.Claimed)
+	return err
+}
+
 const setCarrierAccountVerified = `-- name: SetCarrierAccountVerified :exec
 UPDATE orders.carrier_accounts SET verified_at = $1
 WHERE id = $2 AND version = $3
@@ -1037,7 +1116,7 @@ const setShipmentTracked = `-- name: SetShipmentTracked :one
 UPDATE orders.shipments SET status = $1::varchar, exception = $2::boolean, updated_at = $3,
     version = CASE WHEN status <> $1::varchar OR exception <> $2::boolean THEN version + 1 ELSE version END
 WHERE id = $4 AND status IN ('booked', 'in_transit')
-RETURNING id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at
+RETURNING id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, label_in_mybring_only, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at
 `
 
 type SetShipmentTrackedParams struct {
@@ -1068,6 +1147,7 @@ func (q *Queries) SetShipmentTracked(ctx context.Context, arg SetShipmentTracked
 		&i.ConsignmentNumber,
 		&i.TrackingUrl,
 		&i.DocumentRefs,
+		&i.LabelInMybringOnly,
 		&i.BookedService,
 		&i.BookedCost,
 		&i.BookedCostCurrency,
@@ -1100,7 +1180,7 @@ func (q *Queries) SetShipmentTracked(ctx context.Context, arg SetShipmentTracked
 }
 
 const shipmentsOfDelivery = `-- name: ShipmentsOfDelivery :many
-SELECT id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at FROM orders.shipments WHERE delivery_id = $1 ORDER BY id
+SELECT id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, label_in_mybring_only, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at FROM orders.shipments WHERE delivery_id = $1 ORDER BY id
 `
 
 func (q *Queries) ShipmentsOfDelivery(ctx context.Context, deliveryID int64) ([]OrdersShipment, error) {
@@ -1123,6 +1203,7 @@ func (q *Queries) ShipmentsOfDelivery(ctx context.Context, deliveryID int64) ([]
 			&i.ConsignmentNumber,
 			&i.TrackingUrl,
 			&i.DocumentRefs,
+			&i.LabelInMybringOnly,
 			&i.BookedService,
 			&i.BookedCost,
 			&i.BookedCostCurrency,
@@ -1162,7 +1243,7 @@ func (q *Queries) ShipmentsOfDelivery(ctx context.Context, deliveryID int64) ([]
 }
 
 const shipmentsOfOrder = `-- name: ShipmentsOfOrder :many
-SELECT sh.id, sh.delivery_id, sh.carrier_account_id, sh.service, sh.vas, sh.status, sh.exception, sh.consignment_number, sh.tracking_url, sh.document_refs, sh.booked_service, sh.booked_cost, sh.booked_cost_currency, sh.booked_cost_estimate, sh.planned_window_start, sh.planned_window_end, sh.idempotency_key, sh.book_attempted_at, sh.recipient_name, sh.recipient_line1, sh.recipient_line2, sh.recipient_postal_code, sh.recipient_city, sh.recipient_country, sh.recipient_contact, sh.recipient_phone, sh.recipient_email, sh.pickup_point_id, sh.booked_at, sh.booked_by_user_id, sh.booked_by_display, sh.cancelled_at, sh.voided, sh.last_tracked_at, sh.version, sh.created_at, sh.updated_at, dv.number AS delivery_number
+SELECT sh.id, sh.delivery_id, sh.carrier_account_id, sh.service, sh.vas, sh.status, sh.exception, sh.consignment_number, sh.tracking_url, sh.document_refs, sh.label_in_mybring_only, sh.booked_service, sh.booked_cost, sh.booked_cost_currency, sh.booked_cost_estimate, sh.planned_window_start, sh.planned_window_end, sh.idempotency_key, sh.book_attempted_at, sh.recipient_name, sh.recipient_line1, sh.recipient_line2, sh.recipient_postal_code, sh.recipient_city, sh.recipient_country, sh.recipient_contact, sh.recipient_phone, sh.recipient_email, sh.pickup_point_id, sh.booked_at, sh.booked_by_user_id, sh.booked_by_display, sh.cancelled_at, sh.voided, sh.last_tracked_at, sh.version, sh.created_at, sh.updated_at, dv.number AS delivery_number
 FROM orders.shipments sh
 JOIN orders.deliveries dv ON dv.id = sh.delivery_id
 WHERE dv.order_id = $1
@@ -1196,6 +1277,7 @@ func (q *Queries) ShipmentsOfOrder(ctx context.Context, orderID int64) ([]Shipme
 			&i.OrdersShipment.ConsignmentNumber,
 			&i.OrdersShipment.TrackingUrl,
 			&i.OrdersShipment.DocumentRefs,
+			&i.OrdersShipment.LabelInMybringOnly,
 			&i.OrdersShipment.BookedService,
 			&i.OrdersShipment.BookedCost,
 			&i.OrdersShipment.BookedCostCurrency,
@@ -1333,8 +1415,8 @@ UPDATE orders.shipments SET
     pickup_point_id = $4, recipient_contact = $5,
     recipient_phone = $6, recipient_email = $7,
     version = version + 1, updated_at = $8
-WHERE id = $9 AND status = 'draft'
-RETURNING id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at
+WHERE id = $9 AND status = 'draft' AND book_attempted_at IS NULL
+RETURNING id, delivery_id, carrier_account_id, service, vas, status, exception, consignment_number, tracking_url, document_refs, label_in_mybring_only, booked_service, booked_cost, booked_cost_currency, booked_cost_estimate, planned_window_start, planned_window_end, idempotency_key, book_attempted_at, recipient_name, recipient_line1, recipient_line2, recipient_postal_code, recipient_city, recipient_country, recipient_contact, recipient_phone, recipient_email, pickup_point_id, booked_at, booked_by_user_id, booked_by_display, cancelled_at, voided, last_tracked_at, version, created_at, updated_at
 `
 
 type UpdateShipmentDraftParams struct {
@@ -1350,7 +1432,8 @@ type UpdateShipmentDraftParams struct {
 }
 
 // UpdateShipmentDraft saves a draft's account, service, value-added
-// services, pickup point and recipient contact, under its lock.
+// services, pickup point and recipient contact, under its lock: never one
+// whose booking's outcome is unresolved, which a retry books as it was.
 func (q *Queries) UpdateShipmentDraft(ctx context.Context, arg UpdateShipmentDraftParams) (OrdersShipment, error) {
 	row := q.db.QueryRow(ctx, updateShipmentDraft,
 		arg.CarrierAccountID,
@@ -1375,6 +1458,7 @@ func (q *Queries) UpdateShipmentDraft(ctx context.Context, arg UpdateShipmentDra
 		&i.ConsignmentNumber,
 		&i.TrackingUrl,
 		&i.DocumentRefs,
+		&i.LabelInMybringOnly,
 		&i.BookedService,
 		&i.BookedCost,
 		&i.BookedCostCurrency,

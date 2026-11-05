@@ -223,15 +223,18 @@ WHERE status = 'sent' AND valid_until < sqlc.arg(today)::date;
 
 -- name: AnonymiseCustomerShipments :execrows
 -- AnonymiseCustomerShipments takes the person out of the shipments of a
--- customer's anonymised orders (O29, O50): the recipient as it was booked.
--- The consignment number, the packages and the tracking events stay.
+-- customer's anonymised orders (O29, O50): the recipient as it was booked,
+-- and the links its label, its waybill and its tracking page are fetched
+-- from — they print or show the recipient. The consignment number, the
+-- packages and the tracking events stay.
 UPDATE orders.shipments sh SET
     recipient_name = '', recipient_line1 = '', recipient_line2 = '', recipient_postal_code = '', recipient_city = '',
-    recipient_contact = '', recipient_phone = '', recipient_email = '', pickup_point_id = NULL
+    recipient_contact = '', recipient_phone = '', recipient_email = '', pickup_point_id = NULL,
+    document_refs = '[]'::jsonb, tracking_url = NULL
 FROM orders.deliveries dv, orders.orders o
 WHERE dv.id = sh.delivery_id AND o.id = dv.order_id AND o.customer_id = sqlc.arg(customer_id) AND o.anonymised_at IS NOT NULL
   AND (sh.recipient_name <> '' OR sh.recipient_line1 <> '' OR sh.recipient_phone <> '' OR sh.recipient_email <> ''
-       OR sh.recipient_contact <> '');
+       OR sh.recipient_contact <> '' OR sh.document_refs <> '[]'::jsonb OR sh.tracking_url IS NOT NULL);
 
 -- name: ErasedShipmentDocuments :many
 -- ErasedShipmentDocuments is the stored labels and waybills of the shipments

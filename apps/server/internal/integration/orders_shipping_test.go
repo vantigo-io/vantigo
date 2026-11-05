@@ -32,8 +32,8 @@ func TestOrdersShipping_EndToEnd(t *testing.T) {
 		Carrier: ordgen.OrdersCarrierAccountInputCarrierBring, Name: "Bring", Test: true, CustomerNumbers: []string{bringtest.CustomerParcels},
 		Credentials: &ordgen.OrdersCarrierCredentials{Uid: bringtest.UID, Key: bringtest.Key}, DefaultService: strPtr("5000"),
 	}, &account)
-	okJSON(t, shipper, http.MethodPut, "/api/v1/orders/shipping/site-defaults", ordgen.OrdersSiteCarrierDefaults{
-		Items: []ordgen.OrdersSiteCarrierDefault{{SiteId: s.site, AccountId: account.Id}},
+	okJSON(t, shipper, http.MethodPut, "/api/v1/orders/shipping/site-defaults", ordgen.OrdersSiteCarrierDefaultsInput{
+		Items: []ordgen.OrdersSiteCarrierDefaultInput{{SiteId: s.site, AccountId: &account.Id}},
 	}, nil)
 
 	// An order of two shelves and its freight, the freight's price estimated.

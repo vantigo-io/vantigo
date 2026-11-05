@@ -2884,28 +2884,31 @@ type OrdersSettingsInput struct {
 
 // OrdersShipment A shipment of a posted delivery (O50). status is draft, booked, in_transit, delivered or cancelled; exception is tracking's flag beside it. voided is a cancel of a carrier with no cancel call: the shipment is void in Vantigo and its label must not be used. bookedCost is the carrier's estimate of the business's cost, never invoiced (the customer pays the order's shipping line). label and waybill say what is stored; waybillNeeded is false for a service whose label serves as the waybill.
 type OrdersShipment struct {
-	// BookAttempted A booking was attempted and its outcome may be unknown; booking again asks the carrier first and books once.
+	// BookAttempted A booking was attempted and its outcome may be unknown; booking again asks the carrier first and books once. The draft cannot be changed meanwhile (booking_unresolved).
 	BookAttempted bool       `json:"bookAttempted"`
 	BookedAt      *time.Time `json:"bookedAt,omitempty"`
 
 	// BookedBy A user as snapshotted on the document: the salesperson or an actor (O13, O29).
-	BookedBy           *OrdersPerson           `json:"bookedBy,omitempty"`
-	BookedCost         *float64                `json:"bookedCost,omitempty"`
-	BookedCostCurrency *string                 `json:"bookedCostCurrency,omitempty"`
-	BookedCostEstimate bool                    `json:"bookedCostEstimate"`
-	BookedService      *string                 `json:"bookedService,omitempty"`
-	CancelledAt        *time.Time              `json:"cancelledAt,omitempty"`
-	Carrier            string                  `json:"carrier"`
-	CarrierAccountId   int64                   `json:"carrierAccountId"`
-	CarrierAccountName string                  `json:"carrierAccountName"`
-	ConsignmentNumber  *string                 `json:"consignmentNumber,omitempty"`
-	CreatedAt          time.Time               `json:"createdAt"`
-	DeliveryId         int64                   `json:"deliveryId"`
-	DeliveryNumber     int64                   `json:"deliveryNumber"`
-	Events             []OrdersShipmentEvent   `json:"events"`
-	Exception          bool                    `json:"exception"`
-	Id                 int64                   `json:"id"`
-	Label              bool                    `json:"label"`
+	BookedBy           *OrdersPerson         `json:"bookedBy,omitempty"`
+	BookedCost         *float64              `json:"bookedCost,omitempty"`
+	BookedCostCurrency *string               `json:"bookedCostCurrency,omitempty"`
+	BookedCostEstimate bool                  `json:"bookedCostEstimate"`
+	BookedService      *string               `json:"bookedService,omitempty"`
+	CancelledAt        *time.Time            `json:"cancelledAt,omitempty"`
+	Carrier            string                `json:"carrier"`
+	CarrierAccountId   int64                 `json:"carrierAccountId"`
+	CarrierAccountName string                `json:"carrierAccountName"`
+	ConsignmentNumber  *string               `json:"consignmentNumber,omitempty"`
+	CreatedAt          time.Time             `json:"createdAt"`
+	DeliveryId         int64                 `json:"deliveryId"`
+	DeliveryNumber     int64                 `json:"deliveryNumber"`
+	Events             []OrdersShipmentEvent `json:"events"`
+	Exception          bool                  `json:"exception"`
+	Id                 int64                 `json:"id"`
+	Label              bool                  `json:"label"`
+
+	// LabelInMybringOnly The booking was found by its reference after a lost answer, and the carrier gives no label link for it: print the label in Mybring.
+	LabelInMybringOnly bool                    `json:"labelInMybringOnly"`
 	OrderId            int64                   `json:"orderId"`
 	OrderNumber        int64                   `json:"orderNumber"`
 	Packages           []OrdersShipmentPackage `json:"packages"`
@@ -3067,9 +3070,20 @@ type OrdersSiteCarrierDefault struct {
 	SiteId    int64 `json:"siteId"`
 }
 
-// OrdersSiteCarrierDefaults The default carrier account per site, replaced whole; a site absent has none.
+// OrdersSiteCarrierDefaultInput A site's default carrier account to save (O51); accountId null clears it.
+type OrdersSiteCarrierDefaultInput struct {
+	AccountId *int64 `json:"accountId"`
+	SiteId    int64  `json:"siteId"`
+}
+
+// OrdersSiteCarrierDefaults The default carrier account per site; a site absent has none.
 type OrdersSiteCarrierDefaults struct {
 	Items []OrdersSiteCarrierDefault `json:"items"`
+}
+
+// OrdersSiteCarrierDefaultsInput The default carrier accounts of the sites named, each once; a site not named keeps its own.
+type OrdersSiteCarrierDefaultsInput struct {
+	Items []OrdersSiteCarrierDefaultInput `json:"items"`
 }
 
 // OrdersSiteList Inventory's sites, by code; empty when Inventory keeps no stock.
@@ -3840,7 +3854,7 @@ type CancelShipmentJSONRequestBody = OrdersVersionInput
 type EstimateShippingJSONRequestBody = OrdersShippingEstimateInput
 
 // PutSiteCarrierDefaultsJSONRequestBody defines body for PutSiteCarrierDefaults for application/json ContentType.
-type PutSiteCarrierDefaultsJSONRequestBody = OrdersSiteCarrierDefaults
+type PutSiteCarrierDefaultsJSONRequestBody = OrdersSiteCarrierDefaultsInput
 
 // CreateSubscriptionJSONRequestBody defines body for CreateSubscription for application/json ContentType.
 type CreateSubscriptionJSONRequestBody = OrdersSubscriptionInput

@@ -8,11 +8,15 @@ package orders
 // Bring is polled: its Event Cast webhooks are unsigned and retry little.
 //
 // A cycle claims a batch at a time (ClaimTrackableShipments: a SKIP LOCKED
-// pick that moves last_tracked_at to now — the lease — so two workers never
-// poll one shipment, and one that dies leaves it due at the next interval),
-// asks each account's carrier once for its shipments in the batch, outside
-// any transaction, and records each shipment on a short transaction of its
-// own. Every statement takes a pooled connection and returns it before the
+// pick, the least recently tracked first, that moves last_tracked_at to now —
+// the lease — so two workers never poll one shipment, and one that dies
+// leaves it due at the next interval), asks each account's carrier once for
+// its shipments in the batch, outside any transaction, and records each
+// shipment on a short transaction of its own. The carrier calls of a cycle
+// run under trackingBudget, well inside the lease, and each reference under a
+// deadline of the adapter's own; a shipment the carrier was never asked about
+// when the budget ran out gets its last_tracked_at back, so it is first in
+// the next cycle and a stuck tail rotates. Every statement takes a pooled connection and returns it before the
 // next is taken, and no carrier call is made while one is held: the worker is
 // safe on a pool of one.
 
@@ -39,6 +43,10 @@ const (
 	// trackingBatch bounds one claim; trackingBatches one cycle.
 	trackingBatch   = 50
 	trackingBatches = 20
+	// trackingBudget bounds a cycle's carrier calls: well inside the lease
+	// (trackingInterval less a minute), so no claimed shipment comes due
+	// again while it is still being asked about.
+	trackingBudget = 10 * time.Minute
 )
 
 // trackingWorker polls the carriers for booked shipments.
@@ -65,10 +73,17 @@ func (w *trackingWorker) Run(ctx context.Context) error {
 // cycle polls what is due, a batch at a time, and answers how many
 // shipments it polled.
 func (w *trackingWorker) cycle(ctx context.Context) (int, error) {
+	return w.cycleWithin(ctx, trackingBudget)
+}
+
+// cycleWithin is a cycle whose carrier calls end after budget.
+func (w *trackingWorker) cycleWithin(ctx context.Context, budget time.Duration) (int, error) {
 	s := w.s
+	calls, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
 	polled := 0
 	for range trackingBatches {
-		if ctx.Err() != nil {
+		if calls.Err() != nil {
 			return polled, nil
 		}
 		now := s.deps.Clock()
@@ -81,7 +96,7 @@ func (w *trackingWorker) cycle(ctx context.Context) (int, error) {
 		if len(claimed) == 0 {
 			return polled, nil
 		}
-		byAccount := map[int64][]store.OrdersShipment{}
+		byAccount := map[int64][]store.ClaimTrackableShipmentsRow{}
 		var order []int64
 		for _, sh := range claimed {
 			if _, ok := byAccount[sh.CarrierAccountID]; !ok {
@@ -90,7 +105,7 @@ func (w *trackingWorker) cycle(ctx context.Context) (int, error) {
 			byAccount[sh.CarrierAccountID] = append(byAccount[sh.CarrierAccountID], sh)
 		}
 		for _, id := range order {
-			w.trackAccount(ctx, id, byAccount[id])
+			w.trackAccount(ctx, calls, id, byAccount[id], now)
 		}
 		polled += len(claimed)
 		if len(claimed) < trackingBatch {
@@ -100,10 +115,13 @@ func (w *trackingWorker) cycle(ctx context.Context) (int, error) {
 	return polled, nil
 }
 
-// trackAccount asks one account's carrier for its shipments' tracking and
-// records each one; a carrier that cannot be called or does not answer is
-// logged, and its shipments are polled again at the next interval.
-func (w *trackingWorker) trackAccount(ctx context.Context, accountID int64, shipments []store.OrdersShipment) {
+// trackAccount asks one account's carrier, under calls, for its shipments'
+// tracking and records each one on ctx; a carrier that cannot be called or
+// does not answer is logged, and its shipments are polled again at the next
+// interval — but one calls ended before it was asked about gets the
+// last_tracked_at it had back (claimed is what the claim moved it to).
+func (w *trackingWorker) trackAccount(ctx, calls context.Context, accountID int64, shipments []store.ClaimTrackableShipmentsRow,
+	claimed time.Time) {
 	s := w.s
 	account, err := store.New(s.deps.Pool).GetCarrierAccount(ctx, accountID)
 	if err != nil {
@@ -119,10 +137,11 @@ func (w *trackingWorker) trackAccount(ctx context.Context, accountID int64, ship
 	for _, sh := range shipments {
 		refs = append(refs, deref(sh.ConsignmentNumber))
 	}
-	statuses, err := c.Track(ctx, refs)
+	statuses, err := c.Track(calls, refs)
 	if err != nil {
 		s.deps.Logger.WarnContext(ctx, "orders: the carrier did not answer the tracking", "account_id", accountID, "error", err.Error())
 	}
+	unasked := err != nil && calls.Err() != nil
 	byConsignment := map[string]shipping.TrackingStatus{}
 	for _, st := range statuses {
 		byConsignment[st.ConsignmentNumber] = st
@@ -131,6 +150,9 @@ func (w *trackingWorker) trackAccount(ctx context.Context, accountID int64, ship
 	for _, sh := range shipments {
 		st, ok := byConsignment[deref(sh.ConsignmentNumber)]
 		if !ok {
+			if unasked {
+				w.putBack(ctx, sh, claimed)
+			}
 			continue
 		}
 		if err := w.record(ctx, sh, st); err != nil {
@@ -139,16 +161,31 @@ func (w *trackingWorker) trackAccount(ctx context.Context, accountID int64, ship
 	}
 }
 
+// putBack gives a claimed shipment the carrier was never asked about its
+// last_tracked_at back, so it is due — and first — again at once. It runs
+// even when ctx has ended, briefly.
+func (w *trackingWorker) putBack(ctx context.Context, sh store.ClaimTrackableShipmentsRow, claimed time.Time) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := store.New(w.s.deps.Pool).RestoreShipmentTracked(ctx, store.RestoreShipmentTrackedParams{
+		ID: sh.ID, Previous: sh.PreviousTrackedAt, Claimed: &claimed,
+	}); err != nil {
+		w.s.deps.Logger.WarnContext(ctx, "orders: a shipment's tracking lease could not be put back", "shipment_id", sh.ID, "error", err.Error())
+	}
+}
+
 // folded is the shipment status and exception flag a tracking status moves
 // a booked or in-transit shipment to. Ready for pickup is in transit; a
-// return or a deviation is an exception beside the status it had.
+// return or a deviation is an exception beside the status it had, and so is a
+// cancel the carrier reports: the shipment is not cancelled here on the
+// carrier's word — a person looks, and cancels it in Vantigo if it is so.
 func folded(current string, st shipping.State) (string, bool) {
 	switch st {
 	case shipping.StateDelivered:
 		return shipmentDelivered, false
 	case shipping.StateInTransit, shipping.StateReadyForPickup:
 		return shipmentInTransit, false
-	case shipping.StateException, shipping.StateReturned:
+	case shipping.StateException, shipping.StateReturned, shipping.StateCancelled:
 		return current, true
 	}
 	return current, false
@@ -156,7 +193,7 @@ func folded(current string, st shipping.State) (string, bool) {
 
 // record stores a shipment's new events and moves it, on one short
 // transaction, publishing orders.shipment.delivered.v1 when it is delivered.
-func (w *trackingWorker) record(ctx context.Context, sh store.OrdersShipment, st shipping.TrackingStatus) error {
+func (w *trackingWorker) record(ctx context.Context, sh store.ClaimTrackableShipmentsRow, st shipping.TrackingStatus) error {
 	s := w.s
 	return s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		cur, err := txq.LockShipment(ctx, sh.ID)

@@ -190,3 +190,13 @@ func RunTrackingCycle(ctx context.Context, d module.Deps) (int, error) {
 	}
 	return (&trackingWorker{s: s}).cycle(ctx)
 }
+
+// RunTrackingCycleWithin is RunTrackingCycle with the carrier calls bounded
+// by budget instead of the worker's.
+func RunTrackingCycleWithin(ctx context.Context, d module.Deps, budget time.Duration) (int, error) {
+	s, err := newServer(d)
+	if err != nil {
+		return 0, err
+	}
+	return (&trackingWorker{s: s}).cycleWithin(ctx, budget)
+}
