@@ -397,7 +397,7 @@ invoice's stamp.
 
 | State | Means | Moves to |
 | --- | --- | --- |
-| `draft` | A draft invoice holds the quantity; it is not offered again | `invoiced` by the issue; `released` by the release after a draft is deleted or its line removed, by the order's [release](#release-draft-allocations), or by the [sweep](#workers) |
+| `draft` | A draft invoice holds the quantity; it is not offered again — for as long as the draft exists | `invoiced` by the issue; `released` by Invoices after a draft is deleted or its line removed — or by its [reconcile](/en/reference/invoices/#releases) when that call never arrived — or by the order's [release](#release-draft-allocations) |
 | `invoiced` | Stamped by an issued invoice: `invoice_id`, `invoice_number`, `issue_date`, `invoiced_at`, `invoiced_by` and `invoiced_by_display` | `released` by the credit note that returns its invoice line in full |
 | `released` | Its quantity went back to the line; a credited one keeps the invoice's stamp as the order's history | — |
 
@@ -405,6 +405,15 @@ What a line has **to invoice** is, for a line invoiced on order (`invoice_policy
 `order`, every line in B), **ordered − cancelled − invoiced − draft-allocated**, never
 below 0; on delivery (`delivery`) it will be delivered − invoiced − draft-allocated,
 delivery C's. The order answers each line's `qtyDraftAllocated`.
+
+**The lock order.** Every writer of an allocation takes the order's row first, then its
+lines, then the allocations, each `FOR UPDATE` in id order: `Allocate` (orders, lines),
+`ReleaseAllocations`, the holder's `MarkInvoiced` and `ReleaseInvoiced`, and the order
+page's release (the order, its lines, its draft allocations) — so no two of them cross.
+A save of the order takes the order first and writes no allocation but the released ones
+of a removed line. The table is indexed by line and state, by order, and — for
+`DueOrders`' and `Allocate`'s sums of what draft allocations hold per line — by line over
+the drafts alone (`ix_invoice_allocations_draft`).
 
 ### The billable read
 
@@ -432,8 +441,10 @@ clock and never reads a directory; its caller never calls it under a lock of its
   **`allocation_exceeds_open`** for a quantity above what the line has to invoice. The
   allocation names its order's project only while Projects is composed.
 - **`Allocations`** — the allocations named, as they stand; a missing id is absent.
-- **`ReleaseAllocations`** — a provider command: the named drafts released in one
-  statement; one invoiced, released or missing is left as it is, so a repeat is harmless.
+- **`ReleaseAllocations`** — a provider command: the named drafts released on one
+  transaction of its own, after it has locked their orders, their lines and the
+  allocations in that order ([the lock order](#allocations)); one invoiced, released or
+  missing is left as it is, so a repeat is harmless.
 
 ### The invoiced-work holder
 
@@ -464,16 +475,19 @@ is composed whatever `MODULES` says.
 ### Release draft allocations
 
 `POST /orders/{id}/release-draft-allocations` (`orders:sales-manage`, the version and
-`expectedUpdatedAt` as every write) releases every draft allocation of the order at once,
-so its quantities are offered to invoice again. A draft invoice still holding one is then
+`expectedUpdatedAt` as every write) releases every draft allocation of the order at once —
+under the order's row, then its lines, then those allocations — so its quantities are
+offered to invoice again. A draft invoice still holding one is then
 refused at its issue (`source_not_invoiceable`). It is logged as
 `draft_allocations_released` with how many, at the version it found, and moves the
 order's `updatedAt`; an order with none is answered as it is, and nothing is logged.
 
-Invoices releases the allocations a draft held after the delete — or the save that
-dropped a line — has committed, best effort; it does not when a customer's anonymisation
-deletes the drafts. What a failed release leaves, [`orders.allocation_sweep`](#workers)
-releases.
+Invoices owns the cleanup of what it allocated: it releases the allocations a draft held
+after the delete — or the save that dropped a line — has committed, best effort, and what
+a failed release, a customer's anonymisation or an interrupted wizard leaves, its
+`invoices.allocation_reconcile` worker releases once no draft holds it
+([Releases](/en/reference/invoices/#releases)). Orders releases nothing by age: a draft
+invoice holds its allocations for as long as it exists.
 
 ### The rules a draft allocation sets
 
@@ -488,9 +502,10 @@ answer says how to proceed: issue or delete the draft, or release the allocation
 
 `GET /orders/{id}` answers `invoices[]`: every invoice that stamped an allocation of the
 order, in the order they were first stamped — `invoiceId`, `invoiceNumber`, `issueDate`,
-`amount` (the net it billed of this order, in the order's currency), `currency` and
-`state`, `invoiced`, or `released` once every allocation of it was given back by a credit
-note. The page shows it as the **Invoices** card, and **Invoice** — needing
+`amount` (the net it still bills of this order — its allocations still `invoiced` — in
+the order's currency), `releasedAmount` (the net credit notes gave back of it — its
+allocations `released` since), `currency` and `state`, `invoiced`, or `released` once
+every allocation of it was given back by a credit note, its `amount` then 0. The page shows it as the **Invoices** card, and **Invoice** — needing
 `invoices:access` and `invoices:create`, disabled on hold, with nothing left to invoice or
 with unsaved changes — opens Invoices' wizard at `/invoices/new/from-orders?orderId=`.
 
@@ -589,7 +604,6 @@ event, so a retried delivery queues nothing twice. The mail itself is sent by
 | `orders.mail` | every 10 seconds, up to 10 rows a cycle | Sends the queued mailings. A row is claimed under a two-minute lease (`SKIP LOCKED`), so two replicas never take one row; the stored PDF is read and mailed outside any transaction. A failure counts the attempt and waits 30 seconds, doubled per attempt, at most an hour; the eighth failure fails the row. A row that can never go — no recipient, sending disabled, the document gone, the order cancelled — fails at once. |
 | `orders.retention` | daily, one replica under an advisory lease | Anonymises the kept confirmed orders of erased customers once their retention has run, blanks their sends, and deletes the stored PDFs of every anonymised quote and order of theirs ([Retention](#retention)). |
 | `orders.quote_expiry` | daily | Moves every sent quote whose valid-until day is before today, in the business time zone, to `expired`, in one statement. It publishes no event. |
-| `orders.allocation_sweep` | daily, one replica under an advisory lease | Releases every draft allocation not written for 30 days — Energy's horizon for a draft settlement —, the backstop for a release that never arrived after a draft invoice was deleted. A draft invoice still holding one is refused at issue (`source_not_invoiceable`) and drafted again. Its one statement locks only what it releases: an issue stamping one holds it, so the sweep waits and skips it. |
 
 Each is safe on a pool of one connection.
 

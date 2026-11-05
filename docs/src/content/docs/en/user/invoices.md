@@ -636,8 +636,10 @@ Open the wizard from the order — **Invoice** on a confirmed order in Orders
 1. **Orders.** From an order, it is chosen already. Otherwise **Add a customer** — one or
    more — and every order of theirs with lines left to invoice is listed with its number,
    **Your ref.** and **Delivery** date, ticked. Untick the ones to leave for later. An
-   order that cannot be invoiced now says why: *A draft order: confirm it before invoicing
-   it.* or *The order is on hold.*
+   order that cannot be invoiced now is greyed out and says why: *A draft order: confirm it
+   before invoicing it.*, *The order is on hold.*, or — for an order in another currency
+   than the invoice settings' — *The order is in another currency than invoices are made
+   in, so it cannot be invoiced here.*
 2. **Lines.** Each chosen order's lines, with **Left to invoice**, **To invoice**,
    **Remaining after**, the unit price and the **Amount**. **To invoice** starts at all
    that is left. Lower it to invoice part of a line — **part invoicing**: what remains
@@ -645,9 +647,11 @@ Open the wizard from the order — **Invoice** on a confirmed order in Orders
    the lines chosen.
 3. **Invoices.** **One invoice per order**, or **Combined per customer** — a combined
    invoice (*samlefaktura*): a customer's orders share one invoice when they agree on
-   currency, your reference, project and payment terms. The step previews the invoices
-   it will make, and says what kept two of a customer's orders apart — *Kept apart from
-   the customer's other invoice by its your reference.*
+   currency, your reference, project, payment terms and delivery address — an invoice
+   states one place of delivery, and an address written with other spaces or capitals is
+   the same place. The step previews the invoices it will make, and says what kept two
+   of a customer's orders apart — *Kept apart from the customer's other invoice by its
+   delivery address.*
 
 Choose **Create the drafts**. One draft opens at once; several are listed — *Draft 1042:
 order 2210* — to open and check one by one. Nothing is issued yet.
@@ -668,14 +672,19 @@ order 2210* — to open and check one by one. Nothing is issued yet.
 
 ### Editing, deleting, issuing and crediting it
 
-- **Edit it** as any draft. Removing a line gives its quantity back to the order at
-  **Save**, and the order offers it to invoice again.
-- **Delete the draft** and every quantity it held goes back to the orders at once.
+- **Edit it** as any draft, with one rule: a line billing an order keeps the order line's
+  quantity, unit price, discount and VAT code — those fields are locked, and only its
+  description can be changed. To invoice another quantity, remove the line and invoice
+  the order again. Removing a line gives its quantity back to the order at **Save**, and
+  the order offers it to invoice again.
+- **Delete the draft** and every quantity it held goes back to the orders at once. Should
+  Orders not answer at that moment, Vantigo gives it back by itself within the next hour
+  or so. A draft you keep holds its quantities for as long as it exists.
 - **Issue it** as any invoice. The issue marks the lines invoiced on the orders: each
   order's **Invoices** card lists the invoice. It is refused, naming the line, when the
   order line changed since the draft was made — someone released its draft allocations in
-  Orders, say, or the order was put on hold. Delete the draft and invoice the order
-  again.
+  Orders, say, or the order was put on hold — or when the line no longer bills what the
+  order allocated. Delete the draft and invoice the order again.
 - **Credit it** as any invoice. Each line a credit note returns in full — by itself or
   with the credit notes before it — gives its quantity back to the order, to invoice
   again.
@@ -694,14 +703,20 @@ invoice of every customer — or of the customers you name — in one go.
    to invoice of an order delivered by this day, or with no delivery date, is invoiced in
    full.*
 3. **Combine a customer's orders (combined invoice)** — ticked, a customer's orders share
-   one invoice where they agree on currency, your reference, project and payment terms;
-   unticked, each order gets its own.
+   one invoice where they agree on currency, your reference, project, payment terms and
+   delivery address; unticked, each order gets its own.
 4. **Issue the invoices** and **Customer ids** as for consumption, then **Start the run**.
 
-An order on hold or still a draft is left out. The run is refused when the Orders module
-is off, or when *No customer has order lines left to invoice through that day.* A
-customer's row is **Skipped** with the reason in words when nothing of theirs is left, or
-an order or a line cannot be invoiced.
+An order on hold or still a draft is left out. So is an order in another currency than
+the invoice settings': the customer's row names it — *Orders 2212 (EUR) are in another
+currency …* — and is **Skipped** with *The customer's orders due are in another currency
+than invoices are made in, so they were left out.* when nothing else was due. The run is
+refused when the Orders module is off, or when *No customer has order lines left to
+invoice through that day.* A customer's row is **Skipped** with the reason in words when
+nothing of theirs is left — *What the customer's orders have left to invoice is on draft
+invoices already. Issue or delete those drafts.* when drafts hold it — or an order or a
+line cannot be invoiced. A customer the run retries after an interruption is invoiced
+in full: what the interrupted attempt had taken is given back first.
 
 ### When the orders wizard refuses
 
@@ -713,7 +728,7 @@ order and line when it is about one — *Order 2210, line 3: …*:
 - *That is more than is left to invoice of the line. Lower the quantity.* — someone
   invoiced part of it meanwhile.
 - *The line can no longer be invoiced: it is invoiced already, or its order changed.*
-- the order is not in NOK, the line's VAT code is no longer offered, an invoice would have
+- an order is not in NOK (choose only the orders the wizard offers), the line's VAT code is no longer offered, an invoice would have
   more than 500 lines (choose fewer lines, or one invoice per order), or the customer
   cannot be invoiced, as for **New invoice**.
 
@@ -740,7 +755,7 @@ previewing or issuing*.
   afterwards.* Take it seriously: an issued document without either can never be sent
   as EHF, only credited and issued again.
 - **Lines**: **Add a line**, then its **Description**, **Quantity** (up to three
-  decimals), **Unit**, **Unit price** (up to four decimals, eight on a line billing electricity consumption), **Discount %** and **VAT
+  decimals), **Unit**, **Unit price** (up to four decimals, eight on a line billing electricity consumption or an order), **Discount %** and **VAT
   code** from the codes offered for new lines; the **Amount** is the line's net. The
   arrows move a line, the bin removes it. A line whose code has since been taken out of
   the list still shows it, marked *(no longer offered)*.

@@ -152,8 +152,12 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    any contract call (rule 21), and nothing of the caller's is written by it. Energy's
    `ConsumptionProvider.Settle` is the first; Orders' `BillableOrders.Allocate` (a
    new draft allocation per order line, under the orders' and lines' locks on Orders'
-   own transaction) and `ReleaseAllocations` (the named drafts released, a repeat
-   harmless) are the second and third. A write into another module's schema
+   own transaction) and `ReleaseAllocations` (the named drafts released under their
+   orders', lines' and own locks, in that order, a repeat harmless) are the second and
+   third. The caller owns the cleanup of what a command of this kind made for it: Invoices
+   records every allocation `Allocate` answers in a ledger of its own at once, and its
+   `invoices.allocation_reconcile` worker releases what no draft holds — the provider
+   expires nothing by age. A write into another module's schema
    is never a provider command: it is a sanctioned direction of its own, with its own rule here.
    `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
@@ -1514,7 +1518,9 @@ timeline event carries) and the three billable reads (`BillableHours`,
 it was taken, on `GET` and before a refresh — a kind whose module is off is not
 judged), and Orders' `BillableOrders` (the order lines due, and the allocations its
 From orders wizard has Orders write and release with the provider commands
-`Allocate` and `ReleaseAllocations`), all on the pool and never under a lock; products
+`Allocate` and `ReleaseAllocations` — every allocation recorded in its own
+`order_allocations_taken` ledger, which its `invoices.allocation_reconcile` worker
+reconciles), all on the pool and never under a lock; products
 it does not read. Inside an issue's transaction it calls the invoiced-work holders —
 time, expenses, projects, energy and orders, in `contracts.InvoicedWorkOrder` (rule
 10) — the one call it makes under a lock. It sends mail

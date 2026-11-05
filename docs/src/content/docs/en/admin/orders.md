@@ -189,5 +189,6 @@ A product warning outlives a deleted product: the list marks it **Product delete
 | The Analysis entry is missing | The person lacks View sales analysis | Grant it beside Use Orders |
 | **Invoice** is missing on a confirmed order | The person lacks Use Invoices or Create invoices, or Invoices is off | Grant both in Invoices |
 | "Part of the order is on a draft invoice" when cancelling | A draft invoice holds part of the order | Issue or delete the draft in Invoices, or choose **Release draft allocations** on the order |
-| An invoice's issue is refused: "Work on line … can no longer be invoiced" | The order's draft allocations were released, or the draft was made more than 30 days ago and released by itself | Delete the draft and invoice the order again |
+| An invoice's issue is refused: "Work on line … can no longer be invoiced" | The order's draft allocations were released on the order, or the order was put on hold | Delete the draft and invoice the order again |
+| An order is greyed out in **Invoice from orders**: "in another currency than invoices are made in" | The order's currency is not the invoice settings' default currency (NOK) | Invoice it outside Vantigo, or change the order's currency while it is still a draft |
 | "A warning blocks this", and no **Override the warning** | A block warning applies, and the person lacks Manage Orders settings | Ask a settings holder to override it, or change the warning |
