@@ -2090,8 +2090,10 @@ var defaultModules = knownModules
 // (contracts.ProjectDirectory and contracts.Workforce), and Customers comes
 // with Projects. inventory depends on products (inventory design §8): it
 // keeps stock of the catalog's variants, read and locked through
-// contracts.ProductCatalog. Identity is always mounted and is never listed
-// here.
+// contracts.ProductCatalog. orders depends on products, customers and
+// invoices (orders design O9): its lines are the catalog's variants, its
+// documents are a customer's, and its VAT codes and seller are Invoices'
+// (contracts.SalesTax). Identity is always mounted and is never listed here.
 func modules(p *problems, env map[string]string) []string {
 	v := env["MODULES"]
 	if v == "" {
@@ -2140,6 +2142,11 @@ func modules(p *problems, env map[string]string) []string {
 	}
 	if slices.Contains(out, "inventory") && !slices.Contains(out, "products") {
 		p.add("MODULES", "inventory requires products")
+	}
+	for _, needed := range []string{"products", "customers", "invoices"} {
+		if slices.Contains(out, "orders") && !slices.Contains(out, needed) {
+			p.add("MODULES", "orders requires %s", needed)
+		}
 	}
 
 	return out

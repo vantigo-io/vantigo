@@ -12,6 +12,7 @@ import {
   IconCertificate,
   IconClipboardCheck,
   IconClock,
+  IconFileDollar,
   IconListCheck,
   IconMail,
   IconMessageChatbot,
@@ -32,6 +33,7 @@ import { formatContactName } from "@vantigo/customers-ui/lib/format-contact-name
 import { meteringPointsQueryOptions } from "@vantigo/energy-ui";
 import { useI18n } from "@vantigo/frontend-shell";
 import { COUNTS_ROUTE_PATH, INVENTORY_HOME_ROUTE_PATH } from "@vantigo/inventory-ui/lib/routes";
+import { NEW_QUOTE_ROUTE_PATH } from "@vantigo/orders-ui/lib/routes";
 import { BOARD_ROUTE_PATH, REQUESTS_ROUTE_PATH } from "@vantigo/planning-ui/lib/routes";
 import { projectSearchQueryOptions } from "@vantigo/projects-ui/api/projects";
 import { MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH } from "@vantigo/staff-ui/lib/routes";
@@ -227,6 +229,13 @@ export const AppSpotlight = ({
     hasPermissions(permissions, ["inventory:locations-view"]) &&
     hasPermissions(permissions, ["inventory:stock-view"])
       ? [{ label: t("dashboard.startCount"), icon: IconClipboardCheck, path: COUNTS_ROUTE_PATH, search: { new: 1 } }]
+      : []),
+    // New quote opens the quote editor empty (orders design O20): writing one
+    // needs the app and orders:quotes-manage, each any-of on its own.
+    ...(enabledModules?.includes("orders") &&
+    hasPermissions(permissions, ["orders:access"]) &&
+    hasPermissions(permissions, ["orders:quotes-manage"])
+      ? [{ label: t("dashboard.newQuote"), icon: IconFileDollar, path: NEW_QUOTE_ROUTE_PATH, search: undefined }]
       : []),
     // New appointment is everyone's in the app, for themselves: the calendar
     // opens the appointment sheet on arrival (the package's `new` seam).

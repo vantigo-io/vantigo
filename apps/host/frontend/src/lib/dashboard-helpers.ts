@@ -9,6 +9,7 @@ import {
   IconMessage,
   IconPackage,
   IconReceipt2,
+  IconShoppingCart,
   IconUsers,
   IconUsersGroup,
 } from "@tabler/icons-react";
@@ -121,6 +122,15 @@ export const moduleCards = [
     // The app's home needs either (inventory design §5).
     requiredPermissions: ["inventory:locations-view", "inventory:stock-view"],
   },
+  {
+    title: "dashboard.orders",
+    description: "dashboard.manageOrders",
+    path: "/orders",
+    icon: IconShoppingCart,
+    module: "orders" as ModuleKey,
+    // Every Orders call asks for the app's own key (orders design §8).
+    requiredPermissions: ["orders:access"],
+  },
 ] as const;
 
 /** The module cards the caller may see: module enabled for the tenant and permission granted. */
@@ -162,7 +172,9 @@ export const canReadInventoryStats = (permissions: string[] | undefined) =>
  * The cards of the KPI row: every visible module card, Staff's, Planning's
  * and Inventory's for those who may read their figures. Calendar has none: it
  * serves no stats endpoints, and its place on the page is the agenda above
- * the row (calendar design D7).
+ * the row (calendar design D7). Nor has Orders yet: its figures, quotes
+ * awaiting an answer and orders to invoice (orders design §10), come with the
+ * module's own stats.
  */
 export const kpiCards = <Card extends { module: ModuleKey }>(
   cards: readonly Card[],
@@ -171,6 +183,7 @@ export const kpiCards = <Card extends { module: ModuleKey }>(
   cards.filter(
     (card) =>
       card.module !== "calendar" &&
+      card.module !== "orders" &&
       (card.module !== "staff" || canReadStaffStats(permissions)) &&
       (card.module !== "planning" || canReadPlanningStats(permissions)) &&
       (card.module !== "inventory" || canReadInventoryStats(permissions)),

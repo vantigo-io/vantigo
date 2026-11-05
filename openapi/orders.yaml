@@ -1,0 +1,4034 @@
+components:
+    schemas:
+        OrdersAcceptInput:
+            additionalProperties: false
+            description: "Accept a sent (or expired) quote (O20, O21): which optional lines the customer took, and what to make. confirmed_order also needs orders:sales-confirm."
+            properties:
+                into:
+                    enum:
+                        - draft_order
+                        - confirmed_order
+                    type: string
+                optionalLineIds:
+                    items:
+                        format: int64
+                        type: integer
+                    type: array
+                revision:
+                    format: int32
+                    type: integer
+            required:
+                - revision
+                - into
+            type: object
+        OrdersAccepted:
+            additionalProperties: false
+            description: The accepted quote and the document made from it.
+            properties:
+                order:
+                    $ref: "#/components/schemas/OrdersOrder"
+                quote:
+                    $ref: "#/components/schemas/OrdersQuote"
+            required:
+                - quote
+                - order
+            type: object
+        OrdersAddress:
+            additionalProperties: false
+            description: A postal address snapshotted on the document; every field optional.
+            properties:
+                city:
+                    maxLength: 100
+                    nullable: true
+                    type: string
+                country:
+                    description: ISO 3166-1 alpha-2.
+                    maxLength: 2
+                    nullable: true
+                    type: string
+                line1:
+                    maxLength: 255
+                    nullable: true
+                    type: string
+                line2:
+                    maxLength: 255
+                    nullable: true
+                    type: string
+                name:
+                    maxLength: 255
+                    nullable: true
+                    type: string
+                postalCode:
+                    maxLength: 20
+                    nullable: true
+                    type: string
+            type: object
+        OrdersApplyTemplateInput:
+            additionalProperties: false
+            description: "Apply a template to a draft quote (O23): its lines are appended, or replace the quote's with replace; empty texts are filled."
+            properties:
+                replace:
+                    type: boolean
+                revision:
+                    format: int32
+                    type: integer
+                templateId:
+                    format: int64
+                    type: integer
+            required:
+                - revision
+                - templateId
+            type: object
+        OrdersChange:
+            additionalProperties: false
+            description: "One entry of an order's change log (O26)."
+            properties:
+                actions:
+                    items:
+                        $ref: "#/components/schemas/OrdersChangeAction"
+                    type: array
+                actor:
+                    $ref: "#/components/schemas/OrdersPerson"
+                at:
+                    format: date-time
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - version
+                - actor
+                - at
+                - actions
+            type: object
+        OrdersChangeAction:
+            description: "One typed action (O26, O32): line_added, line_removed, quantity_changed, price_changed, discount_changed, text_changed, delivery_changed, contact_changed, reference_changed, cancelled_remaining, held, released, locked, unlocked, delivered_marked, delivered_undone. lineId names the line when the action is about one; from and to are the values before and after as text."
+            properties:
+                from:
+                    nullable: true
+                    type: string
+                kind:
+                    maxLength: 40
+                    type: string
+                lineId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                to:
+                    nullable: true
+                    type: string
+            required:
+                - kind
+            type: object
+        OrdersChangeList:
+            additionalProperties: false
+            description: "An order's change log, oldest first."
+            properties:
+                items:
+                    items:
+                        $ref: "#/components/schemas/OrdersChange"
+                    type: array
+            required:
+                - items
+            type: object
+        OrdersContact:
+            additionalProperties: false
+            description: "The chosen contact, snapshotted (O13)."
+            properties:
+                email:
+                    maxLength: 254
+                    nullable: true
+                    type: string
+                name:
+                    maxLength: 255
+                    nullable: true
+                    type: string
+                phone:
+                    maxLength: 50
+                    nullable: true
+                    type: string
+            type: object
+        OrdersCurrencySum:
+            additionalProperties: false
+            description: A count and a sum in one currency.
+            properties:
+                amount:
+                    format: double
+                    type: number
+                count:
+                    format: int32
+                    type: integer
+                currency:
+                    maxLength: 3
+                    type: string
+            required:
+                - currency
+                - count
+                - amount
+            type: object
+        OrdersCustomerSnapshot:
+            additionalProperties: false
+            description: "The customer as the document holds it (O13, O14): refreshed on every save of a draft, frozen once a quote is sent or an order confirmed, after which only the delivery address and the contact change."
+            properties:
+                contact:
+                    $ref: "#/components/schemas/OrdersContact"
+                contactId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                country:
+                    maxLength: 2
+                    nullable: true
+                    type: string
+                customerId:
+                    format: int32
+                    type: integer
+                customerNumber:
+                    format: int64
+                    nullable: true
+                    type: integer
+                deliveryAddress:
+                    $ref: "#/components/schemas/OrdersAddress"
+                deliveryAddressId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                foreignId:
+                    maxLength: 60
+                    nullable: true
+                    type: string
+                invoiceAddress:
+                    $ref: "#/components/schemas/OrdersAddress"
+                name:
+                    maxLength: 255
+                    type: string
+                organisationNumber:
+                    maxLength: 9
+                    nullable: true
+                    type: string
+                type:
+                    enum:
+                        - business
+                        - person
+                    nullable: true
+                    type: string
+            required:
+                - customerId
+                - name
+                - invoiceAddress
+                - deliveryAddress
+                - contact
+            type: object
+        OrdersCustomerSummary:
+            additionalProperties: false
+            description: "What the customer page's Orders tab shows above its lists (O31a), per currency: open quotes (draft and sent), ordered and not delivered, delivered and not invoiced (from B; empty before)."
+            properties:
+                customerId:
+                    format: int32
+                    type: integer
+                deliveredNotInvoiced:
+                    items:
+                        $ref: "#/components/schemas/OrdersCurrencySum"
+                    type: array
+                openQuotes:
+                    items:
+                        $ref: "#/components/schemas/OrdersCurrencySum"
+                    type: array
+                orderedNotDelivered:
+                    items:
+                        $ref: "#/components/schemas/OrdersCurrencySum"
+                    type: array
+            required:
+                - customerId
+                - openQuotes
+                - orderedNotDelivered
+                - deliveredNotInvoiced
+            type: object
+        OrdersDeclineInput:
+            additionalProperties: false
+            description: "Decline a sent quote, with an optional reason."
+            properties:
+                reason:
+                    maxLength: 500
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+            required:
+                - revision
+            type: object
+        OrdersDeliveredInput:
+            additionalProperties: false
+            description: "Register delivered, or undo (O32): per-line quantities; a line left out is not changed."
+            properties:
+                lines:
+                    items:
+                        $ref: "#/components/schemas/OrdersDeliveredLine"
+                    maxItems: 500
+                    minItems: 1
+                    type: array
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - version
+                - lines
+            type: object
+        OrdersDeliveredLine:
+            additionalProperties: false
+            description: "One line's delivered quantity to add or take away."
+            properties:
+                lineId:
+                    format: int64
+                    type: integer
+                quantity:
+                    description: "Greater than 0, at most three decimals."
+                    format: double
+                    type: number
+            required:
+                - lineId
+                - quantity
+            type: object
+        OrdersDocumentRef:
+            additionalProperties: false
+            description: A document Orders made from another.
+            properties:
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    enum:
+                        - order
+                        - subscription
+                    type: string
+                number:
+                    format: int64
+                    type: integer
+            required:
+                - kind
+                - id
+                - number
+            type: object
+        OrdersHoldInput:
+            additionalProperties: false
+            description: "Hold an order (O18), with a reason."
+            properties:
+                reason:
+                    maxLength: 200
+                    type: string
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - version
+            type: object
+        OrdersLine:
+            additionalProperties: false
+            description: "A line of a quote or an order (O15). A section or a note has only its text and position. The amounts are Invoices' own (O17); VAT is per document. The quantity buckets are an order line's and stay 0 on a quote."
+            properties:
+                deliveryMethod:
+                    enum:
+                        - manual
+                        - delivery
+                    type: string
+                description:
+                    maxLength: 2000
+                    type: string
+                discountPercent:
+                    format: double
+                    type: number
+                displayUnitPrice:
+                    description: "The unit price as entered and shown: including VAT when the document's prices include VAT (O19)."
+                    format: double
+                    nullable: true
+                    type: number
+                externalLineId:
+                    maxLength: 50
+                    nullable: true
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                invoicePolicy:
+                    enum:
+                        - order
+                        - delivery
+                    type: string
+                kind:
+                    description: "An open set (O15): product, section and note in this phase."
+                    enum:
+                        - product
+                        - section
+                        - note
+                    type: string
+                lineAllowance:
+                    description: The discount.
+                    format: double
+                    type: number
+                lineGross:
+                    description: "quantity × price before discount, rounded to øre."
+                    format: double
+                    type: number
+                lineNet:
+                    format: double
+                    type: number
+                name:
+                    maxLength: 255
+                    nullable: true
+                    type: string
+                optional:
+                    description: "A quote's optional line (O21), left out of the totals."
+                    type: boolean
+                packagingId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                packagingQuantity:
+                    format: double
+                    nullable: true
+                    type: number
+                position:
+                    format: int32
+                    type: integer
+                priceSource:
+                    enum:
+                        - catalog
+                        - manual
+                        - channel
+                        - carrier
+                    nullable: true
+                    type: string
+                qtyCancelled:
+                    format: double
+                    type: number
+                qtyDelivered:
+                    format: double
+                    type: number
+                qtyInvoiced:
+                    format: double
+                    type: number
+                quantity:
+                    description: At most three decimals.
+                    format: double
+                    nullable: true
+                    type: number
+                sku:
+                    maxLength: 64
+                    nullable: true
+                    type: string
+                unit:
+                    maxLength: 20
+                    type: string
+                unitPrice:
+                    description: Net of VAT (O19); null while a catalog line has no price in the currency.
+                    format: double
+                    nullable: true
+                    type: number
+                variantId:
+                    description: Null for a free-text line.
+                    format: int32
+                    nullable: true
+                    type: integer
+                vatCategory:
+                    maxLength: 2
+                    nullable: true
+                    type: string
+                vatCode:
+                    maxLength: 20
+                    nullable: true
+                    type: string
+                vatCodeId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                vatRatePercent:
+                    format: double
+                    nullable: true
+                    type: number
+            required:
+                - id
+                - position
+                - kind
+                - unit
+                - description
+                - discountPercent
+                - lineGross
+                - lineAllowance
+                - lineNet
+                - invoicePolicy
+                - optional
+                - qtyCancelled
+                - qtyDelivered
+                - qtyInvoiced
+                - deliveryMethod
+            type: object
+        OrdersLineInput:
+            additionalProperties: false
+            description: "A line as the editor saves it; the document's lines are replaced whole on save, a line naming its id kept as that line (O15). A product line with a variantId is priced from the catalog unless unitPrice is given, which makes the price manual (O16); entered including VAT when the document's prices include VAT (O19)."
+            properties:
+                description:
+                    maxLength: 2000
+                    type: string
+                discountPercent:
+                    description: "0–100, at most two decimals."
+                    format: double
+                    type: number
+                id:
+                    description: "The line's id when it already exists."
+                    format: int64
+                    type: integer
+                kind:
+                    description: "An open set (O15): product, section and note in this phase."
+                    enum:
+                        - product
+                        - section
+                        - note
+                    type: string
+                name:
+                    description: "A free-text line's name."
+                    maxLength: 255
+                    type: string
+                optional:
+                    description: Quotes only (O21).
+                    type: boolean
+                packagingId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                packagingQuantity:
+                    format: double
+                    nullable: true
+                    type: number
+                quantity:
+                    description: "Greater than 0, at most three decimals."
+                    format: double
+                    type: number
+                unit:
+                    maxLength: 20
+                    type: string
+                unitPrice:
+                    description: At most four decimals. Absent keeps or takes the catalog price.
+                    format: double
+                    nullable: true
+                    type: number
+                variantId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                vatCodeId:
+                    description: "A free-text line's VAT code; a catalog line takes its category's."
+                    format: int32
+                    nullable: true
+                    type: integer
+            required:
+                - kind
+            type: object
+        OrdersMailText:
+            additionalProperties: false
+            description: "An override of a document kind's mail text in one language (O25); empty falls back to the built-in text."
+            properties:
+                body:
+                    maxLength: 4000
+                    type: string
+                kind:
+                    enum:
+                        - quote
+                        - confirmation
+                    type: string
+                language:
+                    enum:
+                        - nb
+                        - en
+                    type: string
+                subject:
+                    maxLength: 300
+                    type: string
+            required:
+                - kind
+                - language
+                - subject
+                - body
+            type: object
+        OrdersMailing:
+            additionalProperties: false
+            description: One send of a document (O25).
+            properties:
+                cc:
+                    items:
+                        maxLength: 254
+                        type: string
+                    type: array
+                createdAt:
+                    format: date-time
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                lastError:
+                    maxLength: 500
+                    nullable: true
+                    type: string
+                recipient:
+                    maxLength: 254
+                    type: string
+                sentAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                sentBy:
+                    $ref: "#/components/schemas/OrdersPerson"
+                status:
+                    enum:
+                        - queued
+                        - sent
+                        - failed
+                    type: string
+                subject:
+                    maxLength: 300
+                    type: string
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - version
+                - recipient
+                - cc
+                - subject
+                - status
+                - createdAt
+            type: object
+        OrdersMailingList:
+            additionalProperties: false
+            description: "A document's sends, newest first."
+            properties:
+                items:
+                    items:
+                        $ref: "#/components/schemas/OrdersMailing"
+                    type: array
+            required:
+                - items
+            type: object
+        OrdersMarkSentInput:
+            additionalProperties: false
+            description: Mark a draft quote as sent by other means (O20); validUntil defaults as on send.
+            properties:
+                revision:
+                    format: int32
+                    type: integer
+                validUntil:
+                    format: date
+                    nullable: true
+                    type: string
+            required:
+                - revision
+            type: object
+        OrdersOrder:
+            additionalProperties: false
+            description: "A sales order (O13, O18). version is bumped by every save and every change after confirmation (O26); done is derived: confirmed, delivered and invoiced."
+            properties:
+                cancelledAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                closingText:
+                    maxLength: 4000
+                    type: string
+                confirmedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                confirmedBy:
+                    $ref: "#/components/schemas/OrdersPerson"
+                createdAt:
+                    format: date-time
+                    type: string
+                currency:
+                    maxLength: 3
+                    type: string
+                customer:
+                    $ref: "#/components/schemas/OrdersCustomerSnapshot"
+                deliveryDate:
+                    format: date
+                    nullable: true
+                    type: string
+                deliveryStatus:
+                    enum:
+                        - none
+                        - partial
+                        - delivered
+                    type: string
+                discountVisible:
+                    type: boolean
+                done:
+                    description: "Confirmed, delivered and invoiced; shown as a tag, never stored (O18)."
+                    type: boolean
+                holdReason:
+                    maxLength: 200
+                    nullable: true
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                internalNote:
+                    maxLength: 4000
+                    type: string
+                introText:
+                    maxLength: 4000
+                    type: string
+                invoiceStatus:
+                    enum:
+                        - none
+                        - partial
+                        - invoiced
+                    type: string
+                language:
+                    enum:
+                        - nb
+                        - en
+                    type: string
+                lines:
+                    items:
+                        $ref: "#/components/schemas/OrdersLine"
+                    type: array
+                locked:
+                    type: boolean
+                number:
+                    format: int64
+                    type: integer
+                onHold:
+                    type: boolean
+                origin:
+                    $ref: "#/components/schemas/OrdersOrigin"
+                paymentTermsDays:
+                    format: int32
+                    type: integer
+                pricesIncludeVat:
+                    type: boolean
+                projectId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                salesperson:
+                    $ref: "#/components/schemas/OrdersPerson"
+                status:
+                    enum:
+                        - draft
+                        - confirmed
+                        - cancelled
+                    type: string
+                totals:
+                    $ref: "#/components/schemas/OrdersTotals"
+                updatedAt:
+                    format: date-time
+                    type: string
+                version:
+                    format: int32
+                    type: integer
+                yourReference:
+                    maxLength: 100
+                    type: string
+            required:
+                - id
+                - number
+                - status
+                - onHold
+                - locked
+                - version
+                - deliveryStatus
+                - invoiceStatus
+                - done
+                - customer
+                - yourReference
+                - currency
+                - pricesIncludeVat
+                - paymentTermsDays
+                - discountVisible
+                - language
+                - introText
+                - closingText
+                - internalNote
+                - origin
+                - totals
+                - lines
+                - createdAt
+                - updatedAt
+            type: object
+        OrdersOrderInput:
+            additionalProperties: false
+            description: "A new draft order. clientRequestId makes the create idempotent (O27): a repeat answers the first order with 200."
+            properties:
+                clientRequestId:
+                    format: uuid
+                    type: string
+                closingText:
+                    maxLength: 4000
+                    type: string
+                contactId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                currency:
+                    maxLength: 3
+                    minLength: 3
+                    type: string
+                customerId:
+                    format: int32
+                    type: integer
+                deliveryAddressId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                deliveryDate:
+                    format: date
+                    nullable: true
+                    type: string
+                discountVisible:
+                    type: boolean
+                internalNote:
+                    maxLength: 4000
+                    type: string
+                introText:
+                    maxLength: 4000
+                    type: string
+                language:
+                    enum:
+                        - nb
+                        - en
+                    type: string
+                lines:
+                    items:
+                        $ref: "#/components/schemas/OrdersLineInput"
+                    maxItems: 500
+                    type: array
+                paymentTermsDays:
+                    format: int32
+                    maximum: 365
+                    minimum: 0
+                    type: integer
+                pricesIncludeVat:
+                    type: boolean
+                projectId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                salespersonId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                yourReference:
+                    maxLength: 100
+                    type: string
+            required:
+                - clientRequestId
+                - customerId
+            type: object
+        OrdersOrderPage:
+            additionalProperties: false
+            description: "One page of orders, newest first; total counts every match."
+            properties:
+                items:
+                    items:
+                        $ref: "#/components/schemas/OrdersOrderSummary"
+                    type: array
+                total:
+                    format: int32
+                    type: integer
+            required:
+                - items
+                - total
+            type: object
+        OrdersOrderSummary:
+            additionalProperties: false
+            description: An order in a list.
+            properties:
+                currency:
+                    maxLength: 3
+                    type: string
+                customerId:
+                    format: int32
+                    type: integer
+                customerName:
+                    maxLength: 255
+                    type: string
+                deliveryDate:
+                    format: date
+                    nullable: true
+                    type: string
+                deliveryStatus:
+                    enum:
+                        - none
+                        - partial
+                        - delivered
+                    type: string
+                done:
+                    type: boolean
+                gross:
+                    format: double
+                    type: number
+                id:
+                    format: int64
+                    type: integer
+                invoiceStatus:
+                    enum:
+                        - none
+                        - partial
+                        - invoiced
+                    type: string
+                locked:
+                    type: boolean
+                net:
+                    format: double
+                    type: number
+                number:
+                    format: int64
+                    type: integer
+                onHold:
+                    type: boolean
+                salesperson:
+                    $ref: "#/components/schemas/OrdersPerson"
+                status:
+                    enum:
+                        - draft
+                        - confirmed
+                        - cancelled
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - number
+                - status
+                - onHold
+                - locked
+                - deliveryStatus
+                - invoiceStatus
+                - done
+                - customerId
+                - customerName
+                - currency
+                - net
+                - gross
+                - updatedAt
+            type: object
+        OrdersOrderUpdate:
+            additionalProperties: false
+            description: "An order's save: the header and every line, replaced whole, lines naming their ids kept (O15). A confirmed order takes only what O26 allows. version is the one the editor read (version_conflict otherwise)."
+            properties:
+                closingText:
+                    maxLength: 4000
+                    type: string
+                contactId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                currency:
+                    maxLength: 3
+                    minLength: 3
+                    type: string
+                customerId:
+                    format: int32
+                    type: integer
+                deliveryAddressId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                deliveryDate:
+                    format: date
+                    nullable: true
+                    type: string
+                discountVisible:
+                    type: boolean
+                internalNote:
+                    maxLength: 4000
+                    type: string
+                introText:
+                    maxLength: 4000
+                    type: string
+                language:
+                    enum:
+                        - nb
+                        - en
+                    type: string
+                lines:
+                    items:
+                        $ref: "#/components/schemas/OrdersLineInput"
+                    maxItems: 500
+                    type: array
+                paymentTermsDays:
+                    format: int32
+                    maximum: 365
+                    minimum: 0
+                    type: integer
+                pricesIncludeVat:
+                    type: boolean
+                projectId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                salespersonId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                version:
+                    format: int32
+                    type: integer
+                yourReference:
+                    maxLength: 100
+                    type: string
+            required:
+                - version
+                - customerId
+                - lines
+            type: object
+        OrdersOrigin:
+            additionalProperties: false
+            description: "Where the document came from (O27). channel is an open set: manual, quote and copy in this phase."
+            properties:
+                channel:
+                    maxLength: 20
+                    type: string
+                externalId:
+                    maxLength: 100
+                    nullable: true
+                    type: string
+                externalNumber:
+                    maxLength: 50
+                    nullable: true
+                    type: string
+                paymentReference:
+                    maxLength: 100
+                    nullable: true
+                    type: string
+                prepaidAmount:
+                    format: double
+                    nullable: true
+                    type: number
+                sourceId:
+                    maxLength: 100
+                    nullable: true
+                    type: string
+                sourceKind:
+                    maxLength: 30
+                    nullable: true
+                    type: string
+                sourceModule:
+                    maxLength: 30
+                    nullable: true
+                    type: string
+            required:
+                - channel
+            type: object
+        OrdersPerson:
+            additionalProperties: false
+            description: "A user as snapshotted on the document: the salesperson or an actor (O13, O29)."
+            properties:
+                displayName:
+                    maxLength: 200
+                    type: string
+                userId:
+                    format: uuid
+                    nullable: true
+                    type: string
+            required:
+                - displayName
+            type: object
+        OrdersProblem:
+            description: "An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, order_empty, customer_disabled, project_customer_mismatch, quantity_below_progress, over_delivery, and a line's codes in lines. 409: version_conflict (a stale version or revision), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_has_progress, line_invoiced, line_has_progress, line_in_draft_invoice, client_request_reused. 503: dependency_unavailable (a module Orders reads is not composed) and sending_disabled (Communications is off or no send channel is chosen). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither."
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                detail:
+                    nullable: true
+                    type: string
+                errors:
+                    additionalProperties:
+                        items:
+                            type: string
+                        type: array
+                    type: object
+                instance:
+                    nullable: true
+                    type: string
+                lines:
+                    description: "Every failing line, in the request's order."
+                    items:
+                        $ref: "#/components/schemas/OrdersProblemLine"
+                    type: array
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
+        OrdersProblemLine:
+            additionalProperties: false
+            description: One failing line of a document.
+            properties:
+                code:
+                    description: "The line's refusal code."
+                    type: string
+                detail:
+                    description: What a person reads.
+                    type: string
+                index:
+                    description: "The line's position in the request, from 0."
+                    format: int32
+                    type: integer
+            required:
+                - index
+                - code
+                - detail
+            type: object
+        OrdersQuote:
+            additionalProperties: false
+            description: "A quote (O13, O20). number stays across revisions; revision counts the sends."
+            properties:
+                acceptedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                acceptedInto:
+                    $ref: "#/components/schemas/OrdersDocumentRef"
+                cancelledAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                closingText:
+                    maxLength: 4000
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                currency:
+                    maxLength: 3
+                    type: string
+                customer:
+                    $ref: "#/components/schemas/OrdersCustomerSnapshot"
+                declineReason:
+                    maxLength: 500
+                    nullable: true
+                    type: string
+                declinedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                deliveryDate:
+                    format: date
+                    nullable: true
+                    type: string
+                discountVisible:
+                    type: boolean
+                id:
+                    format: int64
+                    type: integer
+                internalNote:
+                    maxLength: 4000
+                    type: string
+                introText:
+                    maxLength: 4000
+                    type: string
+                language:
+                    enum:
+                        - nb
+                        - en
+                    type: string
+                lines:
+                    items:
+                        $ref: "#/components/schemas/OrdersLine"
+                    type: array
+                number:
+                    format: int64
+                    type: integer
+                origin:
+                    $ref: "#/components/schemas/OrdersOrigin"
+                paymentTermsDays:
+                    format: int32
+                    type: integer
+                pricesIncludeVat:
+                    type: boolean
+                projectId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                revision:
+                    format: int32
+                    type: integer
+                salesperson:
+                    $ref: "#/components/schemas/OrdersPerson"
+                sentAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                status:
+                    enum:
+                        - draft
+                        - sent
+                        - accepted
+                        - declined
+                        - expired
+                        - cancelled
+                    type: string
+                totals:
+                    $ref: "#/components/schemas/OrdersTotals"
+                updatedAt:
+                    format: date-time
+                    type: string
+                validUntil:
+                    format: date
+                    nullable: true
+                    type: string
+                yourReference:
+                    maxLength: 100
+                    type: string
+            required:
+                - id
+                - number
+                - status
+                - revision
+                - customer
+                - yourReference
+                - currency
+                - pricesIncludeVat
+                - paymentTermsDays
+                - discountVisible
+                - language
+                - introText
+                - closingText
+                - internalNote
+                - origin
+                - totals
+                - lines
+                - createdAt
+                - updatedAt
+            type: object
+        OrdersQuoteInput:
+            additionalProperties: false
+            description: "A new draft quote. clientRequestId makes the create idempotent (O27): a repeat answers the first quote with 200."
+            properties:
+                clientRequestId:
+                    format: uuid
+                    type: string
+                closingText:
+                    maxLength: 4000
+                    type: string
+                contactId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                currency:
+                    maxLength: 3
+                    minLength: 3
+                    type: string
+                customerId:
+                    format: int32
+                    type: integer
+                deliveryAddressId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                deliveryDate:
+                    format: date
+                    nullable: true
+                    type: string
+                discountVisible:
+                    type: boolean
+                internalNote:
+                    maxLength: 4000
+                    type: string
+                introText:
+                    maxLength: 4000
+                    type: string
+                language:
+                    enum:
+                        - nb
+                        - en
+                    type: string
+                lines:
+                    items:
+                        $ref: "#/components/schemas/OrdersLineInput"
+                    maxItems: 500
+                    type: array
+                paymentTermsDays:
+                    format: int32
+                    maximum: 365
+                    minimum: 0
+                    type: integer
+                pricesIncludeVat:
+                    type: boolean
+                projectId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                salespersonId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                templateId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                validUntil:
+                    format: date
+                    nullable: true
+                    type: string
+                yourReference:
+                    maxLength: 100
+                    type: string
+            required:
+                - clientRequestId
+                - customerId
+            type: object
+        OrdersQuotePage:
+            additionalProperties: false
+            description: "One page of quotes, newest first; total counts every match."
+            properties:
+                items:
+                    items:
+                        $ref: "#/components/schemas/OrdersQuoteSummary"
+                    type: array
+                total:
+                    format: int32
+                    type: integer
+            required:
+                - items
+                - total
+            type: object
+        OrdersQuoteSummary:
+            additionalProperties: false
+            description: A quote in a list.
+            properties:
+                currency:
+                    maxLength: 3
+                    type: string
+                customerId:
+                    format: int32
+                    type: integer
+                customerName:
+                    maxLength: 255
+                    type: string
+                gross:
+                    format: double
+                    type: number
+                id:
+                    format: int64
+                    type: integer
+                net:
+                    format: double
+                    type: number
+                number:
+                    format: int64
+                    type: integer
+                revision:
+                    format: int32
+                    type: integer
+                salesperson:
+                    $ref: "#/components/schemas/OrdersPerson"
+                status:
+                    enum:
+                        - draft
+                        - sent
+                        - accepted
+                        - declined
+                        - expired
+                        - cancelled
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                validUntil:
+                    format: date
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - number
+                - status
+                - revision
+                - customerId
+                - customerName
+                - currency
+                - net
+                - gross
+                - updatedAt
+            type: object
+        OrdersQuoteUpdate:
+            additionalProperties: false
+            description: "A draft quote's save: the header and every line, replaced whole (O15). revision is the one the editor read."
+            properties:
+                closingText:
+                    maxLength: 4000
+                    type: string
+                contactId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                currency:
+                    maxLength: 3
+                    minLength: 3
+                    type: string
+                customerId:
+                    format: int32
+                    type: integer
+                deliveryAddressId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                deliveryDate:
+                    format: date
+                    nullable: true
+                    type: string
+                discountVisible:
+                    type: boolean
+                internalNote:
+                    maxLength: 4000
+                    type: string
+                introText:
+                    maxLength: 4000
+                    type: string
+                language:
+                    enum:
+                        - nb
+                        - en
+                    type: string
+                lines:
+                    items:
+                        $ref: "#/components/schemas/OrdersLineInput"
+                    maxItems: 500
+                    type: array
+                paymentTermsDays:
+                    format: int32
+                    maximum: 365
+                    minimum: 0
+                    type: integer
+                pricesIncludeVat:
+                    type: boolean
+                projectId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                revision:
+                    format: int32
+                    type: integer
+                salespersonId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                validUntil:
+                    format: date
+                    nullable: true
+                    type: string
+                yourReference:
+                    maxLength: 100
+                    type: string
+            required:
+                - revision
+                - customerId
+                - lines
+            type: object
+        OrdersRevisionInput:
+            additionalProperties: false
+            description: The revision the client read.
+            properties:
+                revision:
+                    format: int32
+                    type: integer
+            required:
+                - revision
+            type: object
+        OrdersSendInput:
+            additionalProperties: false
+            description: "A send from the dialog (O25): the recipient defaults to the contact's e-mail, else the customer's invoice e-mail. revision for a quote, version for an order."
+            properties:
+                cc:
+                    items:
+                        format: email
+                        maxLength: 254
+                        type: string
+                    maxItems: 10
+                    type: array
+                message:
+                    maxLength: 4000
+                    type: string
+                recipient:
+                    format: email
+                    maxLength: 254
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                subject:
+                    maxLength: 300
+                    type: string
+                validUntil:
+                    format: date
+                    nullable: true
+                    type: string
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - recipient
+            type: object
+        OrdersSettings:
+            additionalProperties: false
+            description: "Orders' settings. nextQuoteNumber and nextOrderNumber are the numbers the series hand out next; a series start may only rise above the highest number used (O12). sendingAvailable says whether Communications is on."
+            properties:
+                combineByDefault:
+                    type: boolean
+                confirmationOnConfirm:
+                    type: boolean
+                defaultPaymentTermsDays:
+                    format: int32
+                    type: integer
+                mailTexts:
+                    items:
+                        $ref: "#/components/schemas/OrdersMailText"
+                    type: array
+                nextOrderNumber:
+                    format: int64
+                    type: integer
+                nextQuoteNumber:
+                    format: int64
+                    type: integer
+                orderSeriesStart:
+                    format: int64
+                    type: integer
+                quoteSeriesStart:
+                    format: int64
+                    type: integer
+                quoteValidityDays:
+                    format: int32
+                    type: integer
+                revision:
+                    format: int32
+                    type: integer
+                sendChannelId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                sendingAvailable:
+                    type: boolean
+            required:
+                - quoteSeriesStart
+                - orderSeriesStart
+                - nextQuoteNumber
+                - nextOrderNumber
+                - quoteValidityDays
+                - defaultPaymentTermsDays
+                - confirmationOnConfirm
+                - combineByDefault
+                - mailTexts
+                - sendingAvailable
+                - revision
+            type: object
+        OrdersSettingsInput:
+            additionalProperties: false
+            description: "Orders' settings, replaced whole. revision is the one the client read."
+            properties:
+                combineByDefault:
+                    type: boolean
+                confirmationOnConfirm:
+                    type: boolean
+                defaultPaymentTermsDays:
+                    format: int32
+                    maximum: 365
+                    minimum: 0
+                    type: integer
+                mailTexts:
+                    items:
+                        $ref: "#/components/schemas/OrdersMailText"
+                    maxItems: 8
+                    type: array
+                orderSeriesStart:
+                    format: int64
+                    minimum: 1
+                    type: integer
+                quoteSeriesStart:
+                    format: int64
+                    minimum: 1
+                    type: integer
+                quoteValidityDays:
+                    format: int32
+                    maximum: 365
+                    minimum: 1
+                    type: integer
+                revision:
+                    format: int32
+                    type: integer
+                sendChannelId:
+                    format: uuid
+                    nullable: true
+                    type: string
+            required:
+                - revision
+                - quoteSeriesStart
+                - orderSeriesStart
+                - quoteValidityDays
+                - defaultPaymentTermsDays
+                - confirmationOnConfirm
+                - combineByDefault
+                - mailTexts
+            type: object
+        OrdersSkippedLine:
+            additionalProperties: false
+            description: A template line left out.
+            properties:
+                reason:
+                    enum:
+                        - archived
+                        - deleted
+                    type: string
+                sku:
+                    maxLength: 64
+                    nullable: true
+                    type: string
+                variantId:
+                    format: int32
+                    type: integer
+            required:
+                - variantId
+                - reason
+            type: object
+        OrdersStoredDocument:
+            additionalProperties: false
+            description: "A stored PDF (O24): a sent quote revision, or a sent or confirmed order version."
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    enum:
+                        - quote
+                        - confirmation
+                    type: string
+                sizeBytes:
+                    format: int64
+                    type: integer
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - kind
+                - version
+                - sizeBytes
+                - createdAt
+            type: object
+        OrdersStoredDocumentList:
+            additionalProperties: false
+            description: "A document's stored PDFs, newest first."
+            properties:
+                items:
+                    items:
+                        $ref: "#/components/schemas/OrdersStoredDocument"
+                    type: array
+            required:
+                - items
+            type: object
+        OrdersTemplate:
+            additionalProperties: false
+            description: A quote template (O23).
+            properties:
+                archived:
+                    type: boolean
+                closingText:
+                    maxLength: 4000
+                    type: string
+                discountVisible:
+                    type: boolean
+                id:
+                    format: int64
+                    type: integer
+                introText:
+                    maxLength: 4000
+                    type: string
+                lines:
+                    items:
+                        $ref: "#/components/schemas/OrdersTemplateLine"
+                    type: array
+                name:
+                    maxLength: 200
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                updatedAt:
+                    format: date-time
+                    type: string
+                validityDays:
+                    format: int32
+                    nullable: true
+                    type: integer
+            required:
+                - id
+                - name
+                - introText
+                - closingText
+                - discountVisible
+                - archived
+                - revision
+                - lines
+                - updatedAt
+            type: object
+        OrdersTemplateApplied:
+            additionalProperties: false
+            description: "The quote after a template was applied, and the template's lines skipped because their variant went away."
+            properties:
+                quote:
+                    $ref: "#/components/schemas/OrdersQuote"
+                skipped:
+                    items:
+                        $ref: "#/components/schemas/OrdersSkippedLine"
+                    type: array
+            required:
+                - quote
+                - skipped
+            type: object
+        OrdersTemplateInput:
+            additionalProperties: false
+            description: "A template's fields and lines. revision is required on an update."
+            properties:
+                archived:
+                    type: boolean
+                closingText:
+                    maxLength: 4000
+                    type: string
+                discountVisible:
+                    type: boolean
+                introText:
+                    maxLength: 4000
+                    type: string
+                lines:
+                    items:
+                        $ref: "#/components/schemas/OrdersTemplateLineInput"
+                    maxItems: 500
+                    type: array
+                name:
+                    maxLength: 200
+                    minLength: 1
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                validityDays:
+                    format: int32
+                    maximum: 365
+                    minimum: 1
+                    nullable: true
+                    type: integer
+            required:
+                - name
+            type: object
+        OrdersTemplateLine:
+            additionalProperties: false
+            description: "A template's line: a product line with its variant, quantity, optional flag and an optional price override; a section; or a note."
+            properties:
+                description:
+                    maxLength: 2000
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    description: "An open set (O15): product, section and note in this phase."
+                    enum:
+                        - product
+                        - section
+                        - note
+                    type: string
+                name:
+                    maxLength: 255
+                    nullable: true
+                    type: string
+                optional:
+                    type: boolean
+                position:
+                    format: int32
+                    type: integer
+                quantity:
+                    format: double
+                    nullable: true
+                    type: number
+                sku:
+                    maxLength: 64
+                    nullable: true
+                    type: string
+                unitPrice:
+                    description: "A price override; null takes the catalog's."
+                    format: double
+                    nullable: true
+                    type: number
+                variantId:
+                    format: int32
+                    nullable: true
+                    type: integer
+            required:
+                - id
+                - position
+                - kind
+                - description
+                - optional
+            type: object
+        OrdersTemplateLineInput:
+            additionalProperties: false
+            description: A template line as saved; the lines are replaced whole.
+            properties:
+                description:
+                    maxLength: 2000
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    description: "An open set (O15): product, section and note in this phase."
+                    enum:
+                        - product
+                        - section
+                        - note
+                    type: string
+                name:
+                    maxLength: 255
+                    type: string
+                optional:
+                    type: boolean
+                quantity:
+                    format: double
+                    nullable: true
+                    type: number
+                unitPrice:
+                    format: double
+                    nullable: true
+                    type: number
+                variantId:
+                    format: int32
+                    nullable: true
+                    type: integer
+            required:
+                - kind
+            type: object
+        OrdersTemplateList:
+            additionalProperties: false
+            description: "Every template, by name."
+            properties:
+                items:
+                    items:
+                        $ref: "#/components/schemas/OrdersTemplateSummary"
+                    type: array
+            required:
+                - items
+            type: object
+        OrdersTemplateSummary:
+            additionalProperties: false
+            description: A template in the list.
+            properties:
+                archived:
+                    type: boolean
+                id:
+                    format: int64
+                    type: integer
+                lineCount:
+                    format: int32
+                    type: integer
+                name:
+                    maxLength: 200
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                validityDays:
+                    format: int32
+                    nullable: true
+                    type: integer
+            required:
+                - id
+                - name
+                - archived
+                - lineCount
+                - updatedAt
+            type: object
+        OrdersTotals:
+            additionalProperties: false
+            description: "The document's totals in its currency, leaving out a quote's optional lines (O17, O21)."
+            properties:
+                gross:
+                    format: double
+                    type: number
+                net:
+                    format: double
+                    type: number
+                vat:
+                    format: double
+                    type: number
+                vatSummaries:
+                    items:
+                        $ref: "#/components/schemas/OrdersVatSummary"
+                    type: array
+            required:
+                - net
+                - vat
+                - gross
+                - vatSummaries
+            type: object
+        OrdersVatSummary:
+            additionalProperties: false
+            description: "VAT per (category, rate) on the sum of the nets (O17)."
+            properties:
+                category:
+                    maxLength: 2
+                    type: string
+                ratePercent:
+                    format: double
+                    type: number
+                taxableAmount:
+                    format: double
+                    type: number
+                vatAmount:
+                    format: double
+                    type: number
+            required:
+                - category
+                - ratePercent
+                - taxableAmount
+                - vatAmount
+            type: object
+        OrdersVersionInput:
+            additionalProperties: false
+            description: The version the client read.
+            properties:
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - version
+            type: object
+info:
+    title: Vantigo Orders API
+    version: "1"
+openapi: 3.0.3
+paths:
+    "/api/v1/orders/customers/{customerId}/summary":
+        get:
+            description: "The counts and sums per currency the customer page's Orders tab shows (O31a)."
+            operationId: getOrdersCustomerSummary
+            parameters:
+                - in: path
+                  name: customerId
+                  required: true
+                  schema:
+                      format: int32
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersCustomerSummary"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+            summary: "Get a customer's orders summary"
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+    /api/v1/orders/orders:
+        get:
+            description: "Orders, newest first, filtered by customer, status, salesperson and a search (O31a)."
+            operationId: listSalesOrders
+            parameters:
+                - in: query
+                  name: customerId
+                  schema:
+                      format: int32
+                      type: integer
+                - description: Any of the statuses; none means all.
+                  explode: true
+                  in: query
+                  name: status
+                  schema:
+                      items:
+                          enum:
+                              - draft
+                              - confirmed
+                              - cancelled
+                          type: string
+                      type: array
+                  style: form
+                - in: query
+                  name: salespersonId
+                  schema:
+                      format: uuid
+                      type: string
+                - description: "Matches the number, the customer's name and your reference."
+                  in: query
+                  name: q
+                  schema:
+                      maxLength: 100
+                      type: string
+                - in: query
+                  name: page
+                  schema:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                      format: int32
+                      maximum: 200
+                      minimum: 1
+                      type: integer
+                - description: Only orders not done and not cancelled.
+                  in: query
+                  name: open
+                  schema:
+                      type: boolean
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrderPage"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Bad Request — paging out of range.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+            summary: List orders
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+        post:
+            description: "Creates a draft order through the one create command (O28), with the next order number. A repeated clientRequestId answers the first order with 200 (O27)."
+            operationId: createSalesOrder
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersOrderInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrder"
+                    description: "OK — a repeat of an earlier create (the same clientRequestId), answered with what it made."
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrder"
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, too_many_lines, a line's codes. optional_not_allowed."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Conflict — client_request_reused.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Create an order
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:sales-manage
+    "/api/v1/orders/orders/{id}":
+        delete:
+            description: "Deletes a draft order; its number is left as a gap (O12, O54)."
+            operationId: deleteSalesOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Conflict — order_not_draft.
+            summary: Delete a draft order
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:sales-manage
+        get:
+            description: "The order with its lines, buckets and totals."
+            operationId: getSalesOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrder"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+            summary: Get an order
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+        put:
+            description: "Replaces a draft order's header and lines; on a confirmed order takes what O26 allows, logs the change and bumps the version."
+            operationId: updateSalesOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersOrderUpdate"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrder"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, too_many_lines, a line's codes. optional_not_allowed, quantity_below_progress."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, order_locked, line_invoiced, line_has_progress, line_in_draft_invoice."
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Save an order
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:sales-manage
+    "/api/v1/orders/orders/{id}/cancel":
+        post:
+            description: "Cancels an order while nothing is delivered or invoiced, and publishes orders.sales_order.cancelled.v1 (O18)."
+            operationId: cancelSalesOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersVersionInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrder"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, order_has_progress."
+            summary: Cancel an order
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:sales-manage
+    "/api/v1/orders/orders/{id}/cancel-remaining":
+        post:
+            description: "Sets each line's cancelled quantity to ordered less the larger of delivered and invoiced (O18)."
+            operationId: cancelSalesOrderRemaining
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersVersionInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrder"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, order_not_confirmed, order_locked."
+            summary: Cancel what remains of an order
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:sales-manage
+    "/api/v1/orders/orders/{id}/changes":
+        get:
+            description: "The order's change log (O26)."
+            operationId: listSalesOrderChanges
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersChangeList"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+            summary: "List an order's changes"
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+    "/api/v1/orders/orders/{id}/confirm":
+        post:
+            description: "Confirms a draft order: freezes its snapshot and prices, stores the confirmation PDF and publishes orders.sales_order.confirmed.v1 (O18)."
+            operationId: confirmSalesOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersVersionInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrder"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — customer_disabled, order_empty, line_unpriced, vat_code_unmapped."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, order_not_draft."
+            summary: Confirm an order
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:sales-confirm
+    "/api/v1/orders/orders/{id}/documents":
+        get:
+            description: "The confirmations stored for the order's versions (O24)."
+            operationId: listSalesOrderDocuments
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersStoredDocumentList"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+            summary: "List an order's stored PDFs"
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+    "/api/v1/orders/orders/{id}/hold":
+        post:
+            description: "Puts an order on hold with a reason: it offers nothing to invoice and takes no delivery, and stays editable (O18)."
+            operationId: holdSalesOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersHoldInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrder"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, order_not_confirmed."
+            summary: Hold an order
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:sales-manage
+    "/api/v1/orders/orders/{id}/lock":
+        post:
+            description: Locks a confirmed order against every edit; it still invoices and delivers (O18).
+            operationId: lockSalesOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersVersionInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrder"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, order_not_confirmed."
+            summary: Lock an order
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:sales-confirm
+    "/api/v1/orders/orders/{id}/mailings":
+        get:
+            description: "Every send of the order, with its status (O25)."
+            operationId: listSalesOrderMailings
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersMailingList"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+            summary: "List an order's sends"
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+    "/api/v1/orders/orders/{id}/mark-delivered":
+        post:
+            description: "Adds per-line delivered quantities to a confirmed order, never beyond ordered less cancelled, and logs delivered_marked (O32)."
+            operationId: markSalesOrderDelivered
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersDeliveredInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrder"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, over_delivery, a line's codes."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, order_not_confirmed."
+            summary: Register delivered quantities
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:sales-manage
+    "/api/v1/orders/orders/{id}/pdf":
+        get:
+            description: "The order confirmation's PDF: the stored one of a version, or the current one printed now (O24)."
+            operationId: getSalesOrderPdf
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+                - description: "A stored version's PDF; the current one when absent."
+                  in: query
+                  name: version
+                  schema:
+                      format: int32
+                      minimum: 1
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/pdf:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order or version. The body is empty.
+            summary: Download an order confirmation
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+    "/api/v1/orders/orders/{id}/proforma":
+        get:
+            description: "A pro forma print of the order, titled as not an invoice; never stored or sent (O24)."
+            operationId: getSalesOrderProforma
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/pdf:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+            summary: Download a pro forma of an order
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+    "/api/v1/orders/orders/{id}/release":
+        post:
+            description: Takes an order off hold (O18).
+            operationId: releaseSalesOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersVersionInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrder"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Conflict — version_conflict.
+            summary: Release a held order
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:sales-manage
+    "/api/v1/orders/orders/{id}/send":
+        post:
+            description: "Sends the order confirmation of the current version by e-mail (O25), storing its PDF; a confirmation after a change prints as revised (O26)."
+            operationId: sendSalesOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersSendInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrder"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, order_not_confirmed."
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Service Unavailable — sending_disabled, dependency_unavailable."
+            summary: Send an order confirmation
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:sales-manage
+    "/api/v1/orders/orders/{id}/undo-delivered":
+        post:
+            description: "Takes per-line delivered quantities back, never below 0 (O32)."
+            operationId: undoSalesOrderDelivered
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersDeliveredInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrder"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, a line's codes."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, order_not_confirmed."
+            summary: Undo delivered quantities
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:sales-manage
+    "/api/v1/orders/orders/{id}/unlock":
+        post:
+            description: Unlocks a locked order (O18).
+            operationId: unlockSalesOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersVersionInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersOrder"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Conflict — version_conflict.
+            summary: Unlock an order
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:sales-confirm
+    /api/v1/orders/quotes:
+        get:
+            description: "Quotes, newest first, filtered by customer, status, salesperson and a search (O31a)."
+            operationId: listQuotes
+            parameters:
+                - in: query
+                  name: customerId
+                  schema:
+                      format: int32
+                      type: integer
+                - description: Any of the statuses; none means all.
+                  explode: true
+                  in: query
+                  name: status
+                  schema:
+                      items:
+                          enum:
+                              - draft
+                              - sent
+                              - accepted
+                              - declined
+                              - expired
+                              - cancelled
+                          type: string
+                      type: array
+                  style: form
+                - in: query
+                  name: salespersonId
+                  schema:
+                      format: uuid
+                      type: string
+                - description: "Matches the number, the customer's name and your reference."
+                  in: query
+                  name: q
+                  schema:
+                      maxLength: 100
+                      type: string
+                - in: query
+                  name: page
+                  schema:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                      format: int32
+                      maximum: 200
+                      minimum: 1
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersQuotePage"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Bad Request — paging out of range.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+            summary: List quotes
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+        post:
+            description: "Creates a draft quote with the next quote number (O12), its customer snapshot from the billing profile (O13) and its lines priced from the catalog (O16). A repeated clientRequestId answers the first quote with 200 (O27)."
+            operationId: createQuote
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersQuoteInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersQuote"
+                    description: "OK — a repeat of an earlier create (the same clientRequestId), answered with what it made."
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersQuote"
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, too_many_lines, a line's codes."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Conflict — client_request_reused.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Create a quote
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:quotes-manage
+    "/api/v1/orders/quotes/{id}":
+        delete:
+            description: Deletes a quote never sent; its number is left as a gap (O12).
+            operationId: deleteQuote
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such quote. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Conflict — quote_not_draft.
+            summary: Delete a draft quote
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:quotes-manage
+        get:
+            description: The quote with its lines and totals.
+            operationId: getQuote
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersQuote"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such quote. The body is empty.
+            summary: Get a quote
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+        put:
+            description: "Replaces a draft quote's header and lines (O15); the snapshot is refreshed and catalog prices re-priced (O14, O16)."
+            operationId: updateQuote
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersQuoteUpdate"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersQuote"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, too_many_lines, a line's codes."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such quote. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, quote_not_draft."
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Save a draft quote
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:quotes-manage
+    "/api/v1/orders/quotes/{id}/accept":
+        post:
+            description: "Accepts a sent or expired quote once, with the optional lines the customer took, into a draft order or, with orders:sales-confirm, a confirmed one (O20, O21)."
+            operationId: acceptQuote
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersAcceptInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersAccepted"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, and confirm's codes for a confirmed order."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such quote. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, quote_not_sent, quote_already_accepted."
+            summary: Accept a quote
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:quotes-manage
+    "/api/v1/orders/quotes/{id}/apply-template":
+        post:
+            description: "Appends a template's lines to a draft quote, or replaces its lines, fills its empty texts and prices the lines (O23); lines whose variant went away are skipped and named."
+            operationId: applyQuoteTemplate
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersApplyTemplateInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersTemplateApplied"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, too_many_lines."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such quote or template. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, quote_not_draft."
+            summary: Apply a template to a quote
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:quotes-manage
+    "/api/v1/orders/quotes/{id}/cancel":
+        post:
+            description: Cancels a draft or sent quote (O20).
+            operationId: cancelQuote
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersRevisionInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersQuote"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such quote. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, and a quote already answered."
+            summary: Cancel a quote
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:quotes-manage
+    "/api/v1/orders/quotes/{id}/copy":
+        post:
+            description: "Makes a new draft quote from any quote, re-priced as a new draft (O20, O27 channel copy)."
+            operationId: copyQuote
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersQuote"
+                    description: Created
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such quote. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Copy a quote
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:quotes-manage
+    "/api/v1/orders/quotes/{id}/decline":
+        post:
+            description: Records that the customer declined a sent quote (O20).
+            operationId: declineQuote
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersDeclineInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersQuote"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such quote. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, quote_not_sent."
+            summary: Decline a quote
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:quotes-manage
+    "/api/v1/orders/quotes/{id}/documents":
+        get:
+            description: "The PDFs stored for the quote's sent revisions (O24)."
+            operationId: listQuoteDocuments
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersStoredDocumentList"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such quote. The body is empty.
+            summary: "List a quote's stored PDFs"
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+    "/api/v1/orders/quotes/{id}/mailings":
+        get:
+            description: "Every send of the quote, with its status (O25)."
+            operationId: listQuoteMailings
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersMailingList"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such quote. The body is empty.
+            summary: "List a quote's sends"
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+    "/api/v1/orders/quotes/{id}/mark-sent":
+        post:
+            description: "Moves a draft quote to sent without e-mail, for one handed over by other means; stores the PDF and freezes the quote (O20)."
+            operationId: markQuoteSent
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersMarkSentInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersQuote"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, line_unpriced, vat_code_unmapped."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such quote. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, quote_not_draft."
+            summary: Mark a quote as sent
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:quotes-manage
+    "/api/v1/orders/quotes/{id}/pdf":
+        get:
+            description: "The quote's PDF: the stored one of a sent revision, or a draft's printed now (O24)."
+            operationId: getQuotePdf
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+                - description: "A sent revision's stored PDF; the current one when absent."
+                  in: query
+                  name: revision
+                  schema:
+                      format: int32
+                      minimum: 1
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/pdf:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such quote or revision. The body is empty.
+            summary: "Download a quote's PDF"
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+    "/api/v1/orders/quotes/{id}/proforma":
+        get:
+            description: "A pro forma print of the quote, titled as not an invoice; never stored or sent (O24)."
+            operationId: getQuoteProforma
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/pdf:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such quote. The body is empty.
+            summary: Download a pro forma of a quote
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+    "/api/v1/orders/quotes/{id}/revise":
+        post:
+            description: "Moves a sent quote back to draft with the next revision; earlier revisions' PDFs are kept (O20)."
+            operationId: reviseQuote
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersRevisionInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersQuote"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such quote. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, quote_not_sent."
+            summary: Revise a sent quote
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:quotes-manage
+    "/api/v1/orders/quotes/{id}/send":
+        post:
+            description: "Sends the quote's PDF through the send channel (O25), stores the PDF of this revision, freezes the quote and moves it to sent (O20)."
+            operationId: sendQuote
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersSendInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersQuote"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, line_unpriced, vat_code_unmapped."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such quote. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, quote_not_draft."
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Service Unavailable — sending_disabled, dependency_unavailable."
+            summary: Send a quote by e-mail
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:quotes-manage
+    /api/v1/orders/settings:
+        get:
+            description: "The series, the default validity and payment terms, the send channel and the mail texts (§9)."
+            operationId: getOrdersSettings
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersSettings"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+            summary: Get the Orders settings
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:settings
+        put:
+            description: Replaces the settings; a series start may only rise above the highest number used (O12).
+            operationId: putOrdersSettings
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersSettingsInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersSettings"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, series_start_too_low, send_channel_unknown."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Conflict — version_conflict.
+            summary: Save the Orders settings
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:settings
+    /api/v1/orders/templates:
+        get:
+            description: "Every quote template, by name (O23)."
+            operationId: listQuoteTemplates
+            parameters:
+                - in: query
+                  name: includeArchived
+                  schema:
+                      type: boolean
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersTemplateList"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+            summary: List quote templates
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+        post:
+            description: Creates a quote template (O23).
+            operationId: createQuoteTemplate
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersTemplateInput"
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersTemplate"
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, too_many_lines, a line's codes."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: Conflict — template_name_taken.
+            summary: Create a quote template
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:settings
+    "/api/v1/orders/templates/{id}":
+        delete:
+            description: Deletes a template; quotes made from it keep their lines (O23).
+            operationId: deleteQuoteTemplate
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such template. The body is empty.
+            summary: Delete a quote template
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:settings
+        get:
+            description: The template with its lines (O23).
+            operationId: getQuoteTemplate
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersTemplate"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such template. The body is empty.
+            summary: Get a quote template
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+        put:
+            description: "Replaces a template's fields and lines (O23)."
+            operationId: updateQuoteTemplate
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersTemplateInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersTemplate"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, too_many_lines, a line's codes."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such template. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, template_name_taken."
+            summary: Save a quote template
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:settings
+servers:
+    - url: /
