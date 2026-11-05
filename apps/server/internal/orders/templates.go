@@ -480,7 +480,7 @@ func (s *server) ApplyQuoteTemplate(ctx context.Context, req gen.ApplyQuoteTempl
 	if f := s.unknownProperties(ctx, applyTemplateInputSchema); f.failed() {
 		return gen.ApplyQuoteTemplate400ApplicationProblemPlusJSONResponse(invalid(invalidQuoteTitle, f)), nil
 	}
-	cur, curLines, err := s.draftQuote(ctx, req.Id, req.Body.Revision)
+	cur, curLines, err := s.draftQuote(ctx, req.Id, req.Body.Revision, req.Body.ExpectedUpdatedAt)
 	if err != nil {
 		return answer(err, resp)
 	}
@@ -506,7 +506,7 @@ func (s *server) ApplyQuoteTemplate(ctx context.Context, req gen.ApplyQuoteTempl
 	}
 	var out gen.OrdersTemplateApplied
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
-		row, lines, err := s.saveDraftQuote(ctx, tx, txq, cur.ID, req.Body.Revision, h, priced, cur.ValidUntil, &t.ID)
+		row, lines, err := s.saveDraftQuote(ctx, tx, txq, cur.ID, req.Body.Revision, req.Body.ExpectedUpdatedAt, h, priced, cur.ValidUntil, &t.ID)
 		if err != nil {
 			return err
 		}

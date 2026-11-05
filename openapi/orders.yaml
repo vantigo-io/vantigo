@@ -4,6 +4,10 @@ components:
             additionalProperties: false
             description: "Accept a sent (or expired) quote (O20, O21): which optional lines the customer took, and what to make. confirmed_order also needs orders:sales-confirm."
             properties:
+                expectedUpdatedAt:
+                    description: "The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it)."
+                    format: date-time
+                    type: string
                 into:
                     enum:
                         - draft_order
@@ -20,6 +24,7 @@ components:
             required:
                 - revision
                 - into
+                - expectedUpdatedAt
             type: object
         OrdersAccepted:
             additionalProperties: false
@@ -67,6 +72,10 @@ components:
             additionalProperties: false
             description: "Apply a template to a draft quote (O23): its lines are appended, or replace the quote's with replace; empty texts are filled."
             properties:
+                expectedUpdatedAt:
+                    description: "The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it)."
+                    format: date-time
+                    type: string
                 replace:
                     type: boolean
                 revision:
@@ -78,6 +87,7 @@ components:
             required:
                 - revision
                 - templateId
+                - expectedUpdatedAt
             type: object
         OrdersChange:
             additionalProperties: false
@@ -257,6 +267,10 @@ components:
             additionalProperties: false
             description: "Decline a sent quote, with an optional reason."
             properties:
+                expectedUpdatedAt:
+                    description: "The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it)."
+                    format: date-time
+                    type: string
                 reason:
                     maxLength: 500
                     type: string
@@ -265,11 +279,16 @@ components:
                     type: integer
             required:
                 - revision
+                - expectedUpdatedAt
             type: object
         OrdersDeliveredInput:
             additionalProperties: false
             description: "Register delivered, or undo (O32): per-line quantities; a line left out is not changed."
             properties:
+                expectedUpdatedAt:
+                    description: "The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it)."
+                    format: date-time
+                    type: string
                 lines:
                     items:
                         $ref: "#/components/schemas/OrdersDeliveredLine"
@@ -282,6 +301,7 @@ components:
             required:
                 - version
                 - lines
+                - expectedUpdatedAt
             type: object
         OrdersDeliveredLine:
             additionalProperties: false
@@ -322,6 +342,10 @@ components:
             additionalProperties: false
             description: "Hold an order (O18), with a reason."
             properties:
+                expectedUpdatedAt:
+                    description: "The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it)."
+                    format: date-time
+                    type: string
                 reason:
                     maxLength: 200
                     type: string
@@ -330,6 +354,7 @@ components:
                     type: integer
             required:
                 - version
+                - expectedUpdatedAt
             type: object
         OrdersLine:
             additionalProperties: false
@@ -623,6 +648,10 @@ components:
             additionalProperties: false
             description: Mark a draft quote as sent by other means (O20); validUntil defaults as on send.
             properties:
+                expectedUpdatedAt:
+                    description: "The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it)."
+                    format: date-time
+                    type: string
                 revision:
                     format: int32
                     type: integer
@@ -632,6 +661,7 @@ components:
                     type: string
             required:
                 - revision
+                - expectedUpdatedAt
             type: object
         OrdersMeta:
             additionalProperties: false
@@ -763,6 +793,7 @@ components:
                 totals:
                     $ref: "#/components/schemas/OrdersTotals"
                 updatedAt:
+                    description: "When the document was last written: the concurrency token every write sends back as expectedUpdatedAt (O26)."
                     format: date-time
                     type: string
                 version:
@@ -957,7 +988,7 @@ components:
             type: object
         OrdersOrderUpdate:
             additionalProperties: false
-            description: "An order's save: the header and every line, replaced whole, lines naming their ids kept (O15). A confirmed order takes only what O26 allows. version is the one the editor read (version_conflict otherwise)."
+            description: "An order's save: the header and every line, replaced whole, lines naming their ids kept (O15); a kept line's kind never changes (line_kind_changed) — remove it and add a new one. A confirmed order takes only what O26 allows, and its kept lines keep their frozen item, name, unit and VAT. version is the one the editor read (version_conflict otherwise)."
             properties:
                 closingText:
                     maxLength: 4000
@@ -983,6 +1014,10 @@ components:
                     type: string
                 discountVisible:
                     type: boolean
+                expectedUpdatedAt:
+                    description: "The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it)."
+                    format: date-time
+                    type: string
                 internalNote:
                     maxLength: 4000
                     type: string
@@ -1024,6 +1059,7 @@ components:
                 - version
                 - customerId
                 - lines
+                - expectedUpdatedAt
             type: object
         OrdersOrigin:
             additionalProperties: false
@@ -1079,7 +1115,7 @@ components:
                 - displayName
             type: object
         OrdersProblem:
-            description: "An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version or revision), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_has_progress, line_invoiced, line_has_progress, line_in_draft_invoice, client_request_reused, template_name_taken. 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither."
+            description: "An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice, client_request_reused, template_name_taken. 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither."
             properties:
                 code:
                     nullable: true
@@ -1228,6 +1264,7 @@ components:
                 totals:
                     $ref: "#/components/schemas/OrdersTotals"
                 updatedAt:
+                    description: "When the document was last written: the concurrency token every write sends back as expectedUpdatedAt (O26)."
                     format: date-time
                     type: string
                 validUntil:
@@ -1436,6 +1473,10 @@ components:
                     type: string
                 discountVisible:
                     type: boolean
+                expectedUpdatedAt:
+                    description: "The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it)."
+                    format: date-time
+                    type: string
                 internalNote:
                     maxLength: 4000
                     type: string
@@ -1481,16 +1522,22 @@ components:
                 - revision
                 - customerId
                 - lines
+                - expectedUpdatedAt
             type: object
         OrdersRevisionInput:
             additionalProperties: false
             description: The revision the client read.
             properties:
+                expectedUpdatedAt:
+                    description: "The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it)."
+                    format: date-time
+                    type: string
                 revision:
                     format: int32
                     type: integer
             required:
                 - revision
+                - expectedUpdatedAt
             type: object
         OrdersSalesperson:
             additionalProperties: false
@@ -1557,6 +1604,10 @@ components:
                         type: string
                     maxItems: 10
                     type: array
+                expectedUpdatedAt:
+                    description: "The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it)."
+                    format: date-time
+                    type: string
                 message:
                     maxLength: 4000
                     type: string
@@ -1579,6 +1630,7 @@ components:
                     type: integer
             required:
                 - recipient
+                - expectedUpdatedAt
             type: object
         OrdersSettings:
             additionalProperties: false
@@ -2110,11 +2162,16 @@ components:
             additionalProperties: false
             description: The version the client read.
             properties:
+                expectedUpdatedAt:
+                    description: "The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it)."
+                    format: date-time
+                    type: string
                 version:
                     format: int32
                     type: integer
             required:
                 - version
+                - expectedUpdatedAt
             type: object
 info:
     title: Vantigo Orders API
@@ -2352,7 +2409,7 @@ paths:
             x-vantigo-access: permission:orders:access+orders:sales-manage
     "/api/v1/orders/orders/{id}":
         delete:
-            description: "Deletes a draft order; its number is left as a gap (O12, O54)."
+            description: "Deletes a draft order; its number is left as a gap (O12, O54). A draft accepted from a quote puts that quote back to sent, so it can be accepted again."
             operationId: deleteSalesOrder
             parameters:
                 - in: path
@@ -2361,6 +2418,13 @@ paths:
                   schema:
                       format: int64
                       type: integer
+                - description: "The updatedAt of the document as the client read it (version_conflict otherwise)."
+                  in: query
+                  name: expectedUpdatedAt
+                  required: true
+                  schema:
+                      format: date-time
+                      type: string
             responses:
                 "204":
                     description: No Content
@@ -2383,7 +2447,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: Conflict — order_not_draft.
+                    description: "Conflict — version_conflict, order_not_draft."
             summary: Delete a draft order
             tags:
                 - Orders
@@ -2471,7 +2535,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Conflict — version_conflict, order_locked, line_invoiced, line_has_progress, line_in_draft_invoice."
+                    description: "Conflict — version_conflict, order_locked, line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice."
                 "503":
                     content:
                         application/problem+json:
@@ -2484,7 +2548,7 @@ paths:
             x-vantigo-access: permission:orders:access+orders:sales-manage
     "/api/v1/orders/orders/{id}/cancel":
         post:
-            description: "Cancels an order while nothing is delivered or invoiced, and publishes orders.sales_order.cancelled.v1 (O18)."
+            description: "Cancels an order while nothing is delivered or invoiced, and publishes orders.sales_order.cancelled.v1 (O18). A locked confirmed order is unlocked first (order_locked)."
             operationId: cancelSalesOrder
             parameters:
                 - in: path
@@ -2525,7 +2589,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Conflict — version_conflict, order_has_progress."
+                    description: "Conflict — version_conflict, order_locked, order_has_progress."
             summary: Cancel an order
             tags:
                 - Orders
@@ -2891,7 +2955,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Conflict — version_conflict, order_not_confirmed."
+                    description: "Conflict — version_conflict, order_not_confirmed, order_on_hold."
             summary: Register delivered quantities
             tags:
                 - Orders
@@ -3134,7 +3198,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Conflict — version_conflict, order_not_confirmed."
+                    description: "Conflict — version_conflict, order_not_confirmed, order_on_hold."
             summary: Undo delivered quantities
             tags:
                 - Orders
@@ -3333,6 +3397,13 @@ paths:
                   schema:
                       format: int64
                       type: integer
+                - description: "The updatedAt of the document as the client read it (version_conflict otherwise)."
+                  in: query
+                  name: expectedUpdatedAt
+                  required: true
+                  schema:
+                      format: date-time
+                      type: string
             responses:
                 "204":
                     description: No Content
@@ -3355,7 +3426,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: Conflict — quote_not_draft.
+                    description: "Conflict — version_conflict, quote_not_draft."
             summary: Delete a draft quote
             tags:
                 - Orders
@@ -3443,7 +3514,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Conflict — version_conflict, quote_not_draft."
+                    description: "Conflict — version_conflict, quote_not_draft, line_kind_changed."
                 "503":
                     content:
                         application/problem+json:

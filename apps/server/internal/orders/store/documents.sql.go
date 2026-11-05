@@ -341,14 +341,15 @@ func (q *Queries) MailingsOf(ctx context.Context, arg MailingsOfParams) ([]Order
 
 const markMailingSent = `-- name: MarkMailingSent :execrows
 UPDATE orders.mailings
-SET status = 'sent', sent_at = $1, attempts = attempts + 1, last_error = NULL,
-    next_attempt_at = NULL, document_id = coalesce(document_id, $2),
-    channel_id = coalesce(channel_id, $3), subject = $4
-WHERE id = $5 AND status = 'queued' AND next_attempt_at = $6::timestamptz
+SET status = 'sent', sent_at = $1, attempts = attempts + 1, last_error = NULL, version = $2,
+    next_attempt_at = NULL, document_id = coalesce(document_id, $3),
+    channel_id = coalesce(channel_id, $4), subject = $5
+WHERE id = $6 AND status = 'queued' AND next_attempt_at = $7::timestamptz
 `
 
 type MarkMailingSentParams struct {
 	Now        *time.Time
+	Version    int32
 	DocumentID *int64
 	ChannelID  *uuid.UUID
 	Subject    string
@@ -357,10 +358,13 @@ type MarkMailingSentParams struct {
 }
 
 // MarkMailingSent records a claimed mailing as sent, only while it is still
-// queued under the claim's lease.
+// queued under the claim's lease, with the version it sent: a confirmation
+// queued at a version the order has moved past goes out at the order's
+// version then.
 func (q *Queries) MarkMailingSent(ctx context.Context, arg MarkMailingSentParams) (int64, error) {
 	result, err := q.db.Exec(ctx, markMailingSent,
 		arg.Now,
+		arg.Version,
 		arg.DocumentID,
 		arg.ChannelID,
 		arg.Subject,

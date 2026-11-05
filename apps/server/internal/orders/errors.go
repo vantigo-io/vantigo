@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -43,6 +44,8 @@ const (
 	codeOrderHasProgress        = "order_has_progress"
 	codeLineInvoiced            = "line_invoiced"
 	codeLineHasProgress         = "line_has_progress"
+	codeLineKindChanged         = "line_kind_changed"
+	codeOrderOnHold             = "order_on_hold"
 
 	// A line's codes (OrdersProblemLine.code).
 	codeVariantNotFound   = "variant_not_found"
@@ -210,6 +213,20 @@ func conflict(code, title, detail string) error {
 func versionConflict(what string, current, supplied int32) error {
 	return conflict(codeVersionConflict, "Version conflict",
 		fmt.Sprintf("The %s is at %d; the request was made from %d. Reload it and try again.", what, current, supplied))
+}
+
+// judgeFresh refuses a write made from a read of a document older than its
+// last write: expected is the updatedAt the client read, the concurrency
+// token every write of a quote or an order sends back (version_conflict).
+// Every write moves updated_at, so a hold, a lock or a delivery marking — which
+// leave the version — still make an older read stale.
+func judgeFresh(what string, updatedAt, expected time.Time) error {
+	if updatedAt.Equal(expected) {
+		return nil
+	}
+	return conflict(codeVersionConflict, "Version conflict",
+		fmt.Sprintf("The %s was changed at %s; the request was made from what it was at %s. Reload it and try again.",
+			what, updatedAt.UTC().Format(time.RFC3339Nano), expected.UTC().Format(time.RFC3339Nano)))
 }
 
 // dependencyUnavailable is the 503 an operation answers when a module it

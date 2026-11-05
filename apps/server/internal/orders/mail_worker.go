@@ -52,6 +52,8 @@ const (
 	reasonNotStored       = "The stored PDF could not be read."
 	reasonNotMailed       = "The mail provider did not take the e-mail."
 	reasonGone            = "The document is gone."
+	reasonNoRecipient     = "The send has no recipient."
+	reasonCancelled       = "The order was cancelled; its confirmation is not sent."
 )
 
 // mailBackoff is the wait after the n-th failed attempt: 30 seconds doubled
@@ -135,7 +137,7 @@ func (w *mailWorker) claimOne(ctx context.Context) (bool, error) {
 // handle sends one claimed row and records the outcome under its lease.
 func (w *mailWorker) handle(ctx context.Context, row store.OrdersMailing) {
 	s := w.s
-	documentID, channel, subject, reason, terminal := w.send(ctx, row)
+	documentID, version, channel, subject, reason, terminal := w.send(ctx, row)
 	done := context.WithoutCancel(ctx)
 	stepCtx, cancel := context.WithTimeout(done, mailStepTimeout)
 	defer cancel()
@@ -143,6 +145,7 @@ func (w *mailWorker) handle(ctx context.Context, row store.OrdersMailing) {
 	if reason == "" {
 		if _, err := q.MarkMailingSent(stepCtx, store.MarkMailingSentParams{
 			ID: row.ID, Now: ptr(s.deps.Clock()), LeaseUntil: *row.NextAttemptAt, DocumentID: documentID, ChannelID: channel, Subject: subject,
+			Version: version,
 		}); err != nil {
 			s.deps.Logger.ErrorContext(ctx, "orders: a mailing was sent but could not be marked", "mailing_id", row.ID, "error", err.Error())
 		}
@@ -162,34 +165,45 @@ func (w *mailWorker) handle(ctx context.Context, row store.OrdersMailing) {
 // send makes one attempt at a claimed row, outside any transaction: the
 // document's stored PDF, the cover mail from the document's own row, the
 // send. reason is "" when it went out; terminal says the row can never be
-// sent.
-func (w *mailWorker) send(ctx context.Context, row store.OrdersMailing) (documentID *int64, channel *uuid.UUID, subject, reason string, terminal bool) {
+// sent; version is the version that went out.
+//
+// An order's confirmation is the stored PDF of the row's version; when none
+// is stored and the order is still at that version it is printed and stored
+// now (ensureConfirmation). When the order has moved past the version — a
+// confirmed edit bumped it before the queued mail went — the confirmation of
+// the version the order is at now is sent instead, and logged: the customer
+// gets what holds. A cancelled order's is not sent at all.
+func (w *mailWorker) send(ctx context.Context, row store.OrdersMailing) (documentID *int64, version int32, channel *uuid.UUID, subject, reason string, terminal bool) {
 	s := w.s
 	q := store.New(s.deps.Pool)
+	version = row.Version
+	if strings.TrimSpace(row.Recipient) == "" {
+		return nil, version, nil, row.Subject, reasonNoRecipient, true
+	}
 	settings, err := readSettings(ctx, q)
 	if err != nil {
-		return nil, nil, row.Subject, "The settings could not be read.", false
+		return nil, version, nil, row.Subject, "The settings could not be read.", false
 	}
 	channel = row.ChannelID
 	if channel == nil {
 		channel = settings.sendChannel
 	}
 	if channel == nil || s.deps.OutboundMail == nil {
-		return nil, nil, row.Subject, reasonSendingDisabled, true
+		return nil, version, nil, row.Subject, reasonSendingDisabled, true
 	}
 
 	// The document: its kind, number, language and totals, and its PDF.
 	var facts mailFacts
 	var fileName string
-	kind := docQuote
+	var doc store.OrdersDocument
 	switch row.OwnerKind {
 	case ownerQuote:
 		quote, err := q.GetQuote(ctx, row.OwnerID)
 		if noRows(err) {
-			return nil, channel, row.Subject, reasonGone, true
+			return nil, version, channel, row.Subject, reasonGone, true
 		}
 		if err != nil {
-			return nil, channel, row.Subject, "The quote could not be read.", false
+			return nil, version, channel, row.Subject, "The quote could not be read.", false
 		}
 		facts = mailFacts{kind: docQuote, language: quote.Language, number: quote.Number, version: row.Version,
 			currency: quote.Currency, gross: ratOrZero(quote.GrossTotal)}
@@ -197,40 +211,62 @@ func (w *mailWorker) send(ctx context.Context, row store.OrdersMailing) (documen
 			facts.validUntil = &quote.ValidUntil.Time
 		}
 		fileName = quoteFileName(quote, row.Version, false)
-	case ownerOrder:
-		kind = docConfirmation
-		order, err := q.OrderByID(ctx, row.OwnerID)
+		if row.DocumentID != nil {
+			doc, err = q.GetDocument(ctx, *row.DocumentID)
+		} else {
+			doc, err = q.DocumentOf(ctx, store.DocumentOfParams{OwnerKind: ownerQuote, OwnerID: row.OwnerID, Kind: docQuote, Version: row.Version})
+		}
 		if noRows(err) {
-			return nil, channel, row.Subject, reasonGone, true
+			return nil, version, channel, row.Subject, reasonNoDocument, false
 		}
 		if err != nil {
-			return nil, channel, row.Subject, "The order could not be read.", false
+			return nil, version, channel, row.Subject, reasonNotStored, false
 		}
-		facts = mailFacts{kind: docConfirmation, language: order.Language, number: order.Number, version: row.Version,
-			revised: row.Version > 1, currency: order.Currency, gross: ratOrZero(order.GrossTotal)}
-		fileName = orderFileName(order, false)
+	case ownerOrder:
+		order, err := q.OrderByID(ctx, row.OwnerID)
+		if noRows(err) {
+			return nil, version, channel, row.Subject, reasonGone, true
+		}
+		if err != nil {
+			return nil, version, channel, row.Subject, "The order could not be read.", false
+		}
+		if order.Status == orderCancelled {
+			return nil, version, channel, row.Subject, reasonCancelled, true
+		}
+		if row.DocumentID != nil {
+			doc, err = q.GetDocument(ctx, *row.DocumentID)
+		} else {
+			doc, err = q.DocumentOf(ctx, store.DocumentOfParams{OwnerKind: ownerOrder, OwnerID: order.ID, Kind: docConfirmation, Version: row.Version})
+		}
+		switch {
+		case noRows(err):
+			// Not stored: printed now at the version the order is at.
+			if doc, _, err = s.ensureConfirmation(ctx, order.ID); err != nil {
+				return nil, version, channel, row.Subject, reasonNoDocument, false
+			}
+			if doc.Version != row.Version {
+				s.deps.Logger.InfoContext(ctx, "orders: a queued confirmation's version was superseded; the order's current version is sent",
+					"mailing_id", row.ID, "order_id", order.ID, "queued_version", row.Version, "sent_version", doc.Version)
+			}
+		case err != nil:
+			return nil, version, channel, row.Subject, reasonNotStored, false
+		}
+		version = doc.Version
+		facts = mailFacts{kind: docConfirmation, language: order.Language, number: order.Number, version: doc.Version,
+			revised: doc.Version > 1, currency: order.Currency, gross: ratOrZero(order.GrossTotal)}
+		printed := order
+		printed.Version = doc.Version
+		fileName = orderFileName(printed, false)
 	default:
-		return nil, channel, row.Subject, reasonGone, true
-	}
-	var doc store.OrdersDocument
-	if row.DocumentID != nil {
-		doc, err = q.GetDocument(ctx, *row.DocumentID)
-	} else {
-		doc, err = q.DocumentOf(ctx, store.DocumentOfParams{OwnerKind: row.OwnerKind, OwnerID: row.OwnerID, Kind: kind, Version: row.Version})
-	}
-	if noRows(err) {
-		return nil, channel, row.Subject, reasonNoDocument, false
-	}
-	if err != nil {
-		return nil, channel, row.Subject, reasonNotStored, false
+		return nil, version, channel, row.Subject, reasonGone, true
 	}
 	pdf, err := s.loadDocument(ctx, doc)
 	if err != nil {
-		return &doc.ID, channel, row.Subject, reasonNotStored, false
+		return &doc.ID, version, channel, row.Subject, reasonNotStored, false
 	}
 	seller, err := s.seller(ctx)
 	if err != nil {
-		return &doc.ID, channel, row.Subject, "The seller could not be read.", false
+		return &doc.ID, version, channel, row.Subject, "The seller could not be read.", false
 	}
 	facts.seller = seller.LegalName
 	req := sendRequest{recipient: row.Recipient, subject: row.Subject}
@@ -247,9 +283,9 @@ func (w *mailWorker) send(ctx context.Context, row store.OrdersMailing) (documen
 	sendCtx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
 	if err := s.outboundSend(sendCtx, *channel, out); err != nil {
-		return &doc.ID, channel, out.Subject, truncate(fmt.Sprintf("%s %s", reasonNotMailed, withoutAddress(err.Error(), row.Recipient)), 500), false
+		return &doc.ID, version, channel, out.Subject, truncate(fmt.Sprintf("%s %s", reasonNotMailed, withoutAddress(err.Error(), row.Recipient)), 500), false
 	}
-	return &doc.ID, channel, truncate(out.Subject, 300), "", false
+	return &doc.ID, version, channel, truncate(out.Subject, 300), "", false
 }
 
 // withoutAddress is msg with the recipient's address taken out: a provider's

@@ -89,7 +89,7 @@ func TestApplyQuoteTemplate_SkipsTheVariantsThatWentAway(t *testing.T) {
 
 	c := h.SignIn(t, quoter...)
 	q := createQuote(t, c, custBusiness, productLine(varBolt, 1))
-	res = c.Do(http.MethodPost, quotePath(q.Id, "apply-template"), gen.OrdersApplyTemplateInput{Revision: 1, TemplateId: tpl.Id})
+	res = c.Do(http.MethodPost, quotePath(q.Id, "apply-template"), gen.OrdersApplyTemplateInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, TemplateId: tpl.Id})
 	mustStatus(t, res, http.StatusOK, "apply")
 	var applied gen.OrdersTemplateApplied
 	res.JSON(&applied)
@@ -104,13 +104,13 @@ func TestApplyQuoteTemplate_SkipsTheVariantsThatWentAway(t *testing.T) {
 	if got.Totals.Net != 420 {
 		t.Errorf("net %v, want 420 (100 + 4 × 80; the optional line left out)", got.Totals.Net)
 	}
-	res = c.Do(http.MethodPost, quotePath(q.Id, "apply-template"), gen.OrdersApplyTemplateInput{Revision: 1, TemplateId: tpl.Id, Replace: &yes})
+	res = c.Do(http.MethodPost, quotePath(q.Id, "apply-template"), gen.OrdersApplyTemplateInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, TemplateId: tpl.Id, Replace: &yes})
 	mustStatus(t, res, http.StatusOK, "replace")
 	res.JSON(&applied)
 	if len(applied.Quote.Lines) != 2 {
 		t.Errorf("replaced lines %d, want the template's two", len(applied.Quote.Lines))
 	}
-	mustStatus(t, c.Do(http.MethodPost, quotePath(q.Id, "apply-template"), gen.OrdersApplyTemplateInput{Revision: 1, TemplateId: 999999}), http.StatusNotFound, "no template")
+	mustStatus(t, c.Do(http.MethodPost, quotePath(q.Id, "apply-template"), gen.OrdersApplyTemplateInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, TemplateId: 999999}), http.StatusNotFound, "no template")
 
 	res = c.Do(http.MethodPost, quotesPath, gen.OrdersQuoteInput{ClientRequestId: uuid.New(), CustomerId: custBusiness, TemplateId: &tpl.Id})
 	mustStatus(t, res, http.StatusCreated, "create from the template")
@@ -118,7 +118,7 @@ func TestApplyQuoteTemplate_SkipsTheVariantsThatWentAway(t *testing.T) {
 	if len(fromTpl.Lines) != 2 || fromTpl.IntroText != "Intro from the template" {
 		t.Errorf("created from the template %+v", fromTpl)
 	}
-	res = c.Do(http.MethodPost, quotePath(fromTpl.Id, "mark-sent"), gen.OrdersMarkSentInput{Revision: 1})
+	res = c.Do(http.MethodPost, quotePath(fromTpl.Id, "mark-sent"), gen.OrdersMarkSentInput{ExpectedUpdatedAt: quoteAt(t, c, fromTpl.Id), Revision: 1})
 	mustStatus(t, res, http.StatusOK, "mark sent")
 	if s := quoteOf(t, res); s.ValidUntil == nil || s.ValidUntil.Time.Sub(h.Now()).Hours() > 11*24 {
 		t.Errorf("valid until %v; want the template's 10 days", s.ValidUntil)
@@ -174,7 +174,7 @@ func TestOrdersSettings(t *testing.T) {
 
 	// The override is the quote's mail text.
 	q := createQuote(t, c, custBusiness, productLine(varBolt, 1))
-	mustStatus(t, c.Do(http.MethodPost, quotePath(q.Id, "send"), gen.OrdersSendInput{Recipient: "kari@acme.example", Revision: &q.Revision}), http.StatusOK, "send")
+	mustStatus(t, c.Do(http.MethodPost, quotePath(q.Id, "send"), gen.OrdersSendInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Recipient: "kari@acme.example", Revision: &q.Revision}), http.StatusOK, "send")
 	if mails := h.mail.Sent(); len(mails) != 1 || mails[0].Out.Subject != "Tilbud 1001 fra oss" {
 		t.Errorf("mails %+v; want the override's subject", mails)
 	}
@@ -194,7 +194,7 @@ func TestAccessRules(t *testing.T) {
 	mustStatus(t, r.Do(http.MethodGet, quotesPath, nil), http.StatusOK, "list with access")
 	mustStatus(t, r.Do(http.MethodGet, quotePath(q.Id), nil), http.StatusOK, "get with access")
 	mustStatus(t, r.Do(http.MethodPost, quotesPath, gen.OrdersQuoteInput{ClientRequestId: uuid.New(), CustomerId: custBusiness}), http.StatusForbidden, "create without quotes-manage")
-	mustStatus(t, r.Do(http.MethodPost, quotePath(q.Id, "mark-sent"), gen.OrdersMarkSentInput{Revision: 1}), http.StatusForbidden, "mark sent without quotes-manage")
+	mustStatus(t, r.Do(http.MethodPost, quotePath(q.Id, "mark-sent"), gen.OrdersMarkSentInput{ExpectedUpdatedAt: quoteAt(t, r, q.Id), Revision: 1}), http.StatusForbidden, "mark sent without quotes-manage")
 	mustStatus(t, quoterClient.Do(http.MethodGet, settingsPath, nil), http.StatusForbidden, "settings without orders:settings")
 	mustStatus(t, quoterClient.Do(http.MethodPost, templatesPath, gen.OrdersTemplateInput{Name: "X"}), http.StatusForbidden, "a template without orders:settings")
 	mustStatus(t, r.Do(http.MethodGet, templatesPath, nil), http.StatusOK, "templates with access")

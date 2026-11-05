@@ -742,9 +742,11 @@ func (e ListQuotesParamsStatus) Valid() bool {
 
 // OrdersAcceptInput Accept a sent (or expired) quote (O20, O21): which optional lines the customer took, and what to make. confirmed_order also needs orders:sales-confirm.
 type OrdersAcceptInput struct {
-	Into            OrdersAcceptInputInto `json:"into"`
-	OptionalLineIds *[]int64              `json:"optionalLineIds,omitempty"`
-	Revision        int32                 `json:"revision"`
+	// ExpectedUpdatedAt The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+	ExpectedUpdatedAt time.Time             `json:"expectedUpdatedAt"`
+	Into              OrdersAcceptInputInto `json:"into"`
+	OptionalLineIds   *[]int64              `json:"optionalLineIds,omitempty"`
+	Revision          int32                 `json:"revision"`
 }
 
 // OrdersAcceptInputInto defines model for OrdersAcceptInput.Into.
@@ -773,9 +775,11 @@ type OrdersAddress struct {
 
 // OrdersApplyTemplateInput Apply a template to a draft quote (O23): its lines are appended, or replace the quote's with replace; empty texts are filled.
 type OrdersApplyTemplateInput struct {
-	Replace    *bool `json:"replace,omitempty"`
-	Revision   int32 `json:"revision"`
-	TemplateId int64 `json:"templateId"`
+	// ExpectedUpdatedAt The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+	ExpectedUpdatedAt time.Time `json:"expectedUpdatedAt"`
+	Replace           *bool     `json:"replace,omitempty"`
+	Revision          int32     `json:"revision"`
+	TemplateId        int64     `json:"templateId"`
 }
 
 // OrdersChange One entry of an order's change log (O26).
@@ -853,14 +857,18 @@ type OrdersCustomerSummary struct {
 
 // OrdersDeclineInput Decline a sent quote, with an optional reason.
 type OrdersDeclineInput struct {
-	Reason   *string `json:"reason,omitempty"`
-	Revision int32   `json:"revision"`
+	// ExpectedUpdatedAt The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+	ExpectedUpdatedAt time.Time `json:"expectedUpdatedAt"`
+	Reason            *string   `json:"reason,omitempty"`
+	Revision          int32     `json:"revision"`
 }
 
 // OrdersDeliveredInput Register delivered, or undo (O32): per-line quantities; a line left out is not changed.
 type OrdersDeliveredInput struct {
-	Lines   []OrdersDeliveredLine `json:"lines"`
-	Version int32                 `json:"version"`
+	// ExpectedUpdatedAt The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+	ExpectedUpdatedAt time.Time             `json:"expectedUpdatedAt"`
+	Lines             []OrdersDeliveredLine `json:"lines"`
+	Version           int32                 `json:"version"`
 }
 
 // OrdersDeliveredLine One line's delivered quantity to add or take away.
@@ -883,8 +891,10 @@ type OrdersDocumentRefKind string
 
 // OrdersHoldInput Hold an order (O18), with a reason.
 type OrdersHoldInput struct {
-	Reason  *string `json:"reason,omitempty"`
-	Version int32   `json:"version"`
+	// ExpectedUpdatedAt The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+	ExpectedUpdatedAt time.Time `json:"expectedUpdatedAt"`
+	Reason            *string   `json:"reason,omitempty"`
+	Version           int32     `json:"version"`
 }
 
 // OrdersLine A line of a quote or an order (O15). A section or a note has only its text and position. The amounts are Invoices' own (O17); VAT is per document. The quantity buckets are an order line's and stay 0 on a quote.
@@ -1025,8 +1035,10 @@ type OrdersMailingList struct {
 
 // OrdersMarkSentInput Mark a draft quote as sent by other means (O20); validUntil defaults as on send.
 type OrdersMarkSentInput struct {
-	Revision   int32               `json:"revision"`
-	ValidUntil *openapi_types.Date `json:"validUntil,omitempty"`
+	// ExpectedUpdatedAt The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+	ExpectedUpdatedAt time.Time           `json:"expectedUpdatedAt"`
+	Revision          int32               `json:"revision"`
+	ValidUntil        *openapi_types.Date `json:"validUntil,omitempty"`
 }
 
 // OrdersMeta What the Orders screens need of the settings, under orders:access.
@@ -1087,10 +1099,12 @@ type OrdersOrder struct {
 	Status        OrdersOrderStatus `json:"status"`
 
 	// Totals The document's totals in its currency, leaving out a quote's optional lines (O17, O21).
-	Totals        OrdersTotals `json:"totals"`
-	UpdatedAt     time.Time    `json:"updatedAt"`
-	Version       int32        `json:"version"`
-	YourReference string       `json:"yourReference"`
+	Totals OrdersTotals `json:"totals"`
+
+	// UpdatedAt When the document was last written: the concurrency token every write sends back as expectedUpdatedAt (O26).
+	UpdatedAt     time.Time `json:"updatedAt"`
+	Version       int32     `json:"version"`
+	YourReference string    `json:"yourReference"`
 }
 
 // OrdersOrderDeliveryStatus defines model for OrdersOrder.DeliveryStatus.
@@ -1166,15 +1180,18 @@ type OrdersOrderSummaryInvoiceStatus string
 // OrdersOrderSummaryStatus defines model for OrdersOrderSummary.Status.
 type OrdersOrderSummaryStatus string
 
-// OrdersOrderUpdate An order's save: the header and every line, replaced whole, lines naming their ids kept (O15). A confirmed order takes only what O26 allows. version is the one the editor read (version_conflict otherwise).
+// OrdersOrderUpdate An order's save: the header and every line, replaced whole, lines naming their ids kept (O15); a kept line's kind never changes (line_kind_changed) — remove it and add a new one. A confirmed order takes only what O26 allows, and its kept lines keep their frozen item, name, unit and VAT. version is the one the editor read (version_conflict otherwise).
 type OrdersOrderUpdate struct {
-	ClosingText       *string                    `json:"closingText,omitempty"`
-	ContactId         *int32                     `json:"contactId,omitempty"`
-	Currency          *string                    `json:"currency,omitempty"`
-	CustomerId        int32                      `json:"customerId"`
-	DeliveryAddressId *int32                     `json:"deliveryAddressId,omitempty"`
-	DeliveryDate      *openapi_types.Date        `json:"deliveryDate,omitempty"`
-	DiscountVisible   *bool                      `json:"discountVisible,omitempty"`
+	ClosingText       *string             `json:"closingText,omitempty"`
+	ContactId         *int32              `json:"contactId,omitempty"`
+	Currency          *string             `json:"currency,omitempty"`
+	CustomerId        int32               `json:"customerId"`
+	DeliveryAddressId *int32              `json:"deliveryAddressId,omitempty"`
+	DeliveryDate      *openapi_types.Date `json:"deliveryDate,omitempty"`
+	DiscountVisible   *bool               `json:"discountVisible,omitempty"`
+
+	// ExpectedUpdatedAt The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+	ExpectedUpdatedAt time.Time                  `json:"expectedUpdatedAt"`
 	InternalNote      *string                    `json:"internalNote,omitempty"`
 	IntroText         *string                    `json:"introText,omitempty"`
 	Language          *OrdersOrderUpdateLanguage `json:"language,omitempty"`
@@ -1210,7 +1227,7 @@ type OrdersPerson struct {
 	UserId      *openapi_types.UUID `json:"userId,omitempty"`
 }
 
-// OrdersProblem An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version or revision), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_has_progress, line_invoiced, line_has_progress, line_in_draft_invoice, client_request_reused, template_name_taken. 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// OrdersProblem An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice, client_request_reused, template_name_taken. 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type OrdersProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1276,7 +1293,9 @@ type OrdersQuote struct {
 	Status      OrdersQuoteStatus `json:"status"`
 
 	// Totals The document's totals in its currency, leaving out a quote's optional lines (O17, O21).
-	Totals        OrdersTotals        `json:"totals"`
+	Totals OrdersTotals `json:"totals"`
+
+	// UpdatedAt When the document was last written: the concurrency token every write sends back as expectedUpdatedAt (O26).
 	UpdatedAt     time.Time           `json:"updatedAt"`
 	ValidUntil    *openapi_types.Date `json:"validUntil,omitempty"`
 	YourReference string              `json:"yourReference"`
@@ -1343,13 +1362,16 @@ type OrdersQuoteSummaryStatus string
 
 // OrdersQuoteUpdate A draft quote's save: the header and every line, replaced whole (O15). revision is the one the editor read.
 type OrdersQuoteUpdate struct {
-	ClosingText       *string                    `json:"closingText,omitempty"`
-	ContactId         *int32                     `json:"contactId,omitempty"`
-	Currency          *string                    `json:"currency,omitempty"`
-	CustomerId        int32                      `json:"customerId"`
-	DeliveryAddressId *int32                     `json:"deliveryAddressId,omitempty"`
-	DeliveryDate      *openapi_types.Date        `json:"deliveryDate,omitempty"`
-	DiscountVisible   *bool                      `json:"discountVisible,omitempty"`
+	ClosingText       *string             `json:"closingText,omitempty"`
+	ContactId         *int32              `json:"contactId,omitempty"`
+	Currency          *string             `json:"currency,omitempty"`
+	CustomerId        int32               `json:"customerId"`
+	DeliveryAddressId *int32              `json:"deliveryAddressId,omitempty"`
+	DeliveryDate      *openapi_types.Date `json:"deliveryDate,omitempty"`
+	DiscountVisible   *bool               `json:"discountVisible,omitempty"`
+
+	// ExpectedUpdatedAt The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+	ExpectedUpdatedAt time.Time                  `json:"expectedUpdatedAt"`
 	InternalNote      *string                    `json:"internalNote,omitempty"`
 	IntroText         *string                    `json:"introText,omitempty"`
 	Language          *OrdersQuoteUpdateLanguage `json:"language,omitempty"`
@@ -1368,7 +1390,9 @@ type OrdersQuoteUpdateLanguage string
 
 // OrdersRevisionInput The revision the client read.
 type OrdersRevisionInput struct {
-	Revision int32 `json:"revision"`
+	// ExpectedUpdatedAt The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+	ExpectedUpdatedAt time.Time `json:"expectedUpdatedAt"`
+	Revision          int32     `json:"revision"`
 }
 
 // OrdersSalesperson A user who may sell.
@@ -1402,13 +1426,16 @@ type OrdersSendChannel struct {
 
 // OrdersSendInput A send from the dialog (O25): the recipient defaults to the contact's e-mail, else the customer's invoice e-mail. revision for a quote, version for an order.
 type OrdersSendInput struct {
-	Cc         *[]openapi_types.Email `json:"cc,omitempty"`
-	Message    *string                `json:"message,omitempty"`
-	Recipient  openapi_types.Email    `json:"recipient"`
-	Revision   *int32                 `json:"revision,omitempty"`
-	Subject    *string                `json:"subject,omitempty"`
-	ValidUntil *openapi_types.Date    `json:"validUntil,omitempty"`
-	Version    *int32                 `json:"version,omitempty"`
+	Cc *[]openapi_types.Email `json:"cc,omitempty"`
+
+	// ExpectedUpdatedAt The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+	ExpectedUpdatedAt time.Time           `json:"expectedUpdatedAt"`
+	Message           *string             `json:"message,omitempty"`
+	Recipient         openapi_types.Email `json:"recipient"`
+	Revision          *int32              `json:"revision,omitempty"`
+	Subject           *string             `json:"subject,omitempty"`
+	ValidUntil        *openapi_types.Date `json:"validUntil,omitempty"`
+	Version           *int32              `json:"version,omitempty"`
 }
 
 // OrdersSettings Orders' settings. nextQuoteNumber and nextOrderNumber are the numbers the series hand out next; a series start may only rise above the highest number used (O12). sendingAvailable says whether Communications is on.
@@ -1616,7 +1643,9 @@ type OrdersVatSummary struct {
 
 // OrdersVersionInput The version the client read.
 type OrdersVersionInput struct {
-	Version int32 `json:"version"`
+	// ExpectedUpdatedAt The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+	ExpectedUpdatedAt time.Time `json:"expectedUpdatedAt"`
+	Version           int32     `json:"version"`
 }
 
 // ListSalesOrdersParams defines parameters for ListSalesOrders.
@@ -1654,6 +1683,12 @@ type ListSalesOrdersParamsDeliveryStatus string
 // ListSalesOrdersParamsInvoiceStatus defines parameters for ListSalesOrders.
 type ListSalesOrdersParamsInvoiceStatus string
 
+// DeleteSalesOrderParams defines parameters for DeleteSalesOrder.
+type DeleteSalesOrderParams struct {
+	// ExpectedUpdatedAt The updatedAt of the document as the client read it (version_conflict otherwise).
+	ExpectedUpdatedAt time.Time `form:"expectedUpdatedAt" json:"expectedUpdatedAt"`
+}
+
 // GetSalesOrderPdfParams defines parameters for GetSalesOrderPdf.
 type GetSalesOrderPdfParams struct {
 	// Version A stored version's PDF; the current one when absent.
@@ -1676,6 +1711,12 @@ type ListQuotesParams struct {
 
 // ListQuotesParamsStatus defines parameters for ListQuotes.
 type ListQuotesParamsStatus string
+
+// DeleteQuoteParams defines parameters for DeleteQuote.
+type DeleteQuoteParams struct {
+	// ExpectedUpdatedAt The updatedAt of the document as the client read it (version_conflict otherwise).
+	ExpectedUpdatedAt time.Time `form:"expectedUpdatedAt" json:"expectedUpdatedAt"`
+}
 
 // GetQuotePdfParams defines parameters for GetQuotePdf.
 type GetQuotePdfParams struct {
@@ -1791,7 +1832,7 @@ type ServerInterface interface {
 	CreateSalesOrder(w http.ResponseWriter, r *http.Request)
 	// DeleteSalesOrder Delete a draft order
 	// (DELETE /api/v1/orders/orders/{id})
-	DeleteSalesOrder(w http.ResponseWriter, r *http.Request, id int64)
+	DeleteSalesOrder(w http.ResponseWriter, r *http.Request, id int64, params DeleteSalesOrderParams)
 	// GetSalesOrder Get an order
 	// (GET /api/v1/orders/orders/{id})
 	GetSalesOrder(w http.ResponseWriter, r *http.Request, id int64)
@@ -1851,7 +1892,7 @@ type ServerInterface interface {
 	CreateQuote(w http.ResponseWriter, r *http.Request)
 	// DeleteQuote Delete a draft quote
 	// (DELETE /api/v1/orders/quotes/{id})
-	DeleteQuote(w http.ResponseWriter, r *http.Request, id int64)
+	DeleteQuote(w http.ResponseWriter, r *http.Request, id int64, params DeleteQuoteParams)
 	// GetQuote Get a quote
 	// (GET /api/v1/orders/quotes/{id})
 	GetQuote(w http.ResponseWriter, r *http.Request, id int64)
@@ -2151,8 +2192,24 @@ func (siw *ServerInterfaceWrapper) DeleteSalesOrder(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteSalesOrderParams
+
+	// ------------- Required query parameter "expectedUpdatedAt" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "expectedUpdatedAt", r.URL.Query(), &params.ExpectedUpdatedAt, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "expectedUpdatedAt"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "expectedUpdatedAt", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteSalesOrder(w, r, id)
+		siw.Handler.DeleteSalesOrder(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2747,8 +2804,24 @@ func (siw *ServerInterfaceWrapper) DeleteQuote(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteQuoteParams
+
+	// ------------- Required query parameter "expectedUpdatedAt" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "expectedUpdatedAt", r.URL.Query(), &params.ExpectedUpdatedAt, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "expectedUpdatedAt"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "expectedUpdatedAt", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteQuote(w, r, id)
+		siw.Handler.DeleteQuote(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3825,7 +3898,8 @@ func (response CreateSalesOrder503ApplicationProblemPlusJSONResponse) VisitCreat
 }
 
 type DeleteSalesOrderRequestObject struct {
-	Id int64 `json:"id"`
+	Id     int64 `json:"id"`
+	Params DeleteSalesOrderParams
 }
 
 type DeleteSalesOrderResponseObject interface {
@@ -5337,7 +5411,8 @@ func (response CreateQuote503ApplicationProblemPlusJSONResponse) VisitCreateQuot
 }
 
 type DeleteQuoteRequestObject struct {
-	Id int64 `json:"id"`
+	Id     int64 `json:"id"`
+	Params DeleteQuoteParams
 }
 
 type DeleteQuoteResponseObject interface {
@@ -7348,10 +7423,11 @@ func (sh *strictHandler) CreateSalesOrder(w http.ResponseWriter, r *http.Request
 }
 
 // DeleteSalesOrder operation middleware
-func (sh *strictHandler) DeleteSalesOrder(w http.ResponseWriter, r *http.Request, id int64) {
+func (sh *strictHandler) DeleteSalesOrder(w http.ResponseWriter, r *http.Request, id int64, params DeleteSalesOrderParams) {
 	var request DeleteSalesOrderRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.DeleteSalesOrder(ctx, request.(DeleteSalesOrderRequestObject))
@@ -7951,10 +8027,11 @@ func (sh *strictHandler) CreateQuote(w http.ResponseWriter, r *http.Request) {
 }
 
 // DeleteQuote operation middleware
-func (sh *strictHandler) DeleteQuote(w http.ResponseWriter, r *http.Request, id int64) {
+func (sh *strictHandler) DeleteQuote(w http.ResponseWriter, r *http.Request, id int64, params DeleteQuoteParams) {
 	var request DeleteQuoteRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.DeleteQuote(ctx, request.(DeleteQuoteRequestObject))

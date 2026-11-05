@@ -245,12 +245,12 @@ func TestVariantReferenceHolder_CountsOpenDocuments(t *testing.T) {
 	if got := held(contracts.VariantHoldTypeChange); got != nil {
 		t.Errorf("a type change was held %+v", got)
 	}
-	mustStatus(t, c.Do(http.MethodPost, quotePath(q.Id, "cancel"), gen.OrdersRevisionInput{Revision: 1}), http.StatusOK, "cancel the quote")
+	mustStatus(t, c.Do(http.MethodPost, quotePath(q.Id, "cancel"), gen.OrdersRevisionInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1}), http.StatusOK, "cancel the quote")
 	deliver(t, c, o, o.Lines[0].Id, 2) // delivered, but not invoiced: still not done
 	if got := held(contracts.VariantHoldDelete); got == nil || got.Documents != 1 {
 		t.Errorf("hold %+v; want the order still open", got)
 	}
-	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "cancel-remaining"), gen.OrdersVersionInput{Version: 1}), http.StatusOK, "cancel remaining")
+	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "cancel-remaining"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, o.Id), Version: 1}), http.StatusOK, "cancel remaining")
 	h.Exec(t, `UPDATE orders.lines SET qty_invoiced = quantity WHERE owner_kind = 'order' AND owner_id = $1`, o.Id)
 	if got := held(contracts.VariantHoldDelete); got != nil {
 		t.Errorf("hold %+v after the order's line is done", got)
@@ -342,7 +342,7 @@ func TestQuoteExpiry(t *testing.T) {
 	if quoteOf(t, res).Status != gen.OrdersQuoteStatusSent {
 		t.Error("a quote still valid expired")
 	}
-	mustStatus(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{Revision: 1, Into: gen.DraftOrder}), http.StatusOK, "accept an expired quote")
+	mustStatus(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.DraftOrder}), http.StatusOK, "accept an expired quote")
 }
 
 // The workers never hold a connection while asking for another: each cycle

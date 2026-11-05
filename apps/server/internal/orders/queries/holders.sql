@@ -1,11 +1,20 @@
 -- name: RepointCustomerQuotes :execrows
 -- RepointCustomerQuotes moves every quote of a merged-away customer to the
 -- surviving one (O29). The snapshot is left as it is: a frozen quote keeps
--- the customer as it was when it was sent.
-UPDATE orders.quotes SET customer_id = sqlc.arg(into_customer_id) WHERE customer_id = sqlc.arg(from_customer_id);
+-- the customer as it was when it was sent. updated_at moves, so an editor
+-- holding a quote from before the merge is stale and cannot write the
+-- merged-away customer back.
+UPDATE orders.quotes SET customer_id = sqlc.arg(into_customer_id), updated_at = now()
+WHERE customer_id = sqlc.arg(from_customer_id);
 
 -- name: RepointCustomerOrders :execrows
-UPDATE orders.orders SET customer_id = sqlc.arg(into_customer_id) WHERE customer_id = sqlc.arg(from_customer_id);
+-- RepointCustomerOrders is the orders'. A draft's updated_at moves as a
+-- quote's does; a confirmed or cancelled order's stays, since it is the
+-- moment a done order's retention runs from, and its customer is frozen.
+UPDATE orders.orders
+SET customer_id = sqlc.arg(into_customer_id),
+    updated_at = CASE WHEN status = 'draft' THEN now() ELSE updated_at END
+WHERE customer_id = sqlc.arg(from_customer_id);
 
 -- name: CustomerQuotes :many
 -- CustomerQuotes is every quote of a customer, oldest first, for the export.
@@ -46,31 +55,39 @@ UPDATE orders.quotes SET
     delivery_address_id = NULL, delivery_name = NULL, delivery_address_line1 = NULL, delivery_address_line2 = NULL,
     delivery_postal_code = NULL, delivery_city = NULL,
     contact_id = NULL, contact_name = NULL, contact_email = NULL, contact_phone = NULL,
-    customer_invoice_email = NULL, your_reference = '', internal_note = '', anonymised_at = sqlc.arg(now)
+    customer_invoice_email = NULL, your_reference = '', internal_note = '', anonymised_at = sqlc.arg(now),
+    updated_at = sqlc.arg(now)
 WHERE customer_id = sqlc.arg(customer_id) AND anonymised_at IS NULL;
 
 -- name: AnonymiseCustomerOrders :execrows
 -- AnonymiseCustomerOrders takes the person out of a customer's orders that
 -- are no record (O29, O54): every order never confirmed — a draft, or one
 -- cancelled as a draft — when cutoff is NULL; and, for the retention sweep,
--- every confirmed order whose retention has run: cancelled, or done
--- (confirmed, delivered and invoiced), before cutoff. The column list is the
--- quotes'.
-UPDATE orders.orders SET
+-- every confirmed order whose retention has run: cancelled, or done, before
+-- cutoff. Done is ListOrders' rule: confirmed with every product line's
+-- cancelled and invoiced covering what was ordered. The column list is the
+-- quotes'; updated_at moves, so an editor holding the order before is stale.
+UPDATE orders.orders o SET
     customer_name = '', customer_organisation_number = NULL, customer_foreign_id = NULL,
     invoice_address_line1 = NULL, invoice_address_line2 = NULL, invoice_postal_code = NULL, invoice_city = NULL,
     delivery_address_id = NULL, delivery_name = NULL, delivery_address_line1 = NULL, delivery_address_line2 = NULL,
     delivery_postal_code = NULL, delivery_city = NULL,
     contact_id = NULL, contact_name = NULL, contact_email = NULL, contact_phone = NULL,
-    customer_invoice_email = NULL, your_reference = '', internal_note = '', anonymised_at = sqlc.arg(now)
-WHERE customer_id = sqlc.arg(customer_id) AND anonymised_at IS NULL
+    customer_invoice_email = NULL, your_reference = '', internal_note = '', anonymised_at = sqlc.arg(now),
+    updated_at = sqlc.arg(now)
+WHERE o.customer_id = sqlc.arg(customer_id) AND o.anonymised_at IS NULL
   AND (
-      (sqlc.narg(cutoff)::timestamptz IS NULL AND confirmed_at IS NULL)
+      (sqlc.narg(cutoff)::timestamptz IS NULL AND o.confirmed_at IS NULL)
       OR (sqlc.narg(cutoff)::timestamptz IS NOT NULL AND (
-          confirmed_at IS NULL
-          OR (status = 'cancelled' AND cancelled_at < sqlc.narg(cutoff)::timestamptz)
-          OR (status = 'confirmed' AND delivery_status = 'delivered' AND invoice_status = 'invoiced'
-              AND updated_at < sqlc.narg(cutoff)::timestamptz)))
+          o.confirmed_at IS NULL
+          OR (o.status = 'cancelled' AND o.cancelled_at < sqlc.narg(cutoff)::timestamptz)
+          OR (o.status = 'confirmed' AND o.updated_at < sqlc.narg(cutoff)::timestamptz
+              AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                          AND l.kind = 'product' AND l.quantity IS NOT NULL)
+              AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                          AND l.kind = 'product' AND l.quantity IS NOT NULL
+                          AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                               OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity)))))
   );
 
 -- name: KeptOrderNumbers :many
@@ -108,10 +125,41 @@ LIMIT sqlc.arg(batch_size)::integer;
 
 -- name: CompleteErasure :execrows
 -- CompleteErasure marks an erasure done once none of the customer's orders
--- holds the person any more.
+-- holds the person any more and no stored PDF of theirs is left.
 UPDATE orders.erasures SET completed_at = sqlc.arg(now)
 WHERE orders.erasures.customer_id = sqlc.arg(customer_id) AND completed_at IS NULL
-  AND NOT EXISTS (SELECT 1 FROM orders.orders o WHERE o.customer_id = orders.erasures.customer_id AND o.anonymised_at IS NULL);
+  AND NOT EXISTS (SELECT 1 FROM orders.orders o WHERE o.customer_id = orders.erasures.customer_id AND o.anonymised_at IS NULL)
+  AND NOT EXISTS (SELECT 1 FROM orders.documents d
+                  WHERE (d.owner_kind = 'quote' AND d.owner_id IN (SELECT q.id FROM orders.quotes q WHERE q.customer_id = orders.erasures.customer_id))
+                     OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = orders.erasures.customer_id)));
+
+-- name: CustomerHasDocuments :one
+-- CustomerHasDocuments reports whether any quote or order of a customer has a
+-- stored PDF: the erase records the customer then, so the retention sweep
+-- deletes the PDFs of what was anonymised.
+SELECT EXISTS (SELECT 1 FROM orders.documents d
+               WHERE (d.owner_kind = 'quote' AND d.owner_id IN (SELECT q.id FROM orders.quotes q WHERE q.customer_id = sqlc.arg(customer_id)))
+                  OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = sqlc.arg(customer_id))))::boolean;
+
+-- name: ErasedDocuments :many
+-- ErasedDocuments is the stored PDFs of a customer's anonymised quotes and
+-- orders (O29, O54): a quote's at once after the erase, a confirmed order's
+-- once its retention has run and it was anonymised. The PDF prints the
+-- person, so it goes with them.
+SELECT d.* FROM orders.documents d
+WHERE (d.owner_kind = 'quote' AND d.owner_id IN (SELECT q.id FROM orders.quotes q
+                                                 WHERE q.customer_id = sqlc.arg(customer_id) AND q.anonymised_at IS NOT NULL))
+   OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o
+                                                 WHERE o.customer_id = sqlc.arg(customer_id) AND o.anonymised_at IS NOT NULL))
+ORDER BY d.id;
+
+-- name: DetachDocumentMailings :exec
+-- DetachDocumentMailings unlinks the sends of a stored PDF about to be
+-- deleted; the send rows stay, blanked, as the record that a send was made.
+UPDATE orders.mailings SET document_id = NULL WHERE document_id = sqlc.arg(document_id);
+
+-- name: DeleteDocumentRow :execrows
+DELETE FROM orders.documents WHERE id = sqlc.arg(id);
 
 -- name: OpenDocumentsOfVariant :one
 -- OpenDocumentsOfVariant is how many open documents name a variant (O30): a

@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -205,6 +207,34 @@ func quotePath(id int64, rest ...string) string {
 
 func templatePath(id int64) string { return fmt.Sprintf("%s/%d", templatesPath, id) }
 
+// quoteAt and orderAt are a quote's and an order's updatedAt as c reads it
+// now: the concurrency token a write sends back (expectedUpdatedAt). A
+// document c cannot read answers the zero time.
+func quoteAt(t *testing.T, c *modtest.Client, id int64) time.Time {
+	t.Helper()
+	res := c.Do(http.MethodGet, quotePath(id), nil)
+	if res.Status != http.StatusOK {
+		return time.Time{}
+	}
+	return quoteOf(t, res).UpdatedAt
+}
+
+func orderAt(t *testing.T, c *modtest.Client, id int64) time.Time {
+	t.Helper()
+	res := c.Do(http.MethodGet, fmt.Sprintf("/api/v1/orders/orders/%d", id), nil)
+	if res.Status != http.StatusOK {
+		return time.Time{}
+	}
+	var o gen.OrdersOrder
+	res.JSON(&o)
+	return o.UpdatedAt
+}
+
+// withUpdatedAt is a delete's path with its expectedUpdatedAt.
+func withUpdatedAt(path string, at time.Time) string {
+	return path + "?expectedUpdatedAt=" + url.QueryEscape(at.Format(time.RFC3339Nano))
+}
+
 // mustStatus fails the test unless res answered want.
 func mustStatus(t *testing.T, res *modtest.Response, want int, what string) {
 	t.Helper()
@@ -261,7 +291,7 @@ func createQuote(t *testing.T, c *modtest.Client, customer int32, lines ...gen.O
 // markSent marks a draft quote as sent and answers it.
 func markSent(t *testing.T, c *modtest.Client, q gen.OrdersQuote) gen.OrdersQuote {
 	t.Helper()
-	res := c.Do(http.MethodPost, quotePath(q.Id, "mark-sent"), gen.OrdersMarkSentInput{Revision: q.Revision})
+	res := c.Do(http.MethodPost, quotePath(q.Id, "mark-sent"), gen.OrdersMarkSentInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: q.Revision})
 	mustStatus(t, res, http.StatusOK, "mark sent")
 	return quoteOf(t, res)
 }

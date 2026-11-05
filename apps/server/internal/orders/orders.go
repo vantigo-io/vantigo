@@ -94,12 +94,13 @@ func logChange(ctx context.Context, txq *store.Queries, orderID int64, version i
 }
 
 // judgeVersion refuses a write made from a version of the order that is not
-// its current one (O26).
-func judgeVersion(o store.OrdersOrder, version int32) error {
+// its current one (O26), or from a read older than its last write
+// (judgeFresh: the expectedUpdatedAt every write sends).
+func judgeVersion(o store.OrdersOrder, version int32, expected time.Time) error {
 	if o.Version != version {
 		return versionConflict("order's version", o.Version, version)
 	}
-	return nil
+	return judgeFresh("order", o.UpdatedAt, expected)
 }
 
 // judgeConfirmed refuses a write that needs a confirmed order.
@@ -268,12 +269,13 @@ func (s *server) ListSalesOrders(ctx context.Context, req gen.ListSalesOrdersReq
 			return fmt.Errorf("orders: count orders: %w", err)
 		}
 		out.Total = total
-		for _, r := range rows {
+		for _, row := range rows {
+			r := row.OrdersOrder
 			out.Items = append(out.Items, gen.OrdersOrderSummary{
 				Id: r.ID, Number: r.Number, Status: gen.OrdersOrderSummaryStatus(r.Status), OnHold: r.OnHold, Locked: r.Locked,
 				DeliveryStatus: gen.OrdersOrderSummaryDeliveryStatus(r.DeliveryStatus),
 				InvoiceStatus:  gen.OrdersOrderSummaryInvoiceStatus(r.InvoiceStatus),
-				Done:           isDone(r), CustomerId: r.CustomerID, CustomerName: r.CustomerName, Currency: r.Currency,
+				Done:           row.Done, CustomerId: r.CustomerID, CustomerName: r.CustomerName, Currency: r.Currency,
 				Net: wire(ratOrZero(r.NetTotal), amountPlaces), Gross: wire(ratOrZero(r.GrossTotal), amountPlaces),
 				Salesperson: personOut(r.SalespersonID, r.SalespersonDisplay), DeliveryDate: dateOut(r.DeliveryDate),
 				UpdatedAt: r.UpdatedAt,
@@ -287,10 +289,33 @@ func (s *server) ListSalesOrders(ctx context.Context, req gen.ListSalesOrdersReq
 	return gen.ListSalesOrders200JSONResponse(out), nil
 }
 
-// isDone reports whether an order is done (O18): confirmed, delivered and
-// invoiced. It is shown, never stored.
-func isDone(o store.OrdersOrder) bool {
-	return o.Status == orderConfirmed && o.DeliveryStatus == progressDelivered && o.InvoiceStatus == progressInvoiced
+// isDone reports whether an order is done (O18): confirmed, with every
+// product line satisfied — what is cancelled and invoiced covers what was
+// ordered, and so do cancelled and the larger of delivered and invoiced. An
+// order whose remainder was cancelled whole is done; one delivered and not
+// invoiced waits for its invoice. It is shown, never stored; ListOrders and
+// the retention sweep (AnonymiseCustomerOrders) carry the same rule in SQL.
+func isDone(o store.OrdersOrder, lines []store.OrdersLine) bool {
+	if o.Status != orderConfirmed {
+		return false
+	}
+	products := 0
+	for _, l := range lines {
+		if l.Kind != kindProduct || !l.Quantity.Valid {
+			continue
+		}
+		products++
+		ordered, cancelled := ratOf(l.Quantity), ratOrZero(l.QtyCancelled)
+		delivered, invoiced := ratOrZero(l.QtyDelivered), ratOrZero(l.QtyInvoiced)
+		done := delivered
+		if invoiced.Cmp(done) > 0 {
+			done = invoiced
+		}
+		if new(big.Rat).Add(cancelled, invoiced).Cmp(ordered) < 0 || new(big.Rat).Add(cancelled, done).Cmp(ordered) < 0 {
+			return false
+		}
+	}
+	return products > 0
 }
 
 // GetSalesOrder Get an order
@@ -307,9 +332,48 @@ func (s *server) GetSalesOrder(ctx context.Context, req gen.GetSalesOrderRequest
 // (DELETE /api/v1/orders/orders/{id})
 //
 // Only a draft is deleted (O54) — a confirmed or cancelled order is a record
-// and is kept; its number is left a gap (O12).
+// and is kept; its number is left a gap (O12). expectedUpdatedAt is the order
+// as the client read it (version_conflict). A draft accepted from a quote puts
+// that quote back to sent, on the same transaction, so it can be accepted
+// again: nothing is logged on the quote but its updated_at, and nothing is
+// published. The quote's variants are locked first (MB rule 21) — a quote sent
+// again holds them against a delete (O30) — then the quote, then the order:
+// quotes before orders, the erase's order.
 func (s *server) DeleteSalesOrder(ctx context.Context, req gen.DeleteSalesOrderRequestObject) (gen.DeleteSalesOrderResponseObject, error) {
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	resp := answers[gen.DeleteSalesOrderResponseObject]{
+		notFound: func() gen.DeleteSalesOrderResponseObject { return gen.DeleteSalesOrder404Response{} },
+		conflict: func(p gen.OrdersProblem) gen.DeleteSalesOrderResponseObject {
+			return gen.DeleteSalesOrder409ApplicationProblemPlusJSONResponse(p)
+		},
+	}
+	q := store.New(s.deps.Pool)
+	cur, err := q.OrderByID(ctx, req.Id)
+	if noRows(err) {
+		return gen.DeleteSalesOrder404Response{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("orders: read order %d: %w", req.Id, err)
+	}
+	quoteID := sourceQuoteID(cur)
+	var variants []int32
+	if quoteID != nil {
+		lines, err := linesOf(ctx, q, ownerQuote, *quoteID)
+		if err != nil {
+			return nil, err
+		}
+		variants = variantIDsOf(pricedLinesOf(lines))
+	}
+	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+		if len(variants) > 0 {
+			if _, err := s.lockVariants(ctx, tx, variants); err != nil {
+				return err
+			}
+		}
+		if quoteID != nil {
+			if _, err := txq.LockQuote(ctx, *quoteID); err != nil && !noRows(err) {
+				return fmt.Errorf("orders: lock quote %d: %w", *quoteID, err)
+			}
+		}
 		o, err := lockOrder(ctx, txq, req.Id)
 		if err != nil {
 			return err
@@ -318,21 +382,26 @@ func (s *server) DeleteSalesOrder(ctx context.Context, req gen.DeleteSalesOrderR
 			return conflict(codeOrderNotDraft, "The order cannot be deleted",
 				fmt.Sprintf("Order %d is %s; only a draft can be deleted. Cancel it instead.", o.Number, o.Status))
 		}
+		if err := judgeFresh("order", o.UpdatedAt, req.Params.ExpectedUpdatedAt); err != nil {
+			return err
+		}
 		if err := txq.DeleteLinesOf(ctx, store.DeleteLinesOfParams{OwnerKind: ownerOrder, OwnerID: o.ID}); err != nil {
 			return fmt.Errorf("orders: delete order %d's lines: %w", o.ID, err)
 		}
 		if _, err := txq.DeleteOrderRow(ctx, o.ID); err != nil {
 			return fmt.Errorf("orders: delete order %d: %w", o.ID, err)
 		}
+		if quoteID != nil {
+			// Only a quote still accepted into this very order goes back.
+			_, err := txq.RestoreAcceptedQuote(ctx, store.RestoreAcceptedQuoteParams{ID: *quoteID, OrderID: o.ID, Now: s.deps.Clock()})
+			if err != nil && !noRows(err) {
+				return fmt.Errorf("orders: put quote %d back to sent: %w", *quoteID, err)
+			}
+		}
 		return nil
 	})
 	if err != nil {
-		return answer(err, answers[gen.DeleteSalesOrderResponseObject]{
-			notFound: func() gen.DeleteSalesOrderResponseObject { return gen.DeleteSalesOrder404Response{} },
-			conflict: func(p gen.OrdersProblem) gen.DeleteSalesOrderResponseObject {
-				return gen.DeleteSalesOrder409ApplicationProblemPlusJSONResponse(p)
-			},
-		})
+		return answer(err, resp)
 	}
 	return gen.DeleteSalesOrder204Response{}, nil
 }

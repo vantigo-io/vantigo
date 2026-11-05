@@ -78,9 +78,11 @@ RETURNING *;
 
 -- name: MarkMailingSent :execrows
 -- MarkMailingSent records a claimed mailing as sent, only while it is still
--- queued under the claim's lease.
+-- queued under the claim's lease, with the version it sent: a confirmation
+-- queued at a version the order has moved past goes out at the order's
+-- version then.
 UPDATE orders.mailings
-SET status = 'sent', sent_at = sqlc.arg(now), attempts = attempts + 1, last_error = NULL,
+SET status = 'sent', sent_at = sqlc.arg(now), attempts = attempts + 1, last_error = NULL, version = sqlc.arg(version),
     next_attempt_at = NULL, document_id = coalesce(document_id, sqlc.narg(document_id)),
     channel_id = coalesce(channel_id, sqlc.narg(channel_id)), subject = sqlc.arg(subject)
 WHERE id = sqlc.arg(id) AND status = 'queued' AND next_attempt_at = sqlc.arg(lease_until)::timestamptz;

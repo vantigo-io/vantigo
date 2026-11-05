@@ -168,7 +168,7 @@ func CreateChannelOrder(ctx context.Context, d module.Deps, customerID int32, ch
 	if f.failed() {
 		return 0, false, fmt.Errorf("header: %v", f.errs)
 	}
-	priced, err := s.priceOrderInputs(ctx, []lineInput{{kind: kindProduct, variantID: &variant, quantity: &qty}}, nil, h, false)
+	priced, err := s.priceOrderInputs(ctx, []lineInput{{kind: kindProduct, variantID: &variant, quantity: &qty}}, nil, h, false, false)
 	if err != nil {
 		return 0, false, err
 	}

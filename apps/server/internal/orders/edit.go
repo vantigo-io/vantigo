@@ -70,7 +70,7 @@ func (s *server) UpdateSalesOrder(ctx context.Context, req gen.UpdateSalesOrderR
 	if err != nil {
 		return answer(err, resp)
 	}
-	if err := judgeVersion(cur, body.Version); err != nil {
+	if err := judgeVersion(cur, body.Version, body.ExpectedUpdatedAt); err != nil {
 		return answer(err, resp)
 	}
 	var out gen.OrdersOrder
@@ -111,7 +111,7 @@ func (s *server) saveDraftOrder(ctx context.Context, cur store.OrdersOrder, curL
 	if err != nil {
 		return gen.OrdersOrder{}, err
 	}
-	priced, err := s.priceOrderInputs(ctx, lineInputsOf(body.Lines), curLines, h, reprice)
+	priced, err := s.priceOrderInputs(ctx, lineInputsOf(body.Lines), curLines, h, reprice, false)
 	if err != nil {
 		return gen.OrdersOrder{}, err
 	}
@@ -124,7 +124,7 @@ func (s *server) saveDraftOrder(ctx context.Context, cur store.OrdersOrder, curL
 		if err != nil {
 			return err
 		}
-		if err := judgeVersion(o, body.Version); err != nil {
+		if err := judgeVersion(o, body.Version, body.ExpectedUpdatedAt); err != nil {
 			return err
 		}
 		if o.Status != orderDraft {
@@ -290,6 +290,9 @@ func judgeConfirmedLines(priced []pricedLine, current []store.OrdersLine) ([]cha
 			return nil, conflict(codeVersionConflict, "The order changed",
 				"A line of the order was removed while it was being saved. Reload it and try again.")
 		}
+		if o.Kind != p.kind {
+			return nil, lineKindChanged(o)
+		}
 		kept[o.ID] = true
 		id := o.ID
 		delivered, invoiced, cancelled := ratOrZero(o.QtyDelivered), ratOrZero(o.QtyInvoiced), ratOrZero(o.QtyCancelled)
@@ -365,9 +368,10 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 	if f.failed() {
 		return gen.OrdersOrder{}, refuseInvalid(invalidOrderTitle, f)
 	}
-	// Kept catalog lines keep their frozen price (O16); a new line takes
+	// Kept lines keep their frozen item, name, unit, VAT and price (O16,
+	// keptFrozen) unless the save names a new price; a new line takes
 	// today's list price.
-	priced, err := s.priceOrderInputs(ctx, lineInputsOf(body.Lines), curLines, h, false)
+	priced, err := s.priceOrderInputs(ctx, lineInputsOf(body.Lines), curLines, h, false, true)
 	if err != nil {
 		return gen.OrdersOrder{}, err
 	}
@@ -375,8 +379,13 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 	if err != nil {
 		return gen.OrdersOrder{}, err
 	}
-	// The variants of the lines kept, added and removed, all locked first.
-	locking := append(slices.Clone(priced), pricedLinesOf(curLines)...)
+	// The variants of the lines kept, added and removed, all locked first;
+	// only a new line's, or a line's whose item changed, must still exist.
+	locking := slices.Clone(priced)
+	for _, l := range pricedLinesOf(curLines) {
+		l.frozen = true
+		locking = append(locking, l)
+	}
 	var out gen.OrdersOrder
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		if err := s.lockLines(ctx, tx, invalidOrderTitle, locking); err != nil {
@@ -386,7 +395,7 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 		if err != nil {
 			return err
 		}
-		if err := judgeVersion(o, body.Version); err != nil {
+		if err := judgeVersion(o, body.Version, body.ExpectedUpdatedAt); err != nil {
 			return err
 		}
 		if err := judgeConfirmed(o); err != nil {

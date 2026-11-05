@@ -167,7 +167,7 @@ func TestUpdateQuote_RefreshesTheSnapshotAndRepricesWhenTheCurrencyMoves(t *test
 		}
 		return out
 	}
-	res := c.Do(http.MethodPut, quotePath(q.Id), gen.OrdersQuoteUpdate{Revision: q.Revision, CustomerId: custBusiness, Lines: keep(q)})
+	res := c.Do(http.MethodPut, quotePath(q.Id), gen.OrdersQuoteUpdate{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: q.Revision, CustomerId: custBusiness, Lines: keep(q)})
 	mustStatus(t, res, http.StatusOK, "save")
 	saved := quoteOf(t, res)
 	if saved.Customer.Name != "Acme Holding AS" {
@@ -180,7 +180,7 @@ func TestUpdateQuote_RefreshesTheSnapshotAndRepricesWhenTheCurrencyMoves(t *test
 		t.Errorf("coffee %v %s; want the manual 40 kept", *f.UnitPrice, *f.PriceSource)
 	}
 
-	res = c.Do(http.MethodPut, quotePath(q.Id), gen.OrdersQuoteUpdate{Revision: q.Revision, CustomerId: custBusiness, Currency: str("EUR"), Lines: keep(saved)})
+	res = c.Do(http.MethodPut, quotePath(q.Id), gen.OrdersQuoteUpdate{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: q.Revision, CustomerId: custBusiness, Currency: str("EUR"), Lines: keep(saved)})
 	mustStatus(t, res, http.StatusOK, "save in EUR")
 	eur := quoteOf(t, res)
 	if b := lineByVariant(t, eur, varBolt); b.UnitPrice == nil || *b.UnitPrice != 9.5 {
@@ -190,11 +190,11 @@ func TestUpdateQuote_RefreshesTheSnapshotAndRepricesWhenTheCurrencyMoves(t *test
 		t.Errorf("the manual price moved with the currency: %v", *f.UnitPrice)
 	}
 
-	expectRefusal(t, c.Do(http.MethodPut, quotePath(q.Id), gen.OrdersQuoteUpdate{Revision: 7, CustomerId: custBusiness, Lines: keep(eur)}),
+	expectRefusal(t, c.Do(http.MethodPut, quotePath(q.Id), gen.OrdersQuoteUpdate{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 7, CustomerId: custBusiness, Lines: keep(eur)}),
 		http.StatusConflict, "version_conflict", "stale revision")
-	res = c.Do(http.MethodPut, quotePath(q.Id), gen.OrdersQuoteUpdate{Revision: 1, CustomerId: custBusiness, DeliveryAddressId: i32(999), Lines: keep(eur)})
+	res = c.Do(http.MethodPut, quotePath(q.Id), gen.OrdersQuoteUpdate{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, CustomerId: custBusiness, DeliveryAddressId: i32(999), Lines: keep(eur)})
 	expectRefusal(t, res, http.StatusBadRequest, "", "an address the customer does not have")
-	mustStatus(t, c.Do(http.MethodPut, quotePath(999999), gen.OrdersQuoteUpdate{Revision: 1, CustomerId: custBusiness, Lines: nil}), http.StatusNotFound, "unknown quote")
+	mustStatus(t, c.Do(http.MethodPut, quotePath(999999), gen.OrdersQuoteUpdate{ExpectedUpdatedAt: quoteAt(t, c, 999999), Revision: 1, CustomerId: custBusiness, Lines: nil}), http.StatusNotFound, "unknown quote")
 }
 
 // A customer who buys including VAT enters gross prices; they are stored
@@ -239,7 +239,7 @@ func TestQuote_OptionalLinesAreLeftOutOfTheTotalsAndChosenAtAccept(t *testing.T)
 
 	sent := markSent(t, c, q)
 	optionalA := sent.Lines[1].Id
-	res = c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{Revision: sent.Revision, Into: gen.DraftOrder, OptionalLineIds: &[]int64{optionalA}})
+	res = c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: sent.Revision, Into: gen.DraftOrder, OptionalLineIds: &[]int64{optionalA}})
 	mustStatus(t, res, http.StatusOK, "accept")
 	var accepted gen.OrdersAccepted
 	res.JSON(&accepted)
@@ -261,13 +261,13 @@ func TestAcceptQuote_MakesADraftOrderOnce(t *testing.T) {
 	h := newHarness(t, harnessOptions{})
 	c := h.SignIn(t, quoter...)
 	q := createQuote(t, c, custBusiness, productLine(varBolt, 2))
-	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{Revision: 1, Into: gen.DraftOrder}),
+	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.DraftOrder}),
 		http.StatusConflict, "quote_not_sent", "accept a draft")
 	sent := markSent(t, c, q)
-	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{Revision: 1, Into: gen.DraftOrder, OptionalLineIds: &[]int64{sent.Lines[0].Id}}),
+	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.DraftOrder, OptionalLineIds: &[]int64{sent.Lines[0].Id}}),
 		http.StatusBadRequest, "", "a line that is not optional")
 
-	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{Revision: 1, Into: gen.DraftOrder})
+	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.DraftOrder})
 	mustStatus(t, res, http.StatusOK, "accept")
 	var a gen.OrdersAccepted
 	res.JSON(&a)
@@ -287,7 +287,7 @@ func TestAcceptQuote_MakesADraftOrderOnce(t *testing.T) {
 	if n := eventsNamed(t, h, "orders.quote.accepted", q.Id); n != 1 {
 		t.Errorf("%d accepted events, want 1", n)
 	}
-	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{Revision: 1, Into: gen.DraftOrder}),
+	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.DraftOrder}),
 		http.StatusConflict, "quote_already_accepted", "accept again")
 	got := c.Do(http.MethodGet, quotePath(q.Id), nil)
 	mustStatus(t, got, http.StatusOK, "get")
@@ -304,10 +304,10 @@ func TestAcceptQuote_AndConfirmNeedsTheConfirmKey(t *testing.T) {
 	h := newHarness(t, harnessOptions{})
 	c := h.SignIn(t, quoter...)
 	q := markSent(t, c, createQuote(t, c, custBusiness, productLine(varBolt, 1)))
-	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{Revision: 1, Into: gen.ConfirmedOrder})
+	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.ConfirmedOrder})
 	mustStatus(t, res, http.StatusForbidden, "accept and confirm without the key")
 	boss := h.SignIn(t, confirmer...)
-	res = boss.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{Revision: 1, Into: gen.ConfirmedOrder})
+	res = boss.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, boss, q.Id), Revision: 1, Into: gen.ConfirmedOrder})
 	mustStatus(t, res, http.StatusOK, "accept and confirm")
 	var got gen.OrdersAccepted
 	res.JSON(&got)
@@ -427,7 +427,7 @@ func TestQuote_DeleteCancelDeclineAndCopy(t *testing.T) {
 	h := newHarness(t, harnessOptions{})
 	c := h.SignIn(t, quoter...)
 	draft := createQuote(t, c, custBusiness, productLine(varBolt, 1))
-	mustStatus(t, c.Do(http.MethodDelete, quotePath(draft.Id), nil), http.StatusNoContent, "delete a draft")
+	mustStatus(t, c.Do(http.MethodDelete, withUpdatedAt(quotePath(draft.Id), quoteAt(t, c, draft.Id)), nil), http.StatusNoContent, "delete a draft")
 	mustStatus(t, c.Do(http.MethodGet, quotePath(draft.Id), nil), http.StatusNotFound, "get the deleted")
 	if n := h.Count(t, `SELECT count(*) FROM orders.lines WHERE owner_kind = 'quote' AND owner_id = $1`, draft.Id); n != 0 {
 		t.Errorf("%d lines left", n)
@@ -437,14 +437,14 @@ func TestQuote_DeleteCancelDeclineAndCopy(t *testing.T) {
 		t.Errorf("the next number = %d, want 2 (the deleted draft's 1 is a gap)", next.Number)
 	}
 	sent := markSent(t, c, next)
-	expectRefusal(t, c.Do(http.MethodDelete, quotePath(sent.Id), nil), http.StatusConflict, "quote_not_draft", "delete a sent quote")
+	expectRefusal(t, c.Do(http.MethodDelete, withUpdatedAt(quotePath(sent.Id), quoteAt(t, c, sent.Id)), nil), http.StatusConflict, "quote_not_draft", "delete a sent quote")
 
-	res := c.Do(http.MethodPost, quotePath(sent.Id, "decline"), gen.OrdersDeclineInput{Revision: 1, Reason: str("Too expensive")})
+	res := c.Do(http.MethodPost, quotePath(sent.Id, "decline"), gen.OrdersDeclineInput{ExpectedUpdatedAt: quoteAt(t, c, sent.Id), Revision: 1, Reason: str("Too expensive")})
 	mustStatus(t, res, http.StatusOK, "decline")
 	if d := quoteOf(t, res); d.Status != gen.OrdersQuoteStatusDeclined || d.DeclineReason == nil || *d.DeclineReason != "Too expensive" {
 		t.Errorf("declined %+v", d)
 	}
-	expectRefusal(t, c.Do(http.MethodPost, quotePath(sent.Id, "cancel"), gen.OrdersRevisionInput{Revision: 1}), http.StatusConflict, "quote_not_sent", "cancel a declined quote")
+	expectRefusal(t, c.Do(http.MethodPost, quotePath(sent.Id, "cancel"), gen.OrdersRevisionInput{ExpectedUpdatedAt: quoteAt(t, c, sent.Id), Revision: 1}), http.StatusConflict, "quote_not_sent", "cancel a declined quote")
 
 	res = c.Do(http.MethodPost, quotePath(sent.Id, "copy"), nil)
 	mustStatus(t, res, http.StatusCreated, "copy")
@@ -453,7 +453,7 @@ func TestQuote_DeleteCancelDeclineAndCopy(t *testing.T) {
 		*cp.Origin.SourceId != strconv.FormatInt(sent.Id, 10)+"@1" || len(cp.Lines) != 1 {
 		t.Errorf("copy %+v; want draft 3 from the declined quote", cp)
 	}
-	res = c.Do(http.MethodPost, quotePath(cp.Id, "cancel"), gen.OrdersRevisionInput{Revision: 1})
+	res = c.Do(http.MethodPost, quotePath(cp.Id, "cancel"), gen.OrdersRevisionInput{ExpectedUpdatedAt: quoteAt(t, c, cp.Id), Revision: 1})
 	mustStatus(t, res, http.StatusOK, "cancel a draft")
 	if got := quoteOf(t, res); got.Status != gen.OrdersQuoteStatusCancelled || got.CancelledAt == nil {
 		t.Errorf("cancelled %+v", got)

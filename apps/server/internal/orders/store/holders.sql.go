@@ -13,21 +13,27 @@ import (
 )
 
 const anonymiseCustomerOrders = `-- name: AnonymiseCustomerOrders :execrows
-UPDATE orders.orders SET
+UPDATE orders.orders o SET
     customer_name = '', customer_organisation_number = NULL, customer_foreign_id = NULL,
     invoice_address_line1 = NULL, invoice_address_line2 = NULL, invoice_postal_code = NULL, invoice_city = NULL,
     delivery_address_id = NULL, delivery_name = NULL, delivery_address_line1 = NULL, delivery_address_line2 = NULL,
     delivery_postal_code = NULL, delivery_city = NULL,
     contact_id = NULL, contact_name = NULL, contact_email = NULL, contact_phone = NULL,
-    customer_invoice_email = NULL, your_reference = '', internal_note = '', anonymised_at = $1
-WHERE customer_id = $2 AND anonymised_at IS NULL
+    customer_invoice_email = NULL, your_reference = '', internal_note = '', anonymised_at = $1,
+    updated_at = $1
+WHERE o.customer_id = $2 AND o.anonymised_at IS NULL
   AND (
-      ($3::timestamptz IS NULL AND confirmed_at IS NULL)
+      ($3::timestamptz IS NULL AND o.confirmed_at IS NULL)
       OR ($3::timestamptz IS NOT NULL AND (
-          confirmed_at IS NULL
-          OR (status = 'cancelled' AND cancelled_at < $3::timestamptz)
-          OR (status = 'confirmed' AND delivery_status = 'delivered' AND invoice_status = 'invoiced'
-              AND updated_at < $3::timestamptz)))
+          o.confirmed_at IS NULL
+          OR (o.status = 'cancelled' AND o.cancelled_at < $3::timestamptz)
+          OR (o.status = 'confirmed' AND o.updated_at < $3::timestamptz
+              AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                          AND l.kind = 'product' AND l.quantity IS NOT NULL)
+              AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                          AND l.kind = 'product' AND l.quantity IS NOT NULL
+                          AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                               OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity)))))
   )
 `
 
@@ -40,9 +46,10 @@ type AnonymiseCustomerOrdersParams struct {
 // AnonymiseCustomerOrders takes the person out of a customer's orders that
 // are no record (O29, O54): every order never confirmed — a draft, or one
 // cancelled as a draft — when cutoff is NULL; and, for the retention sweep,
-// every confirmed order whose retention has run: cancelled, or done
-// (confirmed, delivered and invoiced), before cutoff. The column list is the
-// quotes'.
+// every confirmed order whose retention has run: cancelled, or done, before
+// cutoff. Done is ListOrders' rule: confirmed with every product line's
+// cancelled and invoiced covering what was ordered. The column list is the
+// quotes'; updated_at moves, so an editor holding the order before is stale.
 func (q *Queries) AnonymiseCustomerOrders(ctx context.Context, arg AnonymiseCustomerOrdersParams) (int64, error) {
 	result, err := q.db.Exec(ctx, anonymiseCustomerOrders, arg.Now, arg.CustomerID, arg.Cutoff)
 	if err != nil {
@@ -58,7 +65,8 @@ UPDATE orders.quotes SET
     delivery_address_id = NULL, delivery_name = NULL, delivery_address_line1 = NULL, delivery_address_line2 = NULL,
     delivery_postal_code = NULL, delivery_city = NULL,
     contact_id = NULL, contact_name = NULL, contact_email = NULL, contact_phone = NULL,
-    customer_invoice_email = NULL, your_reference = '', internal_note = '', anonymised_at = $1
+    customer_invoice_email = NULL, your_reference = '', internal_note = '', anonymised_at = $1,
+    updated_at = $1
 WHERE customer_id = $2 AND anonymised_at IS NULL
 `
 
@@ -105,6 +113,9 @@ const completeErasure = `-- name: CompleteErasure :execrows
 UPDATE orders.erasures SET completed_at = $1
 WHERE orders.erasures.customer_id = $2 AND completed_at IS NULL
   AND NOT EXISTS (SELECT 1 FROM orders.orders o WHERE o.customer_id = orders.erasures.customer_id AND o.anonymised_at IS NULL)
+  AND NOT EXISTS (SELECT 1 FROM orders.documents d
+                  WHERE (d.owner_kind = 'quote' AND d.owner_id IN (SELECT q.id FROM orders.quotes q WHERE q.customer_id = orders.erasures.customer_id))
+                     OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = orders.erasures.customer_id)))
 `
 
 type CompleteErasureParams struct {
@@ -113,13 +124,29 @@ type CompleteErasureParams struct {
 }
 
 // CompleteErasure marks an erasure done once none of the customer's orders
-// holds the person any more.
+// holds the person any more and no stored PDF of theirs is left.
 func (q *Queries) CompleteErasure(ctx context.Context, arg CompleteErasureParams) (int64, error) {
 	result, err := q.db.Exec(ctx, completeErasure, arg.Now, arg.CustomerID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const customerHasDocuments = `-- name: CustomerHasDocuments :one
+SELECT EXISTS (SELECT 1 FROM orders.documents d
+               WHERE (d.owner_kind = 'quote' AND d.owner_id IN (SELECT q.id FROM orders.quotes q WHERE q.customer_id = $1))
+                  OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = $1)))::boolean
+`
+
+// CustomerHasDocuments reports whether any quote or order of a customer has a
+// stored PDF: the erase records the customer then, so the retention sweep
+// deletes the PDFs of what was anonymised.
+func (q *Queries) CustomerHasDocuments(ctx context.Context, customerID int32) (bool, error) {
+	row := q.db.QueryRow(ctx, customerHasDocuments, customerID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const customerOrders = `-- name: CustomerOrders :many
@@ -296,6 +323,72 @@ func (q *Queries) CustomerQuotes(ctx context.Context, customerID int32) ([]Order
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.AnonymisedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deleteDocumentRow = `-- name: DeleteDocumentRow :execrows
+DELETE FROM orders.documents WHERE id = $1
+`
+
+func (q *Queries) DeleteDocumentRow(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteDocumentRow, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const detachDocumentMailings = `-- name: DetachDocumentMailings :exec
+UPDATE orders.mailings SET document_id = NULL WHERE document_id = $1
+`
+
+// DetachDocumentMailings unlinks the sends of a stored PDF about to be
+// deleted; the send rows stay, blanked, as the record that a send was made.
+func (q *Queries) DetachDocumentMailings(ctx context.Context, documentID *int64) error {
+	_, err := q.db.Exec(ctx, detachDocumentMailings, documentID)
+	return err
+}
+
+const erasedDocuments = `-- name: ErasedDocuments :many
+SELECT d.id, d.owner_kind, d.owner_id, d.kind, d.version, d.storage_key, d.sha256, d.size_bytes, d.created_at FROM orders.documents d
+WHERE (d.owner_kind = 'quote' AND d.owner_id IN (SELECT q.id FROM orders.quotes q
+                                                 WHERE q.customer_id = $1 AND q.anonymised_at IS NOT NULL))
+   OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o
+                                                 WHERE o.customer_id = $1 AND o.anonymised_at IS NOT NULL))
+ORDER BY d.id
+`
+
+// ErasedDocuments is the stored PDFs of a customer's anonymised quotes and
+// orders (O29, O54): a quote's at once after the erase, a confirmed order's
+// once its retention has run and it was anonymised. The PDF prints the
+// person, so it goes with them.
+func (q *Queries) ErasedDocuments(ctx context.Context, customerID int32) ([]OrdersDocument, error) {
+	rows, err := q.db.Query(ctx, erasedDocuments, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrdersDocument
+	for rows.Next() {
+		var i OrdersDocument
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerKind,
+			&i.OwnerID,
+			&i.Kind,
+			&i.Version,
+			&i.StorageKey,
+			&i.Sha256,
+			&i.SizeBytes,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -563,7 +656,10 @@ func (q *Queries) RecordErasure(ctx context.Context, arg RecordErasureParams) er
 }
 
 const repointCustomerOrders = `-- name: RepointCustomerOrders :execrows
-UPDATE orders.orders SET customer_id = $1 WHERE customer_id = $2
+UPDATE orders.orders
+SET customer_id = $1,
+    updated_at = CASE WHEN status = 'draft' THEN now() ELSE updated_at END
+WHERE customer_id = $2
 `
 
 type RepointCustomerOrdersParams struct {
@@ -571,6 +667,9 @@ type RepointCustomerOrdersParams struct {
 	FromCustomerID int32
 }
 
+// RepointCustomerOrders is the orders'. A draft's updated_at moves as a
+// quote's does; a confirmed or cancelled order's stays, since it is the
+// moment a done order's retention runs from, and its customer is frozen.
 func (q *Queries) RepointCustomerOrders(ctx context.Context, arg RepointCustomerOrdersParams) (int64, error) {
 	result, err := q.db.Exec(ctx, repointCustomerOrders, arg.IntoCustomerID, arg.FromCustomerID)
 	if err != nil {
@@ -580,7 +679,8 @@ func (q *Queries) RepointCustomerOrders(ctx context.Context, arg RepointCustomer
 }
 
 const repointCustomerQuotes = `-- name: RepointCustomerQuotes :execrows
-UPDATE orders.quotes SET customer_id = $1 WHERE customer_id = $2
+UPDATE orders.quotes SET customer_id = $1, updated_at = now()
+WHERE customer_id = $2
 `
 
 type RepointCustomerQuotesParams struct {
@@ -590,7 +690,9 @@ type RepointCustomerQuotesParams struct {
 
 // RepointCustomerQuotes moves every quote of a merged-away customer to the
 // surviving one (O29). The snapshot is left as it is: a frozen quote keeps
-// the customer as it was when it was sent.
+// the customer as it was when it was sent. updated_at moves, so an editor
+// holding a quote from before the merge is stale and cannot write the
+// merged-away customer back.
 func (q *Queries) RepointCustomerQuotes(ctx context.Context, arg RepointCustomerQuotesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, repointCustomerQuotes, arg.IntoCustomerID, arg.FromCustomerID)
 	if err != nil {

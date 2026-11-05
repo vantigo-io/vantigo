@@ -41,7 +41,7 @@ func TestSendQuote_MailsStoresFreezesAndPublishes(t *testing.T) {
 	chooseChannel(t, h)
 	c := h.SignIn(t, quoter...)
 	q := createQuote(t, c, custBusiness, productLine(varBolt, 2))
-	res := c.Do(http.MethodPost, quotePath(q.Id, "send"), gen.OrdersSendInput{
+	res := c.Do(http.MethodPost, quotePath(q.Id, "send"), gen.OrdersSendInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id),
 		Recipient: "kari@acme.example", Cc: &[]openapi_types.Email{"boss@acme.example"}, Revision: &q.Revision, Message: str("As agreed."),
 	})
 	mustStatus(t, res, http.StatusOK, "send")
@@ -87,9 +87,9 @@ func TestSendQuote_MailsStoresFreezesAndPublishes(t *testing.T) {
 	if got := quoteOf(t, res); got.Customer.Name != "Acme AS" {
 		t.Errorf("a sent quote's snapshot moved to %q", got.Customer.Name)
 	}
-	expectRefusal(t, c.Do(http.MethodPut, quotePath(q.Id), gen.OrdersQuoteUpdate{Revision: 1, CustomerId: custBusiness, Lines: []gen.OrdersLineInput{}}),
+	expectRefusal(t, c.Do(http.MethodPut, quotePath(q.Id), gen.OrdersQuoteUpdate{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, CustomerId: custBusiness, Lines: []gen.OrdersLineInput{}}),
 		http.StatusConflict, "quote_not_draft", "edit a sent quote")
-	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "send"), gen.OrdersSendInput{Recipient: "kari@acme.example", Revision: &q.Revision}),
+	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "send"), gen.OrdersSendInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Recipient: "kari@acme.example", Revision: &q.Revision}),
 		http.StatusConflict, "quote_not_draft", "send again")
 }
 
@@ -100,13 +100,13 @@ func TestSendQuote_WithoutCommunicationsOnlyMarkAsSent(t *testing.T) {
 	h := newHarness(t, harnessOptions{})
 	c := h.SignIn(t, quoter...)
 	q := createQuote(t, c, custBusiness, productLine(varBolt, 1))
-	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "send"), gen.OrdersSendInput{Recipient: "kari@acme.example", Revision: &q.Revision}),
+	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "send"), gen.OrdersSendInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Recipient: "kari@acme.example", Revision: &q.Revision}),
 		http.StatusServiceUnavailable, "sending_disabled", "send without Communications")
 	if n := h.Count(t, `SELECT count(*) FROM orders.documents`); n != 0 {
 		t.Errorf("%d documents stored by a refused send", n)
 	}
 	in := h.Now().AddDate(0, 0, 10)
-	res := c.Do(http.MethodPost, quotePath(q.Id, "mark-sent"), gen.OrdersMarkSentInput{Revision: 1, ValidUntil: dateOf(time.Date(in.Year(), in.Month(), in.Day(), 0, 0, 0, 0, time.UTC))})
+	res := c.Do(http.MethodPost, quotePath(q.Id, "mark-sent"), gen.OrdersMarkSentInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, ValidUntil: dateOf(time.Date(in.Year(), in.Month(), in.Day(), 0, 0, 0, 0, time.UTC))})
 	mustStatus(t, res, http.StatusOK, "mark sent")
 	if got := quoteOf(t, res); got.Status != gen.OrdersQuoteStatusSent || got.ValidUntil == nil {
 		t.Errorf("marked %+v", got)
@@ -114,7 +114,7 @@ func TestSendQuote_WithoutCommunicationsOnlyMarkAsSent(t *testing.T) {
 	if n := eventsNamed(t, h, "orders.quote.sent", q.Id); n != 1 {
 		t.Errorf("%d sent events, want 1", n)
 	}
-	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "mark-sent"), gen.OrdersMarkSentInput{Revision: 1}),
+	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "mark-sent"), gen.OrdersMarkSentInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1}),
 		http.StatusConflict, "quote_not_draft", "mark sent again")
 }
 
@@ -127,7 +127,7 @@ func TestSendQuote_AFailedMailLeavesTheDraft(t *testing.T) {
 	h.mail.FailWith("Send", errors.New("550 mailbox unavailable for kari@acme.example"))
 	c := h.SignIn(t, quoter...)
 	q := createQuote(t, c, custBusiness, productLine(varBolt, 1))
-	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "send"), gen.OrdersSendInput{Recipient: "kari@acme.example", Revision: &q.Revision}),
+	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "send"), gen.OrdersSendInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Recipient: "kari@acme.example", Revision: &q.Revision}),
 		http.StatusServiceUnavailable, "mail_failed", "send")
 	res := c.Do(http.MethodGet, quotePath(q.Id), nil)
 	mustStatus(t, res, http.StatusOK, "get")
@@ -150,14 +150,14 @@ func TestMarkQuoteSent_RefusesUnpricedAndUnmappedLines(t *testing.T) {
 	h := newHarness(t, harnessOptions{})
 	c := h.SignIn(t, quoter...)
 	q := createQuote(t, c, custBusiness, productLine(varBolt, 1), productLine(varNoPrice, 1), productLine(varUnmapped, 1))
-	p := expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "mark-sent"), gen.OrdersMarkSentInput{Revision: 1}),
+	p := expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "mark-sent"), gen.OrdersMarkSentInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1}),
 		http.StatusBadRequest, "line_unpriced", "mark sent")
 	if p.Lines == nil || len(*p.Lines) != 2 || (*p.Lines)[1].Code != "vat_code_unmapped" {
 		t.Errorf("lines %+v; want the unpriced and the unmapped", p.Lines)
 	}
 	past := h.Now().AddDate(0, 0, -3)
 	ok := createQuote(t, c, custBusiness, productLine(varBolt, 1))
-	expectRefusal(t, c.Do(http.MethodPost, quotePath(ok.Id, "mark-sent"), gen.OrdersMarkSentInput{Revision: 1,
+	expectRefusal(t, c.Do(http.MethodPost, quotePath(ok.Id, "mark-sent"), gen.OrdersMarkSentInput{ExpectedUpdatedAt: quoteAt(t, c, ok.Id), Revision: 1,
 		ValidUntil: dateOf(time.Date(past.Year(), past.Month(), past.Day(), 0, 0, 0, 0, time.UTC))}), http.StatusBadRequest, "", "valid until the past")
 }
 
@@ -167,15 +167,15 @@ func TestReviseQuote_KeepsEveryRevisionsPDF(t *testing.T) {
 	h := newHarness(t, harnessOptions{})
 	c := h.SignIn(t, quoter...)
 	q := markSent(t, c, createQuote(t, c, custBusiness, productLine(varBolt, 1)))
-	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "revise"), gen.OrdersRevisionInput{Revision: 2}), http.StatusConflict, "version_conflict", "stale")
-	res := c.Do(http.MethodPost, quotePath(q.Id, "revise"), gen.OrdersRevisionInput{Revision: 1})
+	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "revise"), gen.OrdersRevisionInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 2}), http.StatusConflict, "version_conflict", "stale")
+	res := c.Do(http.MethodPost, quotePath(q.Id, "revise"), gen.OrdersRevisionInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1})
 	mustStatus(t, res, http.StatusOK, "revise")
 	rev := quoteOf(t, res)
 	if rev.Status != gen.OrdersQuoteStatusDraft || rev.Revision != 2 || rev.Number != q.Number {
 		t.Fatalf("revised %+v; want draft 2 of the same number", rev)
 	}
-	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "revise"), gen.OrdersRevisionInput{Revision: 2}), http.StatusConflict, "quote_not_sent", "revise a draft")
-	expectRefusal(t, c.Do(http.MethodDelete, quotePath(q.Id), nil), http.StatusConflict, "quote_not_draft", "delete a revised draft")
+	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "revise"), gen.OrdersRevisionInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 2}), http.StatusConflict, "quote_not_sent", "revise a draft")
+	expectRefusal(t, c.Do(http.MethodDelete, withUpdatedAt(quotePath(q.Id), quoteAt(t, c, q.Id)), nil), http.StatusConflict, "quote_not_draft", "delete a revised draft")
 	markSent(t, c, rev)
 	if _, ok := pdfModels.find("Tilbud", "Tilbud "+strconv.FormatInt(q.Number, 10)+" – revisjon 2"); !ok {
 		t.Error("no PDF printed revision 2")
@@ -237,7 +237,7 @@ func TestMailWorker_SendsAQueuedMailingOnAPoolOfOne(t *testing.T) {
 	chooseChannel(t, h)
 	c := h.SignIn(t, quoter...)
 	q := markSent(t, c, createQuote(t, c, custBusiness, productLine(varBolt, 1)))
-	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{Revision: 1, Into: gen.DraftOrder})
+	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.DraftOrder})
 	mustStatus(t, res, http.StatusOK, "accept")
 	var a gen.OrdersAccepted
 	res.JSON(&a)
@@ -284,7 +284,7 @@ func TestMailWorker_BacksOffAndFails(t *testing.T) {
 	chooseChannel(t, h)
 	c := h.SignIn(t, quoter...)
 	q := markSent(t, c, createQuote(t, c, custBusiness, productLine(varBolt, 1)))
-	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{Revision: 1, Into: gen.DraftOrder})
+	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.DraftOrder})
 	mustStatus(t, res, http.StatusOK, "accept")
 	var a gen.OrdersAccepted
 	res.JSON(&a)

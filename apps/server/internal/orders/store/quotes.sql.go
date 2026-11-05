@@ -901,6 +901,97 @@ func (q *Queries) QuoteByClientRequest(ctx context.Context, clientRequestID *uui
 	return i, err
 }
 
+const restoreAcceptedQuote = `-- name: RestoreAcceptedQuote :one
+UPDATE orders.quotes
+SET status = 'sent', accepted_at = NULL, accepted_into_kind = NULL, accepted_into_id = NULL, updated_at = $1
+WHERE id = $2 AND status = 'accepted' AND accepted_into_kind = 'order' AND accepted_into_id = $3::bigint
+RETURNING id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
+`
+
+type RestoreAcceptedQuoteParams struct {
+	Now     time.Time
+	ID      int64
+	OrderID int64
+}
+
+// RestoreAcceptedQuote puts a quote accepted into an order back to sent when
+// that draft order is deleted, so it can be accepted again; the expiry worker
+// expires it as any sent quote when its valid-until has passed.
+func (q *Queries) RestoreAcceptedQuote(ctx context.Context, arg RestoreAcceptedQuoteParams) (OrdersQuote, error) {
+	row := q.db.QueryRow(ctx, restoreAcceptedQuote, arg.Now, arg.ID, arg.OrderID)
+	var i OrdersQuote
+	err := row.Scan(
+		&i.ID,
+		&i.Number,
+		&i.Status,
+		&i.Revision,
+		&i.ValidUntil,
+		&i.SentAt,
+		&i.AcceptedAt,
+		&i.AcceptedIntoKind,
+		&i.AcceptedIntoID,
+		&i.DeclinedAt,
+		&i.DeclineReason,
+		&i.CancelledAt,
+		&i.TemplateID,
+		&i.CustomerID,
+		&i.CustomerNumber,
+		&i.CustomerName,
+		&i.CustomerType,
+		&i.CustomerOrganisationNumber,
+		&i.CustomerForeignID,
+		&i.CustomerCountry,
+		&i.InvoiceAddressLine1,
+		&i.InvoiceAddressLine2,
+		&i.InvoicePostalCode,
+		&i.InvoiceCity,
+		&i.InvoiceCountry,
+		&i.DeliveryAddressID,
+		&i.DeliveryName,
+		&i.DeliveryAddressLine1,
+		&i.DeliveryAddressLine2,
+		&i.DeliveryPostalCode,
+		&i.DeliveryCity,
+		&i.DeliveryCountry,
+		&i.ContactID,
+		&i.ContactName,
+		&i.ContactEmail,
+		&i.ContactPhone,
+		&i.CustomerInvoiceEmail,
+		&i.YourReference,
+		&i.SalespersonID,
+		&i.SalespersonDisplay,
+		&i.ProjectID,
+		&i.Currency,
+		&i.PricesIncludeVat,
+		&i.PaymentTermsDays,
+		&i.DiscountVisible,
+		&i.Language,
+		&i.IntroText,
+		&i.ClosingText,
+		&i.InternalNote,
+		&i.DeliveryDate,
+		&i.NetTotal,
+		&i.VatTotal,
+		&i.GrossTotal,
+		&i.Channel,
+		&i.SourceModule,
+		&i.SourceKind,
+		&i.SourceID,
+		&i.ExternalID,
+		&i.ExternalNumber,
+		&i.ClientRequestID,
+		&i.PaymentReference,
+		&i.PrepaidAmount,
+		&i.CreatedByUserID,
+		&i.CreatedByDisplay,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AnonymisedAt,
+	)
+	return i, err
+}
+
 const reviseQuoteRow = `-- name: ReviseQuoteRow :one
 UPDATE orders.quotes
 SET status = 'draft', revision = revision + 1, updated_at = $1

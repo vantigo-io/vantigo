@@ -53,7 +53,7 @@ func createOrder(t *testing.T, c *modtest.Client, customer int32, lines ...gen.O
 // confirmOrder confirms a draft and answers it.
 func confirmOrder(t *testing.T, c *modtest.Client, o gen.OrdersOrder) gen.OrdersOrder {
 	t.Helper()
-	res := c.Do(http.MethodPost, orderPath(o.Id, "confirm"), gen.OrdersVersionInput{Version: o.Version})
+	res := c.Do(http.MethodPost, orderPath(o.Id, "confirm"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, o.Id), Version: o.Version})
 	mustStatus(t, res, http.StatusOK, "confirm")
 	return orderOf(t, res)
 }
@@ -70,7 +70,7 @@ func keep(o gen.OrdersOrder) []gen.OrdersLineInput {
 
 // save puts o back with lines.
 func save(c *modtest.Client, o gen.OrdersOrder, lines []gen.OrdersLineInput, edit func(*gen.OrdersOrderUpdate)) *modtest.Response {
-	body := gen.OrdersOrderUpdate{Version: o.Version, CustomerId: o.Customer.CustomerId, Lines: lines}
+	body := gen.OrdersOrderUpdate{Version: o.Version, ExpectedUpdatedAt: o.UpdatedAt, CustomerId: o.Customer.CustomerId, Lines: lines}
 	if edit != nil {
 		edit(&body)
 	}
@@ -92,7 +92,7 @@ func lineOf(t *testing.T, o gen.OrdersOrder, variant int32) gen.OrdersLine {
 // deliver marks qty of the order's line delivered and answers the order.
 func deliver(t *testing.T, c *modtest.Client, o gen.OrdersOrder, lineID int64, qty float64) gen.OrdersOrder {
 	t.Helper()
-	res := c.Do(http.MethodPost, orderPath(o.Id, "mark-delivered"), gen.OrdersDeliveredInput{
+	res := c.Do(http.MethodPost, orderPath(o.Id, "mark-delivered"), gen.OrdersDeliveredInput{ExpectedUpdatedAt: orderAt(t, c, o.Id),
 		Version: o.Version, Lines: []gen.OrdersDeliveredLine{{LineId: lineID, Quantity: qty}},
 	})
 	mustStatus(t, res, http.StatusOK, "mark delivered")
@@ -198,17 +198,17 @@ func TestConfirmOrder_RefusalsFreezeAndPublish(t *testing.T) {
 	b := h.SignIn(t, boss...)
 
 	empty := createOrder(t, c, custBusiness)
-	expectRefusal(t, b.Do(http.MethodPost, orderPath(empty.Id, "confirm"), gen.OrdersVersionInput{Version: 1}), http.StatusBadRequest, "order_empty", "empty")
+	expectRefusal(t, b.Do(http.MethodPost, orderPath(empty.Id, "confirm"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, b, empty.Id), Version: 1}), http.StatusBadRequest, "order_empty", "empty")
 	unpriced := createOrder(t, c, custBusiness, productLine(varNoPrice, 1))
-	expectRefusal(t, b.Do(http.MethodPost, orderPath(unpriced.Id, "confirm"), gen.OrdersVersionInput{Version: 1}), http.StatusBadRequest, "line_unpriced", "unpriced")
+	expectRefusal(t, b.Do(http.MethodPost, orderPath(unpriced.Id, "confirm"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, b, unpriced.Id), Version: 1}), http.StatusBadRequest, "line_unpriced", "unpriced")
 	unmapped := createOrder(t, c, custBusiness, productLine(varUnmapped, 1))
-	expectRefusal(t, b.Do(http.MethodPost, orderPath(unmapped.Id, "confirm"), gen.OrdersVersionInput{Version: 1}), http.StatusBadRequest, "vat_code_unmapped", "unmapped")
+	expectRefusal(t, b.Do(http.MethodPost, orderPath(unmapped.Id, "confirm"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, b, unmapped.Id), Version: 1}), http.StatusBadRequest, "vat_code_unmapped", "unmapped")
 
 	o := createOrder(t, c, custBusiness, productLine(varBolt, 2))
-	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "confirm"), gen.OrdersVersionInput{Version: 1}), http.StatusForbidden, "confirm without the key")
-	expectRefusal(t, b.Do(http.MethodPost, orderPath(o.Id, "confirm"), gen.OrdersVersionInput{Version: 7}), http.StatusConflict, "version_conflict", "stale")
+	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "confirm"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, o.Id), Version: 1}), http.StatusForbidden, "confirm without the key")
+	expectRefusal(t, b.Do(http.MethodPost, orderPath(o.Id, "confirm"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, b, o.Id), Version: 7}), http.StatusConflict, "version_conflict", "stale")
 	h.dir.update(custBusiness, func(p *contracts.CustomerBillingProfile) { p.Status = "disabled" })
-	expectRefusal(t, b.Do(http.MethodPost, orderPath(o.Id, "confirm"), gen.OrdersVersionInput{Version: 1}), http.StatusBadRequest, "customer_disabled", "disabled")
+	expectRefusal(t, b.Do(http.MethodPost, orderPath(o.Id, "confirm"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, b, o.Id), Version: 1}), http.StatusBadRequest, "customer_disabled", "disabled")
 	h.dir.update(custBusiness, func(p *contracts.CustomerBillingProfile) { p.Status = "active" })
 
 	confirmed := confirmOrder(t, b, o)
@@ -233,7 +233,7 @@ func TestConfirmOrder_RefusalsFreezeAndPublish(t *testing.T) {
 	if got := orderOf(t, res); got.Customer.Name != "Acme AS" {
 		t.Errorf("the confirmed order's customer is %q, want the frozen Acme AS", got.Customer.Name)
 	}
-	expectRefusal(t, b.Do(http.MethodPost, orderPath(o.Id, "confirm"), gen.OrdersVersionInput{Version: 1}), http.StatusConflict, "order_not_draft", "confirm again")
+	expectRefusal(t, b.Do(http.MethodPost, orderPath(o.Id, "confirm"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, b, o.Id), Version: 1}), http.StatusConflict, "order_not_draft", "confirm again")
 }
 
 // A draft's save follows the customer (O14) and prices its catalog lines
@@ -251,6 +251,7 @@ func TestSaveDraftOrder_FollowsTheCustomerAndReprices(t *testing.T) {
 	h.catalog.setPrice(varBolt, "NOK", "120.00")
 	// The draft was last saved yesterday.
 	h.Exec(t, `UPDATE orders.orders SET updated_at = updated_at - interval '1 day' WHERE id = $1`, o.Id)
+	o.UpdatedAt = orderAt(t, c, o.Id)
 	res := save(c, o, keep(o), func(b *gen.OrdersOrderUpdate) { b.ContactId = i32(contactKari) })
 	mustStatus(t, res, http.StatusOK, "save")
 	got := orderOf(t, res)
@@ -321,10 +322,10 @@ func TestEditConfirmedOrder_Rules(t *testing.T) {
 	}
 	expectRefusal(t, save(c, o, keep(o), nil), http.StatusConflict, "version_conflict", "a second editor's stale save")
 
-	res = c.Do(http.MethodPost, orderPath(o.Id, "lock"), gen.OrdersVersionInput{Version: edited.Version})
+	res = c.Do(http.MethodPost, orderPath(o.Id, "lock"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, o.Id), Version: edited.Version})
 	mustStatus(t, res, http.StatusOK, "lock")
 	expectRefusal(t, save(c, edited, keep(edited), nil), http.StatusConflict, "order_locked", "edit a locked order")
-	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "unlock"), gen.OrdersVersionInput{Version: edited.Version}), http.StatusOK, "unlock")
+	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "unlock"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, o.Id), Version: edited.Version}), http.StatusOK, "unlock")
 	mustStatus(t, save(c, edited, keep(edited), nil), http.StatusOK, "a save that changes nothing")
 	if n := eventsNamed(t, h, "orders.sales_order.changed", o.Id); n != 1 {
 		t.Errorf("%d changed events after a save that changed nothing, want still 1", n)
@@ -339,29 +340,29 @@ func TestHoldReleaseLockUnlock(t *testing.T) {
 	c := h.SignIn(t, boss...)
 	s := h.SignIn(t, seller...)
 	draft := createOrder(t, c, custBusiness, productLine(varBolt, 1))
-	expectRefusal(t, c.Do(http.MethodPost, orderPath(draft.Id, "hold"), gen.OrdersHoldInput{Version: 1}), http.StatusConflict, "order_not_confirmed", "hold a draft")
-	expectRefusal(t, c.Do(http.MethodPost, orderPath(draft.Id, "lock"), gen.OrdersVersionInput{Version: 1}), http.StatusConflict, "order_not_confirmed", "lock a draft")
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(draft.Id, "hold"), gen.OrdersHoldInput{ExpectedUpdatedAt: orderAt(t, c, draft.Id), Version: 1}), http.StatusConflict, "order_not_confirmed", "hold a draft")
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(draft.Id, "lock"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, draft.Id), Version: 1}), http.StatusConflict, "order_not_confirmed", "lock a draft")
 
 	o := confirmOrder(t, c, draft)
-	res := s.Do(http.MethodPost, orderPath(o.Id, "hold"), gen.OrdersHoldInput{Version: 1, Reason: str("Awaiting prepayment")})
+	res := s.Do(http.MethodPost, orderPath(o.Id, "hold"), gen.OrdersHoldInput{ExpectedUpdatedAt: orderAt(t, s, o.Id), Version: 1, Reason: str("Awaiting prepayment")})
 	mustStatus(t, res, http.StatusOK, "hold")
 	held := orderOf(t, res)
 	if !held.OnHold || held.HoldReason == nil || *held.HoldReason != "Awaiting prepayment" || held.Version != 1 {
 		t.Errorf("held %+v; want on hold with the reason, version 1", held)
 	}
-	expectRefusal(t, s.Do(http.MethodPost, orderPath(o.Id, "hold"), gen.OrdersHoldInput{Version: 1, Reason: str(strings.Repeat("x", 201))}),
+	expectRefusal(t, s.Do(http.MethodPost, orderPath(o.Id, "hold"), gen.OrdersHoldInput{ExpectedUpdatedAt: orderAt(t, s, o.Id), Version: 1, Reason: str(strings.Repeat("x", 201))}),
 		http.StatusBadRequest, "", "a long reason")
 	lines := keep(held)
 	lines[0].Quantity = f64(2)
 	mustStatus(t, save(s, held, lines, nil), http.StatusOK, "edit a held order")
-	res = s.Do(http.MethodPost, orderPath(o.Id, "release"), gen.OrdersVersionInput{Version: 2})
+	res = s.Do(http.MethodPost, orderPath(o.Id, "release"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, s, o.Id), Version: 2})
 	mustStatus(t, res, http.StatusOK, "release")
 	if got := orderOf(t, res); got.OnHold || got.HoldReason != nil {
 		t.Errorf("released %+v; want off hold", got)
 	}
-	mustStatus(t, s.Do(http.MethodPost, orderPath(o.Id, "lock"), gen.OrdersVersionInput{Version: 2}), http.StatusForbidden, "lock without the key")
-	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "lock"), gen.OrdersVersionInput{Version: 2}), http.StatusOK, "lock")
-	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "unlock"), gen.OrdersVersionInput{Version: 2}), http.StatusOK, "unlock")
+	mustStatus(t, s.Do(http.MethodPost, orderPath(o.Id, "lock"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, s, o.Id), Version: 2}), http.StatusForbidden, "lock without the key")
+	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "lock"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, o.Id), Version: 2}), http.StatusOK, "lock")
+	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "unlock"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, o.Id), Version: 2}), http.StatusOK, "unlock")
 	var kinds []string
 	for _, e := range changesOf(t, c, o.Id) {
 		kinds = append(kinds, e...)
@@ -380,24 +381,24 @@ func TestCancelAndCancelRemaining(t *testing.T) {
 	h := newHarness(t, harnessOptions{})
 	c := h.SignIn(t, boss...)
 	draft := createOrder(t, c, custBusiness, productLine(varBolt, 1))
-	res := c.Do(http.MethodPost, orderPath(draft.Id, "cancel"), gen.OrdersVersionInput{Version: 1})
+	res := c.Do(http.MethodPost, orderPath(draft.Id, "cancel"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, draft.Id), Version: 1})
 	mustStatus(t, res, http.StatusOK, "cancel a draft")
 	if orderOf(t, res).Status != gen.OrdersOrderStatusCancelled || eventsNamed(t, h, "orders.sales_order.cancelled", draft.Id) != 0 {
 		t.Error("a cancelled draft: want cancelled and no event")
 	}
-	expectRefusal(t, c.Do(http.MethodPost, orderPath(draft.Id, "cancel"), gen.OrdersVersionInput{Version: 1}), http.StatusConflict, "order_not_confirmed", "cancel twice")
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(draft.Id, "cancel"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, draft.Id), Version: 1}), http.StatusConflict, "order_not_confirmed", "cancel twice")
 
 	plain := confirmOrder(t, c, createOrder(t, c, custBusiness, productLine(varBolt, 1)))
-	mustStatus(t, c.Do(http.MethodPost, orderPath(plain.Id, "cancel"), gen.OrdersVersionInput{Version: 1}), http.StatusOK, "cancel a confirmed order")
+	mustStatus(t, c.Do(http.MethodPost, orderPath(plain.Id, "cancel"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, plain.Id), Version: 1}), http.StatusOK, "cancel a confirmed order")
 	if n := eventsNamed(t, h, "orders.sales_order.cancelled", plain.Id); n != 1 {
 		t.Errorf("%d cancelled events, want 1", n)
 	}
-	expectRefusal(t, c.Do(http.MethodDelete, orderPath(plain.Id), nil), http.StatusConflict, "order_not_draft", "delete a cancelled order")
+	expectRefusal(t, c.Do(http.MethodDelete, withUpdatedAt(orderPath(plain.Id), orderAt(t, c, plain.Id)), nil), http.StatusConflict, "order_not_draft", "delete a cancelled order")
 
 	o := confirmOrder(t, c, createOrder(t, c, custBusiness, productLine(varBolt, 10), productLine(varFood, 3)))
 	o = deliver(t, c, o, lineOf(t, o, varBolt).Id, 4)
-	expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "cancel"), gen.OrdersVersionInput{Version: o.Version}), http.StatusConflict, "order_has_progress", "cancel with progress")
-	res = c.Do(http.MethodPost, orderPath(o.Id, "cancel-remaining"), gen.OrdersVersionInput{Version: o.Version})
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "cancel"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, o.Id), Version: o.Version}), http.StatusConflict, "order_has_progress", "cancel with progress")
+	res = c.Do(http.MethodPost, orderPath(o.Id, "cancel-remaining"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, o.Id), Version: o.Version})
 	mustStatus(t, res, http.StatusOK, "cancel remaining")
 	rest := orderOf(t, res)
 	if rest.Version != 2 || lineOf(t, rest, varBolt).QtyCancelled != 6 || lineOf(t, rest, varFood).QtyCancelled != 3 ||
@@ -407,15 +408,15 @@ func TestCancelAndCancelRemaining(t *testing.T) {
 	if n := eventsNamed(t, h, "orders.sales_order.changed", o.Id); n != 1 {
 		t.Errorf("%d changed events, want 1", n)
 	}
-	res = c.Do(http.MethodPost, orderPath(o.Id, "cancel-remaining"), gen.OrdersVersionInput{Version: 2})
+	res = c.Do(http.MethodPost, orderPath(o.Id, "cancel-remaining"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, o.Id), Version: 2})
 	mustStatus(t, res, http.StatusOK, "cancel remaining again")
 	if orderOf(t, res).Version != 2 {
 		t.Error("a cancel remaining with nothing left bumped the version")
 	}
-	expectRefusal(t, c.Do(http.MethodPost, orderPath(draft.Id, "cancel-remaining"), gen.OrdersVersionInput{Version: 1}), http.StatusConflict, "order_not_confirmed", "cancel remaining of a cancelled order")
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(draft.Id, "cancel-remaining"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, draft.Id), Version: 1}), http.StatusConflict, "order_not_confirmed", "cancel remaining of a cancelled order")
 
 	gone := createOrder(t, c, custBusiness, productLine(varBolt, 1))
-	mustStatus(t, c.Do(http.MethodDelete, orderPath(gone.Id), nil), http.StatusNoContent, "delete a draft")
+	mustStatus(t, c.Do(http.MethodDelete, withUpdatedAt(orderPath(gone.Id), orderAt(t, c, gone.Id)), nil), http.StatusNoContent, "delete a draft")
 	mustStatus(t, c.Do(http.MethodGet, orderPath(gone.Id), nil), http.StatusNotFound, "get the deleted draft")
 	if n := h.Count(t, `SELECT count(*) FROM orders.lines WHERE owner_kind = 'order' AND owner_id = $1`, gone.Id); n != 0 {
 		t.Errorf("%d lines left of the deleted draft", n)
@@ -430,13 +431,13 @@ func TestMarkDelivered_AndUndo(t *testing.T) {
 	h := newHarness(t, harnessOptions{})
 	c := h.SignIn(t, boss...)
 	draft := createOrder(t, c, custBusiness, productLine(varBolt, 10), productLine(varFood, 2))
-	expectRefusal(t, c.Do(http.MethodPost, orderPath(draft.Id, "mark-delivered"), gen.OrdersDeliveredInput{
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(draft.Id, "mark-delivered"), gen.OrdersDeliveredInput{ExpectedUpdatedAt: orderAt(t, c, draft.Id),
 		Version: 1, Lines: []gen.OrdersDeliveredLine{{LineId: draft.Lines[0].Id, Quantity: 1}},
 	}), http.StatusConflict, "order_not_confirmed", "mark a draft")
 	o := confirmOrder(t, c, draft)
 	bolt, food := lineOf(t, o, varBolt), lineOf(t, o, varFood)
 
-	p := expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "mark-delivered"), gen.OrdersDeliveredInput{
+	p := expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "mark-delivered"), gen.OrdersDeliveredInput{ExpectedUpdatedAt: orderAt(t, c, o.Id),
 		Version: 1, Lines: []gen.OrdersDeliveredLine{{LineId: bolt.Id, Quantity: 11}, {LineId: 999, Quantity: 1}, {LineId: food.Id, Quantity: 0}},
 	}), http.StatusBadRequest, "over_delivery", "over delivery")
 	if p.Lines == nil || len(*p.Lines) != 3 || (*p.Lines)[1].Code != "line_not_found" || (*p.Lines)[2].Code != "quantity_invalid" {
@@ -450,17 +451,17 @@ func TestMarkDelivered_AndUndo(t *testing.T) {
 	if o.DeliveryStatus != gen.OrdersOrderDeliveryStatusDelivered || o.Done {
 		t.Errorf("after both %s, done %v; want delivered and not done (nothing invoiced)", o.DeliveryStatus, o.Done)
 	}
-	expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "undo-delivered"), gen.OrdersDeliveredInput{
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "undo-delivered"), gen.OrdersDeliveredInput{ExpectedUpdatedAt: orderAt(t, c, o.Id),
 		Version: 1, Lines: []gen.OrdersDeliveredLine{{LineId: food.Id, Quantity: 3}},
 	}), http.StatusBadRequest, "undo_exceeds_delivered", "undo below 0")
-	res := c.Do(http.MethodPost, orderPath(o.Id, "undo-delivered"), gen.OrdersDeliveredInput{
+	res := c.Do(http.MethodPost, orderPath(o.Id, "undo-delivered"), gen.OrdersDeliveredInput{ExpectedUpdatedAt: orderAt(t, c, o.Id),
 		Version: 1, Lines: []gen.OrdersDeliveredLine{{LineId: food.Id, Quantity: 2}, {LineId: bolt.Id, Quantity: 10}},
 	})
 	mustStatus(t, res, http.StatusOK, "undo")
 	if got := orderOf(t, res); got.DeliveryStatus != gen.OrdersOrderDeliveryStatusNone {
 		t.Errorf("after the undo %s, want none", got.DeliveryStatus)
 	}
-	expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "mark-delivered"), gen.OrdersDeliveredInput{
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "mark-delivered"), gen.OrdersDeliveredInput{ExpectedUpdatedAt: orderAt(t, c, o.Id),
 		Version: 4, Lines: []gen.OrdersDeliveredLine{{LineId: bolt.Id, Quantity: 1}},
 	}), http.StatusConflict, "version_conflict", "stale")
 	var kinds []string
@@ -483,7 +484,7 @@ func TestSendOrder_AndRevisedConfirmation(t *testing.T) {
 	chooseChannel(t, h)
 	c := h.SignIn(t, boss...)
 	draft := createOrder(t, c, custBusiness, productLine(varBolt, 2))
-	expectRefusal(t, c.Do(http.MethodPost, orderPath(draft.Id, "send"), gen.OrdersSendInput{Recipient: "kari@acme.example", Version: i32(1)}),
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(draft.Id, "send"), gen.OrdersSendInput{ExpectedUpdatedAt: orderAt(t, c, draft.Id), Recipient: "kari@acme.example", Version: i32(1)}),
 		http.StatusConflict, "order_not_confirmed", "send a draft")
 	pdf := c.Do(http.MethodGet, orderPath(draft.Id, "pdf"), nil)
 	mustStatus(t, pdf, http.StatusOK, "a draft's PDF")
@@ -491,15 +492,15 @@ func TestSendOrder_AndRevisedConfirmation(t *testing.T) {
 		t.Error("the draft's PDF is no PDF")
 	}
 	o := confirmOrder(t, c, draft)
-	res := c.Do(http.MethodPost, orderPath(o.Id, "send"), gen.OrdersSendInput{Recipient: "kari@acme.example", Version: i32(1)})
+	res := c.Do(http.MethodPost, orderPath(o.Id, "send"), gen.OrdersSendInput{ExpectedUpdatedAt: orderAt(t, c, o.Id), Recipient: "kari@acme.example", Version: i32(1)})
 	mustStatus(t, res, http.StatusOK, "send version 1")
 	lines := keep(o)
 	lines[0].Quantity = f64(3)
 	res = save(c, o, lines, nil)
 	mustStatus(t, res, http.StatusOK, "edit")
-	expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "send"), gen.OrdersSendInput{Recipient: "kari@acme.example", Version: i32(1)}),
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "send"), gen.OrdersSendInput{ExpectedUpdatedAt: orderAt(t, c, o.Id), Recipient: "kari@acme.example", Version: i32(1)}),
 		http.StatusConflict, "version_conflict", "send a stale version")
-	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "send"), gen.OrdersSendInput{Recipient: "kari@acme.example", Version: i32(2)}),
+	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "send"), gen.OrdersSendInput{ExpectedUpdatedAt: orderAt(t, c, o.Id), Recipient: "kari@acme.example", Version: i32(2)}),
 		http.StatusOK, "send version 2")
 	mails := h.mail.Sent()
 	if len(mails) != 2 || strings.Contains(mails[0].Out.Subject, "Revidert") || !strings.Contains(mails[1].Out.Subject, "Revidert ordrebekreftelse") {
@@ -530,7 +531,7 @@ func TestSendOrder_AndRevisedConfirmation(t *testing.T) {
 	off := newHarness(t, harnessOptions{})
 	oc := off.SignIn(t, boss...)
 	plain := confirmOrder(t, oc, createOrder(t, oc, custBusiness, productLine(varBolt, 1)))
-	expectRefusal(t, oc.Do(http.MethodPost, orderPath(plain.Id, "send"), gen.OrdersSendInput{Recipient: "kari@acme.example", Version: i32(1)}),
+	expectRefusal(t, oc.Do(http.MethodPost, orderPath(plain.Id, "send"), gen.OrdersSendInput{ExpectedUpdatedAt: orderAt(t, oc, plain.Id), Recipient: "kari@acme.example", Version: i32(1)}),
 		http.StatusServiceUnavailable, "sending_disabled", "send without Communications")
 }
 

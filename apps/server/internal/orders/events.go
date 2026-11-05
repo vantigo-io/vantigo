@@ -57,8 +57,8 @@ func eventHandlers(d module.Deps) []events.Handler {
 
 // queueConfirmation queues the confirmation's mailing of a confirmed order at
 // its version, to the order's contact's e-mail, else the customer's invoice
-// e-mail, when the settings say so. An order with neither, or one gone, is
-// skipped.
+// e-mail, when the settings say so. An order with neither, one gone, and one
+// no longer confirmed — cancelled before the delivery ran — is skipped.
 func queueConfirmation(ctx context.Context, tx pgx.Tx, ev events.Delivered, clock func() time.Time, logger *slog.Logger) error {
 	var e contracts.SalesOrderConfirmed
 	if err := json.Unmarshal(ev.Payload, &e); err != nil {
@@ -78,6 +78,14 @@ func queueConfirmation(ctx context.Context, tx pgx.Tx, ev events.Delivered, cloc
 	}
 	if err != nil {
 		return fmt.Errorf("orders: read order %d: %w", e.OrderID, err)
+	}
+	// An order cancelled (or otherwise no longer confirmed) before the
+	// delivery ran gets no confirmation; one already past the event's version
+	// gets it, and the worker sends the version it is at then.
+	if o.Status != orderConfirmed || o.Version < e.Version {
+		logger.InfoContext(ctx, "orders: a confirmation was not queued: the order is no longer confirmed at the event's version",
+			"order_id", o.ID, "status", o.Status, "version", o.Version, "event_version", e.Version)
+		return nil
 	}
 	recipient := defaultRecipient(headerOfOrder(o))
 	if recipient == nil {

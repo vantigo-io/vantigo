@@ -29,10 +29,16 @@ func (s *server) markDelivered(ctx context.Context, id int64, body gen.OrdersDel
 	if len(body.Lines) == 0 || len(body.Lines) > maxLines {
 		return gen.OrdersOrder{}, refuseField(invalidDeliveryTitle, "lines", "", "One to 500 lines")
 	}
-	return s.changeOrder(ctx, id, body.Version, false,
+	// The variants are locked (MB rule 21): an undo opens a line again, and
+	// an open line holds its variant against a delete (O30).
+	return s.changeOrder(ctx, id, body.Version, body.ExpectedUpdatedAt, true,
 		func(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.OrdersOrder, lines []store.OrdersLine) (store.OrdersOrder, []changeAction, error) {
 			if err := judgeConfirmed(o); err != nil {
 				return o, nil, err
+			}
+			if o.OnHold {
+				return o, nil, conflict(codeOrderOnHold, "The order is on hold",
+					fmt.Sprintf("Order %d is on hold; release it before registering delivery.", o.Number))
 			}
 			index := map[int64]int{}
 			for i, l := range lines {

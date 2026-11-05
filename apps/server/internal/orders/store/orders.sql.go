@@ -198,19 +198,29 @@ func (q *Queries) ConfirmOrderRow(ctx context.Context, arg ConfirmOrderRowParams
 }
 
 const countOrders = `-- name: CountOrders :one
-SELECT count(*)::integer FROM orders.orders
-WHERE ($1::integer IS NULL OR customer_id = $1)
-  AND (cardinality($2::text[]) = 0 OR status = ANY($2::text[]))
-  AND (cardinality($3::text[]) = 0 OR delivery_status = ANY($3::text[]))
-  AND (cardinality($4::text[]) = 0 OR invoice_status = ANY($4::text[]))
-  AND ($5::uuid IS NULL OR salesperson_id = $5)
-  AND (NOT $6::boolean OR (status <> 'cancelled'
-       AND NOT (status = 'confirmed' AND delivery_status = 'delivered' AND invoice_status = 'invoiced')))
-  AND ($7::boolean IS NULL
-       OR (status = 'confirmed' AND delivery_status = 'delivered' AND invoice_status = 'invoiced') = $7::boolean)
-  AND ($8::text = '' OR number::text = $8::text
-       OR customer_name ILIKE '%' || $8::text || '%'
-       OR your_reference ILIKE '%' || $8::text || '%')
+SELECT count(*)::integer FROM orders.orders o
+WHERE ($1::integer IS NULL OR o.customer_id = $1)
+  AND (cardinality($2::text[]) = 0 OR o.status = ANY($2::text[]))
+  AND (cardinality($3::text[]) = 0 OR o.delivery_status = ANY($3::text[]))
+  AND (cardinality($4::text[]) = 0 OR o.invoice_status = ANY($4::text[]))
+  AND ($5::uuid IS NULL OR o.salesperson_id = $5)
+  AND (NOT $6::boolean OR (o.status <> 'cancelled' AND NOT (o.status = 'confirmed'
+       AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL)
+       AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL
+                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                        OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity)))))
+  AND ($7::boolean IS NULL OR (o.status = 'confirmed'
+       AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL)
+       AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL
+                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                        OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))) = $7::boolean)
+  AND ($8::text = '' OR o.number::text = $8::text
+       OR o.customer_name ILIKE '%' || $8::text || '%'
+       OR o.your_reference ILIKE '%' || $8::text || '%')
 `
 
 type CountOrdersParams struct {
@@ -340,20 +350,36 @@ func (q *Queries) InsertOrderChange(ctx context.Context, arg InsertOrderChangePa
 }
 
 const listOrders = `-- name: ListOrders :many
-SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.orders
-WHERE ($1::integer IS NULL OR customer_id = $1)
-  AND (cardinality($2::text[]) = 0 OR status = ANY($2::text[]))
-  AND (cardinality($3::text[]) = 0 OR delivery_status = ANY($3::text[]))
-  AND (cardinality($4::text[]) = 0 OR invoice_status = ANY($4::text[]))
-  AND ($5::uuid IS NULL OR salesperson_id = $5)
-  AND (NOT $6::boolean OR (status <> 'cancelled'
-       AND NOT (status = 'confirmed' AND delivery_status = 'delivered' AND invoice_status = 'invoiced')))
-  AND ($7::boolean IS NULL
-       OR (status = 'confirmed' AND delivery_status = 'delivered' AND invoice_status = 'invoiced') = $7::boolean)
-  AND ($8::text = '' OR number::text = $8::text
-       OR customer_name ILIKE '%' || $8::text || '%'
-       OR your_reference ILIKE '%' || $8::text || '%')
-ORDER BY id DESC
+SELECT o.id, o.number, o.status, o.on_hold, o.hold_reason, o.locked, o.version, o.delivery_status, o.invoice_status, o.confirmed_at, o.confirmed_by_user_id, o.confirmed_by_display, o.cancelled_at, o.customer_id, o.customer_number, o.customer_name, o.customer_type, o.customer_organisation_number, o.customer_foreign_id, o.customer_country, o.invoice_address_line1, o.invoice_address_line2, o.invoice_postal_code, o.invoice_city, o.invoice_country, o.delivery_address_id, o.delivery_name, o.delivery_address_line1, o.delivery_address_line2, o.delivery_postal_code, o.delivery_city, o.delivery_country, o.contact_id, o.contact_name, o.contact_email, o.contact_phone, o.customer_invoice_email, o.your_reference, o.salesperson_id, o.salesperson_display, o.project_id, o.currency, o.prices_include_vat, o.payment_terms_days, o.discount_visible, o.language, o.intro_text, o.closing_text, o.internal_note, o.delivery_date, o.net_total, o.vat_total, o.gross_total, o.channel, o.source_module, o.source_kind, o.source_id, o.external_id, o.external_number, o.client_request_id, o.payment_reference, o.prepaid_amount, o.created_by_user_id, o.created_by_display, o.created_at, o.updated_at, o.anonymised_at, ((o.status = 'confirmed'
+       AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL)
+       AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL
+                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                        OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))))::boolean AS done FROM orders.orders o
+WHERE ($1::integer IS NULL OR o.customer_id = $1)
+  AND (cardinality($2::text[]) = 0 OR o.status = ANY($2::text[]))
+  AND (cardinality($3::text[]) = 0 OR o.delivery_status = ANY($3::text[]))
+  AND (cardinality($4::text[]) = 0 OR o.invoice_status = ANY($4::text[]))
+  AND ($5::uuid IS NULL OR o.salesperson_id = $5)
+  AND (NOT $6::boolean OR (o.status <> 'cancelled' AND NOT (o.status = 'confirmed'
+       AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL)
+       AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL
+                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                        OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity)))))
+  AND ($7::boolean IS NULL OR (o.status = 'confirmed'
+       AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL)
+       AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL
+                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                        OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))) = $7::boolean)
+  AND ($8::text = '' OR o.number::text = $8::text
+       OR o.customer_name ILIKE '%' || $8::text || '%'
+       OR o.your_reference ILIKE '%' || $8::text || '%')
+ORDER BY o.id DESC
 LIMIT $10::integer OFFSET $9::integer
 `
 
@@ -370,11 +396,19 @@ type ListOrdersParams struct {
 	PageSize         int32
 }
 
+type ListOrdersRow struct {
+	OrdersOrder OrdersOrder
+	Done        bool
+}
+
 // ListOrders is one page of orders, newest first, filtered (O31a): q matches
 // the number's digits, the customer's name and your reference; open leaves
 // out the cancelled and the done; done keeps only the done, or only those not
-// done.
-func (q *Queries) ListOrders(ctx context.Context, arg ListOrdersParams) ([]OrdersOrder, error) {
+// done. done is confirmed with every product line satisfied: cancelled and
+// invoiced cover what was ordered (and so do cancelled and the larger of
+// delivered and invoiced) — an order whose remainder was cancelled whole is
+// done, while one delivered and not invoiced waits for its invoice.
+func (q *Queries) ListOrders(ctx context.Context, arg ListOrdersParams) ([]ListOrdersRow, error) {
 	rows, err := q.db.Query(ctx, listOrders,
 		arg.CustomerID,
 		arg.Statuses,
@@ -391,77 +425,78 @@ func (q *Queries) ListOrders(ctx context.Context, arg ListOrdersParams) ([]Order
 		return nil, err
 	}
 	defer rows.Close()
-	var items []OrdersOrder
+	var items []ListOrdersRow
 	for rows.Next() {
-		var i OrdersOrder
+		var i ListOrdersRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.Number,
-			&i.Status,
-			&i.OnHold,
-			&i.HoldReason,
-			&i.Locked,
-			&i.Version,
-			&i.DeliveryStatus,
-			&i.InvoiceStatus,
-			&i.ConfirmedAt,
-			&i.ConfirmedByUserID,
-			&i.ConfirmedByDisplay,
-			&i.CancelledAt,
-			&i.CustomerID,
-			&i.CustomerNumber,
-			&i.CustomerName,
-			&i.CustomerType,
-			&i.CustomerOrganisationNumber,
-			&i.CustomerForeignID,
-			&i.CustomerCountry,
-			&i.InvoiceAddressLine1,
-			&i.InvoiceAddressLine2,
-			&i.InvoicePostalCode,
-			&i.InvoiceCity,
-			&i.InvoiceCountry,
-			&i.DeliveryAddressID,
-			&i.DeliveryName,
-			&i.DeliveryAddressLine1,
-			&i.DeliveryAddressLine2,
-			&i.DeliveryPostalCode,
-			&i.DeliveryCity,
-			&i.DeliveryCountry,
-			&i.ContactID,
-			&i.ContactName,
-			&i.ContactEmail,
-			&i.ContactPhone,
-			&i.CustomerInvoiceEmail,
-			&i.YourReference,
-			&i.SalespersonID,
-			&i.SalespersonDisplay,
-			&i.ProjectID,
-			&i.Currency,
-			&i.PricesIncludeVat,
-			&i.PaymentTermsDays,
-			&i.DiscountVisible,
-			&i.Language,
-			&i.IntroText,
-			&i.ClosingText,
-			&i.InternalNote,
-			&i.DeliveryDate,
-			&i.NetTotal,
-			&i.VatTotal,
-			&i.GrossTotal,
-			&i.Channel,
-			&i.SourceModule,
-			&i.SourceKind,
-			&i.SourceID,
-			&i.ExternalID,
-			&i.ExternalNumber,
-			&i.ClientRequestID,
-			&i.PaymentReference,
-			&i.PrepaidAmount,
-			&i.CreatedByUserID,
-			&i.CreatedByDisplay,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.AnonymisedAt,
+			&i.OrdersOrder.ID,
+			&i.OrdersOrder.Number,
+			&i.OrdersOrder.Status,
+			&i.OrdersOrder.OnHold,
+			&i.OrdersOrder.HoldReason,
+			&i.OrdersOrder.Locked,
+			&i.OrdersOrder.Version,
+			&i.OrdersOrder.DeliveryStatus,
+			&i.OrdersOrder.InvoiceStatus,
+			&i.OrdersOrder.ConfirmedAt,
+			&i.OrdersOrder.ConfirmedByUserID,
+			&i.OrdersOrder.ConfirmedByDisplay,
+			&i.OrdersOrder.CancelledAt,
+			&i.OrdersOrder.CustomerID,
+			&i.OrdersOrder.CustomerNumber,
+			&i.OrdersOrder.CustomerName,
+			&i.OrdersOrder.CustomerType,
+			&i.OrdersOrder.CustomerOrganisationNumber,
+			&i.OrdersOrder.CustomerForeignID,
+			&i.OrdersOrder.CustomerCountry,
+			&i.OrdersOrder.InvoiceAddressLine1,
+			&i.OrdersOrder.InvoiceAddressLine2,
+			&i.OrdersOrder.InvoicePostalCode,
+			&i.OrdersOrder.InvoiceCity,
+			&i.OrdersOrder.InvoiceCountry,
+			&i.OrdersOrder.DeliveryAddressID,
+			&i.OrdersOrder.DeliveryName,
+			&i.OrdersOrder.DeliveryAddressLine1,
+			&i.OrdersOrder.DeliveryAddressLine2,
+			&i.OrdersOrder.DeliveryPostalCode,
+			&i.OrdersOrder.DeliveryCity,
+			&i.OrdersOrder.DeliveryCountry,
+			&i.OrdersOrder.ContactID,
+			&i.OrdersOrder.ContactName,
+			&i.OrdersOrder.ContactEmail,
+			&i.OrdersOrder.ContactPhone,
+			&i.OrdersOrder.CustomerInvoiceEmail,
+			&i.OrdersOrder.YourReference,
+			&i.OrdersOrder.SalespersonID,
+			&i.OrdersOrder.SalespersonDisplay,
+			&i.OrdersOrder.ProjectID,
+			&i.OrdersOrder.Currency,
+			&i.OrdersOrder.PricesIncludeVat,
+			&i.OrdersOrder.PaymentTermsDays,
+			&i.OrdersOrder.DiscountVisible,
+			&i.OrdersOrder.Language,
+			&i.OrdersOrder.IntroText,
+			&i.OrdersOrder.ClosingText,
+			&i.OrdersOrder.InternalNote,
+			&i.OrdersOrder.DeliveryDate,
+			&i.OrdersOrder.NetTotal,
+			&i.OrdersOrder.VatTotal,
+			&i.OrdersOrder.GrossTotal,
+			&i.OrdersOrder.Channel,
+			&i.OrdersOrder.SourceModule,
+			&i.OrdersOrder.SourceKind,
+			&i.OrdersOrder.SourceID,
+			&i.OrdersOrder.ExternalID,
+			&i.OrdersOrder.ExternalNumber,
+			&i.OrdersOrder.ClientRequestID,
+			&i.OrdersOrder.PaymentReference,
+			&i.OrdersOrder.PrepaidAmount,
+			&i.OrdersOrder.CreatedByUserID,
+			&i.OrdersOrder.CreatedByDisplay,
+			&i.OrdersOrder.CreatedAt,
+			&i.OrdersOrder.UpdatedAt,
+			&i.OrdersOrder.AnonymisedAt,
+			&i.Done,
 		); err != nil {
 			return nil, err
 		}

@@ -110,37 +110,66 @@ ORDER BY at, id;
 -- ListOrders is one page of orders, newest first, filtered (O31a): q matches
 -- the number's digits, the customer's name and your reference; open leaves
 -- out the cancelled and the done; done keeps only the done, or only those not
--- done.
-SELECT * FROM orders.orders
-WHERE (sqlc.narg(customer_id)::integer IS NULL OR customer_id = sqlc.narg(customer_id))
-  AND (cardinality(sqlc.arg(statuses)::text[]) = 0 OR status = ANY(sqlc.arg(statuses)::text[]))
-  AND (cardinality(sqlc.arg(delivery_statuses)::text[]) = 0 OR delivery_status = ANY(sqlc.arg(delivery_statuses)::text[]))
-  AND (cardinality(sqlc.arg(invoice_statuses)::text[]) = 0 OR invoice_status = ANY(sqlc.arg(invoice_statuses)::text[]))
-  AND (sqlc.narg(salesperson_id)::uuid IS NULL OR salesperson_id = sqlc.narg(salesperson_id))
-  AND (NOT sqlc.arg(open)::boolean OR (status <> 'cancelled'
-       AND NOT (status = 'confirmed' AND delivery_status = 'delivered' AND invoice_status = 'invoiced')))
-  AND (sqlc.narg(done)::boolean IS NULL
-       OR (status = 'confirmed' AND delivery_status = 'delivered' AND invoice_status = 'invoiced') = sqlc.narg(done)::boolean)
-  AND (sqlc.arg(q)::text = '' OR number::text = sqlc.arg(q)::text
-       OR customer_name ILIKE '%' || sqlc.arg(q)::text || '%'
-       OR your_reference ILIKE '%' || sqlc.arg(q)::text || '%')
-ORDER BY id DESC
+-- done. done is confirmed with every product line satisfied: cancelled and
+-- invoiced cover what was ordered (and so do cancelled and the larger of
+-- delivered and invoiced) — an order whose remainder was cancelled whole is
+-- done, while one delivered and not invoiced waits for its invoice.
+SELECT sqlc.embed(o), ((o.status = 'confirmed'
+       AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL)
+       AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL
+                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                        OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))))::boolean AS done FROM orders.orders o
+WHERE (sqlc.narg(customer_id)::integer IS NULL OR o.customer_id = sqlc.narg(customer_id))
+  AND (cardinality(sqlc.arg(statuses)::text[]) = 0 OR o.status = ANY(sqlc.arg(statuses)::text[]))
+  AND (cardinality(sqlc.arg(delivery_statuses)::text[]) = 0 OR o.delivery_status = ANY(sqlc.arg(delivery_statuses)::text[]))
+  AND (cardinality(sqlc.arg(invoice_statuses)::text[]) = 0 OR o.invoice_status = ANY(sqlc.arg(invoice_statuses)::text[]))
+  AND (sqlc.narg(salesperson_id)::uuid IS NULL OR o.salesperson_id = sqlc.narg(salesperson_id))
+  AND (NOT sqlc.arg(open)::boolean OR (o.status <> 'cancelled' AND NOT (o.status = 'confirmed'
+       AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL)
+       AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL
+                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                        OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity)))))
+  AND (sqlc.narg(done)::boolean IS NULL OR (o.status = 'confirmed'
+       AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL)
+       AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL
+                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                        OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))) = sqlc.narg(done)::boolean)
+  AND (sqlc.arg(q)::text = '' OR o.number::text = sqlc.arg(q)::text
+       OR o.customer_name ILIKE '%' || sqlc.arg(q)::text || '%'
+       OR o.your_reference ILIKE '%' || sqlc.arg(q)::text || '%')
+ORDER BY o.id DESC
 LIMIT sqlc.arg(page_size)::integer OFFSET sqlc.arg(page_offset)::integer;
 
 -- name: CountOrders :one
-SELECT count(*)::integer FROM orders.orders
-WHERE (sqlc.narg(customer_id)::integer IS NULL OR customer_id = sqlc.narg(customer_id))
-  AND (cardinality(sqlc.arg(statuses)::text[]) = 0 OR status = ANY(sqlc.arg(statuses)::text[]))
-  AND (cardinality(sqlc.arg(delivery_statuses)::text[]) = 0 OR delivery_status = ANY(sqlc.arg(delivery_statuses)::text[]))
-  AND (cardinality(sqlc.arg(invoice_statuses)::text[]) = 0 OR invoice_status = ANY(sqlc.arg(invoice_statuses)::text[]))
-  AND (sqlc.narg(salesperson_id)::uuid IS NULL OR salesperson_id = sqlc.narg(salesperson_id))
-  AND (NOT sqlc.arg(open)::boolean OR (status <> 'cancelled'
-       AND NOT (status = 'confirmed' AND delivery_status = 'delivered' AND invoice_status = 'invoiced')))
-  AND (sqlc.narg(done)::boolean IS NULL
-       OR (status = 'confirmed' AND delivery_status = 'delivered' AND invoice_status = 'invoiced') = sqlc.narg(done)::boolean)
-  AND (sqlc.arg(q)::text = '' OR number::text = sqlc.arg(q)::text
-       OR customer_name ILIKE '%' || sqlc.arg(q)::text || '%'
-       OR your_reference ILIKE '%' || sqlc.arg(q)::text || '%');
+SELECT count(*)::integer FROM orders.orders o
+WHERE (sqlc.narg(customer_id)::integer IS NULL OR o.customer_id = sqlc.narg(customer_id))
+  AND (cardinality(sqlc.arg(statuses)::text[]) = 0 OR o.status = ANY(sqlc.arg(statuses)::text[]))
+  AND (cardinality(sqlc.arg(delivery_statuses)::text[]) = 0 OR o.delivery_status = ANY(sqlc.arg(delivery_statuses)::text[]))
+  AND (cardinality(sqlc.arg(invoice_statuses)::text[]) = 0 OR o.invoice_status = ANY(sqlc.arg(invoice_statuses)::text[]))
+  AND (sqlc.narg(salesperson_id)::uuid IS NULL OR o.salesperson_id = sqlc.narg(salesperson_id))
+  AND (NOT sqlc.arg(open)::boolean OR (o.status <> 'cancelled' AND NOT (o.status = 'confirmed'
+       AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL)
+       AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL
+                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                        OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity)))))
+  AND (sqlc.narg(done)::boolean IS NULL OR (o.status = 'confirmed'
+       AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL)
+       AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL
+                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                        OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))) = sqlc.narg(done)::boolean)
+  AND (sqlc.arg(q)::text = '' OR o.number::text = sqlc.arg(q)::text
+       OR o.customer_name ILIKE '%' || sqlc.arg(q)::text || '%'
+       OR o.your_reference ILIKE '%' || sqlc.arg(q)::text || '%');
 
 -- name: OpenQuoteSums :many
 -- OpenQuoteSums is a customer's open quotes — draft and sent — counted and

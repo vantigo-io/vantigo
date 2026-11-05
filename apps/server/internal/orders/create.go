@@ -43,14 +43,33 @@ func headerInputOfOrderUpdate(b gen.OrdersOrderUpdate) headerInput {
 
 // priceOrderInputs prices an order's lines for header h over existing (a
 // save's current lines, nil on a create), before any transaction: no line is
-// optional on an order (optional_not_allowed).
-func (s *server) priceOrderInputs(ctx context.Context, inputs []lineInput, existing []store.OrdersLine, h header, reprice bool) ([]pricedLine, error) {
-	reads, err := s.readPricing(ctx, inputs, h.Currency, s.deps.Clock())
+// optional on an order (optional_not_allowed), and a kept line keeps its kind
+// (line_kind_changed). frozen is a confirmed order's save: its kept lines are
+// priced from their own rows (keptFrozen), and the catalog is read only for
+// the others.
+func (s *server) priceOrderInputs(ctx context.Context, inputs []lineInput, existing []store.OrdersLine, h header, reprice, frozen bool) ([]pricedLine, error) {
+	if err := judgeKinds(inputs, existing); err != nil {
+		return nil, err
+	}
+	old := byID(existing)
+	reading := inputs
+	if frozen {
+		reading = nil
+		for _, l := range inputs {
+			if l.id != nil {
+				if o, ok := old[*l.id]; ok && keptFrozen(l, o) {
+					continue
+				}
+			}
+			reading = append(reading, l)
+		}
+	}
+	reads, err := s.readPricing(ctx, reading, h.Currency, s.deps.Clock())
 	if err != nil {
 		return nil, err
 	}
-	priced, failures := priceLines(inputs, byID(existing), reads, priceOptions{
-		pricesIncludeVat: h.PricesIncludeVat, allowOptional: false, repriceKept: reprice,
+	priced, failures := priceLines(inputs, old, reads, priceOptions{
+		pricesIncludeVat: h.PricesIncludeVat, allowOptional: false, repriceKept: reprice, frozenKept: frozen,
 	})
 	if len(failures) > 0 {
 		return nil, refuseLines(invalidOrderTitle, failures)
@@ -106,7 +125,7 @@ func (s *server) CreateSalesOrder(ctx context.Context, req gen.CreateSalesOrderR
 	if body.Lines != nil {
 		inputs = lineInputsOf(*body.Lines)
 	}
-	priced, err := s.priceOrderInputs(ctx, inputs, nil, h, false)
+	priced, err := s.priceOrderInputs(ctx, inputs, nil, h, false, false)
 	if err != nil {
 		return answer(err, resp)
 	}
