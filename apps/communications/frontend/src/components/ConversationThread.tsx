@@ -1,13 +1,11 @@
 import { ActionIcon, Alert, Badge, Button, Group, Menu, ScrollArea, Select, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
-  IconAlertTriangle,
   IconArchive,
   IconCheck,
   IconChevronDown,
   IconDots,
   IconDownload,
-  IconPaperclip,
   IconSparkles,
   IconTag,
 } from "@tabler/icons-react";
@@ -16,14 +14,11 @@ import { useI18n } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { ConversationDetail, ConversationMessage, ConversationStatus, Tag } from "../api/conversations";
-import {
-  attachmentDownloadUrl,
-  inlineImages,
-  rawMessageDownloadUrl,
-  retryMessage,
-  safeHtmlSrcDoc,
-} from "../api/conversations";
+import { inlineImages, rawMessageDownloadUrl, retryMessage, safeHtmlSrcDoc } from "../api/conversations";
+import { AttachmentLinks } from "./AttachmentLinks";
+import { ChatMessage } from "./ChatMessage";
 import { type ConnectionButtonProps, ConversationComposer } from "./ConversationComposer";
+import { isChat } from "./chat";
 import { participantName, relative, returnHere } from "./conversationHelpers";
 
 export type ConversationThreadProps = {
@@ -60,7 +55,13 @@ export function ConversationThread({
           <Text size="xs" c="dimmed">
             {conversation.participants.map(participantName).join(", ")}
           </Text>
-          <Title order={3}>{conversation.subject || "No subject"}</Title>
+          <Title order={3}>
+            {isChat(conversation)
+              ? conversation.participants[0]
+                ? participantName(conversation.participants[0])
+                : t("customer")
+              : conversation.subject || "No subject"}
+          </Title>
           <Group gap="xs" mt="xs">
             {conversation.customerId ? (
               <Badge color="teal">
@@ -162,15 +163,19 @@ export function ConversationThread({
         />
       </div>
       <ScrollArea className="thread-messages">
-        {conversation.messages.map((message) => (
-          <MessageCard
-            key={message.id}
-            message={message}
-            conversation={conversation}
-            onSent={onSent}
-            connectionButton={connectionButton}
-          />
-        ))}
+        {conversation.messages.map((message) =>
+          isChat(conversation) ? (
+            <ChatMessage key={message.id} message={message} messages={conversation.messages} />
+          ) : (
+            <MessageCard
+              key={message.id}
+              message={message}
+              conversation={conversation}
+              onSent={onSent}
+              connectionButton={connectionButton}
+            />
+          ),
+        )}
       </ScrollArea>
       <ConversationComposer conversation={conversation} onSent={onSent} connectionButton={connectionButton} />
     </div>
@@ -203,7 +208,6 @@ function MessageCard({
     staleTime: Number.POSITIVE_INFINITY,
   });
   const rawPath = message.rawDownloadPath ?? null;
-  const unscanned = message.attachments.some((file) => file.downloadAvailable && file.scanStatus === "unscanned");
   const hasConnectionNeeded =
     message.direction === "outbound" && message.deliveries.some((d) => d.error === "connection_needed");
 
@@ -308,49 +312,7 @@ function MessageCard({
           </Text>
         )
       )}
-      {message.attachments.length > 0 && (
-        <Group mt="sm" gap="xs">
-          {message.attachments.map((file) =>
-            file.downloadAvailable && file.scanStatus === "clean" ? (
-              <Button
-                key={file.id}
-                component="a"
-                href={attachmentDownloadUrl(file.downloadPath)}
-                target="_blank"
-                rel="noreferrer"
-                size="compact-xs"
-                variant="subtle"
-                leftSection={<IconPaperclip size={12} />}
-              >
-                {file.fileName}
-              </Button>
-            ) : file.downloadAvailable && file.scanStatus === "unscanned" ? (
-              <Button
-                key={file.id}
-                component="a"
-                href={attachmentDownloadUrl(file.downloadPath)}
-                download={file.fileName}
-                size="compact-xs"
-                variant="subtle"
-                color="orange"
-                title={t("attachmentNotScanned")}
-                leftSection={<IconAlertTriangle size={12} />}
-              >
-                {file.fileName}
-              </Button>
-            ) : (
-              <Badge key={file.id} leftSection={<IconPaperclip size={12} />} variant="outline">
-                {file.scanStatus === "pending" ? t("scanning") : t("attachmentUnavailable")}
-              </Badge>
-            ),
-          )}
-        </Group>
-      )}
-      {unscanned && (
-        <Text size="xs" c="orange" mt={4}>
-          {t("attachmentNotScanned")}
-        </Text>
-      )}
+      <AttachmentLinks attachments={message.attachments} />
       {hasConnectionNeeded && (
         <Alert color="red" variant="light" mt="xs" title={t("sendFailedConnectionNeeded")}>
           <Group justify="space-between" align="center" mt="xs">

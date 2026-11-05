@@ -16,6 +16,8 @@ import {
   replyToConversation,
   stageConversationAttachment,
 } from "../api/conversations";
+import { ChatComposer } from "./ChatComposer";
+import { isChat } from "./chat";
 import { personalSenderLabel, returnHere } from "./conversationHelpers";
 
 export type ConnectionButtonProps = {
@@ -31,7 +33,19 @@ export type ConversationComposerProps = {
   connectionButton?: (props: ConnectionButtonProps) => ReactNode;
 };
 
-export function ConversationComposer({ conversation, onSent, connectionButton }: ConversationComposerProps) {
+/**
+ * The composer of a conversation by its channel's type: a chat composer on Messenger (design N8), the
+ * e-mail composer on every other channel, unchanged.
+ */
+export function ConversationComposer(props: ConversationComposerProps) {
+  return isChat(props.conversation) ? (
+    <ChatComposer conversation={props.conversation} onSent={props.onSent} />
+  ) : (
+    <EmailComposer {...props} />
+  );
+}
+
+function EmailComposer({ conversation, onSent, connectionButton }: ConversationComposerProps) {
   const { t, formatters } = useI18n("communications");
   // The attachments the channel takes, as the server words them in its refusal: never the budget of MIME.
   const allowance = conversation.maxAttachmentBytes ?? null;

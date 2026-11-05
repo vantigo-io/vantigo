@@ -1,5 +1,5 @@
 import { ActionIcon, Alert, Badge, Group, Text } from "@mantine/core";
-import { IconCheck } from "@tabler/icons-react";
+import { IconBrandMessenger, IconCheck, IconMail } from "@tabler/icons-react";
 import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
 import type { ConversationListItem, Page } from "../api/conversations";
 import { participantName, relative } from "./conversationHelpers";
@@ -50,15 +50,22 @@ export function ConversationList({
             onClick={() => onSelect(item.id)}
           >
             <Group justify="space-between" wrap="nowrap">
-              <Text fw={item.unread ? 800 : 600} lineClamp={1}>
-                {item.participants[0] ? participantName(item.participants[0]) : "Unknown participant"}
-              </Text>
+              <Group gap={6} wrap="nowrap">
+                {item.channelType === "messenger" ? (
+                  <IconBrandMessenger size={14} aria-label={t("channelMessenger")} />
+                ) : (
+                  <IconMail size={14} aria-label={t("channelEmail")} />
+                )}
+                <Text fw={item.unread ? 800 : 600} lineClamp={1}>
+                  {item.participants[0] ? participantName(item.participants[0]) : "Unknown participant"}
+                </Text>
+              </Group>
               <Text size="xs" c="dimmed">
                 {relative(item.lastActivityAt)}
               </Text>
             </Group>
             <Text size="sm" fw={item.unread ? 700 : 500} lineClamp={1}>
-              {item.subject || "No subject"}
+              {item.subject || (item.channelType === "messenger" ? t("channelMessenger") : "No subject")}
             </Text>
             <Text size="xs" c="dimmed" lineClamp={1}>
               {item.previewText || "No preview"}
