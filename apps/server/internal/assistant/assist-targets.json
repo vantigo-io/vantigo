@@ -185,6 +185,16 @@
     "description": "The button above the invoice list that starts a new invoice."
   },
   {
+    "key": "orders.analysis.csv",
+    "route": "/orders/analysis",
+    "description": "Downloads the open view's table as a CSV file."
+  },
+  {
+    "key": "orders.analysis.views",
+    "route": "/orders/analysis",
+    "description": "The tabs of the analysis: quote hit rate, order intake and backlog."
+  },
+  {
     "key": "orders.customer.new-order",
     "route": "/customers/{customerId}/orders",
     "description": "On the customer's Orders tab, starts a new order for this customer."
@@ -193,6 +203,16 @@
     "key": "orders.customer.new-quote",
     "route": "/customers/{customerId}/orders",
     "description": "On the customer's Orders tab, starts a new quote for this customer."
+  },
+  {
+    "key": "orders.document.warnings",
+    "route": "/orders/quotes/{quoteId}",
+    "description": "The customer's and the products' sales warnings, and for a settings holder the override of a block and the customer's warning."
+  },
+  {
+    "key": "orders.lines.add-from-grid",
+    "route": "/orders/quotes/{quoteId}",
+    "description": "Opens the variant grid: a product's variants by size and colour, with a quantity per cell, added as lines."
   },
   {
     "key": "orders.new-order.create",
@@ -258,6 +278,11 @@
     "key": "orders.settings.save",
     "route": "/orders/settings",
     "description": "Saves the Orders settings: number series, validity, payment terms, the send channel and the mail texts."
+  },
+  {
+    "key": "orders.settings.warnings",
+    "route": "/orders/settings",
+    "description": "Every customer's and product's sales warning, set, changed and removed here."
   },
   {
     "key": "orders.templates.new",
