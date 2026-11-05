@@ -104,3 +104,29 @@ WHERE m.tax_category_id = ANY(@tax_category_ids::int[])
   AND r.valid_from <= @day::date
   AND (r.valid_to IS NULL OR r.valid_to >= @day::date)
 ORDER BY m.tax_category_id;
+
+-- name: TaxCategoryVatCodes :many
+-- TaxCategoryVatCodes is every Products tax category mapped to a VAT code
+-- (orders design O7), for the settings page.
+SELECT tax_category_id, vat_code_id
+FROM invoices.tax_category_vat_codes
+ORDER BY tax_category_id;
+
+-- name: ShareVatCode :one
+-- ShareVatCode reads whether a code is active and holds it FOR SHARE until
+-- the transaction ends, so a deactivation cannot commit between the check and
+-- the mapping that relies on it.
+SELECT active FROM invoices.vat_codes WHERE id = @id FOR SHARE;
+
+-- name: PutTaxCategoryVatCode :one
+-- PutTaxCategoryVatCode maps a tax category to a VAT code, replacing any code
+-- it had (O7).
+INSERT INTO invoices.tax_category_vat_codes (tax_category_id, vat_code_id, created_at, updated_at)
+VALUES (@tax_category_id, @vat_code_id, @now, @now)
+ON CONFLICT (tax_category_id) DO UPDATE SET vat_code_id = EXCLUDED.vat_code_id, updated_at = EXCLUDED.updated_at
+RETURNING tax_category_id, vat_code_id;
+
+-- name: DeleteTaxCategoryVatCode :exec
+-- DeleteTaxCategoryVatCode removes a tax category's VAT code; the category
+-- then has none (O7).
+DELETE FROM invoices.tax_category_vat_codes WHERE tax_category_id = @tax_category_id;

@@ -3840,6 +3840,18 @@ type InvoicesStatsSummaryResponse struct {
 	To                    time.Time `json:"to"`
 }
 
+// InvoicesTaxCategoryVatCode One Products tax category mapped to one of Invoices' VAT codes (orders design O7). Invoices stores the tax category's id only and cannot name it: the settings page reads the names from the products API. A category with no mapping has no VAT code — there is no default.
+type InvoicesTaxCategoryVatCode struct {
+	// TaxCategoryId The tax category's id in Products.
+	TaxCategoryId int32 `json:"taxCategoryId"`
+	VatCodeId     int32 `json:"vatCodeId"`
+}
+
+// InvoicesTaxCategoryVatCodeRequest The VAT code a tax category maps to. It must exist and be active (400 on vatCodeId).
+type InvoicesTaxCategoryVatCodeRequest struct {
+	VatCodeId int32 `json:"vatCodeId"`
+}
+
 // InvoicesTimesheetRow One row of a document's timesheet (invoices work design D5) — one time entry as printed. description is the entry's task title, else its project's name; never the entry's note.
 type InvoicesTimesheetRow struct {
 	Date        openapi_types.Date `json:"date"`
@@ -4467,6 +4479,9 @@ type PutInvoicesSettingsPaymentsJSONRequestBody = InvoicesPaymentSettingsRequest
 // PutInvoicesSettingsRemindersJSONRequestBody defines body for PutInvoicesSettingsReminders for application/json ContentType.
 type PutInvoicesSettingsRemindersJSONRequestBody = InvoicesReminderSettingsRequest
 
+// PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdJSONRequestBody defines body for PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId for application/json ContentType.
+type PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdJSONRequestBody = InvoicesTaxCategoryVatCodeRequest
+
 // PutInvoicesSettingsVippsJSONRequestBody defines body for PutInvoicesSettingsVipps for application/json ContentType.
 type PutInvoicesSettingsVippsJSONRequestBody = InvoicesVippsSettingsRequest
 
@@ -4712,6 +4727,15 @@ type ServerInterface interface {
 	// PutInvoicesSettingsReminders Change the reminder settings
 	// (PUT /api/v1/invoices/settings/reminders)
 	PutInvoicesSettingsReminders(w http.ResponseWriter, r *http.Request)
+	// GetInvoicesSettingsTaxCategoryVatCodes List the tax categories' VAT codes
+	// (GET /api/v1/invoices/settings/tax-category-vat-codes)
+	GetInvoicesSettingsTaxCategoryVatCodes(w http.ResponseWriter, r *http.Request)
+	// DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId Remove a tax category's VAT code
+	// (DELETE /api/v1/invoices/settings/tax-category-vat-codes/{taxCategoryId})
+	DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId(w http.ResponseWriter, r *http.Request, taxCategoryId int32)
+	// PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId Set a tax category's VAT code
+	// (PUT /api/v1/invoices/settings/tax-category-vat-codes/{taxCategoryId})
+	PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId(w http.ResponseWriter, r *http.Request, taxCategoryId int32)
 	// DeleteInvoicesSettingsVipps Remove the Vipps credentials
 	// (DELETE /api/v1/invoices/settings/vipps)
 	DeleteInvoicesSettingsVipps(w http.ResponseWriter, r *http.Request)
@@ -6822,6 +6846,72 @@ func (siw *ServerInterfaceWrapper) PutInvoicesSettingsReminders(w http.ResponseW
 	handler.ServeHTTP(w, r)
 }
 
+// GetInvoicesSettingsTaxCategoryVatCodes operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesSettingsTaxCategoryVatCodes(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesSettingsTaxCategoryVatCodes(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taxCategoryId" -------------
+	var taxCategoryId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taxCategoryId", r.PathValue("taxCategoryId"), &taxCategoryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taxCategoryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId(w, r, taxCategoryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId operation middleware
+func (siw *ServerInterfaceWrapper) PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taxCategoryId" -------------
+	var taxCategoryId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taxCategoryId", r.PathValue("taxCategoryId"), &taxCategoryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taxCategoryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId(w, r, taxCategoryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteInvoicesSettingsVipps operation middleware
 func (siw *ServerInterfaceWrapper) DeleteInvoicesSettingsVipps(w http.ResponseWriter, r *http.Request) {
 
@@ -8153,6 +8243,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings/payments", wrapper.PutInvoicesSettingsPayments)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/settings/reminders", wrapper.GetInvoicesSettingsReminders)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings/reminders", wrapper.PutInvoicesSettingsReminders)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/settings/tax-category-vat-codes", wrapper.GetInvoicesSettingsTaxCategoryVatCodes)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/invoices/settings/tax-category-vat-codes/{taxCategoryId}", wrapper.DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings/tax-category-vat-codes/{taxCategoryId}", wrapper.PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/collection-rates", wrapper.GetInvoicesCollectionRates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/collection-rates", wrapper.PostInvoicesCollectionRates)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/invoices/collection-rates/{id}", wrapper.DeleteInvoicesCollectionRatesById)
@@ -12660,6 +12753,164 @@ func (response PutInvoicesSettingsReminders409ApplicationProblemPlusJSONResponse
 	return err
 }
 
+type GetInvoicesSettingsTaxCategoryVatCodesRequestObject struct {
+}
+
+type GetInvoicesSettingsTaxCategoryVatCodesResponseObject interface {
+	VisitGetInvoicesSettingsTaxCategoryVatCodesResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesSettingsTaxCategoryVatCodes200JSONResponse []InvoicesTaxCategoryVatCode
+
+func (response GetInvoicesSettingsTaxCategoryVatCodes200JSONResponse) VisitGetInvoicesSettingsTaxCategoryVatCodesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesSettingsTaxCategoryVatCodes401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesSettingsTaxCategoryVatCodes401JSONResponse) VisitGetInvoicesSettingsTaxCategoryVatCodesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesSettingsTaxCategoryVatCodes403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesSettingsTaxCategoryVatCodes403JSONResponse) VisitGetInvoicesSettingsTaxCategoryVatCodesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdRequestObject struct {
+	TaxCategoryId int32 `json:"taxCategoryId"`
+}
+
+type DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponseObject interface {
+	VisitDeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId204Response struct {
+}
+
+func (response DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId204Response) VisitDeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId401JSONResponse) VisitDeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId403JSONResponse) VisitDeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdRequestObject struct {
+	TaxCategoryId int32 `json:"taxCategoryId"`
+	Body          *PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdJSONRequestBody
+}
+
+type PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponseObject interface {
+	VisitPutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponse(w http.ResponseWriter) error
+}
+
+type PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId200JSONResponse InvoicesTaxCategoryVatCode
+
+func (response PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId200JSONResponse) VisitPutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId400ApplicationProblemPlusJSONResponse) VisitPutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId401JSONResponse) VisitPutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId403JSONResponse) VisitPutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteInvoicesSettingsVippsRequestObject struct {
 }
 
@@ -16404,6 +16655,15 @@ type StrictServerInterface interface {
 	// PutInvoicesSettingsReminders Change the reminder settings
 	// (PUT /api/v1/invoices/settings/reminders)
 	PutInvoicesSettingsReminders(ctx context.Context, request PutInvoicesSettingsRemindersRequestObject) (PutInvoicesSettingsRemindersResponseObject, error)
+	// GetInvoicesSettingsTaxCategoryVatCodes List the tax categories' VAT codes
+	// (GET /api/v1/invoices/settings/tax-category-vat-codes)
+	GetInvoicesSettingsTaxCategoryVatCodes(ctx context.Context, request GetInvoicesSettingsTaxCategoryVatCodesRequestObject) (GetInvoicesSettingsTaxCategoryVatCodesResponseObject, error)
+	// DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId Remove a tax category's VAT code
+	// (DELETE /api/v1/invoices/settings/tax-category-vat-codes/{taxCategoryId})
+	DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId(ctx context.Context, request DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdRequestObject) (DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponseObject, error)
+	// PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId Set a tax category's VAT code
+	// (PUT /api/v1/invoices/settings/tax-category-vat-codes/{taxCategoryId})
+	PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId(ctx context.Context, request PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdRequestObject) (PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponseObject, error)
 	// DeleteInvoicesSettingsVipps Remove the Vipps credentials
 	// (DELETE /api/v1/invoices/settings/vipps)
 	DeleteInvoicesSettingsVipps(ctx context.Context, request DeleteInvoicesSettingsVippsRequestObject) (DeleteInvoicesSettingsVippsResponseObject, error)
@@ -18252,6 +18512,89 @@ func (sh *strictHandler) PutInvoicesSettingsReminders(w http.ResponseWriter, r *
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutInvoicesSettingsRemindersResponseObject); ok {
 		if err := validResponse.VisitPutInvoicesSettingsRemindersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesSettingsTaxCategoryVatCodes operation middleware
+func (sh *strictHandler) GetInvoicesSettingsTaxCategoryVatCodes(w http.ResponseWriter, r *http.Request) {
+	var request GetInvoicesSettingsTaxCategoryVatCodesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesSettingsTaxCategoryVatCodes(ctx, request.(GetInvoicesSettingsTaxCategoryVatCodesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesSettingsTaxCategoryVatCodes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesSettingsTaxCategoryVatCodesResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesSettingsTaxCategoryVatCodesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId operation middleware
+func (sh *strictHandler) DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId(w http.ResponseWriter, r *http.Request, taxCategoryId int32) {
+	var request DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdRequestObject
+
+	request.TaxCategoryId = taxCategoryId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId(ctx, request.(DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponseObject); ok {
+		if err := validResponse.VisitDeleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId operation middleware
+func (sh *strictHandler) PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId(w http.ResponseWriter, r *http.Request, taxCategoryId int32) {
+	var request PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdRequestObject
+
+	request.TaxCategoryId = taxCategoryId
+
+	var body PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId(ctx, request.(PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponseObject); ok {
+		if err := validResponse.VisitPutInvoicesSettingsTaxCategoryVatCodesByTaxCategoryIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

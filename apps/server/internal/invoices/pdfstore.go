@@ -82,27 +82,27 @@ func pdfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 		d.lines = append(d.lines, pl)
 	}
 	for _, s := range sums {
-		row := vatSummary{category: s.VatCategory, safT: s.SafTCode, reason: s.ExemptionReason}
+		row := vatSummary{Category: s.VatCategory, SAFT: s.SafTCode, Reason: s.ExemptionReason}
 		var err error
-		if row.rate, err = ratFromNumeric(s.RatePercent); err != nil {
+		if row.Rate, err = ratFromNumeric(s.RatePercent); err != nil {
 			return pdfDocument{}, err
 		}
-		if row.taxable, err = ratFromNumeric(s.TaxableAmount); err != nil {
+		if row.Taxable, err = ratFromNumeric(s.TaxableAmount); err != nil {
 			return pdfDocument{}, err
 		}
-		if row.vat, err = ratFromNumeric(s.VatAmount); err != nil {
+		if row.VAT, err = ratFromNumeric(s.VatAmount); err != nil {
 			return pdfDocument{}, err
 		}
 		d.summaries = append(d.summaries, row)
 	}
 	var err error
-	if d.totals.net, err = ratFromNumeric(inv.NetTotal); err != nil {
+	if d.totals.Net, err = ratFromNumeric(inv.NetTotal); err != nil {
 		return pdfDocument{}, err
 	}
-	if d.totals.vat, err = ratFromNumeric(inv.VatTotal); err != nil {
+	if d.totals.VAT, err = ratFromNumeric(inv.VatTotal); err != nil {
 		return pdfDocument{}, err
 	}
-	if d.totals.gross, err = ratFromNumeric(inv.GrossTotal); err != nil {
+	if d.totals.Gross, err = ratFromNumeric(inv.GrossTotal); err != nil {
 		return pdfDocument{}, err
 	}
 	if original != nil && original.Number != nil {
@@ -697,9 +697,9 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 		return nil, err
 	}
 	for i := range doc.lines {
-		doc.lines[i].rate = taxed[i].rate
+		doc.lines[i].rate = taxed[i].Rate
 		if squared != nil {
-			doc.lines[i].net = squared[i].net
+			doc.lines[i].net = squared[i].Net
 		}
 	}
 	doc.summaries, doc.totals, doc.preview = summaries, totals, true
@@ -712,7 +712,7 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 	}
 	doc.points = meteringPointsOf(stored, held)
 	if previewRendered != nil {
-		previewRendered(inv.ID, doc.totals.vat)
+		previewRendered(inv.ID, doc.totals.VAT)
 	}
 	m := buildPDFModel(doc)
 	if pdfModelBuilt != nil {

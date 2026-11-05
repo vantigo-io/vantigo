@@ -463,14 +463,14 @@ func buildPDFModel(d pdfDocument) pdfModel {
 	seen := map[string]bool{}
 	for _, r := range d.summaries {
 		m.vatRows = append(m.vatRows, []string{
-			r.category + " " + formatDecimal(r.rate, 0, 2, lang) + " %", money(r.taxable, lang), money(r.vat, lang),
+			r.Category + " " + formatDecimal(r.Rate, 0, 2, lang) + " %", money(r.Taxable, lang), money(r.VAT, lang),
 		})
-		if r.category == "S" || r.reason == nil || seen[*r.reason] {
+		if r.Category == "S" || r.Reason == nil || seen[*r.Reason] {
 			continue
 		}
-		seen[*r.reason] = true
-		reason := *r.reason
-		if r.category == "AE" {
+		seen[*r.Reason] = true
+		reason := *r.Reason
+		if r.Category == "AE" {
 			reason = reverseChargeText
 		}
 		m.reasons = append(m.reasons, reason)
@@ -481,7 +481,7 @@ func buildPDFModel(d pdfDocument) pdfModel {
 		grossLabel = l.toPay
 	}
 	m.totals = [][2]string{
-		{l.net, money(d.totals.net, lang)}, {l.vatTotal, money(d.totals.vat, lang)}, {grossLabel, currency + " " + money(d.totals.gross, lang)},
+		{l.net, money(d.totals.Net, lang)}, {l.vatTotal, money(d.totals.VAT, lang)}, {grossLabel, currency + " " + money(d.totals.Gross, lang)},
 	}
 
 	// The payment block, on an invoice only.

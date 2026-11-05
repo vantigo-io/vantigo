@@ -682,7 +682,7 @@ func (s *server) fromConsumption(ctx context.Context, body gen.InvoicesFromConsu
 			fmt.Sprintf("The settlements make %d lines, and a document holds at most %d; choose fewer settlements.", existing+len(lines), maxLines)))}, nil
 	}
 	for _, l := range lines {
-		if l.quantity.Cmp(maxQuantity) > 0 || l.unitPrice.Cmp(maxUnitPrice) > 0 || l.amounts.gross.Cmp(maxLineGross) > 0 {
+		if l.quantity.Cmp(maxQuantity) > 0 || l.unitPrice.Cmp(maxUnitPrice) > 0 || l.amounts.Gross.Cmp(maxLineGross) > 0 {
 			return consumptionOutcome{invalid: fieldError("settlementIds", "A settlement makes a line too large for one invoice line")}, nil
 		}
 	}

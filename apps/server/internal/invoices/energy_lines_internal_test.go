@@ -46,9 +46,9 @@ func TestEnergyLines_ARegularMonth(t *testing.T) {
 	for i, w := range want {
 		l := lines[i]
 		if l.description != w.text || l.unit != w.unit || l.quantity.FloatString(3) != w.quantity ||
-			l.unitPrice.FloatString(8) != w.price || l.amounts.net.FloatString(2) != w.net {
+			l.unitPrice.FloatString(8) != w.price || l.amounts.Net.FloatString(2) != w.net {
 			t.Errorf("line %d = %q %q %s × %s = %s; want %q %q %s × %s = %s", i+1, l.description, l.unit,
-				l.quantity.FloatString(3), l.unitPrice.FloatString(8), l.amounts.net.FloatString(2), w.text, w.unit, w.quantity, w.price, w.net)
+				l.quantity.FloatString(3), l.unitPrice.FloatString(8), l.amounts.Net.FloatString(2), w.text, w.unit, w.quantity, w.price, w.net)
 		}
 		if l.vatCodeID != 10 || l.correction || len(l.sources) != 1 || l.sources[0].id != 501 {
 			t.Errorf("line %d: code %d, correction %v, sources %v; want code 10, no correction, settlement 501", i+1, l.vatCodeID, l.correction, l.sources)
@@ -101,9 +101,9 @@ func TestEnergyLines_ACorrectionOfEachSign(t *testing.T) {
 		for i, want := range []struct{ quantity, price, net string }{{"-1.000", "6.40000000", "-6.40"}, {"1.000", "5.13000000", "5.13"}} {
 			l := lines[i]
 			if l.description != c.texts[i] || !l.correction || l.unit != unitWord(c.language, "pcs") || l.vatCodeID != 1 ||
-				l.quantity.FloatString(3) != want.quantity || l.unitPrice.FloatString(8) != want.price || l.amounts.net.FloatString(2) != want.net {
+				l.quantity.FloatString(3) != want.quantity || l.unitPrice.FloatString(8) != want.price || l.amounts.Net.FloatString(2) != want.net {
 				t.Errorf("%s line %d = %q %s × %s = %s (correction %v); want %q %s × %s = %s", c.language, i+1, l.description,
-					l.quantity.FloatString(3), l.unitPrice.FloatString(8), l.amounts.net.FloatString(2), l.correction, c.texts[i], want.quantity, want.price, want.net)
+					l.quantity.FloatString(3), l.unitPrice.FloatString(8), l.amounts.Net.FloatString(2), l.correction, c.texts[i], want.quantity, want.price, want.net)
 			}
 		}
 	}
