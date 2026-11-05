@@ -355,6 +355,17 @@ type Config struct {
 	// Vipps' test environment or a mock host.
 	InvoicesVippsBaseURL string
 
+	// ShippingCarriers are the carrier adapters this installation allows
+	// (SHIPPING_CARRIERS, orders design O51), a comma-separated list of known
+	// adapters, default "bring". An empty value withholds every carrier: no
+	// carrier account can be added, booked on or polled. Orders reads it.
+	ShippingCarriers []string
+	// ShippingBringBaseURL is the origin the Bring adapter calls
+	// (SHIPPING_BRING_BASE_URL), default https://api.bring.com; https only, no
+	// trailing slash. The operator's, never the tenant's: an operator points
+	// it at a mock host; Bring's test mode is a carrier account's test flag.
+	ShippingBringBaseURL string
+
 	// StaffImportMaxRows is how many people one Staff import takes and one
 	// Staff export writes (STAFF_IMPORT_MAX_ROWS, staff records plan Task 3),
 	// default 5000 and never fewer — one number for both, so a file the
@@ -665,6 +676,7 @@ func Load(env map[string]string) (*Config, error) {
 	energySpotPriceService(&p, env, c)
 	invoicesEhf(&p, env, c)
 	invoicesVipps(&p, env, c)
+	shippingCarriers(&p, env, c)
 	c.StaffImportMaxRows = integer(&p, env, "STAFF_IMPORT_MAX_ROWS", 5000, 5000, 20000)
 	staffWorkers(&p, env, c)
 	calendarWorkers(&p, env, c)
@@ -1139,6 +1151,46 @@ const defaultVippsBaseURL = "https://api.vipps.no"
 func invoicesVipps(p *problems, env map[string]string, c *Config) {
 	c.InvoicesVippsEnabled = boolean(p, env, "INVOICES_VIPPS_ENABLED", true)
 	c.InvoicesVippsBaseURL = httpBaseURL(p, env, "INVOICES_VIPPS_BASE_URL", defaultVippsBaseURL)
+}
+
+// KnownShippingCarriers are the carrier adapters this build has (orders
+// design O49): SHIPPING_CARRIERS may name only these.
+var KnownShippingCarriers = []string{"bring"}
+
+// defaultBringBaseURL is Bring's API (orders design O49).
+const defaultBringBaseURL = "https://api.bring.com"
+
+// shippingCarriers loads the shipping settings (orders design O51): the
+// carriers the installation allows — each a known adapter, once — and the
+// Bring adapter's base URL, which must be https: the adapter sends the
+// Mybring keys to it.
+func shippingCarriers(p *problems, env map[string]string, c *Config) {
+	raw, set := env["SHIPPING_CARRIERS"]
+	if !set {
+		raw = "bring"
+	}
+	c.ShippingCarriers = []string{}
+	for _, name := range strings.Split(raw, ",") {
+		name = strings.ToLower(strings.TrimSpace(name))
+		switch {
+		case name == "":
+		case !slices.Contains(KnownShippingCarriers, name):
+			p.add("SHIPPING_CARRIERS", "%q is not a known carrier (known: %s)", name, strings.Join(KnownShippingCarriers, ", "))
+		case slices.Contains(c.ShippingCarriers, name):
+			p.add("SHIPPING_CARRIERS", "%q is named twice", name)
+		default:
+			c.ShippingCarriers = append(c.ShippingCarriers, name)
+		}
+	}
+	c.ShippingBringBaseURL = httpBaseURL(p, env, "SHIPPING_BRING_BASE_URL", defaultBringBaseURL)
+	if !strings.HasPrefix(c.ShippingBringBaseURL, "https://") {
+		p.add("SHIPPING_BRING_BASE_URL", "must be an https URL")
+	}
+}
+
+// ShippingCarrierAllowed reports whether SHIPPING_CARRIERS allows carrier.
+func (c *Config) ShippingCarrierAllowed(carrier string) bool {
+	return c != nil && slices.Contains(c.ShippingCarriers, carrier)
 }
 
 // isNumericPort reports whether port is all ASCII digits, at least one:

@@ -1,0 +1,70 @@
+{
+  "comment": "Bring's domestic products this adapter offers (orders design O49, research R §2.9, read 2026-11-05). Bring withdraws products yearly: edit this file, never Go code. segment is b2c, b2b, cargo or return; cargo is booked on the account's second customer number when it has one. waybill is a product with a waybill apart from its labels.",
+  "products": [
+    {
+      "code": "5800",
+      "nameEn": "Parcel to pickup point",
+      "nameNb": "Pakke til hentested",
+      "segment": "b2c",
+      "pickupPoint": true,
+      "waybill": false
+    },
+    {
+      "code": "5600",
+      "nameEn": "Parcel delivered home",
+      "nameNb": "Pakke levert hjem",
+      "segment": "b2c",
+      "pickupPoint": false,
+      "waybill": false
+    },
+    {
+      "code": "3584",
+      "nameEn": "Parcel in mailbox",
+      "nameNb": "Pakke i postkassen",
+      "segment": "b2c",
+      "pickupPoint": false,
+      "waybill": false
+    },
+    {
+      "code": "5801",
+      "nameEn": "Parcel locker",
+      "nameNb": "Pakkeboks",
+      "segment": "b2c",
+      "pickupPoint": true,
+      "waybill": false
+    },
+    {
+      "code": "5000",
+      "nameEn": "Business parcel",
+      "nameNb": "Pakke til bedrift",
+      "segment": "b2b",
+      "pickupPoint": false,
+      "waybill": false
+    },
+    {
+      "code": "4850",
+      "nameEn": "Business express",
+      "nameNb": "Bedrift ekspress",
+      "segment": "b2b",
+      "pickupPoint": false,
+      "waybill": false
+    },
+    {
+      "code": "5100",
+      "nameEn": "Groupage",
+      "nameNb": "Stykkgods",
+      "segment": "cargo",
+      "pickupPoint": false,
+      "waybill": true
+    },
+    {
+      "code": "5300",
+      "nameEn": "Part load",
+      "nameNb": "Partigods",
+      "segment": "cargo",
+      "pickupPoint": false,
+      "waybill": true
+    },
+    { "code": "5400", "nameEn": "Pallet", "nameNb": "Pall", "segment": "cargo", "pickupPoint": false, "waybill": true }
+  ]
+}
