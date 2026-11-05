@@ -190,5 +190,6 @@ og **Fjern** er alt den tilbyr.
 | Analyse mangler i sidemenyen | Personen mangler Se salgsanalyse | Gi den sammen med Bruke Ordre |
 | **Fakturer** mangler på en bekreftet ordre | Personen mangler Bruke Fakturaer eller Lage fakturaer, eller Fakturaer er slått av | Gi begge i Fakturaer |
 | «Deler av ordren står på et fakturautkast» ved kansellering | Et fakturautkast holder deler av ordren | Utsted eller slett utkastet i Fakturaer, eller velg **Frigjør fra fakturautkast** på ordren |
-| Utstedelsen av en faktura avvises: «Arbeid på linje … kan ikke lenger faktureres» | Det fakturautkastet holdt av ordren, ble frigjort, eller utkastet ble laget for mer enn 30 dager siden og frigjort av seg selv | Slett utkastet og fakturer ordren på nytt |
+| Utstedelsen av en faktura avvises: «Arbeid på linje … kan ikke lenger faktureres» | Det fakturautkastet holdt av ordren, ble frigjort på ordren, eller ordren ble satt på vent | Slett utkastet og fakturer ordren på nytt |
+| En ordre er grået ut i **Fakturer fra ordre**: «i en annen valuta enn fakturaene lages i» | Ordrens valuta er ikke standardvalutaen i fakturainnstillingene (NOK) | Fakturer den utenfor Vantigo, eller endre ordrens valuta mens den fortsatt er et utkast |
 | «En advarsel sperrer dette», og ingen **Overstyr advarselen** | En sperre gjelder, og personen mangler Håndtere innstillinger for Ordre | Be noen med innstillingene overstyre den, eller endre advarselen |

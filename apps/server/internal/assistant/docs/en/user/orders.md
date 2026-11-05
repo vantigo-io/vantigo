@@ -306,13 +306,16 @@ draft invoices hold of the order is offered to invoice again at once. A draft in
 still holds part of it is then refused when someone issues it; delete it and invoice the
 order again. The **Change log** records it as **Released from draft invoices**.
 
-What a draft invoice holds is given back by itself 30 days after the draft was made from the order, whether or not someone edited the draft since; issuing it after that is refused. Issue a draft invoice within 30 days, or make it again.
+A draft invoice holds its part of the order for as long as the draft exists, however
+long that is: nothing gives it back by itself. What a deleted draft held is given back at
+once — or, should Orders not have been told, by Invoices within the next hour or so.
 
 ### The Invoices card
 
 A confirmed order's page has an **Invoices** card listing every invoice issued from it:
-**Invoice no.**, **Invoice date**, **Net amount** — what the invoice billed of this order —
-and **Status**, **Invoiced** or, once credit notes returned all of it, **Credited**. With
+**Invoice no.**, **Invoice date**, **Net amount** — what the invoice still bills of this
+order, with what credit notes gave back of it beneath, *NOK 250.00 credited* — and
+**Status**, **Invoiced** or, once credit notes returned all of it, **Credited**. With
 **Use Invoices** the number links to the invoice. Until something is invoiced the card says
 "Nothing is invoiced yet."
 

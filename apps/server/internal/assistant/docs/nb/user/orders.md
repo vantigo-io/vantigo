@@ -307,13 +307,17 @@ fakturautkast holder av ordren, tilbys til fakturering igjen med en gang. Et fak
 som fortsatt holder deler av den, avvises da når noen utsteder det; slett det og fakturer
 ordren på nytt. **Endringslogg** viser det som **Frigjort fra fakturautkast**.
 
-Det et fakturautkast holder, gis tilbake av seg selv 30 dager etter at utkastet ble laget fra ordren, enten noen har endret utkastet siden eller ikke; å utstede det etter det avvises. Utsted et fakturautkast innen 30 dager, eller lag det på nytt.
+Et fakturautkast holder sin del av ordren så lenge utkastet finnes, uansett hvor lenge:
+ingenting gir det tilbake av seg selv. Det et slettet utkast holdt, gis tilbake med en
+gang — eller, om Ordre ikke fikk beskjed, av Fakturaer i løpet av den neste timen eller
+så.
 
 ### Kortet Fakturaer
 
 Siden til en bekreftet ordre har kortet **Fakturaer**, som viser hver faktura utstedt fra
-den: **Fakturanr.**, **Fakturadato**, **Beløp eks. mva** — det fakturaen fakturerte av
-denne ordren — og **Status**, **Fakturert** eller, når kreditnotaer har returnert alt,
+den: **Fakturanr.**, **Fakturadato**, **Beløp eks. mva** — det fakturaen fortsatt
+fakturerer av denne ordren, med det kreditnotaer har gitt tilbake av den under, *NOK 250,00
+kreditert* — og **Status**, **Fakturert** eller, når kreditnotaer har returnert alt,
 **Kreditert**. Med **Bruke Fakturaer** lenker nummeret til fakturaen. Til noe er fakturert,
 sier kortet «Ingenting er fakturert ennå.»
 
