@@ -22,7 +22,7 @@ const on = (overrides: Parameters<typeof personalSwitch>[0] = {}) =>
   connected({ personalConnection: personalSwitch({ enabled: true, status: "ready", ...overrides }) });
 
 describe("GoogleCalendarGmailTab — Connection for people", () => {
-  it("says what it does, the redirect URI to register, and what is still to come", async () => {
+  it("says what it does and the redirect URI to register", async () => {
     const { card } = await openPage({ connection: connected() });
     expect(
       within(card).getByText(/^Each person connects their own Google account to Vantigo once/),
@@ -31,7 +31,10 @@ describe("GoogleCalendarGmailTab — Connection for people", () => {
     expect(within(card).getByRole("button", { name: `Copy ${PERSONAL_REDIRECT_URI}` })).toBeInTheDocument();
     expect(within(card).getByText(/^Register this redirect URI on the Internal web client/)).toBeInTheDocument();
     expect(within(card).getByRole("status")).toHaveTextContent("Off");
-    expect(screen.getByText("Sending from Gmail is coming")).toBeInTheDocument();
+    expect(
+      within(card).getByText(/sending from their own Gmail address use that connection, each with its own consent\.$/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Sending from Gmail is coming")).not.toBeInTheDocument();
   });
 
   it("turns the switch on for an Owner", async () => {
@@ -116,7 +119,8 @@ describe("GoogleCalendarGmailTab — Connection for people", () => {
     expect(within(status).getByText("Ikke tilgjengelig")).toBeInTheDocument();
     expect(within(status).getByText(/^Test tilkoblingen først/)).toBeInTheDocument();
     expect(within(status).getByText("Personer tilkoblet: 3. Venter på ny tilkobling: 0.")).toBeInTheDocument();
-    expect(screen.getByText("Sending fra Gmail kommer")).toBeInTheDocument();
+    expect(within(card).getByText(/sending fra egen Gmail-adresse bruker den tilkoblingen/)).toBeInTheDocument();
+    expect(screen.queryByText("Sending fra Gmail kommer")).not.toBeInTheDocument();
   });
 });
 

@@ -296,9 +296,6 @@ export const googleCatalog = {
     confirmGroupTitle: "Confirm the adoption of {{email}}?",
     confirmGroupBody:
       "Vantigo found the group {{email}} in the organisation holding a Staff group's address; it did not create it, and has written nothing to it. Confirming lets Vantigo manage it for Staff: its name, description and visibility are overwritten with Staff's, owners Staff does not name are made members, and members Staff's group does not list are removed. Vantigo never deletes a group it did not create. Confirm only if the group is meant to be this Staff group.",
-    calendarGmailComingTitle: "Sending from Gmail is coming",
-    calendarGmailComing:
-      "Sending from a person's own Gmail address comes in a later release, and will use each person's connection.",
     "mail.title": "Mail channels",
     "mail.intro":
       "Let Communications' channels send from and read your organisation's licensed Gmail mailboxes, such as post@. Vantigo reaches them through domain-wide delegation.",
@@ -321,7 +318,7 @@ export const googleCatalog = {
     "mail.couldNotSwitch": "Mail channels could not be changed",
     "people.title": "Connection for people",
     "people.intro":
-      "Each person connects their own Google account to Vantigo once, under Settings › Connections. Calendar sync and sending from Gmail will use that connection.",
+      "Each person connects their own Google account to Vantigo once, under Settings › Connections. Calendar sync and sending from their own Gmail address use that connection, each with its own consent.",
     "people.switch": "Connection for people",
     "people.switchDescription": "Let people connect their own Google account to Vantigo.",
     "people.status_off": "Off",
@@ -690,9 +687,6 @@ export const googleCatalog = {
     confirmGroupTitle: "Bekrefte overtakelsen av {{email}}?",
     confirmGroupBody:
       "Vantigo fant gruppen {{email}} i organisasjonen med adressen til en gruppe i Ansatte; Vantigo opprettet den ikke og har ikke skrevet noe til den. Bekrefter du, forvalter Vantigo den for Ansatte: navnet, beskrivelsen og synligheten overskrives med dem fra Ansatte, eiere Ansatte ikke nevner, gjøres til medlemmer, og medlemmer gruppen i Ansatte ikke har, fjernes. Vantigo sletter aldri en gruppe den ikke har opprettet. Bekreft bare hvis gruppen skal være denne gruppen i Ansatte.",
-    calendarGmailComingTitle: "Sending fra Gmail kommer",
-    calendarGmailComing:
-      "Sending fra en persons egen Gmail-adresse kommer i en senere versjon, og vil bruke hver persons tilkobling.",
     "mail.title": "E-postkanaler",
     "mail.intro":
       "La kanalene i Kommunikasjon sende fra og lese organisasjonens lisensierte Gmail-postbokser, som post@. Vantigo når dem gjennom domenedekkende delegering.",
@@ -715,7 +709,7 @@ export const googleCatalog = {
     "mail.couldNotSwitch": "E-postkanaler kunne ikke endres",
     "people.title": "Tilkobling for personer",
     "people.intro":
-      "Hver person kobler sin egen Google-konto til Vantigo én gang, under Innstillinger › Tilkoblinger. Kalendersynkronisering og sending fra Gmail vil bruke den tilkoblingen.",
+      "Hver person kobler sin egen Google-konto til Vantigo én gang, under Innstillinger › Tilkoblinger. Kalendersynkronisering og sending fra egen Gmail-adresse bruker den tilkoblingen, hver med sitt eget samtykke.",
     "people.switch": "Tilkobling for personer",
     "people.switchDescription": "La folk koble sin egen Google-konto til Vantigo.",
     "people.status_off": "Av",
