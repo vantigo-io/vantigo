@@ -348,9 +348,13 @@ func (s *server) changeSubscription(ctx context.Context, sch schedule, body gen.
 // the caller's transaction, which holds the subscription (O44), and answers
 // the change log's actions. from is judged against the schedule as it stands
 // under the lock. A kept line unchanged keeps its row and takes its new
-// place; a line changed ends the day before from and a new row starts on it
-// in its place, with what it was valid to; a line removed ends; a line added
-// starts on from.
+// place; a line changed ends the day before from and a new row of its chain
+// starts on it in its place, with what it was valid to; a line removed ends;
+// a line added starts on from. A changed or removed line's other versions
+// still in force on or after from — an earlier version a scheduled change
+// ends later than from — end the day before from too, so a change made from
+// a date before one already scheduled replaces it, and at any date exactly
+// one version of a line is in force.
 func applyLineChanges(ctx context.Context, txq *store.Queries, sch schedule, priced []pricedLine, from time.Time) ([]changeAction, error) {
 	if err := judgeEffectiveFrom(sch, from); err != nil {
 		return nil, err
@@ -359,9 +363,22 @@ func applyLineChanges(ctx context.Context, txq *store.Queries, sch schedule, pri
 	old := byID(current)
 	kept := map[int64]bool{}
 	var actions []changeAction
-	insert := func(p pricedLine, position int32, validTo pgtype.Date) error {
+	end := func(o store.OrdersLine) error {
+		if err := endLine(ctx, txq, o, from); err != nil {
+			return err
+		}
+		for _, v := range sch.lines {
+			if v.ID != o.ID && chainOf(v) == chainOf(o) && scheduledPast(v, from) {
+				if err := endLine(ctx, txq, v, from); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	insert := func(p pricedLine, position int32, validTo pgtype.Date, chain *int64) error {
 		p.id = nil
-		p.validFrom, p.validTo = pgDate(&from), validTo
+		p.validFrom, p.validTo, p.chainID = pgDate(&from), validTo, chain
 		if _, err := insertLine(ctx, txq, ownerSubscription, sch.sub.ID, position, p); err != nil {
 			return fmt.Errorf("orders: write subscription %d's line: %w", sch.sub.ID, err)
 		}
@@ -370,7 +387,7 @@ func applyLineChanges(ctx context.Context, txq *store.Queries, sch schedule, pri
 	for i, p := range priced {
 		position := int32(i + 1)
 		if p.id == nil {
-			if err := insert(p, position, pgtype.Date{}); err != nil {
+			if err := insert(p, position, pgtype.Date{}, nil); err != nil {
 				return nil, err
 			}
 			actions = append(actions, changeAction{Kind: actionLineAdded, To: ptr(lineName(p))})
@@ -392,10 +409,11 @@ func applyLineChanges(ctx context.Context, txq *store.Queries, sch schedule, pri
 			}
 			continue
 		}
-		if err := endLine(ctx, txq, o, from); err != nil {
+		if err := end(o); err != nil {
 			return nil, err
 		}
-		if err := insert(p, position, o.ValidTo); err != nil {
+		chain := chainOf(o)
+		if err := insert(p, position, o.ValidTo, &chain); err != nil {
 			return nil, err
 		}
 		for _, c := range changes {
@@ -407,13 +425,32 @@ func applyLineChanges(ctx context.Context, txq *store.Queries, sch schedule, pri
 		if kept[o.ID] {
 			continue
 		}
-		if err := endLine(ctx, txq, o, from); err != nil {
+		if err := end(o); err != nil {
 			return nil, err
 		}
 		id := o.ID
 		actions = append(actions, changeAction{Kind: actionLineRemoved, LineID: &id, From: ptr(lineName(pricedLineOf(o)))})
 	}
 	return actions, nil
+}
+
+// chainOf is the chain a subscription line's version belongs to: the id of
+// its first version (O44).
+func chainOf(l store.OrdersLine) int64 {
+	if l.ChainID != nil {
+		return *l.ChainID
+	}
+	return l.ID
+}
+
+// scheduledPast reports whether a dated line is still in force on or after
+// from: it ends on or after from and is not a version that never took
+// effect (valid_to before valid_from).
+func scheduledPast(l store.OrdersLine, from time.Time) bool {
+	if !l.ValidTo.Valid || civil(l.ValidTo.Time).Before(from) {
+		return false
+	}
+	return !l.ValidFrom.Valid || !civil(l.ValidTo.Time).Before(civil(l.ValidFrom.Time))
 }
 
 // lineName is a line's name for the change log: its catalog name, else its

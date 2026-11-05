@@ -640,3 +640,219 @@ func TestSubscription_Holders(t *testing.T) {
 		t.Errorf("the erasure was not recorded for the kept subscription")
 	}
 }
+
+// keptLine is an active subscription's line l as a save names it again, at
+// qty and its own price.
+func keptLine(l gen.OrdersLine, qty float64) gen.OrdersLineInput {
+	in := productLine(*l.VariantId, qty)
+	in.Id, in.UnitPrice = &l.Id, l.UnitPrice
+	return in
+}
+
+// subLineOf is the subscription's current line of variant.
+func subLineOf(t *testing.T, s gen.OrdersSubscription, variant int32) gen.OrdersLine {
+	t.Helper()
+	for _, l := range s.Lines {
+		if l.VariantId != nil && *l.VariantId == variant {
+			return l
+		}
+	}
+	t.Fatalf("subscription %d has no line of variant %d: %+v", s.Id, variant, s.Lines)
+	return gen.OrdersLine{}
+}
+
+// changeLines saves an active subscription's lines from from on.
+func changeLines(t *testing.T, c *modtest.Client, s gen.OrdersSubscription, from openapi_types.Date, lines ...gen.OrdersLineInput) gen.OrdersSubscription {
+	t.Helper()
+	if lines == nil {
+		lines = []gen.OrdersLineInput{}
+	}
+	res := c.Do(http.MethodPut, subscriptionPath(s.Id), gen.OrdersSubscriptionUpdate{
+		ExpectedUpdatedAt: s.UpdatedAt, Version: s.Version, CustomerId: custBusiness, Lines: lines, EffectiveFrom: &from,
+	})
+	mustStatus(t, res, http.StatusOK, "change from "+from.Format(time.DateOnly))
+	return subscriptionOf(t, res)
+}
+
+// supportAndHosting is an active subscription of one support and one
+// hosting line from 1 January 2026, invoiced through September.
+func supportAndHosting(t *testing.T, h *harness, c *modtest.Client, p contracts.BillableOrders) gen.OrdersSubscription {
+	t.Helper()
+	s := activate(t, c, createSubscription(t, c, custBusiness, date(2026, 1, 1), gen.OrdersSubscriptionInputBillingInAdvance,
+		productLine(varSupport, 1), productLine(varHosting, 1)))
+	markAll(t, h, invoiceRef(h, 9101, 1), allocateThrough(t, p, s.Id, onDay(2026, 9, 12)))
+	return getSubscription(t, c, s.Id)
+}
+
+// supportQuantities is each due period's support quantities and how many
+// lines it bills.
+func supportQuantities(due map[string][]contracts.DueOrderLine) map[string]string {
+	out := map[string]string{}
+	for start, lines := range due {
+		var qs []string
+		for _, l := range lines {
+			if l.UnitPrice == "310.00000000" {
+				qs = append(qs, l.ToInvoice)
+			}
+		}
+		out[start] = fmt.Sprintf("%d lines, support %v", len(lines), qs)
+	}
+	return out
+}
+
+// A change made from a date before one already scheduled replaces it: the
+// line's first version ends the day before the second change, the scheduled
+// version never takes effect, and every period bills one version of the
+// line — never two (O44).
+func TestSubscription_AnEarlierChangeReplacesAScheduledOne(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	withServices(h)
+	c := h.SignIn(t, subscriber...)
+	p := orders.Module().BillableOrders(h.Deps())
+	s := supportAndHosting(t, h, c, p)
+
+	s = changeLines(t, c, s, date(2026, 12, 1), keptLine(subLineOf(t, s, varSupport), 2), keptLine(subLineOf(t, s, varHosting), 1))
+	s = changeLines(t, c, s, date(2026, 11, 1), keptLine(subLineOf(t, s, varSupport), 3), keptLine(subLineOf(t, s, varHosting), 1))
+
+	support := subLineOf(t, s, varSupport)
+	if support.ValidFrom == nil || support.ValidFrom.Format(time.DateOnly) != "2026-11-01" || support.Quantity == nil || *support.Quantity != 3 {
+		t.Fatalf("support %+v; want 3 from 1 November", support)
+	}
+	if len(s.EarlierLines) != 1 || s.EarlierLines[0].ValidTo.Format(time.DateOnly) != "2026-10-31" {
+		t.Fatalf("earlier lines %+v; want the first support line to 31 October, the scheduled one gone", s.EarlierLines)
+	}
+	want := map[string]string{
+		"2026-10-01": "2 lines, support [1.000]", "2026-11-01": "2 lines, support [3.000]",
+		"2026-12-01": "2 lines, support [3.000]", "2027-01-01": "2 lines, support [3.000]",
+	}
+	if got := supportQuantities(dueOf(t, p, s.Id, onDay(2027, 1, 31))); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("due %v; want %v", got, want)
+	}
+	made := allocateThrough(t, p, s.Id, onDay(2027, 1, 31))
+	perPeriod := map[string]int{}
+	for _, a := range made {
+		perPeriod[a.PeriodStart.Format(time.DateOnly)]++
+	}
+	if len(made) != 8 || perPeriod["2026-11-01"] != 2 || perPeriod["2026-12-01"] != 2 {
+		t.Errorf("allocated %v; want each period's support and hosting once", perPeriod)
+	}
+}
+
+// A removal made from a date before a scheduled change ends the line there:
+// neither its first version nor the scheduled one bills after it (O44).
+func TestSubscription_AnEarlierRemovalEndsAScheduledChange(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	withServices(h)
+	c := h.SignIn(t, subscriber...)
+	p := orders.Module().BillableOrders(h.Deps())
+	s := supportAndHosting(t, h, c, p)
+
+	s = changeLines(t, c, s, date(2026, 12, 1), keptLine(subLineOf(t, s, varSupport), 2), keptLine(subLineOf(t, s, varHosting), 1))
+	s = changeLines(t, c, s, date(2026, 11, 1), keptLine(subLineOf(t, s, varHosting), 1))
+
+	if len(s.Lines) != 1 || len(s.EarlierLines) != 1 || s.EarlierLines[0].ValidTo.Format(time.DateOnly) != "2026-10-31" {
+		t.Fatalf("lines %+v, earlier %+v; want hosting alone and support to 31 October", s.Lines, s.EarlierLines)
+	}
+	want := map[string]string{
+		"2026-10-01": "2 lines, support [1.000]", "2026-11-01": "1 lines, support []", "2026-12-01": "1 lines, support []",
+	}
+	if got := supportQuantities(dueOf(t, p, s.Id, onDay(2026, 12, 31))); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("due %v; want %v", got, want)
+	}
+}
+
+// A subscription's today is the business zone's (O43): at 00:30 on
+// 1 October in Oslo — still 30 September in UTC — October is due in advance
+// with no date asked, and the twelve-month limit reaches October 2027.
+func TestSubscription_TodayInTheBusinessZone(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	withServices(h)
+	h.SetBusinessTimeZone(t, "Europe/Oslo")
+	c := h.SignIn(t, subscriber...)
+	p := orders.Module().BillableOrders(h.Deps())
+	s := activeSubscription(t, c, date(2026, 9, 1), gen.OrdersSubscriptionInputBillingInAdvance, 1)
+	h.Advance(time.Date(2026, 9, 30, 22, 30, 0, 0, time.UTC).Sub(h.Now()))
+
+	if due := dueOf(t, p, s.Id, time.Time{}); len(due) != 2 || due["2026-10-01"] == nil {
+		t.Errorf("due today %v; want September and October", due)
+	}
+	got := allocateThrough(t, p, s.Id, onDay(2028, 12, 31))
+	if len(got) != 14 || got[13].PeriodStart.Format(time.DateOnly) != "2027-10-01" {
+		t.Errorf("%d allocations; want September 2026 to October 2027", len(got))
+	}
+}
+
+// Ending a paused subscription skips its paused periods up to the end, and
+// billed through runs over them at once (O43).
+func TestSubscription_EndingAPausedOneMovesBilledThrough(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	withServices(h)
+	c := h.SignIn(t, subscriber...)
+	p := orders.Module().BillableOrders(h.Deps())
+	s := activeSubscription(t, c, date(2026, 1, 1), gen.OrdersSubscriptionInputBillingInAdvance, 1)
+	markAll(t, h, invoiceRef(h, 9102, 1), allocateThrough(t, p, s.Id, onDay(2026, 9, 12)))
+	s = getSubscription(t, c, s.Id)
+	res := c.Do(http.MethodPost, subscriptionPath(s.Id, "pause"), gen.OrdersPauseInput{ExpectedUpdatedAt: s.UpdatedAt, Version: s.Version})
+	mustStatus(t, res, http.StatusOK, "pause")
+	s = subscriptionOf(t, res)
+	res = c.Do(http.MethodPost, subscriptionPath(s.Id, "end"), gen.OrdersEndInput{ExpectedUpdatedAt: s.UpdatedAt, Version: s.Version, EndDate: date(2026, 12, 31)})
+	mustStatus(t, res, http.StatusOK, "end")
+	if s = subscriptionOf(t, res); s.BilledThrough == nil || s.BilledThrough.Format(time.DateOnly) != "2026-12-31" {
+		t.Errorf("billed through %v; want 31 December, over the skipped periods", s.BilledThrough)
+	}
+}
+
+// A subscription that still bills holds its variants against a delete: one
+// ended on a later day, and a line removed from a period still to come; one
+// ended in the past does not (O30, O42).
+func TestSubscription_HoldsWhatItStillBills(t *testing.T) {
+	t.Parallel()
+	held := func(t *testing.T, h *harness, variant int32) int {
+		t.Helper()
+		ctx := context.Background()
+		var hold *contracts.VariantHold
+		if err := pgx.BeginFunc(ctx, h.Pool(), func(tx pgx.Tx) error {
+			var err error
+			hold, err = orders.Module().VariantReferences(h.Deps()).VariantHeld(ctx, tx, variant, contracts.VariantHoldDelete)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if hold == nil {
+			return 0
+		}
+		return hold.Documents
+	}
+	end := func(t *testing.T, c *modtest.Client, s gen.OrdersSubscription, on openapi_types.Date) {
+		t.Helper()
+		mustStatus(t, c.Do(http.MethodPost, subscriptionPath(s.Id, "end"), gen.OrdersEndInput{ExpectedUpdatedAt: s.UpdatedAt, Version: s.Version, EndDate: on}),
+			http.StatusOK, "end")
+	}
+
+	h := newHarness(t, harnessOptions{})
+	withServices(h)
+	c := h.SignIn(t, subscriber...)
+	end(t, c, activeSubscription(t, c, date(2026, 1, 1), gen.OrdersSubscriptionInputBillingInAdvance, 1), date(2026, 12, 31))
+	past := activate(t, c, createSubscription(t, c, custBusiness, date(2026, 1, 1), gen.OrdersSubscriptionInputBillingInAdvance, productLine(varHosting, 1)))
+	end(t, c, past, date(2026, 6, 30))
+	if n := held(t, h, varSupport); n != 1 {
+		t.Errorf("support held by %d; want the subscription ending 31 December", n)
+	}
+	if n := held(t, h, varHosting); n != 0 {
+		t.Errorf("hosting held by %d; want none, its subscription ended in June", n)
+	}
+
+	h = newHarness(t, harnessOptions{})
+	withServices(h)
+	c = h.SignIn(t, subscriber...)
+	s := activate(t, c, createSubscription(t, c, custBusiness, date(2026, 1, 1), gen.OrdersSubscriptionInputBillingInAdvance,
+		productLine(varSupport, 1), productLine(varHosting, 1)))
+	changeLines(t, c, s, date(2026, 10, 1), keptLine(subLineOf(t, s, varSupport), 1))
+	if n := held(t, h, varHosting); n != 1 {
+		t.Errorf("hosting held by %d; want the subscription billing it through September", n)
+	}
+}

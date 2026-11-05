@@ -27,11 +27,14 @@ import (
 // policyOnOrder is a line invoiced on order; "delivery" is delivery C's.
 const policyOnOrder = "order"
 
-// billableOrders is Orders' contracts.BillableOrders, on the pool and the
-// clock and nothing else.
+// billableOrders is Orders' contracts.BillableOrders, on the pool, the clock
+// and the business calendar, and nothing else.
 type billableOrders struct {
 	pool  *pgxpool.Pool
 	clock func() time.Time
+	// calendar is the business calendar a subscription's today is judged in
+	// (O43); nil is UTC.
+	calendar contracts.BusinessCalendar
 	// projects is whether Projects is on: an allocation names its order's
 	// project only then.
 	projects bool
@@ -39,10 +42,24 @@ type billableOrders struct {
 
 var _ contracts.BillableOrders = (*billableOrders)(nil)
 
-// newBillableOrders is Module's BillableOrders: built from d.Pool and
-// d.Clock, and whether d.Projects is composed.
+// newBillableOrders is Module's BillableOrders: built from d.Pool, d.Clock
+// and d.Calendar, and whether d.Projects is composed.
 func newBillableOrders(d module.Deps) contracts.BillableOrders {
-	return &billableOrders{pool: d.Pool, clock: d.Clock, projects: d.Projects != nil}
+	return &billableOrders{pool: d.Pool, clock: d.Clock, calendar: d.Calendar, projects: d.Projects != nil}
+}
+
+// zone is the business time zone, read before any transaction: the zone a
+// subscription's today — the default through date and the twelve-month
+// limit (O43) — is judged in, as Invoices judges its own.
+func (p *billableOrders) zone(ctx context.Context) (*time.Location, error) {
+	if p.calendar == nil {
+		return time.UTC, nil
+	}
+	loc, err := p.calendar.Zone(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("orders: read the business time zone: %w", err)
+	}
+	return loc, nil
 }
 
 // DueOrders lists the orders the request names with their lines to invoice,
@@ -102,13 +119,17 @@ func (p *billableOrders) DueOrders(ctx context.Context, req contracts.DueOrdersR
 
 // dueSubscriptions adds to page, after its orders, the subscriptions the
 // request names with their due periods (O43): every period due through
-// Until — the clock's today when zero — and starting no later than twelve
-// months after today, each line in force on its first day with no live
+// Until — today in the business zone when zero — and starting no later than
+// twelve months after today, each line in force on its first day with no live
 // allocation, in subscription, period and position order. The lines stop at
 // contracts.MaxBillableRows all told: a subscription cut short is left out,
 // unless it is the first document, and More is set.
 func (p *billableOrders) dueSubscriptions(ctx context.Context, req contracts.DueOrdersRequest, page contracts.DueOrdersPage) (contracts.DueOrdersPage, error) {
-	today := civil(p.clock())
+	loc, err := p.zone(ctx)
+	if err != nil {
+		return page, err
+	}
+	today := dayOf(p.clock(), loc)
 	through := today
 	if !req.Until.IsZero() {
 		through = civil(req.Until)
@@ -291,6 +312,13 @@ func (p *billableOrders) Allocate(ctx context.Context, req contracts.AllocateReq
 		subscriptionIDs = append(subscriptionIDs, sub.SubscriptionID)
 	}
 	slices.Sort(subscriptionIDs)
+	loc := time.UTC
+	if len(req.Subscriptions) > 0 {
+		var err error
+		if loc, err = p.zone(ctx); err != nil {
+			return nil, err
+		}
+	}
 	out := make([]contracts.OrderAllocation, 0, len(req.Lines))
 	err := db.WithTx(ctx, p.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		q := store.New(tx)
@@ -367,7 +395,7 @@ func (p *billableOrders) Allocate(ctx context.Context, req contracts.AllocateReq
 		if len(req.Subscriptions) == 0 {
 			return nil
 		}
-		made, err := p.allocatePeriods(ctx, q, subs, req.Subscriptions, now)
+		made, err := p.allocatePeriods(ctx, q, subs, req.Subscriptions, now, dayOf(now, loc))
 		if err != nil {
 			return err
 		}
@@ -383,13 +411,14 @@ func (p *billableOrders) Allocate(ctx context.Context, req contracts.AllocateReq
 // allocatePeriods writes, for each subscription asked in the request's
 // order, one draft allocation per period due through its date and per line
 // in force on the period's first day without a live allocation (O43), on
-// q's transaction, which holds the subscriptions' rows. A subscription gone,
+// q's transaction, which holds the subscriptions' rows; today is the
+// business day of now, which bounds the twelve months ahead. A subscription gone,
 // a draft or cancelled is subscription_not_invoiceable; one with no period
 // due nothing_due. The unique live period index refuses a second live
 // allocation of a line's period, should any writer bypass the subscription's
 // lock.
 func (p *billableOrders) allocatePeriods(ctx context.Context, q *store.Queries, locked []store.OrdersSubscription,
-	asked []contracts.AllocateSubscription, now time.Time) ([]contracts.OrderAllocation, error) {
+	asked []contracts.AllocateSubscription, now, today time.Time) ([]contracts.OrderAllocation, error) {
 	schedules, err := readSchedules(ctx, q, locked)
 	if err != nil {
 		return nil, err
@@ -398,7 +427,6 @@ func (p *billableOrders) allocatePeriods(ctx context.Context, q *store.Queries, 
 	for _, sch := range schedules {
 		byID[sch.sub.ID] = sch
 	}
-	today := civil(now)
 	var out []contracts.OrderAllocation
 	for _, in := range asked {
 		sch, ok := byID[in.SubscriptionID]

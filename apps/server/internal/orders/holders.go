@@ -423,24 +423,38 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 }
 
 // variantReferenceHolder answers whether open documents name a variant
-// (O30): a delete is refused while a draft or sent quote, or an order line not
-// done, names it; a change to Service never is.
-type variantReferenceHolder struct{}
+// (O30): a delete is refused while a draft or sent quote, an order line not
+// done, or a subscription line still to bill names it; a change to Service
+// never is.
+type variantReferenceHolder struct {
+	clock func() time.Time
+}
 
 var _ contracts.VariantReferenceHolder = variantReferenceHolder{}
 
-func newVariantReferenceHolder(module.Deps) contracts.VariantReferenceHolder {
-	return variantReferenceHolder{}
+func newVariantReferenceHolder(d module.Deps) contracts.VariantReferenceHolder {
+	return variantReferenceHolder{clock: d.Clock}
+}
+
+// holderToday is the earliest calendar day it is anywhere now: the UTC day
+// before the clock's. A holder reads no contract, so not the business zone;
+// a subscription ending today in any zone still holds its variant, and one
+// ended yesterday may hold it a day longer — a delete refused a day late,
+// never a line left pointing at a deleted variant.
+func holderToday(now time.Time) time.Time {
+	return civil(now.UTC()).AddDate(0, 0, -1)
 }
 
 // VariantHeld counts the open documents on Products' transaction, which holds
 // the variant FOR UPDATE; every writer of a line holds it FOR SHARE first
 // (lockLines), so the count is true when it is read.
-func (variantReferenceHolder) VariantHeld(ctx context.Context, tx pgx.Tx, variantID int32, purpose contracts.VariantHoldPurpose) (*contracts.VariantHold, error) {
+func (v variantReferenceHolder) VariantHeld(ctx context.Context, tx pgx.Tx, variantID int32, purpose contracts.VariantHoldPurpose) (*contracts.VariantHold, error) {
 	if purpose != contracts.VariantHoldDelete {
 		return nil, nil
 	}
-	n, err := store.New(tx).OpenDocumentsOfVariant(ctx, &variantID)
+	n, err := store.New(tx).OpenDocumentsOfVariant(ctx, store.OpenDocumentsOfVariantParams{
+		VariantID: &variantID, Today: pgDate(ptr(holderToday(v.clock()))),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("orders: count the open documents of variant %d: %w", variantID, err)
 	}

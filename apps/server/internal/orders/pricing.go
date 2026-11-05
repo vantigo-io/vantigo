@@ -112,6 +112,9 @@ type pricedLine struct {
 	// validFrom and validTo date a subscription's line (O44); NULL on every
 	// other owner's.
 	validFrom, validTo pgtype.Date
+	// chainID is the first version of the subscription line this one
+	// continues (O44); nil on a first version and on every other owner's.
+	chainID *int64
 }
 
 // pricedLineOf is a stored line as it would be written again, unchanged:

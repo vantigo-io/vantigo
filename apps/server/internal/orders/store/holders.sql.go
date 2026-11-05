@@ -452,7 +452,7 @@ func (q *Queries) KeptOrderNumbers(ctx context.Context, customerID int32) ([]int
 }
 
 const linesOfOwners = `-- name: LinesOfOwners :many
-SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to FROM orders.lines
+SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to, chain_id FROM orders.lines
 WHERE owner_kind = $1 AND owner_id = ANY($2::bigint[])
 ORDER BY owner_id, position
 `
@@ -509,6 +509,7 @@ func (q *Queries) LinesOfOwners(ctx context.Context, arg LinesOfOwnersParams) ([
 			&i.PackagingName,
 			&i.ValidFrom,
 			&i.ValidTo,
+			&i.ChainID,
 		); err != nil {
 			return nil, err
 		}
@@ -603,19 +604,27 @@ SELECT (
        AND (l.qty_delivered + l.qty_cancelled < l.quantity OR l.qty_invoiced + l.qty_cancelled < l.quantity))
   + (SELECT count(DISTINCT s.id) FROM orders.subscriptions s
      JOIN orders.lines l ON l.owner_kind = 'subscription' AND l.owner_id = s.id
-     WHERE l.variant_id = $1 AND s.status IN ('draft', 'active', 'paused') AND l.valid_to IS NULL)
+     WHERE l.variant_id = $1
+       AND (s.status IN ('draft', 'active', 'paused') OR (s.status = 'ended' AND s.end_date >= $2::date))
+       AND (l.valid_to IS NULL OR l.valid_to >= $2::date))
 )::integer AS documents
 `
+
+type OpenDocumentsOfVariantParams struct {
+	VariantID *int32
+	Today     pgtype.Date
+}
 
 // OpenDocumentsOfVariant is how many open documents name a variant (O30): a
 // draft or sent quote, an order not cancelled with a line of it that is
 // not done — delivered or invoiced short of what is ordered less cancelled —
-// and a draft, active or paused subscription whose lines in force from its
-// latest change on name it (O42).
+// and a subscription still billing on today — draft, active or paused, or
+// ended on or after today — with a line of it in force on or after today
+// (O42).
 // A template is no document: a variant gone from it is skipped when it is
 // applied (O23).
-func (q *Queries) OpenDocumentsOfVariant(ctx context.Context, variantID *int32) (int32, error) {
-	row := q.db.QueryRow(ctx, openDocumentsOfVariant, variantID)
+func (q *Queries) OpenDocumentsOfVariant(ctx context.Context, arg OpenDocumentsOfVariantParams) (int32, error) {
+	row := q.db.QueryRow(ctx, openDocumentsOfVariant, arg.VariantID, arg.Today)
 	var documents int32
 	err := row.Scan(&documents)
 	return documents, err

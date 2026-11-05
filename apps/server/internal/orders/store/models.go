@@ -107,6 +107,7 @@ type OrdersLine struct {
 	PackagingName     *string
 	ValidFrom         pgtype.Date
 	ValidTo           pgtype.Date
+	ChainID           *int64
 }
 
 type OrdersMailing struct {
