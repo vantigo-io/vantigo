@@ -37,6 +37,13 @@ var permissions = []contracts.Permission{
 // inventory §5), unlike identity's nine authentication policies.
 var limits = map[string]ratelimit.Policy{}
 
+// bodyLimits raises the router's request-body cap for the image upload — the
+// file at most 10 MiB, and room for the multipart framing (messenger design
+// N13); every other operation keeps the platform default (1 MiB).
+var bodyLimits = map[string]int64{
+	"postProductsByIdImages": maxImageRequestBytes,
+}
+
 // Module is products as a platform module: its contract mounted under
 // /api/v1/products/ and its ten permissions in the composed catalog. Unlike
 // customers, products publishes no contracts.CustomerDirectory — Directory
@@ -57,11 +64,12 @@ func Module() module.Module {
 // catalog.
 func mount(d module.Deps) (http.Handler, error) {
 	router := module.NewRouter(module.RouterOptions{
-		Doc:     d.Doc,
-		Access:  d.Access,
-		Limiter: d.Limiter,
-		Limits:  limits,
-		Catalog: d.Catalog,
+		Doc:        d.Doc,
+		Access:     d.Access,
+		Limiter:    d.Limiter,
+		Limits:     limits,
+		Catalog:    d.Catalog,
+		BodyLimits: bodyLimits,
 	})
 	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(apicommon.WriteDecodeError),

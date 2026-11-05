@@ -24,6 +24,9 @@ import (
 // mounts, and hands it to every module including this one.
 type catalog struct {
 	q *store.Queries
+	// objects is where the images' bytes live (objects.go), read by
+	// OpenProductImage.
+	objects objects
 }
 
 var _ contracts.ProductCatalog = (*catalog)(nil)
@@ -31,7 +34,7 @@ var _ contracts.ProductCatalog = (*catalog)(nil)
 // newCatalog is Module's Products: the constructor Compose calls with the
 // dependencies it was given.
 func newCatalog(d module.Deps) contracts.ProductCatalog {
-	return &catalog{q: store.New(d.Pool)}
+	return &catalog{q: store.New(d.Pool), objects: newObjects(d)}
 }
 
 // Variant looks up a variant by id.
