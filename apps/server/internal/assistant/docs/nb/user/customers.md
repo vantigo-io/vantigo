@@ -82,10 +82,12 @@ typen og kundenummeret. Ved siden av står **Rediger kunde**, **Endre type**, **
 sammen…**, **Arkiver kunde** eller **Gjenopprett kunde**, **Personopplysninger** (bare
 privatpersoner) og **Åpne i innboksen**, hver vist bare med rettigheten den krever.
 
-En rad med faner — **Oversikt**, **Energi**, **Prosjekter** og **Fakturaer** — vises
-når mer enn én er tilgjengelig for deg. De tre modulfanene viser modulens eget panel
-for denne kunden og krever at modulen er på og en rettighet i den
-(`energy:metering-points-view`, `projects:access`, `invoices:access`).
+En rad med faner — **Oversikt**, **Energi**, **Prosjekter**, **Fakturaer** og **Ordre** —
+vises når mer enn én er tilgjengelig for deg. De fire modulfanene viser modulens eget
+panel for denne kunden og krever at modulen er på og en rettighet i den
+(`energy:metering-points-view`, `projects:access`, `invoices:access`, `orders:access`).
+Fanen **Ordre** viser kundens åpne tilbud og ordrer med **Nytt tilbud** og **Ny ordre**
+([kundens Ordre-fane](/nb/user/orders/#kundens-ordre-fane)).
 
 **Oversikt** åpner med panelet **Kunde 360**: **Åpne prosjekter**, **Ufakturerte
 timer**, **Utlegg klare til fakturering**, **Utestående**, **Fakturert i år** og

@@ -1017,7 +1017,7 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `MIGRATIONS_DATABASE_URL` | Connection `migrate` uses (the owner role) | `DATABASE_URL` |
 | `SHUTDOWN_TIMEOUT` | Drain budget for in-flight requests and workers | `30s` |
 | `LOG_LEVEL` | `debug`, `info`, `warn`, `error` | `info` |
-| `MODULES` | Comma list of business modules to serve; `planning` requires `projects` and `staff`, `inventory` requires `products`, and `entra` requires `staff` ([Microsoft Entra ID](/en/admin/entra/), which has no variable of its own: its settings are in the database) | `customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,calendar,entra` |
+| `MODULES` | Comma list of business modules to serve; `planning` requires `projects` and `staff`, `inventory` requires `products`, `orders` requires `products`, `customers` and `invoices`, and `entra` requires `staff` ([Microsoft Entra ID](/en/admin/entra/), which has no variable of its own: its settings are in the database) | `customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,orders,calendar,entra` |
 | `WORKERS_IN_PROCESS` | Whether `api` also runs background workers in-process — every enabled module's, and the platform's events dispatcher `events.dispatch` ([Background workers and scaling](/en/admin/installation/#background-workers-and-scaling)) | `1` |
 
 ### Secrets and identity
@@ -1274,7 +1274,7 @@ OIDC callback on that HTTPS origin. Outside development cookies are `Secure` and
 
 One PostgreSQL database holds one schema per module — `identity`, `customers`,
 `products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`,
-`staff`, `planning`, `inventory`, `calendar` and `entra` — migrated by plain SQL files embedded in the binary. Every schema is migrated regardless of which modules `MODULES` enables,
+`staff`, `planning`, `inventory`, `orders`, `calendar` and `entra` — migrated by plain SQL files embedded in the binary. Every schema is migrated regardless of which modules `MODULES` enables,
 so enabling a module later needs no migration. See the
 [contributor migration guide](https://github.com/vantigo-io/vantigo/blob/main/CONTRIBUTING.md#database-migrations) for how
 migrations are written and applied.

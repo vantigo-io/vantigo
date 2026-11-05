@@ -84,10 +84,10 @@ engangsjobb, og starter deretter Vantigo:
 - **API-kontrakten** — `GET http://localhost:8080/api/openapi.json` (krever en sesjon)
 
 Modulene Kunder, Produkter, Energi, Kommunikasjon, Prosjekter, Tid, Utgifter,
-Fakturaer, Ansatte, Bemanning, Lager, Kalender, Microsoft Entra ID, Google Workspace og Assistent er aktivert som standard
+Fakturaer, Ansatte, Bemanning, Lager, Ordre, Kalender, Microsoft Entra ID, Google Workspace og Assistent er aktivert som standard
 (`MODULES` i `vantigo.env`). De deler én PostgreSQL-database ved navn `vantigo`, med
 uavhengige skjemaer `identity`, `customers`, `products`, `energy`, `communications`,
-`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `calendar`, `entra`, `google` og `assistant`, hver med sin egen
+`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `orders`, `calendar`, `entra`, `google` og `assistant`, hver med sin egen
 migreringshistorikk.
 
 ## Hva stacken inneholder
@@ -191,9 +191,10 @@ prosedyrene og gjenopprettingen.
   denne installasjonen aktiverer. `identity` er alltid montert og listes aldri. Usatt
   aktiverer hver modul binæren kan montere: `customers`, `products`, `energy`,
   `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`,
-  `inventory`, `calendar`, `entra`, `google` og `assistant`. `energy`, `communications`, `projects` og `invoices` krever hver
+  `inventory`, `orders`, `calendar`, `entra`, `google` og `assistant`. `energy`, `communications`, `projects` og `invoices` krever hver
   `customers`, `time` krever `projects`, `planning` krever både `projects` og `staff`,
-  `inventory` krever `products`, og `entra` og `google` krever hver `staff`; `projects` bruker
+  `inventory` krever `products`, `orders` krever `products`, `customers` og `invoices`,
+  og `entra` og `google` krever hver `staff`; `projects` bruker
   også `products` når den er aktivert og svarer 409 på endepunktene for
   faktureringslinjer når den ikke er det; `expenses` krever ingenting og leser
   `projects` bare når den tilfeldigvis er aktivert; `staff`, `calendar` og `assistant` krever
@@ -272,9 +273,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Standardrettigheter dekker bare objekter som opprettes etterpå; gi rettigheter
 -- på skjemaene de aktiverte modulene allerede har opprettet (legg til/fjern
 -- skjemaer så de stemmer med MODULES aktivert i din installasjon).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, google, assistant TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, google, assistant TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, google, assistant TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, calendar, entra, google, assistant TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, calendar, entra, google, assistant TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, calendar, entra, google, assistant TO "vantigo_app";
 ```
 
 ## Bakgrunnsjobber og skalering
@@ -522,7 +523,7 @@ den interne nettklienten ([Google Workspace](/nb/admin/google-workspace/#tilkobl
 API-prefiksene forblir `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
 `/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
-`/api/v1/inventory`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` og `/api/v1/assistant`.
+`/api/v1/inventory`, `/api/v1/orders`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` og `/api/v1/assistant`.
 
 For eksempel, med nginx:
 
@@ -893,6 +894,21 @@ en eier slår bryteren på og folk kobler til. Før du slår den på, registrer 
 migreringen tilbake dropper hver persons tilkobling med det forseglede tokenet, uten å
 tilbakekalle det: Google lar et ubrukt token utløpe, og en person kan fjerne Vantigo i
 Google-kontoen sin. Se [Google Workspace](/nb/admin/google-workspace/#tilkobling-for-personer).
+
+**Utgivelsen med Ordre.** Den har `00119_orders_baseline.sql`, skjemaet `orders` uten
+tilbud, uten ordrer og med standardinnstillinger. En installasjon som lar `MODULES` være
+usatt, får modulen, **Ordre**-flisen for alle som får `orders:access` og fanen **Ordre** på
+kundesiden, ved oppgradering; en som lister `MODULES`, får den når `orders` legges til ved
+siden av `products`, `customers` og `invoices`, som den krever — `orders` uten én av dem
+nekter å starte og navngir den. De ni rettighetene er nye og holdes ikke av noen egen
+rolle før en eier legger dem til. En rolle med minste rettigheter må ha tilgang til
+skjemaet `orders` ([Databaseroller](#databaseroller)). Den starter tre arbeidere —
+`orders.mail`, `orders.retention` og `orders.quote_expiry` — og én hendelsesbehandler,
+`orders.queue_confirmation`, og lagrer PDF-ene sine i objektlageret under `orders/`. Før
+noen lager tilbud, koble avgiftskategoriene i Produkter til mva-koder i Fakturaer og velg
+en avsenderkanal ([Ordre](/nb/admin/orders/)). Å rulle migreringen tilbake fjerner
+skjemaet med hvert tilbud, hver ordre og hver mal; de lagrede PDF-ene blir liggende i
+objektlageret.
 
 **Utgivelsen med kompetanse i Ansatte.** Den har `00066_staff_competence.sql`:
 kompetansekatalogen — fem kategorier og femten norske sertifikater forhåndsdefinert — og

@@ -185,6 +185,86 @@
     "description": "The button above the invoice list that starts a new invoice."
   },
   {
+    "key": "orders.customer.new-order",
+    "route": "/customers/{customerId}/orders",
+    "description": "On the customer's Orders tab, starts a new order for this customer."
+  },
+  {
+    "key": "orders.customer.new-quote",
+    "route": "/customers/{customerId}/orders",
+    "description": "On the customer's Orders tab, starts a new quote for this customer."
+  },
+  {
+    "key": "orders.new-order.create",
+    "route": "/orders/orders/new",
+    "description": "Creates the draft order for the picked customer and opens its editor."
+  },
+  {
+    "key": "orders.new-order.customer",
+    "route": "/orders/orders/new",
+    "description": "The customer picker a new order starts from."
+  },
+  {
+    "key": "orders.new-quote.create",
+    "route": "/orders/quotes/new",
+    "description": "Creates the draft quote for the picked customer and opens its editor."
+  },
+  {
+    "key": "orders.new-quote.customer",
+    "route": "/orders/quotes/new",
+    "description": "The customer picker a new quote starts from."
+  },
+  {
+    "key": "orders.order.confirm",
+    "route": "/orders/orders/{orderId}",
+    "description": "Confirms a draft order: freezes its prices and customer, and stores the order confirmation."
+  },
+  {
+    "key": "orders.order.save",
+    "route": "/orders/orders/{orderId}",
+    "description": "Saves an order's header and lines; a confirmed order takes changes to what is not delivered or invoiced."
+  },
+  {
+    "key": "orders.orders.new",
+    "route": "/orders/orders",
+    "description": "The button above the order list that starts a new order."
+  },
+  {
+    "key": "orders.quote.accept",
+    "route": "/orders/quotes/{quoteId}",
+    "description": "Records that the customer accepted a sent quote and makes an order of it."
+  },
+  {
+    "key": "orders.quote.accept-into",
+    "route": "/orders/quotes/{quoteId}",
+    "description": "The accept dialog: the optional lines the customer took, and whether a draft or a confirmed order is made."
+  },
+  {
+    "key": "orders.quote.save",
+    "route": "/orders/quotes/{quoteId}",
+    "description": "Saves a draft quote's header and lines; the server prices the lines and computes the totals."
+  },
+  {
+    "key": "orders.quote.send",
+    "route": "/orders/quotes/{quoteId}",
+    "description": "Opens the send dialog that e-mails the quote's PDF to the customer and moves it to sent."
+  },
+  {
+    "key": "orders.quotes.new",
+    "route": "/orders/quotes",
+    "description": "The button above the quote list that starts a new quote."
+  },
+  {
+    "key": "orders.settings.save",
+    "route": "/orders/settings",
+    "description": "Saves the Orders settings: number series, validity, payment terms, the send channel and the mail texts."
+  },
+  {
+    "key": "orders.templates.new",
+    "route": "/orders/templates",
+    "description": "Starts a new quote template with texts and lines a quote can start from."
+  },
+  {
     "key": "projects.projects.form-code",
     "route": "/projects",
     "description": "The project code field; a suggestion is offered for it."
