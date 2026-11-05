@@ -472,9 +472,9 @@ avgjør hvem kundenes e-post kommer fra
 identitet** (`identity:manage`) er identitetsmodulens egen, eneste tillatelse. I Ordre
 krever hver rettighet **Bruke Ordre** i tillegg; **Bekrefte ordrer** aksepterer også et
 tilbud rett til en bekreftet ordre; **Håndtere innstillinger for Ordre** holder også
-tilbudsmalene og kan ikke delegeres; og **Håndtere abonnementer**, **Håndtere
-leveranser**, **Håndtere fraktselskaper** og **Se salgsanalyse** er listet for leveransene
-som kommer, og gjør ingenting ennå ([Ordre](/nb/admin/orders/#gi-folk-tilgang)).
+tilbudsmalene og kan ikke delegeres; **Håndtere abonnementer** lager, endrer, pauser og
+avslutter abonnement; og **Håndtere leveranser** og **Håndtere fraktselskaper** er listet
+for leveransene som kommer, og gjør ingenting ennå ([Ordre](/nb/admin/orders/#gi-folk-tilgang)).
 
 ### Tildelinger
 

@@ -462,9 +462,9 @@ comes from ([where invitations are sent from](/en/user/calendar/#where-invitatio
 (`identity:manage`) is the one permission of the identity module itself. In Orders, every
 permission needs **Use Orders** beside it; **Confirm orders** also accepts a quote straight
 into a confirmed order; **Manage Orders settings** keeps the quote templates as well and
-cannot be delegated; and **Manage subscriptions**, **Manage deliveries**, **Manage
-carriers** and **View sales analysis** are listed for the deliveries still to come and do
-nothing yet ([Orders](/en/admin/orders/#give-people-access)).
+cannot be delegated; **Manage subscriptions** makes, changes, pauses and ends
+subscriptions; and **Manage deliveries** and **Manage carriers** are listed for the
+deliveries still to come and do nothing yet ([Orders](/en/admin/orders/#give-people-access)).
 
 ### Assignments
 
