@@ -736,8 +736,12 @@ A2 may run beside B. S and C may run beside each other. D follows C.
   - **Each `Allocate` writes new rows.** It never rewrites an existing draft allocation,
     so a line may sit on several drafts at once, each with its own allocation and
     Invoices' unique live source.
-    - `Allocate` takes the order rows, then the lines, `FOR UPDATE` in id order, after
-      `LockVariants`.
+    - `Allocate` takes the order rows, then the lines, `FOR UPDATE` in id order. It takes no
+      `LockVariants`: an allocation writes no line and changes nothing a variant's delete
+      asks about (rule 21 does not apply).
+    - **One lock order for every writer:** orders, then lines, then allocations, each
+      `FOR UPDATE` in id order — `Allocate`, the holder, `ReleaseAllocations` (on its own
+      transaction) and the order page's release alike.
     - Two concurrent `Allocate` calls therefore serialise, and never both see the same
       open quantity.
   - **Releasing a draft's allocations.**
@@ -745,15 +749,18 @@ A2 may run beside B. S and C may run beside each other. D follows C.
     - Invoices calls it **after** a draft invoice's delete, or a line's removal from a
       draft, commits. It is best effort, logged on failure, and outside the transaction,
       as every contract call is.
-  - **Two backstops for a release that never arrives:**
-    - **A sweep.** A draft allocation untouched for **30 days** is released by the daily
-      `orders.allocation_sweep`. This is Energy's horizon
-      (`srv/energy/consumption_provider.go:24-27`).
-      - If its draft still exists, issuing it later gets `source_changed`, and the user
-        redrafts.
-    - **The order page's *Release draft allocations*** (`orders:sales-manage`). It
-      releases a line's draft allocations at once, with a warning that any draft invoice
-      holding them will refuse to issue.
+  - **Invoices cleans up what it takes** (revision 3, after the review of B):
+    - every allocation id `Allocate` returns is written at once to Invoices' ledger
+      `invoices.order_allocations_taken`, before any draft is written;
+    - the `invoices.allocation_reconcile` worker (every 10 minutes, per-row claims, safe
+      on a pool of one) releases ledger rows over an hour old that no live line source
+      holds — a crash between `Allocate` and the drafts, an anonymised customer's
+      deleted drafts, a failed best-effort release;
+    - a billing run item first releases what an earlier attempt of the same item took and
+      no draft holds;
+    - **Orders expires nothing by age**: a draft invoice keeps its allocations as long
+      as it exists. The order page's *Release draft allocations* (`orders:sales-manage`)
+      stays, with a warning that a draft holding them will refuse to issue.
   - **Cancel** is refused while draft allocations exist (`order_in_draft_invoice`). The
     refusal offers that action. It does not name the draft, because Orders cannot know
     the draft's id.
@@ -776,7 +783,9 @@ A2 may run beside B. S and C may run beside each other. D follows C.
     - the order's references.
     - A quantity above the to-invoice quantity is refused (`allocation_exceeds_open`).
   - **`Allocations(ctx, ids)`** answers allocations as they stand.
-  - **`ReleaseAllocations(ctx, ids)`** (O36).
+  - **`ReleaseAllocations(ctx, ids)`** (O36), on its own transaction under the one lock order.
+  - Invoices sets `Blocked = currency_not_supported` on an order in another currency than its
+    own, since an invoice is in one currency.
   - **Page limits** are `MaxBillableRows`, as the other billable reads use.
   - **Two write commands on a read contract.** `Allocate` and `ReleaseAllocations` are
     the second and third such commands, after Energy's `Settle`. The comment in
@@ -833,7 +842,12 @@ A2 may run beside B. S and C may run beside each other. D follows C.
        the default comes from Orders' setting `combine_by_default`);
     4. create the drafts.
   - **Grouping for samlefaktura.** The orders of one customer are combined when they
-    share currency, `your_reference`, project and payment terms.
+    share currency, `your_reference`, project, payment terms and the normalised delivery
+    address; `separatedBy` names what kept them apart (`delivery_address` among them).
+  - **A draft line holding an allocation keeps its quantity, unit price, discount and VAT
+    code**: a PUT changing them is 409 `line_holds_order_allocation`, and the issue refuses
+    a drifted line with `source_changed`. Its description may change. A POST naming an
+    order in another currency is `currency_not_nok`.
     Otherwise they make separate drafts, and the wizard says why.
   - **What the draft carries:**
     - **one invoice line per allocation**, with the order line's description, quantity,
@@ -852,11 +866,15 @@ A2 may run beside B. S and C may run beside each other. D follows C.
         text carries its own period;
       - the delivery address from the order;
       - the project.
-- **O40 — The billing run takes orders.** Invoices' billing run (`billing_worker.go`)
+- **O40 — The billing run takes orders.** An item first gives back its own earlier
+  unheld allocations; orders in another currency are left out and named in the item's
+  detail (or the item is skipped `currency_not_supported`); `orders_held_by_drafts`
+  replaces `no_orders_due` when drafts hold what is left. Invoices' billing run (`billing_worker.go`)
   gains an *orders* source: every customer with due order lines through a date, combined
   by the setting, as drafts or issued, as the run already offers for energy.
 - **O41 — The order shows its invoices.** The order page lists the invoices issued
-  from it, through Orders' own allocations (number, date, amount, state), linking to
+  from it, through Orders' own allocations (number, date, the still-invoiced amount, what
+  credit notes gave back as `releasedAmount`, state), linking to
   Invoices' routes. No contract read back is needed.
 
 ## 6. Decisions — delivery S, subscriptions
@@ -1381,7 +1399,8 @@ The `platform` schema gains `events` and `event_deliveries` (0). Invoices gains
     over prices, discounts, rates and quantities), and **document totals equal** for one
     full invoice per order;
   - concurrent `Allocate` never over-allocates; a released draft frees its quantity;
-    the sweep;
+    Invoices' reconcile on a pool of one, a billing run retried after a crash, mixed
+    currency, the PUT refusal and grouping by address;
   - the billing run.
 - **S:**
   - the period calendar (month ends, leap years, partial first period);
@@ -1495,8 +1514,8 @@ place.
   snapshots and the retention sweep.
 - **O36 and O37. Allocations.**
   - Each `Allocate` writes new rows under the lines' lock.
-  - `ReleaseAllocations` is called by Invoices after a draft is deleted, with a 30-day
-    sweep and a manual release as backstops.
+  - `ReleaseAllocations` is called by Invoices after a draft is deleted, with Invoices' ledger
+    and reconcile, and the manual release, as backstops (revision 3).
   - Cancel no longer names a draft it cannot know.
 - **O43 and O44. Subscriptions.**
   - Per-period allocations are the truth, behind a unique live index.
