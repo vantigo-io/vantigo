@@ -4,6 +4,7 @@ export * from "./api/request";
 export { assistTargets } from "./assist-targets";
 export { CustomerOrdersPanel, type CustomerOrdersPanelProps } from "./components/customer-orders-panel";
 export { ordersCatalog } from "./i18n";
+export { noOrdersAccess, type OrdersAccess } from "./lib/access";
 export { type OrdersNavItem, ordersNavItems, visibleOrdersNavItems } from "./lib/navigation";
 export * from "./lib/routes";
 export { OrderEditorPage } from "./pages/order-editor";
