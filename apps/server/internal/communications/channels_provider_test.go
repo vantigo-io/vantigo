@@ -163,6 +163,40 @@ func TestCreateChannel_EntraRefusals(t *testing.T) {
 	}
 }
 
+// TestCreateChannel_RefusalsNameTheProvider: a person's own mailbox and a
+// mailbox the provider refuses are said in the provider's name — Exchange
+// is never named to another provider's channel.
+func TestCreateChannel_RefusalsNameTheProvider(t *testing.T) {
+	t.Parallel()
+	for _, key := range []string{"entra", "google"} {
+		t.Run(key, func(t *testing.T) {
+			t.Parallel()
+			fake := modtest.NewFakeChannelMailbox().WithKey(key)
+			h := newHarness(t, modtest.WithChannelMailbox(fake))
+			c := h.SignIn(t, "communications:channels-manage")
+			body := func(address string) map[string]any {
+				return map[string]any{"type": "email", "provider": key, "address": address}
+			}
+			personal := channelAddress(t)
+			fake.SetMailbox(personal, contracts.ChannelMailboxInfo{Mailbox: uuid.NewString(), Address: personal, Shared: false})
+			r := c.Do(http.MethodPost, "/api/v1/communications/channels", body(personal))
+			wantCode(t, r, http.StatusUnprocessableEntity, "personal_mailbox")
+			var refused commErrorJSON
+			r.JSON(&refused)
+			if !strings.Contains(refused.Error.Message, fake.DisplayName()) || strings.Contains(refused.Error.Message, "Exchange") {
+				t.Errorf("personal_mailbox says %q, want %s named", refused.Error.Message, fake.DisplayName())
+			}
+			fake.FailWith("Check", contracts.ErrMailboxDenied)
+			r = c.Do(http.MethodPost, "/api/v1/communications/channels", body(channelAddress(t)))
+			wantCode(t, r, http.StatusUnprocessableEntity, "mailbox_denied")
+			r.JSON(&refused)
+			if !strings.Contains(refused.Error.Message, fake.DisplayName()) || strings.Contains(refused.Error.Message, "Exchange") {
+				t.Errorf("mailbox_denied says %q, want %s named", refused.Error.Message, fake.DisplayName())
+			}
+		})
+	}
+}
+
 // TestCreateChannel_EntraWithoutTheProvider: no slot filled, or one under
 // another key, leaves "entra" a provider no channel can use: the create is
 // 409 mail_channels_off, as before there were many providers, and nothing

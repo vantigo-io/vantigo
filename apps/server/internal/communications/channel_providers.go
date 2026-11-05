@@ -101,13 +101,22 @@ func refusalProviderUnreachable(provider string) *mailboxRefusal {
 		fmt.Sprintf("%s did not answer. Try again.", provider)}
 }
 
+// refusalPersonalMailbox and refusalMailboxDenied name the provider, as the
+// other refusals do: the words are the same for each, never Exchange's alone.
+func refusalPersonalMailbox(provider string) *mailboxRefusal {
+	return &mailboxRefusal{http.StatusUnprocessableEntity, "personal_mailbox", fmt.Sprintf(
+		"The address is a person's own mailbox in %s. Only a mailbox that is no person's own can be a channel.", provider)}
+}
+
+func refusalMailboxDenied(provider string) *mailboxRefusal {
+	return &mailboxRefusal{http.StatusUnprocessableEntity, "mailbox_denied", fmt.Sprintf(
+		"%s does not let Vantigo use this mailbox. An administrator gives the access as the mail channels section of the %s administration guide describes.",
+		provider, provider)}
+}
+
 var (
-	refusalPersonalMailbox = &mailboxRefusal{http.StatusUnprocessableEntity, "personal_mailbox",
-		"The address is a person's own mailbox. Only a shared mailbox can be a channel."}
 	refusalGroupAddress = &mailboxRefusal{http.StatusUnprocessableEntity, "group_address",
 		"The address is a group. A group has no mailbox Vantigo can read; use a licensed mailbox."}
-	refusalMailboxDenied = &mailboxRefusal{http.StatusUnprocessableEntity, "mailbox_denied",
-		"The application may not use this mailbox. Add it to the mail channels' scope in Exchange Online."}
 	refusalMailboxChanged = &mailboxRefusal{http.StatusUnprocessableEntity, "mailbox_changed",
 		"The address now names another mailbox than the channel's."}
 )
@@ -146,7 +155,7 @@ func (s *server) resolveSharedMailbox(ctx context.Context, provider, address str
 	info, err := s.mailboxCheck(ctx, m, address)
 	switch {
 	case err == nil && !info.Shared:
-		return contracts.ChannelMailboxInfo{}, refusalPersonalMailbox, nil
+		return contracts.ChannelMailboxInfo{}, refusalPersonalMailbox(name), nil
 	case err == nil:
 		return info, nil, nil
 	case errors.Is(err, errCallInsideTransaction):
@@ -154,7 +163,7 @@ func (s *server) resolveSharedMailbox(ctx context.Context, provider, address str
 	case errors.Is(err, contracts.ErrMailboxGroup):
 		return contracts.ChannelMailboxInfo{}, refusalGroupAddress, nil
 	case errors.Is(err, contracts.ErrMailboxDenied):
-		return contracts.ChannelMailboxInfo{}, refusalMailboxDenied, nil
+		return contracts.ChannelMailboxInfo{}, refusalMailboxDenied(name), nil
 	case errors.Is(err, contracts.ErrMailboxUnknown), errors.Is(err, contracts.ErrMailboxGone):
 		return contracts.ChannelMailboxInfo{}, refusalMailboxUnknown(name), nil
 	case errors.Is(err, contracts.ErrMailboxUnavailable):
