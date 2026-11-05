@@ -17,7 +17,9 @@ import (
 )
 
 // This file is how an order line's allocation becomes a draft's line, and how
-// orders become drafts (orders design O36–O39): one invoice line per
+// orders and subscriptions become drafts (orders design O36–O39, O43) — a
+// subscription is grouped and drafted as an order is, its due periods' lines
+// standing for an order's lines: one invoice line per
 // allocation, with the order line's description, quantity, unit, unit price,
 // discount and VAT code; the one source row the line holds; the grouping of
 // orders into drafts — one per order, or combined per customer where the
@@ -95,7 +97,7 @@ func allocationLine(language string, a contracts.OrderAllocation) (draftLine, er
 		description = strings.TrimPrefix(description+", "+period, ", ")
 	}
 	if description == "" {
-		description = orderSectionText(language, a.OrderNumber, "")
+		description = orderSectionText(language, allocationDocKind(a), a.OrderNumber, "")
 	}
 	l := draftLine{
 		description: clip(description), unit: clipUnit(strings.TrimSpace(a.Unit)), quantity: quantity, unitPrice: price,
@@ -107,24 +109,31 @@ func allocationLine(language string, a contracts.OrderAllocation) (draftLine, er
 }
 
 // orderSectionLine is the text line that opens an order's lines on a draft of
-// several orders (O39): "Ordre 2210, Deres ref. …" in language, 1 × 0.00 at
-// the VAT code of the order's first line — a line of its own that bills
-// nothing and names no source, as this module has no line without an amount.
-func orderSectionLine(language string, number int64, yourReference string, vatCodeID int32) draftLine {
+// several orders (O39): "Ordre 2210, Deres ref. …" — or "Abonnement 3001" for
+// a subscription — in language, 1 × 0.00 at the VAT code of the document's
+// first line: a line of its own that bills nothing and names no source, as
+// this module has no line without an amount.
+func orderSectionLine(language, kind string, number int64, yourReference string, vatCodeID int32) draftLine {
 	l := draftLine{
-		description: clip(orderSectionText(language, number, yourReference)), quantity: big.NewRat(1, 1),
+		description: clip(orderSectionText(language, kind, number, yourReference)), quantity: big.NewRat(1, 1),
 		unitPrice: new(big.Rat), discount: new(big.Rat), vatCodeID: vatCodeID, sources: []sourceRef{}, sourcesGiven: true,
 	}
 	l.amounts = computeLine(l.quantity, l.unitPrice, l.discount)
 	return l
 }
 
-// orderSectionText is an order's section text: its number and, when it has
-// one, the buyer's reference.
-func orderSectionText(language string, number int64, yourReference string) string {
+// orderSectionText is an order's or a subscription's section text: its
+// number and, when it has one, the buyer's reference.
+func orderSectionText(language, kind string, number int64, yourReference string) string {
 	order, ref := "Ordre", "Deres ref."
 	if language == "en" {
 		order, ref = "Order", "your ref."
+	}
+	if kind == contracts.DueKindSubscription {
+		order = "Abonnement"
+		if language == "en" {
+			order = "Subscription"
+		}
 	}
 	s := fmt.Sprintf("%s %d", order, number)
 	if yourReference = strings.TrimSpace(yourReference); yourReference != "" {
@@ -138,6 +147,34 @@ func clipUnit(s string) string {
 		return s
 	}
 	return string([]rune(s)[:maxUnit])
+}
+
+// docKey is a document a draft bills: an order or a subscription, which are
+// numbered apart, so its kind and its id together.
+type docKey struct {
+	kind string
+	id   int64
+}
+
+// keyOf is a due document's key; a DueOrder without a kind is an order.
+func keyOf(o contracts.DueOrder) docKey {
+	if o.Kind == contracts.DueKindSubscription {
+		return docKey{kind: contracts.DueKindSubscription, id: o.ID}
+	}
+	return docKey{kind: contracts.DueKindOrder, id: o.ID}
+}
+
+// allocationDocKind is the kind of document an allocation bills.
+func allocationDocKind(a contracts.OrderAllocation) string {
+	if a.Kind == contracts.AllocationSubscriptionPeriod {
+		return contracts.DueKindSubscription
+	}
+	return contracts.DueKindOrder
+}
+
+// allocationKey is the document an allocation bills.
+func allocationKey(a contracts.OrderAllocation) docKey {
+	return docKey{kind: allocationDocKind(a), id: a.OrderID}
 }
 
 // orderGroupKey is what a combined draft's orders share (O39): currency, the
@@ -189,7 +226,8 @@ type orderGroup struct {
 func groupOrders(orders []contracts.DueOrder, combine bool) []orderGroup {
 	sorted := slices.Clone(orders)
 	slices.SortStableFunc(sorted, func(a, b contracts.DueOrder) int {
-		return cmp.Or(cmp.Compare(a.CustomerID, b.CustomerID), cmp.Compare(a.Number, b.Number), cmp.Compare(a.ID, b.ID))
+		return cmp.Or(cmp.Compare(a.CustomerID, b.CustomerID), cmp.Compare(keyOf(a).kind, keyOf(b).kind),
+			cmp.Compare(a.Number, b.Number), cmp.Compare(a.ID, b.ID))
 	})
 	var groups []orderGroup
 	for _, o := range sorted {
@@ -232,7 +270,8 @@ func groupOrders(orders []contracts.DueOrder, combine bool) []orderGroup {
 	return groups
 }
 
-// orderHeader is a draft's header from its orders (O39).
+// orderHeader is a draft's header from its orders (O39). A subscription is
+// no order: a draft of one subscription carries no order reference.
 type orderHeader struct {
 	yourReference, orderReference          string
 	terms                                  *int32
@@ -260,7 +299,7 @@ func headerOf(g orderGroup, rows []heldSource, buyerReference string, defaultTer
 		terms := g.key.terms
 		h.terms = &terms
 	}
-	if len(g.orders) == 1 {
+	if len(g.orders) == 1 && keyOf(g.orders[0]).kind == contracts.DueKindOrder {
 		h.orderReference = strconv.FormatInt(g.orders[0].Number, 10)
 	}
 	var latest *time.Time
@@ -338,33 +377,34 @@ func sameDeliveryAddress(a, b gen.InvoicesDeliveryAddress) bool {
 }
 
 // orderDraftLines is a group's lines and their sources (O39), in its orders'
-// order: on a draft of several orders each order's lines opened by its
-// section line; each allocation's line, by the order line's position. byOrder
-// is each order's allocations; positions each order line's position; dates
-// each order's held rows' date. held[i] is the source line i holds, if any,
+// order: on a draft of several documents each one's lines opened by its
+// section line; each allocation's line, by period — a subscription's — then
+// the line's position. byOrder is each document's allocations; positions each
+// line's position; dates each document's held rows' date. held[i] is the source line i holds, if any,
 // with the line's position from 1.
-func orderDraftLines(language string, g orderGroup, byOrder map[int64][]contracts.OrderAllocation, positions map[int64]int32,
-	dates map[int64]time.Time,
+func orderDraftLines(language string, g orderGroup, byOrder map[docKey][]contracts.OrderAllocation, positions map[int64]int32,
+	dates map[docKey]time.Time,
 ) ([]draftLine, []heldSource, error) {
 	var lines []draftLine
 	var rows []heldSource
 	for _, o := range g.orders {
-		allocations := slices.Clone(byOrder[o.ID])
+		key := keyOf(o)
+		allocations := slices.Clone(byOrder[key])
 		slices.SortStableFunc(allocations, func(a, b contracts.OrderAllocation) int {
-			return cmp.Or(cmp.Compare(positions[a.LineID], positions[b.LineID]), cmp.Compare(a.ID, b.ID))
+			return cmp.Or(comparePeriods(a, b), cmp.Compare(positions[a.LineID], positions[b.LineID]), cmp.Compare(a.ID, b.ID))
 		})
 		if len(allocations) == 0 {
 			continue
 		}
 		if len(g.orders) > 1 {
-			lines = append(lines, orderSectionLine(language, o.Number, o.YourReference, allocations[0].VATCodeID))
+			lines = append(lines, orderSectionLine(language, key.kind, o.Number, o.YourReference, allocations[0].VATCodeID))
 		}
 		for _, a := range allocations {
 			l, err := allocationLine(language, a)
 			if err != nil {
 				return nil, nil, err
 			}
-			src, err := allocationSource(a, dates[o.ID])
+			src, err := allocationSource(a, dates[key])
 			if err != nil {
 				return nil, nil, err
 			}
@@ -374,6 +414,15 @@ func orderDraftLines(language string, g orderGroup, byOrder map[int64][]contract
 		}
 	}
 	return lines, rows, nil
+}
+
+// comparePeriods orders a subscription's allocations by their period's first
+// day; an order line's have none and compare equal.
+func comparePeriods(a, b contracts.OrderAllocation) int {
+	if a.PeriodStart == nil || b.PeriodStart == nil {
+		return 0
+	}
+	return a.PeriodStart.Compare(*b.PeriodStart)
 }
 
 // allocationIDs is the order allocations among refs, by id.

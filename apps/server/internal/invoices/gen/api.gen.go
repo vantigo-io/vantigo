@@ -384,6 +384,24 @@ func (e InvoicesCollectionRateRequestKind) Valid() bool {
 	}
 }
 
+// Defines values for InvoicesDueOrderKind.
+const (
+	Order        InvoicesDueOrderKind = "order"
+	Subscription InvoicesDueOrderKind = "subscription"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesDueOrderKind enum.
+func (e InvoicesDueOrderKind) Valid() bool {
+	switch e {
+	case Order:
+		return true
+	case Subscription:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvoicesHoldKind.
 const (
 	Disputed InvoicesHoldKind = "disputed"
@@ -2326,7 +2344,7 @@ type InvoicesDeliveryAddress struct {
 	PostalCode *string `json:"postalCode,omitempty"`
 }
 
-// InvoicesDueOrder One order with lines to invoice (orders design O37): its number, customer (customerName as the customer directory names it, absent when it does not), currency, project, the buyer's reference, delivery date, delivery name and address, payment terms, and blocked — draft or on_hold, as Orders answers it, or currency_not_supported, an order in another currency than the settings' — when it cannot be invoiced now.
+// InvoicesDueOrder One order — or, with kind subscription, one subscription with its due periods (orders design O43) — with lines to invoice (orders design O37): its number, customer (customerName as the customer directory names it, absent when it does not), currency, project, the buyer's reference, delivery date, delivery name and address, payment terms, and blocked — draft or on_hold, as Orders answers it, or currency_not_supported, an order in another currency than the settings' — when it cannot be invoiced now.
 type InvoicesDueOrder struct {
 	// Blocked Why the order cannot be invoiced now — draft, on_hold or currency_not_supported (another currency than the settings'). Absent when it can.
 	Blocked      *string `json:"blocked,omitempty"`
@@ -2335,29 +2353,37 @@ type InvoicesDueOrder struct {
 	CustomerName *string `json:"customerName,omitempty"`
 
 	// DeliveryAddress The place of delivery (§ 5-1-1 nr. 4), when it is not the buyer's address. line1, city and country are required; country is ISO 3166-1 alpha-2.
-	DeliveryAddress  *InvoicesDeliveryAddress `json:"deliveryAddress,omitempty"`
-	DeliveryDate     *openapi_types.Date      `json:"deliveryDate,omitempty"`
-	DeliveryName     *string                  `json:"deliveryName,omitempty"`
-	Id               int64                    `json:"id"`
-	Lines            []InvoicesDueOrderLine   `json:"lines"`
-	Number           int64                    `json:"number"`
-	PaymentTermsDays *int32                   `json:"paymentTermsDays,omitempty"`
-	ProjectId        *int32                   `json:"projectId,omitempty"`
-	YourReference    string                   `json:"yourReference"`
+	DeliveryAddress *InvoicesDeliveryAddress `json:"deliveryAddress,omitempty"`
+	DeliveryDate    *openapi_types.Date      `json:"deliveryDate,omitempty"`
+	DeliveryName    *string                  `json:"deliveryName,omitempty"`
+	Id              int64                    `json:"id"`
+
+	// Kind order, or subscription — whose lines are its due periods' lines, each with its period. An order and a subscription are numbered apart, so a document is its kind and id together.
+	Kind             InvoicesDueOrderKind   `json:"kind"`
+	Lines            []InvoicesDueOrderLine `json:"lines"`
+	Number           int64                  `json:"number"`
+	PaymentTermsDays *int32                 `json:"paymentTermsDays,omitempty"`
+	ProjectId        *int32                 `json:"projectId,omitempty"`
+	YourReference    string                 `json:"yourReference"`
 }
 
-// InvoicesDueOrderLine One order line with a quantity left to invoice: toInvoice (three decimals), the unit price (eight decimals), the discount, the VAT code, the invoice policy (order or delivery) and amount, the line net of toInvoice as docmath computes it — what an invoice line of the whole quantity nets.
+// InvoicesDueOrderKind order, or subscription — whose lines are its due periods' lines, each with its period. An order and a subscription are numbered apart, so a document is its kind and id together.
+type InvoicesDueOrderKind string
+
+// InvoicesDueOrderLine One order line with a quantity left to invoice, or one subscription line in one due period (periodStart and periodEnd; a partial first period is pro-rated into its unit price): toInvoice (three decimals), the unit price (eight decimals), the discount, the VAT code, the invoice policy (order or delivery) and amount, the line net of toInvoice as docmath computes it — what an invoice line of the whole quantity nets.
 type InvoicesDueOrderLine struct {
-	Amount          float64 `json:"amount"`
-	Description     string  `json:"description"`
-	DiscountPercent float64 `json:"discountPercent"`
-	InvoicePolicy   string  `json:"invoicePolicy"`
-	LineId          int64   `json:"lineId"`
-	Position        int32   `json:"position"`
-	ToInvoice       float64 `json:"toInvoice"`
-	Unit            string  `json:"unit"`
-	UnitPrice       float64 `json:"unitPrice"`
-	VatCodeId       int32   `json:"vatCodeId"`
+	Amount          float64             `json:"amount"`
+	Description     string              `json:"description"`
+	DiscountPercent float64             `json:"discountPercent"`
+	InvoicePolicy   string              `json:"invoicePolicy"`
+	LineId          int64               `json:"lineId"`
+	PeriodEnd       *openapi_types.Date `json:"periodEnd,omitempty"`
+	PeriodStart     *openapi_types.Date `json:"periodStart,omitempty"`
+	Position        int32               `json:"position"`
+	ToInvoice       float64             `json:"toInvoice"`
+	Unit            string              `json:"unit"`
+	UnitPrice       float64             `json:"unitPrice"`
+	VatCodeId       int32               `json:"vatCodeId"`
 }
 
 // InvoicesDueOrdersResponse The From orders wizard's list (orders design O37, O39): the orders the query names with lines left to invoice now, as Orders' DueOrders answers them — each line's toInvoice is ordered − cancelled − invoiced − held by a draft allocation. A draft order or one on hold is listed with blocked set and is not invoiced. warnings carries orders_truncated when Orders had more than 5 000 lines to answer and the last orders are not listed.
@@ -2429,13 +2455,15 @@ type InvoicesFromConsumptionVatCodes struct {
 	EnergyExempt *int32 `json:"energyExempt,omitempty"`
 }
 
-// InvoicesFromOrdersDraft One draft the wizard made: its id, its customer, the orders it invoices (by id and number, in order) and — when combine was asked and the customer's orders made more than one draft — separatedBy, what kept this draft apart from the customer's others: currency, your_reference, project, payment_terms or delivery_address.
+// InvoicesFromOrdersDraft One draft the wizard made: its id, its customer, the orders and the subscriptions it invoices (by id and number, in order) and — when combine was asked and the customer's orders made more than one draft — separatedBy, what kept this draft apart from the customer's others: currency, your_reference, project, payment_terms or delivery_address.
 type InvoicesFromOrdersDraft struct {
-	CustomerId   int32    `json:"customerId"`
-	InvoiceId    int64    `json:"invoiceId"`
-	OrderIds     []int64  `json:"orderIds"`
-	OrderNumbers []int64  `json:"orderNumbers"`
-	SeparatedBy  []string `json:"separatedBy"`
+	CustomerId          int32    `json:"customerId"`
+	InvoiceId           int64    `json:"invoiceId"`
+	OrderIds            []int64  `json:"orderIds"`
+	OrderNumbers        []int64  `json:"orderNumbers"`
+	SeparatedBy         []string `json:"separatedBy"`
+	SubscriptionIds     []int64  `json:"subscriptionIds"`
+	SubscriptionNumbers []int64  `json:"subscriptionNumbers"`
 }
 
 // InvoicesFromOrdersLine One order line to invoice and how much of it — at most what is left to invoice, three decimals at most (delfakturering when less).
@@ -2445,15 +2473,22 @@ type InvoicesFromOrdersLine struct {
 	Quantity float64 `json:"quantity"`
 }
 
-// InvoicesFromOrdersRequest POST /invoices/from-orders' body (orders design O39): the order lines to invoice with their quantities (1 to 5 000, each line once), and combine — false makes one invoice draft per order, true combines a customer's orders that share currency, your reference, project and payment terms into one draft (samlefaktura).
+// InvoicesFromOrdersRequest POST /invoices/from-orders' body (orders design O39, O43): the order lines to invoice with their quantities and the subscriptions whose due periods to invoice (1 to 5 000 together, each once), and combine — false makes one invoice draft per order, true combines a customer's orders that share currency, your reference, project and payment terms into one draft (samlefaktura).
 type InvoicesFromOrdersRequest struct {
-	Combine bool                     `json:"combine"`
-	Lines   []InvoicesFromOrdersLine `json:"lines"`
+	Combine       bool                              `json:"combine"`
+	Lines         []InvoicesFromOrdersLine          `json:"lines"`
+	Subscriptions *[]InvoicesFromOrdersSubscription `json:"subscriptions,omitempty"`
 }
 
 // InvoicesFromOrdersResponse The drafts the From orders wizard made, in the order of the customers and then of their first order.
 type InvoicesFromOrdersResponse struct {
 	Invoices []InvoicesFromOrdersDraft `json:"invoices"`
+}
+
+// InvoicesFromOrdersSubscription One subscription to invoice (orders design O43) — every period due through through, its first day on or before it when billed in advance, its last when in arrears, and none starting more than twelve months ahead.
+type InvoicesFromOrdersSubscription struct {
+	SubscriptionId int64              `json:"subscriptionId"`
+	Through        openapi_types.Date `json:"through"`
 }
 
 // InvoicesFromWorkRequest POST /invoices/from-work's body (invoices work design D3, D4, D6): the customer, the work by identity (at most 5 000 with an append target's held work, none twice), the grouping — project (the default), work_type, person, date or itemised — the VAT codes per kind, an optional delivery period (both or neither; the first and last work dates when absent), an optional note (a re-pull note suggested when absent), and, to add the work to an existing invoice draft of this customer, its invoiceId with the revision it was read at.
@@ -4425,7 +4460,10 @@ type GetInvoicesExportCsvParams struct {
 type GetInvoicesFromOrdersDueParams struct {
 	CustomerId *[]int32 `form:"customerId,omitempty" json:"customerId,omitempty"`
 	OrderId    *[]int64 `form:"orderId,omitempty" json:"orderId,omitempty"`
-	Every      *bool    `form:"every,omitempty" json:"every,omitempty"`
+
+	// SubscriptionId Subscriptions to list, by id; with orderId, or alone.
+	SubscriptionId *[]int64 `form:"subscriptionId,omitempty" json:"subscriptionId,omitempty"`
+	Every          *bool    `form:"every,omitempty" json:"every,omitempty"`
 
 	// Until The last delivery date an order may have, inclusive; no bound when absent.
 	Until *openapi_types.Date `form:"until,omitempty" json:"until,omitempty"`
@@ -6148,6 +6186,19 @@ func (siw *ServerInterfaceWrapper) GetInvoicesFromOrdersDue(w http.ResponseWrite
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "orderId"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orderId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "subscriptionId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "subscriptionId", r.URL.Query(), &params.SubscriptionId, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "subscriptionId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subscriptionId", Err: err})
 		}
 		return
 	}

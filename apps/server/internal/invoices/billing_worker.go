@@ -352,7 +352,9 @@ func (c *billingClaim) bill(ctx context.Context) (itemOutcome, error) {
 	return itemOutcome{status: itemDrafted}, nil
 }
 
-// billOrders is an item of a run of orders (orders design O40), in order:
+// billOrders is an item of a run of orders (orders design O40, O43) — its
+// customer's orders and subscriptions, a subscription's periods due through
+// the run's date — in order:
 // Orders off is skipped orders_unavailable; the allocations an earlier
 // attempt of this item took and no draft holds — an attempt that ended
 // between Allocate and its drafts — given back to Orders, so they are due
@@ -393,6 +395,7 @@ func (c *billingClaim) billOrders(ctx context.Context) (itemOutcome, error) {
 			"Orders has more than %d order lines to invoice for this customer; invoice them with From orders.", contracts.MaxBillableRows)), nil
 	}
 	var lines []orderLineInput
+	var subs []subscriptionInput
 	var foreign []string
 	for _, o := range page.Orders {
 		if o.Blocked != "" {
@@ -400,6 +403,12 @@ func (c *billingClaim) billOrders(ctx context.Context) (itemOutcome, error) {
 		}
 		if o.Currency != settings.DefaultCurrency {
 			foreign = append(foreign, fmt.Sprintf("%d (%s)", o.Number, o.Currency))
+			continue
+		}
+		if keyOf(o).kind == contracts.DueKindSubscription {
+			// A subscription bills its periods due through the run's
+			// date (orders design O43).
+			subs = append(subs, subscriptionInput{id: o.ID, through: through})
 			continue
 		}
 		for _, l := range o.Lines {
@@ -421,7 +430,7 @@ func (c *billingClaim) billOrders(ctx context.Context) (itemOutcome, error) {
 	if err != nil {
 		return itemOutcome{}, err
 	}
-	if len(lines) == 0 && len(earlier) == 0 {
+	if len(lines) == 0 && len(subs) == 0 && len(earlier) == 0 {
 		if leftOut != "" {
 			return skipped(codeCurrencyNotSupported, leftOut), nil
 		}
@@ -447,8 +456,8 @@ func (c *billingClaim) billOrders(ctx context.Context) (itemOutcome, error) {
 			}
 		}
 	}
-	if len(lines) > 0 {
-		out, err := s.fromOrders(ctx, lines, c.run.Combine, &c.row.ID)
+	if len(lines) > 0 || len(subs) > 0 {
+		out, err := s.fromOrders(ctx, lines, subs, c.run.Combine, &c.row.ID)
 		switch {
 		case err != nil:
 			return itemOutcome{}, err

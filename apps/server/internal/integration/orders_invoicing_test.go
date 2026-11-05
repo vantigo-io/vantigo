@@ -37,7 +37,7 @@ var orderPermissions = []string{
 	"products:products-view", "products:products-manage", "products:variants-view", "products:variants-manage",
 	"products:pricing-view", "products:pricing-manage", "products:categories-view",
 	"products:tax-categories-view", "products:tax-categories-manage",
-	"orders:access", "orders:sales-manage", "orders:sales-confirm",
+	"orders:access", "orders:sales-manage", "orders:sales-confirm", "orders:subscriptions-manage",
 }
 
 // ordersInstallation is customers, products, invoices and orders composed in
@@ -83,6 +83,13 @@ func taxCategory(t *testing.T, c *modtest.Client, name string, rate float64, vat
 // and gives the variant a NOK list price, answering the variant's id.
 func pricedVariant(t *testing.T, c *modtest.Client, taxCategory int32, name, sku string, price float64) int32 {
 	t.Helper()
+	return pricedVariantOf(t, c, "Goods", taxCategory, name, sku, price)
+}
+
+// pricedVariantOf is pricedVariant of a product of type kind, Goods or
+// Service.
+func pricedVariantOf(t *testing.T, c *modtest.Client, kind string, taxCategory int32, name, sku string, price float64) int32 {
+	t.Helper()
 	var p struct {
 		Id       int32 `json:"id"`
 		Variants []struct {
@@ -90,7 +97,7 @@ func pricedVariant(t *testing.T, c *modtest.Client, taxCategory int32, name, sku
 		} `json:"variants"`
 	}
 	okJSON(t, c, http.MethodPost, "/api/v1/products", map[string]any{
-		"name": name, "type": "Goods", "status": "Active", "taxCategoryId": taxCategory,
+		"name": name, "type": kind, "status": "Active", "taxCategoryId": taxCategory,
 		"variants": []map[string]any{{"sku": sku}},
 	}, &p)
 	okJSON(t, c, http.MethodPost, fmt.Sprintf("/api/v1/products/%d/variants/%d/prices", p.Id, p.Variants[0].Id),
