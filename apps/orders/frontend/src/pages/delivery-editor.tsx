@@ -17,6 +17,7 @@ import { NotFoundError, ORDERS_QUERY_KEY, refusedLines } from "../api/request";
 import type { Delivery } from "../api/types";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { PdfButton } from "../components/pdf-button";
+import { ShipmentsCard } from "../components/shipments-card";
 import { DeliveryDocumentBadge } from "../components/status-badges";
 import "../i18n";
 import { noOrdersAccess, type OrdersAccess } from "../lib/access";
@@ -35,7 +36,8 @@ export interface DeliveryEditorPageProps {
  * delivery address, and its lines — a draft's quantities and the location
  * each is picked from, among the site's locations holding it — with the pick
  * list, the packing slip, *Post* and *Cancel*. A posted delivery is shown as
- * it was posted and no longer changes.
+ * it was posted and no longer changes, and is shipped from its Shipments card
+ * (O50).
  */
 export const DeliveryEditorPage = ({ deliveryId, access = noOrdersAccess }: DeliveryEditorPageProps) => {
   const { t } = useOrdersFormat();
@@ -304,6 +306,11 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
           )}
         </Stack>
       </Card>
+      <ShipmentsCard
+        deliveryId={delivery.id}
+        posted={delivery.status === "posted"}
+        canManage={access.canManageDeliveries}
+      />
       {dialog === "cancel" && (
         <ConfirmDialog
           title={t("cancelDelivery")}

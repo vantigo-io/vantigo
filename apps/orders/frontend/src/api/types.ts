@@ -98,3 +98,18 @@ export type CurrencySum = Schemas["OrdersCurrencySum"];
 
 /** The header fields a quote, an order and a subscription share (O13), as the editor holds them. */
 export type DocumentKind = "quote" | "order" | "subscription";
+
+export type CarrierAccount = Schemas["OrdersCarrierAccount"];
+export type CarrierAccountInput = Schemas["OrdersCarrierAccountInput"];
+export type CarrierAccountList = Schemas["OrdersCarrierAccountList"];
+export type CarrierSender = Schemas["OrdersCarrierSender"];
+export type CarrierService = Schemas["OrdersCarrierService"];
+export type CarrierVerification = Schemas["OrdersCarrierVerification"];
+export type SiteCarrierDefaults = Schemas["OrdersSiteCarrierDefaults"];
+export type Shipment = Schemas["OrdersShipment"];
+export type ShipmentStatus = Shipment["status"];
+export type ShipmentUpdate = Schemas["OrdersShipmentUpdate"];
+export type ShipmentPackageInput = Schemas["OrdersShipmentPackageInput"];
+export type ShippingOption = Schemas["OrdersShippingOption"];
+export type ShippingEstimate = Schemas["OrdersShippingEstimate"];
+export type PickupPoint = Schemas["OrdersPickupPoint"];

@@ -466,5 +466,101 @@
       "en": "The Inventory site a new order is fulfilled from.",
       "nb": "Lagerstedet i Lager-appen en ny ordre leveres fra."
     }
+  },
+  {
+    "key": "orders.lines.add-shipping",
+    "route": "/orders/quotes/{quoteId}",
+    "label": {
+      "en": "Add shipping",
+      "nb": "Legg til frakt"
+    },
+    "description": {
+      "en": "Adds a shipping line: the freight the customer pays, quantity 1, its price typed or estimated.",
+      "nb": "Legger til en fraktlinje: frakten kunden betaler, antall 1, med pris skrevet inn eller estimert."
+    }
+  },
+  {
+    "key": "orders.lines.estimate-shipping",
+    "route": "/orders/quotes/{quoteId}",
+    "label": {
+      "en": "Estimate",
+      "nb": "Estimer"
+    },
+    "description": {
+      "en": "Asks the carrier for the shipping line's price for the delivery address and the goods' weight, with the markup from the settings.",
+      "nb": "Spør transportøren om fraktlinjens pris for leveringsadressen og varenes vekt, med påslaget fra innstillingene."
+    }
+  },
+  {
+    "key": "orders.delivery.ship",
+    "route": "/orders/deliveries/{deliveryId}",
+    "label": {
+      "en": "Ship",
+      "nb": "Send"
+    },
+    "description": {
+      "en": "On a posted delivery's Shipments card: proposes a shipment with one package weighing the delivered goods, on the site's default carrier account.",
+      "nb": "På kortet Sendinger på en bokført leveranse: foreslår en sending med ett kolli som veier de leverte varene, på lagerstedets standard fraktkonto."
+    }
+  },
+  {
+    "key": "orders.shipment.service",
+    "route": "/orders/deliveries/{deliveryId}",
+    "label": {
+      "en": "Service",
+      "nb": "Tjeneste"
+    },
+    "description": {
+      "en": "The carrier's product the shipment is booked as, such as Bring's parcel to a pickup point.",
+      "nb": "Transportørens produkt sendingen bestilles som, for eksempel Brings pakke til hentested."
+    }
+  },
+  {
+    "key": "orders.shipment.book",
+    "route": "/orders/deliveries/{deliveryId}",
+    "label": {
+      "en": "Book shipment",
+      "nb": "Bestill frakt"
+    },
+    "description": {
+      "en": "Books the shipment with the carrier, stores its label and waybill and, when the settings say so, e-mails the customer the tracking link.",
+      "nb": "Bestiller frakten hos transportøren, lagrer etiketten og fraktbrevet og sender, når innstillingene sier det, kunden sporingslenken."
+    }
+  },
+  {
+    "key": "orders.settings.freight-markup",
+    "route": "/orders/settings",
+    "label": {
+      "en": "Markup on the carrier's estimate",
+      "nb": "Påslag på transportørens estimat"
+    },
+    "description": {
+      "en": "The percent a shipping line's estimate adds to the carrier's price.",
+      "nb": "Prosenten en fraktlinjes estimat legger til transportørens pris."
+    }
+  },
+  {
+    "key": "orders.shipping.add-account",
+    "route": "/workspace/shipping",
+    "label": {
+      "en": "Add carrier account",
+      "nb": "Legg til fraktkonto"
+    },
+    "description": {
+      "en": "Adds a Bring account: the Mybring user and API key, the customer numbers and whether it runs in test mode.",
+      "nb": "Legger til en Bring-konto: Mybring-brukeren og API-nøkkelen, kundenumrene og om den kjører i testmodus."
+    }
+  },
+  {
+    "key": "orders.shipping.verify",
+    "route": "/workspace/shipping",
+    "label": {
+      "en": "Verify",
+      "nb": "Bekreft"
+    },
+    "description": {
+      "en": "Checks the account's keys with the carrier and lists the services it can book; says when prices are list prices only.",
+      "nb": "Sjekker kontoens nøkler hos transportøren og viser tjenestene den kan bestille; sier fra når prisene bare er listepriser."
+    }
   }
 ]

@@ -51,6 +51,11 @@ export interface EditableLine {
    */
   invoicePolicy?: InvoicePolicy;
   policyTouched?: boolean;
+  /**
+   * A shipping line's price is the carrier's estimate with the markup (O53),
+   * set by *Estimate* and cleared when a price is typed over it.
+   */
+  carrierPriced?: boolean;
 }
 
 /**
@@ -119,16 +124,20 @@ export const fromTemplateLine = (line: TemplateLine): EditableLine => ({
   changed: false,
 });
 
-/** A new, empty row of a kind: a catalog line to pick a variant for, a free-text line, a section or a note. */
-export const newLine = (kind: LineKind, catalog = false): EditableLine => ({
+/**
+ * A new, empty row of a kind: a catalog line to pick a variant for, a free-text
+ * line, a section, a note or a shipping line (O53) — quantity 1, its price
+ * typed or estimated.
+ */
+export const newLine = (kind: LineKind, catalog = false, name = ""): EditableLine => ({
   key: freshKey(),
   kind,
   catalog: kind === "product" && catalog,
   variantId: null,
   sku: null,
-  name: "",
+  name,
   description: "",
-  quantity: kind === "product" ? 1 : "",
+  quantity: kind === "product" || kind === "shipping" ? 1 : "",
   unit: kind === "product" ? "stk" : "",
   unitPrice: "",
   priceTouched: false,
@@ -156,6 +165,23 @@ export const editLine = (line: EditableLine, patch: Partial<EditableLine>): Edit
  * quote's only (O21).
  */
 export const toLineInput = (line: EditableLine, { quote }: { quote: boolean }): LineInput => {
+  if (line.kind === "shipping") {
+    // A shipping line (O53): quantity 1; the freight product's when it names
+    // one, else free text with its own VAT code.
+    const priced = line.unitPrice !== "" && (line.priceTouched || line.id === undefined);
+    return {
+      ...(line.id ? { id: line.id } : {}),
+      kind: "shipping",
+      variantId: line.variantId,
+      ...(line.variantId === null ? { name: line.name, vatCodeId: line.vatCodeId } : {}),
+      description: line.description,
+      quantity: 1,
+      unit: line.unit,
+      ...(priced ? { unitPrice: line.unitPrice as number } : {}),
+      ...(priced && line.carrierPriced ? { priceSource: "carrier" as const } : {}),
+      discountPercent: line.discountPercent === "" ? 0 : line.discountPercent,
+    };
+  }
   if (line.kind !== "product")
     return { ...(line.id ? { id: line.id } : {}), kind: line.kind, description: line.description };
   const priced = line.unitPrice !== "" && (line.priceTouched || line.id === undefined);
@@ -194,7 +220,8 @@ export const remainingToDeliver = (line: Line): number =>
 
 /** A template's row as its save sends it (OrdersTemplateLineInput): a price only as an override. */
 export const toTemplateLineInput = (line: EditableLine): TemplateLineInput => {
-  if (line.kind !== "product")
+  // A template has no shipping lines (O53); its grid offers none.
+  if (line.kind === "section" || line.kind === "note")
     return { ...(line.id ? { id: line.id } : {}), kind: line.kind, description: line.description };
   return {
     ...(line.id ? { id: line.id } : {}),

@@ -36,6 +36,7 @@ import { Route as WorkspaceIndexRoute } from "./workspace/index";
 import { Route as WorkspaceInvitationsRoute } from "./workspace/invitations";
 import { Route as WorkspaceOverviewRoute } from "./workspace/overview";
 import { Route as WorkspaceRolesRoute } from "./workspace/roles";
+import { Route as WorkspaceShippingRoute } from "./workspace/shipping";
 import { Route as WorkspaceUsersRoute } from "./workspace/users";
 
 const { fetchSession, getAuthorizationMe, fetchBootstrapStatus, fetchAiSettings } = vi.hoisted(() => ({
@@ -708,5 +709,44 @@ describe("app index routes", () => {
 
     expect(EnergyIndexRoute.options.component).toBeUndefined();
     await expectRedirectTo(EnergyIndexRoute, "/energy/metering-points");
+  });
+});
+
+// Integrations › Shipping (orders design O51): the workspace layout admits a
+// holder of orders:carriers-manage while the Orders module is on, and the
+// page's own route asks the module and the permission again.
+describe("the Shipping route", () => {
+  const injectModules = (modules: string[]) => {
+    window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules };
+  };
+  const withOrders = ["customers", "products", "invoices", "orders"];
+  const withoutOrders = ["customers", "products", "invoices"];
+
+  beforeEach(() => injectModules(withOrders));
+  afterEach(() => {
+    delete window.__VANTIGO_APP__;
+  });
+
+  const carrierManager = { permissions: ["orders:access", "orders:carriers-manage"], canManageAuthorization: false };
+
+  it("admits a carrier manager who is not an Owner to /workspace and /workspace/shipping while Orders is on", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+    getAuthorizationMe.mockResolvedValue(carrierManager);
+    await expectAdmitted(WorkspaceRoute);
+    await expectAdmitted(WorkspaceShippingRoute);
+  });
+
+  it("sends a member without orders:carriers-manage home, and answers the not-enabled page while Orders is off", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+    getAuthorizationMe.mockResolvedValue({ permissions: ["orders:access"], canManageAuthorization: false });
+    await expectRedirectTo(WorkspaceRoute, "/");
+    await expectRedirectTo(WorkspaceShippingRoute, "/");
+
+    getAuthorizationMe.mockResolvedValue(carrierManager);
+    injectModules(withoutOrders);
+    await expectRedirectTo(WorkspaceRoute, "/");
+    const thrown = await runGuard(WorkspaceShippingRoute, "/workspace/shipping");
+    expect(isNotFound(thrown)).toBe(true);
+    expect((thrown as { data?: unknown }).data).toEqual({ moduleDisabled: "orders" });
   });
 });

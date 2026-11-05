@@ -115,3 +115,39 @@ describe("packagings and the grid (O15, O34)", () => {
     expect(lines[0].changed).toBe(true);
   });
 });
+
+describe("a shipping line (O53) as the save sends it", () => {
+  it("is quantity 1, free text with its own VAT code until a freight product names it", () => {
+    const row = editLine(newLine("shipping", false, "Frakt"), { unitPrice: 149, priceTouched: true, vatCodeId: 3 });
+    expect(toLineInput(row, { quote: true })).toEqual({
+      kind: "shipping",
+      variantId: null,
+      name: "Frakt",
+      vatCodeId: 3,
+      description: "",
+      quantity: 1,
+      unit: "",
+      unitPrice: 149,
+      discountPercent: 0,
+    });
+  });
+
+  it("marks an estimated price as the carrier's until a price is typed over it", () => {
+    const estimated = editLine(newLine("shipping"), {
+      unitPrice: 96.8,
+      priceTouched: true,
+      carrierPriced: true,
+      variantId: 106,
+      name: "Frakt",
+    });
+    expect(toLineInput(estimated, { quote: false })).toMatchObject({
+      kind: "shipping",
+      variantId: 106,
+      unitPrice: 96.8,
+      priceSource: "carrier",
+    });
+    expect(toLineInput(estimated, { quote: false })).not.toHaveProperty("name");
+    const typed = editLine(estimated, { unitPrice: 120, carrierPriced: false });
+    expect(toLineInput(typed, { quote: false })).not.toHaveProperty("priceSource");
+  });
+});

@@ -51,6 +51,7 @@ import {
   updateQuote,
 } from "../api/quotes";
 import { isVersionConflict, NotFoundError, ORDERS_QUERY_KEY } from "../api/request";
+import { estimateShipping } from "../api/shipping";
 import { templateListQueryOptions } from "../api/templates";
 import type { Quote } from "../api/types";
 import { overrideOf } from "../api/warnings";
@@ -523,6 +524,7 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
             editable={editable}
             access={access}
             refused={editor.refused}
+            onEstimate={editable ? () => estimateShipping({ quoteId: quote.id }) : undefined}
           />
           <TotalsCard
             totals={quote.totals}

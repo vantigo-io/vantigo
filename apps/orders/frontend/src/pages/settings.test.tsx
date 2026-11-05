@@ -44,6 +44,9 @@ describe("the orders settings", () => {
       subscriptionFinalPeriodDefault: "prorated",
       sendChannelId: "11111111-1111-4111-8111-111111111111",
       defaultSiteId: null,
+      freightVariantId: null,
+      freightMarkupPercent: 0,
+      shippingNoticeOnBook: true,
       mailTexts: [{ kind: "quote", language: "nb", subject: "Tilbud fra oss", body: "" }],
     });
     expect(await screen.findByText("The settings are saved")).toBeInTheDocument();

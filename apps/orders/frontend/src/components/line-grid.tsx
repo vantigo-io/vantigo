@@ -25,13 +25,15 @@ import {
   IconPackage,
   IconPencil,
   IconTrash,
+  IconTruckDelivery,
 } from "@tabler/icons-react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
-import type { Line } from "../api/types";
+import type { Line, ShippingEstimate } from "../api/types";
 import { variantSearchQueryOptions } from "../api/variants";
 import { currentRate, vatCodesQueryOptions } from "../api/vat-codes";
 import type { OrdersAccess } from "../lib/access";
+import { refusalMessage } from "../lib/errors";
 import { useOrdersFormat } from "../lib/format";
 import {
   applyGrid,
@@ -63,6 +65,11 @@ export interface LineGridProps {
   access: OrdersAccess;
   /** The refused save's failing lines, by their index in the request, in words. */
   refused?: ReadonlyMap<number, string>;
+  /**
+   * Asks the carrier for a shipping line's price (O53); absent while the
+   * document is not saved, or on a template, and then *Estimate* is not offered.
+   */
+  onEstimate?: () => Promise<ShippingEstimate>;
 }
 
 const hasProgress = (line?: Line) =>
@@ -86,9 +93,12 @@ export const LineGrid = ({
   confirmed = false,
   access,
   refused,
+  onEstimate,
 }: LineGridProps) => {
   const { t, money, unitPrice, quantity, percent } = useOrdersFormat();
   const [gridOpen, setGridOpen] = useState(false);
+  const [estimating, setEstimating] = useState<number | null>(null);
+  const [estimates, setEstimates] = useState<ReadonlyMap<string, string>>(new Map());
   const vatCodes = useQuery({ ...vatCodesQueryOptions(), enabled: editable && access.canReadVatCodes });
   // The saved catalog lines' variants as the catalog has them now, for the
   // packagings they may be entered in (O15): found by their SKU.
@@ -106,7 +116,40 @@ export const LineGrid = ({
   const set = (index: number, patch: Partial<EditableLine>) =>
     onChange(lines.map((line, i) => (i === index ? editLine(line, patch) : line)));
   const remove = (index: number) => onChange(lines.filter((_, i) => i !== index));
-  const add = (kind: EditableLine["kind"], catalog = false) => onChange([...lines, newLine(kind, catalog)]);
+  const add = (kind: EditableLine["kind"], catalog = false) =>
+    onChange([...lines, newLine(kind, catalog, kind === "shipping" ? t("shippingLineName") : "")]);
+  // A shipping line's estimate (O53): the carrier's price with the markup, as
+  // the line enters it, and the freight product's name, variant and VAT code.
+  const estimate = async (index: number) => {
+    if (!onEstimate) return;
+    setEstimating(index);
+    try {
+      const e = await onEstimate();
+      const row = lines[index];
+      set(index, {
+        unitPrice: e.unitPrice,
+        priceTouched: true,
+        carrierPriced: true,
+        variantId: e.variantId ?? null,
+        name: e.name,
+        vatCodeId: e.vatCodeId ?? row.vatCodeId,
+      });
+      setEstimates(
+        new Map(estimates).set(
+          row.key,
+          t("estimated", {
+            price: unitPrice(e.unitPrice, e.currency),
+            service: e.serviceName,
+            weight: quantity(e.weightGrams / 1000),
+          }),
+        ),
+      );
+    } catch (error) {
+      setEstimates(new Map(estimates).set(lines[index].key, `${t("couldNotEstimate")}: ${refusalMessage(error, t)}`));
+    } finally {
+      setEstimating(null);
+    }
+  };
   const vatOptions = (vatCodes.data ?? []).map((code) => {
     const rate = currentRate(code);
     return { value: String(code.id), label: rate === undefined ? code.name : `${code.name} (${percent(rate)})` };
@@ -115,6 +158,7 @@ export const LineGrid = ({
   const columns = 5 + (amounts ? 3 : 0) + (mode !== "order" ? 1 : 0) + (showProgress ? 1 : 0) + (editable ? 1 : 0);
 
   const productRow = (row: EditableLine, index: number) => {
+    const shipping = row.kind === "shipping";
     const current = row.variantId === null ? undefined : currentPackagings.get(row.variantId);
     const line = current ? withCurrentPackagings(row, current) : row;
     const saved = line.saved;
@@ -212,6 +256,32 @@ export const LineGrid = ({
                 {t("optional")}
               </Badge>
             )}
+            {shipping && (
+              <Group gap={6}>
+                <Badge size="xs" variant="light" color="indigo" leftSection={<IconTruckDelivery size={10} />}>
+                  {t("shippingLine")}
+                </Badge>
+                {editable && !priceHeld && (
+                  <Tooltip label={onEstimate ? t("estimateHint") : t("estimateNeedsSave")} withArrow>
+                    <Button
+                      size="compact-xs"
+                      variant="light"
+                      disabled={!onEstimate}
+                      loading={estimating === index}
+                      onClick={() => void estimate(index)}
+                      data-assist="orders.lines.estimate-shipping"
+                    >
+                      {t("estimate")}
+                    </Button>
+                  </Tooltip>
+                )}
+              </Group>
+            )}
+            {shipping && estimates.get(row.key) && (
+              <Text size="xs" c="dimmed" data-testid={`line-estimate-${position}`}>
+                {estimates.get(row.key)}
+              </Text>
+            )}
             {mode === "order" && saved && <LineStock line={saved} />}
             {mode === "order" &&
               saved &&
@@ -239,7 +309,11 @@ export const LineGrid = ({
           </Stack>
         </Table.Td>
         <Table.Td w={150}>
-          {editable ? (
+          {shipping ? (
+            <Text size="sm" ta="right">
+              {quantity(1)}
+            </Text>
+          ) : editable ? (
             <Stack gap={4}>
               {pack ? (
                 <NumberInput
@@ -338,7 +412,11 @@ export const LineGrid = ({
               hideControls
               disabled={priceHeld}
               onChange={(value) =>
-                set(index, { unitPrice: value === "" ? "" : Number(value), priceTouched: value !== "" })
+                set(index, {
+                  unitPrice: value === "" ? "" : Number(value),
+                  priceTouched: value !== "",
+                  carrierPriced: false,
+                })
               }
             />
           ) : (
@@ -349,6 +427,11 @@ export const LineGrid = ({
           {saved?.priceSource === "manual" && !line.changed && (
             <Text size="10px" c="dimmed" tt="uppercase">
               {t("priceManual")}
+            </Text>
+          )}
+          {((saved?.priceSource === "carrier" && !line.changed) || line.carrierPriced) && (
+            <Text size="10px" c="indigo" tt="uppercase">
+              {t("priceCarrier")}
             </Text>
           )}
           {saved && saved.unitPrice == null && line.catalog && (
@@ -403,7 +486,7 @@ export const LineGrid = ({
             <Checkbox
               aria-label={t("lineOptional", { position })}
               checked={line.optional}
-              disabled={!editable}
+              disabled={!editable || shipping}
               onChange={(e) => set(index, { optional: e.currentTarget.checked })}
             />
           </Table.Td>
@@ -544,7 +627,9 @@ export const LineGrid = ({
                         </Text>
                       )}
                     </Table.Td>
-                    {line.kind === "product" ? productRow(line, index) : textRow(line, index)}
+                    {line.kind === "product" || line.kind === "shipping"
+                      ? productRow(line, index)
+                      : textRow(line, index)}
                     {editable && (
                       <Table.Td>
                         <Tooltip label={locked ? t("lineHasProgress") : t("removeLine")} withArrow>
@@ -598,6 +683,19 @@ export const LineGrid = ({
           >
             {t("addFreeTextLine")}
           </Button>
+          {mode !== "template" && (
+            <Button
+              size="xs"
+              variant="light"
+              color="indigo"
+              leftSection={<IconTruckDelivery size={14} />}
+              onClick={() => add("shipping")}
+              disabled={lines.length >= 500}
+              data-assist="orders.lines.add-shipping"
+            >
+              {t("addShipping")}
+            </Button>
+          )}
           <Button
             size="xs"
             variant="subtle"

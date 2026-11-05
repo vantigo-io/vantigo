@@ -9,7 +9,9 @@ import { hasPermissions } from "../navigation";
  * pages: Owners (overview, users, invitations), authorization managers (roles
  * and access) and, while the Entra module is on, holders of `entra:manage`
  * (Integrations › Microsoft Entra ID), and, while the Google module is on,
- * holders of `google:manage` (Integrations › Google Workspace). Each child
+ * holders of `google:manage` (Integrations › Google Workspace), and, while
+ * the Orders module is on, holders of `orders:carriers-manage` (Integrations ›
+ * Shipping). Each child
  * route keeps its own, stricter gate, and the sidebar (see `areas` in apps.ts) filters by the same
  * flags, so a person admitted for one page sees only the sections it belongs to.
  */
@@ -24,6 +26,8 @@ export const Route = createFileRoute("/workspace")({
     if (access?.canManageAuthorization) return;
     if (enabledModuleKeys().includes("entra") && hasPermissions(access?.permissions, ["entra:manage"])) return;
     if (enabledModuleKeys().includes("google") && hasPermissions(access?.permissions, ["google:manage"])) return;
+    if (enabledModuleKeys().includes("orders") && hasPermissions(access?.permissions, ["orders:carriers-manage"]))
+      return;
     throw redirect({ to: "/" });
   },
   component: Outlet,

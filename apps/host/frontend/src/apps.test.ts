@@ -748,11 +748,13 @@ describe("the administration areas", () => {
       const prefix = `/${area.key}`;
       for (const item of area.navSections.flatMap((section) => section.items)) {
         expect(item.to === prefix || item.to.startsWith(`${prefix}/`)).toBe(true);
-        // An area belongs to no module; only an entry a module provides, Entra's and Google's Integrations
-        // pages and the Assistant's, names its module. Connections names the providers' modules in `modules`.
+        // An area belongs to no module; only an entry a module provides, Entra's, Google's and Orders'
+        // Shipping Integrations pages and the Assistant's, names its module. Connections names the
+        // providers' modules in `modules`.
         const owner: Record<string, string> = {
           "/workspace/entra": "entra",
           "/workspace/google": "google",
+          "/workspace/shipping": "orders",
           "/workspace/assistant": "assistant",
         };
         expect(item.module).toBe(owner[item.to]);
@@ -830,7 +832,7 @@ describe("the administration areas", () => {
     const integrations = areaForKey("workspace").navSections.find(
       (section) => section.label === "navigation.integrations",
     );
-    expect(integrations?.items).toHaveLength(4);
+    expect(integrations?.items).toHaveLength(5);
     expect(integrations?.items[0]).toMatchObject({
       label: "navigation.entra",
       to: "/workspace/entra",
@@ -843,6 +845,14 @@ describe("the administration areas", () => {
       module: "google",
       requiredPermissions: ["google:manage"],
     });
+    // Orders' carrier accounts (orders design O51), behind orders:carriers-manage.
+    expect(integrations?.items[2]).toMatchObject({
+      label: "navigation.shipping",
+      to: "/workspace/shipping",
+      module: "orders",
+      requiredPermissions: ["orders:carriers-manage"],
+    });
+    expect(navigationCatalog.nb["navigation.shipping"]).toBe("Frakt");
     expect(navigationCatalog.en["navigation.google"]).toBe("Google Workspace");
     expect(navigationCatalog.nb["navigation.google"]).toBe("Google Workspace");
     expect(navigationCatalog.en["navigation.integrations"]).toBe("Integrations");
