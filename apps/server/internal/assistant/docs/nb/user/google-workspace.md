@@ -15,8 +15,8 @@ domenedekkende delegering. Gjennom den holder Ansatte personenes Google-kontoer 
 gruppene sine i organisasjonen, etter kontoreglene på fanen **Kontoer**; hver persons
 egen Google-tilkobling slås på for alle på fanen **Kalender og Gmail**, og
 kalendersynkroniseringen bruker den; på den samme fanen lar **E-postkanaler** kanalene i
-Kommunikasjon sende fra og lese organisasjonens Gmail-postbokser; sending fra en persons
-egen Gmail kommer senere. Driftsprosedyren, med hva du gjør i Googles konsoller, står i
+Kommunikasjon sende fra og lese organisasjonens Gmail-postbokser, og en person med Gmail i
+tilkoblingen sin kan sende fra sin egen adresse i Kommunikasjon. Driftsprosedyren, med hva du gjør i Googles konsoller, står i
 [administrasjonsveiledningen](/nb/admin/google-workspace/); reglene står i
 [referansen](/en/reference/google/).
 
@@ -233,8 +233,9 @@ kan bli avvist ved innlogging; se
 **Tilkobling for personer** lar hver person koble sin egen Google-konto til Vantigo én
 gang, under **Innstillinger › Tilkoblinger** ([Tilkoblinger](/nb/user/connections/#koble-til-google-kontoen-din)).
 [Kalendersynkroniseringen](/nb/user/calendar/#synkroniser-med-google-kalender) bruker den
-tilkoblingen, og sending fra en persons egen Gmail-adresse skal bruke den, i en senere
-versjon.
+tilkoblingen, og det gjør også [sending fra en persons egen Gmail-adresse](/nb/user/communications/#personlig-sending-og-ny-prøving)
+i Kommunikasjon — hver funksjon med personens eget samtykke, gitt når hen kobler til.
+Ingenting annet på denne fanen må slås på for å sende fra Gmail.
 
 - **Bryteren.** Slå på **Tilkobling for personer** for å tilby kortet **Google** til
   alle som har en Google-konto Vantigo forvalter i Ansatte-oppføringen sin. Bare en eier
@@ -289,6 +290,3 @@ Selve kanalene legges til i Kommunikasjon, med **Google Workspace** som leverand
 **Siste hendelser** på fanen **Status** viser hver gang bryteren slås på eller av. Hva som
 må settes opp hos Google først, står i
 [administrasjonsveiledningen](/nb/admin/google-workspace/#e-postkanaler).
-
-Under står *Sending fra Gmail kommer*: sending fra en persons egen Gmail-adresse kommer i
-en senere versjon.
