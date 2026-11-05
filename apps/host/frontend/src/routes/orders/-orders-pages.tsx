@@ -7,6 +7,8 @@ import { OrdersPage } from "@vantigo/orders-ui/pages/orders";
 import { QuoteEditorPage } from "@vantigo/orders-ui/pages/quote-editor";
 import { QuotesPage } from "@vantigo/orders-ui/pages/quotes";
 import { SettingsPage } from "@vantigo/orders-ui/pages/settings";
+import { SubscriptionEditorPage } from "@vantigo/orders-ui/pages/subscription-editor";
+import { SubscriptionsPage } from "@vantigo/orders-ui/pages/subscriptions";
 import { TemplatesPage } from "@vantigo/orders-ui/pages/templates";
 import type { ReactNode } from "react";
 import { useOrdersAccess } from "../../lib/orders-access";
@@ -28,6 +30,7 @@ export const OrdersRoutePage = withAccess((access) => <OrdersPage access={access
 export const TemplatesRoutePage = withAccess((access) => <TemplatesPage access={access} />);
 export const SettingsRoutePage = withAccess((access) => <SettingsPage access={access} />);
 export const AnalysisRoutePage = withAccess((access) => <AnalysisPage access={access} />);
+export const SubscriptionsRoutePage = withAccess((access) => <SubscriptionsPage access={access} />);
 
 const QuoteEditor = ({ access }: { access: OrdersAccess }) => {
   const { quoteId } = useParams({ from: "/orders/quotes/$quoteId" });
@@ -50,3 +53,15 @@ export const QuoteRoutePage = withAccess((access) => <QuoteEditor access={access
 export const NewQuoteRoutePage = withAccess((access) => <NewQuote access={access} />);
 export const OrderRoutePage = withAccess((access) => <OrderEditor access={access} />);
 export const NewOrderRoutePage = withAccess((access) => <NewOrder access={access} />);
+
+const SubscriptionEditor = ({ access }: { access: OrdersAccess }) => {
+  const { subscriptionId } = useParams({ from: "/orders/subscriptions/$subscriptionId" });
+  return <SubscriptionEditorPage subscriptionId={Number(subscriptionId)} access={access} />;
+};
+const NewSubscription = ({ access }: { access: OrdersAccess }) => {
+  const { customerId } = useSearch({ from: "/orders/subscriptions/new" });
+  return <SubscriptionEditorPage customerId={customerId} access={access} />;
+};
+
+export const SubscriptionRoutePage = withAccess((access) => <SubscriptionEditor access={access} />);
+export const NewSubscriptionRoutePage = withAccess((access) => <NewSubscription access={access} />);

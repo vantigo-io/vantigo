@@ -6,6 +6,9 @@ export const QUOTE_ROUTE_PATH = "/orders/quotes/$quoteId";
 export const SALES_ORDERS_ROUTE_PATH = "/orders/orders";
 export const NEW_SALES_ORDER_ROUTE_PATH = "/orders/orders/new";
 export const SALES_ORDER_ROUTE_PATH = "/orders/orders/$orderId";
+export const SUBSCRIPTIONS_ROUTE_PATH = "/orders/subscriptions";
+export const NEW_SUBSCRIPTION_ROUTE_PATH = "/orders/subscriptions/new";
+export const SUBSCRIPTION_ROUTE_PATH = "/orders/subscriptions/$subscriptionId";
 export const TEMPLATES_ROUTE_PATH = "/orders/templates";
 export const SETTINGS_ROUTE_PATH = "/orders/settings";
 export const ANALYSIS_ROUTE_PATH = "/orders/analysis";
@@ -14,6 +17,11 @@ export const quoteLinkOptions = (quoteId: number) => ({ to: QUOTE_ROUTE_PATH, pa
 export const salesOrderLinkOptions = (orderId: number) => ({
   to: SALES_ORDER_ROUTE_PATH,
   params: { orderId: String(orderId) },
+});
+
+export const subscriptionLinkOptions = (subscriptionId: number) => ({
+  to: SUBSCRIPTION_ROUTE_PATH,
+  params: { subscriptionId: String(subscriptionId) },
 });
 
 /** The search a new quote's or order's editor opens with: the customer, when it was opened from the customer page (O31a). */
@@ -27,6 +35,10 @@ export const newQuoteLinkOptions = (customerId?: number) => ({
 });
 export const newSalesOrderLinkOptions = (customerId?: number) => ({
   to: NEW_SALES_ORDER_ROUTE_PATH,
+  search: customerSearch(customerId),
+});
+export const newSubscriptionLinkOptions = (customerId?: number) => ({
+  to: NEW_SUBSCRIPTION_ROUTE_PATH,
   search: customerSearch(customerId),
 });
 

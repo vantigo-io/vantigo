@@ -1,9 +1,16 @@
 import { Anchor, Group, Table, Text } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
-import type { OrderSummary, QuoteSummary } from "../api/types";
+import type { OrderSummary, QuoteSummary, SubscriptionSummary } from "../api/types";
 import { useOrdersFormat } from "../lib/format";
-import { quoteLinkOptions, salesOrderLinkOptions } from "../lib/routes";
-import { DeliveryBadge, InvoiceBadge, OrderFlags, OrderStatusBadge, QuoteStatusBadge } from "./status-badges";
+import { quoteLinkOptions, salesOrderLinkOptions, subscriptionLinkOptions } from "../lib/routes";
+import {
+  DeliveryBadge,
+  InvoiceBadge,
+  OrderFlags,
+  OrderStatusBadge,
+  QuoteStatusBadge,
+  SubscriptionStatusBadge,
+} from "./status-badges";
 
 /** Whether a sent quote's valid-until has passed: it is the server's worker that expires it, this only warns. */
 const lapsed = (quote: QuoteSummary, today: string) =>
@@ -129,6 +136,73 @@ export const OrderTable = ({
               </Table.Td>
               <Table.Td ta="right" ff="monospace" fw={600}>
                 {money(order.gross, order.currency)}
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
+  );
+};
+
+/**
+ * Subscriptions in a table (O42): number, customer, state, plan, start and
+ * end, billed through and a full period's amounts.
+ */
+export const SubscriptionTable = ({
+  rows,
+  showCustomer = true,
+}: {
+  rows: readonly SubscriptionSummary[];
+  showCustomer?: boolean;
+}) => {
+  const { t, money, date } = useOrdersFormat();
+  return (
+    <Table.ScrollContainer minWidth={820}>
+      <Table highlightOnHover verticalSpacing="xs" data-testid="subscription-table">
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>{t("number")}</Table.Th>
+            {showCustomer && <Table.Th>{t("customer")}</Table.Th>}
+            <Table.Th>{t("status")}</Table.Th>
+            <Table.Th>{t("plan")}</Table.Th>
+            <Table.Th>{t("startDate")}</Table.Th>
+            <Table.Th>{t("billedThrough")}</Table.Th>
+            <Table.Th ta="right">{t("perPeriodNet")}</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {rows.map((sub) => (
+            <Table.Tr key={sub.id}>
+              <Table.Td>
+                <Anchor
+                  fw={600}
+                  ff="monospace"
+                  renderRoot={(props) => <Link {...subscriptionLinkOptions(sub.id)} {...props} />}
+                >
+                  {sub.number}
+                </Anchor>
+              </Table.Td>
+              {showCustomer && <Table.Td>{sub.customerName}</Table.Td>}
+              <Table.Td>
+                <SubscriptionStatusBadge status={sub.status} />
+              </Table.Td>
+              <Table.Td>
+                <Text size="sm">
+                  {t(`interval.${sub.interval}`)} · {t(`billing.${sub.billing}`)}
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <Text size="sm">
+                  {date(sub.startDate)}
+                  {sub.endDate ? ` – ${date(sub.endDate)}` : ""}
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <Text size="sm">{sub.billedThrough ? date(sub.billedThrough) : "—"}</Text>
+              </Table.Td>
+              <Table.Td ta="right" ff="monospace">
+                {money(sub.net, sub.currency)}
               </Table.Td>
             </Table.Tr>
           ))}

@@ -74,7 +74,18 @@ describe("the orders catalog", () => {
         "delivered_marked",
         "delivered_undone",
         "draft_allocations_released",
+        "activated",
+        "paused",
+        "resumed",
+        "ended",
+        "cancelled",
+        "effective_from",
+        "notice_changed",
       ],
+      subscriptionStatus: ["draft", "active", "paused", "ended", "cancelled"],
+      periodState: ["invoiced", "draft", "skipped", "paused", "due", "upcoming"],
+      interval: ["monthly", "quarterly", "half_yearly", "yearly"],
+      billing: ["in_advance", "in_arrears"],
       orderInvoiceState: ["invoiced", "released"],
       // OrdersProblem's codes (openapi/orders.yaml).
       refusal: [
@@ -105,6 +116,20 @@ describe("the orders catalog", () => {
         // contracts.AllocationRefusal's codes, which Invoices' wizard may hand on.
         "allocation_exceeds_open",
         "line_not_invoiceable",
+        "subscription_not_invoiceable",
+        "nothing_due",
+        // The subscriptions' (O42–O44).
+        "subscription_goods_not_allowed",
+        "subscription_not_draft",
+        "subscription_not_active",
+        "subscription_not_paused",
+        "subscription_not_editable",
+        "subscription_not_cancellable",
+        "subscription_billed",
+        "subscription_empty",
+        "change_in_billed_period",
+        "end_before_billed",
+        "not_a_period_start",
       ],
     };
     for (const [family, values] of Object.entries(families))

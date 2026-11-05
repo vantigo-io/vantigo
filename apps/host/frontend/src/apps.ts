@@ -40,6 +40,7 @@ import {
   IconPlugConnected,
   IconReceipt2,
   IconReceiptTax,
+  IconRepeat,
   IconReportMoney,
   IconShieldCheck,
   IconShieldLock,
@@ -192,6 +193,7 @@ const planningNavPresentation: Record<PlanningNavItem["key"], Pick<NavItem, "lab
 const ordersNavPresentation: Record<OrdersNavItem["key"], Pick<NavItem, "label" | "icon">> = {
   quotes: { label: "navigation.ordersQuotes", icon: IconFileDollar },
   orders: { label: "navigation.ordersOrders", icon: IconShoppingCart },
+  subscriptions: { label: "navigation.ordersSubscriptions", icon: IconRepeat },
   analysis: { label: "navigation.ordersAnalysis", icon: IconChartBar },
   templates: { label: "navigation.ordersTemplates", icon: IconTemplate },
   settings: { label: "navigation.ordersSettings", icon: IconAdjustments },

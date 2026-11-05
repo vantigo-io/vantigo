@@ -18,11 +18,14 @@ import {
   ANALYSIS_ROUTE_PATH,
   NEW_QUOTE_ROUTE_PATH,
   NEW_SALES_ORDER_ROUTE_PATH,
+  NEW_SUBSCRIPTION_ROUTE_PATH,
   QUOTE_ROUTE_PATH,
   QUOTES_ROUTE_PATH,
   SALES_ORDER_ROUTE_PATH,
   SALES_ORDERS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  SUBSCRIPTION_ROUTE_PATH,
+  SUBSCRIPTIONS_ROUTE_PATH,
   TEMPLATES_ROUTE_PATH,
 } from "../lib/routes";
 import { AnalysisPage } from "../pages/analysis";
@@ -31,6 +34,8 @@ import { OrdersPage } from "../pages/orders";
 import { QuoteEditorPage } from "../pages/quote-editor";
 import { QuotesPage } from "../pages/quotes";
 import { SettingsPage } from "../pages/settings";
+import { SubscriptionEditorPage } from "../pages/subscription-editor";
+import { SubscriptionsPage } from "../pages/subscriptions";
 import { TemplatesPage } from "../pages/templates";
 
 /** Everything allowed, as an owner's session answers: the default of the page tests. */
@@ -38,6 +43,7 @@ export const fullAccess: OrdersAccess = {
   canManageQuotes: true,
   canManageOrders: true,
   canConfirmOrders: true,
+  canManageSubscriptions: true,
   canManageSettings: true,
   canViewAnalysis: true,
   canViewCustomers: true,
@@ -74,6 +80,21 @@ const routeTree = (access: OrdersAccess, extra?: ReactNode) => {
     const { orderId } = orderRoute.useParams();
     return <OrderEditorPage orderId={Number(orderId)} access={access} />;
   };
+  const SubscriptionRoute = () => {
+    const { subscriptionId } = subscriptionRoute.useParams();
+    return <SubscriptionEditorPage subscriptionId={Number(subscriptionId)} access={access} />;
+  };
+  const subscriptionRoute = createRoute({
+    getParentRoute: () => root,
+    path: SUBSCRIPTION_ROUTE_PATH,
+    component: SubscriptionRoute,
+  });
+  const newSubscription = createRoute({
+    getParentRoute: () => root,
+    path: NEW_SUBSCRIPTION_ROUTE_PATH,
+    validateSearch: (search: Record<string, unknown>) => ({ customerId: searchCustomer(search) }),
+    component: () => <SubscriptionEditorPage customerId={newSubscription.useSearch().customerId} access={access} />,
+  });
   const quoteRoute = createRoute({ getParentRoute: () => root, path: QUOTE_ROUTE_PATH, component: QuoteRoute });
   const orderRoute = createRoute({ getParentRoute: () => root, path: SALES_ORDER_ROUTE_PATH, component: OrderRoute });
   const newQuote = createRoute({
@@ -95,6 +116,9 @@ const routeTree = (access: OrdersAccess, extra?: ReactNode) => {
     route(SALES_ORDERS_ROUTE_PATH, () => <OrdersPage access={access} />),
     newOrder,
     orderRoute,
+    route(SUBSCRIPTIONS_ROUTE_PATH, () => <SubscriptionsPage access={access} />),
+    newSubscription,
+    subscriptionRoute,
     route(TEMPLATES_ROUTE_PATH, () => <TemplatesPage access={access} />),
     route(SETTINGS_ROUTE_PATH, () => <SettingsPage access={access} />),
     route(ANALYSIS_ROUTE_PATH, () => <AnalysisPage access={access} />),

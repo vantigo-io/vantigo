@@ -830,6 +830,174 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List subscriptions
+         * @description Subscriptions, newest first, filtered by customer, status and a search (O42).
+         */
+        get: operations["listSubscriptions"];
+        put?: never;
+        /**
+         * Create a subscription
+         * @description Creates a draft subscription by hand (O42): services only (subscription_goods_not_allowed), free-text lines, sections and notes. clientRequestId makes the create idempotent (O27): a repeat answers the first subscription with 200.
+         */
+        post: operations["createSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/subscriptions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a subscription
+         * @description The subscription with its lines in force from its latest change on, its earlier dated lines, and its periods (O43): each invoiced, on a draft invoice, skipped, paused, due today or upcoming.
+         */
+        get: operations["getSubscription"];
+        /**
+         * Save a subscription
+         * @description Replaces a draft subscription's header, plan and lines. On an active or paused one takes the header's texts, references, contact and notice, and the lines from effectiveFrom on (O44): a period start no earlier than the first period without a live allocation, which is the default; a line changed or removed ends the day before, and a line changed or added starts on it.
+         */
+        put: operations["updateSubscription"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/subscriptions/{id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate a subscription
+         * @description Activates a draft (O42): every product line priced (line_unpriced) and with a VAT code (vat_code_unmapped), the customer usable (customer_disabled), at least one product line (subscription_empty). Publishes orders.subscription.started.v1.
+         */
+        post: operations["activateSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/subscriptions/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a subscription
+         * @description Cancels a draft, or an active subscription with nothing billed — no live allocation (subscription_billed). Publishes orders.subscription.ended.v1 for an active one.
+         */
+        post: operations["cancelSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/subscriptions/{id}/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a subscription's changes
+         * @description The subscription's change log (O44).
+         */
+        get: operations["listSubscriptionChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/subscriptions/{id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End a subscription
+         * @description Sets the end date (O44): its period is the last one billed. The end must be on or after the last day of the last period with a live allocation (end_before_billed), or the user credits first. Publishes orders.subscription.ended.v1.
+         */
+        post: operations["endSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/subscriptions/{id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause a subscription
+         * @description Stops billing from a period start (O44): from, else the first period that starts after today and has no live allocation. Publishes orders.subscription.changed.v1.
+         */
+        post: operations["pauseSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/subscriptions/{id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume a subscription
+         * @description Restarts billing from a chosen period start on or after the pause (O44); the periods between are recorded as skipped and never billed. Publishes orders.subscription.changed.v1.
+         */
+        post: operations["resumeSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/templates": {
         parameters: {
             query?: never;
@@ -989,9 +1157,13 @@ export interface components {
              * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
              */
             expectedUpdatedAt: string;
-            /** @enum {string} */
-            into: "draft_order" | "confirmed_order";
+            /**
+             * @description draft_order (the default), confirmed_order (also needs orders:sales-confirm) or subscription (needs orders:subscriptions-manage and plan; every line a service or free text, O20).
+             * @enum {string}
+             */
+            into: "draft_order" | "confirmed_order" | "subscription";
             optionalLineIds?: number[];
+            plan?: components["schemas"]["OrdersSubscriptionPlan"];
             /** @description Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note. */
             overrideReason?: string;
             /** @description Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning. */
@@ -999,10 +1171,11 @@ export interface components {
             /** Format: int32 */
             revision: number;
         };
-        /** @description The accepted quote and the document made from it. */
+        /** @description The accepted quote and the document made from it: an order, or a subscription. */
         OrdersAccepted: {
-            order: components["schemas"]["OrdersOrder"];
+            order?: components["schemas"]["OrdersOrder"];
             quote: components["schemas"]["OrdersQuote"];
+            subscription?: components["schemas"]["OrdersSubscription"];
         };
         /** @description A postal address snapshotted on the document; every field optional. */
         OrdersAddress: {
@@ -1057,6 +1230,7 @@ export interface components {
              * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
              */
             expectedUpdatedAt: string;
+            plan?: components["schemas"]["OrdersSubscriptionPlan"];
             /** @description Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note. */
             overrideReason?: string;
             /** @description Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning. */
@@ -1133,6 +1307,8 @@ export interface components {
             /** Format: int32 */
             customerId: number;
             deliveredNotInvoiced: components["schemas"]["OrdersCurrencySum"][];
+            /** @description The active and paused subscriptions, counted, and their value per year net of VAT (O42). */
+            activeSubscriptions: components["schemas"]["OrdersCurrencySum"][];
             openQuotes: components["schemas"]["OrdersCurrencySum"][];
             orderedNotDelivered: components["schemas"]["OrdersCurrencySum"][];
         };
@@ -1185,6 +1361,18 @@ export interface components {
              */
             expectedUpdatedAt: string;
             reason?: string;
+            /** Format: int32 */
+            version: number;
+        };
+        /** @description End a subscription (O44): endDate's period is the last one billed. */
+        OrdersEndInput: {
+            /** Format: date */
+            endDate: string;
+            /**
+             * Format: date-time
+             * @description The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
             /** Format: int32 */
             version: number;
         };
@@ -1320,6 +1508,16 @@ export interface components {
             sku?: string | null;
             unit: string;
             /**
+             * Format: date
+             * @description A subscription line's first period start it bills (O44); null from the start.
+             */
+            validFrom?: string | null;
+            /**
+             * Format: date
+             * @description A subscription line's last day in force (O44): it bills the periods starting on or before it; null open.
+             */
+            validTo?: string | null;
+            /**
              * Format: double
              * @description Net of VAT (O19); null while a catalog line has no price in the currency.
              */
@@ -1420,6 +1618,7 @@ export interface components {
              * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
              */
             expectedUpdatedAt: string;
+            plan?: components["schemas"]["OrdersSubscriptionPlan"];
             /** @description Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note. */
             overrideReason?: string;
             /** @description Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning. */
@@ -1636,6 +1835,18 @@ export interface components {
             sourceKind?: string | null;
             sourceModule?: string | null;
         };
+        /** @description Pause a subscription (O44) from a period start: from, else the first period that starts after today and has no live allocation. */
+        OrdersPauseInput: {
+            /**
+             * Format: date-time
+             * @description The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
+            /** Format: date */
+            from?: string;
+            /** Format: int32 */
+            version: number;
+        };
         /** @description A user as snapshotted on the document: the salesperson or an actor (O13, O29). */
         OrdersPerson: {
             displayName: string;
@@ -1822,6 +2033,18 @@ export interface components {
             validUntil?: string | null;
             yourReference?: string;
         };
+        /** @description Resume a paused subscription (O44) from a period start on or after the pause; the periods between are skipped. */
+        OrdersResumeInput: {
+            /**
+             * Format: date-time
+             * @description The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
+            /** Format: date */
+            from: string;
+            /** Format: int32 */
+            version: number;
+        };
         /** @description The revision the client read. */
         OrdersRevisionInput: {
             /**
@@ -1865,6 +2088,7 @@ export interface components {
              */
             expectedUpdatedAt: string;
             message?: string;
+            plan?: components["schemas"]["OrdersSubscriptionPlan"];
             /** @description Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note. */
             overrideReason?: string;
             /** @description Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning. */
@@ -1951,6 +2175,255 @@ export interface components {
         /** @description A document's stored PDFs, newest first. */
         OrdersStoredDocumentList: {
             items: components["schemas"]["OrdersStoredDocument"][];
+        };
+        /** @description A subscription (O42): its header, plan and status. version is its optimistic-concurrency token: a draft's saves leave it, and every lifecycle step and every change of an activated subscription bumps it. lines are those in force from its latest change on (validTo null); earlierLines the dated lines a change ended. billedThrough is derived (O43): the last day of the unbroken run, from the start, of periods invoiced or skipped. nextChangeFrom is the earliest period start a change may take effect from. totals are a full period's at lines. */
+        OrdersSubscription: {
+            /** Format: date-time */
+            activatedAt?: string | null;
+            activatedBy?: components["schemas"]["OrdersPerson"];
+            /** Format: date */
+            billedThrough?: string | null;
+            /**
+             * @description in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
+             * @enum {string}
+             */
+            billing: "in_advance" | "in_arrears";
+            /** @enum {string} */
+            interval: "monthly" | "quarterly" | "half_yearly" | "yearly";
+            /**
+             * Format: int32
+             * @description The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due.
+             */
+            invoiceDay?: number | null;
+            /**
+             * Format: int32
+             * @description The notice in months, 0 to 12; informational, printed.
+             */
+            noticeMonths: number;
+            /** Format: date */
+            startDate: string;
+            /** Format: date-time */
+            cancelledAt?: string | null;
+            closingText: string;
+            /** Format: date-time */
+            createdAt: string;
+            currency: string;
+            customer: components["schemas"]["OrdersCustomerSnapshot"];
+            discountVisible: boolean;
+            earlierLines: components["schemas"]["OrdersLine"][];
+            /** Format: date */
+            endDate?: string | null;
+            /** Format: date-time */
+            endedAt?: string | null;
+            /** Format: int64 */
+            id: number;
+            internalNote: string;
+            introText: string;
+            /** @enum {string} */
+            language: "nb" | "en";
+            lines: components["schemas"]["OrdersLine"][];
+            /** Format: date */
+            nextChangeFrom: string;
+            /** Format: int64 */
+            number: number;
+            origin: components["schemas"]["OrdersOrigin"];
+            /** Format: date */
+            pausedFrom?: string | null;
+            /** Format: int32 */
+            paymentTermsDays: number;
+            periods: components["schemas"]["OrdersSubscriptionPeriod"][];
+            pricesIncludeVat: boolean;
+            /** Format: int32 */
+            projectId?: number | null;
+            salesperson?: components["schemas"]["OrdersPerson"];
+            /** Format: int64 */
+            sourceQuoteId?: number | null;
+            /** @enum {string} */
+            status: "draft" | "active" | "paused" | "ended" | "cancelled";
+            totals: components["schemas"]["OrdersTotals"];
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int32 */
+            version: number;
+            yourReference: string;
+        };
+        /** @description A new draft subscription (O42). clientRequestId makes the create idempotent (O27). */
+        OrdersSubscriptionInput: {
+            /**
+             * @description in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
+             * @enum {string}
+             */
+            billing: "in_advance" | "in_arrears";
+            /** Format: date */
+            endDate?: string | null;
+            /** @enum {string} */
+            interval: "monthly" | "quarterly" | "half_yearly" | "yearly";
+            /**
+             * Format: int32
+             * @description The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due.
+             */
+            invoiceDay?: number | null;
+            /**
+             * Format: int32
+             * @description The notice in months, 0 to 12; informational, printed.
+             */
+            noticeMonths?: number;
+            /** Format: date */
+            startDate: string;
+            /** Format: uuid */
+            clientRequestId: string;
+            closingText?: string;
+            /** Format: int32 */
+            contactId?: number | null;
+            currency?: string;
+            /** Format: int32 */
+            customerId: number;
+            /** Format: int32 */
+            deliveryAddressId?: number | null;
+            discountVisible?: boolean;
+            internalNote?: string;
+            introText?: string;
+            /** @enum {string} */
+            language?: "nb" | "en";
+            lines?: components["schemas"]["OrdersLineInput"][];
+            /** Format: int32 */
+            paymentTermsDays?: number;
+            pricesIncludeVat?: boolean;
+            /** Format: int32 */
+            projectId?: number | null;
+            /** Format: uuid */
+            salespersonId?: string | null;
+            yourReference?: string;
+        };
+        /** @description One page of subscriptions and how many match. */
+        OrdersSubscriptionPage: {
+            items: components["schemas"]["OrdersSubscriptionSummary"][];
+            /** Format: int32 */
+            total: number;
+        };
+        /** @description One billing period (O43): its first and last day, whether it is a partial first period, what it bills net of VAT, and its state — invoiced (every line's period on an issued invoice), draft (on a draft invoice), skipped (by a pause), paused (after the pause), due (today, not yet on an invoice) or upcoming. invoiceNumbers are the invoices that billed it. */
+        OrdersSubscriptionPeriod: {
+            /** Format: double */
+            amount: number;
+            /** Format: date */
+            end: string;
+            invoiceNumbers: number[];
+            partial: boolean;
+            /** Format: date */
+            start: string;
+            /** @enum {string} */
+            state: "invoiced" | "draft" | "skipped" | "paused" | "due" | "upcoming";
+        };
+        /** @description A subscription's plan (O42), when a quote is accepted as a subscription. */
+        OrdersSubscriptionPlan: {
+            /**
+             * @description in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
+             * @enum {string}
+             */
+            billing: "in_advance" | "in_arrears";
+            /** Format: date */
+            endDate?: string | null;
+            /** @enum {string} */
+            interval: "monthly" | "quarterly" | "half_yearly" | "yearly";
+            /**
+             * Format: int32
+             * @description The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due.
+             */
+            invoiceDay?: number | null;
+            /**
+             * Format: int32
+             * @description The notice in months, 0 to 12; informational, printed.
+             */
+            noticeMonths?: number;
+            /** Format: date */
+            startDate: string;
+        };
+        /** @description A subscription in a list: net and gross are a full period's at the lines in force from its latest change on. */
+        OrdersSubscriptionSummary: {
+            /** Format: date */
+            billedThrough?: string | null;
+            /** @enum {string} */
+            billing: "in_advance" | "in_arrears";
+            currency: string;
+            /** Format: int32 */
+            customerId: number;
+            customerName: string;
+            /** Format: date */
+            endDate?: string | null;
+            /** Format: double */
+            gross: number;
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            interval: "monthly" | "quarterly" | "half_yearly" | "yearly";
+            /** Format: double */
+            net: number;
+            /** Format: int64 */
+            number: number;
+            /** Format: date */
+            startDate: string;
+            /** @enum {string} */
+            status: "draft" | "active" | "paused" | "ended" | "cancelled";
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description Save a subscription (O44). A draft takes everything. An active or paused one takes the header's texts, references, contact and noticeMonths, and lines as they are to be from effectiveFrom on; its interval, billing, start and end are kept (end it with end). Lines named by id are kept when unchanged. */
+        OrdersSubscriptionUpdate: {
+            /**
+             * @description in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
+             * @enum {string}
+             */
+            billing?: "in_advance" | "in_arrears";
+            /** Format: date */
+            endDate?: string | null;
+            /** @enum {string} */
+            interval?: "monthly" | "quarterly" | "half_yearly" | "yearly";
+            /**
+             * Format: int32
+             * @description The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due.
+             */
+            invoiceDay?: number | null;
+            /**
+             * Format: int32
+             * @description The notice in months, 0 to 12; informational, printed.
+             */
+            noticeMonths?: number;
+            /** Format: date */
+            startDate?: string;
+            /**
+             * Format: date
+             * @description The period start a change of an active or paused subscription's lines takes effect from; absent is nextChangeFrom.
+             */
+            effectiveFrom?: string | null;
+            /**
+             * Format: date-time
+             * @description The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
+            closingText?: string;
+            /** Format: int32 */
+            contactId?: number | null;
+            currency?: string;
+            /** Format: int32 */
+            customerId: number;
+            /** Format: int32 */
+            deliveryAddressId?: number | null;
+            discountVisible?: boolean;
+            internalNote?: string;
+            introText?: string;
+            /** @enum {string} */
+            language?: "nb" | "en";
+            lines: components["schemas"]["OrdersLineInput"][];
+            /** Format: int32 */
+            paymentTermsDays?: number;
+            pricesIncludeVat?: boolean;
+            /** Format: int32 */
+            projectId?: number | null;
+            /** Format: uuid */
+            salespersonId?: string | null;
+            yourReference?: string;
+            /** Format: int32 */
+            version: number;
         };
         /** @description A quote template (O23). */
         OrdersTemplate: {
@@ -4929,6 +5402,647 @@ export interface operations {
                 };
             };
             /** @description Conflict — version_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    listSubscriptions: {
+        parameters: {
+            query?: {
+                customerId?: number;
+                /** @description Any of the statuses; none means all. */
+                status?: ("draft" | "active" | "paused" | "ended" | "cancelled")[];
+                /** @description Matches the number, the customer's name and your reference. */
+                q?: string;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersSubscriptionPage"];
+                };
+            };
+            /** @description Bad Request — paging out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    createSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersSubscriptionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersSubscription"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersSubscription"];
+                };
+            };
+            /** @description Bad Request — field errors, too_many_lines, optional_not_allowed, subscription_goods_not_allowed, customer_disabled, project_customer_mismatch, a line's codes. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — client_request_reused. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    getSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersSubscription"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such subscription. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersSubscriptionUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersSubscription"];
+                };
+            };
+            /** @description Bad Request — field errors, too_many_lines, optional_not_allowed, subscription_goods_not_allowed, subscription_not_editable, not_a_period_start, a line's codes. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such subscription. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — version_conflict, change_in_billed_period, subscription_not_editable, line_kind_changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    activateSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersVersionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersSubscription"];
+                };
+            };
+            /** @description Bad Request — customer_disabled, line_unpriced, vat_code_unmapped, subscription_goods_not_allowed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such subscription. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — version_conflict, subscription_not_draft, subscription_empty. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    cancelSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersVersionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersSubscription"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such subscription. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — version_conflict, subscription_not_cancellable, subscription_billed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    listSubscriptionChanges: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersChangeList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such subscription. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    endSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersEndInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersSubscription"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such subscription. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — version_conflict, subscription_not_active, end_before_billed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    pauseSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersPauseInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersSubscription"];
+                };
+            };
+            /** @description Bad Request — field errors, not_a_period_start. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such subscription. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — version_conflict, subscription_not_active, change_in_billed_period. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    resumeSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersResumeInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersSubscription"];
+                };
+            };
+            /** @description Bad Request — field errors, not_a_period_start. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such subscription. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — version_conflict, subscription_not_paused. */
             409: {
                 headers: {
                     [name: string]: unknown;
