@@ -19,6 +19,8 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
 	"github.com/vantigo-io/vantigo/server/internal/openapi/contracttest"
+	"github.com/vantigo-io/vantigo/server/internal/orders"
+	"github.com/vantigo-io/vantigo/server/internal/products"
 	"github.com/vantigo-io/vantigo/server/internal/projects"
 	timetracking "github.com/vantigo-io/vantigo/server/internal/time"
 )
@@ -52,6 +54,8 @@ const (
 	modExpenses  = "expenses"
 	modInvoices  = "invoices"
 	modEnergy    = "energy"
+	modProducts  = "products"
+	modOrders    = "orders"
 )
 
 // moduleNamed is the real module value for one name. It is the only place this
@@ -72,6 +76,10 @@ func moduleNamed(t *testing.T, name string) module.Module {
 		return invoices.Module()
 	case modEnergy:
 		return energy.Module()
+	case modProducts:
+		return products.Module()
+	case modOrders:
+		return orders.Module()
 	}
 	t.Fatalf("integration: no module named %q", name)
 	return module.Module{}
@@ -149,7 +157,8 @@ func withStorecove(t *testing.T) (*storecovetest.Server, []modtest.Option) {
 // because modtest installs a single transport: openapi.Validate routes an
 // exchange by path through the document it is given, and the modules' paths
 // are disjoint (/api/v1/customers, /api/v1/projects, /api/v1/time,
-// /api/v1/expenses, /api/v1/invoices, /api/v1/energy), so a
+// /api/v1/expenses, /api/v1/invoices, /api/v1/energy, /api/v1/products,
+// /api/v1/orders), so a
 // document holding all of them routes each exchange to its own operation. The
 // documents are already fully resolved when Load returns, so a path item
 // carries its schemas with it and nothing is lost in the merge.
@@ -158,7 +167,7 @@ func withStorecove(t *testing.T) (*storecovetest.Server, []modtest.Option) {
 // TestMain's job over its own contract, and a cross-module test that counted
 // towards it would let an operation look exercised without its module's suite
 // ever having exercised it.
-var recorder = mergedRecorder(modCustomers, modProjects, modTime, modExpenses, modInvoices, modEnergy)
+var recorder = mergedRecorder(modCustomers, modProjects, modTime, modExpenses, modInvoices, modEnergy, modProducts, modOrders)
 
 func mergedRecorder(names ...string) *contracttest.Recorder {
 	merged := &openapi3.T{
