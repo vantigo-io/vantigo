@@ -48,7 +48,7 @@ type OrdersErasure struct {
 type OrdersInvoiceAllocation struct {
 	ID                int64
 	LineID            int64
-	OrderID           int64
+	OrderID           *int64
 	Kind              string
 	PeriodStart       pgtype.Date
 	PeriodEnd         pgtype.Date
@@ -68,6 +68,7 @@ type OrdersInvoiceAllocation struct {
 	ReleasedAt        *time.Time
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+	SubscriptionID    *int64
 }
 
 type OrdersLine struct {
@@ -104,6 +105,8 @@ type OrdersLine struct {
 	DeliveryMethod    string
 	ProductID         *int32
 	PackagingName     *string
+	ValidFrom         pgtype.Date
+	ValidTo           pgtype.Date
 }
 
 type OrdersMailing struct {
@@ -303,6 +306,84 @@ type OrdersSetting struct {
 	MailTexts               []byte
 	Revision                int32
 	UpdatedAt               time.Time
+}
+
+type OrdersSubscription struct {
+	ID                         int64
+	Number                     int64
+	Status                     string
+	BillingInterval            string
+	Billing                    string
+	StartDate                  pgtype.Date
+	EndDate                    pgtype.Date
+	NoticeMonths               int16
+	InvoiceDay                 *int16
+	PausedFrom                 pgtype.Date
+	BilledThrough              pgtype.Date
+	Version                    int32
+	ActivatedAt                *time.Time
+	ActivatedByUserID          *uuid.UUID
+	ActivatedByDisplay         *string
+	EndedAt                    *time.Time
+	CancelledAt                *time.Time
+	CustomerID                 int32
+	CustomerNumber             *int64
+	CustomerName               string
+	CustomerType               *string
+	CustomerOrganisationNumber *string
+	CustomerForeignID          *string
+	CustomerCountry            *string
+	InvoiceAddressLine1        *string
+	InvoiceAddressLine2        *string
+	InvoicePostalCode          *string
+	InvoiceCity                *string
+	InvoiceCountry             *string
+	DeliveryAddressID          *int32
+	DeliveryName               *string
+	DeliveryAddressLine1       *string
+	DeliveryAddressLine2       *string
+	DeliveryPostalCode         *string
+	DeliveryCity               *string
+	DeliveryCountry            *string
+	ContactID                  *int32
+	ContactName                *string
+	ContactEmail               *string
+	ContactPhone               *string
+	CustomerInvoiceEmail       *string
+	YourReference              string
+	SalespersonID              *uuid.UUID
+	SalespersonDisplay         *string
+	ProjectID                  *int32
+	Currency                   string
+	PricesIncludeVat           bool
+	PaymentTermsDays           int32
+	DiscountVisible            bool
+	Language                   string
+	IntroText                  string
+	ClosingText                string
+	InternalNote               string
+	NetTotal                   pgtype.Numeric
+	VatTotal                   pgtype.Numeric
+	GrossTotal                 pgtype.Numeric
+	Channel                    string
+	SourceModule               *string
+	SourceKind                 *string
+	SourceID                   *string
+	ExternalID                 *string
+	ExternalNumber             *string
+	ClientRequestID            *uuid.UUID
+	PaymentReference           *string
+	PrepaidAmount              pgtype.Numeric
+	CreatedByUserID            *uuid.UUID
+	CreatedByDisplay           *string
+	CreatedAt                  time.Time
+	UpdatedAt                  time.Time
+	AnonymisedAt               *time.Time
+}
+
+type OrdersSubscriptionSkip struct {
+	SubscriptionID int64
+	PeriodStart    pgtype.Date
 }
 
 type OrdersTemplate struct {

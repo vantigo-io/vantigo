@@ -59,14 +59,19 @@ func (p *billableOrders) DueOrders(ctx context.Context, req contracts.DueOrdersR
 		y, m, d := req.Until.Date()
 		until = pgtype.Date{Time: time.Date(y, m, d, 0, 0, 0, 0, time.UTC), Valid: true}
 	}
-	rows, err := store.New(p.pool).DueOrderLines(ctx, store.DueOrderLinesParams{
-		Every: req.Every, CustomerIds: nonNil(req.CustomerIDs), OrderIds: nonNil(req.OrderIDs),
-		Until: until, RowLimit: contracts.MaxBillableRows + 1,
-	})
-	if err != nil {
-		return contracts.DueOrdersPage{}, fmt.Errorf("orders: read due order lines: %w", err)
-	}
 	var page contracts.DueOrdersPage
+	// Orders first: every request but one naming subscriptions only.
+	var rows []store.DueOrderLinesRow
+	if req.Every || len(req.CustomerIDs) > 0 || len(req.OrderIDs) > 0 {
+		var err error
+		rows, err = store.New(p.pool).DueOrderLines(ctx, store.DueOrderLinesParams{
+			Every: req.Every, CustomerIds: nonNil(req.CustomerIDs), OrderIds: nonNil(req.OrderIDs),
+			Until: until, RowLimit: contracts.MaxBillableRows + 1,
+		})
+		if err != nil {
+			return contracts.DueOrdersPage{}, fmt.Errorf("orders: read due order lines: %w", err)
+		}
+	}
 	if len(rows) > contracts.MaxBillableRows {
 		page.More = true
 		rows = rows[:contracts.MaxBillableRows]
@@ -89,14 +94,139 @@ func (p *billableOrders) DueOrders(ctx context.Context, req contracts.DueOrdersR
 			VATCodeID: derefInt32(r.VatCodeID), InvoicePolicy: r.InvoicePolicy,
 		})
 	}
+	if page.More || (len(req.OrderIDs) > 0 && len(req.SubscriptionIDs) == 0) {
+		return page, nil
+	}
+	return p.dueSubscriptions(ctx, req, page)
+}
+
+// dueSubscriptions adds to page, after its orders, the subscriptions the
+// request names with their due periods (O43): every period due through
+// Until — the clock's today when zero — and starting no later than twelve
+// months after today, each line in force on its first day with no live
+// allocation, in subscription, period and position order. The lines stop at
+// contracts.MaxBillableRows all told: a subscription cut short is left out,
+// unless it is the first document, and More is set.
+func (p *billableOrders) dueSubscriptions(ctx context.Context, req contracts.DueOrdersRequest, page contracts.DueOrdersPage) (contracts.DueOrdersPage, error) {
+	today := civil(p.clock())
+	through := today
+	if !req.Until.IsZero() {
+		through = civil(req.Until)
+	}
+	q := store.New(p.pool)
+	subs, err := q.BillableSubscriptions(ctx, store.BillableSubscriptionsParams{
+		Every: req.Every, CustomerIds: nonNil(req.CustomerIDs), SubscriptionIds: nonNil(req.SubscriptionIDs),
+	})
+	if err != nil {
+		return page, fmt.Errorf("orders: read the billable subscriptions: %w", err)
+	}
+	schedules, err := readSchedules(ctx, q, subs)
+	if err != nil {
+		return page, err
+	}
+	count := 0
+	for _, o := range page.Orders {
+		count += len(o.Lines)
+	}
+	for _, sch := range schedules {
+		periods := sch.due(through, today)
+		if len(periods) == 0 {
+			continue
+		}
+		d := dueSubscriptionOf(sch.sub)
+		for _, dp := range periods {
+			start, end := dp.period.start, dp.period.end
+			for _, l := range dp.lines {
+				a := periodAmountOf(dp.period, ratOf(l.Quantity), ratOf(l.UnitPrice), ratOrZero(l.DiscountPercent))
+				d.Lines = append(d.Lines, contracts.DueOrderLine{
+					LineID: l.ID, Position: l.Position, Description: l.Description, Unit: l.Unit,
+					ToInvoice: a.quantity.FloatString(quantityPlaces), UnitPrice: a.unitPrice.FloatString(pricePlaces),
+					DiscountPercent: a.discount.FloatString(discountPlaces), VATCodeID: derefInt32(l.VatCodeID),
+					InvoicePolicy: policyOnOrder, PeriodStart: &start, PeriodEnd: &end,
+				})
+			}
+		}
+		if count+len(d.Lines) > contracts.MaxBillableRows {
+			page.More = true
+			if len(page.Orders) == 0 {
+				d.Lines = d.Lines[:contracts.MaxBillableRows]
+				page.Orders = append(page.Orders, d)
+			}
+			return page, nil
+		}
+		count += len(d.Lines)
+		page.Orders = append(page.Orders, d)
+	}
 	return page, nil
+}
+
+// dueSubscriptionOf is a due subscription's header, as a DueOrder of kind
+// subscription. A subscription has no delivery date and is never blocked:
+// one that cannot bill has no due period.
+func dueSubscriptionOf(sub store.OrdersSubscription) contracts.DueOrder {
+	terms := sub.PaymentTermsDays
+	d := contracts.DueOrder{
+		Kind: contracts.DueKindSubscription, ID: sub.ID, Number: sub.Number, CustomerID: sub.CustomerID, Currency: sub.Currency,
+		ProjectID: sub.ProjectID, YourReference: sub.YourReference, PaymentTermsDays: &terms,
+	}
+	if sub.DeliveryAddressLine1 != nil {
+		d.DeliveryAddress = &contracts.CustomerAddressEntry{
+			ID: derefInt32(sub.DeliveryAddressID), Label: deref(sub.DeliveryName), Line1: *sub.DeliveryAddressLine1,
+			Line2: deref(sub.DeliveryAddressLine2), PostalCode: deref(sub.DeliveryPostalCode),
+			City: deref(sub.DeliveryCity), Country: deref(sub.DeliveryCountry),
+		}
+	}
+	return d
+}
+
+// readSchedules reads the lines, live allocations and skips of subs on q
+// and answers their schedules, in subs' order.
+func readSchedules(ctx context.Context, q *store.Queries, subs []store.OrdersSubscription) ([]schedule, error) {
+	if len(subs) == 0 {
+		return nil, nil
+	}
+	ids := make([]int64, len(subs))
+	for i, sub := range subs {
+		ids[i] = sub.ID
+	}
+	lines, err := q.SubscriptionLinesOf(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("orders: read the subscriptions' lines: %w", err)
+	}
+	allocations, err := q.LiveAllocationsOfSubscriptions(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("orders: read the subscriptions' allocations: %w", err)
+	}
+	skips, err := q.SkipsOfSubscriptions(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("orders: read the subscriptions' skipped periods: %w", err)
+	}
+	linesBy := map[int64][]store.OrdersLine{}
+	for _, l := range lines {
+		linesBy[l.OwnerID] = append(linesBy[l.OwnerID], l)
+	}
+	allocationsBy := map[int64][]store.OrdersInvoiceAllocation{}
+	for _, a := range allocations {
+		if a.SubscriptionID != nil {
+			allocationsBy[*a.SubscriptionID] = append(allocationsBy[*a.SubscriptionID], a)
+		}
+	}
+	skipsBy := map[int64][]pgtype.Date{}
+	for _, sk := range skips {
+		skipsBy[sk.SubscriptionID] = append(skipsBy[sk.SubscriptionID], sk.PeriodStart)
+	}
+	out := make([]schedule, 0, len(subs))
+	for _, sub := range subs {
+		out = append(out, newSchedule(sub, linesBy[sub.ID], allocationsBy[sub.ID], skipsBy[sub.ID]))
+	}
+	return out, nil
 }
 
 // dueOrderOf is a due line's order header.
 func dueOrderOf(r store.DueOrderLinesRow) contracts.DueOrder {
 	terms := r.PaymentTermsDays
 	o := contracts.DueOrder{
-		ID: r.OrderID, Number: r.OrderNumber, CustomerID: r.CustomerID, Currency: r.Currency,
+		Kind: contracts.DueKindOrder, ID: r.OrderID, Number: r.OrderNumber, CustomerID: r.CustomerID, Currency: r.Currency,
 		ProjectID: r.ProjectID, YourReference: r.YourReference, PaymentTermsDays: &terms,
 	}
 	if r.DeliveryDate.Valid {
@@ -142,32 +272,53 @@ func (p *billableOrders) Allocate(ctx context.Context, req contracts.AllocateReq
 	for i, l := range req.Lines {
 		ids[i] = l.LineID
 	}
-	owners, err := store.New(p.pool).LineOrders(ctx, ids)
-	if err != nil {
-		return nil, fmt.Errorf("orders: read the allocated lines' orders: %w", err)
-	}
-	orderIDs := make([]int64, 0, len(owners))
-	for _, o := range owners {
-		orderIDs = append(orderIDs, o.OrderID)
+	var orderIDs []int64
+	if len(ids) > 0 {
+		owners, err := store.New(p.pool).LineOrders(ctx, ids)
+		if err != nil {
+			return nil, fmt.Errorf("orders: read the allocated lines' orders: %w", err)
+		}
+		for _, o := range owners {
+			orderIDs = append(orderIDs, o.OrderID)
+		}
 	}
 	slices.Sort(orderIDs)
 	orderIDs = slices.Compact(orderIDs)
 	sorted := slices.Clone(ids)
 	slices.Sort(sorted)
+	subscriptionIDs := make([]int64, 0, len(req.Subscriptions))
+	for _, sub := range req.Subscriptions {
+		subscriptionIDs = append(subscriptionIDs, sub.SubscriptionID)
+	}
+	slices.Sort(subscriptionIDs)
 	out := make([]contracts.OrderAllocation, 0, len(req.Lines))
-	err = db.WithTx(ctx, p.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+	err := db.WithTx(ctx, p.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		q := store.New(tx)
-		orders, err := q.LockOrdersByIDs(ctx, orderIDs)
-		if err != nil {
-			return fmt.Errorf("orders: lock the allocated lines' orders: %w", err)
+		out = out[:0]
+		var orders []store.OrdersOrder
+		var lines []store.OrdersLine
+		var drafts []store.DraftAllocatedByLineRow
+		if len(sorted) > 0 {
+			var err error
+			if orders, err = q.LockOrdersByIDs(ctx, orderIDs); err != nil {
+				return fmt.Errorf("orders: lock the allocated lines' orders: %w", err)
+			}
 		}
-		lines, err := q.LockOrderLinesByIDs(ctx, sorted)
-		if err != nil {
-			return fmt.Errorf("orders: lock the allocated lines: %w", err)
+		var subs []store.OrdersSubscription
+		if len(subscriptionIDs) > 0 {
+			var err error
+			if subs, err = q.LockSubscriptionsByIDs(ctx, subscriptionIDs); err != nil {
+				return fmt.Errorf("orders: lock the allocated subscriptions: %w", err)
+			}
 		}
-		drafts, err := q.DraftAllocatedByLine(ctx, sorted)
-		if err != nil {
-			return fmt.Errorf("orders: sum the allocated lines' drafts: %w", err)
+		if len(sorted) > 0 {
+			var err error
+			if lines, err = q.LockOrderLinesByIDs(ctx, sorted); err != nil {
+				return fmt.Errorf("orders: lock the allocated lines: %w", err)
+			}
+			if drafts, err = q.DraftAllocatedByLine(ctx, sorted); err != nil {
+				return fmt.Errorf("orders: sum the allocated lines' drafts: %w", err)
+			}
 		}
 		orderByID := make(map[int64]store.OrdersOrder, len(orders))
 		for _, o := range orders {
@@ -198,7 +349,7 @@ func (p *billableOrders) Allocate(ctx context.Context, req contracts.AllocateReq
 			}
 			price, discount := ratOf(l.UnitPrice), ratOrZero(l.DiscountPercent)
 			row, err := q.InsertAllocation(ctx, store.InsertAllocationParams{
-				LineID: l.ID, OrderID: o.ID, Quantity: numeric(qty, quantityPlaces), UnitPrice: l.UnitPrice,
+				LineID: l.ID, OrderID: &o.ID, Quantity: numeric(qty, quantityPlaces), UnitPrice: l.UnitPrice,
 				DiscountPercent: l.DiscountPercent, Amount: numeric(allocationAmount(qty, price, discount), amountPlaces),
 				VatCodeID: *l.VatCodeID, Now: now,
 			})
@@ -206,17 +357,89 @@ func (p *billableOrders) Allocate(ctx context.Context, req contracts.AllocateReq
 				return fmt.Errorf("orders: allocate line %d: %w", l.ID, err)
 			}
 			out = append(out, p.allocationOf(store.AllocationsByIDsRow{
-				ID: row.ID, Revision: row.Revision, OrderID: o.ID, OrderNumber: o.Number, LineID: l.ID,
+				ID: row.ID, Revision: row.Revision, Kind: row.Kind, OrderID: o.ID, OrderNumber: o.Number, LineID: l.ID,
 				Quantity: row.Quantity, UnitPrice: row.UnitPrice, DiscountPercent: row.DiscountPercent, Amount: row.Amount,
 				VatCodeID: row.VatCodeID, Description: l.Description, Unit: l.Unit, Currency: o.Currency,
 				ProjectID: o.ProjectID, YourReference: o.YourReference, State: row.State,
 			}))
 			drafted[l.ID] = new(big.Rat).Add(orZero(drafted[l.ID]), qty)
 		}
+		if len(req.Subscriptions) == 0 {
+			return nil
+		}
+		made, err := p.allocatePeriods(ctx, q, subs, req.Subscriptions, now)
+		if err != nil {
+			return err
+		}
+		out = append(out, made...)
 		return nil
 	})
 	if err != nil {
 		return nil, err
+	}
+	return out, nil
+}
+
+// allocatePeriods writes, for each subscription asked in the request's
+// order, one draft allocation per period due through its date and per line
+// in force on the period's first day without a live allocation (O43), on
+// q's transaction, which holds the subscriptions' rows. A subscription gone,
+// a draft or cancelled is subscription_not_invoiceable; one with no period
+// due nothing_due. The unique live period index refuses a second live
+// allocation of a line's period, should any writer bypass the subscription's
+// lock.
+func (p *billableOrders) allocatePeriods(ctx context.Context, q *store.Queries, locked []store.OrdersSubscription,
+	asked []contracts.AllocateSubscription, now time.Time) ([]contracts.OrderAllocation, error) {
+	schedules, err := readSchedules(ctx, q, locked)
+	if err != nil {
+		return nil, err
+	}
+	byID := map[int64]schedule{}
+	for _, sch := range schedules {
+		byID[sch.sub.ID] = sch
+	}
+	today := civil(now)
+	var out []contracts.OrderAllocation
+	for _, in := range asked {
+		sch, ok := byID[in.SubscriptionID]
+		if !ok {
+			return nil, &contracts.AllocationRefusal{SubscriptionID: in.SubscriptionID, Code: contracts.AllocationSubscriptionNotInvoiceable,
+				Detail: "There is no such subscription."}
+		}
+		sub := sch.sub
+		switch sub.Status {
+		case subscriptionActive, subscriptionPaused, subscriptionEnded:
+		default:
+			return nil, &contracts.AllocationRefusal{SubscriptionID: sub.ID, Code: contracts.AllocationSubscriptionNotInvoiceable,
+				Detail: fmt.Sprintf("Subscription %d is %s.", sub.Number, sub.Status)}
+		}
+		periods := sch.due(in.Through, today)
+		if len(periods) == 0 {
+			return nil, &contracts.AllocationRefusal{SubscriptionID: sub.ID, Code: contracts.AllocationNothingDue,
+				Detail: fmt.Sprintf("Subscription %d has no period due through %s.", sub.Number, civil(in.Through).Format(time.DateOnly))}
+		}
+		for _, dp := range periods {
+			start, end := dp.period.start, dp.period.end
+			for _, l := range dp.lines {
+				a := periodAmountOf(dp.period, ratOf(l.Quantity), ratOf(l.UnitPrice), ratOrZero(l.DiscountPercent))
+				row, err := q.InsertPeriodAllocation(ctx, store.InsertPeriodAllocationParams{
+					LineID: l.ID, SubscriptionID: &sub.ID, PeriodStart: pgDate(&start), PeriodEnd: pgDate(&end),
+					Quantity: numeric(a.quantity, quantityPlaces), UnitPrice: numeric(a.unitPrice, pricePlaces),
+					DiscountPercent: numeric(a.discount, discountPlaces), Amount: numeric(a.amount, amountPlaces),
+					VatCodeID: *l.VatCodeID, Now: now,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("orders: allocate subscription %d's line %d for %s: %w", sub.ID, l.ID, start.Format(time.DateOnly), err)
+				}
+				out = append(out, p.allocationOf(store.AllocationsByIDsRow{
+					ID: row.ID, Revision: row.Revision, Kind: row.Kind, OrderID: sub.ID, OrderNumber: sub.Number, LineID: l.ID,
+					Quantity: row.Quantity, UnitPrice: row.UnitPrice, DiscountPercent: row.DiscountPercent, Amount: row.Amount,
+					VatCodeID: row.VatCodeID, Description: l.Description, Unit: l.Unit, Currency: sub.Currency,
+					ProjectID: sub.ProjectID, YourReference: sub.YourReference, State: row.State,
+					PeriodStart: row.PeriodStart, PeriodEnd: row.PeriodEnd,
+				}))
+			}
+		}
 	}
 	return out, nil
 }
@@ -301,7 +524,7 @@ func (p *billableOrders) ReleaseAllocations(ctx context.Context, ids []int64) er
 // source naming a project it cannot read.
 func (p *billableOrders) allocationOf(r store.AllocationsByIDsRow) contracts.OrderAllocation {
 	a := contracts.OrderAllocation{
-		ID: r.ID, Revision: r.Revision, OrderID: r.OrderID, OrderNumber: r.OrderNumber, LineID: r.LineID,
+		ID: r.ID, Revision: r.Revision, Kind: r.Kind, OrderID: r.OrderID, OrderNumber: r.OrderNumber, LineID: r.LineID,
 		Quantity: ratOrZero(r.Quantity).FloatString(quantityPlaces), UnitPrice: ratOrZero(r.UnitPrice).FloatString(pricePlaces),
 		DiscountPercent: ratOrZero(r.DiscountPercent).FloatString(discountPlaces), Amount: ratOrZero(r.Amount).FloatString(amountPlaces),
 		VATCodeID: r.VatCodeID, Description: r.Description, Unit: r.Unit, Currency: r.Currency,

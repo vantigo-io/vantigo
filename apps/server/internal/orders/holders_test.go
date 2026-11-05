@@ -41,9 +41,9 @@ func TestCustomerReferenceHolder_RepointsQuotesAndOrders(t *testing.T) {
 		moved, err = holder.RepointCustomer(ctx, tx, custPerson, custBusiness)
 		return err
 	})
-	if len(moved) != 3 || moved[0] != (contracts.RepointedReferences{Kind: "orders.quotes", Count: 1}) ||
+	if len(moved) != 4 || moved[0] != (contracts.RepointedReferences{Kind: "orders.quotes", Count: 1}) ||
 		moved[1] != (contracts.RepointedReferences{Kind: "orders.orders", Count: 1}) ||
-		moved[2] != (contracts.RepointedReferences{Kind: "orders.warnings"}) {
+		moved[2] != (contracts.RepointedReferences{Kind: "orders.warnings"}) || moved[3] != (contracts.RepointedReferences{Kind: "orders.subscriptions"}) {
 		t.Errorf("moved %+v; want one quote, one order and no warning", moved)
 	}
 	res := c.Do(http.MethodGet, orderPath(o.Id), nil)
@@ -130,7 +130,7 @@ func TestCustomerPersonalData_EraseAndRetention(t *testing.T) {
 	})
 	want := []contracts.ErasedData{
 		{Kind: "orders.quotes", Count: 1}, {Kind: "orders.draftOrders", Count: 1}, {Kind: "orders.orders"}, {Kind: "orders.mailings", Count: 1},
-		{Kind: "orders.warnings"},
+		{Kind: "orders.warnings"}, {Kind: "orders.subscriptions"},
 	}
 	if len(erased) != len(want) {
 		t.Fatalf("erased %+v, want %+v", erased, want)
@@ -346,7 +346,7 @@ func TestQuoteExpiry(t *testing.T) {
 	if quoteOf(t, res).Status != gen.OrdersQuoteStatusSent {
 		t.Error("a quote still valid expired")
 	}
-	mustStatus(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.DraftOrder}), http.StatusOK, "accept an expired quote")
+	mustStatus(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.OrdersAcceptInputIntoDraftOrder}), http.StatusOK, "accept an expired quote")
 }
 
 // The workers never hold a connection while asking for another: each cycle

@@ -93,6 +93,15 @@ func readQuoteView(ctx context.Context, q *store.Queries, row store.OrdersQuote)
 			return gen.OrdersQuote{}, fmt.Errorf("orders: read quote %d's order: %w", row.ID, err)
 		}
 	}
+	if row.AcceptedIntoKind != nil && *row.AcceptedIntoKind == ownerSubscription && row.AcceptedIntoID != nil {
+		sub, err := q.SubscriptionByID(ctx, *row.AcceptedIntoID)
+		switch {
+		case err == nil:
+			accepted = &sub.Number
+		case !noRows(err):
+			return gen.OrdersQuote{}, fmt.Errorf("orders: read quote %d's subscription: %w", row.ID, err)
+		}
+	}
 	warnings, err := documentWarnings(ctx, q, row.CustomerID, lines)
 	if err != nil {
 		return gen.OrdersQuote{}, err

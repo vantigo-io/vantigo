@@ -22,16 +22,19 @@ import (
 
 // Defines values for OrdersAcceptInputInto.
 const (
-	ConfirmedOrder OrdersAcceptInputInto = "confirmed_order"
-	DraftOrder     OrdersAcceptInputInto = "draft_order"
+	OrdersAcceptInputIntoConfirmedOrder OrdersAcceptInputInto = "confirmed_order"
+	OrdersAcceptInputIntoDraftOrder     OrdersAcceptInputInto = "draft_order"
+	OrdersAcceptInputIntoSubscription   OrdersAcceptInputInto = "subscription"
 )
 
 // Valid indicates whether the value is a known member of the OrdersAcceptInputInto enum.
 func (e OrdersAcceptInputInto) Valid() bool {
 	switch e {
-	case ConfirmedOrder:
+	case OrdersAcceptInputIntoConfirmedOrder:
 		return true
-	case DraftOrder:
+	case OrdersAcceptInputIntoDraftOrder:
+		return true
+	case OrdersAcceptInputIntoSubscription:
 		return true
 	default:
 		return false
@@ -632,6 +635,354 @@ func (e OrdersStoredDocumentKind) Valid() bool {
 	}
 }
 
+// Defines values for OrdersSubscriptionBilling.
+const (
+	OrdersSubscriptionBillingInAdvance OrdersSubscriptionBilling = "in_advance"
+	OrdersSubscriptionBillingInArrears OrdersSubscriptionBilling = "in_arrears"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionBilling enum.
+func (e OrdersSubscriptionBilling) Valid() bool {
+	switch e {
+	case OrdersSubscriptionBillingInAdvance:
+		return true
+	case OrdersSubscriptionBillingInArrears:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersSubscriptionInterval.
+const (
+	OrdersSubscriptionIntervalHalfYearly OrdersSubscriptionInterval = "half_yearly"
+	OrdersSubscriptionIntervalMonthly    OrdersSubscriptionInterval = "monthly"
+	OrdersSubscriptionIntervalQuarterly  OrdersSubscriptionInterval = "quarterly"
+	OrdersSubscriptionIntervalYearly     OrdersSubscriptionInterval = "yearly"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionInterval enum.
+func (e OrdersSubscriptionInterval) Valid() bool {
+	switch e {
+	case OrdersSubscriptionIntervalHalfYearly:
+		return true
+	case OrdersSubscriptionIntervalMonthly:
+		return true
+	case OrdersSubscriptionIntervalQuarterly:
+		return true
+	case OrdersSubscriptionIntervalYearly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersSubscriptionLanguage.
+const (
+	OrdersSubscriptionLanguageEn OrdersSubscriptionLanguage = "en"
+	OrdersSubscriptionLanguageNb OrdersSubscriptionLanguage = "nb"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionLanguage enum.
+func (e OrdersSubscriptionLanguage) Valid() bool {
+	switch e {
+	case OrdersSubscriptionLanguageEn:
+		return true
+	case OrdersSubscriptionLanguageNb:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersSubscriptionStatus.
+const (
+	OrdersSubscriptionStatusActive    OrdersSubscriptionStatus = "active"
+	OrdersSubscriptionStatusCancelled OrdersSubscriptionStatus = "cancelled"
+	OrdersSubscriptionStatusDraft     OrdersSubscriptionStatus = "draft"
+	OrdersSubscriptionStatusEnded     OrdersSubscriptionStatus = "ended"
+	OrdersSubscriptionStatusPaused    OrdersSubscriptionStatus = "paused"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionStatus enum.
+func (e OrdersSubscriptionStatus) Valid() bool {
+	switch e {
+	case OrdersSubscriptionStatusActive:
+		return true
+	case OrdersSubscriptionStatusCancelled:
+		return true
+	case OrdersSubscriptionStatusDraft:
+		return true
+	case OrdersSubscriptionStatusEnded:
+		return true
+	case OrdersSubscriptionStatusPaused:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersSubscriptionInputBilling.
+const (
+	OrdersSubscriptionInputBillingInAdvance OrdersSubscriptionInputBilling = "in_advance"
+	OrdersSubscriptionInputBillingInArrears OrdersSubscriptionInputBilling = "in_arrears"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionInputBilling enum.
+func (e OrdersSubscriptionInputBilling) Valid() bool {
+	switch e {
+	case OrdersSubscriptionInputBillingInAdvance:
+		return true
+	case OrdersSubscriptionInputBillingInArrears:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersSubscriptionInputInterval.
+const (
+	OrdersSubscriptionInputIntervalHalfYearly OrdersSubscriptionInputInterval = "half_yearly"
+	OrdersSubscriptionInputIntervalMonthly    OrdersSubscriptionInputInterval = "monthly"
+	OrdersSubscriptionInputIntervalQuarterly  OrdersSubscriptionInputInterval = "quarterly"
+	OrdersSubscriptionInputIntervalYearly     OrdersSubscriptionInputInterval = "yearly"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionInputInterval enum.
+func (e OrdersSubscriptionInputInterval) Valid() bool {
+	switch e {
+	case OrdersSubscriptionInputIntervalHalfYearly:
+		return true
+	case OrdersSubscriptionInputIntervalMonthly:
+		return true
+	case OrdersSubscriptionInputIntervalQuarterly:
+		return true
+	case OrdersSubscriptionInputIntervalYearly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersSubscriptionInputLanguage.
+const (
+	OrdersSubscriptionInputLanguageEn OrdersSubscriptionInputLanguage = "en"
+	OrdersSubscriptionInputLanguageNb OrdersSubscriptionInputLanguage = "nb"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionInputLanguage enum.
+func (e OrdersSubscriptionInputLanguage) Valid() bool {
+	switch e {
+	case OrdersSubscriptionInputLanguageEn:
+		return true
+	case OrdersSubscriptionInputLanguageNb:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersSubscriptionPeriodState.
+const (
+	OrdersSubscriptionPeriodStateDraft    OrdersSubscriptionPeriodState = "draft"
+	OrdersSubscriptionPeriodStateDue      OrdersSubscriptionPeriodState = "due"
+	OrdersSubscriptionPeriodStateInvoiced OrdersSubscriptionPeriodState = "invoiced"
+	OrdersSubscriptionPeriodStatePaused   OrdersSubscriptionPeriodState = "paused"
+	OrdersSubscriptionPeriodStateSkipped  OrdersSubscriptionPeriodState = "skipped"
+	OrdersSubscriptionPeriodStateUpcoming OrdersSubscriptionPeriodState = "upcoming"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionPeriodState enum.
+func (e OrdersSubscriptionPeriodState) Valid() bool {
+	switch e {
+	case OrdersSubscriptionPeriodStateDraft:
+		return true
+	case OrdersSubscriptionPeriodStateDue:
+		return true
+	case OrdersSubscriptionPeriodStateInvoiced:
+		return true
+	case OrdersSubscriptionPeriodStatePaused:
+		return true
+	case OrdersSubscriptionPeriodStateSkipped:
+		return true
+	case OrdersSubscriptionPeriodStateUpcoming:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersSubscriptionPlanBilling.
+const (
+	OrdersSubscriptionPlanBillingInAdvance OrdersSubscriptionPlanBilling = "in_advance"
+	OrdersSubscriptionPlanBillingInArrears OrdersSubscriptionPlanBilling = "in_arrears"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionPlanBilling enum.
+func (e OrdersSubscriptionPlanBilling) Valid() bool {
+	switch e {
+	case OrdersSubscriptionPlanBillingInAdvance:
+		return true
+	case OrdersSubscriptionPlanBillingInArrears:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersSubscriptionPlanInterval.
+const (
+	OrdersSubscriptionPlanIntervalHalfYearly OrdersSubscriptionPlanInterval = "half_yearly"
+	OrdersSubscriptionPlanIntervalMonthly    OrdersSubscriptionPlanInterval = "monthly"
+	OrdersSubscriptionPlanIntervalQuarterly  OrdersSubscriptionPlanInterval = "quarterly"
+	OrdersSubscriptionPlanIntervalYearly     OrdersSubscriptionPlanInterval = "yearly"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionPlanInterval enum.
+func (e OrdersSubscriptionPlanInterval) Valid() bool {
+	switch e {
+	case OrdersSubscriptionPlanIntervalHalfYearly:
+		return true
+	case OrdersSubscriptionPlanIntervalMonthly:
+		return true
+	case OrdersSubscriptionPlanIntervalQuarterly:
+		return true
+	case OrdersSubscriptionPlanIntervalYearly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersSubscriptionSummaryBilling.
+const (
+	OrdersSubscriptionSummaryBillingInAdvance OrdersSubscriptionSummaryBilling = "in_advance"
+	OrdersSubscriptionSummaryBillingInArrears OrdersSubscriptionSummaryBilling = "in_arrears"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionSummaryBilling enum.
+func (e OrdersSubscriptionSummaryBilling) Valid() bool {
+	switch e {
+	case OrdersSubscriptionSummaryBillingInAdvance:
+		return true
+	case OrdersSubscriptionSummaryBillingInArrears:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersSubscriptionSummaryInterval.
+const (
+	OrdersSubscriptionSummaryIntervalHalfYearly OrdersSubscriptionSummaryInterval = "half_yearly"
+	OrdersSubscriptionSummaryIntervalMonthly    OrdersSubscriptionSummaryInterval = "monthly"
+	OrdersSubscriptionSummaryIntervalQuarterly  OrdersSubscriptionSummaryInterval = "quarterly"
+	OrdersSubscriptionSummaryIntervalYearly     OrdersSubscriptionSummaryInterval = "yearly"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionSummaryInterval enum.
+func (e OrdersSubscriptionSummaryInterval) Valid() bool {
+	switch e {
+	case OrdersSubscriptionSummaryIntervalHalfYearly:
+		return true
+	case OrdersSubscriptionSummaryIntervalMonthly:
+		return true
+	case OrdersSubscriptionSummaryIntervalQuarterly:
+		return true
+	case OrdersSubscriptionSummaryIntervalYearly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersSubscriptionSummaryStatus.
+const (
+	OrdersSubscriptionSummaryStatusActive    OrdersSubscriptionSummaryStatus = "active"
+	OrdersSubscriptionSummaryStatusCancelled OrdersSubscriptionSummaryStatus = "cancelled"
+	OrdersSubscriptionSummaryStatusDraft     OrdersSubscriptionSummaryStatus = "draft"
+	OrdersSubscriptionSummaryStatusEnded     OrdersSubscriptionSummaryStatus = "ended"
+	OrdersSubscriptionSummaryStatusPaused    OrdersSubscriptionSummaryStatus = "paused"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionSummaryStatus enum.
+func (e OrdersSubscriptionSummaryStatus) Valid() bool {
+	switch e {
+	case OrdersSubscriptionSummaryStatusActive:
+		return true
+	case OrdersSubscriptionSummaryStatusCancelled:
+		return true
+	case OrdersSubscriptionSummaryStatusDraft:
+		return true
+	case OrdersSubscriptionSummaryStatusEnded:
+		return true
+	case OrdersSubscriptionSummaryStatusPaused:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersSubscriptionUpdateBilling.
+const (
+	OrdersSubscriptionUpdateBillingInAdvance OrdersSubscriptionUpdateBilling = "in_advance"
+	OrdersSubscriptionUpdateBillingInArrears OrdersSubscriptionUpdateBilling = "in_arrears"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionUpdateBilling enum.
+func (e OrdersSubscriptionUpdateBilling) Valid() bool {
+	switch e {
+	case OrdersSubscriptionUpdateBillingInAdvance:
+		return true
+	case OrdersSubscriptionUpdateBillingInArrears:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersSubscriptionUpdateInterval.
+const (
+	OrdersSubscriptionUpdateIntervalHalfYearly OrdersSubscriptionUpdateInterval = "half_yearly"
+	OrdersSubscriptionUpdateIntervalMonthly    OrdersSubscriptionUpdateInterval = "monthly"
+	OrdersSubscriptionUpdateIntervalQuarterly  OrdersSubscriptionUpdateInterval = "quarterly"
+	OrdersSubscriptionUpdateIntervalYearly     OrdersSubscriptionUpdateInterval = "yearly"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionUpdateInterval enum.
+func (e OrdersSubscriptionUpdateInterval) Valid() bool {
+	switch e {
+	case OrdersSubscriptionUpdateIntervalHalfYearly:
+		return true
+	case OrdersSubscriptionUpdateIntervalMonthly:
+		return true
+	case OrdersSubscriptionUpdateIntervalQuarterly:
+		return true
+	case OrdersSubscriptionUpdateIntervalYearly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersSubscriptionUpdateLanguage.
+const (
+	OrdersSubscriptionUpdateLanguageEn OrdersSubscriptionUpdateLanguage = "en"
+	OrdersSubscriptionUpdateLanguageNb OrdersSubscriptionUpdateLanguage = "nb"
+)
+
+// Valid indicates whether the value is a known member of the OrdersSubscriptionUpdateLanguage enum.
+func (e OrdersSubscriptionUpdateLanguage) Valid() bool {
+	switch e {
+	case OrdersSubscriptionUpdateLanguageEn:
+		return true
+	case OrdersSubscriptionUpdateLanguageNb:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrdersTemplateLineKind.
 const (
 	OrdersTemplateLineKindNote    OrdersTemplateLineKind = "note"
@@ -938,6 +1289,33 @@ func (e ListQuotesParamsStatus) Valid() bool {
 	}
 }
 
+// Defines values for ListSubscriptionsParamsStatus.
+const (
+	ListSubscriptionsParamsStatusActive    ListSubscriptionsParamsStatus = "active"
+	ListSubscriptionsParamsStatusCancelled ListSubscriptionsParamsStatus = "cancelled"
+	ListSubscriptionsParamsStatusDraft     ListSubscriptionsParamsStatus = "draft"
+	ListSubscriptionsParamsStatusEnded     ListSubscriptionsParamsStatus = "ended"
+	ListSubscriptionsParamsStatusPaused    ListSubscriptionsParamsStatus = "paused"
+)
+
+// Valid indicates whether the value is a known member of the ListSubscriptionsParamsStatus enum.
+func (e ListSubscriptionsParamsStatus) Valid() bool {
+	switch e {
+	case ListSubscriptionsParamsStatusActive:
+		return true
+	case ListSubscriptionsParamsStatusCancelled:
+		return true
+	case ListSubscriptionsParamsStatusDraft:
+		return true
+	case ListSubscriptionsParamsStatusEnded:
+		return true
+	case ListSubscriptionsParamsStatusPaused:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListOrdersWarningsParamsScope.
 const (
 	ListOrdersWarningsParamsScopeCustomer ListOrdersWarningsParamsScope = "customer"
@@ -959,28 +1337,36 @@ func (e ListOrdersWarningsParamsScope) Valid() bool {
 // OrdersAcceptInput Accept a sent (or expired) quote (O20, O21): which optional lines the customer took, and what to make. confirmed_order also needs orders:sales-confirm.
 type OrdersAcceptInput struct {
 	// ExpectedUpdatedAt The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
-	ExpectedUpdatedAt time.Time             `json:"expectedUpdatedAt"`
-	Into              OrdersAcceptInputInto `json:"into"`
-	OptionalLineIds   *[]int64              `json:"optionalLineIds,omitempty"`
+	ExpectedUpdatedAt time.Time `json:"expectedUpdatedAt"`
+
+	// Into draft_order (the default), confirmed_order (also needs orders:sales-confirm) or subscription (needs orders:subscriptions-manage and plan; every line a service or free text, O20).
+	Into            OrdersAcceptInputInto `json:"into"`
+	OptionalLineIds *[]int64              `json:"optionalLineIds,omitempty"`
 
 	// OverrideReason Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note.
 	OverrideReason *string `json:"overrideReason,omitempty"`
 
 	// OverrideWarnings Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning.
 	OverrideWarnings *bool `json:"overrideWarnings,omitempty"`
-	Revision         int32 `json:"revision"`
+
+	// Plan A subscription's plan (O42), when a quote is accepted as a subscription.
+	Plan     *OrdersSubscriptionPlan `json:"plan,omitempty"`
+	Revision int32                   `json:"revision"`
 }
 
-// OrdersAcceptInputInto defines model for OrdersAcceptInput.Into.
+// OrdersAcceptInputInto draft_order (the default), confirmed_order (also needs orders:sales-confirm) or subscription (needs orders:subscriptions-manage and plan; every line a service or free text, O20).
 type OrdersAcceptInputInto string
 
-// OrdersAccepted The accepted quote and the document made from it.
+// OrdersAccepted The accepted quote and the document made from it: an order, or a subscription.
 type OrdersAccepted struct {
 	// Order A sales order (O13, O18). version is the order's optimistic-concurrency token and the version its confirmation prints: a draft stays at 1 through its saves, and after confirmation every edit that changes it and every cancel-remaining bumps it, so a confirmation sent at version 2 or later prints as revised (O26). Hold, release, lock, unlock and delivery marking are logged at the version they found. done is derived: confirmed, delivered and invoiced.
-	Order OrdersOrder `json:"order"`
+	Order *OrdersOrder `json:"order,omitempty"`
 
 	// Quote A quote (O13, O20). number stays across revisions; revision counts the sends.
 	Quote OrdersQuote `json:"quote"`
+
+	// Subscription A subscription (O42): its header, plan and status. version is its optimistic-concurrency token: a draft's saves leave it, and every lifecycle step and every change of an activated subscription bumps it. lines are those in force from its latest change on (validTo null); earlierLines the dated lines a change ended. billedThrough is derived (O43): the last day of the unbroken run, from the start, of periods invoiced or skipped. nextChangeFrom is the earliest period start a change may take effect from. totals are a full period's at lines.
+	Subscription *OrdersSubscription `json:"subscription,omitempty"`
 }
 
 // OrdersAddress A postal address snapshotted on the document; every field optional.
@@ -1055,7 +1441,10 @@ type OrdersConfirmInput struct {
 
 	// OverrideWarnings Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning.
 	OverrideWarnings *bool `json:"overrideWarnings,omitempty"`
-	Version          int32 `json:"version"`
+
+	// Plan A subscription's plan (O42), when a quote is accepted as a subscription.
+	Plan    *OrdersSubscriptionPlan `json:"plan,omitempty"`
+	Version int32                   `json:"version"`
 }
 
 // OrdersContact The chosen contact, snapshotted (O13).
@@ -1107,6 +1496,8 @@ type OrdersCustomerSnapshotType string
 
 // OrdersCustomerSummary What the customer page's Orders tab shows above its lists (O31a), per currency: open quotes (draft and sent), ordered and not delivered, delivered and not invoiced (from B; empty before).
 type OrdersCustomerSummary struct {
+	// ActiveSubscriptions The active and paused subscriptions, counted, and their value per year net of VAT (O42).
+	ActiveSubscriptions  []OrdersCurrencySum `json:"activeSubscriptions"`
 	CustomerId           int32               `json:"customerId"`
 	DeliveredNotInvoiced []OrdersCurrencySum `json:"deliveredNotInvoiced"`
 	OpenQuotes           []OrdersCurrencySum `json:"openQuotes"`
@@ -1146,6 +1537,15 @@ type OrdersDocumentRef struct {
 
 // OrdersDocumentRefKind defines model for OrdersDocumentRef.Kind.
 type OrdersDocumentRefKind string
+
+// OrdersEndInput End a subscription (O44): endDate's period is the last one billed.
+type OrdersEndInput struct {
+	EndDate openapi_types.Date `json:"endDate"`
+
+	// ExpectedUpdatedAt The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it).
+	ExpectedUpdatedAt time.Time `json:"expectedUpdatedAt"`
+	Version           int32     `json:"version"`
+}
 
 // OrdersGridOption One axis of the grid: the option's name and its values.
 type OrdersGridOption struct {
@@ -1273,6 +1673,12 @@ type OrdersLine struct {
 	// UnitPrice Net of VAT (O19); null while a catalog line has no price in the currency.
 	UnitPrice *float64 `json:"unitPrice,omitempty"`
 
+	// ValidFrom A subscription line's first period start it bills (O44); null from the start.
+	ValidFrom *openapi_types.Date `json:"validFrom,omitempty"`
+
+	// ValidTo A subscription line's last day in force (O44): it bills the periods starting on or before it; null open.
+	ValidTo *openapi_types.Date `json:"validTo,omitempty"`
+
 	// VariantId Null for a free-text line.
 	VariantId      *int32   `json:"variantId,omitempty"`
 	VatCategory    *string  `json:"vatCategory,omitempty"`
@@ -1377,9 +1783,12 @@ type OrdersMarkSentInput struct {
 	OverrideReason *string `json:"overrideReason,omitempty"`
 
 	// OverrideWarnings Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning.
-	OverrideWarnings *bool               `json:"overrideWarnings,omitempty"`
-	Revision         int32               `json:"revision"`
-	ValidUntil       *openapi_types.Date `json:"validUntil,omitempty"`
+	OverrideWarnings *bool `json:"overrideWarnings,omitempty"`
+
+	// Plan A subscription's plan (O42), when a quote is accepted as a subscription.
+	Plan       *OrdersSubscriptionPlan `json:"plan,omitempty"`
+	Revision   int32                   `json:"revision"`
+	ValidUntil *openapi_types.Date     `json:"validUntil,omitempty"`
 }
 
 // OrdersMeta What the Orders screens need of the settings, under orders:access.
@@ -1585,6 +1994,14 @@ type OrdersOrigin struct {
 	SourceModule *string `json:"sourceModule,omitempty"`
 }
 
+// OrdersPauseInput Pause a subscription (O44) from a period start: from, else the first period that starts after today and has no live allocation.
+type OrdersPauseInput struct {
+	// ExpectedUpdatedAt The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it).
+	ExpectedUpdatedAt time.Time           `json:"expectedUpdatedAt"`
+	From              *openapi_types.Date `json:"from,omitempty"`
+	Version           int32               `json:"version"`
+}
+
 // OrdersPerson A user as snapshotted on the document: the salesperson or an actor (O13, O29).
 type OrdersPerson struct {
 	DisplayName string              `json:"displayName"`
@@ -1755,6 +2172,14 @@ type OrdersQuoteUpdate struct {
 // OrdersQuoteUpdateLanguage defines model for OrdersQuoteUpdate.Language.
 type OrdersQuoteUpdateLanguage string
 
+// OrdersResumeInput Resume a paused subscription (O44) from a period start on or after the pause; the periods between are skipped.
+type OrdersResumeInput struct {
+	// ExpectedUpdatedAt The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it).
+	ExpectedUpdatedAt time.Time          `json:"expectedUpdatedAt"`
+	From              openapi_types.Date `json:"from"`
+	Version           int32              `json:"version"`
+}
+
 // OrdersRevisionInput The revision the client read.
 type OrdersRevisionInput struct {
 	// ExpectedUpdatedAt The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
@@ -1803,12 +2228,15 @@ type OrdersSendInput struct {
 	OverrideReason *string `json:"overrideReason,omitempty"`
 
 	// OverrideWarnings Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning.
-	OverrideWarnings *bool               `json:"overrideWarnings,omitempty"`
-	Recipient        openapi_types.Email `json:"recipient"`
-	Revision         *int32              `json:"revision,omitempty"`
-	Subject          *string             `json:"subject,omitempty"`
-	ValidUntil       *openapi_types.Date `json:"validUntil,omitempty"`
-	Version          *int32              `json:"version,omitempty"`
+	OverrideWarnings *bool `json:"overrideWarnings,omitempty"`
+
+	// Plan A subscription's plan (O42), when a quote is accepted as a subscription.
+	Plan       *OrdersSubscriptionPlan `json:"plan,omitempty"`
+	Recipient  openapi_types.Email     `json:"recipient"`
+	Revision   *int32                  `json:"revision,omitempty"`
+	Subject    *string                 `json:"subject,omitempty"`
+	ValidUntil *openapi_types.Date     `json:"validUntil,omitempty"`
+	Version    *int32                  `json:"version,omitempty"`
 }
 
 // OrdersSettings Orders' settings. nextQuoteNumber and nextOrderNumber are the numbers the series hand out next; a series start may only rise above the highest number used (O12). sendingAvailable says whether Communications is on.
@@ -1875,6 +2303,228 @@ type OrdersStoredDocumentKind string
 type OrdersStoredDocumentList struct {
 	Items []OrdersStoredDocument `json:"items"`
 }
+
+// OrdersSubscription A subscription (O42): its header, plan and status. version is its optimistic-concurrency token: a draft's saves leave it, and every lifecycle step and every change of an activated subscription bumps it. lines are those in force from its latest change on (validTo null); earlierLines the dated lines a change ended. billedThrough is derived (O43): the last day of the unbroken run, from the start, of periods invoiced or skipped. nextChangeFrom is the earliest period start a change may take effect from. totals are a full period's at lines.
+type OrdersSubscription struct {
+	ActivatedAt *time.Time `json:"activatedAt,omitempty"`
+
+	// ActivatedBy A user as snapshotted on the document: the salesperson or an actor (O13, O29).
+	ActivatedBy   *OrdersPerson       `json:"activatedBy,omitempty"`
+	BilledThrough *openapi_types.Date `json:"billedThrough,omitempty"`
+
+	// Billing in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
+	Billing     OrdersSubscriptionBilling `json:"billing"`
+	CancelledAt *time.Time                `json:"cancelledAt,omitempty"`
+	ClosingText string                    `json:"closingText"`
+	CreatedAt   time.Time                 `json:"createdAt"`
+	Currency    string                    `json:"currency"`
+
+	// Customer The customer as the document holds it (O13, O14): refreshed on every save of a draft, frozen once a quote is sent or an order confirmed, after which only the delivery address and the contact change.
+	Customer        OrdersCustomerSnapshot     `json:"customer"`
+	DiscountVisible bool                       `json:"discountVisible"`
+	EarlierLines    []OrdersLine               `json:"earlierLines"`
+	EndDate         *openapi_types.Date        `json:"endDate,omitempty"`
+	EndedAt         *time.Time                 `json:"endedAt,omitempty"`
+	Id              int64                      `json:"id"`
+	InternalNote    string                     `json:"internalNote"`
+	Interval        OrdersSubscriptionInterval `json:"interval"`
+	IntroText       string                     `json:"introText"`
+
+	// InvoiceDay The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due.
+	InvoiceDay     *int32                     `json:"invoiceDay,omitempty"`
+	Language       OrdersSubscriptionLanguage `json:"language"`
+	Lines          []OrdersLine               `json:"lines"`
+	NextChangeFrom openapi_types.Date         `json:"nextChangeFrom"`
+
+	// NoticeMonths The notice in months, 0 to 12; informational, printed.
+	NoticeMonths int32 `json:"noticeMonths"`
+	Number       int64 `json:"number"`
+
+	// Origin Where the document came from (O27). channel is an open set: manual, quote and copy in this phase.
+	Origin           OrdersOrigin               `json:"origin"`
+	PausedFrom       *openapi_types.Date        `json:"pausedFrom,omitempty"`
+	PaymentTermsDays int32                      `json:"paymentTermsDays"`
+	Periods          []OrdersSubscriptionPeriod `json:"periods"`
+	PricesIncludeVat bool                       `json:"pricesIncludeVat"`
+	ProjectId        *int32                     `json:"projectId,omitempty"`
+
+	// Salesperson A user as snapshotted on the document: the salesperson or an actor (O13, O29).
+	Salesperson   *OrdersPerson            `json:"salesperson,omitempty"`
+	SourceQuoteId *int64                   `json:"sourceQuoteId,omitempty"`
+	StartDate     openapi_types.Date       `json:"startDate"`
+	Status        OrdersSubscriptionStatus `json:"status"`
+
+	// Totals The document's totals in its currency, leaving out a quote's optional lines (O17, O21).
+	Totals        OrdersTotals `json:"totals"`
+	UpdatedAt     time.Time    `json:"updatedAt"`
+	Version       int32        `json:"version"`
+	YourReference string       `json:"yourReference"`
+}
+
+// OrdersSubscriptionBilling in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
+type OrdersSubscriptionBilling string
+
+// OrdersSubscriptionInterval defines model for OrdersSubscription.Interval.
+type OrdersSubscriptionInterval string
+
+// OrdersSubscriptionLanguage defines model for OrdersSubscription.Language.
+type OrdersSubscriptionLanguage string
+
+// OrdersSubscriptionStatus defines model for OrdersSubscription.Status.
+type OrdersSubscriptionStatus string
+
+// OrdersSubscriptionInput A new draft subscription (O42). clientRequestId makes the create idempotent (O27).
+type OrdersSubscriptionInput struct {
+	// Billing in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
+	Billing           OrdersSubscriptionInputBilling  `json:"billing"`
+	ClientRequestId   openapi_types.UUID              `json:"clientRequestId"`
+	ClosingText       *string                         `json:"closingText,omitempty"`
+	ContactId         *int32                          `json:"contactId,omitempty"`
+	Currency          *string                         `json:"currency,omitempty"`
+	CustomerId        int32                           `json:"customerId"`
+	DeliveryAddressId *int32                          `json:"deliveryAddressId,omitempty"`
+	DiscountVisible   *bool                           `json:"discountVisible,omitempty"`
+	EndDate           *openapi_types.Date             `json:"endDate,omitempty"`
+	InternalNote      *string                         `json:"internalNote,omitempty"`
+	Interval          OrdersSubscriptionInputInterval `json:"interval"`
+	IntroText         *string                         `json:"introText,omitempty"`
+
+	// InvoiceDay The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due.
+	InvoiceDay *int32                           `json:"invoiceDay,omitempty"`
+	Language   *OrdersSubscriptionInputLanguage `json:"language,omitempty"`
+	Lines      *[]OrdersLineInput               `json:"lines,omitempty"`
+
+	// NoticeMonths The notice in months, 0 to 12; informational, printed.
+	NoticeMonths     *int32              `json:"noticeMonths,omitempty"`
+	PaymentTermsDays *int32              `json:"paymentTermsDays,omitempty"`
+	PricesIncludeVat *bool               `json:"pricesIncludeVat,omitempty"`
+	ProjectId        *int32              `json:"projectId,omitempty"`
+	SalespersonId    *openapi_types.UUID `json:"salespersonId,omitempty"`
+	StartDate        openapi_types.Date  `json:"startDate"`
+	YourReference    *string             `json:"yourReference,omitempty"`
+}
+
+// OrdersSubscriptionInputBilling in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
+type OrdersSubscriptionInputBilling string
+
+// OrdersSubscriptionInputInterval defines model for OrdersSubscriptionInput.Interval.
+type OrdersSubscriptionInputInterval string
+
+// OrdersSubscriptionInputLanguage defines model for OrdersSubscriptionInput.Language.
+type OrdersSubscriptionInputLanguage string
+
+// OrdersSubscriptionPage One page of subscriptions and how many match.
+type OrdersSubscriptionPage struct {
+	Items []OrdersSubscriptionSummary `json:"items"`
+	Total int32                       `json:"total"`
+}
+
+// OrdersSubscriptionPeriod One billing period (O43): its first and last day, whether it is a partial first period, what it bills net of VAT, and its state — invoiced (every line's period on an issued invoice), draft (on a draft invoice), skipped (by a pause), paused (after the pause), due (today, not yet on an invoice) or upcoming. invoiceNumbers are the invoices that billed it.
+type OrdersSubscriptionPeriod struct {
+	Amount         float64                       `json:"amount"`
+	End            openapi_types.Date            `json:"end"`
+	InvoiceNumbers []int64                       `json:"invoiceNumbers"`
+	Partial        bool                          `json:"partial"`
+	Start          openapi_types.Date            `json:"start"`
+	State          OrdersSubscriptionPeriodState `json:"state"`
+}
+
+// OrdersSubscriptionPeriodState defines model for OrdersSubscriptionPeriod.State.
+type OrdersSubscriptionPeriodState string
+
+// OrdersSubscriptionPlan A subscription's plan (O42), when a quote is accepted as a subscription.
+type OrdersSubscriptionPlan struct {
+	// Billing in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
+	Billing  OrdersSubscriptionPlanBilling  `json:"billing"`
+	EndDate  *openapi_types.Date            `json:"endDate,omitempty"`
+	Interval OrdersSubscriptionPlanInterval `json:"interval"`
+
+	// InvoiceDay The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due.
+	InvoiceDay *int32 `json:"invoiceDay,omitempty"`
+
+	// NoticeMonths The notice in months, 0 to 12; informational, printed.
+	NoticeMonths *int32             `json:"noticeMonths,omitempty"`
+	StartDate    openapi_types.Date `json:"startDate"`
+}
+
+// OrdersSubscriptionPlanBilling in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
+type OrdersSubscriptionPlanBilling string
+
+// OrdersSubscriptionPlanInterval defines model for OrdersSubscriptionPlan.Interval.
+type OrdersSubscriptionPlanInterval string
+
+// OrdersSubscriptionSummary A subscription in a list: net and gross are a full period's at the lines in force from its latest change on.
+type OrdersSubscriptionSummary struct {
+	BilledThrough *openapi_types.Date               `json:"billedThrough,omitempty"`
+	Billing       OrdersSubscriptionSummaryBilling  `json:"billing"`
+	Currency      string                            `json:"currency"`
+	CustomerId    int32                             `json:"customerId"`
+	CustomerName  string                            `json:"customerName"`
+	EndDate       *openapi_types.Date               `json:"endDate,omitempty"`
+	Gross         float64                           `json:"gross"`
+	Id            int64                             `json:"id"`
+	Interval      OrdersSubscriptionSummaryInterval `json:"interval"`
+	Net           float64                           `json:"net"`
+	Number        int64                             `json:"number"`
+	StartDate     openapi_types.Date                `json:"startDate"`
+	Status        OrdersSubscriptionSummaryStatus   `json:"status"`
+	UpdatedAt     time.Time                         `json:"updatedAt"`
+}
+
+// OrdersSubscriptionSummaryBilling defines model for OrdersSubscriptionSummary.Billing.
+type OrdersSubscriptionSummaryBilling string
+
+// OrdersSubscriptionSummaryInterval defines model for OrdersSubscriptionSummary.Interval.
+type OrdersSubscriptionSummaryInterval string
+
+// OrdersSubscriptionSummaryStatus defines model for OrdersSubscriptionSummary.Status.
+type OrdersSubscriptionSummaryStatus string
+
+// OrdersSubscriptionUpdate Save a subscription (O44). A draft takes everything. An active or paused one takes the header's texts, references, contact and noticeMonths, and lines as they are to be from effectiveFrom on; its interval, billing, start and end are kept (end it with end). Lines named by id are kept when unchanged.
+type OrdersSubscriptionUpdate struct {
+	// Billing in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
+	Billing           *OrdersSubscriptionUpdateBilling `json:"billing,omitempty"`
+	ClosingText       *string                          `json:"closingText,omitempty"`
+	ContactId         *int32                           `json:"contactId,omitempty"`
+	Currency          *string                          `json:"currency,omitempty"`
+	CustomerId        int32                            `json:"customerId"`
+	DeliveryAddressId *int32                           `json:"deliveryAddressId,omitempty"`
+	DiscountVisible   *bool                            `json:"discountVisible,omitempty"`
+
+	// EffectiveFrom The period start a change of an active or paused subscription's lines takes effect from; absent is nextChangeFrom.
+	EffectiveFrom *openapi_types.Date `json:"effectiveFrom,omitempty"`
+	EndDate       *openapi_types.Date `json:"endDate,omitempty"`
+
+	// ExpectedUpdatedAt The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it).
+	ExpectedUpdatedAt time.Time                         `json:"expectedUpdatedAt"`
+	InternalNote      *string                           `json:"internalNote,omitempty"`
+	Interval          *OrdersSubscriptionUpdateInterval `json:"interval,omitempty"`
+	IntroText         *string                           `json:"introText,omitempty"`
+
+	// InvoiceDay The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due.
+	InvoiceDay *int32                            `json:"invoiceDay,omitempty"`
+	Language   *OrdersSubscriptionUpdateLanguage `json:"language,omitempty"`
+	Lines      []OrdersLineInput                 `json:"lines"`
+
+	// NoticeMonths The notice in months, 0 to 12; informational, printed.
+	NoticeMonths     *int32              `json:"noticeMonths,omitempty"`
+	PaymentTermsDays *int32              `json:"paymentTermsDays,omitempty"`
+	PricesIncludeVat *bool               `json:"pricesIncludeVat,omitempty"`
+	ProjectId        *int32              `json:"projectId,omitempty"`
+	SalespersonId    *openapi_types.UUID `json:"salespersonId,omitempty"`
+	StartDate        *openapi_types.Date `json:"startDate,omitempty"`
+	Version          int32               `json:"version"`
+	YourReference    *string             `json:"yourReference,omitempty"`
+}
+
+// OrdersSubscriptionUpdateBilling in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
+type OrdersSubscriptionUpdateBilling string
+
+// OrdersSubscriptionUpdateInterval defines model for OrdersSubscriptionUpdate.Interval.
+type OrdersSubscriptionUpdateInterval string
+
+// OrdersSubscriptionUpdateLanguage defines model for OrdersSubscriptionUpdate.Language.
+type OrdersSubscriptionUpdateLanguage string
 
 // OrdersTemplate A quote template (O23).
 type OrdersTemplate struct {
@@ -2204,6 +2854,22 @@ type ListOrdersSalespeopleParams struct {
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 }
 
+// ListSubscriptionsParams defines parameters for ListSubscriptions.
+type ListSubscriptionsParams struct {
+	CustomerId *int32 `form:"customerId,omitempty" json:"customerId,omitempty"`
+
+	// Status Any of the statuses; none means all.
+	Status *[]ListSubscriptionsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Q Matches the number, the customer's name and your reference.
+	Q        *string `form:"q,omitempty" json:"q,omitempty"`
+	Page     *int32  `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// ListSubscriptionsParamsStatus defines parameters for ListSubscriptions.
+type ListSubscriptionsParamsStatus string
+
 // ListQuoteTemplatesParams defines parameters for ListQuoteTemplates.
 type ListQuoteTemplatesParams struct {
 	IncludeArchived *bool `form:"includeArchived,omitempty" json:"includeArchived,omitempty"`
@@ -2294,6 +2960,27 @@ type SendQuoteJSONRequestBody = OrdersSendInput
 
 // PutOrdersSettingsJSONRequestBody defines body for PutOrdersSettings for application/json ContentType.
 type PutOrdersSettingsJSONRequestBody = OrdersSettingsInput
+
+// CreateSubscriptionJSONRequestBody defines body for CreateSubscription for application/json ContentType.
+type CreateSubscriptionJSONRequestBody = OrdersSubscriptionInput
+
+// UpdateSubscriptionJSONRequestBody defines body for UpdateSubscription for application/json ContentType.
+type UpdateSubscriptionJSONRequestBody = OrdersSubscriptionUpdate
+
+// ActivateSubscriptionJSONRequestBody defines body for ActivateSubscription for application/json ContentType.
+type ActivateSubscriptionJSONRequestBody = OrdersVersionInput
+
+// CancelSubscriptionJSONRequestBody defines body for CancelSubscription for application/json ContentType.
+type CancelSubscriptionJSONRequestBody = OrdersVersionInput
+
+// EndSubscriptionJSONRequestBody defines body for EndSubscription for application/json ContentType.
+type EndSubscriptionJSONRequestBody = OrdersEndInput
+
+// PauseSubscriptionJSONRequestBody defines body for PauseSubscription for application/json ContentType.
+type PauseSubscriptionJSONRequestBody = OrdersPauseInput
+
+// ResumeSubscriptionJSONRequestBody defines body for ResumeSubscription for application/json ContentType.
+type ResumeSubscriptionJSONRequestBody = OrdersResumeInput
 
 // CreateQuoteTemplateJSONRequestBody defines body for CreateQuoteTemplate for application/json ContentType.
 type CreateQuoteTemplateJSONRequestBody = OrdersTemplateInput
@@ -2450,6 +3137,36 @@ type ServerInterface interface {
 	// PutOrdersSettings Save the Orders settings
 	// (PUT /api/v1/orders/settings)
 	PutOrdersSettings(w http.ResponseWriter, r *http.Request)
+	// ListSubscriptions List subscriptions
+	// (GET /api/v1/orders/subscriptions)
+	ListSubscriptions(w http.ResponseWriter, r *http.Request, params ListSubscriptionsParams)
+	// CreateSubscription Create a subscription
+	// (POST /api/v1/orders/subscriptions)
+	CreateSubscription(w http.ResponseWriter, r *http.Request)
+	// GetSubscription Get a subscription
+	// (GET /api/v1/orders/subscriptions/{id})
+	GetSubscription(w http.ResponseWriter, r *http.Request, id int64)
+	// UpdateSubscription Save a subscription
+	// (PUT /api/v1/orders/subscriptions/{id})
+	UpdateSubscription(w http.ResponseWriter, r *http.Request, id int64)
+	// ActivateSubscription Activate a subscription
+	// (POST /api/v1/orders/subscriptions/{id}/activate)
+	ActivateSubscription(w http.ResponseWriter, r *http.Request, id int64)
+	// CancelSubscription Cancel a subscription
+	// (POST /api/v1/orders/subscriptions/{id}/cancel)
+	CancelSubscription(w http.ResponseWriter, r *http.Request, id int64)
+	// ListSubscriptionChanges List a subscription's changes
+	// (GET /api/v1/orders/subscriptions/{id}/changes)
+	ListSubscriptionChanges(w http.ResponseWriter, r *http.Request, id int64)
+	// EndSubscription End a subscription
+	// (POST /api/v1/orders/subscriptions/{id}/end)
+	EndSubscription(w http.ResponseWriter, r *http.Request, id int64)
+	// PauseSubscription Pause a subscription
+	// (POST /api/v1/orders/subscriptions/{id}/pause)
+	PauseSubscription(w http.ResponseWriter, r *http.Request, id int64)
+	// ResumeSubscription Resume a subscription
+	// (POST /api/v1/orders/subscriptions/{id}/resume)
+	ResumeSubscription(w http.ResponseWriter, r *http.Request, id int64)
 	// ListQuoteTemplates List quote templates
 	// (GET /api/v1/orders/templates)
 	ListQuoteTemplates(w http.ResponseWriter, r *http.Request, params ListQuoteTemplatesParams)
@@ -4044,6 +4761,313 @@ func (siw *ServerInterfaceWrapper) PutOrdersSettings(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// ListSubscriptions operation middleware
+func (siw *ServerInterfaceWrapper) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSubscriptionsParams
+
+	// ------------- Optional query parameter "customerId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "customerId", r.URL.Query(), &params.CustomerId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "customerId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "customerId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSubscriptions(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSubscription operation middleware
+func (siw *ServerInterfaceWrapper) CreateSubscription(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSubscription(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSubscription operation middleware
+func (siw *ServerInterfaceWrapper) GetSubscription(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSubscription(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateSubscription operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSubscription(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateSubscription(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ActivateSubscription operation middleware
+func (siw *ServerInterfaceWrapper) ActivateSubscription(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ActivateSubscription(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelSubscription operation middleware
+func (siw *ServerInterfaceWrapper) CancelSubscription(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelSubscription(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSubscriptionChanges operation middleware
+func (siw *ServerInterfaceWrapper) ListSubscriptionChanges(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSubscriptionChanges(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EndSubscription operation middleware
+func (siw *ServerInterfaceWrapper) EndSubscription(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EndSubscription(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PauseSubscription operation middleware
+func (siw *ServerInterfaceWrapper) PauseSubscription(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PauseSubscription(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResumeSubscription operation middleware
+func (siw *ServerInterfaceWrapper) ResumeSubscription(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResumeSubscription(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListQuoteTemplates operation middleware
 func (siw *ServerInterfaceWrapper) ListQuoteTemplates(w http.ResponseWriter, r *http.Request) {
 
@@ -4584,6 +5608,16 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/salespeople", wrapper.ListOrdersSalespeople)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/settings", wrapper.GetOrdersSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/orders/settings", wrapper.PutOrdersSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/subscriptions", wrapper.ListSubscriptions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/subscriptions", wrapper.CreateSubscription)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/subscriptions/{id}", wrapper.GetSubscription)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/orders/subscriptions/{id}", wrapper.UpdateSubscription)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/subscriptions/{id}/activate", wrapper.ActivateSubscription)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/subscriptions/{id}/cancel", wrapper.CancelSubscription)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/subscriptions/{id}/changes", wrapper.ListSubscriptionChanges)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/subscriptions/{id}/end", wrapper.EndSubscription)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/subscriptions/{id}/pause", wrapper.PauseSubscription)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/subscriptions/{id}/resume", wrapper.ResumeSubscription)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/templates", wrapper.ListQuoteTemplates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/templates", wrapper.CreateQuoteTemplate)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/orders/templates/{id}", wrapper.DeleteQuoteTemplate)
@@ -8110,6 +9144,814 @@ func (response PutOrdersSettings409ApplicationProblemPlusJSONResponse) VisitPutO
 	return err
 }
 
+type ListSubscriptionsRequestObject struct {
+	Params ListSubscriptionsParams
+}
+
+type ListSubscriptionsResponseObject interface {
+	VisitListSubscriptionsResponse(w http.ResponseWriter) error
+}
+
+type ListSubscriptions200JSONResponse OrdersSubscriptionPage
+
+func (response ListSubscriptions200JSONResponse) VisitListSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSubscriptions400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response ListSubscriptions400ApplicationProblemPlusJSONResponse) VisitListSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSubscriptions401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListSubscriptions401JSONResponse) VisitListSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSubscriptions403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListSubscriptions403JSONResponse) VisitListSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSubscriptionRequestObject struct {
+	Body *CreateSubscriptionJSONRequestBody
+}
+
+type CreateSubscriptionResponseObject interface {
+	VisitCreateSubscriptionResponse(w http.ResponseWriter) error
+}
+
+type CreateSubscription200JSONResponse OrdersSubscription
+
+func (response CreateSubscription200JSONResponse) VisitCreateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSubscription201JSONResponse OrdersSubscription
+
+func (response CreateSubscription201JSONResponse) VisitCreateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSubscription400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CreateSubscription400ApplicationProblemPlusJSONResponse) VisitCreateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSubscription401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateSubscription401JSONResponse) VisitCreateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSubscription403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateSubscription403JSONResponse) VisitCreateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSubscription409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CreateSubscription409ApplicationProblemPlusJSONResponse) VisitCreateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSubscription503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CreateSubscription503ApplicationProblemPlusJSONResponse) VisitCreateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSubscriptionRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetSubscriptionResponseObject interface {
+	VisitGetSubscriptionResponse(w http.ResponseWriter) error
+}
+
+type GetSubscription200JSONResponse OrdersSubscription
+
+func (response GetSubscription200JSONResponse) VisitGetSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSubscription401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetSubscription401JSONResponse) VisitGetSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSubscription403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetSubscription403JSONResponse) VisitGetSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSubscription404Response struct {
+}
+
+func (response GetSubscription404Response) VisitGetSubscriptionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateSubscriptionRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *UpdateSubscriptionJSONRequestBody
+}
+
+type UpdateSubscriptionResponseObject interface {
+	VisitUpdateSubscriptionResponse(w http.ResponseWriter) error
+}
+
+type UpdateSubscription200JSONResponse OrdersSubscription
+
+func (response UpdateSubscription200JSONResponse) VisitUpdateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSubscription400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response UpdateSubscription400ApplicationProblemPlusJSONResponse) VisitUpdateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSubscription401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateSubscription401JSONResponse) VisitUpdateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSubscription403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateSubscription403JSONResponse) VisitUpdateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSubscription404Response struct {
+}
+
+func (response UpdateSubscription404Response) VisitUpdateSubscriptionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateSubscription409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response UpdateSubscription409ApplicationProblemPlusJSONResponse) VisitUpdateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSubscription503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response UpdateSubscription503ApplicationProblemPlusJSONResponse) VisitUpdateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ActivateSubscriptionRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *ActivateSubscriptionJSONRequestBody
+}
+
+type ActivateSubscriptionResponseObject interface {
+	VisitActivateSubscriptionResponse(w http.ResponseWriter) error
+}
+
+type ActivateSubscription200JSONResponse OrdersSubscription
+
+func (response ActivateSubscription200JSONResponse) VisitActivateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ActivateSubscription400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response ActivateSubscription400ApplicationProblemPlusJSONResponse) VisitActivateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ActivateSubscription401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ActivateSubscription401JSONResponse) VisitActivateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ActivateSubscription403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ActivateSubscription403JSONResponse) VisitActivateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ActivateSubscription404Response struct {
+}
+
+func (response ActivateSubscription404Response) VisitActivateSubscriptionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ActivateSubscription409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response ActivateSubscription409ApplicationProblemPlusJSONResponse) VisitActivateSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelSubscriptionRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *CancelSubscriptionJSONRequestBody
+}
+
+type CancelSubscriptionResponseObject interface {
+	VisitCancelSubscriptionResponse(w http.ResponseWriter) error
+}
+
+type CancelSubscription200JSONResponse OrdersSubscription
+
+func (response CancelSubscription200JSONResponse) VisitCancelSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelSubscription401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CancelSubscription401JSONResponse) VisitCancelSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelSubscription403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CancelSubscription403JSONResponse) VisitCancelSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelSubscription404Response struct {
+}
+
+func (response CancelSubscription404Response) VisitCancelSubscriptionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type CancelSubscription409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CancelSubscription409ApplicationProblemPlusJSONResponse) VisitCancelSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSubscriptionChangesRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type ListSubscriptionChangesResponseObject interface {
+	VisitListSubscriptionChangesResponse(w http.ResponseWriter) error
+}
+
+type ListSubscriptionChanges200JSONResponse OrdersChangeList
+
+func (response ListSubscriptionChanges200JSONResponse) VisitListSubscriptionChangesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSubscriptionChanges401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListSubscriptionChanges401JSONResponse) VisitListSubscriptionChangesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSubscriptionChanges403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListSubscriptionChanges403JSONResponse) VisitListSubscriptionChangesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSubscriptionChanges404Response struct {
+}
+
+func (response ListSubscriptionChanges404Response) VisitListSubscriptionChangesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type EndSubscriptionRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *EndSubscriptionJSONRequestBody
+}
+
+type EndSubscriptionResponseObject interface {
+	VisitEndSubscriptionResponse(w http.ResponseWriter) error
+}
+
+type EndSubscription200JSONResponse OrdersSubscription
+
+func (response EndSubscription200JSONResponse) VisitEndSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EndSubscription400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response EndSubscription400ApplicationProblemPlusJSONResponse) VisitEndSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EndSubscription401JSONResponse externalRef0.AuthErrorResponse
+
+func (response EndSubscription401JSONResponse) VisitEndSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EndSubscription403JSONResponse externalRef0.AuthErrorResponse
+
+func (response EndSubscription403JSONResponse) VisitEndSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EndSubscription404Response struct {
+}
+
+func (response EndSubscription404Response) VisitEndSubscriptionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type EndSubscription409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response EndSubscription409ApplicationProblemPlusJSONResponse) VisitEndSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseSubscriptionRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PauseSubscriptionJSONRequestBody
+}
+
+type PauseSubscriptionResponseObject interface {
+	VisitPauseSubscriptionResponse(w http.ResponseWriter) error
+}
+
+type PauseSubscription200JSONResponse OrdersSubscription
+
+func (response PauseSubscription200JSONResponse) VisitPauseSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseSubscription400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response PauseSubscription400ApplicationProblemPlusJSONResponse) VisitPauseSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseSubscription401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PauseSubscription401JSONResponse) VisitPauseSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseSubscription403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PauseSubscription403JSONResponse) VisitPauseSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseSubscription404Response struct {
+}
+
+func (response PauseSubscription404Response) VisitPauseSubscriptionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PauseSubscription409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response PauseSubscription409ApplicationProblemPlusJSONResponse) VisitPauseSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeSubscriptionRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *ResumeSubscriptionJSONRequestBody
+}
+
+type ResumeSubscriptionResponseObject interface {
+	VisitResumeSubscriptionResponse(w http.ResponseWriter) error
+}
+
+type ResumeSubscription200JSONResponse OrdersSubscription
+
+func (response ResumeSubscription200JSONResponse) VisitResumeSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeSubscription400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response ResumeSubscription400ApplicationProblemPlusJSONResponse) VisitResumeSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeSubscription401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ResumeSubscription401JSONResponse) VisitResumeSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeSubscription403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ResumeSubscription403JSONResponse) VisitResumeSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeSubscription404Response struct {
+}
+
+func (response ResumeSubscription404Response) VisitResumeSubscriptionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ResumeSubscription409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response ResumeSubscription409ApplicationProblemPlusJSONResponse) VisitResumeSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListQuoteTemplatesRequestObject struct {
 	Params ListQuoteTemplatesParams
 }
@@ -9100,6 +10942,36 @@ type StrictServerInterface interface {
 	// PutOrdersSettings Save the Orders settings
 	// (PUT /api/v1/orders/settings)
 	PutOrdersSettings(ctx context.Context, request PutOrdersSettingsRequestObject) (PutOrdersSettingsResponseObject, error)
+	// ListSubscriptions List subscriptions
+	// (GET /api/v1/orders/subscriptions)
+	ListSubscriptions(ctx context.Context, request ListSubscriptionsRequestObject) (ListSubscriptionsResponseObject, error)
+	// CreateSubscription Create a subscription
+	// (POST /api/v1/orders/subscriptions)
+	CreateSubscription(ctx context.Context, request CreateSubscriptionRequestObject) (CreateSubscriptionResponseObject, error)
+	// GetSubscription Get a subscription
+	// (GET /api/v1/orders/subscriptions/{id})
+	GetSubscription(ctx context.Context, request GetSubscriptionRequestObject) (GetSubscriptionResponseObject, error)
+	// UpdateSubscription Save a subscription
+	// (PUT /api/v1/orders/subscriptions/{id})
+	UpdateSubscription(ctx context.Context, request UpdateSubscriptionRequestObject) (UpdateSubscriptionResponseObject, error)
+	// ActivateSubscription Activate a subscription
+	// (POST /api/v1/orders/subscriptions/{id}/activate)
+	ActivateSubscription(ctx context.Context, request ActivateSubscriptionRequestObject) (ActivateSubscriptionResponseObject, error)
+	// CancelSubscription Cancel a subscription
+	// (POST /api/v1/orders/subscriptions/{id}/cancel)
+	CancelSubscription(ctx context.Context, request CancelSubscriptionRequestObject) (CancelSubscriptionResponseObject, error)
+	// ListSubscriptionChanges List a subscription's changes
+	// (GET /api/v1/orders/subscriptions/{id}/changes)
+	ListSubscriptionChanges(ctx context.Context, request ListSubscriptionChangesRequestObject) (ListSubscriptionChangesResponseObject, error)
+	// EndSubscription End a subscription
+	// (POST /api/v1/orders/subscriptions/{id}/end)
+	EndSubscription(ctx context.Context, request EndSubscriptionRequestObject) (EndSubscriptionResponseObject, error)
+	// PauseSubscription Pause a subscription
+	// (POST /api/v1/orders/subscriptions/{id}/pause)
+	PauseSubscription(ctx context.Context, request PauseSubscriptionRequestObject) (PauseSubscriptionResponseObject, error)
+	// ResumeSubscription Resume a subscription
+	// (POST /api/v1/orders/subscriptions/{id}/resume)
+	ResumeSubscription(ctx context.Context, request ResumeSubscriptionRequestObject) (ResumeSubscriptionResponseObject, error)
 	// ListQuoteTemplates List quote templates
 	// (GET /api/v1/orders/templates)
 	ListQuoteTemplates(ctx context.Context, request ListQuoteTemplatesRequestObject) (ListQuoteTemplatesResponseObject, error)
@@ -10551,6 +12423,313 @@ func (sh *strictHandler) PutOrdersSettings(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutOrdersSettingsResponseObject); ok {
 		if err := validResponse.VisitPutOrdersSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSubscriptions operation middleware
+func (sh *strictHandler) ListSubscriptions(w http.ResponseWriter, r *http.Request, params ListSubscriptionsParams) {
+	var request ListSubscriptionsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSubscriptions(ctx, request.(ListSubscriptionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSubscriptions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSubscriptionsResponseObject); ok {
+		if err := validResponse.VisitListSubscriptionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateSubscription operation middleware
+func (sh *strictHandler) CreateSubscription(w http.ResponseWriter, r *http.Request) {
+	var request CreateSubscriptionRequestObject
+
+	var body CreateSubscriptionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSubscription(ctx, request.(CreateSubscriptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSubscription")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateSubscriptionResponseObject); ok {
+		if err := validResponse.VisitCreateSubscriptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSubscription operation middleware
+func (sh *strictHandler) GetSubscription(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetSubscriptionRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSubscription(ctx, request.(GetSubscriptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSubscription")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSubscriptionResponseObject); ok {
+		if err := validResponse.VisitGetSubscriptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateSubscription operation middleware
+func (sh *strictHandler) UpdateSubscription(w http.ResponseWriter, r *http.Request, id int64) {
+	var request UpdateSubscriptionRequestObject
+
+	request.Id = id
+
+	var body UpdateSubscriptionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateSubscription(ctx, request.(UpdateSubscriptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateSubscription")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateSubscriptionResponseObject); ok {
+		if err := validResponse.VisitUpdateSubscriptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ActivateSubscription operation middleware
+func (sh *strictHandler) ActivateSubscription(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ActivateSubscriptionRequestObject
+
+	request.Id = id
+
+	var body ActivateSubscriptionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ActivateSubscription(ctx, request.(ActivateSubscriptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ActivateSubscription")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ActivateSubscriptionResponseObject); ok {
+		if err := validResponse.VisitActivateSubscriptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelSubscription operation middleware
+func (sh *strictHandler) CancelSubscription(w http.ResponseWriter, r *http.Request, id int64) {
+	var request CancelSubscriptionRequestObject
+
+	request.Id = id
+
+	var body CancelSubscriptionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelSubscription(ctx, request.(CancelSubscriptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelSubscription")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelSubscriptionResponseObject); ok {
+		if err := validResponse.VisitCancelSubscriptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSubscriptionChanges operation middleware
+func (sh *strictHandler) ListSubscriptionChanges(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ListSubscriptionChangesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSubscriptionChanges(ctx, request.(ListSubscriptionChangesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSubscriptionChanges")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSubscriptionChangesResponseObject); ok {
+		if err := validResponse.VisitListSubscriptionChangesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EndSubscription operation middleware
+func (sh *strictHandler) EndSubscription(w http.ResponseWriter, r *http.Request, id int64) {
+	var request EndSubscriptionRequestObject
+
+	request.Id = id
+
+	var body EndSubscriptionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EndSubscription(ctx, request.(EndSubscriptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EndSubscription")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EndSubscriptionResponseObject); ok {
+		if err := validResponse.VisitEndSubscriptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PauseSubscription operation middleware
+func (sh *strictHandler) PauseSubscription(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PauseSubscriptionRequestObject
+
+	request.Id = id
+
+	var body PauseSubscriptionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PauseSubscription(ctx, request.(PauseSubscriptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PauseSubscription")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PauseSubscriptionResponseObject); ok {
+		if err := validResponse.VisitPauseSubscriptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResumeSubscription operation middleware
+func (sh *strictHandler) ResumeSubscription(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ResumeSubscriptionRequestObject
+
+	request.Id = id
+
+	var body ResumeSubscriptionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResumeSubscription(ctx, request.(ResumeSubscriptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResumeSubscription")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResumeSubscriptionResponseObject); ok {
+		if err := validResponse.VisitResumeSubscriptionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -242,7 +242,7 @@ func TestQuote_OptionalLinesAreLeftOutOfTheTotalsAndChosenAtAccept(t *testing.T)
 
 	sent := markSent(t, c, q)
 	optionalA := sent.Lines[1].Id
-	res = c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: sent.Revision, Into: gen.DraftOrder, OptionalLineIds: &[]int64{optionalA}})
+	res = c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: sent.Revision, Into: gen.OrdersAcceptInputIntoDraftOrder, OptionalLineIds: &[]int64{optionalA}})
 	mustStatus(t, res, http.StatusOK, "accept")
 	var accepted gen.OrdersAccepted
 	res.JSON(&accepted)
@@ -264,13 +264,13 @@ func TestAcceptQuote_MakesADraftOrderOnce(t *testing.T) {
 	h := newHarness(t, harnessOptions{})
 	c := h.SignIn(t, quoter...)
 	q := createQuote(t, c, custBusiness, productLine(varBolt, 2))
-	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.DraftOrder}),
+	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.OrdersAcceptInputIntoDraftOrder}),
 		http.StatusConflict, "quote_not_sent", "accept a draft")
 	sent := markSent(t, c, q)
-	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.DraftOrder, OptionalLineIds: &[]int64{sent.Lines[0].Id}}),
+	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.OrdersAcceptInputIntoDraftOrder, OptionalLineIds: &[]int64{sent.Lines[0].Id}}),
 		http.StatusBadRequest, "", "a line that is not optional")
 
-	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.DraftOrder})
+	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.OrdersAcceptInputIntoDraftOrder})
 	mustStatus(t, res, http.StatusOK, "accept")
 	var a gen.OrdersAccepted
 	res.JSON(&a)
@@ -290,7 +290,7 @@ func TestAcceptQuote_MakesADraftOrderOnce(t *testing.T) {
 	if n := eventsNamed(t, h, "orders.quote.accepted", q.Id); n != 1 {
 		t.Errorf("%d accepted events, want 1", n)
 	}
-	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.DraftOrder}),
+	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.OrdersAcceptInputIntoDraftOrder}),
 		http.StatusConflict, "quote_already_accepted", "accept again")
 	got := c.Do(http.MethodGet, quotePath(q.Id), nil)
 	mustStatus(t, got, http.StatusOK, "get")
@@ -307,10 +307,10 @@ func TestAcceptQuote_AndConfirmNeedsTheConfirmKey(t *testing.T) {
 	h := newHarness(t, harnessOptions{})
 	c := h.SignIn(t, quoter...)
 	q := markSent(t, c, createQuote(t, c, custBusiness, productLine(varBolt, 1)))
-	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.ConfirmedOrder})
+	res := c.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 1, Into: gen.OrdersAcceptInputIntoConfirmedOrder})
 	mustStatus(t, res, http.StatusForbidden, "accept and confirm without the key")
 	boss := h.SignIn(t, confirmer...)
-	res = boss.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, boss, q.Id), Revision: 1, Into: gen.ConfirmedOrder})
+	res = boss.Do(http.MethodPost, quotePath(q.Id, "accept"), gen.OrdersAcceptInput{ExpectedUpdatedAt: quoteAt(t, boss, q.Id), Revision: 1, Into: gen.OrdersAcceptInputIntoConfirmedOrder})
 	mustStatus(t, res, http.StatusOK, "accept and confirm")
 	var got gen.OrdersAccepted
 	res.JSON(&got)

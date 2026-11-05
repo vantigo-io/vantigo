@@ -2,6 +2,7 @@ package contracts_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 )
@@ -24,6 +25,11 @@ func TestDueOrdersRequest_Validate(t *testing.T) {
 		{"too many customers", contracts.DueOrdersRequest{CustomerIDs: make([]int32, contracts.MaxActualsRequests+1)}, false},
 		{"a customer twice", contracts.DueOrdersRequest{CustomerIDs: []int32{3, 3}}, false},
 		{"an order twice", contracts.DueOrdersRequest{OrderIDs: []int64{7, 8, 7}}, false},
+		{"subscriptions", contracts.DueOrdersRequest{SubscriptionIDs: []int64{1001}}, true},
+		{"orders and subscriptions", contracts.DueOrdersRequest{OrderIDs: []int64{1001}, SubscriptionIDs: []int64{1001}}, true},
+		{"customers and subscriptions", contracts.DueOrdersRequest{CustomerIDs: []int32{1}, SubscriptionIDs: []int64{1}}, false},
+		{"a subscription twice", contracts.DueOrdersRequest{SubscriptionIDs: []int64{4, 4}}, false},
+		{"too many documents", contracts.DueOrdersRequest{OrderIDs: make([]int64, contracts.MaxBillableRows), SubscriptionIDs: []int64{1}}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -62,6 +68,35 @@ func TestAllocateRequest_Validate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			if err := (contracts.AllocateRequest{Lines: tc.lines}).Validate(); (err == nil) != tc.ok {
+				t.Errorf("Validate() = %v, want ok %v", err, tc.ok)
+			}
+		})
+	}
+}
+
+// An allocate request may name subscriptions instead of lines, each once and
+// each with a date to bill through.
+func TestAllocateRequest_ValidateSubscriptions(t *testing.T) {
+	t.Parallel()
+	through := time.Date(2027, time.January, 31, 0, 0, 0, 0, time.UTC)
+	sub := func(id int64, at time.Time) contracts.AllocateSubscription {
+		return contracts.AllocateSubscription{SubscriptionID: id, Through: at}
+	}
+	cases := []struct {
+		name string
+		req  contracts.AllocateRequest
+		ok   bool
+	}{
+		{"one subscription", contracts.AllocateRequest{Subscriptions: []contracts.AllocateSubscription{sub(1, through)}}, true},
+		{"a line and a subscription", contracts.AllocateRequest{Lines: []contracts.AllocateLine{{LineID: 1, Quantity: "1"}},
+			Subscriptions: []contracts.AllocateSubscription{sub(1, through)}}, true},
+		{"no date", contracts.AllocateRequest{Subscriptions: []contracts.AllocateSubscription{sub(1, time.Time{})}}, false},
+		{"a subscription twice", contracts.AllocateRequest{Subscriptions: []contracts.AllocateSubscription{sub(1, through), sub(1, through)}}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if err := tc.req.Validate(); (err == nil) != tc.ok {
 				t.Errorf("Validate() = %v, want ok %v", err, tc.ok)
 			}
 		})

@@ -9,15 +9,19 @@ components:
                     format: date-time
                     type: string
                 into:
+                    description: "draft_order (the default), confirmed_order (also needs orders:sales-confirm) or subscription (needs orders:subscriptions-manage and plan; every line a service or free text, O20)."
                     enum:
                         - draft_order
                         - confirmed_order
+                        - subscription
                     type: string
                 optionalLineIds:
                     items:
                         format: int64
                         type: integer
                     type: array
+                plan:
+                    $ref: "#/components/schemas/OrdersSubscriptionPlan"
                 overrideReason:
                     description: "Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note."
                     maxLength: 500
@@ -35,15 +39,16 @@ components:
             type: object
         OrdersAccepted:
             additionalProperties: false
-            description: The accepted quote and the document made from it.
+            description: "The accepted quote and the document made from it: an order, or a subscription."
             properties:
                 order:
                     $ref: "#/components/schemas/OrdersOrder"
                 quote:
                     $ref: "#/components/schemas/OrdersQuote"
+                subscription:
+                    $ref: "#/components/schemas/OrdersSubscription"
             required:
                 - quote
-                - order
             type: object
         OrdersAddress:
             additionalProperties: false
@@ -160,6 +165,8 @@ components:
                     description: "The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it)."
                     format: date-time
                     type: string
+                plan:
+                    $ref: "#/components/schemas/OrdersSubscriptionPlan"
                 overrideReason:
                     description: "Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note."
                     maxLength: 500
@@ -342,6 +349,11 @@ components:
                     items:
                         $ref: "#/components/schemas/OrdersCurrencySum"
                     type: array
+                activeSubscriptions:
+                    description: "The active and paused subscriptions, counted, and their value per year net of VAT (O42)."
+                    items:
+                        $ref: "#/components/schemas/OrdersCurrencySum"
+                    type: array
                 openQuotes:
                     items:
                         $ref: "#/components/schemas/OrdersCurrencySum"
@@ -355,6 +367,7 @@ components:
                 - openQuotes
                 - orderedNotDelivered
                 - deliveredNotInvoiced
+                - activeSubscriptions
             type: object
         OrdersDeclineInput:
             additionalProperties: false
@@ -448,6 +461,25 @@ components:
             required:
                 - version
                 - expectedUpdatedAt
+            type: object
+        OrdersEndInput:
+            additionalProperties: false
+            description: "End a subscription (O44): endDate's period is the last one billed."
+            properties:
+                endDate:
+                    format: date
+                    type: string
+                expectedUpdatedAt:
+                    description: "The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it)."
+                    format: date-time
+                    type: string
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - version
+                - expectedUpdatedAt
+                - endDate
             type: object
         OrdersGridOption:
             additionalProperties: false
@@ -713,6 +745,16 @@ components:
                 unit:
                     maxLength: 20
                     type: string
+                validFrom:
+                    description: "A subscription line's first period start it bills (O44); null from the start."
+                    format: date
+                    nullable: true
+                    type: string
+                validTo:
+                    description: "A subscription line's last day in force (O44): it bills the periods starting on or before it; null open."
+                    format: date
+                    nullable: true
+                    type: string
                 unitPrice:
                     description: Net of VAT (O19); null while a catalog line has no price in the currency.
                     format: double
@@ -913,6 +955,8 @@ components:
                     description: "The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it)."
                     format: date-time
                     type: string
+                plan:
+                    $ref: "#/components/schemas/OrdersSubscriptionPlan"
                 overrideReason:
                     description: "Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note."
                     maxLength: 500
@@ -1418,6 +1462,24 @@ components:
             required:
                 - channel
             type: object
+        OrdersPauseInput:
+            additionalProperties: false
+            description: "Pause a subscription (O44) from a period start: from, else the first period that starts after today and has no live allocation."
+            properties:
+                expectedUpdatedAt:
+                    description: "The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it)."
+                    format: date-time
+                    type: string
+                from:
+                    format: date
+                    type: string
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - version
+                - expectedUpdatedAt
+            type: object
         OrdersPerson:
             additionalProperties: false
             description: "A user as snapshotted on the document: the salesperson or an actor (O13, O29)."
@@ -1848,6 +1910,25 @@ components:
                 - lines
                 - expectedUpdatedAt
             type: object
+        OrdersResumeInput:
+            additionalProperties: false
+            description: "Resume a paused subscription (O44) from a period start on or after the pause; the periods between are skipped."
+            properties:
+                expectedUpdatedAt:
+                    description: "The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it)."
+                    format: date-time
+                    type: string
+                from:
+                    format: date
+                    type: string
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - version
+                - expectedUpdatedAt
+                - from
+            type: object
         OrdersRevisionInput:
             additionalProperties: false
             description: The revision the client read.
@@ -1935,6 +2016,8 @@ components:
                 message:
                     maxLength: 4000
                     type: string
+                plan:
+                    $ref: "#/components/schemas/OrdersSubscriptionPlan"
                 overrideReason:
                     description: "Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note."
                     maxLength: 500
@@ -2136,6 +2219,549 @@ components:
                     type: array
             required:
                 - items
+            type: object
+        OrdersSubscription:
+            additionalProperties: false
+            description: "A subscription (O42): its header, plan and status. version is its optimistic-concurrency token: a draft's saves leave it, and every lifecycle step and every change of an activated subscription bumps it. lines are those in force from its latest change on (validTo null); earlierLines the dated lines a change ended. billedThrough is derived (O43): the last day of the unbroken run, from the start, of periods invoiced or skipped. nextChangeFrom is the earliest period start a change may take effect from. totals are a full period's at lines."
+            properties:
+                activatedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                activatedBy:
+                    $ref: "#/components/schemas/OrdersPerson"
+                billedThrough:
+                    format: date
+                    nullable: true
+                    type: string
+                billing:
+                    description: "in_advance bills a period when its first day is due, in_arrears when its last day is (O43)."
+                    enum:
+                        - in_advance
+                        - in_arrears
+                    type: string
+                interval:
+                    enum:
+                        - monthly
+                        - quarterly
+                        - half_yearly
+                        - yearly
+                    type: string
+                invoiceDay:
+                    description: "The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due."
+                    format: int32
+                    maximum: 28
+                    minimum: 1
+                    nullable: true
+                    type: integer
+                noticeMonths:
+                    description: The notice in months, 0 to 12; informational, printed.
+                    format: int32
+                    maximum: 12
+                    minimum: 0
+                    type: integer
+                startDate:
+                    format: date
+                    type: string
+                cancelledAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                closingText:
+                    maxLength: 4000
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                currency:
+                    maxLength: 3
+                    type: string
+                customer:
+                    $ref: "#/components/schemas/OrdersCustomerSnapshot"
+                discountVisible:
+                    type: boolean
+                earlierLines:
+                    items:
+                        $ref: "#/components/schemas/OrdersLine"
+                    type: array
+                endDate:
+                    format: date
+                    nullable: true
+                    type: string
+                endedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                internalNote:
+                    maxLength: 4000
+                    type: string
+                introText:
+                    maxLength: 4000
+                    type: string
+                language:
+                    enum:
+                        - nb
+                        - en
+                    type: string
+                lines:
+                    items:
+                        $ref: "#/components/schemas/OrdersLine"
+                    type: array
+                nextChangeFrom:
+                    format: date
+                    type: string
+                number:
+                    format: int64
+                    type: integer
+                origin:
+                    $ref: "#/components/schemas/OrdersOrigin"
+                pausedFrom:
+                    format: date
+                    nullable: true
+                    type: string
+                paymentTermsDays:
+                    format: int32
+                    type: integer
+                periods:
+                    items:
+                        $ref: "#/components/schemas/OrdersSubscriptionPeriod"
+                    type: array
+                pricesIncludeVat:
+                    type: boolean
+                projectId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                salesperson:
+                    $ref: "#/components/schemas/OrdersPerson"
+                sourceQuoteId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                status:
+                    enum:
+                        - draft
+                        - active
+                        - paused
+                        - ended
+                        - cancelled
+                    type: string
+                totals:
+                    $ref: "#/components/schemas/OrdersTotals"
+                updatedAt:
+                    format: date-time
+                    type: string
+                version:
+                    format: int32
+                    type: integer
+                yourReference:
+                    maxLength: 100
+                    type: string
+            required:
+                - id
+                - number
+                - status
+                - interval
+                - billing
+                - startDate
+                - noticeMonths
+                - version
+                - nextChangeFrom
+                - customer
+                - yourReference
+                - currency
+                - pricesIncludeVat
+                - paymentTermsDays
+                - discountVisible
+                - language
+                - introText
+                - closingText
+                - internalNote
+                - origin
+                - totals
+                - lines
+                - earlierLines
+                - periods
+                - createdAt
+                - updatedAt
+            type: object
+        OrdersSubscriptionInput:
+            additionalProperties: false
+            description: "A new draft subscription (O42). clientRequestId makes the create idempotent (O27)."
+            properties:
+                billing:
+                    description: "in_advance bills a period when its first day is due, in_arrears when its last day is (O43)."
+                    enum:
+                        - in_advance
+                        - in_arrears
+                    type: string
+                endDate:
+                    format: date
+                    nullable: true
+                    type: string
+                interval:
+                    enum:
+                        - monthly
+                        - quarterly
+                        - half_yearly
+                        - yearly
+                    type: string
+                invoiceDay:
+                    description: "The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due."
+                    format: int32
+                    maximum: 28
+                    minimum: 1
+                    nullable: true
+                    type: integer
+                noticeMonths:
+                    description: The notice in months, 0 to 12; informational, printed.
+                    format: int32
+                    maximum: 12
+                    minimum: 0
+                    type: integer
+                startDate:
+                    format: date
+                    type: string
+                clientRequestId:
+                    format: uuid
+                    type: string
+                closingText:
+                    maxLength: 4000
+                    type: string
+                contactId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                currency:
+                    maxLength: 3
+                    minLength: 3
+                    type: string
+                customerId:
+                    format: int32
+                    type: integer
+                deliveryAddressId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                discountVisible:
+                    type: boolean
+                internalNote:
+                    maxLength: 4000
+                    type: string
+                introText:
+                    maxLength: 4000
+                    type: string
+                language:
+                    enum:
+                        - nb
+                        - en
+                    type: string
+                lines:
+                    items:
+                        $ref: "#/components/schemas/OrdersLineInput"
+                    maxItems: 500
+                    type: array
+                paymentTermsDays:
+                    format: int32
+                    maximum: 365
+                    minimum: 0
+                    type: integer
+                pricesIncludeVat:
+                    type: boolean
+                projectId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                salespersonId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                yourReference:
+                    maxLength: 100
+                    type: string
+            required:
+                - clientRequestId
+                - customerId
+                - interval
+                - billing
+                - startDate
+            type: object
+        OrdersSubscriptionPage:
+            additionalProperties: false
+            description: One page of subscriptions and how many match.
+            properties:
+                items:
+                    items:
+                        $ref: "#/components/schemas/OrdersSubscriptionSummary"
+                    type: array
+                total:
+                    format: int32
+                    type: integer
+            required:
+                - items
+                - total
+            type: object
+        OrdersSubscriptionPeriod:
+            additionalProperties: false
+            description: "One billing period (O43): its first and last day, whether it is a partial first period, what it bills net of VAT, and its state — invoiced (every line's period on an issued invoice), draft (on a draft invoice), skipped (by a pause), paused (after the pause), due (today, not yet on an invoice) or upcoming. invoiceNumbers are the invoices that billed it."
+            properties:
+                amount:
+                    format: double
+                    type: number
+                end:
+                    format: date
+                    type: string
+                invoiceNumbers:
+                    items:
+                        format: int64
+                        type: integer
+                    type: array
+                partial:
+                    type: boolean
+                start:
+                    format: date
+                    type: string
+                state:
+                    enum:
+                        - invoiced
+                        - draft
+                        - skipped
+                        - paused
+                        - due
+                        - upcoming
+                    type: string
+            required:
+                - start
+                - end
+                - partial
+                - amount
+                - state
+                - invoiceNumbers
+            type: object
+        OrdersSubscriptionPlan:
+            additionalProperties: false
+            description: "A subscription's plan (O42), when a quote is accepted as a subscription."
+            properties:
+                billing:
+                    description: "in_advance bills a period when its first day is due, in_arrears when its last day is (O43)."
+                    enum:
+                        - in_advance
+                        - in_arrears
+                    type: string
+                endDate:
+                    format: date
+                    nullable: true
+                    type: string
+                interval:
+                    enum:
+                        - monthly
+                        - quarterly
+                        - half_yearly
+                        - yearly
+                    type: string
+                invoiceDay:
+                    description: "The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due."
+                    format: int32
+                    maximum: 28
+                    minimum: 1
+                    nullable: true
+                    type: integer
+                noticeMonths:
+                    description: The notice in months, 0 to 12; informational, printed.
+                    format: int32
+                    maximum: 12
+                    minimum: 0
+                    type: integer
+                startDate:
+                    format: date
+                    type: string
+            required:
+                - interval
+                - billing
+                - startDate
+            type: object
+        OrdersSubscriptionSummary:
+            additionalProperties: false
+            description: "A subscription in a list: net and gross are a full period's at the lines in force from its latest change on."
+            properties:
+                billedThrough:
+                    format: date
+                    nullable: true
+                    type: string
+                billing:
+                    enum:
+                        - in_advance
+                        - in_arrears
+                    type: string
+                currency:
+                    type: string
+                customerId:
+                    format: int32
+                    type: integer
+                customerName:
+                    type: string
+                endDate:
+                    format: date
+                    nullable: true
+                    type: string
+                gross:
+                    format: double
+                    type: number
+                id:
+                    format: int64
+                    type: integer
+                interval:
+                    enum:
+                        - monthly
+                        - quarterly
+                        - half_yearly
+                        - yearly
+                    type: string
+                net:
+                    format: double
+                    type: number
+                number:
+                    format: int64
+                    type: integer
+                startDate:
+                    format: date
+                    type: string
+                status:
+                    enum:
+                        - draft
+                        - active
+                        - paused
+                        - ended
+                        - cancelled
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - number
+                - status
+                - interval
+                - billing
+                - startDate
+                - customerId
+                - customerName
+                - currency
+                - net
+                - gross
+                - updatedAt
+            type: object
+        OrdersSubscriptionUpdate:
+            additionalProperties: false
+            description: "Save a subscription (O44). A draft takes everything. An active or paused one takes the header's texts, references, contact and noticeMonths, and lines as they are to be from effectiveFrom on; its interval, billing, start and end are kept (end it with end). Lines named by id are kept when unchanged."
+            properties:
+                billing:
+                    description: "in_advance bills a period when its first day is due, in_arrears when its last day is (O43)."
+                    enum:
+                        - in_advance
+                        - in_arrears
+                    type: string
+                endDate:
+                    format: date
+                    nullable: true
+                    type: string
+                interval:
+                    enum:
+                        - monthly
+                        - quarterly
+                        - half_yearly
+                        - yearly
+                    type: string
+                invoiceDay:
+                    description: "The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due."
+                    format: int32
+                    maximum: 28
+                    minimum: 1
+                    nullable: true
+                    type: integer
+                noticeMonths:
+                    description: The notice in months, 0 to 12; informational, printed.
+                    format: int32
+                    maximum: 12
+                    minimum: 0
+                    type: integer
+                startDate:
+                    format: date
+                    type: string
+                effectiveFrom:
+                    description: "The period start a change of an active or paused subscription's lines takes effect from; absent is nextChangeFrom."
+                    format: date
+                    nullable: true
+                    type: string
+                expectedUpdatedAt:
+                    description: "The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it)."
+                    format: date-time
+                    type: string
+                closingText:
+                    maxLength: 4000
+                    type: string
+                contactId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                currency:
+                    maxLength: 3
+                    minLength: 3
+                    type: string
+                customerId:
+                    format: int32
+                    type: integer
+                deliveryAddressId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                discountVisible:
+                    type: boolean
+                internalNote:
+                    maxLength: 4000
+                    type: string
+                introText:
+                    maxLength: 4000
+                    type: string
+                language:
+                    enum:
+                        - nb
+                        - en
+                    type: string
+                lines:
+                    items:
+                        $ref: "#/components/schemas/OrdersLineInput"
+                    maxItems: 500
+                    type: array
+                paymentTermsDays:
+                    format: int32
+                    maximum: 365
+                    minimum: 0
+                    type: integer
+                pricesIncludeVat:
+                    type: boolean
+                projectId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                salespersonId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                yourReference:
+                    maxLength: 100
+                    type: string
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - version
+                - expectedUpdatedAt
+                - customerId
+                - lines
             type: object
         OrdersTemplate:
             additionalProperties: false
@@ -4920,6 +5546,530 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access+orders:settings
+    /api/v1/orders/subscriptions:
+        get:
+            description: "Subscriptions, newest first, filtered by customer, status and a search (O42)."
+            operationId: listSubscriptions
+            parameters:
+                - in: query
+                  name: customerId
+                  schema:
+                      format: int32
+                      type: integer
+                - description: Any of the statuses; none means all.
+                  explode: true
+                  in: query
+                  name: status
+                  schema:
+                      items:
+                          enum:
+                              - draft
+                              - active
+                              - paused
+                              - ended
+                              - cancelled
+                          type: string
+                      type: array
+                  style: form
+                - description: "Matches the number, the customer's name and your reference."
+                  in: query
+                  name: q
+                  schema:
+                      maxLength: 100
+                      type: string
+                - in: query
+                  name: page
+                  schema:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                      format: int32
+                      maximum: 200
+                      minimum: 1
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersSubscriptionPage"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — paging out of range."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+            summary: "List subscriptions"
+            tags:
+                - Subscriptions
+            x-vantigo-access: permission:orders:access
+        post:
+            description: "Creates a draft subscription by hand (O42): services only (subscription_goods_not_allowed), free-text lines, sections and notes. clientRequestId makes the create idempotent (O27): a repeat answers the first subscription with 200."
+            operationId: createSubscription
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersSubscriptionInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersSubscription"
+                    description: OK
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersSubscription"
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, too_many_lines, optional_not_allowed, subscription_goods_not_allowed, customer_disabled, project_customer_mismatch, a line's codes."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — client_request_reused."
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Service Unavailable — dependency_unavailable."
+            summary: "Create a subscription"
+            tags:
+                - Subscriptions
+            x-vantigo-access: permission:orders:access+orders:subscriptions-manage
+    "/api/v1/orders/subscriptions/{id}":
+        get:
+            description: "The subscription with its lines in force from its latest change on, its earlier dated lines, and its periods (O43): each invoiced, on a draft invoice, skipped, paused, due today or upcoming."
+            operationId: getSubscription
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersSubscription"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such subscription. The body is empty.
+            summary: "Get a subscription"
+            tags:
+                - Subscriptions
+            x-vantigo-access: permission:orders:access
+        put:
+            description: "Replaces a draft subscription's header, plan and lines. On an active or paused one takes the header's texts, references, contact and notice, and the lines from effectiveFrom on (O44): a period start no earlier than the first period without a live allocation, which is the default; a line changed or removed ends the day before, and a line changed or added starts on it."
+            operationId: updateSubscription
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersSubscriptionUpdate"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersSubscription"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, too_many_lines, optional_not_allowed, subscription_goods_not_allowed, subscription_not_editable, not_a_period_start, a line's codes."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such subscription. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, change_in_billed_period, subscription_not_editable, line_kind_changed."
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Service Unavailable — dependency_unavailable."
+            summary: "Save a subscription"
+            tags:
+                - Subscriptions
+            x-vantigo-access: permission:orders:access+orders:subscriptions-manage
+    "/api/v1/orders/subscriptions/{id}/activate":
+        post:
+            description: "Activates a draft (O42): every product line priced (line_unpriced) and with a VAT code (vat_code_unmapped), the customer usable (customer_disabled), at least one product line (subscription_empty). Publishes orders.subscription.started.v1."
+            operationId: activateSubscription
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersVersionInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersSubscription"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — customer_disabled, line_unpriced, vat_code_unmapped, subscription_goods_not_allowed."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such subscription. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, subscription_not_draft, subscription_empty."
+            summary: "Activate a subscription"
+            tags:
+                - Subscriptions
+            x-vantigo-access: permission:orders:access+orders:subscriptions-manage
+    "/api/v1/orders/subscriptions/{id}/cancel":
+        post:
+            description: "Cancels a draft, or an active subscription with nothing billed — no live allocation (subscription_billed). Publishes orders.subscription.ended.v1 for an active one."
+            operationId: cancelSubscription
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersVersionInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersSubscription"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such subscription. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, subscription_not_cancellable, subscription_billed."
+            summary: "Cancel a subscription"
+            tags:
+                - Subscriptions
+            x-vantigo-access: permission:orders:access+orders:subscriptions-manage
+    "/api/v1/orders/subscriptions/{id}/changes":
+        get:
+            description: "The subscription's change log (O44)."
+            operationId: listSubscriptionChanges
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersChangeList"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such subscription. The body is empty.
+            summary: "List a subscription's changes"
+            tags:
+                - Subscriptions
+            x-vantigo-access: permission:orders:access
+    "/api/v1/orders/subscriptions/{id}/end":
+        post:
+            description: "Sets the end date (O44): its period is the last one billed. The end must be on or after the last day of the last period with a live allocation (end_before_billed), or the user credits first. Publishes orders.subscription.ended.v1."
+            operationId: endSubscription
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersEndInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersSubscription"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such subscription. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, subscription_not_active, end_before_billed."
+            summary: "End a subscription"
+            tags:
+                - Subscriptions
+            x-vantigo-access: permission:orders:access+orders:subscriptions-manage
+    "/api/v1/orders/subscriptions/{id}/pause":
+        post:
+            description: "Stops billing from a period start (O44): from, else the first period that starts after today and has no live allocation. Publishes orders.subscription.changed.v1."
+            operationId: pauseSubscription
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersPauseInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersSubscription"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, not_a_period_start."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such subscription. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, subscription_not_active, change_in_billed_period."
+            summary: "Pause a subscription"
+            tags:
+                - Subscriptions
+            x-vantigo-access: permission:orders:access+orders:subscriptions-manage
+    "/api/v1/orders/subscriptions/{id}/resume":
+        post:
+            description: "Restarts billing from a chosen period start on or after the pause (O44); the periods between are recorded as skipped and never billed. Publishes orders.subscription.changed.v1."
+            operationId: resumeSubscription
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: int64
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersResumeInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersSubscription"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors, not_a_period_start."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such subscription. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Conflict — version_conflict, subscription_not_paused."
+            summary: "Resume a subscription"
+            tags:
+                - Subscriptions
+            x-vantigo-access: permission:orders:access+orders:subscriptions-manage
     /api/v1/orders/templates:
         get:
             description: "Every quote template, by name (O23)."

@@ -14,18 +14,19 @@ import (
 )
 
 const allocationOrders = `-- name: AllocationOrders :many
-SELECT id, order_id, line_id FROM orders.invoice_allocations WHERE id = ANY($1::bigint[])
+SELECT id, order_id, subscription_id, line_id FROM orders.invoice_allocations WHERE id = ANY($1::bigint[])
 `
 
 type AllocationOrdersRow struct {
-	ID      int64
-	OrderID int64
-	LineID  int64
+	ID             int64
+	OrderID        *int64
+	SubscriptionID *int64
+	LineID         int64
 }
 
-// AllocationOrders is, for the holder, the order and line of each named
-// allocation, read before the locks: an allocation never moves, so these
-// are the rows to lock.
+// AllocationOrders is, for the holder, the order or subscription and the
+// line of each named allocation, read before the locks: an allocation never
+// moves, so these are the rows to lock.
 func (q *Queries) AllocationOrders(ctx context.Context, ids []int64) ([]AllocationOrdersRow, error) {
 	rows, err := q.db.Query(ctx, allocationOrders, ids)
 	if err != nil {
@@ -35,7 +36,12 @@ func (q *Queries) AllocationOrders(ctx context.Context, ids []int64) ([]Allocati
 	var items []AllocationOrdersRow
 	for rows.Next() {
 		var i AllocationOrdersRow
-		if err := rows.Scan(&i.ID, &i.OrderID, &i.LineID); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrderID,
+			&i.SubscriptionID,
+			&i.LineID,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -47,11 +53,14 @@ func (q *Queries) AllocationOrders(ctx context.Context, ids []int64) ([]Allocati
 }
 
 const allocationsByIDs = `-- name: AllocationsByIDs :many
-SELECT a.id, a.revision, a.order_id, o.number AS order_number, a.line_id, a.quantity, a.unit_price,
-       a.discount_percent, a.amount, a.vat_code_id, l.description, l.unit, o.currency::text AS currency,
-       o.project_id, o.your_reference, a.state, a.period_start, a.period_end
+SELECT a.id, a.revision, a.kind, coalesce(a.order_id, a.subscription_id)::bigint AS order_id,
+       coalesce(o.number, s.number)::bigint AS order_number, a.line_id, a.quantity, a.unit_price,
+       a.discount_percent, a.amount, a.vat_code_id, l.description, l.unit,
+       coalesce(o.currency, s.currency)::text AS currency, coalesce(o.project_id, s.project_id) AS project_id,
+       coalesce(o.your_reference, s.your_reference)::text AS your_reference, a.state, a.period_start, a.period_end
 FROM orders.invoice_allocations a
-JOIN orders.orders o ON o.id = a.order_id
+LEFT JOIN orders.orders o ON o.id = a.order_id
+LEFT JOIN orders.subscriptions s ON s.id = a.subscription_id
 JOIN orders.lines l ON l.id = a.line_id
 WHERE a.id = ANY($1::bigint[])
 ORDER BY a.id
@@ -60,6 +69,7 @@ ORDER BY a.id
 type AllocationsByIDsRow struct {
 	ID              int64
 	Revision        int32
+	Kind            string
 	OrderID         int64
 	OrderNumber     int64
 	LineID          int64
@@ -79,8 +89,8 @@ type AllocationsByIDsRow struct {
 }
 
 // AllocationsByIDs is the allocations named as they stand, each with its
-// line's text and its order's references, in id order; an id that does not
-// exist is absent.
+// line's text and its order's — or subscription's — references, in id
+// order; an id that does not exist is absent.
 func (q *Queries) AllocationsByIDs(ctx context.Context, ids []int64) ([]AllocationsByIDsRow, error) {
 	rows, err := q.db.Query(ctx, allocationsByIDs, ids)
 	if err != nil {
@@ -93,6 +103,7 @@ func (q *Queries) AllocationsByIDs(ctx context.Context, ids []int64) ([]Allocati
 		if err := rows.Scan(
 			&i.ID,
 			&i.Revision,
+			&i.Kind,
 			&i.OrderID,
 			&i.OrderNumber,
 			&i.LineID,
@@ -303,12 +314,12 @@ INSERT INTO orders.invoice_allocations (
     $1, $2, 'order_line', $3, $4,
     $5, $6, $7, 'draft', 1, $8, $8
 )
-RETURNING id, line_id, order_id, kind, period_start, period_end, quantity, unit_price, discount_percent, amount, vat_code_id, state, revision, invoice_id, invoice_number, issue_date, invoiced_at, invoiced_by, invoiced_by_display, released_at, created_at, updated_at
+RETURNING id, line_id, order_id, kind, period_start, period_end, quantity, unit_price, discount_percent, amount, vat_code_id, state, revision, invoice_id, invoice_number, issue_date, invoiced_at, invoiced_by, invoiced_by_display, released_at, created_at, updated_at, subscription_id
 `
 
 type InsertAllocationParams struct {
 	LineID          int64
-	OrderID         int64
+	OrderID         *int64
 	Quantity        pgtype.Numeric
 	UnitPrice       pgtype.Numeric
 	DiscountPercent pgtype.Numeric
@@ -354,6 +365,7 @@ func (q *Queries) InsertAllocation(ctx context.Context, arg InsertAllocationPara
 		&i.ReleasedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SubscriptionID,
 	)
 	return i, err
 }
@@ -393,7 +405,7 @@ func (q *Queries) LineOrders(ctx context.Context, ids []int64) ([]LineOrdersRow,
 }
 
 const lockAllocationsByIDs = `-- name: LockAllocationsByIDs :many
-SELECT id, line_id, order_id, kind, period_start, period_end, quantity, unit_price, discount_percent, amount, vat_code_id, state, revision, invoice_id, invoice_number, issue_date, invoiced_at, invoiced_by, invoiced_by_display, released_at, created_at, updated_at FROM orders.invoice_allocations WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
+SELECT id, line_id, order_id, kind, period_start, period_end, quantity, unit_price, discount_percent, amount, vat_code_id, state, revision, invoice_id, invoice_number, issue_date, invoiced_at, invoiced_by, invoiced_by_display, released_at, created_at, updated_at, subscription_id FROM orders.invoice_allocations WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
 `
 
 // LockAllocationsByIDs takes allocations FOR UPDATE in id order, after
@@ -430,6 +442,7 @@ func (q *Queries) LockAllocationsByIDs(ctx context.Context, ids []int64) ([]Orde
 			&i.ReleasedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SubscriptionID,
 		); err != nil {
 			return nil, err
 		}
@@ -450,7 +463,7 @@ ORDER BY id FOR UPDATE
 // LockOrderDraftAllocations takes an order's draft allocations FOR UPDATE
 // in id order, after the order and its lines: the order page's Release
 // draft allocations, before it writes them.
-func (q *Queries) LockOrderDraftAllocations(ctx context.Context, orderID int64) ([]int64, error) {
+func (q *Queries) LockOrderDraftAllocations(ctx context.Context, orderID *int64) ([]int64, error) {
 	rows, err := q.db.Query(ctx, lockOrderDraftAllocations, orderID)
 	if err != nil {
 		return nil, err
@@ -471,7 +484,7 @@ func (q *Queries) LockOrderDraftAllocations(ctx context.Context, orderID int64) 
 }
 
 const lockOrderLinesByIDs = `-- name: LockOrderLinesByIDs :many
-SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name FROM orders.lines
+SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to FROM orders.lines
 WHERE id = ANY($1::bigint[]) AND owner_kind = 'order'
 ORDER BY id FOR UPDATE
 `
@@ -521,6 +534,8 @@ func (q *Queries) LockOrderLinesByIDs(ctx context.Context, ids []int64) ([]Order
 			&i.DeliveryMethod,
 			&i.ProductID,
 			&i.PackagingName,
+			&i.ValidFrom,
+			&i.ValidTo,
 		); err != nil {
 			return nil, err
 		}
@@ -627,13 +642,13 @@ func (q *Queries) LockOrdersByIDs(ctx context.Context, ids []int64) ([]OrdersOrd
 }
 
 const orderAllocations = `-- name: OrderAllocations :many
-SELECT id, line_id, order_id, kind, period_start, period_end, quantity, unit_price, discount_percent, amount, vat_code_id, state, revision, invoice_id, invoice_number, issue_date, invoiced_at, invoiced_by, invoiced_by_display, released_at, created_at, updated_at FROM orders.invoice_allocations WHERE order_id = $1 ORDER BY id
+SELECT id, line_id, order_id, kind, period_start, period_end, quantity, unit_price, discount_percent, amount, vat_code_id, state, revision, invoice_id, invoice_number, issue_date, invoiced_at, invoiced_by, invoiced_by_display, released_at, created_at, updated_at, subscription_id FROM orders.invoice_allocations WHERE order_id = $1 ORDER BY id
 `
 
 // OrderAllocations is every allocation of an order, in id order: the order
 // page's invoices (O41) and its lines' draft allocations, and the edit rules
 // (O26) under the order's lock.
-func (q *Queries) OrderAllocations(ctx context.Context, orderID int64) ([]OrdersInvoiceAllocation, error) {
+func (q *Queries) OrderAllocations(ctx context.Context, orderID *int64) ([]OrdersInvoiceAllocation, error) {
 	rows, err := q.db.Query(ctx, orderAllocations, orderID)
 	if err != nil {
 		return nil, err
@@ -665,6 +680,7 @@ func (q *Queries) OrderAllocations(ctx context.Context, orderID int64) ([]Orders
 			&i.ReleasedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SubscriptionID,
 		); err != nil {
 			return nil, err
 		}
@@ -757,7 +773,7 @@ RETURNING id
 
 type ReleaseOrderDraftAllocationsParams struct {
 	Now     *time.Time
-	OrderID int64
+	OrderID *int64
 }
 
 // ReleaseOrderDraftAllocations turns every draft allocation of an order

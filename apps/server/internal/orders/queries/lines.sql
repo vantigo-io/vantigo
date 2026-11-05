@@ -1,12 +1,12 @@
 -- name: InsertLine :one
--- InsertLine writes one line of a quote, an order or a template (O15), with
--- a new id. The amounts are docmath's (O17), computed by the caller.
+-- InsertLine writes one line of a quote, an order, a template or a
+-- subscription (O15), with a new id; a subscription's line may be dated (O44). The amounts are docmath's (O17), computed by the caller.
 INSERT INTO orders.lines (
     owner_kind, owner_id, position, kind, variant_id, sku, name, unit, description,
     quantity, unit_price, discount_percent, packaging_id, packaging_quantity,
     price_source, vat_code_id, vat_code, vat_rate_percent, vat_category,
     line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, delivery_method,
-    product_id, packaging_name
+    product_id, packaging_name, valid_from, valid_to
 ) VALUES (
     sqlc.arg(owner_kind), sqlc.arg(owner_id), sqlc.arg(position), sqlc.arg(kind), sqlc.narg(variant_id),
     sqlc.narg(sku), sqlc.narg(name), sqlc.arg(unit), sqlc.arg(description), sqlc.narg(quantity),
@@ -14,7 +14,7 @@ INSERT INTO orders.lines (
     sqlc.narg(price_source), sqlc.narg(vat_code_id), sqlc.narg(vat_code), sqlc.narg(vat_rate_percent),
     sqlc.narg(vat_category), sqlc.arg(line_gross), sqlc.arg(line_allowance), sqlc.arg(line_net),
     sqlc.narg(external_line_id), sqlc.arg(invoice_policy), sqlc.arg(optional), sqlc.arg(delivery_method),
-    sqlc.narg(product_id), sqlc.narg(packaging_name)
+    sqlc.narg(product_id), sqlc.narg(packaging_name), sqlc.narg(valid_from), sqlc.narg(valid_to)
 )
 RETURNING *;
 
@@ -27,7 +27,7 @@ INSERT INTO orders.lines (
     quantity, unit_price, discount_percent, packaging_id, packaging_quantity,
     price_source, vat_code_id, vat_code, vat_rate_percent, vat_category,
     line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, delivery_method,
-    product_id, packaging_name
+    product_id, packaging_name, valid_from, valid_to
 ) OVERRIDING SYSTEM VALUE VALUES (
     sqlc.arg(id), sqlc.arg(owner_kind), sqlc.arg(owner_id), sqlc.arg(position), sqlc.arg(kind), sqlc.narg(variant_id),
     sqlc.narg(sku), sqlc.narg(name), sqlc.arg(unit), sqlc.arg(description), sqlc.narg(quantity),
@@ -35,7 +35,7 @@ INSERT INTO orders.lines (
     sqlc.narg(price_source), sqlc.narg(vat_code_id), sqlc.narg(vat_code), sqlc.narg(vat_rate_percent),
     sqlc.narg(vat_category), sqlc.arg(line_gross), sqlc.arg(line_allowance), sqlc.arg(line_net),
     sqlc.narg(external_line_id), sqlc.arg(invoice_policy), sqlc.arg(optional), sqlc.arg(delivery_method),
-    sqlc.narg(product_id), sqlc.narg(packaging_name)
+    sqlc.narg(product_id), sqlc.narg(packaging_name), sqlc.narg(valid_from), sqlc.narg(valid_to)
 )
 RETURNING *;
 

@@ -77,13 +77,16 @@ RETURNING *;
 
 -- name: AllocationsByIDs :many
 -- AllocationsByIDs is the allocations named as they stand, each with its
--- line's text and its order's references, in id order; an id that does not
--- exist is absent.
-SELECT a.id, a.revision, a.order_id, o.number AS order_number, a.line_id, a.quantity, a.unit_price,
-       a.discount_percent, a.amount, a.vat_code_id, l.description, l.unit, o.currency::text AS currency,
-       o.project_id, o.your_reference, a.state, a.period_start, a.period_end
+-- line's text and its order's — or subscription's — references, in id
+-- order; an id that does not exist is absent.
+SELECT a.id, a.revision, a.kind, coalesce(a.order_id, a.subscription_id)::bigint AS order_id,
+       coalesce(o.number, s.number)::bigint AS order_number, a.line_id, a.quantity, a.unit_price,
+       a.discount_percent, a.amount, a.vat_code_id, l.description, l.unit,
+       coalesce(o.currency, s.currency)::text AS currency, coalesce(o.project_id, s.project_id) AS project_id,
+       coalesce(o.your_reference, s.your_reference)::text AS your_reference, a.state, a.period_start, a.period_end
 FROM orders.invoice_allocations a
-JOIN orders.orders o ON o.id = a.order_id
+LEFT JOIN orders.orders o ON o.id = a.order_id
+LEFT JOIN orders.subscriptions s ON s.id = a.subscription_id
 JOIN orders.lines l ON l.id = a.line_id
 WHERE a.id = ANY(sqlc.arg(ids)::bigint[])
 ORDER BY a.id;
@@ -130,10 +133,10 @@ DELETE FROM orders.invoice_allocations
 WHERE line_id = sqlc.arg(line_id) AND state = 'released' AND invoice_id IS NULL;
 
 -- name: AllocationOrders :many
--- AllocationOrders is, for the holder, the order and line of each named
--- allocation, read before the locks: an allocation never moves, so these
--- are the rows to lock.
-SELECT id, order_id, line_id FROM orders.invoice_allocations WHERE id = ANY(sqlc.arg(ids)::bigint[]);
+-- AllocationOrders is, for the holder, the order or subscription and the
+-- line of each named allocation, read before the locks: an allocation never
+-- moves, so these are the rows to lock.
+SELECT id, order_id, subscription_id, line_id FROM orders.invoice_allocations WHERE id = ANY(sqlc.arg(ids)::bigint[]);
 
 -- name: LockAllocationsByIDs :many
 -- LockAllocationsByIDs takes allocations FOR UPDATE in id order, after
