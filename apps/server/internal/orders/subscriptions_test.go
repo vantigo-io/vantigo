@@ -509,8 +509,8 @@ func TestSubscription_EndAndCancel(t *testing.T) {
 
 	expectRefusal(t, c.Do(http.MethodPost, subscriptionPath(s.Id, "cancel"), gen.OrdersVersionInput{ExpectedUpdatedAt: s.UpdatedAt, Version: s.Version}),
 		http.StatusConflict, "subscription_billed", "a billed one cancelled")
-	expectRefusal(t, c.Do(http.MethodPost, subscriptionPath(s.Id, "end"), gen.OrdersEndInput{ExpectedUpdatedAt: s.UpdatedAt, Version: s.Version, EndDate: date(2026, 3, 15)}),
-		http.StatusConflict, "end_before_billed", "inside a billed period")
+	expectRefusal(t, c.Do(http.MethodPost, subscriptionPath(s.Id, "end"), gen.OrdersEndInput{ExpectedUpdatedAt: s.UpdatedAt, Version: s.Version, EndDate: date(2026, 2, 15)}),
+		http.StatusConflict, "end_before_billed", "before a billed period")
 	res := c.Do(http.MethodPost, subscriptionPath(s.Id, "end"), gen.OrdersEndInput{ExpectedUpdatedAt: s.UpdatedAt, Version: s.Version, EndDate: date(2026, 5, 31)})
 	mustStatus(t, res, http.StatusOK, "end")
 	s = subscriptionOf(t, res)
@@ -855,4 +855,186 @@ func TestSubscription_HoldsWhatItStillBills(t *testing.T) {
 	if n := held(t, h, varHosting); n != 1 {
 		t.Errorf("hosting held by %d; want the subscription billing it through September", n)
 	}
+}
+
+// endSubscription ends s on end, with final when it is not nil.
+func endSubscription(c *modtest.Client, s gen.OrdersSubscription, end openapi_types.Date, final *gen.OrdersFinalPeriod) *modtest.Response {
+	return c.Do(http.MethodPost, subscriptionPath(s.Id, "end"), gen.OrdersEndInput{
+		ExpectedUpdatedAt: s.UpdatedAt, Version: s.Version, EndDate: end, FinalPeriod: final,
+	})
+}
+
+func finalPeriod(v gen.OrdersFinalPeriod) *gen.OrdersFinalPeriod { return &v }
+
+// periodOf is the subscription's period starting on start.
+func periodOf(t *testing.T, s gen.OrdersSubscription, start string) gen.OrdersSubscriptionPeriod {
+	t.Helper()
+	for _, p := range s.Periods {
+		if p.Start.Format(time.DateOnly) == start {
+			return p
+		}
+	}
+	t.Fatalf("subscription %d has no period from %s: %+v", s.Id, start, s.Periods)
+	return gen.OrdersSubscriptionPeriod{}
+}
+
+// A new subscription takes its final period from the settings, full until
+// they say otherwise; a create may name its own (owner, 2026-11-06).
+func TestSubscription_FinalPeriodDefaultsFromTheSettings(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	withServices(h)
+	c := h.SignIn(t, subscriber...)
+	if s := createSubscription(t, c, custBusiness, date(2026, 10, 1), gen.OrdersSubscriptionInputBillingInAdvance); s.FinalPeriod != gen.Full {
+		t.Fatalf("final period %q before any setting; want full", s.FinalPeriod)
+	}
+	admin := h.SignIn(t, settingsKey...)
+	res := admin.Do(http.MethodPut, settingsPath, gen.OrdersSettingsInput{
+		Revision: 0, QuoteSeriesStart: 1, OrderSeriesStart: 1, QuoteValidityDays: 30, DefaultPaymentTermsDays: 14,
+		MailTexts: []gen.OrdersMailText{}, SubscriptionFinalPeriodDefault: finalPeriod(gen.Prorated),
+	})
+	mustStatus(t, res, http.StatusOK, "settings")
+	var st gen.OrdersSettings
+	res.JSON(&st)
+	if st.SubscriptionFinalPeriodDefault != gen.Prorated {
+		t.Fatalf("settings %+v; want prorated by default", st)
+	}
+	if s := createSubscription(t, c, custBusiness, date(2026, 10, 1), gen.OrdersSubscriptionInputBillingInAdvance); s.FinalPeriod != gen.Prorated {
+		t.Errorf("final period %q; want the settings' prorated", s.FinalPeriod)
+	}
+	res = c.Do(http.MethodPost, subscriptionsPath, gen.OrdersSubscriptionInput{
+		ClientRequestId: uuid.New(), CustomerId: custBusiness, Interval: gen.OrdersSubscriptionInputIntervalMonthly,
+		Billing: gen.OrdersSubscriptionInputBillingInAdvance, StartDate: date(2026, 10, 1), FinalPeriod: finalPeriod(gen.Full),
+	})
+	mustStatus(t, res, http.StatusCreated, "create in full")
+	if s := subscriptionOf(t, res); s.FinalPeriod != gen.Full {
+		t.Errorf("final period %q; want the create's full", s.FinalPeriod)
+	}
+	res = admin.Do(http.MethodPut, settingsPath, gen.OrdersSettingsInput{
+		Revision: st.Revision, QuoteSeriesStart: 1, OrderSeriesStart: 1, QuoteValidityDays: 30, DefaultPaymentTermsDays: 14,
+		MailTexts: []gen.OrdersMailText{},
+	})
+	mustStatus(t, res, http.StatusOK, "settings without the default")
+	res.JSON(&st)
+	if st.SubscriptionFinalPeriodDefault != gen.Prorated {
+		t.Errorf("a save leaving the default out made it %q; want it kept", st.SubscriptionFinalPeriodDefault)
+	}
+}
+
+// Ending mid-period bills the period in full by default; prorated — the
+// subscription's own setting when End names none — ends it on the end at
+// its days over the month's, to øre, at a unit price docmath reproduces, and
+// the choice is stored and logged (owner, 2026-11-06).
+func TestSubscription_TheFinalPeriodFullOrProrated(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	withServices(h)
+	c := h.SignIn(t, subscriber...)
+	p := orders.Module().BillableOrders(h.Deps())
+	hosting := func(final *gen.OrdersFinalPeriod) gen.OrdersSubscription {
+		res := c.Do(http.MethodPost, subscriptionsPath, gen.OrdersSubscriptionInput{
+			ClientRequestId: uuid.New(), CustomerId: custBusiness, Interval: gen.OrdersSubscriptionInputIntervalMonthly,
+			Billing: gen.OrdersSubscriptionInputBillingInAdvance, StartDate: date(2026, 9, 1), FinalPeriod: final,
+			Lines: &[]gen.OrdersLineInput{productLine(varHosting, 3)},
+		})
+		mustStatus(t, res, http.StatusCreated, "create")
+		return activate(t, c, subscriptionOf(t, res))
+	}
+
+	full := hosting(nil)
+	res := endSubscription(c, full, date(2026, 10, 15), nil)
+	mustStatus(t, res, http.StatusOK, "end in full")
+	full = subscriptionOf(t, res)
+	if oct := dueOf(t, p, full.Id, onDay(2026, 10, 31))["2026-10-01"]; len(oct) != 1 || oct[0].PeriodEnd.Format(time.DateOnly) != "2026-10-31" ||
+		oct[0].UnitPrice != "99.90000000" || oct[0].ToInvoice != "3.000" {
+		t.Errorf("October in full %+v; want the whole month at 3 × 99.90", oct)
+	}
+
+	prorated := hosting(finalPeriod(gen.Prorated))
+	res = endSubscription(c, prorated, date(2026, 10, 15), nil)
+	mustStatus(t, res, http.StatusOK, "end on the subscription's own prorated")
+	prorated = subscriptionOf(t, res)
+	if prorated.FinalPeriod != gen.Prorated {
+		t.Fatalf("final period %q; want prorated kept", prorated.FinalPeriod)
+	}
+	oct := dueOf(t, p, prorated.Id, onDay(2026, 10, 31))["2026-10-01"]
+	if len(oct) != 1 || oct[0].PeriodEnd.Format(time.DateOnly) != "2026-10-15" || oct[0].UnitPrice != "48.34000000" ||
+		oct[0].ToInvoice != "3.000" || oct[0].DiscountPercent != "0.00" {
+		t.Fatalf("October pro-rated %+v; want 15/31 of 299.70 = 145.02 as 3 × 48.34 to the 15th", oct)
+	}
+	if per := periodOf(t, prorated, "2026-10-01"); !per.Partial || per.Amount != 145.02 || per.End.Format(time.DateOnly) != "2026-10-15" {
+		t.Errorf("October as shown %+v; want partial at 145.02 to the 15th", per)
+	}
+	made := allocateThrough(t, p, prorated.Id, onDay(2026, 10, 31))
+	if last := made[len(made)-1]; last.Amount != "145.02" || last.PeriodEnd.Format(time.DateOnly) != "2026-10-15" {
+		t.Errorf("October's allocation %+v; want 145.02 to the 15th", last)
+	}
+
+	// Named on End, the choice is stored and logged.
+	named := hosting(nil)
+	res = endSubscription(c, named, date(2026, 10, 15), finalPeriod(gen.Prorated))
+	mustStatus(t, res, http.StatusOK, "end prorated")
+	if named = subscriptionOf(t, res); named.FinalPeriod != gen.Prorated {
+		t.Errorf("final period %q; want End's prorated stored", named.FinalPeriod)
+	}
+	res = c.Do(http.MethodGet, subscriptionPath(named.Id, "changes"), nil)
+	var changes gen.OrdersChangeList
+	res.JSON(&changes)
+	last := changes.Items[len(changes.Items)-1]
+	if !slices.ContainsFunc(last.Actions, func(a gen.OrdersChangeAction) bool {
+		return a.Kind == "final_period" && *a.From == "full" && *a.To == "prorated"
+	}) {
+		t.Errorf("End's actions %+v; want final_period from full to prorated", last.Actions)
+	}
+}
+
+// A period both first and final pro-rates over its actual span: from the
+// start to the end, over the month's days (owner, 2026-11-06).
+func TestSubscription_AFirstAndFinalPeriod(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	withServices(h)
+	c := h.SignIn(t, subscriber...)
+	p := orders.Module().BillableOrders(h.Deps())
+	end := date(2026, 10, 20)
+	res := c.Do(http.MethodPost, subscriptionsPath, gen.OrdersSubscriptionInput{
+		ClientRequestId: uuid.New(), CustomerId: custBusiness, Interval: gen.OrdersSubscriptionInputIntervalMonthly,
+		Billing: gen.OrdersSubscriptionInputBillingInAdvance, StartDate: date(2026, 10, 10), EndDate: &end,
+		FinalPeriod: finalPeriod(gen.Prorated), Lines: &[]gen.OrdersLineInput{productLine(varHosting, 1)},
+	})
+	mustStatus(t, res, http.StatusCreated, "create")
+	s := activate(t, c, subscriptionOf(t, res))
+	due := dueOf(t, p, s.Id, onDay(2026, 12, 31))
+	oct := due["2026-10-10"]
+	if len(due) != 1 || len(oct) != 1 || oct[0].PeriodEnd.Format(time.DateOnly) != "2026-10-20" || oct[0].UnitPrice != "35.45000000" {
+		t.Errorf("due %v; want one period, 10 to 20 October, at 11/31 of 99.90 = 35.45", due)
+	}
+}
+
+// A final period with a live allocation is not pro-rated (final_period_billed):
+// End refuses it, a save of the plan refuses it, and End in full is allowed —
+// so is an end inside the billed period, but not before a period billed
+// after it (end_before_billed).
+func TestSubscription_ABilledFinalPeriodIsNotProrated(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	withServices(h)
+	c := h.SignIn(t, subscriber...)
+	p := orders.Module().BillableOrders(h.Deps())
+	s := activeSubscription(t, c, date(2026, 9, 1), gen.OrdersSubscriptionInputBillingInAdvance, 1)
+	allocateThrough(t, p, s.Id, onDay(2026, 10, 31))
+	s = getSubscription(t, c, s.Id)
+
+	expectRefusal(t, endSubscription(c, s, date(2026, 9, 20), nil), http.StatusConflict, "end_before_billed", "before October")
+	expectRefusal(t, endSubscription(c, s, date(2026, 10, 15), finalPeriod(gen.Prorated)), http.StatusConflict, "final_period_billed", "prorated")
+	res := endSubscription(c, s, date(2026, 10, 15), finalPeriod(gen.Full))
+	mustStatus(t, res, http.StatusOK, "end in full")
+	s = subscriptionOf(t, res)
+	if per := periodOf(t, s, "2026-10-01"); per.Partial || per.End.Format(time.DateOnly) != "2026-10-31" || per.State != gen.OrdersSubscriptionPeriodStateDraft {
+		t.Errorf("October %+v; want the whole month on its draft", per)
+	}
+	expectRefusal(t, c.Do(http.MethodPut, subscriptionPath(s.Id), gen.OrdersSubscriptionUpdate{
+		ExpectedUpdatedAt: s.UpdatedAt, Version: s.Version, CustomerId: custBusiness,
+		Lines: []gen.OrdersLineInput{keptLine(s.Lines[0], 1)}, FinalPeriod: finalPeriod(gen.Prorated),
+	}), http.StatusConflict, "final_period_billed", "the plan made prorated")
 }

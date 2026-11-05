@@ -464,11 +464,13 @@ components:
             type: object
         OrdersEndInput:
             additionalProperties: false
-            description: "End a subscription (O44): endDate's period is the last one billed."
+            description: "End a subscription (O44): endDate's period is the last one billed, as finalPeriod says; absent is the subscription's own finalPeriod. The choice is stored on the subscription."
             properties:
                 endDate:
                     format: date
                     type: string
+                finalPeriod:
+                    $ref: "#/components/schemas/OrdersFinalPeriod"
                 expectedUpdatedAt:
                     description: "The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it)."
                     format: date-time
@@ -481,6 +483,12 @@ components:
                 - expectedUpdatedAt
                 - endDate
             type: object
+        OrdersFinalPeriod:
+            description: "How a subscription bills the period its end falls in when the end is not the period's last day (owner, 2026-11-06): full, the whole period; prorated, by its days from the period's start to the end, inclusive, over the full period's days, to øre."
+            enum:
+                - full
+                - prorated
+            type: string
         OrdersGridOption:
             additionalProperties: false
             description: "One axis of the grid: the option's name and its values."
@@ -2098,7 +2106,10 @@ components:
                     type: array
                 sendingAvailable:
                     type: boolean
+                subscriptionFinalPeriodDefault:
+                    $ref: "#/components/schemas/OrdersFinalPeriod"
             required:
+                - subscriptionFinalPeriodDefault
                 - quoteSeriesStart
                 - orderSeriesStart
                 - nextQuoteNumber
@@ -2151,6 +2162,8 @@ components:
                     format: uuid
                     nullable: true
                     type: string
+                subscriptionFinalPeriodDefault:
+                    $ref: "#/components/schemas/OrdersFinalPeriod"
             required:
                 - revision
                 - quoteSeriesStart
@@ -2292,6 +2305,8 @@ components:
                     format: date-time
                     nullable: true
                     type: string
+                finalPeriod:
+                    $ref: "#/components/schemas/OrdersFinalPeriod"
                 id:
                     format: int64
                     type: integer
@@ -2361,6 +2376,7 @@ components:
                     maxLength: 100
                     type: string
             required:
+                - finalPeriod
                 - id
                 - number
                 - status
@@ -2402,6 +2418,8 @@ components:
                     format: date
                     nullable: true
                     type: string
+                finalPeriod:
+                    $ref: "#/components/schemas/OrdersFinalPeriod"
                 interval:
                     enum:
                         - monthly
@@ -2506,7 +2524,7 @@ components:
             type: object
         OrdersSubscriptionPeriod:
             additionalProperties: false
-            description: "One billing period (O43): its first and last day, whether it is a partial first period, what it bills net of VAT, and its state — invoiced (every line's period on an issued invoice), draft (on a draft invoice), skipped (by a pause), paused (after the pause), due (today, not yet on an invoice) or upcoming. invoiceNumbers are the invoices that billed it."
+            description: "One billing period (O43): its first and last day, whether it is partial — a first period from a start that is not the first of a month, or a final period pro-rated to the end — what it bills net of VAT, and its state — invoiced (every line's period on an issued invoice), draft (on a draft invoice), skipped (by a pause), paused (after the pause), due (today, not yet on an invoice) or upcoming. invoiceNumbers are the invoices that billed it."
             properties:
                 amount:
                     format: double
@@ -2555,6 +2573,8 @@ components:
                     format: date
                     nullable: true
                     type: string
+                finalPeriod:
+                    $ref: "#/components/schemas/OrdersFinalPeriod"
                 interval:
                     enum:
                         - monthly
@@ -2656,7 +2676,7 @@ components:
             type: object
         OrdersSubscriptionUpdate:
             additionalProperties: false
-            description: "Save a subscription (O44). A draft takes everything. An active or paused one takes the header's texts, references, contact and noticeMonths, and lines as they are to be from effectiveFrom on; its interval, billing, start and end are kept (end it with end). Lines named by id are kept when unchanged."
+            description: "Save a subscription (O44). A draft takes everything. An active or paused one takes the header's texts, references, contact, noticeMonths and finalPeriod, and lines as they are to be from effectiveFrom on; its interval, billing, start and end are kept (end it with end). Lines named by id are kept when unchanged."
             properties:
                 billing:
                     description: "in_advance bills a period when its first day is due, in_arrears when its last day is (O43)."
@@ -2668,6 +2688,8 @@ components:
                     format: date
                     nullable: true
                     type: string
+                finalPeriod:
+                    $ref: "#/components/schemas/OrdersFinalPeriod"
                 interval:
                     enum:
                         - monthly
@@ -5759,7 +5781,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Conflict — version_conflict, change_in_billed_period, subscription_not_editable, line_kind_changed."
+                    description: "Conflict — version_conflict, change_in_billed_period, subscription_not_editable, line_kind_changed, final_period_billed."
                 "503":
                     content:
                         application/problem+json:
@@ -5910,7 +5932,7 @@ paths:
             x-vantigo-access: permission:orders:access
     "/api/v1/orders/subscriptions/{id}/end":
         post:
-            description: "Sets the end date (O44): its period is the last one billed. The end must be on or after the last day of the last period with a live allocation (end_before_billed), or the user credits first. Publishes orders.subscription.ended.v1."
+            description: "Sets the end date (O44): its period is the last one billed, in full or pro-rated to the end as finalPeriod — or, absent, the subscription's own — says, and the choice is stored and logged. No period with a live allocation may start after the end (end_before_billed), and a final period with a live allocation is not pro-rated (final_period_billed): the user credits first. Publishes orders.subscription.ended.v1."
             operationId: endSubscription
             parameters:
                 - in: path
@@ -5957,7 +5979,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Conflict — version_conflict, subscription_not_active, end_before_billed."
+                    description: "Conflict — version_conflict, subscription_not_active, end_before_billed, final_period_billed."
             summary: "End a subscription"
             tags:
                 - Subscriptions

@@ -77,6 +77,24 @@ func (e OrdersDocumentRefKind) Valid() bool {
 	}
 }
 
+// Defines values for OrdersFinalPeriod.
+const (
+	Full     OrdersFinalPeriod = "full"
+	Prorated OrdersFinalPeriod = "prorated"
+)
+
+// Valid indicates whether the value is a known member of the OrdersFinalPeriod enum.
+func (e OrdersFinalPeriod) Valid() bool {
+	switch e {
+	case Full:
+		return true
+	case Prorated:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrdersIntakeGroupBy.
 const (
 	OrdersIntakeGroupByCategory    OrdersIntakeGroupBy = "category"
@@ -1538,14 +1556,20 @@ type OrdersDocumentRef struct {
 // OrdersDocumentRefKind defines model for OrdersDocumentRef.Kind.
 type OrdersDocumentRefKind string
 
-// OrdersEndInput End a subscription (O44): endDate's period is the last one billed.
+// OrdersEndInput End a subscription (O44): endDate's period is the last one billed, as finalPeriod says; absent is the subscription's own finalPeriod. The choice is stored on the subscription.
 type OrdersEndInput struct {
 	EndDate openapi_types.Date `json:"endDate"`
 
 	// ExpectedUpdatedAt The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it).
 	ExpectedUpdatedAt time.Time `json:"expectedUpdatedAt"`
-	Version           int32     `json:"version"`
+
+	// FinalPeriod How a subscription bills the period its end falls in when the end is not the period's last day (owner, 2026-11-06): full, the whole period; prorated, by its days from the period's start to the end, inclusive, over the full period's days, to øre.
+	FinalPeriod *OrdersFinalPeriod `json:"finalPeriod,omitempty"`
+	Version     int32              `json:"version"`
 }
+
+// OrdersFinalPeriod How a subscription bills the period its end falls in when the end is not the period's last day (owner, 2026-11-06): full, the whole period; prorated, by its days from the period's start to the end, inclusive, over the full period's days, to øre.
+type OrdersFinalPeriod string
 
 // OrdersGridOption One axis of the grid: the option's name and its values.
 type OrdersGridOption struct {
@@ -2259,6 +2283,9 @@ type OrdersSettings struct {
 	// SendChannels The channels sendChannelId may name: the active mail channels as Communications answers them (contracts.OutboundMail), with whether each can send now. Empty when Communications is off.
 	SendChannels     []OrdersSendChannel `json:"sendChannels"`
 	SendingAvailable bool                `json:"sendingAvailable"`
+
+	// SubscriptionFinalPeriodDefault How a subscription bills the period its end falls in when the end is not the period's last day (owner, 2026-11-06): full, the whole period; prorated, by its days from the period's start to the end, inclusive, over the full period's days, to øre.
+	SubscriptionFinalPeriodDefault OrdersFinalPeriod `json:"subscriptionFinalPeriodDefault"`
 }
 
 // OrdersSettingsSendChannelState What the stored sendChannelId is now: disabled (none chosen), ready (the channel can send), unavailable (it exists but cannot send now — its provider is off or an SMTP channel has no credentials) or gone (no active channel has the id, or Communications is off). Anything but ready sends nothing, and GET /meta answers sendingAvailable false.
@@ -2275,6 +2302,9 @@ type OrdersSettingsInput struct {
 	QuoteValidityDays       int32               `json:"quoteValidityDays"`
 	Revision                int32               `json:"revision"`
 	SendChannelId           *openapi_types.UUID `json:"sendChannelId,omitempty"`
+
+	// SubscriptionFinalPeriodDefault How a subscription bills the period its end falls in when the end is not the period's last day (owner, 2026-11-06): full, the whole period; prorated, by its days from the period's start to the end, inclusive, over the full period's days, to øre.
+	SubscriptionFinalPeriodDefault *OrdersFinalPeriod `json:"subscriptionFinalPeriodDefault,omitempty"`
 }
 
 // OrdersSkippedLine A template line left out.
@@ -2320,15 +2350,18 @@ type OrdersSubscription struct {
 	Currency    string                    `json:"currency"`
 
 	// Customer The customer as the document holds it (O13, O14): refreshed on every save of a draft, frozen once a quote is sent or an order confirmed, after which only the delivery address and the contact change.
-	Customer        OrdersCustomerSnapshot     `json:"customer"`
-	DiscountVisible bool                       `json:"discountVisible"`
-	EarlierLines    []OrdersLine               `json:"earlierLines"`
-	EndDate         *openapi_types.Date        `json:"endDate,omitempty"`
-	EndedAt         *time.Time                 `json:"endedAt,omitempty"`
-	Id              int64                      `json:"id"`
-	InternalNote    string                     `json:"internalNote"`
-	Interval        OrdersSubscriptionInterval `json:"interval"`
-	IntroText       string                     `json:"introText"`
+	Customer        OrdersCustomerSnapshot `json:"customer"`
+	DiscountVisible bool                   `json:"discountVisible"`
+	EarlierLines    []OrdersLine           `json:"earlierLines"`
+	EndDate         *openapi_types.Date    `json:"endDate,omitempty"`
+	EndedAt         *time.Time             `json:"endedAt,omitempty"`
+
+	// FinalPeriod How a subscription bills the period its end falls in when the end is not the period's last day (owner, 2026-11-06): full, the whole period; prorated, by its days from the period's start to the end, inclusive, over the full period's days, to øre.
+	FinalPeriod  OrdersFinalPeriod          `json:"finalPeriod"`
+	Id           int64                      `json:"id"`
+	InternalNote string                     `json:"internalNote"`
+	Interval     OrdersSubscriptionInterval `json:"interval"`
+	IntroText    string                     `json:"introText"`
 
 	// InvoiceDay The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due.
 	InvoiceDay     *int32                     `json:"invoiceDay,omitempty"`
@@ -2376,18 +2409,21 @@ type OrdersSubscriptionStatus string
 // OrdersSubscriptionInput A new draft subscription (O42). clientRequestId makes the create idempotent (O27).
 type OrdersSubscriptionInput struct {
 	// Billing in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
-	Billing           OrdersSubscriptionInputBilling  `json:"billing"`
-	ClientRequestId   openapi_types.UUID              `json:"clientRequestId"`
-	ClosingText       *string                         `json:"closingText,omitempty"`
-	ContactId         *int32                          `json:"contactId,omitempty"`
-	Currency          *string                         `json:"currency,omitempty"`
-	CustomerId        int32                           `json:"customerId"`
-	DeliveryAddressId *int32                          `json:"deliveryAddressId,omitempty"`
-	DiscountVisible   *bool                           `json:"discountVisible,omitempty"`
-	EndDate           *openapi_types.Date             `json:"endDate,omitempty"`
-	InternalNote      *string                         `json:"internalNote,omitempty"`
-	Interval          OrdersSubscriptionInputInterval `json:"interval"`
-	IntroText         *string                         `json:"introText,omitempty"`
+	Billing           OrdersSubscriptionInputBilling `json:"billing"`
+	ClientRequestId   openapi_types.UUID             `json:"clientRequestId"`
+	ClosingText       *string                        `json:"closingText,omitempty"`
+	ContactId         *int32                         `json:"contactId,omitempty"`
+	Currency          *string                        `json:"currency,omitempty"`
+	CustomerId        int32                          `json:"customerId"`
+	DeliveryAddressId *int32                         `json:"deliveryAddressId,omitempty"`
+	DiscountVisible   *bool                          `json:"discountVisible,omitempty"`
+	EndDate           *openapi_types.Date            `json:"endDate,omitempty"`
+
+	// FinalPeriod How a subscription bills the period its end falls in when the end is not the period's last day (owner, 2026-11-06): full, the whole period; prorated, by its days from the period's start to the end, inclusive, over the full period's days, to øre.
+	FinalPeriod  *OrdersFinalPeriod              `json:"finalPeriod,omitempty"`
+	InternalNote *string                         `json:"internalNote,omitempty"`
+	Interval     OrdersSubscriptionInputInterval `json:"interval"`
+	IntroText    *string                         `json:"introText,omitempty"`
 
 	// InvoiceDay The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due.
 	InvoiceDay *int32                           `json:"invoiceDay,omitempty"`
@@ -2419,7 +2455,7 @@ type OrdersSubscriptionPage struct {
 	Total int32                       `json:"total"`
 }
 
-// OrdersSubscriptionPeriod One billing period (O43): its first and last day, whether it is a partial first period, what it bills net of VAT, and its state — invoiced (every line's period on an issued invoice), draft (on a draft invoice), skipped (by a pause), paused (after the pause), due (today, not yet on an invoice) or upcoming. invoiceNumbers are the invoices that billed it.
+// OrdersSubscriptionPeriod One billing period (O43): its first and last day, whether it is partial — a first period from a start that is not the first of a month, or a final period pro-rated to the end — what it bills net of VAT, and its state — invoiced (every line's period on an issued invoice), draft (on a draft invoice), skipped (by a pause), paused (after the pause), due (today, not yet on an invoice) or upcoming. invoiceNumbers are the invoices that billed it.
 type OrdersSubscriptionPeriod struct {
 	Amount         float64                       `json:"amount"`
 	End            openapi_types.Date            `json:"end"`
@@ -2435,9 +2471,12 @@ type OrdersSubscriptionPeriodState string
 // OrdersSubscriptionPlan A subscription's plan (O42), when a quote is accepted as a subscription.
 type OrdersSubscriptionPlan struct {
 	// Billing in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
-	Billing  OrdersSubscriptionPlanBilling  `json:"billing"`
-	EndDate  *openapi_types.Date            `json:"endDate,omitempty"`
-	Interval OrdersSubscriptionPlanInterval `json:"interval"`
+	Billing OrdersSubscriptionPlanBilling `json:"billing"`
+	EndDate *openapi_types.Date           `json:"endDate,omitempty"`
+
+	// FinalPeriod How a subscription bills the period its end falls in when the end is not the period's last day (owner, 2026-11-06): full, the whole period; prorated, by its days from the period's start to the end, inclusive, over the full period's days, to øre.
+	FinalPeriod *OrdersFinalPeriod             `json:"finalPeriod,omitempty"`
+	Interval    OrdersSubscriptionPlanInterval `json:"interval"`
 
 	// InvoiceDay The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due.
 	InvoiceDay *int32 `json:"invoiceDay,omitempty"`
@@ -2480,7 +2519,7 @@ type OrdersSubscriptionSummaryInterval string
 // OrdersSubscriptionSummaryStatus defines model for OrdersSubscriptionSummary.Status.
 type OrdersSubscriptionSummaryStatus string
 
-// OrdersSubscriptionUpdate Save a subscription (O44). A draft takes everything. An active or paused one takes the header's texts, references, contact and noticeMonths, and lines as they are to be from effectiveFrom on; its interval, billing, start and end are kept (end it with end). Lines named by id are kept when unchanged.
+// OrdersSubscriptionUpdate Save a subscription (O44). A draft takes everything. An active or paused one takes the header's texts, references, contact, noticeMonths and finalPeriod, and lines as they are to be from effectiveFrom on; its interval, billing, start and end are kept (end it with end). Lines named by id are kept when unchanged.
 type OrdersSubscriptionUpdate struct {
 	// Billing in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
 	Billing           *OrdersSubscriptionUpdateBilling `json:"billing,omitempty"`
@@ -2496,10 +2535,13 @@ type OrdersSubscriptionUpdate struct {
 	EndDate       *openapi_types.Date `json:"endDate,omitempty"`
 
 	// ExpectedUpdatedAt The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it).
-	ExpectedUpdatedAt time.Time                         `json:"expectedUpdatedAt"`
-	InternalNote      *string                           `json:"internalNote,omitempty"`
-	Interval          *OrdersSubscriptionUpdateInterval `json:"interval,omitempty"`
-	IntroText         *string                           `json:"introText,omitempty"`
+	ExpectedUpdatedAt time.Time `json:"expectedUpdatedAt"`
+
+	// FinalPeriod How a subscription bills the period its end falls in when the end is not the period's last day (owner, 2026-11-06): full, the whole period; prorated, by its days from the period's start to the end, inclusive, over the full period's days, to øre.
+	FinalPeriod  *OrdersFinalPeriod                `json:"finalPeriod,omitempty"`
+	InternalNote *string                           `json:"internalNote,omitempty"`
+	Interval     *OrdersSubscriptionUpdateInterval `json:"interval,omitempty"`
+	IntroText    *string                           `json:"introText,omitempty"`
 
 	// InvoiceDay The day of the month the invoice is made on, 1 to 28; null is the period's first day. Informational in this phase: printed, not used to judge what is due.
 	InvoiceDay *int32                            `json:"invoiceDay,omitempty"`

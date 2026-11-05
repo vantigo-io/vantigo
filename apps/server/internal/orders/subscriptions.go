@@ -42,6 +42,13 @@ const (
 	codeChangeInBilledPeriod        = "change_in_billed_period"
 	codeEndBeforeBilled             = "end_before_billed"
 	codeNotAPeriodStart             = "not_a_period_start"
+	codeFinalPeriodBilled           = "final_period_billed"
+)
+
+// How a subscription bills the period its end falls in (owner, 2026-11-06).
+const (
+	finalPeriodFull     = "full"
+	finalPeriodProrated = "prorated"
 )
 
 // invalidSubscriptionTitle is the title of a subscription's 400s.
@@ -60,6 +67,8 @@ const (
 	actionCancelled     = "cancelled"
 	actionEffectiveFrom = "effective_from"
 	actionNoticeChanged = "notice_changed"
+	// actionFinalPeriod is the final period chosen: in the plan, and at End.
+	actionFinalPeriod = "final_period"
 )
 
 // productTypeService is the catalog's type of a variant a subscription may
@@ -74,13 +83,23 @@ type plan struct {
 	end               *time.Time
 	notice            int16
 	invoiceDay        *int16
+	// finalPeriod is full or prorated; "" on a create that leaves it to the
+	// settings' default.
+	finalPeriod string
 }
 
 // readPlan judges a plan's fields into f: an interval and a billing of the
-// four and two, an end on or after the start, a notice of 0 to 12 months and
-// an invoice day of 1 to 28.
-func readPlan(f *fieldErrors, interval, billing string, start time.Time, end *openapi_types.Date, notice, invoiceDay *int32) plan {
+// four and two, an end on or after the start, a notice of 0 to 12 months, an
+// invoice day of 1 to 28 and a final period full or prorated.
+func readPlan(f *fieldErrors, interval, billing string, start time.Time, end *openapi_types.Date, notice, invoiceDay *int32,
+	final *gen.OrdersFinalPeriod) plan {
 	p := plan{interval: interval, billing: billing, start: civil(start)}
+	if final != nil {
+		if !final.Valid() {
+			f.add("finalPeriod", "The final period is full or prorated")
+		}
+		p.finalPeriod = string(*final)
+	}
 	if intervalMonths(interval) == 0 {
 		f.add("interval", "The interval is monthly, quarterly, half_yearly or yearly")
 	}
@@ -222,7 +241,8 @@ func subscriptionView(sch schedule, today time.Time) gen.OrdersSubscription {
 		Id: sub.ID, Number: sub.Number, Status: gen.OrdersSubscriptionStatus(sub.Status),
 		Interval: gen.OrdersSubscriptionInterval(sub.BillingInterval), Billing: gen.OrdersSubscriptionBilling(sub.Billing),
 		StartDate: wireDate(sub.StartDate.Time), EndDate: dateOut(sub.EndDate), NoticeMonths: int32(sub.NoticeMonths),
-		PausedFrom: dateOut(sub.PausedFrom), BilledThrough: dateOut(sub.BilledThrough), Version: sub.Version,
+		FinalPeriod: gen.OrdersFinalPeriod(sub.FinalPeriod),
+		PausedFrom:  dateOut(sub.PausedFrom), BilledThrough: dateOut(sub.BilledThrough), Version: sub.Version,
 		NextChangeFrom: wireDate(sch.firstOpenStart()),
 		Customer:       snapshotOut(h), YourReference: sub.YourReference, Currency: sub.Currency,
 		PricesIncludeVat: sub.PricesIncludeVat, PaymentTermsDays: sub.PaymentTermsDays, DiscountVisible: sub.DiscountVisible,
@@ -477,8 +497,9 @@ type subscriptionOrigin = OrderOrigin
 
 // createSubscriptionRow writes a new draft subscription and its lines on the
 // caller's transaction, which has locked the lines' variants first: the
-// subscription series' next number, the header, the plan and a full
-// period's totals, the lines as given (too_many_lines).
+// subscription series' next number, the header, the plan — its final period
+// the settings' default when the plan leaves it — and a full period's
+// totals, the lines as given (too_many_lines).
 func (s *server) createSubscriptionRow(ctx context.Context, txq *store.Queries, origin subscriptionOrigin, h header, p plan,
 	lines []pricedLine, by actor) (store.OrdersSubscription, []store.OrdersLine, error) {
 	if len(lines) > maxLines {
@@ -489,10 +510,17 @@ func (s *server) createSubscriptionRow(ctx context.Context, txq *store.Queries, 
 	if err != nil {
 		return store.OrdersSubscription{}, nil, err
 	}
+	if p.finalPeriod == "" {
+		settings, err := readSettings(ctx, txq)
+		if err != nil {
+			return store.OrdersSubscription{}, nil, err
+		}
+		p.finalPeriod = settings.subscriptionFinalPeriodDefault
+	}
 	hp, t := insertQuoteParams(h, totalsOfPriced(lines)), totalsOfPriced(lines)
 	row, err := txq.InsertSubscription(ctx, store.InsertSubscriptionParams{
 		Number: number, BillingInterval: p.interval, Billing: p.billing, StartDate: pgDate(&p.start), EndDate: pgDate(p.end),
-		NoticeMonths: p.notice, InvoiceDay: p.invoiceDay,
+		NoticeMonths: p.notice, InvoiceDay: p.invoiceDay, FinalPeriod: p.finalPeriod,
 		CustomerID: hp.CustomerID, CustomerNumber: hp.CustomerNumber, CustomerName: hp.CustomerName, CustomerType: hp.CustomerType,
 		CustomerOrganisationNumber: hp.CustomerOrganisationNumber, CustomerForeignID: hp.CustomerForeignID,
 		CustomerCountry: hp.CustomerCountry, InvoiceAddressLine1: hp.InvoiceAddressLine1, InvoiceAddressLine2: hp.InvoiceAddressLine2,
@@ -614,7 +642,8 @@ func (s *server) CreateSubscription(ctx context.Context, req gen.CreateSubscript
 		}
 		return gen.CreateSubscription200JSONResponse(*repeat), nil
 	}
-	pl := readPlan(&f, string(body.Interval), string(body.Billing), body.StartDate.Time, body.EndDate, body.NoticeMonths, body.InvoiceDay)
+	pl := readPlan(&f, string(body.Interval), string(body.Billing), body.StartDate.Time, body.EndDate, body.NoticeMonths, body.InvoiceDay,
+		body.FinalPeriod)
 	in := headerInput{
 		CustomerID: body.CustomerId, ContactID: body.ContactId, DeliveryAddressID: body.DeliveryAddressId, Currency: body.Currency,
 		DiscountVisible: body.DiscountVisible, IntroText: body.IntroText, ClosingText: body.ClosingText,

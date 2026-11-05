@@ -9,10 +9,13 @@ package orders
 // (k+1)·n months − 1 day], so a month ends on its last day whatever the
 // start's day was. The first period begins on the start date itself, and is
 // partial when the start is not the first of a month: its lines are
-// pro-rated by days, as a fraction of the full period it is part of, to øre
-// — the only pro-rating of this phase. A subscription started on 31 January,
-// monthly, has a first period from 31 January to 31 January at 1/31 of the
-// month.
+// pro-rated by days, as a fraction of the full period it is part of, to øre.
+// A subscription started on 31 January, monthly, has a first period from
+// 31 January to 31 January at 1/31 of the month. The period an end falls in
+// is billed in full, or — the subscription's final period prorated (owner,
+// 2026-11-06) — ends on the end and is pro-rated the same way; a period both
+// first and final pro-rates over its actual span. Those are the only
+// pro-ratings of this phase.
 //
 // A period is due through a date in advance when its first day is on or
 // before it, in arrears when its last day is; and never when it starts more
@@ -66,21 +69,23 @@ func civil(t time.Time) time.Time {
 type period struct {
 	index      int
 	start, end time.Time
-	// full is the first day of the full period this one is part of: start,
-	// but for a partial first period.
-	full time.Time
+	// full and fullEnd are the first and last day of the full period this
+	// one is part of: start and end, but for a partial first period and a
+	// final one pro-rated to the end.
+	full, fullEnd time.Time
 }
 
-// partial reports whether the period is a partial first period.
-func (p period) partial() bool { return !p.full.Equal(p.start) }
+// partial reports whether the period is shorter than its full period: a
+// partial first period, a pro-rated final one, or both.
+func (p period) partial() bool { return !p.full.Equal(p.start) || !p.fullEnd.Equal(p.end) }
 
 // fraction is the share of its full period a period bills: 1, or for a
-// partial first period its days over the full period's days.
+// partial one its days over the full period's days.
 func (p period) fraction() *big.Rat {
 	if !p.partial() {
 		return big.NewRat(1, 1)
 	}
-	return big.NewRat(daysBetween(p.start, p.end)+1, daysBetween(p.full, p.end)+1)
+	return big.NewRat(daysBetween(p.start, p.end)+1, daysBetween(p.full, p.fullEnd)+1)
 }
 
 // daysBetween is the number of days from a to b.
@@ -95,6 +100,9 @@ type calendar struct {
 	// end is the plan's end date; a period starting after it is not one of
 	// the subscription's. nil is no end.
 	end *time.Time
+	// prorateEnd ends the period end falls in on end, pro-rated (the final
+	// period prorated); false bills it in full.
+	prorateEnd bool
 }
 
 // newCalendar is the calendar of a plan; ok false for an interval that is
@@ -120,9 +128,13 @@ func (c calendar) anchor() time.Time {
 // period is the k-th period, from 0.
 func (c calendar) period(k int) period {
 	full := c.anchor().AddDate(0, k*c.months, 0)
-	p := period{index: k, start: full, full: full, end: full.AddDate(0, c.months, -1)}
+	end := full.AddDate(0, c.months, -1)
+	p := period{index: k, start: full, full: full, end: end, fullEnd: end}
 	if k == 0 {
 		p.start = c.start
+	}
+	if c.prorateEnd && c.end != nil && c.end.Before(p.end) && !p.start.After(*c.end) {
+		p.end = *c.end
 	}
 	return p
 }

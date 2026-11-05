@@ -296,17 +296,18 @@ type OrdersQuote struct {
 }
 
 type OrdersSetting struct {
-	ID                      int16
-	QuoteSeriesStart        int64
-	OrderSeriesStart        int64
-	QuoteValidityDays       int32
-	DefaultPaymentTermsDays int32
-	SendChannel             *uuid.UUID
-	ConfirmationOnConfirm   bool
-	CombineByDefault        bool
-	MailTexts               []byte
-	Revision                int32
-	UpdatedAt               time.Time
+	ID                             int16
+	QuoteSeriesStart               int64
+	OrderSeriesStart               int64
+	QuoteValidityDays              int32
+	DefaultPaymentTermsDays        int32
+	SendChannel                    *uuid.UUID
+	ConfirmationOnConfirm          bool
+	CombineByDefault               bool
+	MailTexts                      []byte
+	Revision                       int32
+	UpdatedAt                      time.Time
+	SubscriptionFinalPeriodDefault string
 }
 
 type OrdersSubscription struct {
@@ -319,6 +320,7 @@ type OrdersSubscription struct {
 	EndDate                    pgtype.Date
 	NoticeMonths               int16
 	InvoiceDay                 *int16
+	FinalPeriod                string
 	PausedFrom                 pgtype.Date
 	BilledThrough              pgtype.Date
 	Version                    int32

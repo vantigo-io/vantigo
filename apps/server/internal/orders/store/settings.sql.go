@@ -13,7 +13,7 @@ import (
 )
 
 const getSettings = `-- name: GetSettings :one
-SELECT id, quote_series_start, order_series_start, quote_validity_days, default_payment_terms_days, send_channel, confirmation_on_confirm, combine_by_default, mail_texts, revision, updated_at FROM orders.settings WHERE id = 1
+SELECT id, quote_series_start, order_series_start, quote_validity_days, default_payment_terms_days, send_channel, confirmation_on_confirm, combine_by_default, mail_texts, revision, updated_at, subscription_final_period_default FROM orders.settings WHERE id = 1
 `
 
 // GetSettings reads the one settings row. No row means nothing was ever
@@ -33,12 +33,13 @@ func (q *Queries) GetSettings(ctx context.Context) (OrdersSetting, error) {
 		&i.MailTexts,
 		&i.Revision,
 		&i.UpdatedAt,
+		&i.SubscriptionFinalPeriodDefault,
 	)
 	return i, err
 }
 
 const lockSettings = `-- name: LockSettings :one
-SELECT id, quote_series_start, order_series_start, quote_validity_days, default_payment_terms_days, send_channel, confirmation_on_confirm, combine_by_default, mail_texts, revision, updated_at FROM orders.settings WHERE id = 1 FOR UPDATE
+SELECT id, quote_series_start, order_series_start, quote_validity_days, default_payment_terms_days, send_channel, confirmation_on_confirm, combine_by_default, mail_texts, revision, updated_at, subscription_final_period_default FROM orders.settings WHERE id = 1 FOR UPDATE
 `
 
 // LockSettings reads the settings row under its lock, for a save that judges
@@ -58,6 +59,7 @@ func (q *Queries) LockSettings(ctx context.Context) (OrdersSetting, error) {
 		&i.MailTexts,
 		&i.Revision,
 		&i.UpdatedAt,
+		&i.SubscriptionFinalPeriodDefault,
 	)
 	return i, err
 }
@@ -65,11 +67,12 @@ func (q *Queries) LockSettings(ctx context.Context) (OrdersSetting, error) {
 const upsertSettings = `-- name: UpsertSettings :one
 INSERT INTO orders.settings (
     id, quote_series_start, order_series_start, quote_validity_days, default_payment_terms_days,
-    send_channel, confirmation_on_confirm, combine_by_default, mail_texts, revision, updated_at
+    send_channel, confirmation_on_confirm, combine_by_default, mail_texts, subscription_final_period_default,
+    revision, updated_at
 ) VALUES (
     1, $1, $2, $3,
     $4, $5, $6,
-    $7, $8, 1, $9
+    $7, $8, $9, 1, $10
 )
 ON CONFLICT (id) DO UPDATE SET
     quote_series_start         = EXCLUDED.quote_series_start,
@@ -80,21 +83,23 @@ ON CONFLICT (id) DO UPDATE SET
     confirmation_on_confirm    = EXCLUDED.confirmation_on_confirm,
     combine_by_default         = EXCLUDED.combine_by_default,
     mail_texts                 = EXCLUDED.mail_texts,
+    subscription_final_period_default = EXCLUDED.subscription_final_period_default,
     revision                   = orders.settings.revision + 1,
     updated_at                 = EXCLUDED.updated_at
-RETURNING id, quote_series_start, order_series_start, quote_validity_days, default_payment_terms_days, send_channel, confirmation_on_confirm, combine_by_default, mail_texts, revision, updated_at
+RETURNING id, quote_series_start, order_series_start, quote_validity_days, default_payment_terms_days, send_channel, confirmation_on_confirm, combine_by_default, mail_texts, revision, updated_at, subscription_final_period_default
 `
 
 type UpsertSettingsParams struct {
-	QuoteSeriesStart        int64
-	OrderSeriesStart        int64
-	QuoteValidityDays       int32
-	DefaultPaymentTermsDays int32
-	SendChannel             *uuid.UUID
-	ConfirmationOnConfirm   bool
-	CombineByDefault        bool
-	MailTexts               []byte
-	UpdatedAt               time.Time
+	QuoteSeriesStart               int64
+	OrderSeriesStart               int64
+	QuoteValidityDays              int32
+	DefaultPaymentTermsDays        int32
+	SendChannel                    *uuid.UUID
+	ConfirmationOnConfirm          bool
+	CombineByDefault               bool
+	MailTexts                      []byte
+	SubscriptionFinalPeriodDefault string
+	UpdatedAt                      time.Time
 }
 
 // UpsertSettings writes the one settings row, creating it on the first save,
@@ -109,6 +114,7 @@ func (q *Queries) UpsertSettings(ctx context.Context, arg UpsertSettingsParams) 
 		arg.ConfirmationOnConfirm,
 		arg.CombineByDefault,
 		arg.MailTexts,
+		arg.SubscriptionFinalPeriodDefault,
 		arg.UpdatedAt,
 	)
 	var i OrdersSetting
@@ -124,6 +130,7 @@ func (q *Queries) UpsertSettings(ctx context.Context, arg UpsertSettingsParams) 
 		&i.MailTexts,
 		&i.Revision,
 		&i.UpdatedAt,
+		&i.SubscriptionFinalPeriodDefault,
 	)
 	return i, err
 }

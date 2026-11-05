@@ -135,3 +135,42 @@ func TestCalendar_Proration(t *testing.T) {
 		t.Errorf("a full period = %+v, want the line as it is", full)
 	}
 }
+
+// A final period prorated ends on the end and bills its days over the full
+// period's — a quarter's too, and a period both first and final over its
+// actual span; in full, or ending on the period's last day, it is whole
+// (owner, 2026-11-06).
+func TestCalendar_FinalPeriod(t *testing.T) {
+	t.Parallel()
+	end := day(2027, 2, 10)
+	c, _ := newCalendar(intervalMonthly, day(2027, 1, 1), &end)
+	if p := c.period(1); p.partial() || !p.end.Equal(day(2027, 2, 28)) {
+		t.Errorf("February in full = %+v; want the whole month", p)
+	}
+	c.prorateEnd = true
+	feb := c.period(1)
+	if !feb.partial() || !feb.end.Equal(end) || feb.fraction().Cmp(big.NewRat(10, 28)) != 0 {
+		t.Errorf("February prorated = %+v, fraction %s; want 1 to 10 February at 10/28", feb, feb.fraction())
+	}
+	if p := c.period(0); p.partial() {
+		t.Errorf("January = %+v; want whole, the end is not in it", p)
+	}
+	quarterEnd := day(2027, 5, 15)
+	q, _ := newCalendar(intervalQuarterly, day(2027, 1, 1), &quarterEnd)
+	q.prorateEnd = true
+	if p := q.period(1); !p.end.Equal(quarterEnd) || p.fraction().Cmp(big.NewRat(45, 91)) != 0 {
+		t.Errorf("the second quarter prorated = %+v, fraction %s; want 1 April to 15 May at 45/91", p, p.fraction())
+	}
+	both := day(2027, 1, 20)
+	f, _ := newCalendar(intervalMonthly, day(2027, 1, 10), &both)
+	f.prorateEnd = true
+	if p := f.period(0); !p.partial() || p.fraction().Cmp(big.NewRat(11, 31)) != 0 {
+		t.Errorf("10 to 20 January = %+v, fraction %s; want 11/31", p, p.fraction())
+	}
+	last := day(2027, 2, 28)
+	w, _ := newCalendar(intervalMonthly, day(2027, 1, 1), &last)
+	w.prorateEnd = true
+	if p := w.period(1); p.partial() {
+		t.Errorf("February ending on its last day = %+v; want whole", p)
+	}
+}

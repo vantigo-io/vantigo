@@ -2,8 +2,8 @@ package orders
 
 // The settings operations (orders design §9, O12, O25): the number series'
 // starts, the default validity and payment terms, the channel to send from,
-// whether a confirmation is sent on confirm, the invoicing default and the
-// mail texts.
+// whether a confirmation is sent on confirm, the invoicing default, the mail
+// texts and the final period a new subscription takes.
 
 import (
 	"context"
@@ -50,6 +50,7 @@ func (s *server) settingsView(ctx context.Context, q *store.Queries, st ordersSe
 		ConfirmationOnConfirm: st.confirmationOnConfirm, CombineByDefault: st.combineByDefault,
 		MailTexts: []gen.OrdersMailText{}, SendingAvailable: s.deps.OutboundMail != nil, Revision: st.revision,
 		SendChannelId: st.sendChannel, SendChannels: []gen.OrdersSendChannel{}, SendChannelState: gen.Disabled,
+		SubscriptionFinalPeriodDefault: gen.OrdersFinalPeriod(st.subscriptionFinalPeriodDefault),
 	}
 	for _, t := range st.mailTexts {
 		out.MailTexts = append(out.MailTexts, gen.OrdersMailText{
@@ -109,6 +110,9 @@ func (s *server) PutOrdersSettings(ctx context.Context, req gen.PutOrdersSetting
 	}
 	if b.DefaultPaymentTermsDays < 0 || b.DefaultPaymentTermsDays > 365 {
 		f.add("defaultPaymentTermsDays", "Payment terms are 0 to 365 days")
+	}
+	if b.SubscriptionFinalPeriodDefault != nil && !b.SubscriptionFinalPeriodDefault.Valid() {
+		f.add("subscriptionFinalPeriodDefault", "The final period is full or prorated")
 	}
 	texts := make([]mailTextOverride, 0, len(b.MailTexts))
 	seen := map[string]bool{}
@@ -184,11 +188,15 @@ func (s *server) PutOrdersSettings(ctx context.Context, req gen.PutOrdersSetting
 		if sf.failed() {
 			return refuseInvalid(invalidSettingsTitle, sf)
 		}
+		finalPeriod := cur.subscriptionFinalPeriodDefault
+		if b.SubscriptionFinalPeriodDefault != nil {
+			finalPeriod = string(*b.SubscriptionFinalPeriodDefault)
+		}
 		saved, err := txq.UpsertSettings(ctx, store.UpsertSettingsParams{
 			QuoteSeriesStart: b.QuoteSeriesStart, OrderSeriesStart: b.OrderSeriesStart, QuoteValidityDays: b.QuoteValidityDays,
 			DefaultPaymentTermsDays: b.DefaultPaymentTermsDays, SendChannel: channel,
 			ConfirmationOnConfirm: b.ConfirmationOnConfirm, CombineByDefault: b.CombineByDefault, MailTexts: mailTexts,
-			UpdatedAt: s.deps.Clock(),
+			SubscriptionFinalPeriodDefault: finalPeriod, UpdatedAt: s.deps.Clock(),
 		})
 		if err != nil {
 			return fmt.Errorf("orders: save the settings: %w", err)
