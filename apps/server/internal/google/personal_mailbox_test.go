@@ -146,6 +146,14 @@ func TestPersonalMailbox_Status(t *testing.T) {
 		t.Errorf("closing: %+v, want not_connected", st)
 	}
 
+	// Staff re-points Kari to another trusted Google account: her live
+	// connection is the old account's, never the new one's.
+	second := f.account(t, "kari.n@nordlys.no")
+	f.w.set(userID, &contracts.DirectoryAccount{Provider: "google", ExternalID: second, Enabled: true})
+	if st := status(userID); st.Available || st.Reason != "not_connected" || st.Mailbox != second || st.Address != "kari.n@nordlys.no" {
+		t.Errorf("another account: %+v, want not_connected on the new account", st)
+	}
+
 	// Someone else's account: a row of the account that is not the caller's
 	// is never theirs to send from.
 	_, other := f.h.SignInUser(t)
@@ -258,6 +266,56 @@ func TestPersonalMailbox_SendRefusedBeforeAnyCall(t *testing.T) {
 	setPersonal(t, f.o, false)
 	if _, err := f.p.Send(ctx, gmailMIME("kari@nordlys.no", ""), nil); needed(t, err) != contracts.ConnectionClosingReason {
 		t.Errorf("switch off: %v", err)
+	}
+}
+
+// TestPersonalMailbox_SendRefusedForAnotherAccount: Staff re-points Kari to
+// another trusted Google account while her connection is the old one's; the
+// send is not_connected and Gmail is never called.
+func TestPersonalMailbox_SendRefusedForAnotherAccount(t *testing.T) {
+	t.Parallel()
+	f := newPersonalMailFixture(t)
+	_, userID, _ := f.mailPerson(t, "kari@nordlys.no")
+	ctx := contracts.AsUser(context.Background(), userID)
+
+	second := f.account(t, "kari.n@nordlys.no")
+	f.w.set(userID, &contracts.DirectoryAccount{Provider: "google", ExternalID: second, Enabled: true})
+	from := len(f.g.Calls())
+	if _, err := f.p.Send(ctx, gmailMIME("kari.n@nordlys.no", ""), nil); needed(t, err) != contracts.ConnectionNotConnected {
+		t.Errorf("another account: %v, want not_connected", err)
+	}
+	for _, call := range f.g.Calls()[from:] {
+		if call.Host == googletest.GmailHost {
+			t.Errorf("a refusal reached Gmail: %+v", call)
+		}
+	}
+	if n := len(f.g.GmailMessages("kari@nordlys.no")) + len(f.g.GmailMessages("kari.n@nordlys.no")); n != 0 {
+		t.Errorf("%d messages sent, want 0", n)
+	}
+}
+
+// TestPersonalMailbox_SendRefusedAfterTheAccountIsDisabled: the connected
+// account is disabled after the connect; the send answers closing and Gmail
+// is never called. (Send's own account check answers before the token's
+// check on use, so this send does not close the row.)
+func TestPersonalMailbox_SendRefusedAfterTheAccountIsDisabled(t *testing.T) {
+	t.Parallel()
+	f := newPersonalMailFixture(t)
+	_, userID, gid := f.mailPerson(t, "kari@nordlys.no")
+	ctx := contracts.AsUser(context.Background(), userID)
+
+	f.h.Exec(t, `UPDATE google.accounts SET state = 'disabled' WHERE user_id = $1`, gid)
+	from := len(f.g.Calls())
+	if _, err := f.p.Send(ctx, gmailMIME("kari@nordlys.no", ""), nil); needed(t, err) != contracts.ConnectionClosingReason {
+		t.Errorf("a disabled account: %v, want closing", err)
+	}
+	for _, call := range f.g.Calls()[from:] {
+		if call.Host == googletest.GmailHost {
+			t.Errorf("a refusal reached Gmail: %+v", call)
+		}
+	}
+	if n := len(f.g.GmailMessages("kari@nordlys.no")); n != 0 {
+		t.Errorf("%d messages sent, want 0", n)
 	}
 }
 
