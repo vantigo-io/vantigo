@@ -51,7 +51,10 @@ CREATE TABLE orders.site_carrier_defaults (
 -- the business's cost (not
 -- invoiced; an estimate unless the carrier says otherwise). idempotency_key
 -- is stored before the carrier is called and reused by every retry;
--- book_attempted_at marks a call whose outcome may be unknown. A cancel of a
+-- book_attempted_at marks a call whose outcome may be unknown, and leases the
+-- booking: no second call is made while it is recent. A booking found again
+-- by its reference after a lost answer has no label link to fetch
+-- (label_in_mybring_only: the label is printed in Mybring). A cancel of a
 -- carrier with no cancel call voids the shipment locally (voided): its label
 -- must not be used. exception is tracking's flag, set beside the status.
 CREATE TABLE orders.shipments (
@@ -65,6 +68,7 @@ CREATE TABLE orders.shipments (
     consignment_number    varchar(64),
     tracking_url          varchar(500),
     document_refs         jsonb         NOT NULL DEFAULT '[]'::jsonb,
+    label_in_mybring_only boolean       NOT NULL DEFAULT false,
     booked_service        varchar(20),
     booked_cost           numeric(14,2),
     booked_cost_currency  varchar(3),

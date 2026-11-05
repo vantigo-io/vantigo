@@ -380,6 +380,7 @@ type OrdersShipment struct {
 	ConsignmentNumber   *string
 	TrackingUrl         *string
 	DocumentRefs        []byte
+	LabelInMybringOnly  bool
 	BookedService       *string
 	BookedCost          pgtype.Numeric
 	BookedCostCurrency  *string

@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -206,7 +208,7 @@ func TestCarrierAccounts_SealedKeysVerifyAndDefaults(t *testing.T) {
 	}
 
 	// The default account per site.
-	res = c.Do(http.MethodPut, siteDefaultsPath, gen.OrdersSiteCarrierDefaults{Items: []gen.OrdersSiteCarrierDefault{{SiteId: siteOslo, AccountId: a.Id}}})
+	res = c.Do(http.MethodPut, siteDefaultsPath, siteDefaults(siteOslo, &a.Id))
 	mustStatus(t, res, http.StatusOK, "site defaults")
 	res = c.Do(http.MethodGet, siteDefaultsPath, nil)
 	var defaults gen.OrdersSiteCarrierDefaults
@@ -214,8 +216,20 @@ func TestCarrierAccounts_SealedKeysVerifyAndDefaults(t *testing.T) {
 	if len(defaults.Items) != 1 || defaults.Items[0].AccountId != a.Id {
 		t.Errorf("site defaults %+v", defaults.Items)
 	}
-	expectRefusal(t, c.Do(http.MethodPut, siteDefaultsPath, gen.OrdersSiteCarrierDefaults{Items: []gen.OrdersSiteCarrierDefault{{SiteId: siteOslo, AccountId: 999}}}),
+	expectRefusal(t, c.Do(http.MethodPut, siteDefaultsPath, siteDefaults(siteOslo, ptr(int64(999)))),
 		http.StatusBadRequest, "", "an unknown account")
+	// A save names the sites it changes: Bergen's save keeps Oslo's default,
+	// and a null clears only the site it names.
+	mustStatus(t, c.Do(http.MethodPut, siteDefaultsPath, siteDefaults(siteBergen, &a.Id)), http.StatusOK, "Bergen's default")
+	c.Do(http.MethodGet, siteDefaultsPath, nil).JSON(&defaults)
+	if len(defaults.Items) != 2 {
+		t.Errorf("after Bergen's save %+v, want Oslo's kept", defaults.Items)
+	}
+	mustStatus(t, c.Do(http.MethodPut, siteDefaultsPath, siteDefaults(siteBergen, nil)), http.StatusOK, "clear Bergen's default")
+	c.Do(http.MethodGet, siteDefaultsPath, nil).JSON(&defaults)
+	if len(defaults.Items) != 1 || defaults.Items[0].SiteId != siteOslo {
+		t.Errorf("after clearing Bergen %+v, want Oslo's alone", defaults.Items)
+	}
 
 	// Archived: kept, not offered.
 	in = base
@@ -226,6 +240,11 @@ func TestCarrierAccounts_SealedKeysVerifyAndDefaults(t *testing.T) {
 }
 
 func ptrI32(v int32) *int32 { return &v }
+
+// siteDefaults is a save of one site's default account, nil to clear it.
+func siteDefaults(site int64, account *int64) gen.OrdersSiteCarrierDefaultsInput {
+	return gen.OrdersSiteCarrierDefaultsInput{Items: []gen.OrdersSiteCarrierDefaultInput{{SiteId: site, AccountId: account}}}
+}
 
 func ptr[T any](v T) *T { return &v }
 
@@ -300,6 +319,7 @@ func TestShipments_BookOnceTrackAndNotice(t *testing.T) {
 	}
 
 	// The carrier refuses: its words, still a draft, nothing booked.
+	refusedKey := oneString(t, h, `SELECT idempotency_key::text FROM orders.shipments WHERE id = $1`, sh.Id)
 	h.bring.Fail(bringtest.OpBook, bringtest.Failure{Status: 400, Times: 1,
 		Body: `{"consignments":[{"errors":[{"code":"X1","messages":[{"lang":"en","message":"The recipient's address is incomplete."}]}]}]}`})
 	p := expectRefusal(t, book(c, sh), http.StatusUnprocessableEntity, "carrier_refused", "refused")
@@ -307,8 +327,12 @@ func TestShipments_BookOnceTrackAndNotice(t *testing.T) {
 		t.Errorf("refusal %+v", p)
 	}
 	sh = shipmentOf(t, c.Do(http.MethodGet, shipmentPath(sh.Id), nil))
-	if sh.Status != gen.OrdersShipmentStatusDraft || len(h.bring.Consignments()) != 0 {
-		t.Fatalf("after a refusal %s, %d bookings", sh.Status, len(h.bring.Consignments()))
+	if sh.Status != gen.OrdersShipmentStatusDraft || len(h.bring.Consignments()) != 0 || sh.BookAttempted {
+		t.Fatalf("after a refusal %s, %d bookings, attempted %v", sh.Status, len(h.bring.Consignments()), sh.BookAttempted)
+	}
+	// Nothing was booked under the refused key: the draft has a fresh one.
+	if n := h.Count(t, `SELECT count(*) FROM orders.shipments WHERE id = $1 AND idempotency_key::text = $2`, sh.Id, refusedKey); n != 0 {
+		t.Error("a refused booking kept its key")
 	}
 
 	res = book(c, sh)
@@ -391,12 +415,18 @@ func TestShipments_BookOnceTrackAndNotice(t *testing.T) {
 	if second.Status != gen.OrdersShipmentStatusDraft || !second.BookAttempted || len(h.bring.Consignments()) != 2 {
 		t.Fatalf("after a lost answer %+v, %d bookings", second, len(h.bring.Consignments()))
 	}
+	// Inside the lease the retry is refused; after it the carrier is asked
+	// first, and the booking it finds has no label link: Mybring's.
+	expectRefusal(t, book(c, second), http.StatusConflict, "booking_in_progress", "a retry inside the lease")
+	h.Advance(3 * time.Minute)
 	res = book(c, second)
 	mustStatus(t, res, http.StatusOK, "book again")
 	second = shipmentOf(t, res)
-	if len(h.bring.Consignments()) != 2 || second.ConsignmentNumber == nil || *second.ConsignmentNumber != h.bring.Consignments()[1].Number {
+	if len(h.bring.Consignments()) != 2 || second.ConsignmentNumber == nil || *second.ConsignmentNumber != h.bring.Consignments()[1].Number ||
+		!second.LabelInMybringOnly || second.Label {
 		t.Fatalf("the retry booked again: %d bookings, %+v", len(h.bring.Consignments()), second)
 	}
+	mustStatus(t, c.Do(http.MethodGet, shipmentPath(second.Id, "label"), nil), http.StatusNotFound, "a recovered booking's label")
 
 	// Tracking on a pool of one: in transit, then delivered.
 	day := h.Now()
@@ -487,8 +517,7 @@ func TestShippingLine_EstimateAndMarkup(t *testing.T) {
 	h.catalog.setPrice(varFreight, "NOK", "150")
 	setDefaultSite(t, c, siteOslo)
 	a := addAccount(t, c, "Bring")
-	mustStatus(t, c.Do(http.MethodPut, siteDefaultsPath, gen.OrdersSiteCarrierDefaults{Items: []gen.OrdersSiteCarrierDefault{{SiteId: siteOslo, AccountId: a.Id}}}),
-		http.StatusOK, "site default")
+	mustStatus(t, c.Do(http.MethodPut, siteDefaultsPath, siteDefaults(siteOslo, &a.Id)), http.StatusOK, "site default")
 
 	// The freight product must be a service.
 	res := c.Do(http.MethodGet, settingsPath, nil)
@@ -571,4 +600,210 @@ func keptLines(q gen.OrdersQuote) []gen.OrdersLineInput {
 // quoteUpdate is a save of q with lines.
 func quoteUpdate(q gen.OrdersQuote, lines []gen.OrdersLineInput) gen.OrdersQuoteUpdate {
 	return gen.OrdersQuoteUpdate{ExpectedUpdatedAt: q.UpdatedAt, Revision: q.Revision, CustomerId: custBusiness, Lines: lines}
+}
+
+// The booking's lease (O50): two books at once make one booking; while an
+// attempt holds the shipment a book, a save and a cancel are refused; after
+// a lost answer the carrier is asked first, and while it may not show the
+// booking yet nothing is booked; after the lag it books again. A booked
+// shipment is voided with its keys unreadable (Bring has no cancel). The
+// erase takes the label links and refuses the label.
+func TestShipments_BookingLeaseAndUnknownOutcome(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{stock: true, bring: true})
+	c := h.SignIn(t, shippingKeys...)
+	o, d := shippedOrder(t, h, c)
+	addAccount(t, c, "Bring")
+	ship := func() gen.OrdersShipment {
+		t.Helper()
+		res := c.Do(http.MethodPost, deliveryPath(d.Id, "shipments"), gen.OrdersShipmentInput{})
+		mustStatus(t, res, http.StatusCreated, "create shipment")
+		return shipmentOf(t, res)
+	}
+	get := func(sh gen.OrdersShipment) gen.OrdersShipment {
+		t.Helper()
+		return shipmentOf(t, c.Do(http.MethodGet, shipmentPath(sh.Id), nil))
+	}
+
+	// Two books at once, Bring slow to answer: one booking.
+	sh := ship()
+	h.bring.Fail(bringtest.OpBook, bringtest.Failure{Stall: 1500 * time.Millisecond, Times: 2})
+	var wg sync.WaitGroup
+	statuses := make([]int, 2)
+	for i := range statuses {
+		wg.Go(func() { statuses[i] = book(c, sh).Status })
+	}
+	// While the first is with Bring, the attempt holds the shipment.
+	deadline := time.Now().Add(5 * time.Second)
+	cur := get(sh)
+	for !cur.BookAttempted && cur.Status == gen.OrdersShipmentStatusDraft && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+		cur = get(sh)
+	}
+	if cur.Status == gen.OrdersShipmentStatusDraft {
+		expectRefusal(t, book(c, cur), http.StatusConflict, "booking_in_progress", "a book inside the lease")
+		expectRefusal(t, c.Do(http.MethodPost, shipmentPath(cur.Id, "cancel"), gen.OrdersVersionInput{Version: cur.Version, ExpectedUpdatedAt: cur.UpdatedAt}),
+			http.StatusConflict, "booking_in_progress", "a cancel inside the lease")
+		expectRefusal(t, c.Do(http.MethodPut, shipmentPath(cur.Id), gen.OrdersShipmentUpdate{
+			Version: cur.Version, ExpectedUpdatedAt: cur.UpdatedAt, CarrierAccountId: cur.CarrierAccountId, Service: cur.Service,
+			Packages: []gen.OrdersShipmentPackageInput{{WeightGrams: 500}},
+		}), http.StatusConflict, "booking_unresolved", "a save while the booking is unresolved")
+	} else {
+		t.Error("the booking finished before the lease could be seen")
+	}
+	wg.Wait()
+	h.bring.Clear()
+	slices.Sort(statuses)
+	if statuses[0] != http.StatusOK || statuses[1] != http.StatusConflict || len(h.bring.Consignments()) != 1 {
+		t.Fatalf("two books at once: %v, %d bookings; want one booked and one refused", statuses, len(h.bring.Consignments()))
+	}
+	booked := get(sh)
+	if booked.Status != gen.OrdersShipmentStatusBooked || booked.LabelInMybringOnly || !booked.Label {
+		t.Fatalf("booked %+v", booked)
+	}
+	// The label is for whoever ships: orders:deliveries-manage.
+	viewer := h.SignIn(t, "orders:access")
+	mustStatus(t, viewer.Do(http.MethodGet, shipmentPath(booked.Id, "label"), nil), http.StatusForbidden, "a label without deliveries-manage")
+	mustStatus(t, viewer.Do(http.MethodGet, shipmentPath(booked.Id, "waybill"), nil), http.StatusForbidden, "a waybill without deliveries-manage")
+
+	// A lost answer; inside the lease the retry is refused.
+	sh = ship()
+	h.bring.Fail(bringtest.OpBook, bringtest.Failure{AfterBook: true, Status: 504, Body: "gateway timeout", Times: 1})
+	expectRefusal(t, book(c, sh), http.StatusServiceUnavailable, "carrier_unreachable", "the answer lost")
+	expectRefusal(t, book(c, get(sh)), http.StatusConflict, "booking_in_progress", "a retry inside the lease")
+	// After the lease, Bring does not show the booking yet: nothing is booked.
+	h.Advance(3 * time.Minute)
+	notFound := `{"consignmentSet":[{"error":{"code":404,"message":"No shipments found"}}]}`
+	h.bring.Fail(bringtest.OpTracking, bringtest.Failure{Status: http.StatusOK, Body: notFound, Times: 1})
+	p := expectRefusal(t, book(c, get(sh)), http.StatusConflict, "booking_outcome_unknown", "Bring shows none yet")
+	if p.Detail == nil || !strings.Contains(*p.Detail, "Mybring") {
+		t.Errorf("unknown outcome %+v", p)
+	}
+	if len(h.bring.Consignments()) != 2 {
+		t.Fatalf("%d bookings, want the lost one alone", len(h.bring.Consignments()))
+	}
+	// Once Bring shows it, the retry records it, with the label in Mybring.
+	h.Advance(3 * time.Minute)
+	res := book(c, get(sh))
+	mustStatus(t, res, http.StatusOK, "the retry finds it")
+	if sh = shipmentOf(t, res); len(h.bring.Consignments()) != 2 || *sh.ConsignmentNumber != h.bring.Consignments()[1].Number || !sh.LabelInMybringOnly {
+		t.Fatalf("recovered %+v, %d bookings", sh, len(h.bring.Consignments()))
+	}
+
+	// Past the lag, a retry that still finds nothing books again.
+	sh = ship()
+	h.bring.Fail(bringtest.OpBook, bringtest.Failure{AfterBook: true, Status: 504, Body: "gateway timeout", Times: 1})
+	expectRefusal(t, book(c, sh), http.StatusServiceUnavailable, "carrier_unreachable", "the answer lost again")
+	h.Advance(16 * time.Minute)
+	h.bring.Fail(bringtest.OpTracking, bringtest.Failure{Status: http.StatusOK, Body: notFound, Times: 1})
+	mustStatus(t, book(c, get(sh)), http.StatusOK, "book after the lag")
+	if n := len(h.bring.Consignments()); n != 4 {
+		t.Fatalf("%d bookings, want a new one after the lag", n)
+	}
+
+	// Bring has no cancel: a booked shipment is voided, its keys unread.
+	h.Exec(t, `UPDATE orders.carrier_accounts SET credentials = '\x00'::bytea`)
+	booked = get(booked)
+	res = c.Do(http.MethodPost, shipmentPath(booked.Id, "cancel"), gen.OrdersVersionInput{Version: booked.Version, ExpectedUpdatedAt: booked.UpdatedAt})
+	mustStatus(t, res, http.StatusOK, "void with unreadable keys")
+	if v := shipmentOf(t, res); v.Status != gen.OrdersShipmentStatusCancelled || !v.Voided {
+		t.Errorf("voided %+v", v)
+	}
+
+	// The erase: the label links and the tracking page go, and no label is
+	// fetched again.
+	h.Exec(t, `UPDATE orders.orders SET anonymised_at = now() WHERE id = $1`, o.Id)
+	h.Exec(t, `INSERT INTO orders.erasures (customer_id, requested_at) VALUES ($1, now())`, custBusiness)
+	if _, _, err := orders.RunRetentionCycle(context.Background(), h.Deps()); err != nil {
+		t.Fatal(err)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM orders.shipments WHERE document_refs <> '[]'::jsonb OR tracking_url IS NOT NULL`); n != 0 {
+		t.Errorf("%d shipments keep their label links after the erase", n)
+	}
+	mustStatus(t, c.Do(http.MethodGet, shipmentPath(sh.Id, "label"), nil), http.StatusNotFound, "an erased order's label")
+}
+
+// Tracking: a cancel the carrier reports is an exception, recorded, not a
+// cancel; a poll the budget cuts short puts back what it never asked about,
+// which is due at once.
+func TestShipmentTracking_CarrierCancelAndPutBack(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{stock: true, bring: true})
+	c := h.SignIn(t, shippingKeys...)
+	_, d := shippedOrder(t, h, c)
+	addAccount(t, c, "Bring")
+	res := c.Do(http.MethodPost, deliveryPath(d.Id, "shipments"), gen.OrdersShipmentInput{})
+	mustStatus(t, res, http.StatusCreated, "create shipment")
+	res = book(c, shipmentOf(t, res))
+	mustStatus(t, res, http.StatusOK, "book")
+	sh := shipmentOf(t, res)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	h.bring.SetEvents(*sh.ConsignmentNumber, bringtest.Event{Status: "CANCELLED", Description: "Cancelled by the sender", At: h.Now().Add(time.Hour)})
+	h.Advance(31 * time.Minute)
+	if n, err := orders.RunTrackingCycle(ctx, h.Deps()); err != nil || n != 1 {
+		t.Fatalf("tracking cycle %d, %v", n, err)
+	}
+	sh = shipmentOf(t, c.Do(http.MethodGet, shipmentPath(sh.Id), nil))
+	if sh.Status != gen.OrdersShipmentStatusBooked || !sh.Exception || len(sh.Events) != 1 || sh.Events[0].State != gen.OrdersShipmentEventStateCancelled {
+		t.Fatalf("after a carrier's cancel %s exception %v events %+v", sh.Status, sh.Exception, sh.Events)
+	}
+
+	// Bring hangs past the cycle's budget: the shipment is put back.
+	before := oneString(t, h, `SELECT last_tracked_at::text FROM orders.shipments WHERE id = $1`, sh.Id)
+	h.Advance(31 * time.Minute)
+	h.bring.Fail(bringtest.OpTracking, bringtest.Failure{Stall: 3 * time.Second})
+	if _, err := orders.RunTrackingCycleWithin(ctx, h.Deps(), 300*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if after := oneString(t, h, `SELECT last_tracked_at::text FROM orders.shipments WHERE id = $1`, sh.Id); after != before {
+		t.Errorf("last_tracked_at %s after a cut-short poll, want it put back to %s", after, before)
+	}
+	h.bring.Clear()
+	if n, err := orders.RunTrackingCycle(ctx, h.Deps()); err != nil || n != 1 {
+		t.Errorf("the next cycle polled %d, %v; want the put-back shipment at once", n, err)
+	}
+}
+
+// The shipping line's VAT follows the goods (O53), and the estimate needs
+// the right to edit the document it is for (orders:quotes-manage for a
+// quote, orders:sales-manage for an order).
+func TestShippingLine_EstimateVATAndAccess(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{stock: true, bring: true})
+	c := h.SignIn(t, shippingKeys...)
+	freightVariant := contracts.VariantEntry{ID: varFreight, ProductID: varFreight, ProductName: "Frakt", SKU: "FRAKT", Unit: "stk",
+		ProductType: "Service", ProductStatus: "Active", TaxCategoryID: catStandard}
+	h.catalog.seed(freightVariant)
+	setDefaultSite(t, c, siteOslo)
+	addAccount(t, c, "Bring")
+	editSettings(t, c, func(in *gen.OrdersSettingsInput) { in.FreightVariantId = i32(varFreight) })
+	estimate := func(q gen.OrdersQuote) gen.OrdersShippingEstimate {
+		t.Helper()
+		res := c.Do(http.MethodPost, estimatePath, gen.OrdersShippingEstimateInput{QuoteId: &q.Id})
+		mustStatus(t, res, http.StatusOK, "estimate")
+		var e gen.OrdersShippingEstimate
+		res.JSON(&e)
+		return e
+	}
+	// Food alone: food's VAT, not the freight product's.
+	if e := estimate(createQuote(t, c, custBusiness, productLine(varFood, 3))); e.VatCodeId == nil || *e.VatCodeId != codeFood || e.VariantId == nil {
+		t.Errorf("food estimate %+v, want food's VAT", e)
+	}
+	// Mixed: the code with the largest net share — ten food (333.35) over a bolt (100).
+	if e := estimate(createQuote(t, c, custBusiness, productLine(varBolt, 1), productLine(varFood, 10))); e.VatCodeId == nil || *e.VatCodeId != codeFood {
+		t.Errorf("mixed estimate %+v, want food's VAT", e)
+	}
+	if e := estimate(createQuote(t, c, custBusiness, productLine(varBolt, 4), productLine(varFood, 1))); e.VatCodeId == nil || *e.VatCodeId != codeStandard {
+		t.Errorf("mostly standard estimate %+v, want the standard VAT", e)
+	}
+
+	q := createQuote(t, c, custBusiness, productLine(varBolt, 1))
+	o := createOrder(t, c, custBusiness, productLine(varBolt, 1))
+	seller := h.SignIn(t, "orders:access", "orders:sales-manage")
+	mustStatus(t, seller.Do(http.MethodPost, estimatePath, gen.OrdersShippingEstimateInput{QuoteId: &q.Id}), http.StatusForbidden, "a quote without quotes-manage")
+	mustStatus(t, seller.Do(http.MethodPost, estimatePath, gen.OrdersShippingEstimateInput{OrderId: &o.Id}), http.StatusOK, "an order with sales-manage")
+	quoter := h.SignIn(t, "orders:access", "orders:quotes-manage")
+	mustStatus(t, quoter.Do(http.MethodPost, estimatePath, gen.OrdersShippingEstimateInput{OrderId: &o.Id}), http.StatusForbidden, "an order without sales-manage")
 }

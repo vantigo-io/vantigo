@@ -90,16 +90,19 @@ func (q *Queries) AnonymiseCustomerQuotes(ctx context.Context, arg AnonymiseCust
 const anonymiseCustomerShipments = `-- name: AnonymiseCustomerShipments :execrows
 UPDATE orders.shipments sh SET
     recipient_name = '', recipient_line1 = '', recipient_line2 = '', recipient_postal_code = '', recipient_city = '',
-    recipient_contact = '', recipient_phone = '', recipient_email = '', pickup_point_id = NULL
+    recipient_contact = '', recipient_phone = '', recipient_email = '', pickup_point_id = NULL,
+    document_refs = '[]'::jsonb, tracking_url = NULL
 FROM orders.deliveries dv, orders.orders o
 WHERE dv.id = sh.delivery_id AND o.id = dv.order_id AND o.customer_id = $1 AND o.anonymised_at IS NOT NULL
   AND (sh.recipient_name <> '' OR sh.recipient_line1 <> '' OR sh.recipient_phone <> '' OR sh.recipient_email <> ''
-       OR sh.recipient_contact <> '')
+       OR sh.recipient_contact <> '' OR sh.document_refs <> '[]'::jsonb OR sh.tracking_url IS NOT NULL)
 `
 
 // AnonymiseCustomerShipments takes the person out of the shipments of a
-// customer's anonymised orders (O29, O50): the recipient as it was booked.
-// The consignment number, the packages and the tracking events stay.
+// customer's anonymised orders (O29, O50): the recipient as it was booked,
+// and the links its label, its waybill and its tracking page are fetched
+// from — they print or show the recipient. The consignment number, the
+// packages and the tracking events stay.
 func (q *Queries) AnonymiseCustomerShipments(ctx context.Context, customerID int32) (int64, error) {
 	result, err := q.db.Exec(ctx, anonymiseCustomerShipments, customerID)
 	if err != nil {

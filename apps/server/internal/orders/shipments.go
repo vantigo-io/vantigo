@@ -7,7 +7,10 @@ package orders
 // service, sees the carrier's prices and books. Booking stores the
 // shipment's idempotency key's attempt before the carrier is called — the key
 // itself was stored when the draft was made — so a retried request books
-// once; it records the carrier's answer, publishes orders.shipment.booked.v1,
+// once. The attempt is a lease (bookingLease): while it is recent no second
+// call is made, and after an unknown outcome a retry asks the carrier for the
+// booking under the key before it books — refusing while the carrier may not
+// show it yet (bookingLookupLag). Booking records the carrier's answer, publishes orders.shipment.booked.v1,
 // counts the order's shipping lines delivered (O53) and queues the shipping
 // notice (O52) on one transaction, then fetches and stores the label and the
 // waybill. No carrier call is ever made inside a transaction.
@@ -49,6 +52,30 @@ const ownerShipment = "shipment"
 // defaultParcelGrams is a proposed package's weight when no delivered variant
 // has one: a kilogram, for the user to correct.
 const defaultParcelGrams = 1000
+
+// The booking's lease and its lookup (O50). bookingLease is how long an
+// attempt holds the shipment: longer than the carrier call's own deadline,
+// so no second call starts while the first may still book. bookingLookupLag
+// is how long after an attempt whose outcome is unknown the carrier may not
+// yet show its booking by reference (Bring indexes it for tracking with a
+// lag): until then a retry that finds none books nothing. documentTimeout
+// bounds each document fetched right after a booking.
+const (
+	bookingLease     = 2 * time.Minute
+	bookingLookupLag = 15 * time.Minute
+	documentTimeout  = 10 * time.Second
+)
+
+// bookingInProgress is the 409 of a shipment whose booking attempt holds it.
+func bookingInProgress(sh store.OrdersShipment) error {
+	return conflict(codeBookingInProgress, "The shipment is being booked",
+		fmt.Sprintf("Shipment %d is being booked right now. Wait a couple of minutes and look again.", sh.ID))
+}
+
+// leased is whether an attempt at attemptedAt still holds the shipment at now.
+func leased(attemptedAt *time.Time, now time.Time) bool {
+	return attemptedAt != nil && attemptedAt.After(now.Add(-bookingLease))
+}
 
 // actionShippingDelivered is a booking counting the order's shipping lines
 // delivered (O53): to is the consignment number.
@@ -192,7 +219,7 @@ func shipmentViews(ctx context.Context, q *store.Queries, rows []store.OrdersShi
 			PickupPointId: r.PickupPointID, BookedAt: r.BookedAt, BookedBy: personOut(r.BookedByUserID, r.BookedByDisplay),
 			CancelledAt: r.CancelledAt, Packages: []gen.OrdersShipmentPackage{}, Events: []gen.OrdersShipmentEvent{},
 			WaybillNeeded: sv.Waybill, BookAttempted: r.BookAttemptedAt != nil && r.Status == shipmentDraft,
-			Version: r.Version, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+			LabelInMybringOnly: r.LabelInMybringOnly, Version: r.Version, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		}
 		for _, p := range pkgs {
 			if p.ShipmentID == r.ID {
@@ -515,6 +542,11 @@ func (s *server) UpdateShipment(ctx context.Context, req gen.UpdateShipmentReque
 		if err := judgeShipment(sh, b.Version, b.ExpectedUpdatedAt); err != nil {
 			return err
 		}
+		if sh.BookAttemptedAt != nil {
+			// A retry books what was attempted, so it stays as it is.
+			return conflict(codeBookingUnresolved, "The booking is unresolved",
+				fmt.Sprintf("A booking of shipment %d was attempted and its outcome is unknown. Book it again to resolve that before changing it.", sh.ID))
+		}
 		if account.Status != accountActive && account.ID != sh.CarrierAccountID {
 			return conflict(codeCarrierAccountArchived, "The carrier account is archived",
 				fmt.Sprintf("Carrier account %q is archived; choose another.", account.Name))
@@ -712,9 +744,14 @@ func (s *server) GetShipmentRates(ctx context.Context, req gen.GetShipmentRatesR
 // (POST /api/v1/orders/shipments/{id}/book)
 //
 // The attempt is recorded under the shipment's lock and committed before the
-// carrier is called; the call is made under the key stored on the shipment,
-// with Retry when an earlier attempt's outcome is unknown, so the carrier
-// books once. The answer is recorded under the order's and the shipment's
+// carrier is called, moving the version: it is the booking's lease, and while
+// it is under bookingLease old another book is booking_in_progress. The call
+// is made under the key stored on the shipment, with Retry when an earlier
+// attempt's outcome is unknown, so the carrier books once; while that attempt
+// is under bookingLookupLag old the retry only looks (FindOnly), and a
+// booking the carrier does not show yet is booking_outcome_unknown. A
+// definitive refusal of a call that could book gives the draft a fresh key
+// and takes the attempt back. The answer is recorded under the order's and the shipment's
 // locks: a booking another request recorded first is answered as it is.
 func (s *server) BookShipment(ctx context.Context, req gen.BookShipmentRequestObject) (gen.BookShipmentResponseObject, error) {
 	resp := shipmentAnswers(nil,
@@ -770,7 +807,7 @@ func (s *server) BookShipment(ctx context.Context, req gen.BookShipmentRequestOb
 	}
 	slices.Sort(freight)
 
-	// The attempt, committed before the call.
+	// The attempt, committed before the call: the lease.
 	var attempted store.OrdersShipment
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		sh, err := txq.LockShipment(ctx, r.sh.ID)
@@ -780,8 +817,17 @@ func (s *server) BookShipment(ctx context.Context, req gen.BookShipmentRequestOb
 		if err := judgeShipment(sh, req.Body.Version, req.Body.ExpectedUpdatedAt); err != nil {
 			return err
 		}
+		now := s.deps.Clock()
+		if leased(sh.BookAttemptedAt, now) {
+			return bookingInProgress(sh)
+		}
 		r.sh = sh
-		attempted, err = txq.MarkShipmentBookAttempt(ctx, store.MarkShipmentBookAttemptParams{ID: sh.ID, Now: ptr(s.deps.Clock())})
+		attempted, err = txq.MarkShipmentBookAttempt(ctx, store.MarkShipmentBookAttemptParams{
+			ID: sh.ID, Now: &now, LeaseBefore: ptr(now.Add(-bookingLease)),
+		})
+		if noRows(err) {
+			return bookingInProgress(sh)
+		}
 		if err != nil {
 			return fmt.Errorf("orders: record shipment %d's booking attempt: %w", sh.ID, err)
 		}
@@ -790,18 +836,36 @@ func (s *server) BookShipment(ctx context.Context, req gen.BookShipmentRequestOb
 	if err != nil {
 		return answer(err, resp)
 	}
+	earlier := r.sh.BookAttemptedAt
+	findOnly := earlier != nil && earlier.After(s.deps.Clock().Add(-bookingLookupLag))
 	booking, err := c.Book(ctx, shipping.BookRequest{
 		Sender: senderOf(r.account, seller), Recipient: recipientOf(attempted), Service: attempted.Service,
 		ValueAddedServices: attempted.Vas, Packages: packagesOf(r.pkgs), IdempotencyKey: attempted.IdempotencyKey.String(),
-		Retry: r.sh.BookAttemptedAt != nil, SenderReference: fmt.Sprintf("%d", r.o.Number), RecipientReference: r.o.YourReference,
+		Retry: earlier != nil, FindOnly: findOnly, SenderReference: fmt.Sprintf("%d", r.o.Number), RecipientReference: r.o.YourReference,
 		ShippingDate: s.deps.Clock(),
 	})
-	if err != nil {
+	switch {
+	case err == nil:
+	case findOnly && errors.Is(err, shipping.ErrNotFound):
+		return answer(conflict(codeBookingOutcomeUnknown, "Whether the carrier booked is not known yet",
+			fmt.Sprintf("An earlier booking of shipment %d got no answer, and the carrier does not show a booking under it yet. "+
+				"Check Mybring, or wait: from %s Vantigo books again if the carrier still shows none.", attempted.ID,
+				earlier.Add(bookingLookupLag).UTC().Format(time.RFC3339))), resp)
+	case shipping.IsDefinitiveRefusal(err) && !findOnly:
+		// Nothing was booked under the key, and nothing ever will be: a fresh
+		// key, and the draft is the user's to change again.
+		if _, rerr := store.New(s.deps.Pool).ResetShipmentBookAttempt(ctx, store.ResetShipmentBookAttemptParams{
+			ID: attempted.ID, IdempotencyKey: uuid.New(), AttemptedAt: attempted.BookAttemptedAt, Now: s.deps.Clock(),
+		}); rerr != nil && !noRows(rerr) {
+			return nil, fmt.Errorf("orders: take back shipment %d's refused attempt: %w", attempted.ID, rerr)
+		}
+		return answer(carrierFailed(err, ""), resp)
+	default:
 		if !shipping.IsDefinitiveRefusal(err) {
 			s.deps.Logger.WarnContext(ctx, "orders: a booking's outcome is unknown", "shipment_id", attempted.ID, "error", err.Error())
 		}
 		return answer(carrierFailed(err,
-			"The carrier did not answer, and whether it booked is unknown. Book again: Vantigo asks the carrier first and books once."), resp)
+			"The carrier did not answer, and whether it booked is unknown. Book again in a couple of minutes: Vantigo asks the carrier first and books once."), resp)
 	}
 	err = s.recordBooking(ctx, r, attempted, booking, settings, freight, by)
 	if err != nil {
@@ -839,9 +903,13 @@ func (s *server) recordBooking(ctx context.Context, r shipmentRead, sh store.Ord
 			return nil
 		}
 		now := s.deps.Clock()
+		// A booking found again by its reference has no label link: Bring
+		// gives none by consignment number, so the label is Mybring's.
+		hasLabel := slices.ContainsFunc(b.Documents, func(d shipping.DocumentRef) bool { return d.Kind == shipping.DocumentLabel })
 		params := store.BookShipmentRowParams{
 			ID: sh.ID, ConsignmentNumber: &b.ConsignmentNumber, TrackingUrl: textPtr(b.TrackingURL), DocumentRefs: encodeRefs(b.Documents),
-			BookedService: ptr(cmpOr(b.Service, sh.Service)), BookedCostEstimate: true, Now: &now, ByUserID: by.id, ByDisplay: by.display,
+			LabelInMybringOnly: b.Recovered && !hasLabel,
+			BookedService:      ptr(cmpOr(b.Service, sh.Service)), BookedCostEstimate: true, Now: &now, ByUserID: by.id, ByDisplay: by.display,
 		}
 		if b.Cost != nil {
 			params.BookedCost = numeric(moneyOf(*b.Cost), amountPlaces)
@@ -926,8 +994,8 @@ func (s *server) deliverShippingLines(ctx context.Context, tx pgx.Tx, txq *store
 }
 
 // storeShipmentDocuments fetches a booked shipment's label and waybill from
-// the carrier and stores them, outside any transaction; a failure is logged,
-// and the download fetches it again.
+// the carrier and stores them, outside any transaction, each within
+// documentTimeout; a failure is logged, and the first download fetches it.
 func (s *server) storeShipmentDocuments(ctx context.Context, c shipping.Carrier, id int64) {
 	q := store.New(s.deps.Pool)
 	sh, err := q.GetShipment(ctx, id)
@@ -940,7 +1008,10 @@ func (s *server) storeShipmentDocuments(ctx context.Context, c shipping.Carrier,
 		return
 	}
 	for _, ref := range documentRefs(sh.DocumentRefs) {
-		if _, err := s.fetchShipmentDocument(ctx, c, sh, pkgs, ref.Kind); err != nil {
+		fctx, cancel := context.WithTimeout(ctx, documentTimeout)
+		_, err := s.fetchShipmentDocument(fctx, c, sh, pkgs, ref.Kind)
+		cancel()
+		if err != nil {
 			s.deps.Logger.WarnContext(ctx, "orders: a shipment's document could not be stored", "shipment_id", id, "kind", ref.Kind, "error", err.Error())
 		}
 	}
@@ -990,7 +1061,15 @@ func (s *server) CancelShipment(ctx context.Context, req gen.CancelShipmentReque
 	voided := false
 	switch r.sh.Status {
 	case shipmentDraft:
+		if leased(r.sh.BookAttemptedAt, s.deps.Clock()) {
+			return answer(bookingInProgress(r.sh), resp)
+		}
 	case shipmentBooked:
+		if caps, ok := carrierCapabilities(r.account.Carrier); ok && !caps.Cancel {
+			// No cancel call to make: void it here, keys or no keys.
+			voided = true
+			break
+		}
 		c, err := s.carrierOf(r.account)
 		if err != nil {
 			return answer(carrierFailed(err, ""), resp)
@@ -1015,6 +1094,9 @@ func (s *server) CancelShipment(ctx context.Context, req gen.CancelShipmentReque
 		}
 		if cur.Version != r.sh.Version {
 			return versionConflict("shipment's version", cur.Version, r.sh.Version)
+		}
+		if cur.Status == shipmentDraft && leased(cur.BookAttemptedAt, s.deps.Clock()) {
+			return bookingInProgress(cur)
 		}
 		if _, err := txq.CancelShipmentRow(ctx, store.CancelShipmentRowParams{ID: cur.ID, Voided: voided, Now: ptr(s.deps.Clock())}); err != nil {
 			return fmt.Errorf("orders: cancel shipment %d: %w", cur.ID, err)
@@ -1056,12 +1138,16 @@ func (r shipmentPDF) VisitGetShipmentWaybillResponse(w http.ResponseWriter) erro
 
 // shipmentDocument is a booked shipment's stored document of kind, fetched
 // from the carrier and stored now when its booking could not; nil when there
-// is none to have.
+// is none to have. An anonymised order's shipment has none: its documents
+// print the recipient, and they went with the erase (O29).
 func (s *server) shipmentDocument(ctx context.Context, id int64, kind shipping.DocumentKind) ([]byte, store.OrdersShipment, error) {
 	q := store.New(s.deps.Pool)
 	r, err := readShipment(ctx, q, id)
 	if err != nil {
 		return nil, r.sh, err
+	}
+	if r.o.AnonymisedAt != nil {
+		return nil, r.sh, notFound()
 	}
 	docs, err := q.DocumentsOfShipments(ctx, []int64{id})
 	if err != nil {
