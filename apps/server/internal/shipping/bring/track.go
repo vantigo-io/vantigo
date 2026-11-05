@@ -61,19 +61,32 @@ type trackAnswer struct {
 	} `json:"consignmentSet"`
 }
 
-// Track asks the Tracking API for each reference in turn, under one
-// deadline: Bring's q takes one. A reference Bring does not know is left out.
+// Track asks the Tracking API for each reference in turn — Bring's q takes
+// one — each under a deadline of its own (trackTimeout), the whole under the
+// caller's. A reference Bring does not know, or that fails or does not answer
+// in time, is left out and the next is asked; when the caller's ctx ends,
+// what was answered is returned with its error. Refused keys stop at once:
+// no other reference would answer.
 func (c *Client) Track(ctx context.Context, refs []string) ([]shipping.TrackingStatus, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.timeout)
-	defer cancel()
 	var out []shipping.TrackingStatus
 	for _, ref := range refs {
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
 		if strings.TrimSpace(ref) == "" {
 			continue
 		}
-		st, err := c.track(ctx, ref)
-		if err != nil {
+		rctx, cancel := context.WithTimeout(ctx, min(c.timeout, trackTimeout))
+		st, err := c.track(rctx, ref)
+		cancel()
+		switch {
+		case errors.Is(err, shipping.ErrUnauthorized):
 			return out, err
+		case err != nil:
+			if ctx.Err() != nil {
+				return out, ctx.Err()
+			}
+			continue
 		}
 		if st != nil {
 			out = append(out, *st)
