@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"slices"
 	"strconv"
 
 	"github.com/jackc/pgx/v5"
@@ -67,12 +68,14 @@ func allocationsByLine(rows []store.OrdersInvoiceAllocation) lineAllocations {
 
 // orderInvoicesOut are the invoices an order's allocations were stamped by
 // (O41), in the order they were first stamped: each invoice's number, issue
-// date and the amount of the order it bills, in the order's currency;
-// released when every allocation of it was given back by a credit note.
+// date, the amount of the order it still bills — its allocations still
+// invoiced — and the amount credit notes gave back of it — its allocations
+// released since — in the order's currency; released when every allocation
+// of it was given back.
 func orderInvoicesOut(rows []store.OrdersInvoiceAllocation, currency string) []gen.OrdersOrderInvoice {
 	out := []gen.OrdersOrderInvoice{}
 	at := map[int64]int{}
-	amounts := map[int64]*big.Rat{}
+	amounts, releasedAmounts := map[int64]*big.Rat{}, map[int64]*big.Rat{}
 	for _, r := range rows {
 		if r.InvoiceID == nil || r.InvoiceNumber == nil {
 			continue
@@ -82,17 +85,19 @@ func orderInvoicesOut(rows []store.OrdersInvoiceAllocation, currency string) []g
 		if !ok {
 			i = len(out)
 			at[id] = i
-			amounts[id] = new(big.Rat)
+			amounts[id], releasedAmounts[id] = new(big.Rat), new(big.Rat)
 			out = append(out, gen.OrdersOrderInvoice{
 				InvoiceId: id, InvoiceNumber: *r.InvoiceNumber, IssueDate: openapi_types.Date{Time: r.IssueDate.Time},
 				Currency: currency, State: gen.OrdersOrderInvoiceStateReleased,
 			})
 		}
-		amounts[id].Add(amounts[id], ratOrZero(r.Amount))
-		out[i].Amount = wire(amounts[id], amountPlaces)
 		if r.State == contracts.AllocationInvoiced {
+			amounts[id].Add(amounts[id], ratOrZero(r.Amount))
 			out[i].State = gen.OrdersOrderInvoiceStateInvoiced
+		} else {
+			releasedAmounts[id].Add(releasedAmounts[id], ratOrZero(r.Amount))
 		}
+		out[i].Amount, out[i].ReleasedAmount = wire(amounts[id], amountPlaces), wire(releasedAmounts[id], amountPlaces)
 	}
 	return out
 }
@@ -127,6 +132,19 @@ func judgeNoDraftInvoice(ctx context.Context, txq *store.Queries, o store.Orders
 func (s *server) ReleaseSalesOrderDraftAllocations(ctx context.Context, req gen.ReleaseSalesOrderDraftAllocationsRequestObject) (gen.ReleaseSalesOrderDraftAllocationsResponseObject, error) {
 	out, err := s.changeOrder(ctx, req.Id, req.Body.Version, req.Body.ExpectedUpdatedAt, false,
 		func(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.OrdersOrder, lines []store.OrdersLine) (store.OrdersOrder, []changeAction, error) {
+			// The order is held; its lines and then its draft allocations
+			// are taken in id order before they are written (O38's order).
+			lineIDs := make([]int64, 0, len(lines))
+			for _, l := range lines {
+				lineIDs = append(lineIDs, l.ID)
+			}
+			slices.Sort(lineIDs)
+			if _, err := txq.LockOrderLinesByIDs(ctx, lineIDs); err != nil {
+				return o, nil, fmt.Errorf("orders: lock order %d's lines: %w", o.ID, err)
+			}
+			if _, err := txq.LockOrderDraftAllocations(ctx, o.ID); err != nil {
+				return o, nil, fmt.Errorf("orders: lock order %d's draft allocations: %w", o.ID, err)
+			}
 			now := s.deps.Clock()
 			released, err := txq.ReleaseOrderDraftAllocations(ctx, store.ReleaseOrderDraftAllocationsParams{OrderID: o.ID, Now: &now})
 			if err != nil {

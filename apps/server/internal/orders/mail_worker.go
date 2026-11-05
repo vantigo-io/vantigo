@@ -75,7 +75,7 @@ func workers(d module.Deps) []worker.Worker {
 		}
 		return nil
 	}
-	return []worker.Worker{&mailWorker{s: s}, &retentionWorker{s: s}, &quoteExpiryWorker{s: s}, &allocationSweepWorker{s: s}}
+	return []worker.Worker{&mailWorker{s: s}, &retentionWorker{s: s}, &quoteExpiryWorker{s: s}}
 }
 
 // mailWorker sends the queued mailings.

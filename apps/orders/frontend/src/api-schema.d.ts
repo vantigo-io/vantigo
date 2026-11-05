@@ -1532,10 +1532,18 @@ export interface components {
             salespersonId?: string | null;
             yourReference?: string;
         };
-        /** @description An invoice issued from an order (O41): its id and number in Invoices, its issue date, the net amount of the order it bills and its state — invoiced, or released when a credit note gave all of it back. */
+        /** @description An invoice issued from an order (O41): its id and number in Invoices, its issue date, the net amount of the order it still bills (amount — its allocations still invoiced), the net amount credit notes gave back (releasedAmount — its allocations released since), and its state — invoiced, or released when a credit note gave all of it back. */
         OrdersOrderInvoice: {
-            /** Format: double */
+            /**
+             * Format: double
+             * @description The net amount of the order this invoice still bills — the sum of its allocations still invoiced, in the order's currency; 0 once a credit note gave all of it back.
+             */
             amount: number;
+            /**
+             * Format: double
+             * @description The net amount of the order credit notes gave back of this invoice — the sum of its allocations released since — 0 when none was.
+             */
+            releasedAmount: number;
             currency: string;
             /** Format: int64 */
             invoiceId: number;

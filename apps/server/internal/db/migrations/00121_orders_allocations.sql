@@ -8,9 +8,11 @@
 -- Each Allocate writes new draft rows under the lines' lock; it never rewrites
 -- one. A draft is stamped invoiced by the invoice's issue (the holder, O38),
 -- with the invoice's id, number and date, or released: by the invoicing
--- module after its draft is deleted or the line removed, by the daily sweep
--- after 30 days untouched, by the order page's Release draft allocations, or
--- by the credit note that returns its invoice line in full. A line's to
+-- module after its draft is deleted or the line removed — or, should that
+-- call never arrive, by its own reconcile of the allocations it took — by
+-- the order page's Release draft allocations, or by the credit note that
+-- returns its invoice line in full. Every writer of an allocation takes the
+-- order's row first, then its lines, then the allocations, each in id order. A line's to
 -- invoice is ordered − cancelled − invoiced − draft-allocated (on order), or
 -- delivered − invoiced − draft-allocated (on delivery, C).
 --
@@ -65,7 +67,10 @@ CREATE TABLE orders.invoice_allocations (
 );
 CREATE INDEX ix_invoice_allocations_line ON orders.invoice_allocations (line_id, state);
 CREATE INDEX ix_invoice_allocations_order ON orders.invoice_allocations (order_id);
-CREATE INDEX ix_invoice_allocations_sweep ON orders.invoice_allocations (state, created_at);
+-- What the draft allocations hold per line: DueOrderLines' and
+-- DraftAllocatedByLine's sums, from the index alone.
+CREATE INDEX ix_invoice_allocations_draft ON orders.invoice_allocations (line_id) INCLUDE (quantity)
+    WHERE state = 'draft';
 
 -- +goose Down
 DROP TABLE orders.invoice_allocations;

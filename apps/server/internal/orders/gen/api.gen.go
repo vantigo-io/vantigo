@@ -1490,14 +1490,18 @@ type OrdersOrderInput struct {
 // OrdersOrderInputLanguage defines model for OrdersOrderInput.Language.
 type OrdersOrderInputLanguage string
 
-// OrdersOrderInvoice An invoice issued from an order (O41): its id and number in Invoices, its issue date, the net amount of the order it bills and its state — invoiced, or released when a credit note gave all of it back.
+// OrdersOrderInvoice An invoice issued from an order (O41): its id and number in Invoices, its issue date, the net amount of the order it still bills (amount — its allocations still invoiced), the net amount credit notes gave back (releasedAmount — its allocations released since), and its state — invoiced, or released when a credit note gave all of it back.
 type OrdersOrderInvoice struct {
-	Amount        float64                 `json:"amount"`
-	Currency      string                  `json:"currency"`
-	InvoiceId     int64                   `json:"invoiceId"`
-	InvoiceNumber int64                   `json:"invoiceNumber"`
-	IssueDate     openapi_types.Date      `json:"issueDate"`
-	State         OrdersOrderInvoiceState `json:"state"`
+	// Amount The net amount of the order this invoice still bills — the sum of its allocations still invoiced, in the order's currency; 0 once a credit note gave all of it back.
+	Amount        float64            `json:"amount"`
+	Currency      string             `json:"currency"`
+	InvoiceId     int64              `json:"invoiceId"`
+	InvoiceNumber int64              `json:"invoiceNumber"`
+	IssueDate     openapi_types.Date `json:"issueDate"`
+
+	// ReleasedAmount The net amount of the order credit notes gave back of this invoice — the sum of its allocations released since — 0 when none was.
+	ReleasedAmount float64                 `json:"releasedAmount"`
+	State          OrdersOrderInvoiceState `json:"state"`
 }
 
 // OrdersOrderInvoiceState defines model for OrdersOrderInvoice.State.
