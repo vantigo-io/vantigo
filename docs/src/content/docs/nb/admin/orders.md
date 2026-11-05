@@ -134,8 +134,9 @@ ordrer**.
   ordren igjen før e-posten går, sendes gjeldende versjon i stedet, og **Dokumenter og
   utsendelser** på ordren viser hvilken. En ordre som kanselleres før bekreftelsen er
   sendt, får ingen.
-- **Frakt** — **Fraktprodukt**: et tjenesteprodukt som en fraktlinje tar navn, pris og
-  mva-kode fra, eller ingen for en fritekstlinje; **Påslag på transportørens estimat** i
+- **Frakt** — **Fraktprodukt**: et tjenesteprodukt som en fraktlinje tar navn og pris fra —
+  mva-koden følger varene, fraktproduktets egen bare for et dokument uten varer — eller ingen
+  for en fritekstlinje; **Påslag på transportørens estimat** i
   prosent (0 om ikke endret), som **Estimer** på en fraktlinje legger til; og **Send kunden
   e-post når frakten er bestilt** (på om ikke endret), som sender sendingsvarselet med
   sporingslenken på avsenderkanalen. Selve fraktkontoene ligger under Administrer

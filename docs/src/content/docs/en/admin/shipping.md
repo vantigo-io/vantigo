@@ -84,7 +84,8 @@ booking — and never with a real customer's.
 ## Choose the default account per site
 
 Under **Default account per site**, choose an account for each site that fulfils orders and
-**Save**. A site's new shipments and the shipping estimates of its orders use it; a quote's
+**Save**; clear a site's choice to take its default away. A save changes only the sites on
+the page, so two administrators saving at once do not undo each other. A site's new shipments and the shipping estimates of its orders use it; a quote's
 estimate uses the default site's. A site without one uses the only active account when
 there is exactly one; otherwise a shipment names its account.
 
@@ -92,8 +93,11 @@ there is exactly one; otherwise a shipment names its account.
 
 In **Orders settings** › **Shipping**:
 
-- **Freight product** — a Service product, for example *Frakt*, whose name, price and VAT code
-  a shipping line takes. Without one a shipping line is free text at the standard rate.
+- **Freight product** — a Service product, for example *Frakt*, whose name and price a
+  shipping line takes. Its VAT code follows the goods on the quote or order: theirs when they
+  share one, else the one most of the goods' amount carries; the freight product's own VAT
+  code serves only a document without goods. Without a freight product a shipping line is
+  free text.
 - **Markup on the carrier's estimate** — the percent **Estimate** adds to Bring's price.
 - **E-mail the customer when a shipment is booked** — on by default: the shipping notice,
   with the order number, Bring, the consignment number and the tracking link, sent from the
@@ -103,9 +107,12 @@ In **Orders settings** › **Shipping**:
 
 `orders.shipment_tracking` asks Bring every 30 minutes for every shipment booked or in
 transit in the last 60 days, records the events and moves the shipment — in transit,
-delivered, an exception. It runs in the worker process with the others and needs nothing of
-its own; any number of instances share it. Bring's push notifications (Event Cast) are not
-used.
+delivered, an exception. A cancel Bring reports is shown as an exception, not acted on: a
+person cancels the shipment in Vantigo. Each shipment is asked about within 10 seconds, and
+one that hangs does not hold up the others; a cycle stops asking after 10 minutes, and the
+shipments it did not reach come first in the next. It runs in the worker process with the
+others and needs nothing of its own; any number of instances share it. Bring's push
+notifications (Event Cast) are not used.
 
 ## Verify
 
@@ -128,7 +135,10 @@ used.
 | "The carrier account's keys cannot be read on this server" | `APP_SECRET` changed since the keys were saved | Type the keys again |
 | "No carrier account to use" when shipping | No account is the site's default, and there is not exactly one active account | Choose the site's default account |
 | The carrier refuses a booking, naming a postal code or an address | The order's delivery address is incomplete | Correct the delivery address on the order, make a new shipment, and book |
-| A booking ends with "The carrier did not answer" | Bring did not answer in time; it may have booked | Book again: Vantigo looks the shipment up at Bring first and books once. A shipment found that way has no label in Vantigo — print it from Mybring |
+| A booking ends with "The carrier did not answer" | Bring did not answer in time; it may have booked | Wait two minutes and book again: Vantigo looks the shipment up at Bring first and books once. Until then the shipment cannot be changed |
+| "The shipment is being booked right now" (`booking_in_progress`) | Someone booked it under two minutes ago, and Bring may still be booking | Wait a couple of minutes and look again; it books once |
+| "The carrier does not show the earlier booking yet" (`booking_outcome_unknown`) | A booking got no answer under fifteen minutes ago, and Bring does not show it by reference yet | Look the shipment up in Mybring under the order's consignments; or wait fifteen minutes and book again — then Vantigo books anew if Bring still shows none |
+| The shipment says "print the label in Mybring" | The booking was found again after a lost answer, and Bring gives no label link for it | Print the label from the consignment in Mybring |
 | A test booking sent an SMS to a customer | Bring notifies real contacts in test mode | Use made-up contacts on test shipments |
 | Shipments stay *Booked* | The tracking worker does not run, or the server cannot reach Bring | Check that the worker process runs and that `api.bring.com` is reachable |
 | A cancelled booked shipment still shows its label | Bring has no cancel: the shipment is voided in Vantigo | Do not use the label; Bring bills only parcels handed in |

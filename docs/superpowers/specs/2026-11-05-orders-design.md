@@ -1156,16 +1156,38 @@ only, its webhooks are unsigned, and a carrier like Porterbuddy sells delivery w
       shipment to `booked`;
     - publishes `orders.shipment.booked.v1`;
     - a carrier refusal is shown with the carrier's message
-      (`carrier_refused`, 422), and the shipment stays `draft`.
+      (`carrier_refused`, 422), and the shipment stays `draft`; a definitive refusal
+      gives the draft a fresh key and takes the attempt back.
+  - **The booking attempt is an exclusive lease** (review, 2026-11-05):
+    - the attempt is recorded, moving the shipment's version, before the carrier is
+      called; while it is under two minutes old (the carrier call's 30-second deadline
+      plus a margin) a book or a cancel is `booking_in_progress` (409), so two books at
+      once make one booking;
+    - a draft whose attempt's outcome is unknown is not changed (`booking_unresolved`,
+      409): a retry books what was attempted;
+    - after the lease a retry asks the carrier for the booking under the key first.
+      While the attempt is under fifteen minutes old (Bring's indexing lag) a retry that
+      finds none books nothing and is `booking_outcome_unknown` (409): check Mybring, or
+      wait. After that it books again;
+    - a booking found that way has no label link — Bring documents none by consignment
+      number — so the shipment is marked `label_in_mybring_only` and the page says
+      "print the label in Mybring".
   - **Cancel** calls `Cancel`.
     - `cancelled` and `not_supported` both move the shipment to `cancelled`.
       `not_supported` says "voided in Vantigo; the label must not be used".
+    - A carrier whose capabilities have no cancel (Bring) is voided without a call, so
+      without reading the account's keys.
     - `too_late` is refused with `shipment_past_cancel`.
   - **Tracking:**
     - a leased worker, `orders.shipment_tracking`, polls `Track` every 30 minutes
       for shipments in `booked`, `in_transit` or `exception` from the last 60 days;
     - it stores new events in `orders.shipment_events`, moves the status, and
       publishes `orders.shipment.delivered.v1` on delivery;
+    - a cancel the carrier reports sets the exception flag and is recorded as an
+      event; the shipment is not cancelled on the carrier's word;
+    - each reference is asked within 10 seconds, a cycle's calls end after 10 minutes,
+      and a shipment not yet asked about then gets its `last_tracked_at` back; claims
+      take the least recently tracked first, so a stuck tail rotates;
     - **Bring is polled in D.** Its Event Cast webhooks are unsigned and retry
       little. A webhook endpoint for carriers with the capability (Porterbuddy's HMAC)
       comes with that adapter (§13).
@@ -1201,7 +1223,8 @@ only, its webhooks are unsigned, and a carrier like Porterbuddy sells delivery w
   - **Verify** calls `Verify` and `Services`, and shows the services the account can
     book.
   - Several accounts may exist, for example one per site or one for test. Orders'
-    settings name a **default account per site**.
+    settings name a **default account per site**; a save changes only the sites it names
+    (a null clears one), and the page sends every site it shows.
   - **The instance tier gives one switch:** `SHIPPING_CARRIERS` lists the adapters the
     installation allows (default `bring`), so an operator can withhold one.
 - **O52 — The waybill and the tracking link reach the customer.**
@@ -1211,7 +1234,11 @@ only, its webhooks are unsigned, and a carrier like Porterbuddy sells delivery w
     issues it and printable from the delivery page.
     - For a service that needs no separate waybill, the label serves, and the page says
       so.
-  - **Labels** print from the delivery page as the carrier's PDF.
+  - **Labels** print from the delivery page as the carrier's PDF, for a holder of
+    `orders:deliveries-manage`. They are fetched right after the booking, each within
+    10 seconds; one that fails is fetched by the first download.
+  - **The erase** (O29) takes an anonymised order's shipments' recipient, label and
+    waybill links and tracking URL; their label and waybill answer 404.
     - A label printer format (PDF or ZPL) is a setting, used where the carrier's
       capability allows. Bring is PDF only, so ZPL waits for a carrier that has it
       (§13).
@@ -1227,16 +1254,20 @@ only, its webhooks are unsigned, and a carrier like Porterbuddy sells delivery w
     customer pays. It has:
     - a description;
     - a price;
-    - a VAT code: freight follows the VAT of the goods, so it defaults to the code of
-      the order's standard-rated lines, and the user may change it;
+    - a VAT code: freight follows the VAT of the goods. The estimate takes the
+      document's priced goods lines' code when they share one; when they are mixed,
+      the code with the largest net share of them; with no goods line, the freight
+      product's, else the standard rate's. The user may change it;
     - quantity 1;
     - `invoice_policy = order`.
   - **Which variant it uses.** Orders' settings may name a **freight product** (a
-    Service variant), whose price and VAT code fill the line. Without one, the line is
+    Service variant), whose name and price fill the line. Without one, the line is
     free text.
   - **The estimate.**
     - *Estimate* on the line asks `Rates` with the order's delivery address, the
-      estimated weight of its goods lines, and the default account and service.
+      estimated weight of its goods lines, and the default account and service. It
+      needs the right to edit the document: `orders:quotes-manage` for a quote,
+      `orders:sales-manage` for an order.
     - It fills the price with the estimate, plus an optional markup percent from the
       settings, as `price_source = carrier`.
     - The user may overwrite it, and it then becomes `manual`.
