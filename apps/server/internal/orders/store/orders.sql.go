@@ -284,8 +284,9 @@ type DeliveredNotInvoicedSumsRow struct {
 }
 
 // DeliveredNotInvoicedSums is a customer's confirmed orders with a delivered
-// quantity not yet invoiced, and its net value, per currency (O31a). Nothing
-// is invoiced before delivery B, so until then it is what was delivered.
+// quantity not yet invoiced, and its net value, per currency (O31a): what is
+// delivered less what the invoices' issues stamped (O38); a draft invoice's
+// allocation is not invoiced yet.
 func (q *Queries) DeliveredNotInvoicedSums(ctx context.Context, customerID int32) ([]DeliveredNotInvoicedSumsRow, error) {
 	rows, err := q.db.Query(ctx, deliveredNotInvoicedSums, customerID)
 	if err != nil {
