@@ -81,7 +81,7 @@ shorter than yours:
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |
 | [Inventory](/en/user/inventory/) | Overview, Movements, Receipts, Counts, Import opening balances |
-| [Orders](/en/user/orders/) | Quotes, Sales orders, Subscriptions, Quote templates, Sales analysis, Orders settings |
+| [Orders](/en/user/orders/) | Quotes, Sales orders, Deliveries, Subscriptions, Quote templates, Sales analysis, Orders settings |
 | [Energy](/en/user/energy/) | Metering points |
 | [Microsoft Entra ID](/en/user/entra/) | Microsoft Entra ID (the connection's status and its six setup steps), for `entra:manage` |
 | [Google Workspace](/en/user/google-workspace/) | Google Workspace (the connection's status and its six setup steps), for `google:manage` |
