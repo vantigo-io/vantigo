@@ -1,13 +1,16 @@
 package integration_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	invgen "github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	ordgen "github.com/vantigo-io/vantigo/server/internal/orders/gen"
@@ -224,7 +227,9 @@ func invoicedEvents(t *testing.T, h *modtest.Harness, order int64) int {
 }
 
 // An order of three lines, one discounted, invoiced from the wizard: part of
-// one line drafted and given back by deleting the draft; the rest in one
+// one line drafted and given back by deleting the draft, and again — its
+// draft gone without a release, as a customer's anonymisation deletes it —
+// by Invoices' reconcile an hour on; the rest in one
 // invoice whose issue is refused while an allocation it holds has changed;
 // issued, the order is invoiced and done, lists the invoice and publishes
 // once, and the invoice's totals are the order's; a full credit gives every
@@ -266,6 +271,34 @@ func TestOrdersInvoicing_AnOrderInvoicedIssuedAndCredited(t *testing.T) {
 	}
 	if n := o.h.Count(t, `SELECT count(*) FROM orders.invoice_allocations WHERE order_id = $1 AND state = 'released'`, order.Id); n != 1 {
 		t.Errorf("%d released allocations after the delete, want 1", n)
+	}
+	if n := o.h.Count(t, `SELECT count(*) FROM invoices.order_allocations_taken WHERE released_at IS NOT NULL`); n != 1 {
+		t.Errorf("%d ledger rows released after the delete, want the draft's one", n)
+	}
+
+	// A draft deleted with no release after it — as a customer's
+	// anonymisation deletes its drafts — leaves its allocation to Invoices'
+	// reconcile, which gives it back once an hour old.
+	lost := o.fromOrders(t, false, pickLine(order.Id, shelf.Id, 3))
+	o.h.Exec(t, `DELETE FROM invoices.invoices WHERE id = $1`, lost[0].InvoiceId)
+	var reconcile *invoices.AllocationReconcileWorker
+	for _, w := range o.h.Workers(o.h.Deps()) {
+		if r, ok := w.(*invoices.AllocationReconcileWorker); ok {
+			reconcile = r
+		}
+	}
+	if reconcile == nil {
+		t.Fatal("no invoices.allocation_reconcile worker is composed")
+	}
+	if n, err := reconcile.RunCycle(context.Background()); err != nil || n != 0 {
+		t.Errorf("a reconcile within the hour = %d, %v; want 0", n, err)
+	}
+	o.h.Advance(2 * time.Hour)
+	if n, err := reconcile.RunCycle(context.Background()); err != nil || n != 1 {
+		t.Errorf("the reconcile = %d, %v; want the lost draft's allocation", n, err)
+	}
+	if l := o.order(t, order.Id).Lines[0]; l.QtyDraftAllocated != 0 {
+		t.Errorf("the shelf line after the reconcile = %v draft-allocated, want 0", l.QtyDraftAllocated)
 	}
 
 	// The whole order in one invoice, delivered by hand first so that the
@@ -311,6 +344,9 @@ func TestOrdersInvoicing_AnOrderInvoicedIssuedAndCredited(t *testing.T) {
 	if n := invoicedEvents(t, o.h, order.Id); n != 1 {
 		t.Errorf("%d orders.sales_order.invoiced events, want 1", n)
 	}
+	if n := o.h.Count(t, `SELECT count(*) FROM invoices.order_allocations_taken WHERE allocation_id = ANY($1)`, held); n != 0 {
+		t.Errorf("%d ledger rows of the issued allocations, want none: Orders holds them now", n)
+	}
 
 	// An order invoiced in full by one invoice: the document's totals are
 	// the order's.
@@ -330,7 +366,8 @@ func TestOrdersInvoicing_AnOrderInvoicedIssuedAndCredited(t *testing.T) {
 		}
 	}
 	if got.InvoiceStatus != ordgen.OrdersOrderInvoiceStatusNone || len(got.Invoices) != 1 ||
-		got.Invoices[0].State != ordgen.OrdersOrderInvoiceStateReleased {
+		got.Invoices[0].State != ordgen.OrdersOrderInvoiceStateReleased || got.Invoices[0].Amount != 0 ||
+		got.Invoices[0].ReleasedAmount != inv.NetTotal {
 		t.Errorf("the order after the credit = %s, invoices %+v; want nothing invoiced and the invoice released", got.InvoiceStatus, got.Invoices)
 	}
 	if n := o.h.Count(t, `SELECT count(*) FROM orders.invoice_allocations WHERE id = ANY($1) AND state = 'released'`, held); n != 3 {

@@ -849,6 +849,13 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 			out.invalid = invalidSources
 			return errRefused
 		}
+		if refusal, err := allocationLinesKept(ctx, txq, id, held, rows, in.lines); refusal != nil || err != nil {
+			if err != nil {
+				return err
+			}
+			out.refusal = refusal
+			return errRefused
+		}
 		released = append(released, dropped...)
 		if in.refresh != nil {
 			rows, dropped = in.refresh.apply(rows)
@@ -915,6 +922,61 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 		return draftSaved{refusal: out.refusal, invalid: out.invalid}, nil
 	}
 	return out, err
+}
+
+// allocationLinesKept is a save's rule for a line billing an order allocation
+// (orders design O39): its quantity, unit price, discount and VAT code are
+// the allocation's, and the line that carries the allocation on keeps them
+// as the line that held it had them, under the draft's lock — else 409
+// line_holds_order_allocation, naming the line and the allocation. Its
+// description may change. To bill another quantity the user removes the
+// line, which gives the allocation back, and invoices the order again.
+func allocationLinesKept(ctx context.Context, txq *store.Queries, id int64, held, rows []heldSource, lines []draftLine) (*gen.InvoicesConflictProblem, error) {
+	if !slices.ContainsFunc(rows, func(r heldSource) bool { return r.kind == contracts.WorkSourceOrderAllocation }) {
+		return nil, nil
+	}
+	stored, err := txq.Lines(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read draft %d's lines: %w", id, err)
+	}
+	before := make(map[int32]store.InvoicesLine, len(stored))
+	for _, l := range stored {
+		before[l.Position] = l
+	}
+	was := make(map[sourceRef]int32, len(held))
+	for _, h := range held {
+		was[h.ref()] = h.linePosition
+	}
+	for _, r := range rows {
+		if r.kind != contracts.WorkSourceOrderAllocation {
+			continue
+		}
+		old, ok := before[was[r.ref()]]
+		if !ok {
+			continue
+		}
+		quantity, err := ratFromNumeric(old.Quantity)
+		if err != nil {
+			return nil, err
+		}
+		price, err := ratFromNumeric(old.UnitPrice)
+		if err != nil {
+			return nil, err
+		}
+		discount, err := ratFromNumeric(old.DiscountPercent)
+		if err != nil {
+			return nil, err
+		}
+		l := lines[r.linePosition-1]
+		if l.quantity.Cmp(quantity) != 0 || l.unitPrice.Cmp(price) != 0 || l.discount.Cmp(discount) != 0 || l.vatCodeID != old.VatCodeID {
+			p := conflict(codeLineHoldsOrderAllocation, "The line bills an order", fmt.Sprintf(
+				"Line %d bills order allocation %d, and keeps its quantity, unit price, discount and VAT code. "+
+					"Remove the line, which gives the allocation back, and invoice the order again.", r.linePosition, r.id))
+			p.LinePosition, p.SourceKind, p.SourceId = ptr(r.linePosition), ptr(string(r.kind)), ptr(r.id)
+			return &p, nil
+		}
+	}
+	return nil, nil
 }
 
 // DeleteInvoicesById Delete a draft

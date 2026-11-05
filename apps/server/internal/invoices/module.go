@@ -126,7 +126,8 @@ var limits = map[string]ratelimit.Policy{
 // customer receivables it provides to the customers module (receivables.go),
 // the two slots every module holding customer ids fills (customer_slots.go):
 // the merge holder and the personal-data provider, and its workers — the two
-// EHF workers, the reminder worker and the payments worker.
+// EHF workers, the reminder worker, the payments worker, the billing worker
+// and the order allocations' reconcile.
 func Module() module.Module {
 	return module.Module{
 		Name:                 "invoices",
@@ -157,13 +158,16 @@ func Module() module.Module {
 // left capturing stay counted until a manager abandons them. The
 // invoices-billing worker, which carries the billing runs' items (energy
 // consumption billing design D10), is always there too: a run is made only
-// while Energy is composed, and each item judges Energy again.
+// while Energy is composed, and each item judges Energy again. So is the
+// invoices.allocation_reconcile worker (orders design O36), which gives back
+// the order allocations this module took and no draft holds; with Orders off
+// its cycle does nothing.
 func workers(d module.Deps) []worker.Worker {
 	var ws []worker.Worker
 	if d.Config != nil && d.Config.InvoicesEhfEnabled {
 		ws = append(ws, NewEhfWorker(d), NewEhfEventsWorker(d))
 	}
-	ws = append(ws, NewReminderWorker(d), NewBillingWorker(d))
+	ws = append(ws, NewReminderWorker(d), NewBillingWorker(d), NewAllocationReconcileWorker(d))
 	if d.Config != nil && d.Config.InvoicesVippsEnabled {
 		ws = append(ws, NewPaymentWorker(d))
 	}

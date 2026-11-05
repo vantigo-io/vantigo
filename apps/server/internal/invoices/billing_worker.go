@@ -353,20 +353,35 @@ func (c *billingClaim) bill(ctx context.Context) (itemOutcome, error) {
 }
 
 // billOrders is an item of a run of orders (orders design O40), in order:
-// Orders off is skipped orders_unavailable; DueOrders for the customer
-// through the run's date, on the pool — a draft allocation's quantity is not
-// offered again, so this item's documents of an earlier attempt are not
-// drafted twice, and are carried on instead; nothing left and nothing made
-// before is skipped no_orders_due. Every line of every order not blocked is
-// invoiced in full by the wizard's own core (fromOrders), one invoice per
-// order or combined as the run says, each draft recorded on the item at once,
-// then — when the run issues — issued by the issue's own core for today. A
-// wizard refusal skips the item with its code, an issue refusal fails it.
+// Orders off is skipped orders_unavailable; the allocations an earlier
+// attempt of this item took and no draft holds — an attempt that ended
+// between Allocate and its drafts — given back to Orders, so they are due
+// again (a failure is an error, retried); DueOrders for the customer through
+// the run's date, on the pool — a draft allocation's quantity is not offered
+// again, so this item's documents of an earlier attempt are not drafted
+// twice, and are carried on instead. An order in another currency than the
+// settings' is left out and named in the outcome's detail. Nothing left and
+// nothing made before is skipped: currency_not_supported when only such
+// orders are due, orders_held_by_drafts when drafts of the customer hold
+// what its orders have left, else no_orders_due. Every line of every order
+// not blocked is invoiced in full by the wizard's own core (fromOrders), one
+// invoice per order or combined as the run says, each draft recorded on the
+// item at once, then — when the run issues — issued by the issue's own core
+// for today. A wizard refusal skips the item with its code, an issue refusal
+// fails it.
 func (c *billingClaim) billOrders(ctx context.Context) (itemOutcome, error) {
 	s, customer := c.s, c.row.CustomerID
 	if s.deps.BillableOrders == nil {
 		p := ordersUnavailable()
 		return skipped(codeOrdersUnavailable, *p.Detail), nil
+	}
+	q := store.New(s.deps.Pool)
+	if err := c.releaseUnheldAllocations(ctx, q); err != nil {
+		return itemOutcome{}, err
+	}
+	settings, err := q.GetSettings(ctx)
+	if err != nil {
+		return itemOutcome{}, fmt.Errorf("invoices: read the settings: %w", err)
 	}
 	through := utcDay(c.run.Through.Time)
 	page, err := s.dueOrders(ctx, contracts.DueOrdersRequest{CustomerIDs: []int32{customer}, Until: through})
@@ -378,8 +393,13 @@ func (c *billingClaim) billOrders(ctx context.Context) (itemOutcome, error) {
 			"Orders has more than %d order lines to invoice for this customer; invoice them with From orders.", contracts.MaxBillableRows)), nil
 	}
 	var lines []orderLineInput
+	var foreign []string
 	for _, o := range page.Orders {
 		if o.Blocked != "" {
+			continue
+		}
+		if o.Currency != settings.DefaultCurrency {
+			foreign = append(foreign, fmt.Sprintf("%d (%s)", o.Number, o.Currency))
 			continue
 		}
 		for _, l := range o.Lines {
@@ -392,12 +412,28 @@ func (c *billingClaim) billOrders(ctx context.Context) (itemOutcome, error) {
 			}
 		}
 	}
-	q := store.New(s.deps.Pool)
+	var leftOut string
+	if len(foreign) > 0 {
+		leftOut = fmt.Sprintf("Orders %s are in another currency than %s and were left out (%s).",
+			strings.Join(foreign, ", "), settings.DefaultCurrency, codeCurrencyNotSupported)
+	}
 	earlier, err := c.earlierDocuments(ctx, q)
 	if err != nil {
 		return itemOutcome{}, err
 	}
 	if len(lines) == 0 && len(earlier) == 0 {
+		if leftOut != "" {
+			return skipped(codeCurrencyNotSupported, leftOut), nil
+		}
+		held, err := q.CustomerDraftsHoldOrders(ctx, customer)
+		if err != nil {
+			return itemOutcome{}, fmt.Errorf("invoices: read whether customer %d's drafts hold orders: %w", customer, err)
+		}
+		if held {
+			return skipped(codeOrdersHeldByDrafts, fmt.Sprintf(
+				"What this customer's orders have left to invoice through %s is on draft invoices already; issue or delete them.",
+				through.Format(time.DateOnly))), nil
+		}
 		return skipped(codeNoOrdersDue, fmt.Sprintf(
 			"No order line of this customer's is left to invoice through %s.", through.Format(time.DateOnly))), nil
 	}
@@ -412,7 +448,7 @@ func (c *billingClaim) billOrders(ctx context.Context) (itemOutcome, error) {
 		}
 	}
 	if len(lines) > 0 {
-		out, err := s.fromOrders(ctx, lines, c.run.Combine)
+		out, err := s.fromOrders(ctx, lines, c.run.Combine, &c.row.ID)
 		switch {
 		case err != nil:
 			return itemOutcome{}, err
@@ -435,9 +471,32 @@ func (c *billingClaim) billOrders(ctx context.Context) (itemOutcome, error) {
 		}
 	}
 	if c.run.Issue {
-		return itemOutcome{status: itemIssued}, nil
+		return itemOutcome{status: itemIssued, detail: leftOut}, nil
 	}
-	return itemOutcome{status: itemDrafted}, nil
+	return itemOutcome{status: itemDrafted, detail: leftOut}, nil
+}
+
+// releaseUnheldAllocations gives back to Orders what an earlier attempt of
+// this item allocated and no live line source holds (the ledger's
+// ItemAllocationsUnheld), and marks it released: an attempt that ended
+// between Allocate and its drafts would otherwise leave the customer's lines
+// allocated to nothing, and this attempt would find nothing due. A failure
+// is the item's error, retried.
+func (c *billingClaim) releaseUnheldAllocations(ctx context.Context, q *store.Queries) error {
+	ids, err := q.ItemAllocationsUnheld(ctx, &c.row.ID)
+	if err != nil {
+		return fmt.Errorf("invoices: read the allocations item %d took before: %w", c.row.ID, err)
+	}
+	for chunk := range slices.Chunk(ids, contracts.MaxBillableRows) {
+		if err := c.s.releaseAllocations(ctx, chunk); err != nil {
+			return fmt.Errorf("invoices: release the allocations item %d took before: %w", c.row.ID, err)
+		}
+		now := c.s.deps.Clock()
+		if err := q.MarkAllocationsReleased(ctx, store.MarkAllocationsReleasedParams{ReleasedAt: &now, Ids: chunk}); err != nil {
+			return fmt.Errorf("invoices: mark the allocations item %d took before released: %w", c.row.ID, err)
+		}
+	}
+	return nil
 }
 
 // earlierDocuments is what still exists of the documents this item made on

@@ -353,6 +353,14 @@ type InvoicesManualDelivery struct {
 	RemovalReason    *string
 }
 
+type InvoicesOrderAllocationsTaken struct {
+	AllocationID int64
+	TakenAt      time.Time
+	RunItemID    *int64
+	ClaimedUntil *time.Time
+	ReleasedAt   *time.Time
+}
+
 type InvoicesPayLink struct {
 	ID              int64
 	InvoiceID       int64

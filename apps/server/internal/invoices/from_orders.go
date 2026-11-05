@@ -23,8 +23,12 @@ import (
 // delfakturering — through Orders' Allocate, then writes the drafts in one
 // transaction, one per order or combined per customer (samlefaktura). Every
 // call to Orders is made on the pool, never under this module's locks:
-// Allocate writes Orders' own rows in transactions of its own, and should
-// anything fail after it the allocations are released again.
+// Allocate writes Orders' own rows in transactions of its own. Every
+// allocation it answers is recorded at once in this module's ledger
+// (invoices.order_allocations_taken), and should anything fail after it the
+// allocations are released again; what a crash or a failed release leaves,
+// the invoices.allocation_reconcile worker gives back
+// (allocation_reconcile_worker.go).
 
 // The From orders wizard's refusals, beside the work wizard's (work.go) where
 // the rule is the same.
@@ -32,6 +36,15 @@ const (
 	codeOrdersUnavailable = "orders_unavailable"
 	codeOrderBlocked      = "order_blocked"
 	codeNoOrdersDue       = "no_orders_due"
+	// codeOrdersHeldByDrafts is a billing run item with nothing due because
+	// drafts of the customer hold what its orders have left to invoice.
+	codeOrdersHeldByDrafts = "orders_held_by_drafts"
+	// codeCurrencyNotSupported is an order in another currency than the
+	// settings' — blocked in the due list, and left out of a billing run.
+	codeCurrencyNotSupported = "currency_not_supported"
+	// codeLineHoldsOrderAllocation is a save that changes the quantity, unit
+	// price, discount or VAT code of a line billing an order allocation.
+	codeLineHoldsOrderAllocation = "line_holds_order_allocation"
 	// codeAllocationExceedsOpen and codeLineNotInvoiceable are Orders'
 	// AllocationRefusal codes (contracts.AllocationExceedsOpen,
 	// contracts.AllocationLineNotInvoiceable), which the wizard answers as
@@ -64,7 +77,9 @@ func orderLineConflict(code string, lineID int64, detail string) *gen.InvoicesCo
 //
 // The wizard's first two steps (O37, O39): exactly one of customerId,
 // orderId and every; Orders' DueOrders for it, the customers named as the
-// directory names them. Nothing is written and nothing allocated.
+// directory names them. An order in another currency than the settings' is
+// answered blocked currency_not_supported, as Orders answers a draft or one
+// on hold. Nothing is written and nothing allocated.
 func (s *server) GetInvoicesFromOrdersDue(ctx context.Context, req gen.GetInvoicesFromOrdersDueRequestObject) (gen.GetInvoicesFromOrdersDueResponseObject, error) {
 	p := req.Params
 	due := contracts.DueOrdersRequest{Every: p.Every != nil && *p.Every}
@@ -88,6 +103,10 @@ func (s *server) GetInvoicesFromOrdersDue(ctx context.Context, req gen.GetInvoic
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the orders due: %w", err)
 	}
+	settings, err := store.New(s.deps.Pool).GetSettings(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the settings: %w", err)
+	}
 	names, err := s.customerNames(ctx, page.Orders)
 	if err != nil {
 		return nil, err
@@ -97,6 +116,9 @@ func (s *server) GetInvoicesFromOrdersDue(ctx context.Context, req gen.GetInvoic
 		view.Warnings = append(view.Warnings, warningOrdersTruncated)
 	}
 	for _, o := range page.Orders {
+		if o.Blocked == "" && o.Currency != settings.DefaultCurrency {
+			o.Blocked = codeCurrencyNotSupported
+		}
 		out, err := dueOrderView(o)
 		if err != nil {
 			return nil, err
@@ -221,7 +243,7 @@ func (s *server) PostInvoicesFromOrders(ctx context.Context, req gen.PostInvoice
 	if len(errs) > 0 {
 		return gen.PostInvoicesFromOrders400ApplicationProblemPlusJSONResponse(invalid(invalidOrdersTitle, errs)), nil
 	}
-	out, err := s.fromOrders(ctx, lines, req.Body.Combine)
+	out, err := s.fromOrders(ctx, lines, req.Body.Combine, nil)
 	switch {
 	case err != nil:
 		return nil, err
@@ -257,10 +279,12 @@ type orderDraft struct {
 // before any write: Orders off; DueOrders for the orders named, and each
 // line judged against them — its order blocked, or not due on it; the
 // settings, each customer's profile and gates; the currency; the VAT codes;
-// the grouping and its line bound; the projects' codes. Then Allocate, and
-// from there every refusal and failure releases the allocations again; then
-// one transaction writes every draft.
-func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, combine bool) (ordersOutcome, error) {
+// the grouping and its line bound; the projects' codes. Then Allocate, its
+// allocations recorded at once in the ledger on a statement of their own —
+// naming runItem, the billing run item taking them, or nil for the wizard —
+// and from there every refusal and failure releases the allocations again;
+// then one transaction writes every draft.
+func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, combine bool, runItem *int64) (ordersOutcome, error) {
 	if s.deps.BillableOrders == nil {
 		return ordersOutcome{refusal: ptr(ordersUnavailable())}, nil
 	}
@@ -412,6 +436,13 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, combine
 			s.releaseOrderAllocations(ctx, 0, ids)
 		}
 	}()
+	// The ledger, before anything else can fail: what a crash from here on
+	// leaves, the reconcile — or this item's retry — gives back.
+	if err := q.RecordAllocationsTaken(ctx, store.RecordAllocationsTakenParams{
+		Ids: ids, TakenAt: s.deps.Clock(), RunItemID: runItem,
+	}); err != nil {
+		return ordersOutcome{}, fmt.Errorf("invoices: record the order allocations taken: %w", err)
+	}
 
 	byOrder := map[int64][]contracts.OrderAllocation{}
 	for _, a := range allocations {
@@ -514,8 +545,9 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, combine
 // releaseOrderAllocations gives ids back to Orders (O36), after the
 // transaction that let go of them has committed — a draft deleted, a save
 // that dropped them, or a wizard that failed after Allocate: best effort, on
-// a context the request's end does not cancel, logged on failure. Orders'
-// sweep releases what a failed call leaves.
+// a context the request's end does not cancel, logged on failure. What
+// Orders answered for is marked released in the ledger; what a failed call
+// leaves, the invoices.allocation_reconcile worker gives back.
 func (s *server) releaseOrderAllocations(ctx context.Context, invoiceID int64, ids []int64) {
 	if len(ids) == 0 || s.deps.BillableOrders == nil {
 		return
@@ -524,8 +556,20 @@ func (s *server) releaseOrderAllocations(ctx context.Context, invoiceID int64, i
 	defer cancel()
 	for chunk := range slices.Chunk(ids, contracts.MaxBillableRows) {
 		if err := s.releaseAllocations(ctx, chunk); err != nil {
-			s.deps.Logger.WarnContext(ctx, "invoices: order allocations could not be released; Orders' sweep releases them",
+			s.deps.Logger.WarnContext(ctx, "invoices: order allocations could not be released; the allocation reconcile releases them",
 				"invoiceId", invoiceID, "allocations", chunk, "error", err.Error())
+			continue
 		}
+		s.markAllocationsReleased(ctx, chunk)
+	}
+}
+
+// markAllocationsReleased records in the ledger that Orders gave ids back.
+// A failure is logged: the reconcile asks Orders again, which is harmless.
+func (s *server) markAllocationsReleased(ctx context.Context, ids []int64) {
+	now := s.deps.Clock()
+	if err := store.New(s.deps.Pool).MarkAllocationsReleased(ctx, store.MarkAllocationsReleasedParams{ReleasedAt: &now, Ids: ids}); err != nil {
+		s.deps.Logger.WarnContext(ctx, "invoices: the order allocations released could not be marked so in the ledger",
+			"allocations", ids, "error", err.Error())
 	}
 }

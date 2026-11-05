@@ -2469,7 +2469,7 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	if want := []string{"access_point_credentials", "bank_files", "bank_import_accounts", "bank_transaction_events",
 		"bank_transactions", "billing_run_items", "billing_runs", "charge_payments", "charge_waivers", "collection_handoffs", "collection_rates", "counters",
 		"customer_reminder_policies", "deliveries", "erased_customers", "invoice_holds", "invoices", "line_releases",
-		"line_sources", "lines", "manual_deliveries", "pay_links", "payment_attempts", "payment_provider_credentials",
+		"line_sources", "lines", "manual_deliveries", "order_allocations_taken", "pay_links", "payment_attempts", "payment_provider_credentials",
 		"payment_settings", "payments", "quick_requests", "reminder_print_batches", "reminder_runs",
 		"reminder_settings", "reminders", "settings", "tax_category_vat_codes", "timesheet_rows", "transmissions", "vat_code_rates", "vat_codes",
 		"vat_summaries", "vipps_day_reconciliations"}; !equalStrings(gotTables, want) {
