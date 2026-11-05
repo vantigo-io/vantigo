@@ -965,7 +965,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     delete, never a change to Service (orders design O30). It answers nil or a
     `contracts.VariantHold` whose `Kind` says what holds it: `stock`, a quantity in the
     variant's own unit as a decimal and the number of places it lies in, or
-    `open_documents`, the number of open quotes, orders and subscriptions that name it.
+    `open_documents`, the number of open quotes, orders and subscriptions that name it,
+    or `reserved`, a quantity orders have reserved (rule 24) and, in `Locations`, the
+    number of sites.
     The first hold refuses the write with 409 — *Variant has stock* and *Product has
     stock*, the unit in the refusal from Products' own row, or *Variant is on open
     documents* and *Product is on open documents*, naming how many. The holder keeps
@@ -1059,6 +1061,44 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     work (rule 10) — stays a synchronous contract call on that transaction. The first
     publisher and handlers come with Orders; delivery 0 built the outbox, its dispatcher
     and its operator calls with none composed.
+24. **Inventory reserves and issues on the caller's transaction.** The thirteenth
+    sanctioned cross-module direction, a module → Inventory, made for an order that
+    must refuse to promise stock it cannot have (orders design O45):
+    `contracts.StockLedger` in `Module.StockLedger`, which Inventory fills. A caller
+    names its document by a `contracts.StockSource{Module, Kind, ID}` — the source
+    reference Inventory's movements already hold — and calls, on **its own
+    transaction**, `Reserve` (a quantity per document line at a site, checked against
+    the site's available: on hand less what is reserved), `Release` (a line's
+    reservation, part of it, or all of the document's), `Issue` (one movement of kind
+    `issue`, taking stock off its locations and consuming the lines' reservations,
+    idempotent by the document) and `ReservationsFor`. Its rules:
+    - **The lock order is Products, then the caller, then Inventory.** The caller calls
+      `ProductCatalog.LockVariants` (rule 21) first, then locks its own rows, then calls
+      the ledger, which locks Inventory's balances in (variant, location) order and then
+      its reservations. Inventory takes `LockVariants` again for the variants' types,
+      already held; it takes no lock of a location or a site a tree write could hold
+      first, and an issue follows Inventory's own posting order. The caller never locks
+      Inventory's rows another way.
+    - **It runs on the caller's `tx`, never on a pool**, writes only Inventory's schema
+      with Inventory's own SQL, and never begins, commits or rolls back the
+      transaction, as rule 8's holders do. It reads no directory and calls no contract
+      but `LockVariants`.
+    - **It refuses only through a typed `*contracts.StockRefusal`**, naming every
+      failing line — `insufficient_available`, `insufficient_stock`,
+      `site_not_fulfilling`, `variant_not_stocked`, `site_unknown`, `location_unknown` —
+      and writes nothing when it refuses; the caller rolls back or goes on without the
+      write. Anything else is a failure.
+    - **It is composed whatever `MODULES` says**, as rule 8's holders are: a
+      reservation made while Inventory was on is still released by a cancel, an edit or
+      a manual marking after it is turned off. Whether to reserve and issue at all the
+      caller reads from `Deps.Stock`, the read of on hand and available
+      (`contracts.Stock`, a single-provider slot set only when Inventory is enabled).
+    - **Inventory's own corrections ignore reservations.** Its adjustments, moves and
+      counts may take on hand below what is reserved, and available shows negative; an
+      issue still refuses beyond on hand.
+
+    Compose and Workers resolve both slots by one helper, `withStock`, after the product
+    catalog ([Inventory](/en/reference/inventory/#reservations-and-issues)).
 
 ## The AI platform
 
