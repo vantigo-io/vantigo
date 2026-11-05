@@ -85,6 +85,36 @@ func TestCatalog_VariantResolvesProductFields(t *testing.T) {
 	}
 }
 
+// TestCatalog_VariantWeightInGrams proves the catalog answers a variant's
+// weight in grams (orders design O50), and nil for a variant without one.
+func TestCatalog_VariantWeightInGrams(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+	r := c.Do(http.MethodPost, "/api/v1/products", map[string]any{
+		"name": "Heavy", "type": "Goods", "taxCategoryId": taxCategoryID,
+		"variants": []map[string]any{{"sku": sku(t, "heavy"), "weightKg": 1.255}, {"sku": sku(t, "weightless")}},
+	})
+	if r.Status != http.StatusCreated {
+		t.Fatalf("status %d body %s, want 201", r.Status, r.Body)
+	}
+	var created productJSON
+	r.JSON(&created)
+	catalog := products.Module().Products(h.Deps())
+	got, err := catalog.Variants(context.Background(), []int32{created.Variants[0].Id, created.Variants[1].Id})
+	if err != nil {
+		t.Fatalf("Variants: %v", err)
+	}
+	byID := map[int32]contracts.VariantEntry{got[0].ID: got[0], got[1].ID: got[1]}
+	if w := byID[created.Variants[0].Id].WeightGrams; w == nil || *w != 1255 {
+		t.Errorf("WeightGrams = %v, want 1255", w)
+	}
+	if w := byID[created.Variants[1].Id].WeightGrams; w != nil {
+		t.Errorf("WeightGrams = %v, want nil", *w)
+	}
+}
+
 // TestCatalog_VariantUnknownIDIsNilWithoutAnError proves a missing variant
 // is (nil, nil), never an error: a caller tells "does not exist" from "the
 // lookup failed" by checking err.

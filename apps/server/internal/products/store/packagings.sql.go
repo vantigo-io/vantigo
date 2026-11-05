@@ -14,7 +14,7 @@ import (
 
 const catalogLookupPackagingCode = `-- name: CatalogLookupPackagingCode :many
 SELECT k.id AS packaging_id, v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg
 FROM products.variant_packagings k
 JOIN products.product_variants v ON v.id = k.variant_id
 JOIN products.products p ON p.id = v.product_id
@@ -38,6 +38,7 @@ type CatalogLookupPackagingCodeRow struct {
 	CategoryID    *int32
 	CategoryName  *string
 	OptionValues  []byte
+	WeightKg      pgtype.Numeric
 }
 
 // CatalogLookupPackagingCode is contracts.ProductCatalog.LookupCode's
@@ -67,6 +68,7 @@ func (q *Queries) CatalogLookupPackagingCode(ctx context.Context, code string) (
 			&i.CategoryID,
 			&i.CategoryName,
 			&i.OptionValues,
+			&i.WeightKg,
 		); err != nil {
 			return nil, err
 		}

@@ -40,6 +40,10 @@ type VariantEntry struct {
 	// them, LockVariants included, so a posting converts what was entered in
 	// packagings at the quantities that hold while it is locked.
 	Packagings []PackagingEntry
+	// WeightGrams is the variant's weight in grams, nil when it has none
+	// (orders design O50: a shipment's parcel is proposed at the sum of its
+	// variants' weights).
+	WeightGrams *int64
 }
 
 // PackagingEntry is a packaging of a variant — a box of 15, a Euro pallet of
