@@ -89,10 +89,10 @@ func TestWorkSourceRefusal_IsAnError(t *testing.T) {
 }
 
 // The lock order is data the issue walks: Projects, then Expenses, then Time,
-// then Energy.
-func TestInvoicedWorkOrder_IsProjectsExpensesTimeEnergy(t *testing.T) {
+// then Energy, then Orders.
+func TestInvoicedWorkOrder_IsProjectsExpensesTimeEnergyOrders(t *testing.T) {
 	t.Parallel()
-	want := []contracts.WorkSourceKind{"projects.milestone", "expenses.entry", "time.entry", "energy.settlement"}
+	want := []contracts.WorkSourceKind{"projects.milestone", "expenses.entry", "time.entry", "energy.settlement", "orders.allocation"}
 	if len(contracts.InvoicedWorkOrder) != len(want) {
 		t.Fatalf("InvoicedWorkOrder = %v, want %v", contracts.InvoicedWorkOrder, want)
 	}

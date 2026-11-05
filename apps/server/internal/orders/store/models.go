@@ -45,6 +45,31 @@ type OrdersErasure struct {
 	CompletedAt *time.Time
 }
 
+type OrdersInvoiceAllocation struct {
+	ID                int64
+	LineID            int64
+	OrderID           int64
+	Kind              string
+	PeriodStart       pgtype.Date
+	PeriodEnd         pgtype.Date
+	Quantity          pgtype.Numeric
+	UnitPrice         pgtype.Numeric
+	DiscountPercent   pgtype.Numeric
+	Amount            pgtype.Numeric
+	VatCodeID         int32
+	State             string
+	Revision          int32
+	InvoiceID         *int64
+	InvoiceNumber     *int64
+	IssueDate         pgtype.Date
+	InvoicedAt        *time.Time
+	InvoicedBy        *uuid.UUID
+	InvoicedByDisplay *string
+	ReleasedAt        *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
 type OrdersLine struct {
 	ID                int64
 	OwnerKind         string

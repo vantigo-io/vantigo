@@ -320,9 +320,9 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.SalesTax = salesTaxProvider.SalesTax(deps)
 	}
 
-	// The three billable reads and consumption resolve beside actuals and
-	// expenses, after the project directory (withBillables says why); Workers
-	// resolves them the same way.
+	// The three billable reads, consumption and billable orders resolve
+	// beside actuals and expenses, after the project directory (withBillables
+	// says why); Workers resolves them the same way.
 	if deps, err = withBillables(deps, mods); err != nil {
 		return nil, err
 	}

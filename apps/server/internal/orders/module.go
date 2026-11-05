@@ -101,6 +101,9 @@ func Module() module.Module {
 		CustomerReferences:   newCustomerReferenceHolder,
 		CustomerPersonalData: newCustomerPersonalData,
 		VariantReferences:    newVariantReferenceHolder,
+		InvoicedWork:         newInvoicedWorkHolder,
+		// The invoicing read (O37), resolved from the enabled modules only.
+		BillableOrders: newBillableOrders,
 	}
 }
 

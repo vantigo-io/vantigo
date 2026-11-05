@@ -189,6 +189,13 @@ type Deps struct {
 	// whichever enabled module declares Module.Consumption, after the three
 	// billable reads; it is nil when Energy is disabled.
 	Consumption contracts.ConsumptionProvider
+	// BillableOrders is Orders' read for invoicing: the order lines due to be
+	// invoiced, and the allocations an invoice line is built from
+	// (contracts.BillableOrders, orders design O37). Compose and Workers set
+	// it, on every module's Deps copy, from whichever enabled module declares
+	// Module.BillableOrders, after Consumption; it is nil when Orders is
+	// disabled.
+	BillableOrders contracts.BillableOrders
 	// Workforce is Staff's register of competences, the one sanctioned way a
 	// module reads who holds what (see contracts.Workforce, staff competence
 	// design S15). Compose sets it, on every module's Deps copy, from
@@ -540,6 +547,13 @@ type Module struct {
 	// resolves them. The provider is built from Deps.Pool and Deps.Clock and
 	// never reads a directory while it serves.
 	Consumption func(Deps) contracts.ConsumptionProvider
+	// BillableOrders builds this module's contracts.BillableOrders, if it
+	// provides one (orders). At most one enabled module may set it; Compose
+	// and Workers call it before anything they build runs — after they have
+	// resolved Consumption — and put the result on every module's Deps, the
+	// same way. The provider is built from Deps.Pool and Deps.Clock and never
+	// reads a directory while it serves.
+	BillableOrders func(Deps) contracts.BillableOrders
 	// Workforce builds this module's contracts.Workforce implementation, if
 	// it provides one (staff). At most one enabled module may set it; Compose
 	// and Workers call it before anything they build runs — after they have

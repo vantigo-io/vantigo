@@ -347,14 +347,16 @@ func withProjects(deps Deps, enabled []Module) (Deps, error) {
 }
 
 // withBillables resolves the three billable reads (contracts.BillableHours,
-// BillableExpenses, BillableMilestones, rule 10) and then consumption
-// (contracts.ConsumptionProvider, energy consumption billing design D1) from
+// BillableExpenses, BillableMilestones, rule 10), then consumption
+// (contracts.ConsumptionProvider, energy consumption billing design D1) and
+// then billable orders (contracts.BillableOrders, orders design O37) from
 // the enabled modules — at most one may declare each — keeping a preset value
 // when none does. They come after the project directory: a provider may read
-// deps.Projects while it is built, never while it serves. Consumption is
-// last: it is what Invoices builds a consumption invoice from, as the three
-// are what it builds a work invoice from, and its provider never reads the
-// directory while it serves. Compose and Workers both call it.
+// deps.Projects while it is built, never while it serves. Consumption and
+// billable orders come after the three: they are what Invoices builds a
+// consumption invoice and an order invoice from, as the three are what it
+// builds a work invoice from, and their providers never read the directory
+// while they serve. Compose and Workers both call it.
 func withBillables(deps Deps, enabled []Module) (Deps, error) {
 	hours, err := soleProvider(enabled, "billable hours", func(m Module) bool { return m.BillableHours != nil })
 	if err != nil {
@@ -383,6 +385,13 @@ func withBillables(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if consumption != nil {
 		deps.Consumption = consumption.Consumption(deps)
+	}
+	orders, err := soleProvider(enabled, "billable orders", func(m Module) bool { return m.BillableOrders != nil })
+	if err != nil {
+		return deps, err
+	}
+	if orders != nil {
+		deps.BillableOrders = orders.BillableOrders(deps)
 	}
 	return deps, nil
 }
