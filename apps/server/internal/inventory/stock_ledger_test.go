@@ -489,3 +489,50 @@ func TestStock_SitesAndLocations(t *testing.T) {
 		t.Errorf("Locations elsewhere = %v, %v; want none", locs, err)
 	}
 }
+
+// TestStockLedger_ALineHoldsOneVariant: a reserve naming a line that already
+// holds another variant at the site is refused and writes nothing, and an
+// issue consumes a line's reservation only when it issues the variant held.
+func TestStockLedger_ALineHoldsOneVariant(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, everything...)
+	s := newLedgerSite(t, h, c)
+	receive(t, c, s.site.Id, s.shelf1.Id, receiptLine(varBolt, 10), receiptLine(varNut, 10))
+	l := ledgerOf(h)
+	site := s.site.Id
+	if err := inTx(t, h, func(tx pgx.Tx) error {
+		return l.Reserve(t.Context(), tx, order, site, []contracts.StockLine{{VariantID: varBolt, LineID: 31, Quantity: "4"}})
+	}); err != nil {
+		t.Fatalf("Reserve: %v", err)
+	}
+	want := []string{"31:" + strconv.FormatInt(site, 10) + ":4"}
+
+	err := inTx(t, h, func(tx pgx.Tx) error {
+		return l.Reserve(t.Context(), tx, order, site, []contracts.StockLine{{VariantID: varNut, LineID: 31, Quantity: "2"}})
+	})
+	if err == nil || refusalCode(err) != "" {
+		t.Errorf("Reserve of another variant on the line = %v, want a failure", err)
+	}
+	if got := reserved(t, h, order); !slices.Equal(got, want) {
+		t.Errorf("reservations = %v, want %v", got, want)
+	}
+	if got := availableAt(t, h, varNut, site); got != "10.000" && got != "10" {
+		t.Errorf("nut available = %s, want 10", got)
+	}
+
+	// An issue of the nut on line 31 leaves the bolt's reservation as it is.
+	delivery := contracts.StockSource{Module: "orders", Kind: "delivery", ID: 31}
+	if err := inTx(t, h, func(tx pgx.Tx) error {
+		_, err := l.Issue(t.Context(), tx, order, contracts.StockIssue{Document: delivery, SiteID: site, Lines: []contracts.IssueLine{
+			{VariantID: varNut, LineID: 31, FromLocationID: s.shelf1.Id, Quantity: "3"},
+		}})
+		return err
+	}); err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	if got := reserved(t, h, order); !slices.Equal(got, want) {
+		t.Errorf("reservations after issuing another variant = %v, want %v", got, want)
+	}
+	assertLedgerConsistent(t, h)
+}

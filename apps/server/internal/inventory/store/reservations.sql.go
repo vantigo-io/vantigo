@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const addReservations = `-- name: AddReservations :exec
+const addReservations = `-- name: AddReservations :execrows
 INSERT INTO inventory.reservations (variant_id, site_id, quantity, source_module, source_kind, source_id, source_line_id,
                                     created_at, updated_at)
 SELECT u.variant_id, $1, u.quantity, $2, $3, $4, u.line_id, $5::timestamptz, $5::timestamptz
@@ -21,6 +21,7 @@ FROM (SELECT unnest($6::int[]) AS variant_id, unnest($7::text[]) AS line_id,
 ORDER BY u.line_id
 ON CONFLICT (source_module, source_kind, source_id, source_line_id, site_id)
 DO UPDATE SET quantity = inventory.reservations.quantity + excluded.quantity, updated_at = excluded.updated_at
+WHERE inventory.reservations.variant_id = excluded.variant_id
 `
 
 type AddReservationsParams struct {
@@ -36,9 +37,11 @@ type AddReservationsParams struct {
 
 // AddReservations adds each line's quantity to its reservation at the site,
 // creating it at the quantity when the line holds none there. The caller
-// names each line once.
-func (q *Queries) AddReservations(ctx context.Context, arg AddReservationsParams) error {
-	_, err := q.db.Exec(ctx, addReservations,
+// names each line once. A line's reservation is of one variant: one held of
+// another variant is left as it is and not counted, so fewer rows than lines
+// tells the caller to refuse.
+func (q *Queries) AddReservations(ctx context.Context, arg AddReservationsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, addReservations,
 		arg.SiteID,
 		arg.SourceModule,
 		arg.SourceKind,
@@ -48,7 +51,10 @@ func (q *Queries) AddReservations(ctx context.Context, arg AddReservationsParams
 		arg.LineIds,
 		arg.Quantities,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteReservations = `-- name: DeleteReservations :exec
