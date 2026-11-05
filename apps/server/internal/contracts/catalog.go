@@ -24,6 +24,15 @@ type VariantEntry struct {
 	TaxCategoryID int32
 	// Description is the product's description, "" when it has none.
 	Description string
+	// CategoryID is the product's category in Products, nil when it has
+	// none; CategoryName is that category's own name ("" when none), not
+	// its path (orders design O35's intake by category).
+	CategoryID   *int32
+	CategoryName string
+	// OptionValues are the variant's option values, the option's name as it
+	// was typed to the value, nil when it has none (orders design O34's
+	// variant grid).
+	OptionValues map[string]string
 	// Barcode is the variant's own GTIN, nil when it has none.
 	Barcode *string
 	// Packagings are the variant's packagings (inventory design I24), by sort
