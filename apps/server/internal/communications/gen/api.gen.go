@@ -57,13 +57,27 @@ type AttachmentUploadResponse struct {
 	SizeBytes   int64              `json:"sizeBytes"`
 }
 
+// ChannelEndpointResponse defines model for ChannelEndpointResponse.
+type ChannelEndpointResponse struct {
+	// Address The Page's id, which is a channel's address.
+	Address     string `json:"address"`
+	Available   bool   `json:"available"`
+	DisplayName string `json:"displayName"`
+
+	// Reason Why the Page is not available (token_rejected, removed); null while available.
+	Reason *string `json:"reason"`
+}
+
 // ChannelProviderResponse defines model for ChannelProviderResponse.
 type ChannelProviderResponse struct {
 	// Available Whether channels may be created on or switched to the provider now.
 	Available   bool   `json:"available"`
 	DisplayName string `json:"displayName"`
 
-	// Key A channel's provider value, smtp or a mailbox provider (`entra`, `google`).
+	// Endpoints The Pages a messenger provider has connected, each with its own status, for the channel form's picker; null for an e-mail provider. Always answered; optional in the schema only because the recorded exchanges predate it.
+	Endpoints *[]ChannelEndpointResponse `json:"endpoints"`
+
+	// Key A channel's provider value, smtp, a mailbox provider (`entra`, `google`) or a messenger provider (`meta`).
 	Key string `json:"key"`
 
 	// MaxMessageBytes The largest message the provider sends, in bytes of MIME; null when the provider sets no limit of its own.
@@ -71,6 +85,9 @@ type ChannelProviderResponse struct {
 
 	// Reason Why the provider is not available (switch_off, or the connection's reason); null while available.
 	Reason *string `json:"reason"`
+
+	// Type The channel type the provider serves, email (smtp and the mailbox providers) or messenger. Always answered; optional in the schema only because the recorded exchanges predate it.
+	Type *string `json:"type,omitempty"`
 
 	// Warning tenant_wide while the provider's grant reaches every mailbox in the tenant; null otherwise.
 	Warning *string `json:"warning"`
@@ -88,7 +105,7 @@ type ChannelRecipientRequest struct {
 type ChannelResponse struct {
 	Address string `json:"address"`
 
-	// Available Whether the channel can send now (integrations design T5, T7) - its provider is offered and, for SMTP, its credentials are stored; an SMTP channel without credentials sends nothing, and the channels page shows it Unavailable. Always answered; optional in the schema only because the recorded exchanges predate it.
+	// Available Whether the channel can send now (integrations design T5, T7) - its provider is offered and, for SMTP, its credentials are stored, for a messenger channel its Page is available; an SMTP channel without credentials sends nothing, and the channels page shows it Unavailable. Always answered; optional in the schema only because the recorded exchanges predate it.
 	Available      *bool              `json:"available,omitempty"`
 	CreatedAt      time.Time          `json:"createdAt"`
 	DisplayName    *string            `json:"displayName"`
@@ -113,12 +130,14 @@ type ChannelResponse struct {
 		Username *string `json:"username"`
 	} `json:"settings"`
 
-	// Sync Whether a channel on a mailbox provider (`entra`, `google`) receives: its mailbox sync's state — pending (waiting for its first sync), active, failed or stopped —, the code of its last failure (mailbox_denied, mailbox_gone, mailbox_unknown, sync_failed, provider_unavailable) and when it last finished a sync; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+	// Sync Whether a channel on a mailbox provider (`entra`, `google`) or a messenger provider (`meta`) receives: its sync's state — pending (a mailbox channel waiting for its first sync), active, failed or stopped —, the code of its last failure (mailbox_denied, mailbox_gone, mailbox_unknown, sync_failed, provider_unavailable) and when it last finished a sync; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
 	Sync *struct {
 		Error        *string    `json:"error"`
 		LastSyncedAt *time.Time `json:"lastSyncedAt"`
 		State        string     `json:"state"`
 	} `json:"sync"`
+
+	// Type The channel's type, email or messenger. A messenger channel's address is its Page's id and its provider the key of a messenger provider (`meta`); its defaults, the default channel of the type, are kept per type.
 	Type string `json:"type"`
 }
 
@@ -174,14 +193,20 @@ type ConversationDetailResponse struct {
 	ChannelAddress *string `json:"channelAddress"`
 
 	// ChannelDisplayName The display name of the conversation's channel, or null when unset. Always answered; optional in the schema only because the recorded exchanges predate it.
-	ChannelDisplayName        *string            `json:"channelDisplayName"`
-	ChannelId                 openapi_types.UUID `json:"channelId"`
-	CreatedAt                 time.Time          `json:"createdAt"`
-	CustomerAssociationSource *string            `json:"customerAssociationSource"`
-	CustomerId                *int32             `json:"customerId"`
-	Id                        openapi_types.UUID `json:"id"`
-	LastActivityAt            time.Time          `json:"lastActivityAt"`
-	LastReadAt                *time.Time         `json:"lastReadAt"`
+	ChannelDisplayName *string            `json:"channelDisplayName"`
+	ChannelId          openapi_types.UUID `json:"channelId"`
+
+	// ChannelType The type of the conversation's channel, email or messenger; the thread and the composer render by it. Always answered; optional in the schema only because the recorded exchanges predate it.
+	ChannelType *string `json:"channelType"`
+
+	// ComponentLimits What a message on the conversation's channel may carry beside its text, and its text limit; null when the channel takes no components (every e-mail channel). Always answered; optional in the schema only because the recorded exchanges predate it.
+	ComponentLimits           *MessageComponentLimits `json:"componentLimits"`
+	CreatedAt                 time.Time               `json:"createdAt"`
+	CustomerAssociationSource *string                 `json:"customerAssociationSource"`
+	CustomerId                *int32                  `json:"customerId"`
+	Id                        openapi_types.UUID      `json:"id"`
+	LastActivityAt            time.Time               `json:"lastActivityAt"`
+	LastReadAt                *time.Time              `json:"lastReadAt"`
 
 	// MaxAttachmentBytes The attachments the conversation's channel takes, in bytes as the files are (a mailbox provider's, `entra` or `google`): (maxMessageBytes − 16 KiB of headroom) × 100 / 137, rounded down to 0.1 MB — what the composer shows and a staging refused as too large names. null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
 	MaxAttachmentBytes *int64 `json:"maxAttachmentBytes"`
@@ -189,6 +214,8 @@ type ConversationDetailResponse struct {
 	// MaxMessageBytes The largest message the conversation's channel sends, in bytes of MIME (a mailbox provider's, `entra` or `google`); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
 	MaxMessageBytes *int64 `json:"maxMessageBytes"`
 	Messages        []struct {
+		// AnswerTo The answer an inbound message of a messenger conversation is, to an option of an earlier message; null for any other message. Always answered; optional in the schema only because the recorded exchanges predate it.
+		AnswerTo    *MessageAnswer `json:"answerTo"`
 		Attachments []struct {
 			ContentId         *string            `json:"contentId"`
 			ContentType       string             `json:"contentType"`
@@ -198,15 +225,21 @@ type ConversationDetailResponse struct {
 			FileName          string             `json:"fileName"`
 			Id                openapi_types.UUID `json:"id"`
 			IsInline          bool               `json:"isInline"`
-			ScanStatus        string             `json:"scanStatus"`
-			SizeBytes         int64              `json:"sizeBytes"`
+
+			// Role file, or card for the image of one of the message's cards, which the thread shows in the carousel and not among the files. Always answered; optional in the schema only because the recorded exchanges predate it.
+			Role       *string `json:"role"`
+			ScanStatus string  `json:"scanStatus"`
+			SizeBytes  int64   `json:"sizeBytes"`
 		} `json:"attachments"`
 		AuthorUserId *openapi_types.UUID `json:"authorUserId"`
 
 		// AutoSubmitted An inbound message an automatic system sent — an out-of-office answer, a bounce, a list — by its Auto-Submitted, X-Auto-Response-Suppress, Precedence or X-Autoreply header. Always answered; optional in the schema only because the recorded exchanges predate it.
-		AutoSubmitted *bool     `json:"autoSubmitted"`
-		CreatedAt     time.Time `json:"createdAt"`
-		Deliveries    []struct {
+		AutoSubmitted *bool `json:"autoSubmitted"`
+
+		// Components What the message carries beside its text — answer options, a request for an e-mail address, cards; null for a message with none, every e-mail message and every message from before components. Always answered; optional in the schema only because the recorded exchanges predate it.
+		Components *MessageComponents `json:"components"`
+		CreatedAt  time.Time          `json:"createdAt"`
+		Deliveries []struct {
 			AcceptedAt    *time.Time         `json:"acceptedAt"`
 			Attempts      int32              `json:"attempts"`
 			Destination   string             `json:"destination"`
@@ -216,6 +249,9 @@ type ConversationDetailResponse struct {
 			Status        string             `json:"status"`
 		} `json:"deliveries"`
 		Direction string `json:"direction"`
+
+		// Echo An outbound message sent from the platform itself — Meta Business Suite, say — and imported into the thread; the thread marks it. Always answered; optional in the schema only because the recorded exchanges predate it.
+		Echo *bool `json:"echo"`
 
 		// FromAddress The sender's personal directory email address when sendAs is personal; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it.
 		FromAddress *string `json:"fromAddress"`
@@ -272,11 +308,14 @@ type ConversationDetailResponse struct {
 		} `json:"replyAllCc"`
 		ReplyTo *string `json:"replyTo"`
 	} `json:"replyRecipients"`
-	Status                      string   `json:"status"`
-	Subject                     *string  `json:"subject"`
-	SuggestedCustomerConfidence *float64 `json:"suggestedCustomerConfidence"`
-	SuggestedCustomerId         *int32   `json:"suggestedCustomerId"`
-	SuggestedCustomerReasoning  *string  `json:"suggestedCustomerReasoning"`
+
+	// ReplyWindow Whether a reply may be sent in a messenger conversation now, by the participant's newest message; null for an e-mail conversation. Always answered; optional in the schema only because the recorded exchanges predate it.
+	ReplyWindow                 *ReplyWindow `json:"replyWindow"`
+	Status                      string       `json:"status"`
+	Subject                     *string      `json:"subject"`
+	SuggestedCustomerConfidence *float64     `json:"suggestedCustomerConfidence"`
+	SuggestedCustomerId         *int32       `json:"suggestedCustomerId"`
+	SuggestedCustomerReasoning  *string      `json:"suggestedCustomerReasoning"`
 	Tags                        []struct {
 		Color *string            `json:"color"`
 		Id    openapi_types.UUID `json:"id"`
@@ -286,13 +325,16 @@ type ConversationDetailResponse struct {
 
 // ConversationListItem defines model for ConversationListItem.
 type ConversationListItem struct {
-	AssignedUserId            *openapi_types.UUID `json:"assignedUserId"`
-	CandidateCustomerIds      []int32             `json:"candidateCustomerIds"`
-	ChannelId                 openapi_types.UUID  `json:"channelId"`
-	CustomerAssociationSource *string             `json:"customerAssociationSource"`
-	CustomerId                *int32              `json:"customerId"`
-	Id                        openapi_types.UUID  `json:"id"`
-	LastActivityAt            time.Time           `json:"lastActivityAt"`
+	AssignedUserId       *openapi_types.UUID `json:"assignedUserId"`
+	CandidateCustomerIds []int32             `json:"candidateCustomerIds"`
+	ChannelId            openapi_types.UUID  `json:"channelId"`
+
+	// ChannelType The type of the conversation's channel, email or messenger; the inbox shows its icon. Always answered; optional in the schema only because the recorded exchanges predate it.
+	ChannelType               *string            `json:"channelType"`
+	CustomerAssociationSource *string            `json:"customerAssociationSource"`
+	CustomerId                *int32             `json:"customerId"`
+	Id                        openapi_types.UUID `json:"id"`
+	LastActivityAt            time.Time          `json:"lastActivityAt"`
 	Participants              []struct {
 		Address     string             `json:"address"`
 		ChannelId   openapi_types.UUID `json:"channelId"`
@@ -333,6 +375,7 @@ type ConversationPatchResponse struct {
 
 // CreateChannelRequest defines model for CreateChannelRequest.
 type CreateChannelRequest struct {
+	// Address The channel's address - an e-mail address for an email channel, the Page's id (digits) for a messenger channel.
 	Address     *string `json:"address"`
 	DisplayName *string `json:"displayName,omitempty"`
 
@@ -346,10 +389,12 @@ type CreateChannelRequest struct {
 	// OnClose What closing a conversation on a channel on a mailbox provider (`entra`, `google`) does to its inbound messages in the mailbox: none (default), read or move.
 	OnClose *string `json:"onClose,omitempty"`
 
-	// Provider smtp, with the smtp block, or a mailbox provider (`entra`, `google`) that GET /channel-providers lists: a shared mailbox found by its address through that provider, with no credentials.
+	// Provider smtp, with the smtp block, a mailbox provider (`entra`, `google`) that GET /channel-providers lists - a shared mailbox found by its address through that provider, with no credentials -, or, for a messenger channel, a messenger provider (`meta`) that lists the Page. The provider must serve the type: otherwise 422 provider_type_mismatch.
 	Provider *string                       `json:"provider,omitempty"`
 	Smtp     *SmtpChannelCredentialRequest `json:"smtp,omitempty"`
-	Type     *string                       `json:"type"`
+
+	// Type email or messenger.
+	Type *string `json:"type"`
 }
 
 // CreateConversationRequest defines model for CreateConversationRequest.
@@ -383,6 +428,70 @@ type CreateTagRequest struct {
 // EmailRecipientRequest defines model for EmailRecipientRequest.
 type EmailRecipientRequest struct {
 	Email *string `json:"email"`
+}
+
+// MessageAnswer The answer an inbound message is to an answer option or a card's choice of an earlier message of the conversation.
+type MessageAnswer struct {
+	// ChoiceId The id of the option or choice; share-email for an e-mail address the person shared.
+	ChoiceId string `json:"choiceId"`
+
+	// MessageId The message the question was in.
+	MessageId openapi_types.UUID `json:"messageId"`
+
+	// Title The title the person saw.
+	Title string `json:"title"`
+}
+
+// MessageComponentCard defines model for MessageComponentCard.
+type MessageComponentCard struct {
+	// AttachmentId Response only - the card's image, an attachment of role card.
+	AttachmentId *openapi_types.UUID `json:"attachmentId,omitempty"`
+
+	// Choices 0 to 3 choices.
+	Choices *[]MessageComponentChoice `json:"choices,omitempty"`
+
+	// ProductImageId Request only - the product image the card shows, copied when the reply is made.
+	ProductImageId *int32 `json:"productImageId,omitempty"`
+
+	// Subtitle At most 80 characters.
+	Subtitle *string `json:"subtitle,omitempty"`
+
+	// Title 1 to 80 characters.
+	Title string `json:"title"`
+}
+
+// MessageComponentChoice defines model for MessageComponentChoice.
+type MessageComponentChoice struct {
+	// Id [a-z0-9-], 1 to 40 characters, unique within the message.
+	Id string `json:"id"`
+
+	// Title 1 to 20 characters.
+	Title string `json:"title"`
+}
+
+// MessageComponentLimits What a message on a channel may carry, as its provider says.
+type MessageComponentLimits struct {
+	MaxAnswerOptions int32 `json:"maxAnswerOptions"`
+	MaxAnswerTitle   int32 `json:"maxAnswerTitle"`
+	MaxCardChoices   int32 `json:"maxCardChoices"`
+	MaxCardSubtitle  int32 `json:"maxCardSubtitle"`
+	MaxCardTitle     int32 `json:"maxCardTitle"`
+	MaxCards         int32 `json:"maxCards"`
+	MaxChoiceTitle   int32 `json:"maxChoiceTitle"`
+	MaxText          int32 `json:"maxText"`
+	ShareEmail       bool  `json:"shareEmail"`
+}
+
+// MessageComponents What a message carries beside its text. Only a channel whose provider takes components accepts them; an e-mail channel answers 422 components_unsupported.
+type MessageComponents struct {
+	// AnswerOptions Quick replies, in the order given - 1 to 13, each title 1 to 20 characters.
+	AnswerOptions *[]MessageComponentChoice `json:"answerOptions,omitempty"`
+
+	// Cards A carousel, 1 to 10 cards.
+	Cards *[]MessageComponentCard `json:"cards,omitempty"`
+
+	// ShareEmail Asks the person for their e-mail address, as a quick reply.
+	ShareEmail *bool `json:"shareEmail,omitempty"`
 }
 
 // NoteRequest defines model for NoteRequest.
@@ -420,13 +529,25 @@ type PersonalSenderResponse struct {
 // ReplyRequest defines model for ReplyRequest.
 type ReplyRequest struct {
 	AttachmentIds *[]openapi_types.UUID `json:"attachmentIds,omitempty"`
-	HtmlBody      *string               `json:"htmlBody,omitempty"`
-	ReplyMode     *string               `json:"replyMode,omitempty"`
+
+	// Components Answer options, a request for an e-mail address or cards, on a messenger conversation only.
+	Components *MessageComponents `json:"components,omitempty"`
+	HtmlBody   *string            `json:"htmlBody,omitempty"`
+	ReplyMode  *string            `json:"replyMode,omitempty"`
 
 	// SendFromPersonal When true, sends the reply from the caller's own connected address, through the personal mailbox provider personal-sender names, with Reply-To set to the channel's address.
 	SendFromPersonal *bool   `json:"sendFromPersonal,omitempty"`
 	Subject          *string `json:"subject,omitempty"`
 	TextBody         *string `json:"textBody,omitempty"`
+}
+
+// ReplyWindow Whether a reply may be sent in a messenger conversation now. The window is open for 24 hours after the participant's newest message - the platform's echoes do not count -, and runs to 7 days, the reply after the first 24 hours tagged, when the provider has the Human Agent permission.
+type ReplyWindow struct {
+	// ClosesAt When the window closes; null when there is no inbound message to count from.
+	ClosesAt *time.Time `json:"closesAt"`
+
+	// State open, human_agent (the first 24 hours are over and the extension holds) or closed.
+	State string `json:"state"`
 }
 
 // SmtpChannelCredentialRequest defines model for SmtpChannelCredentialRequest.

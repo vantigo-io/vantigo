@@ -280,6 +280,18 @@ type Deps struct {
 	// calls them, never inside a transaction. nil when no enabled module
 	// provides one.
 	ChannelMailboxes []contracts.ChannelMailbox
+	// ChannelMessengers are every enabled module's contracts.ChannelMessenger
+	// (Messenger design N2), the one sanctioned way Communications sends and
+	// receives through a messaging provider — a many-provider slot keyed by
+	// Key, which a channel of type messenger names in its provider column.
+	// Compose collects them from the enabled modules, after the channel
+	// mailboxes; Workers collects them too, because Communications' outbox and
+	// its messenger sync run in worker mode. Both append to whatever the
+	// caller preset here (the seam modtest.WithChannelMessenger fills) and
+	// refuse a Key two providers claim, a reserved one, or one also filled in
+	// ChannelMailboxes. Only Communications calls them, never inside a
+	// transaction. nil when no enabled module provides one.
+	ChannelMessengers []contracts.ChannelMessenger
 	// PersonalMailboxes are every enabled module's contracts.PersonalMailbox
 	// (Outlook connection design M20, Google Workspace design G2), through
 	// which Communications sends from a person's own address — a
@@ -629,6 +641,14 @@ type Module struct {
 	// every module's Deps as ChannelMailboxes. A nil result contributes
 	// nothing.
 	ChannelMailbox func(Deps) contracts.ChannelMailbox
+	// ChannelMessenger builds this module's contracts.ChannelMessenger, if it
+	// sends and receives Communications' messenger channels through a
+	// messaging provider (Messenger design N2). Any number of enabled modules
+	// may set it, each under its own Key, which no ChannelMailbox may also
+	// claim; Compose and Workers call it after the channel mailboxes — it
+	// reads nothing while it is built — and put the list on every module's
+	// Deps as ChannelMessengers. A nil result contributes nothing.
+	ChannelMessenger func(Deps) contracts.ChannelMessenger
 	// PersonalMailbox builds this module's contracts.PersonalMailbox, if it
 	// sends Communications' personal mail through a person's connected
 	// mailbox (Outlook connection design M20). Any number of enabled

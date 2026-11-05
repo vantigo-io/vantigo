@@ -140,6 +140,7 @@ type CommunicationsConversationMessage struct {
 	FromDisplayName      *string
 	SendProvider         *string
 	SentMessageID        *string
+	Components           []byte
 }
 
 type CommunicationsConversationParticipant struct {
@@ -206,6 +207,7 @@ type CommunicationsMessageAttachment struct {
 	ScanStatus  string
 	IsInline    bool
 	CreatedAt   time.Time
+	Role        string
 }
 
 type CommunicationsMessageDelivery struct {
@@ -228,6 +230,28 @@ type CommunicationsMessageEvent struct {
 	EventType  string
 	OccurredAt time.Time
 	DataJson   *string
+}
+
+type CommunicationsMessengerPart struct {
+	MessageID         uuid.UUID
+	PartIndex         int32
+	AttemptedAt       *time.Time
+	PlatformMessageID *string
+	SentAt            *time.Time
+}
+
+type CommunicationsMessengerSync struct {
+	ChannelID    uuid.UUID
+	Cursor       int64
+	Notified     bool
+	NextSyncAt   time.Time
+	LeaseID      *string
+	LeaseUntil   *time.Time
+	State        string
+	LastError    *string
+	Attempts     int32
+	LastSyncedAt *time.Time
+	UpdatedAt    time.Time
 }
 
 type CommunicationsOutboxJob struct {
