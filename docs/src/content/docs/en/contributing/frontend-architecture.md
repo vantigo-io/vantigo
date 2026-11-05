@@ -3,6 +3,7 @@ title: "Frontend architecture"
 description: "Workspace layout, module manifests, API client generation, i18n, tour targets for the Assistant, and UI conventions."
 sources:
   - packages/frontend-shell/src/assist-targets.ts
+  - packages/frontend-shell/src/ui
   - apps/host/frontend/src/lib/assist-targets.ts
   - apps/host/frontend/src/api/session-handlers.ts
   - tools/assist
@@ -131,6 +132,32 @@ seconds and then shows centred; the Assistant's prompt tells the model to say "p
 step ever has to point into an open `Select` or `Menu` (a portal), raise that dropdown's `zIndex` above the
 tour's 10000 as [Mantine documents](https://mantine.dev/core/tour/). The test in each package
 (`assistTargetProblems`) keeps keys and markers in step; renaming a control means renaming its key everywhere.
+
+## Page surfaces
+
+Every page sits on the shell's grey background, and its content sits on white, bordered
+"paper": the `PageSection` component from `@vantigo/frontend-shell`. It is a Mantine `Card`
+with a border, padding `lg` and radius `md`, the same in every app, and it takes its colours
+from Mantine's tokens so it follows the colour scheme.
+
+- **What goes on it.** The `PageHeader` and a row of `KpiCard`s stay outside, on the grey,
+  above the sections. Everything else the page shows — a form, a detail block, a list with
+  its filters — sits in a `PageSection`.
+- **One surface per logical block.** A list page has one section holding the filters and
+  the table together; a detail page has one section per block. Never put a section inside
+  a section: small cards inside one (a list item, a tile) are plain Mantine `Card`s with a
+  smaller padding.
+- **Full-bleed content.** A table, grid or calendar that should run to the border takes
+  `padding={0}`; the border and radius stay.
+- **Header row.** `title` names the section (it renders a heading and makes the section a
+  named region) and `actions` puts buttons on the right of it. A section without a title
+  passes its children straight to the card, so `Card.Section` works inside it.
+- **Colours.** Never hardcode a colour on a surface (`white`, `#fff`,
+  `--mantine-color-white`): use `--mantine-color-body` and the other Mantine tokens, which
+  dark mode redefines.
+
+`KpiCard` and `WidgetCard` are the dashboard's own cards and keep their own look; dialogs,
+drawers and the sign-in pages are not page surfaces either.
 
 ## Verification commands
 
