@@ -1799,7 +1799,7 @@ export interface paths {
         };
         /**
          * List the order lines due to be invoiced
-         * @description The From orders wizard's first two steps (orders design O37, O39): the orders the query names — customerId (one or more), orderId (one or more) or every=true, exactly one of the three — with their lines left to invoice now, as Orders' DueOrders answers them; until bounds the orders by their delivery date, on or before (an order without one is always due). Nothing is written and nothing allocated. A draft order and one on hold are listed with blocked. 400 when the query names none or more than one of the three; 409 orders_unavailable when the orders module is switched off.
+         * @description The From orders wizard's first two steps (orders design O37, O39): the orders the query names — customerId (one or more), orderId and subscriptionId (one or more) or every=true, exactly one of the three — with their lines left to invoice now, as Orders' DueOrders answers them, and the subscriptions' periods due (orders design O43); until bounds the orders by their delivery date, on or before (an order without one is always due), and is the date the subscriptions' periods are due through — today when absent. Nothing is written and nothing allocated. A draft order and one on hold are listed with blocked. 400 when the query names none or more than one of the three; 409 orders_unavailable when the orders module is switched off.
          */
         get: operations["getInvoicesFromOrdersDue"];
         put?: never;
@@ -4631,7 +4631,7 @@ export interface components {
             orders: components["schemas"]["InvoicesDueOrder"][];
             warnings: string[];
         };
-        /** @description One order with lines to invoice (orders design O37): its number, customer (customerName as the customer directory names it, absent when it does not), currency, project, the buyer's reference, delivery date, delivery name and address, payment terms, and blocked — draft or on_hold, as Orders answers it, or currency_not_supported, an order in another currency than the settings' — when it cannot be invoiced now. */
+        /** @description One order — or, with kind subscription, one subscription with its due periods (orders design O43) — with lines to invoice (orders design O37): its number, customer (customerName as the customer directory names it, absent when it does not), currency, project, the buyer's reference, delivery date, delivery name and address, payment terms, and blocked — draft or on_hold, as Orders answers it, or currency_not_supported, an order in another currency than the settings' — when it cannot be invoiced now. */
         InvoicesDueOrder: {
             /** @description Why the order cannot be invoiced now — draft, on_hold or currency_not_supported (another currency than the settings'). Absent when it can. */
             blocked?: string;
@@ -4645,6 +4645,11 @@ export interface components {
             deliveryName?: string;
             /** Format: int64 */
             id: number;
+            /**
+             * @description order, or subscription — whose lines are its due periods' lines, each with its period. An order and a subscription are numbered apart, so a document is its kind and id together.
+             * @enum {string}
+             */
+            kind: "order" | "subscription";
             lines: components["schemas"]["InvoicesDueOrderLine"][];
             /** Format: int64 */
             number: number;
@@ -4654,7 +4659,7 @@ export interface components {
             projectId?: number;
             yourReference: string;
         };
-        /** @description One order line with a quantity left to invoice: toInvoice (three decimals), the unit price (eight decimals), the discount, the VAT code, the invoice policy (order or delivery) and amount, the line net of toInvoice as docmath computes it — what an invoice line of the whole quantity nets. */
+        /** @description One order line with a quantity left to invoice, or one subscription line in one due period (periodStart and periodEnd; a partial first period is pro-rated into its unit price): toInvoice (three decimals), the unit price (eight decimals), the discount, the VAT code, the invoice policy (order or delivery) and amount, the line net of toInvoice as docmath computes it — what an invoice line of the whole quantity nets. */
         InvoicesDueOrderLine: {
             /** Format: double */
             amount: number;
@@ -4664,6 +4669,10 @@ export interface components {
             invoicePolicy: string;
             /** Format: int64 */
             lineId: number;
+            /** Format: date */
+            periodEnd?: string;
+            /** Format: date */
+            periodStart?: string;
             /** Format: int32 */
             position: number;
             /** Format: double */
@@ -4683,12 +4692,13 @@ export interface components {
             /** Format: double */
             quantity: number;
         };
-        /** @description POST /invoices/from-orders' body (orders design O39): the order lines to invoice with their quantities (1 to 5 000, each line once), and combine — false makes one invoice draft per order, true combines a customer's orders that share currency, your reference, project and payment terms into one draft (samlefaktura). */
+        /** @description POST /invoices/from-orders' body (orders design O39, O43): the order lines to invoice with their quantities and the subscriptions whose due periods to invoice (1 to 5 000 together, each once), and combine — false makes one invoice draft per order, true combines a customer's orders that share currency, your reference, project and payment terms into one draft (samlefaktura). */
         InvoicesFromOrdersRequest: {
             combine: boolean;
             lines: components["schemas"]["InvoicesFromOrdersLine"][];
+            subscriptions?: components["schemas"]["InvoicesFromOrdersSubscription"][];
         };
-        /** @description One draft the wizard made: its id, its customer, the orders it invoices (by id and number, in order) and — when combine was asked and the customer's orders made more than one draft — separatedBy, what kept this draft apart from the customer's others: currency, your_reference, project, payment_terms or delivery_address. */
+        /** @description One draft the wizard made: its id, its customer, the orders and the subscriptions it invoices (by id and number, in order) and — when combine was asked and the customer's orders made more than one draft — separatedBy, what kept this draft apart from the customer's others: currency, your_reference, project, payment_terms or delivery_address. */
         InvoicesFromOrdersDraft: {
             /** Format: int32 */
             customerId: number;
@@ -4697,6 +4707,15 @@ export interface components {
             orderIds: number[];
             orderNumbers: number[];
             separatedBy: string[];
+            subscriptionIds: number[];
+            subscriptionNumbers: number[];
+        };
+        /** @description One subscription to invoice (orders design O43) — every period due through through, its first day on or before it when billed in advance, its last when in arrears, and none starting more than twelve months ahead. */
+        InvoicesFromOrdersSubscription: {
+            /** Format: int64 */
+            subscriptionId: number;
+            /** Format: date */
+            through: string;
         };
         /** @description The drafts the From orders wizard made, in the order of the customers and then of their first order. */
         InvoicesFromOrdersResponse: {
@@ -10843,6 +10862,8 @@ export interface operations {
             query?: {
                 customerId?: number[];
                 orderId?: number[];
+                /** @description Subscriptions to list, by id; with orderId, or alone. */
+                subscriptionId?: number[];
                 every?: boolean;
                 /** @description The last delivery date an order may have, inclusive; no bound when absent. */
                 until?: string;

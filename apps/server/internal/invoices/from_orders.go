@@ -89,12 +89,15 @@ func (s *server) GetInvoicesFromOrdersDue(ctx context.Context, req gen.GetInvoic
 	if p.OrderId != nil {
 		due.OrderIDs = *p.OrderId
 	}
+	if p.SubscriptionId != nil {
+		due.SubscriptionIDs = *p.SubscriptionId
+	}
 	if p.Until != nil {
 		due.Until = utcDay(p.Until.Time)
 	}
 	if err := due.Validate(); err != nil {
 		return gen.GetInvoicesFromOrdersDue400ApplicationProblemPlusJSONResponse(invalid(invalidOrdersTitle,
-			fieldError("customerId", "Name customers, orders or every order — one of the three, each at most once"))), nil
+			fieldError("customerId", "Name customers, orders and subscriptions, or every order — one of the three, each at most once"))), nil
 	}
 	if s.deps.BillableOrders == nil {
 		return gen.GetInvoicesFromOrdersDue409ApplicationProblemPlusJSONResponse(ordersUnavailable()), nil
@@ -160,7 +163,7 @@ func (s *server) customerNames(ctx context.Context, orders []contracts.DueOrder)
 // and each line's amount docmath's net of its whole quantity left.
 func dueOrderView(o contracts.DueOrder) (gen.InvoicesDueOrder, error) {
 	out := gen.InvoicesDueOrder{
-		Id: o.ID, Number: o.Number, CustomerId: o.CustomerID, Currency: o.Currency, ProjectId: o.ProjectID,
+		Kind: gen.InvoicesDueOrderKind(keyOf(o).kind), Id: o.ID, Number: o.Number, CustomerId: o.CustomerID, Currency: o.Currency, ProjectId: o.ProjectID,
 		YourReference: o.YourReference, PaymentTermsDays: o.PaymentTermsDays, Blocked: nonEmpty(o.Blocked),
 		Lines: make([]gen.InvoicesDueOrderLine, 0, len(o.Lines)),
 	}
@@ -186,12 +189,16 @@ func dueOrderView(o contracts.DueOrder) (gen.InvoicesDueOrder, error) {
 		if err != nil {
 			return out, err
 		}
-		out.Lines = append(out.Lines, gen.InvoicesDueOrderLine{
+		line := gen.InvoicesDueOrderLine{
 			LineId: l.LineID, Position: l.Position, Description: l.Description, Unit: l.Unit,
 			ToInvoice: floatFromRat(quantity, 3), UnitPrice: floatFromRat(price, unitPricePlaces),
 			DiscountPercent: floatFromRat(discount, 2), VatCodeId: l.VATCodeID, InvoicePolicy: l.InvoicePolicy,
 			Amount: floatFromRat(computeLine(quantity, price, discount).Net, 2),
-		})
+		}
+		if l.PeriodStart != nil && l.PeriodEnd != nil {
+			line.PeriodStart, line.PeriodEnd = ptr(wireDate(utcDay(*l.PeriodStart))), ptr(wireDate(utcDay(*l.PeriodEnd)))
+		}
+		out.Lines = append(out.Lines, line)
 	}
 	return out, nil
 }
@@ -202,16 +209,39 @@ type orderLineInput struct {
 	quantity        *big.Rat
 }
 
-// parseFromOrders is the body's 400s: 1 to MaxBillableRows lines, each
-// naming a positive order and line, no line twice, and a quantity above zero
-// with at most three decimals within the column.
-func parseFromOrders(body gen.InvoicesFromOrdersRequest) ([]orderLineInput, map[string][]string) {
+// subscriptionInput is one subscription the wizard is asked to invoice: its
+// periods due through through (orders design O43).
+type subscriptionInput struct {
+	id      int64
+	through time.Time
+}
+
+// parseFromOrders is the body's 400s: 1 to MaxBillableRows lines and
+// subscriptions together, each line naming a positive order and line, no
+// line twice, and a quantity above zero with at most three decimals within
+// the column; each subscription positive, once.
+func parseFromOrders(body gen.InvoicesFromOrdersRequest) ([]orderLineInput, []subscriptionInput, map[string][]string) {
 	var errs map[string][]string
+	var subs []subscriptionInput
+	if body.Subscriptions != nil {
+		seen := map[int64]bool{}
+		for i, sub := range *body.Subscriptions {
+			field := fmt.Sprintf("subscriptions[%d].subscriptionId", i)
+			switch {
+			case sub.SubscriptionId <= 0:
+				errs = withFieldError(errs, field, "A subscription's id is positive")
+			case seen[sub.SubscriptionId]:
+				errs = withFieldError(errs, field, "Each subscription is named once")
+			}
+			seen[sub.SubscriptionId] = true
+			subs = append(subs, subscriptionInput{id: sub.SubscriptionId, through: utcDay(sub.Through.Time)})
+		}
+	}
 	switch {
-	case len(body.Lines) == 0:
-		return nil, fieldError("lines", "Choose the order lines to invoice")
-	case len(body.Lines) > contracts.MaxBillableRows:
-		return nil, fieldError("lines", fmt.Sprintf("At most %d order lines are invoiced at once", contracts.MaxBillableRows))
+	case len(body.Lines)+len(subs) == 0:
+		return nil, nil, fieldError("lines", "Choose the order lines or the subscriptions to invoice")
+	case len(body.Lines)+len(subs) > contracts.MaxBillableRows:
+		return nil, nil, fieldError("lines", fmt.Sprintf("At most %d order lines and subscriptions are invoiced at once", contracts.MaxBillableRows))
 	}
 	out := make([]orderLineInput, 0, len(body.Lines))
 	seen := map[int64]bool{}
@@ -233,17 +263,17 @@ func parseFromOrders(body gen.InvoicesFromOrdersRequest) ([]orderLineInput, map[
 		}
 		out = append(out, orderLineInput{orderID: l.OrderId, lineID: l.LineId, quantity: quantity})
 	}
-	return out, errs
+	return out, subs, errs
 }
 
 // PostInvoicesFromOrders Invoice order lines
 // (POST /api/v1/invoices/from-orders)
 func (s *server) PostInvoicesFromOrders(ctx context.Context, req gen.PostInvoicesFromOrdersRequestObject) (gen.PostInvoicesFromOrdersResponseObject, error) {
-	lines, errs := parseFromOrders(*req.Body)
+	lines, subs, errs := parseFromOrders(*req.Body)
 	if len(errs) > 0 {
 		return gen.PostInvoicesFromOrders400ApplicationProblemPlusJSONResponse(invalid(invalidOrdersTitle, errs)), nil
 	}
-	out, err := s.fromOrders(ctx, lines, req.Body.Combine, nil)
+	out, err := s.fromOrders(ctx, lines, subs, req.Body.Combine, nil)
 	switch {
 	case err != nil:
 		return nil, err
@@ -277,14 +307,16 @@ type orderDraft struct {
 // fromOrders is the wizard's core (O39): the handler's and the billing run's
 // one code path. Its actor is the principal on ctx. In order, every read
 // before any write: Orders off; DueOrders for the orders named, and each
-// line judged against them — its order blocked, or not due on it; the
+// line judged against them — its order blocked, or not due on it — and for
+// the subscriptions named through each one's date, each with a period due
+// (no_orders_due) (O43); the
 // settings, each customer's profile and gates; the currency; the VAT codes;
 // the grouping and its line bound; the projects' codes. Then Allocate, its
 // allocations recorded at once in the ledger on a statement of their own —
 // naming runItem, the billing run item taking them, or nil for the wizard —
 // and from there every refusal and failure releases the allocations again;
 // then one transaction writes every draft.
-func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, combine bool, runItem *int64) (ordersOutcome, error) {
+func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, subs []subscriptionInput, combine bool, runItem *int64) (ordersOutcome, error) {
 	if s.deps.BillableOrders == nil {
 		return ordersOutcome{refusal: ptr(ordersUnavailable())}, nil
 	}
@@ -295,23 +327,62 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, combine
 		}
 	}
 	slices.Sort(orderIDs)
-	page, err := s.dueOrders(ctx, contracts.DueOrdersRequest{OrderIDs: orderIDs})
-	if err != nil {
-		return ordersOutcome{}, fmt.Errorf("invoices: read the orders to invoice: %w", err)
+	due := map[docKey]contracts.DueOrder{}
+	tooMany := ordersOutcome{refusal: ptr(conflict(codeTooManySources, cannotInvoiceOrdersTitle,
+		fmt.Sprintf("The orders have more than %d lines to invoice; choose fewer orders.", contracts.MaxBillableRows)))}
+	if len(orderIDs) > 0 {
+		page, err := s.dueOrders(ctx, contracts.DueOrdersRequest{OrderIDs: orderIDs})
+		if err != nil {
+			return ordersOutcome{}, fmt.Errorf("invoices: read the orders to invoice: %w", err)
+		}
+		if page.More {
+			return tooMany, nil
+		}
+		for _, o := range page.Orders {
+			due[keyOf(o)] = o
+		}
 	}
-	if page.More {
-		return ordersOutcome{refusal: ptr(conflict(codeTooManySources, cannotInvoiceOrdersTitle,
-			fmt.Sprintf("The orders have more than %d lines to invoice; choose fewer orders.", contracts.MaxBillableRows)))}, nil
+	// The subscriptions' due periods, read through each date asked: an
+	// order's Until is its delivery date's bound, so the two are read apart.
+	throughs := map[time.Time][]int64{}
+	for _, sub := range subs {
+		throughs[sub.through] = append(throughs[sub.through], sub.id)
 	}
-	due := make(map[int64]contracts.DueOrder, len(page.Orders))
-	for _, o := range page.Orders {
-		due[o.ID] = o
+	for through, ids := range throughs {
+		page, err := s.dueOrders(ctx, contracts.DueOrdersRequest{SubscriptionIDs: ids, Until: through})
+		if err != nil {
+			return ordersOutcome{}, fmt.Errorf("invoices: read the subscriptions to invoice: %w", err)
+		}
+		if page.More {
+			return tooMany, nil
+		}
+		for _, o := range page.Orders {
+			due[keyOf(o)] = o
+		}
 	}
 	positions := map[int64]int32{}
 	vatCodes := map[int64]int32{}
 	var taken []contracts.DueOrder
+	perDoc := map[docKey]int{}
+	var checkCodes []int32
+	for _, sub := range subs {
+		o, ok := due[docKey{kind: contracts.DueKindSubscription, id: sub.id}]
+		if !ok {
+			p := conflict(codeNoOrdersDue, cannotInvoiceOrdersTitle, fmt.Sprintf(
+				"Subscription %d has no period due through %s, or is gone.", sub.id, sub.through.Format(time.DateOnly)))
+			return ordersOutcome{refusal: &p}, nil
+		}
+		for _, l := range o.Lines {
+			positions[l.LineID] = l.Position
+			if !slices.Contains(checkCodes, l.VATCodeID) {
+				checkCodes = append(checkCodes, l.VATCodeID)
+			}
+		}
+		perDoc[keyOf(o)] = len(o.Lines)
+		taken = append(taken, o)
+	}
 	for _, l := range lines {
-		o, ok := due[l.orderID]
+		o, ok := due[docKey{kind: contracts.DueKindOrder, id: l.orderID}]
 		if !ok {
 			return ordersOutcome{refusal: orderLineConflict(codeLineNotInvoiceable, l.lineID, fmt.Sprintf(
 				"Order %d has nothing left to invoice, or is gone.", l.orderID))}, nil
@@ -334,7 +405,8 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, combine
 				"Order %d's line %d has %s left to invoice.", o.Number, o.Lines[i].Position, left.FloatString(3)))}, nil
 		}
 		positions[l.lineID], vatCodes[l.lineID] = o.Lines[i].Position, o.Lines[i].VATCodeID
-		if !slices.ContainsFunc(taken, func(t contracts.DueOrder) bool { return t.ID == o.ID }) {
+		perDoc[keyOf(o)]++
+		if !slices.ContainsFunc(taken, func(t contracts.DueOrder) bool { return keyOf(t) == keyOf(o) }) {
 			taken = append(taken, o)
 		}
 	}
@@ -379,15 +451,17 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, combine
 				"Order line %d's VAT code is no longer offered for new lines.", l.lineID))}, nil
 		}
 	}
-	groups := groupOrders(taken, combine)
-	perOrder := map[int64]int{}
-	for _, l := range lines {
-		perOrder[l.orderID]++
+	for _, code := range checkCodes {
+		if c, ok := codes[code]; !ok || !c.active {
+			p := conflict(codeVatCodeInactive, cannotInvoiceOrdersTitle, "A subscription line's VAT code is no longer offered for new lines.")
+			return ordersOutcome{refusal: &p}, nil
+		}
 	}
+	groups := groupOrders(taken, combine)
 	for _, g := range groups {
 		n := 0
 		for _, o := range g.orders {
-			n += perOrder[o.ID]
+			n += perDoc[keyOf(o)]
 			if len(g.orders) > 1 {
 				n++ // the section line
 			}
@@ -417,9 +491,17 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, combine
 	for _, l := range lines {
 		req.Lines = append(req.Lines, contracts.AllocateLine{LineID: l.lineID, Quantity: l.quantity.FloatString(3)})
 	}
+	for _, sub := range subs {
+		req.Subscriptions = append(req.Subscriptions, contracts.AllocateSubscription{SubscriptionID: sub.id, Through: sub.through})
+	}
 	allocations, err := s.allocate(ctx, req)
 	var refused *contracts.AllocationRefusal
 	if errors.As(err, &refused) {
+		if refused.SubscriptionID != 0 {
+			p := conflict(refused.Code, cannotInvoiceOrdersTitle, fmt.Sprintf(
+				"Subscription %d cannot be invoiced: %s", refused.SubscriptionID, refused.Detail))
+			return ordersOutcome{refusal: &p}, nil
+		}
 		return ordersOutcome{refusal: orderLineConflict(refused.Code, refused.LineID, fmt.Sprintf(
 			"Order line %d cannot be invoiced: %s", refused.LineID, refused.Detail))}, nil
 	}
@@ -444,18 +526,19 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, combine
 		return ordersOutcome{}, fmt.Errorf("invoices: record the order allocations taken: %w", err)
 	}
 
-	byOrder := map[int64][]contracts.OrderAllocation{}
+	byOrder := map[docKey][]contracts.OrderAllocation{}
 	for _, a := range allocations {
-		if _, ok := due[a.OrderID]; !ok {
-			return ordersOutcome{}, fmt.Errorf("invoices: Orders allocated line %d of order %d, which was not asked for", a.LineID, a.OrderID)
+		key := allocationKey(a)
+		if _, ok := due[key]; !ok {
+			return ordersOutcome{}, fmt.Errorf("invoices: Orders allocated line %d of %s %d, which was not asked for", a.LineID, key.kind, a.OrderID)
 		}
-		byOrder[a.OrderID] = append(byOrder[a.OrderID], a)
+		byOrder[key] = append(byOrder[key], a)
 	}
-	dates := map[int64]time.Time{}
+	dates := map[docKey]time.Time{}
 	for _, o := range taken {
-		dates[o.ID] = today
+		dates[keyOf(o)] = today
 		if o.DeliveryDate != nil {
-			dates[o.ID] = utcDay(*o.DeliveryDate)
+			dates[keyOf(o)] = utcDay(*o.DeliveryDate)
 		}
 	}
 	drafts := make([]orderDraft, 0, len(groups))
@@ -519,9 +602,13 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, combine
 			}
 			entry := gen.InvoicesFromOrdersDraft{
 				InvoiceId: doc.ID, CustomerId: d.group.customerID, SeparatedBy: d.group.separatedBy,
-				OrderIds: []int64{}, OrderNumbers: []int64{},
+				OrderIds: []int64{}, OrderNumbers: []int64{}, SubscriptionIds: []int64{}, SubscriptionNumbers: []int64{},
 			}
 			for _, o := range d.group.orders {
+				if keyOf(o).kind == contracts.DueKindSubscription {
+					entry.SubscriptionIds, entry.SubscriptionNumbers = append(entry.SubscriptionIds, o.ID), append(entry.SubscriptionNumbers, o.Number)
+					continue
+				}
 				entry.OrderIds, entry.OrderNumbers = append(entry.OrderIds, o.ID), append(entry.OrderNumbers, o.Number)
 			}
 			out = append(out, entry)

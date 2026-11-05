@@ -12,6 +12,7 @@ const DUE = "/api/v1/invoices/from-orders/due?customerId=2001";
 const POST = "/api/v1/invoices/from-orders";
 
 const order = (overrides: Partial<DueOrder> = {}): DueOrder => ({
+  kind: "order",
   id: 5210,
   number: 2210,
   customerId: 2001,
@@ -78,6 +79,8 @@ const made = (ids: number[]): FromOrdersResult => ({
     customerId: 2001,
     orderIds: [5210 + i],
     orderNumbers: [2210 + i],
+    subscriptionIds: [],
+    subscriptionNumbers: [],
     separatedBy: [],
   })),
 });
@@ -198,6 +201,59 @@ describe("the From orders wizard", () => {
     expect(alert).toHaveTextContent("That is more than is left to invoice of the line.");
     expect(alert).toHaveTextContent("Order 2211, line 1: Bok");
     expect(alert).not.toHaveTextContent("The server's English.");
+  });
+
+  it("lists a subscription's due periods by month, invoices them whole and sends it through today", async () => {
+    const fetchMock = server(undefined, () => ({
+      orders: [
+        order({
+          kind: "subscription",
+          id: 5210,
+          number: 3001,
+          deliveryDate: undefined,
+          lines: [1, 2].map((m) => ({
+            lineId: 9,
+            position: 1,
+            description: "Support",
+            unit: "mnd",
+            toInvoice: 1,
+            unitPrice: 310,
+            discountPercent: 0,
+            vatCodeId: 1,
+            invoicePolicy: "order",
+            amount: 310,
+            periodStart: `2027-0${m}-01`,
+            periodEnd: m === 1 ? "2027-01-31" : "2027-02-28",
+          })),
+        }),
+        order(),
+      ],
+      warnings: [],
+    }));
+    const { router } = renderAtHost(<FromOrdersPage canViewCustomers={false} initialCustomerId={2001} />);
+    await screen.findByRole("checkbox", { name: "Choose subscription 3001" });
+    // An order 5210 and a subscription 5210 are two documents.
+    expect(screen.getByRole("checkbox", { name: "Choose order 2210" })).toBeChecked();
+    expect(screen.getByText("Subscription 3001 – January 2027, February 2027")).toBeInTheDocument();
+
+    await next();
+    const periods = screen.getByRole("table", { name: "Periods of subscription 3001" });
+    expect(within(periods).queryByRole("textbox")).not.toBeInTheDocument();
+    expect(periods).toHaveTextContent("Support – January 2027");
+    await next();
+    await userEvent.click(screen.getByRole("radio", { name: "Combined per customer" }));
+    expect(screen.getByTestId("from-orders-preview")).toHaveTextContent("Acme AS: order 2210, subscription 3001");
+
+    await userEvent.click(screen.getByRole("button", { name: "Create the drafts" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/invoices/1001"));
+    const body = sent(fetchMock, "POST").body as {
+      lines: unknown[];
+      subscriptions: { subscriptionId: number; through: string }[];
+    };
+    expect(body.lines).toEqual([{ orderId: 5210, lineId: 1, quantity: 5 }]);
+    expect(body.subscriptions).toHaveLength(1);
+    expect(body.subscriptions[0].subscriptionId).toBe(5210);
+    expect(body.subscriptions[0].through).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it("speaks Norwegian: Fra ordre, Delfakturering, Samlefaktura, Gjenstår etter", async () => {

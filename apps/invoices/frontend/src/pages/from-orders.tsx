@@ -74,6 +74,22 @@ const groupKey = (o: DueOrder) => ({
   delivery_address: addressKey(o.deliveryAddress),
 });
 
+/**
+ * A document's key: an order and a subscription are numbered apart (orders
+ * design O43), so a document is its kind and its id together.
+ */
+const keyOf = (o: DueOrder) => `${o.kind}:${o.id}`;
+
+/** Whether a document is a subscription, whose lines are its due periods' and are invoiced whole. */
+const isSubscription = (o: DueOrder) => o.kind === "subscription";
+
+/** Today as the calendar names it, in the reader's zone: the date a subscription's periods are invoiced through. */
+const todayText = () => {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+};
+
 /** One invoice the wizard would make: a customer's orders, and what kept it apart from the customer's others. */
 interface Preview {
   customerId: number;
@@ -84,7 +100,9 @@ interface Preview {
 
 /** The server's grouping (orders design O39), for the preview: by customer, then by what the orders share. */
 const previewOf = (orders: DueOrder[], mode: Mode): Preview[] => {
-  const sorted = [...orders].sort((a, b) => a.customerId - b.customerId || a.number - b.number);
+  const sorted = [...orders].sort(
+    (a, b) => a.customerId - b.customerId || a.kind.localeCompare(b.kind) || a.number - b.number,
+  );
   const groups: (Preview & { key: ReturnType<typeof groupKey> })[] = [];
   const same = (a: ReturnType<typeof groupKey>, b: ReturnType<typeof groupKey>) =>
     GROUP_FIELDS.every((f) => a[f] === b[f]);
@@ -124,7 +142,7 @@ export const FromOrdersPage = ({
   initialOrderId,
   initialCustomerId,
 }: FromOrdersPageProps) => {
-  const { t, money, unitPrice, number, date } = useInvoiceFormat();
+  const { t, money, unitPrice, number, date, month } = useInvoiceFormat();
   const queryClient = useQueryClient();
   const navigate = useNavigate() as (options: unknown) => void;
   const [step, setStep] = useState(0);
@@ -139,7 +157,7 @@ export const FromOrdersPage = ({
   });
   // The orders unticked, and the quantities changed: everything invoiceable
   // starts chosen, in full.
-  const [unchecked, setUnchecked] = useState<Set<number>>(new Set());
+  const [unchecked, setUnchecked] = useState<Set<string>>(new Set());
   // As typed: a number, or the text of one being typed.
   const [quantities, setQuantities] = useState<Record<number, number | string>>({});
   const [mode, setMode] = useState<Mode>("perOrder");
@@ -147,8 +165,10 @@ export const FromOrdersPage = ({
   const [made, setMade] = useState<FromOrdersDraft[] | null>(null);
 
   const orders = due.data?.orders ?? [];
-  const chosenOrders = orders.filter((o) => !o.blocked && !unchecked.has(o.id));
+  const chosenOrders = orders.filter((o) => !o.blocked && !unchecked.has(keyOf(o)));
   const quantityOf = (l: DueOrderLine) => {
+    // A subscription's period is invoiced whole (orders design O43).
+    if (l.periodStart) return l.toInvoice;
     const typed = quantities[l.lineId];
     if (typed === undefined) return l.toInvoice;
     const n = Number(typed);
@@ -157,6 +177,25 @@ export const FromOrdersPage = ({
   const chosenLines = chosenOrders.flatMap((o) =>
     o.lines.filter((l) => quantityOf(l) > 0).map((l) => ({ order: o, line: l })),
   );
+  const chosenOrderLines = chosenLines.filter(({ order }) => !isSubscription(order));
+  const chosenSubscriptions = chosenOrders.filter(isSubscription);
+  /** A period as the wizard names it: a whole month by its name, else its first and last day. */
+  const periodLabel = (l: DueOrderLine) => {
+    if (!l.periodStart || !l.periodEnd) return "";
+    const start = l.periodStart;
+    const last = new Date(`${start.slice(0, 7)}-01T00:00:00Z`);
+    last.setUTCMonth(last.getUTCMonth() + 1, 0);
+    return start.endsWith("-01") && l.periodEnd === last.toISOString().slice(0, 10)
+      ? month(start)
+      : `${date(start)} – ${date(l.periodEnd)}`;
+  };
+  /** A document as the wizard names it: "Order 2210", or "Subscription 3001 – January 2027" with its periods. */
+  const documentLabel = (o: DueOrder, withPeriods = false) => {
+    if (!isSubscription(o)) return t("fromOrders.order", { number: o.number });
+    const periods = [...new Set(o.lines.map(periodLabel))];
+    const label = t("fromOrders.subscription", { number: o.number });
+    return withPeriods && periods.length > 0 ? `${label} – ${periods.join(", ")}` : label;
+  };
   const invoiced = chosenOrders.filter((o) => o.lines.some((l) => quantityOf(l) > 0));
   const amountOf = (l: DueOrderLine) => lineNet(quantityOf(l), l.unitPrice, l.discountPercent);
   const chosenAmount = round2(chosenLines.reduce((sum, { line }) => sum + amountOf(line), 0));
@@ -168,11 +207,14 @@ export const FromOrdersPage = ({
     mutationFn: () =>
       postFromOrders({
         combine: mode === "combined",
-        lines: chosenLines.map(({ order, line }) => ({
+        lines: chosenOrderLines.map(({ order, line }) => ({
           orderId: order.id,
           lineId: line.lineId,
           quantity: quantityOf(line),
         })),
+        ...(chosenSubscriptions.length > 0
+          ? { subscriptions: chosenSubscriptions.map((o) => ({ subscriptionId: o.id, through: todayText() })) }
+          : {}),
       }),
     onMutate: () => setRefusal(null),
     onSuccess: async (result) => {
@@ -198,7 +240,7 @@ export const FromOrdersPage = ({
     },
   });
 
-  const toggle = (id: number, on: boolean) =>
+  const toggle = (id: string, on: boolean) =>
     setUnchecked((current) => {
       const next = new Set(current);
       if (on) next.delete(id);
@@ -225,7 +267,13 @@ export const FromOrdersPage = ({
           {made.map((d) => (
             <Text key={d.invoiceId} size="sm">
               <DocumentLink invoiceId={d.invoiceId}>
-                {t("fromOrders.openDraft", { id: d.invoiceId, orders: d.orderNumbers.join(", ") })}
+                {t("fromOrders.openDraft", {
+                  id: d.invoiceId,
+                  orders: [
+                    ...d.orderNumbers.map(String),
+                    ...(d.subscriptionNumbers ?? []).map((n) => t("fromOrders.subscriptionShort", { number: n })),
+                  ].join(", "),
+                })}
               </DocumentLink>
             </Text>
           ))}
@@ -299,15 +347,26 @@ export const FromOrdersPage = ({
               </Text>
             )}
             {orders.map((o) => (
-              <Group key={o.id} gap="sm" wrap="wrap" data-order={o.id} style={o.blocked ? { opacity: 0.6 } : undefined}>
+              <Group
+                key={keyOf(o)}
+                gap="sm"
+                wrap="wrap"
+                data-order={o.id}
+                data-kind={o.kind}
+                style={o.blocked ? { opacity: 0.6 } : undefined}
+              >
                 <Checkbox
-                  aria-label={t("fromOrders.chooseOrder", { number: o.number })}
+                  aria-label={
+                    isSubscription(o)
+                      ? t("fromOrders.chooseSubscription", { number: o.number })
+                      : t("fromOrders.chooseOrder", { number: o.number })
+                  }
                   disabled={Boolean(o.blocked)}
-                  checked={!o.blocked && !unchecked.has(o.id)}
-                  onChange={(e) => toggle(o.id, e.currentTarget.checked)}
+                  checked={!o.blocked && !unchecked.has(keyOf(o))}
+                  onChange={(e) => toggle(keyOf(o), e.currentTarget.checked)}
                 />
                 <Text size="sm" fw={600}>
-                  {t("fromOrders.order", { number: o.number })}
+                  {documentLabel(o, true)}
                 </Text>
                 {o.customerName && <Text size="sm">{o.customerName}</Text>}
                 {o.yourReference && (
@@ -339,12 +398,19 @@ export const FromOrdersPage = ({
               {t("fromOrders.partialHint")}
             </Text>
             {chosenOrders.map((o) => (
-              <Stack key={o.id} gap={4}>
+              <Stack key={keyOf(o)} gap={4}>
                 <Text fw={600} size="sm">
-                  {t("fromOrders.order", { number: o.number })}
+                  {documentLabel(o)}
                 </Text>
                 <Table.ScrollContainer minWidth={640}>
-                  <Table aria-label={t("fromOrders.linesOf", { number: o.number })} fz="sm">
+                  <Table
+                    aria-label={
+                      isSubscription(o)
+                        ? t("fromOrders.periodsOf", { number: o.number })
+                        : t("fromOrders.linesOf", { number: o.number })
+                    }
+                    fz="sm"
+                  >
                     <Table.Thead>
                       <Table.Tr>
                         <Table.Th>{t("fromOrders.col.line")}</Table.Th>
@@ -359,9 +425,14 @@ export const FromOrdersPage = ({
                       {o.lines.map((l) => {
                         const remaining = Math.round((l.toInvoice - quantityOf(l)) * 1000) / 1000;
                         return (
-                          <Table.Tr key={l.lineId}>
+                          <Table.Tr key={`${l.lineId}:${l.periodStart ?? ""}`}>
                             <Table.Td>
                               {l.description}
+                              {l.periodStart && (
+                                <Text span size="sm" c="dimmed">
+                                  {` – ${periodLabel(l)}`}
+                                </Text>
+                              )}
                               {remaining > 0 && quantityOf(l) > 0 && (
                                 <Badge ml="xs" size="xs" variant="light">
                                   {t("fromOrders.partial")}
@@ -370,18 +441,22 @@ export const FromOrdersPage = ({
                             </Table.Td>
                             <Table.Td ta="right">{`${number(l.toInvoice, 3)} ${l.unit}`}</Table.Td>
                             <Table.Td ta="right">
-                              <NumberInput
-                                aria-label={t("fromOrders.toInvoiceOf", { line: l.description })}
-                                value={quantities[l.lineId] ?? l.toInvoice}
-                                min={0}
-                                max={l.toInvoice}
-                                decimalScale={3}
-                                clampBehavior="strict"
-                                size="xs"
-                                w={110}
-                                ml="auto"
-                                onChange={(v) => setQuantities((current) => ({ ...current, [l.lineId]: v }))}
-                              />
+                              {l.periodStart ? (
+                                number(l.toInvoice, 3)
+                              ) : (
+                                <NumberInput
+                                  aria-label={t("fromOrders.toInvoiceOf", { line: l.description })}
+                                  value={quantities[l.lineId] ?? l.toInvoice}
+                                  min={0}
+                                  max={l.toInvoice}
+                                  decimalScale={3}
+                                  clampBehavior="strict"
+                                  size="xs"
+                                  w={110}
+                                  ml="auto"
+                                  onChange={(v) => setQuantities((current) => ({ ...current, [l.lineId]: v }))}
+                                />
+                              )}
                             </Table.Td>
                             <Table.Td ta="right" data-testid={`remaining-${l.lineId}`}>
                               {number(remaining, 3)}
@@ -422,11 +497,17 @@ export const FromOrdersPage = ({
             </Text>
             <Stack gap={4} data-testid="from-orders-preview">
               {preview.map((p) => (
-                <Stack key={`${p.customerId}-${p.orders[0].id}`} gap={0}>
+                <Stack key={`${p.customerId}-${keyOf(p.orders[0])}`} gap={0}>
                   <Text size="sm">
                     {t("fromOrders.previewInvoice", {
                       customer: p.customerName || p.customerId,
-                      orders: p.orders.map((o) => o.number).join(", "),
+                      orders: p.orders
+                        .map((o) =>
+                          isSubscription(o)
+                            ? t("fromOrders.subscriptionShort", { number: o.number })
+                            : String(o.number),
+                        )
+                        .join(", "),
                     })}
                   </Text>
                   {p.separatedBy.length > 0 && (
