@@ -1,4 +1,4 @@
-import { Alert, Button, Checkbox, Group, Modal, Stack, TextInput } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, Modal, SegmentedControl, Stack, TextInput } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle } from "@tabler/icons-react";
@@ -18,24 +18,30 @@ export interface NewBillingRunModalProps {
   today: string;
   /** Whether the caller may issue (meta's `canIssue`): only then is "Issue the invoices" offered. */
   canIssue: boolean;
+  /** Whether the Orders module is on: only then may a run invoice orders (orders design O40). */
+  ordersEnabled?: boolean;
   onClose: () => void;
 }
 
-const customerInputs = /^(through|customerIds(\[\d+\])?)$/;
+const customerInputs = /^(through|combine|customerIds(\[\d+\])?)$/;
 
 /**
  * A new billing run (energy consumption billing design D10, plan reading 11):
  * the through date, whether the invoices are issued — offered only to a caller
  * who may issue — and, optionally, the customers by id; absent, every customer
- * with consumption due. On 201 the run's page; a refusal in words, with a link
- * to the run in progress when one is.
+ * with consumption due. With Orders on, the run may invoice orders instead
+ * (orders design O40): every order line due through the date, one invoice per
+ * order or — combined — per customer where the orders agree. On 201 the run's
+ * page; a refusal in words, with a link to the run in progress when one is.
  */
-export const NewBillingRunModal = ({ today, canIssue, onClose }: NewBillingRunModalProps) => {
+export const NewBillingRunModal = ({ today, canIssue, ordersEnabled = false, onClose }: NewBillingRunModalProps) => {
   const { t, date, dateTime } = useInvoiceFormat();
   const queryClient = useQueryClient();
   const navigate = useNavigate() as (options: unknown) => void;
   const [through, setThrough] = useState(today);
   const [issue, setIssue] = useState(false);
+  const [source, setSource] = useState<"consumption" | "orders">("consumption");
+  const [combine, setCombine] = useState(false);
   const [ids, setIds] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [refusal, setRefusal] = useState<{ words: string[]; runId?: number } | null>(null);
@@ -58,6 +64,7 @@ export const NewBillingRunModal = ({ today, canIssue, onClose }: NewBillingRunMo
         const onIds = Object.entries(onInputs).find(([field]) => field.startsWith("customerIds"))?.[1];
         setErrors({
           ...(onInputs.through ? { through: onInputs.through } : {}),
+          ...(onInputs.combine ? { combine: onInputs.combine } : {}),
           ...(onIds ? { customerIds: onIds } : {}),
         });
         if (elsewhere.length > 0) setRefusal({ words: elsewhere });
@@ -79,6 +86,7 @@ export const NewBillingRunModal = ({ today, canIssue, onClose }: NewBillingRunMo
     }
     create.mutate({
       issue: canIssue && issue,
+      ...(source === "orders" ? { source, combine } : {}),
       ...(through ? { through } : {}),
       ...(tokens.length > 0 ? { customerIds: tokens.map(Number) } : {}),
     });
@@ -87,9 +95,20 @@ export const NewBillingRunModal = ({ today, canIssue, onClose }: NewBillingRunMo
   return (
     <Modal opened onClose={onClose} title={t("billingRun.new")}>
       <Stack>
+        {ordersEnabled && (
+          <SegmentedControl
+            aria-label={t("billingRun.source")}
+            value={source}
+            onChange={(v) => setSource(v as "consumption" | "orders")}
+            data={[
+              { value: "consumption", label: t("billingRun.source.consumption") },
+              { value: "orders", label: t("billingRun.source.orders") },
+            ]}
+          />
+        )}
         <DateInput
-          label={t("billingRun.through")}
-          description={t("billingRun.throughHint")}
+          label={source === "orders" ? t("billingRun.ordersThrough") : t("billingRun.through")}
+          description={source === "orders" ? t("billingRun.ordersThroughHint") : t("billingRun.throughHint")}
           valueFormat={t("dateInputFormat")}
           value={through || null}
           error={errors.through}
@@ -97,6 +116,15 @@ export const NewBillingRunModal = ({ today, canIssue, onClose }: NewBillingRunMo
             if (day) setThrough(day);
           }}
         />
+        {source === "orders" && (
+          <Checkbox
+            label={t("billingRun.combine")}
+            description={t("billingRun.combineHint")}
+            checked={combine}
+            error={errors.combine}
+            onChange={(event) => setCombine(event.currentTarget.checked)}
+          />
+        )}
         {canIssue && (
           <Checkbox
             label={t("billingRun.issue")}

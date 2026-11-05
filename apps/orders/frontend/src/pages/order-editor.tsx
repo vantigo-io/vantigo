@@ -6,6 +6,7 @@ import {
   IconCircleCheck,
   IconDeviceFloppy,
   IconDots,
+  IconFileInvoice,
   IconFileText,
   IconLock,
   IconLockOpen,
@@ -31,6 +32,7 @@ import {
   orderPdfUrl,
   orderProformaUrl,
   orderQueryOptions,
+  releaseDraftAllocations,
   sendOrder,
   transitionOrder,
   undoDelivered,
@@ -45,6 +47,7 @@ import { ConflictAlert } from "../components/conflict-alert";
 import { DeliveredDialog } from "../components/delivered-dialog";
 import { DocumentsCard } from "../components/documents-card";
 import { HeaderCard } from "../components/header-card";
+import { InvoicesCard } from "../components/invoices-card";
 import { Lifecycle, type LifecycleStep } from "../components/lifecycle";
 import { LineGrid } from "../components/line-grid";
 import { NewDocument } from "../components/new-document";
@@ -60,7 +63,7 @@ import { refusalMessage } from "../lib/errors";
 import { useOrdersFormat } from "../lib/format";
 import { headerInput } from "../lib/header";
 import { toLineInput } from "../lib/lines";
-import { quoteLinkOptions, SALES_ORDERS_ROUTE_PATH } from "../lib/routes";
+import { invoiceFromOrderLinkOptions, quoteLinkOptions, SALES_ORDERS_ROUTE_PATH } from "../lib/routes";
 import { useDocumentWrite, useEditorState } from "../lib/use-editor";
 
 export interface OrderEditorPageProps {
@@ -76,8 +79,10 @@ export interface OrderEditorPageProps {
  * with each one's delivered, invoiced and cancelled quantities, the server's
  * totals, and the state changes the order and the caller's keys allow —
  * confirm, hold and release, lock and unlock, cancel or cancel the rest,
- * register delivered and undo it, send the confirmation — with the change
- * log, the stored confirmations and the sends.
+ * register delivered and undo it, send the confirmation, invoice it in
+ * Invoices' *From orders* wizard and release what draft invoices hold (O36) —
+ * with the invoices issued from it (O41), the change log, the stored
+ * confirmations and the sends.
  */
 export const OrderEditorPage = ({ orderId, customerId, access = noOrdersAccess }: OrderEditorPageProps) => {
   const { t } = useOrdersFormat();
@@ -138,6 +143,7 @@ type Dialog =
   | "unlock"
   | "markDelivered"
   | "undoDelivered"
+  | "releaseDrafts"
   | null;
 
 const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) => {
@@ -165,6 +171,15 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
   const anythingDelivered = order.lines.some((line) => line.qtyDelivered > 0);
   const openToDeliver = order.lines.some(
     (line) => line.kind === "product" && (line.quantity ?? 0) - line.qtyCancelled - line.qtyDelivered > 0,
+  );
+  // What draft invoices hold of the order, and what is left to invoice on
+  // order (O36): ordered − cancelled − invoiced − draft-allocated.
+  const inDraftInvoice = order.lines.some((line) => line.qtyDraftAllocated > 0);
+  const openToInvoice = order.lines.some(
+    (line) =>
+      line.kind === "product" &&
+      line.invoicePolicy === "order" &&
+      (line.quantity ?? 0) - line.qtyCancelled - line.qtyInvoiced - line.qtyDraftAllocated > 0,
   );
   // The reason a settings holder overrides the order's block warnings with (O33).
   const [override, setOverride] = useState<string | null>(null);
@@ -195,6 +210,12 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
       setOverride(null);
       close();
     },
+    errorTitle: t("couldNotChangeOrder"),
+  });
+  const releaseDrafts = useDocumentWrite({
+    ...common,
+    write: () => releaseDraftAllocations(order.id, order),
+    done: t("draftAllocationsReleased"),
     errorTitle: t("couldNotChangeOrder"),
   });
   const hold = useDocumentWrite({
@@ -258,8 +279,9 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
   const run = (name: OrderTransition, done: string) =>
     transition.mutate(name, { onSuccess: () => notifications.show({ color: "green", message: done }) });
 
-  const busy = save.isPending || transition.isPending || hold.isPending;
+  const busy = save.isPending || transition.isPending || hold.isPending || releaseDrafts.isPending;
   const needsSave = editor.dirty ? t("saveFirst") : undefined;
+  const invoiceBlocked = order.onHold ? t("heldTakesNoInvoice") : !openToInvoice ? t("nothingToInvoice") : needsSave;
   const title = t("orderNumber", { number: order.number });
   const stateButton = (
     label: string,
@@ -309,6 +331,22 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
         }
         actions={
           <Group gap="xs">
+            {access.canCreateInvoices && confirmed && (
+              <Tooltip label={invoiceBlocked} disabled={!invoiceBlocked} withArrow>
+                <Button
+                  variant="default"
+                  leftSection={<IconFileInvoice size={16} />}
+                  disabled={Boolean(invoiceBlocked)}
+                  onClick={() => {
+                    // The wizard allocates: the order is read again on return.
+                    void queryClient.invalidateQueries({ queryKey: detailKey, refetchType: "none" });
+                    navigate(invoiceFromOrderLinkOptions(order.id));
+                  }}
+                >
+                  {t("invoiceOrder")}
+                </Button>
+              </Tooltip>
+            )}
             {editable && (
               <Button
                 leftSection={<IconDeviceFloppy size={16} />}
@@ -386,6 +424,15 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
                       onClick={() => setDialog("undoDelivered")}
                     >
                       {t("undoDelivered")}
+                    </Menu.Item>
+                  )}
+                  {manage && inDraftInvoice && (
+                    <Menu.Item
+                      leftSection={<IconArrowBackUp size={14} />}
+                      disabled={editor.dirty}
+                      onClick={() => setDialog("releaseDrafts")}
+                    >
+                      {t("releaseDraftAllocations")}
                     </Menu.Item>
                   )}
                   {manage && !progress && (
@@ -529,6 +576,7 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
           )}
         </Stack>
       </Card>
+      {!draft && <InvoicesCard invoices={order.invoices} canViewInvoices={access.canViewInvoices} />}
       {!draft && <ChangeLog changes={changes.data?.items ?? []} lines={order.lines} />}
       <DocumentsCard
         kind="order"
@@ -581,6 +629,18 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
           onClose={close}
         >
           {t("cancelRemainingHint")}
+        </ConfirmDialog>
+      )}
+      {dialog === "releaseDrafts" && (
+        <ConfirmDialog
+          title={t("releaseDraftAllocations")}
+          confirmLabel={t("releaseDraftAllocations")}
+          danger
+          loading={releaseDrafts.isPending}
+          onConfirm={() => releaseDrafts.mutate()}
+          onClose={close}
+        >
+          {t("releaseDraftAllocationsHint")}
         </ConfirmDialog>
       )}
       {dialog === "unlock" && (

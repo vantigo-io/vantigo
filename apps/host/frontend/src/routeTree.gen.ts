@@ -132,6 +132,7 @@ import { Route as InventorySitesSiteIdRouteImport } from './routes/inventory/sit
 import { Route as InventoryVariantsVariantIdRouteImport } from './routes/inventory/variants.$variantId'
 import { Route as InvoicesBillingRunsIndexRouteImport } from './routes/invoices/billing-runs.index'
 import { Route as InvoicesBillingRunsRunIdRouteImport } from './routes/invoices/billing-runs.$runId'
+import { Route as InvoicesNewFromOrdersRouteImport } from './routes/invoices/new.from-orders'
 import { Route as InvoicesPaymentsIndexRouteImport } from './routes/invoices/payments.index'
 import { Route as InvoicesPaymentsVippsRouteImport } from './routes/invoices/payments.vipps'
 import { Route as InvoicesReminderRunsRunIdRouteImport } from './routes/invoices/reminder-runs.$runId'
@@ -801,6 +802,11 @@ const InvoicesBillingRunsRunIdRoute =
     path: '/billing-runs/$runId',
     getParentRoute: () => InvoicesRoute,
   } as any)
+const InvoicesNewFromOrdersRoute = InvoicesNewFromOrdersRouteImport.update({
+  id: '/new/from-orders',
+  path: '/new/from-orders',
+  getParentRoute: () => InvoicesRoute,
+} as any)
 const InvoicesPaymentsIndexRoute = InvoicesPaymentsIndexRouteImport.update({
   id: '/payments/',
   path: '/payments/',
@@ -1130,6 +1136,7 @@ export interface FileRoutesByFullPath {
   '/inventory/sites/$siteId': typeof InventorySitesSiteIdRoute
   '/inventory/variants/$variantId': typeof InventoryVariantsVariantIdRoute
   '/invoices/billing-runs/$runId': typeof InvoicesBillingRunsRunIdRoute
+  '/invoices/new/from-orders': typeof InvoicesNewFromOrdersRoute
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
@@ -1272,6 +1279,7 @@ export interface FileRoutesByTo {
   '/inventory/sites/$siteId': typeof InventorySitesSiteIdRoute
   '/inventory/variants/$variantId': typeof InventoryVariantsVariantIdRoute
   '/invoices/billing-runs/$runId': typeof InvoicesBillingRunsRunIdRoute
+  '/invoices/new/from-orders': typeof InvoicesNewFromOrdersRoute
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
@@ -1437,6 +1445,7 @@ export interface FileRoutesById {
   '/inventory/sites/$siteId': typeof InventorySitesSiteIdRoute
   '/inventory/variants/$variantId': typeof InventoryVariantsVariantIdRoute
   '/invoices/billing-runs/$runId': typeof InvoicesBillingRunsRunIdRoute
+  '/invoices/new/from-orders': typeof InvoicesNewFromOrdersRoute
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
@@ -1603,6 +1612,7 @@ export interface FileRouteTypes {
     | '/inventory/sites/$siteId'
     | '/inventory/variants/$variantId'
     | '/invoices/billing-runs/$runId'
+    | '/invoices/new/from-orders'
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
@@ -1745,6 +1755,7 @@ export interface FileRouteTypes {
     | '/inventory/sites/$siteId'
     | '/inventory/variants/$variantId'
     | '/invoices/billing-runs/$runId'
+    | '/invoices/new/from-orders'
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
@@ -1909,6 +1920,7 @@ export interface FileRouteTypes {
     | '/inventory/sites/$siteId'
     | '/inventory/variants/$variantId'
     | '/invoices/billing-runs/$runId'
+    | '/invoices/new/from-orders'
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
@@ -2853,6 +2865,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InvoicesBillingRunsRunIdRouteImport
       parentRoute: typeof InvoicesRoute
     }
+    '/invoices/new/from-orders': {
+      id: '/invoices/new/from-orders'
+      path: '/new/from-orders'
+      fullPath: '/invoices/new/from-orders'
+      preLoaderRoute: typeof InvoicesNewFromOrdersRouteImport
+      parentRoute: typeof InvoicesRoute
+    }
     '/invoices/payments/': {
       id: '/invoices/payments/'
       path: '/payments'
@@ -3327,6 +3346,7 @@ interface InvoicesRouteChildren {
   InvoicesSettingsRoute: typeof InvoicesSettingsRoute
   InvoicesIndexRoute: typeof InvoicesIndexRoute
   InvoicesBillingRunsRunIdRoute: typeof InvoicesBillingRunsRunIdRoute
+  InvoicesNewFromOrdersRoute: typeof InvoicesNewFromOrdersRoute
   InvoicesPaymentsVippsRoute: typeof InvoicesPaymentsVippsRoute
   InvoicesReminderRunsRunIdRoute: typeof InvoicesReminderRunsRunIdRoute
   InvoicesRemindersPrintRoute: typeof InvoicesRemindersPrintRoute
@@ -3343,6 +3363,7 @@ const InvoicesRouteChildren: InvoicesRouteChildren = {
   InvoicesSettingsRoute: InvoicesSettingsRoute,
   InvoicesIndexRoute: InvoicesIndexRoute,
   InvoicesBillingRunsRunIdRoute: InvoicesBillingRunsRunIdRoute,
+  InvoicesNewFromOrdersRoute: InvoicesNewFromOrdersRoute,
   InvoicesPaymentsVippsRoute: InvoicesPaymentsVippsRoute,
   InvoicesReminderRunsRunIdRoute: InvoicesReminderRunsRunIdRoute,
   InvoicesRemindersPrintRoute: InvoicesRemindersPrintRoute,

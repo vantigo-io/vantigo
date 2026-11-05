@@ -73,7 +73,9 @@ describe("the orders catalog", () => {
         "unlocked",
         "delivered_marked",
         "delivered_undone",
+        "draft_allocations_released",
       ],
+      orderInvoiceState: ["invoiced", "released"],
       // OrdersProblem's codes (openapi/orders.yaml).
       refusal: [
         "too_many_lines",
@@ -93,12 +95,16 @@ describe("the orders catalog", () => {
         "order_not_confirmed",
         "order_locked",
         "order_has_progress",
+        "order_in_draft_invoice",
         "line_invoiced",
         "line_has_progress",
         "line_in_draft_invoice",
         "client_request_reused",
         "dependency_unavailable",
         "sending_disabled",
+        // contracts.AllocationRefusal's codes, which Invoices' wizard may hand on.
+        "allocation_exceeds_open",
+        "line_not_invoiceable",
       ],
     };
     for (const [family, values] of Object.entries(families))

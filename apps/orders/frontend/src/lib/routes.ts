@@ -29,3 +29,20 @@ export const newSalesOrderLinkOptions = (customerId?: number) => ({
   to: NEW_SALES_ORDER_ROUTE_PATH,
   search: customerSearch(customerId),
 });
+
+/**
+ * Invoices' routes an order links to (orders design O39, O41), owned by the
+ * Invoices app: its *From orders* wizard with an order chosen, and one
+ * invoice.
+ */
+const INVOICES_FROM_ORDERS_ROUTE_PATH = "/invoices/new/from-orders";
+const INVOICE_ROUTE_PATH = "/invoices/$invoiceId";
+
+export const invoiceFromOrderLinkOptions = (orderId: number) => ({
+  to: INVOICES_FROM_ORDERS_ROUTE_PATH,
+  search: { orderId },
+});
+export const invoiceLinkOptions = (invoiceId: number) => ({
+  to: INVOICE_ROUTE_PATH,
+  params: { invoiceId: String(invoiceId) },
+});

@@ -448,7 +448,7 @@ export const ordersCatalog = {
     "refusal.order_empty": "The order has no product lines.",
     "refusal.customer_disabled": "The customer is disabled or archived.",
     "refusal.project_customer_mismatch": "The project belongs to another customer.",
-    "refusal.quantity_below_progress": "A quantity cannot go below what is delivered or invoiced.",
+    "refusal.quantity_below_progress": "A quantity cannot go below what is delivered, invoiced or on a draft invoice.",
     "refusal.over_delivery": "That is more than is left to deliver.",
     "refusal.version_conflict": "It was changed by someone else. Reload and try again.",
     "refusal.quote_not_draft": "Only a draft quote takes that.",
@@ -459,13 +459,17 @@ export const ordersCatalog = {
     "refusal.order_locked": "The order is locked.",
     "refusal.order_has_progress": "Something is delivered or invoiced: cancel the rest instead.",
     "refusal.line_invoiced": "The price of an invoiced line cannot change.",
-    "refusal.line_has_progress": "A line with deliveries or invoices cannot be removed.",
+    "refusal.line_has_progress": "A line with deliveries, invoices or a draft invoice cannot be removed.",
     "refusal.line_kind_changed": "A line keeps its kind. Remove it and add a new line instead.",
     "refusal.order_on_hold": "The order is on hold. Release it before registering delivery.",
     "refusal.mail_failed":
       "The e-mail could not be sent. Nothing was changed; try again, or download the PDF and mark it as sent.",
     "refusal.line_in_draft_invoice":
-      "The line is on a draft invoice: its price cannot change, nor its quantity go below it.",
+      "Part of the line is on a draft invoice: its price and discount cannot change until the draft is issued or deleted.",
+    "refusal.order_in_draft_invoice":
+      "Part of the order is on a draft invoice. Issue or delete the draft, or choose Release draft allocations in the order's menu.",
+    "refusal.allocation_exceeds_open": "That is more than is left to invoice.",
+    "refusal.line_not_invoiceable": "The line cannot be invoiced now: its order is a draft, on hold or cancelled.",
     "refusal.client_request_reused": "This request was already used for something else. Try again.",
     "refusal.dependency_unavailable": "A module Orders needs is not available.",
     "refusal.sending_disabled": "Sending is off: Communications is not on, or no send channel is chosen.",
@@ -576,6 +580,23 @@ export const ordersCatalog = {
     "age.days8To30": "8–30 days",
     "age.over30Days": "Over 30 days",
     backlogChart: "Delivered, not invoiced, by age ({{currency}})",
+
+    // Invoicing from orders (O36, O39, O41)
+    invoiceOrder: "Invoice",
+    heldTakesNoInvoice: "An order on hold is not invoiced. Release it first.",
+    nothingToInvoice: "Nothing is left to invoice.",
+    progressDraftAllocated: "{{drafted}} on draft invoices",
+    releaseDraftAllocations: "Release draft allocations",
+    releaseDraftAllocationsHint:
+      "What draft invoices hold of this order is offered to invoice again. A draft invoice that still holds it will refuse to issue; delete it and invoice again.",
+    draftAllocationsReleased: "Released from the draft invoices",
+    orderInvoices: "Invoices",
+    noOrderInvoices: "Nothing is invoiced yet.",
+    invoiceNumber: "Invoice no.",
+    invoiceDate: "Invoice date",
+    "orderInvoiceState.invoiced": "Invoiced",
+    "orderInvoiceState.released": "Credited",
+    "changeAction.draft_allocations_released": "Released from draft invoices",
   },
   nb: {
     orders: "Ordre",
@@ -999,7 +1020,8 @@ export const ordersCatalog = {
     "refusal.order_empty": "Ordren har ingen produktlinjer.",
     "refusal.customer_disabled": "Kunden er deaktivert eller arkivert.",
     "refusal.project_customer_mismatch": "Prosjektet tilhører en annen kunde.",
-    "refusal.quantity_below_progress": "Et antall kan ikke bli lavere enn det som er levert eller fakturert.",
+    "refusal.quantity_below_progress":
+      "Et antall kan ikke bli lavere enn det som er levert, fakturert eller står på et fakturautkast.",
     "refusal.over_delivery": "Det er mer enn det som gjenstår å levere.",
     "refusal.version_conflict": "Det er endret av noen andre. Last inn på nytt og prøv igjen.",
     "refusal.quote_not_draft": "Bare et tilbudsutkast kan det.",
@@ -1010,13 +1032,17 @@ export const ordersCatalog = {
     "refusal.order_locked": "Ordren er låst.",
     "refusal.order_has_progress": "Noe er levert eller fakturert: kanseller resten i stedet.",
     "refusal.line_invoiced": "Prisen på en fakturert linje kan ikke endres.",
-    "refusal.line_has_progress": "En linje med leveranser eller fakturaer kan ikke fjernes.",
+    "refusal.line_has_progress": "En linje med leveranser, fakturaer eller et fakturautkast kan ikke fjernes.",
     "refusal.line_kind_changed": "En linje beholder typen sin. Fjern den og legg til en ny linje i stedet.",
     "refusal.order_on_hold": "Ordren er satt på vent. Ta den av vent før du registrerer levering.",
     "refusal.mail_failed":
       "E-posten kunne ikke sendes. Ingenting ble endret; prøv igjen, eller last ned PDF-en og merk den som sendt.",
     "refusal.line_in_draft_invoice":
-      "Linjen står på et fakturautkast: prisen kan ikke endres, og antallet kan ikke bli lavere.",
+      "Deler av linjen står på et fakturautkast: pris og rabatt kan ikke endres før utkastet er utstedt eller slettet.",
+    "refusal.order_in_draft_invoice":
+      "Deler av ordren står på et fakturautkast. Utsted eller slett utkastet, eller velg Frigjør fra fakturautkast i ordrens meny.",
+    "refusal.allocation_exceeds_open": "Det er mer enn det som gjenstår å fakturere.",
+    "refusal.line_not_invoiceable": "Linjen kan ikke faktureres nå: ordren er et utkast, på vent eller kansellert.",
     "refusal.client_request_reused": "Denne forespørselen er allerede brukt til noe annet. Prøv igjen.",
     "refusal.dependency_unavailable": "En modul Ordre trenger, er ikke tilgjengelig.",
     "refusal.sending_disabled": "Utsending er av: Kommunikasjon er ikke på, eller ingen avsenderkanal er valgt.",
@@ -1129,6 +1155,22 @@ export const ordersCatalog = {
     "age.days8To30": "8–30 dager",
     "age.over30Days": "Over 30 dager",
     backlogChart: "Levert, ikke fakturert, etter alder ({{currency}})",
+
+    invoiceOrder: "Fakturer",
+    heldTakesNoInvoice: "En ordre på vent faktureres ikke. Ta den av vent først.",
+    nothingToInvoice: "Ingenting gjenstår å fakturere.",
+    progressDraftAllocated: "{{drafted}} på fakturautkast",
+    releaseDraftAllocations: "Frigjør fra fakturautkast",
+    releaseDraftAllocationsHint:
+      "Det fakturautkast holder av denne ordren, kan faktureres på nytt. Et fakturautkast som fortsatt holder det, kan ikke utstedes; slett det og fakturer på nytt.",
+    draftAllocationsReleased: "Frigjort fra fakturautkastene",
+    orderInvoices: "Fakturaer",
+    noOrderInvoices: "Ingenting er fakturert ennå.",
+    invoiceNumber: "Fakturanr.",
+    invoiceDate: "Fakturadato",
+    "orderInvoiceState.invoiced": "Fakturert",
+    "orderInvoiceState.released": "Kreditert",
+    "changeAction.draft_allocations_released": "Frigjort fra fakturautkast",
   },
 } satisfies CatalogResources;
 

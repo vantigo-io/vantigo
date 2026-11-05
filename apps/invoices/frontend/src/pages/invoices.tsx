@@ -28,13 +28,15 @@ import { InvoiceTable } from "../components/invoice-table";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
-import { invoiceLinkOptions } from "../lib/routes";
+import { fromOrdersLinkOptions, invoiceLinkOptions } from "../lib/routes";
 
 export interface InvoicesPageProps {
   /** Whether the caller holds `customers:view`, which the buyer picker needs (D1). The host reads it. */
   canViewCustomers: boolean;
   /** The signed-in user's name, the "Vår ref." a new draft is prefilled with (D4). */
   userDisplayName?: string;
+  /** Whether the Orders module is on, so "From orders" is offered (orders design O39). The host reads it. */
+  canInvoiceOrders?: boolean;
 }
 
 /** The states an issued invoice can be filtered by (D3); a draft and a credit note never match one. */
@@ -47,9 +49,10 @@ const filterStates = ["open", "partially_paid", "overdue", "paid", "credited"] a
  * open amount beside its total. "New invoice" is offered to a caller who may
  * create drafts and pick a buyer.
  */
-export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPageProps) => {
+export const InvoicesPage = ({ canViewCustomers, userDisplayName, canInvoiceOrders = false }: InvoicesPageProps) => {
   const { t, date } = useInvoiceFormat();
   const meta = useQuery(invoicesMetaQueryOptions());
+  const navigate = useNavigate() as (options: unknown) => void;
   const [filters, setFilters] = useState<InvoiceListFilters>({ page: 1 });
   // The search is sent once the typing pauses, not per keystroke.
   const [search, setSearch] = useState("");
@@ -81,13 +84,20 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
         description={t("invoicesDescription")}
         actions={
           canCreate && (
-            <Button
-              data-assist="invoices.invoices.new"
-              leftSection={<IconPlus size={16} />}
-              onClick={() => setCreating(true)}
-            >
-              {t("newInvoice")}
-            </Button>
+            <Group gap="xs">
+              {canInvoiceOrders && (
+                <Button variant="default" onClick={() => navigate(fromOrdersLinkOptions())}>
+                  {t("fromOrders.newFromOrders")}
+                </Button>
+              )}
+              <Button
+                data-assist="invoices.invoices.new"
+                leftSection={<IconPlus size={16} />}
+                onClick={() => setCreating(true)}
+              >
+                {t("newInvoice")}
+              </Button>
+            </Group>
           )
         }
       />

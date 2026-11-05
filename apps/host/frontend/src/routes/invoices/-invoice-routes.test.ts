@@ -21,7 +21,7 @@ const matchedRouteIds = (pathname: string) => {
 };
 
 describe("the invoices route tree", () => {
-  it.each(["/invoices/journal", "/invoices/settings", "/invoices/quick"])(
+  it.each(["/invoices/journal", "/invoices/settings", "/invoices/quick", "/invoices/new/from-orders"])(
     "matches %s on its static route, not a document's",
     (path) => {
       const ids = matchedRouteIds(path);

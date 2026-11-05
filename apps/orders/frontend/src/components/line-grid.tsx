@@ -53,14 +53,19 @@ export interface LineGridProps {
   pricesIncludeVat?: boolean;
   /** Whether the lines take edits at all: a draft, or a confirmed order not locked (O26). */
   editable: boolean;
-  /** A confirmed order: a line with progress is never removed, a line with anything invoiced keeps its price (O26). */
+  /**
+   * A confirmed order: a line with progress — a draft invoice's part too — is
+   * never removed, and a line with anything invoiced, or on a draft invoice,
+   * keeps its price (O26).
+   */
   confirmed?: boolean;
   access: OrdersAccess;
   /** The refused save's failing lines, by their index in the request, in words. */
   refused?: ReadonlyMap<number, string>;
 }
 
-const hasProgress = (line?: Line) => (line ? line.qtyDelivered > 0 || line.qtyInvoiced > 0 : false);
+const hasProgress = (line?: Line) =>
+  line ? line.qtyDelivered > 0 || line.qtyInvoiced > 0 || line.qtyDraftAllocated > 0 : false;
 
 /**
  * The line grid (O15): product lines from the catalog or as free text,
@@ -113,6 +118,8 @@ export const LineGrid = ({
     const line = current ? withCurrentPackagings(row, current) : row;
     const saved = line.saved;
     const invoiced = confirmed && (saved?.qtyInvoiced ?? 0) > 0;
+    // A draft invoice holds part of the line: its price and discount wait (O26).
+    const priceHeld = invoiced || (confirmed && (saved?.qtyDraftAllocated ?? 0) > 0);
     const pack = packagingOf(line);
     const position = index + 1;
     const vatText = saved?.vatCode
@@ -304,7 +311,7 @@ export const LineGrid = ({
               min={0}
               decimalScale={4}
               hideControls
-              disabled={invoiced}
+              disabled={priceHeld}
               onChange={(value) =>
                 set(index, { unitPrice: value === "" ? "" : Number(value), priceTouched: value !== "" })
               }
@@ -337,7 +344,7 @@ export const LineGrid = ({
                 decimalScale={2}
                 suffix=" %"
                 hideControls
-                disabled={invoiced}
+                disabled={priceHeld}
                 onChange={(value) => set(index, { discountPercent: value === "" ? "" : Number(value) })}
               />
             ) : (
@@ -619,9 +626,10 @@ const RowPair = ({ children, problem, columns }: { children: ReactNode; problem?
 );
 
 /**
- * An order line's progress (O18, O32): delivered and cancelled of what was
- * ordered as one bar, and the invoiced quantity beside it. The quantities
- * are the server's buckets; the bar only draws them.
+ * An order line's progress (O18, O32, O36): delivered and cancelled of what
+ * was ordered as one bar, and the invoiced quantity beside it, with what
+ * draft invoices hold. The quantities are the server's buckets; the bar only
+ * draws them.
  */
 export const LineProgress = ({ line }: { line: Line }) => {
   const { t, quantity } = useOrdersFormat();
@@ -638,6 +646,8 @@ export const LineProgress = ({ line }: { line: Line }) => {
       </Text>
       <Text size="xs" c="dimmed">
         {t("progressInvoiced", { invoiced: quantity(line.qtyInvoiced) })}
+        {line.qtyDraftAllocated > 0 &&
+          ` · ${t("progressDraftAllocated", { drafted: quantity(line.qtyDraftAllocated) })}`}
         {line.qtyCancelled > 0 && ` · ${t("progressCancelled", { cancelled: quantity(line.qtyCancelled) })}`}
       </Text>
     </Box>

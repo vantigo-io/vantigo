@@ -23,6 +23,13 @@ export interface OrdersAccess {
   canReadVatCodes: boolean;
   /** The projects module mounted and `projects:access`: the project picker. */
   canViewProjects: boolean;
+  /**
+   * The invoices module mounted, `invoices:access` and `invoices:create`: an
+   * order's *Invoice*, which opens Invoices' *From orders* wizard (O39).
+   */
+  canCreateInvoices: boolean;
+  /** The invoices module mounted and `invoices:access`: an order's invoices link to Invoices (O41). */
+  canViewInvoices: boolean;
   /** The signed-in user, who may make themself a document's salesperson. */
   userId?: string;
   userDisplayName?: string;
@@ -39,4 +46,6 @@ export const noOrdersAccess: OrdersAccess = {
   canViewContacts: false,
   canReadVatCodes: false,
   canViewProjects: false,
+  canCreateInvoices: false,
+  canViewInvoices: false,
 };

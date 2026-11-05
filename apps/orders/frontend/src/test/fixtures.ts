@@ -34,6 +34,7 @@ export const line = (overrides: Partial<Line> = {}): Line => ({
   qtyCancelled: 0,
   qtyDelivered: 0,
   qtyInvoiced: 0,
+  qtyDraftAllocated: 0,
   deliveryMethod: "manual",
   ...overrides,
 });
@@ -96,6 +97,7 @@ export const order = (overrides: Partial<Order> = {}): Order => ({
   done: false,
   origin: { channel: "manual" },
   lines: [line()],
+  invoices: [],
   ...header,
   ...overrides,
 });

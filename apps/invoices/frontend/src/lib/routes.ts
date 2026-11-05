@@ -69,3 +69,21 @@ export const billingRunLinkOptions = (runId: number) => ({
 
 /** The same path as a plain URL, for a link's href. */
 export const billingRunHref = (runId: number): string => BILLING_RUN_ROUTE_PATH.replace("$runId", String(runId));
+
+/** New invoice → From orders: invoice order lines, by order or combined per customer (orders design O39). */
+export const FROM_ORDERS_ROUTE_PATH = "/invoices/new/from-orders";
+
+/** What `navigate` and `Link` take to reach the wizard, with an order or a customer chosen. */
+export const fromOrdersLinkOptions = (search: { orderId?: number; customerId?: number } = {}) => ({
+  to: FROM_ORDERS_ROUTE_PATH,
+  search,
+});
+
+/** The same path as a plain URL, for a link's href. */
+export const fromOrdersHref = ({ orderId, customerId }: { orderId?: number; customerId?: number } = {}): string => {
+  const query = [
+    ...(orderId !== undefined ? [`orderId=${orderId}`] : []),
+    ...(customerId !== undefined ? [`customerId=${customerId}`] : []),
+  ].join("&");
+  return query ? `${FROM_ORDERS_ROUTE_PATH}?${query}` : FROM_ORDERS_ROUTE_PATH;
+};

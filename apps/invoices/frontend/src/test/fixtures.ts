@@ -2068,6 +2068,8 @@ export const billingRun = (overrides: Partial<BillingRunWire> = {}): BillingRunW
   id: 7,
   through: "2026-08-31",
   issue: true,
+  source: "consumption",
+  combine: false,
   status: "running",
   customers: 4,
   counts: { queued: 1, drafted: 0, issued: 1, skipped: 1, failed: 1, cancelled: 0 },

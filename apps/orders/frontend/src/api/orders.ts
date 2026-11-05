@@ -73,6 +73,9 @@ export type OrderTransition = "confirm" | "release" | "lock" | "unlock" | "cance
 /** `extra` carries a confirm's warning override (O33) when one was given. */
 export const transitionOrder = (id: number, transition: OrderTransition, read: OrderRead, extra: object = {}) =>
   send<Order>(`${base}/${id}/${transition}`, json("POST", { ...token(read), ...extra }));
+/** Releases every draft invoice allocation of the order (O36). */
+export const releaseDraftAllocations = (id: number, read: OrderRead) =>
+  send<Order>(`${base}/${id}/release-draft-allocations`, json("POST", token(read)));
 export const holdOrder = (id: number, read: OrderRead, reason: string) =>
   send<Order>(`${base}/${id}/hold`, json("POST", { ...token(read), ...(reason ? { reason } : {}) }));
 export const markDelivered = (id: number, read: OrderRead, lines: DeliveredLine[]) =>
