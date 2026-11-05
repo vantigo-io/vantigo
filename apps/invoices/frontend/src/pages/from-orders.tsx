@@ -47,7 +47,7 @@ export interface FromOrdersPageProps {
 type Mode = "perOrder" | "combined";
 
 /** The fields a combined invoice's orders must agree on, as the server names a separation. */
-const GROUP_FIELDS = ["currency", "your_reference", "project", "payment_terms"] as const;
+const GROUP_FIELDS = ["currency", "your_reference", "project", "payment_terms", "delivery_address"] as const;
 
 /** docmath's line net: gross and allowance each rounded to øre, half away from zero. */
 const round2 = (v: number) => (Math.sign(v) * Math.round(Math.abs(v) * 100 + Number.EPSILON)) / 100;
@@ -56,12 +56,22 @@ const lineNet = (quantity: number, price: number, discount: number) => {
   return round2(gross - round2((gross * discount) / 100));
 };
 
+/** A delivery address as the server compares it: spaces collapsed, case folded, the country upper case; "" for none. */
+const addressKey = (a: DueOrder["deliveryAddress"]) => {
+  if (!a) return "";
+  const norm = (s?: string) => (s ?? "").trim().split(/\s+/).join(" ").toLowerCase();
+  return [norm(a.line1), norm(a.line2), norm(a.postalCode), norm(a.city), a.country.trim().toUpperCase()].join(
+    "\u001f",
+  );
+};
+
 /** What a combined invoice's orders share (orders design O39). */
 const groupKey = (o: DueOrder) => ({
   currency: o.currency,
   your_reference: o.yourReference.trim(),
   project: o.projectId ?? 0,
   payment_terms: o.paymentTermsDays ?? -1,
+  delivery_address: addressKey(o.deliveryAddress),
 });
 
 /** One invoice the wizard would make: a customer's orders, and what kept it apart from the customer's others. */

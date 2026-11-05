@@ -41,6 +41,7 @@ import { useState } from "react";
 import type { LetterLeft } from "../api/collection";
 import { SETTLEMENT_KIND } from "../api/consumption";
 import { deductibleQueryOptions } from "../api/deductible";
+import { ALLOCATION_KIND } from "../api/from-orders";
 import {
   creditInvoice,
   deleteInvoice,
@@ -390,11 +391,22 @@ const DraftEditor = ({
     credit
       ? (originalLine(line)?.quantity ?? numberOf(line.quantity)) < 0
       : line.deductsInvoiceId !== undefined || line.correction === true;
-  /** A line billing an energy settlement — or crediting one — whose unit price takes eight decimals (D7). */
+  /**
+   * A line billing an energy settlement (D7) or an order allocation (orders
+   * design O37) — or crediting one — whose unit price takes eight decimals.
+   */
   const billsSettlement = (line: EditorLine): boolean =>
     [...(line.sources ?? []), ...(line.read ?? []), ...(originalLine(line)?.sources ?? [])].some(
-      (s) => s.kind === SETTLEMENT_KIND,
+      (s) => s.kind === SETTLEMENT_KIND || s.kind === ALLOCATION_KIND,
     );
+  /**
+   * A draft's line billing an order allocation (orders design O39): it keeps
+   * the allocation's quantity, unit price, discount and VAT code — the server
+   * refuses them changed — and only its description is edited. To bill
+   * another quantity the line is removed and the order invoiced again.
+   */
+  const holdsAllocation = (line: EditorLine): boolean =>
+    !credit && [...(line.sources ?? []), ...(line.read ?? [])].some((s) => s.kind === ALLOCATION_KIND);
   const rateOf = (line: EditorLine): { category: string; ratePercent: number } => {
     if (credit) {
       const o = originalLine(line);
@@ -873,7 +885,7 @@ const DraftEditor = ({
                       // crediting one is negative and may only shrink towards 0.
                       min={negative(l) ? originalLine(l)?.quantity : 0}
                       max={credit ? (negative(l) ? 0 : originalLine(l)?.quantity) : MAX_QUANTITY}
-                      readOnly={!editable || (!credit && l.deductsInvoiceId !== undefined)}
+                      readOnly={!editable || (!credit && l.deductsInvoiceId !== undefined) || holdsAllocation(l)}
                       value={l.quantity}
                       error={fieldError(`lines[${i}].quantity`)}
                       onChange={(v) => setLine(l.key, { quantity: v })}
@@ -894,7 +906,7 @@ const DraftEditor = ({
                       decimalScale={billsSettlement(l) ? 8 : 4}
                       min={0}
                       max={credit ? originalLine(l)?.unitPrice : MAX_UNIT_PRICE}
-                      readOnly={!editable}
+                      readOnly={!editable || holdsAllocation(l)}
                       value={l.unitPrice}
                       error={fieldError(`lines[${i}].unitPrice`)}
                       onChange={(v) => setLine(l.key, { unitPrice: v })}
@@ -909,7 +921,9 @@ const DraftEditor = ({
                       // A deduction carries no discount, and its VAT code is the
                       // a-konto's (D7): the server refuses either changed. A
                       // correction line carries no discount either.
-                      disabled={fixed || l.deductsInvoiceId !== undefined || l.correction === true}
+                      disabled={
+                        fixed || l.deductsInvoiceId !== undefined || l.correction === true || holdsAllocation(l)
+                      }
                       value={l.discountPercent}
                       error={fieldError(`lines[${i}].discountPercent`)}
                       onChange={(v) => setLine(l.key, { discountPercent: v })}
@@ -918,7 +932,7 @@ const DraftEditor = ({
                   <Table.Td>
                     <Select
                       aria-label={t("lineVatCode", { n: i + 1 })}
-                      disabled={fixed || l.deductsInvoiceId !== undefined}
+                      disabled={fixed || l.deductsInvoiceId !== undefined || holdsAllocation(l)}
                       data={vatOptions}
                       value={l.vatCodeId === null ? null : String(l.vatCodeId)}
                       error={fieldError(`lines[${i}].vatCodeId`)}
