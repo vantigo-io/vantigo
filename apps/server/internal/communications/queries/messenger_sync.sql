@@ -199,3 +199,14 @@ WHERE d.message_id = m.id
   AND d.accepted_at IS NOT NULL AND d.accepted_at <= @watermark
   AND d.status = ANY(@from_statuses::text[])
 RETURNING d.id, d.message_id;
+
+-- name: LatestShareEmailQuestion :one
+-- The newest message of the conversation that asked the person for an e-mail
+-- address: a user_email quick reply carries no payload of ours, so the address
+-- that comes back is placed under it (N5).
+SELECT id
+FROM communications.conversation_messages
+WHERE conversation_id = @conversation_id AND direction = 'outbound'
+  AND components->>'shareEmail' = 'true'
+ORDER BY occurred_at DESC, id DESC
+LIMIT 1;

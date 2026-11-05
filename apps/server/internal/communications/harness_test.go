@@ -122,7 +122,7 @@ type lockedCalls struct {
 }
 
 func (l *lockedCalls) note(ctx context.Context, method string) {
-	if !communications.InOpenTx(ctx) {
+	if !communications.InOpenTx(ctx) || communications.ExpectedInTx(ctx) {
 		return
 	}
 	l.mu.Lock()
