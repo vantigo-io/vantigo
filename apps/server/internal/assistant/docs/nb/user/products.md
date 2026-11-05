@@ -1,6 +1,6 @@
 ---
 title: Produkter
-description: Katalogen over varer og tjenester, kategorier, mva-kategorier, priser og pakninger, og kolonnen Beholdning i produktlisten.
+description: Katalogen over varer og tjenester, kategorier, mva-kategorier, priser, pakninger og bilder, og kolonnen Beholdning i produktlisten.
 sidebar:
   order: 60
 sources:
@@ -89,8 +89,8 @@ Kortet **Produktdetaljer** viser **SKU**, **Type**, **Kategori** (som hele stien
 eksempel *Møbler / Stoler*), **Strekkode**, **Enhet**, **Standardkostnad**,
 **Mva-kategori** med sats, **Gjeldende pris** i hver valuta som har en, og
 beskrivelsen. For varer viser en **Logistikk**-del **Vekt** og **Dimensjoner (L×B×H)**,
-eller sier at ingen er registrert. Under følger kortet **Priser** og, når produktet har
-mer enn én variant, kortet **Varianter**.
+eller sier at ingen er registrert. Under følger kortet [**Bilder**](#bilder), kortet
+**Priser** og, når produktet har mer enn én variant, kortet **Varianter**.
 
 Når organisasjonen bruker Lager og du har `inventory:locations-view` og
 `inventory:stock-view`, ligger kortet **Beholdning** over **Priser**: totalen på lager, og
@@ -174,6 +174,41 @@ Lagringen avvises, med appens ord:
   sletter en eske en pall er bygd av.
 
 Å legge til og endre pakninger krever `products:variants-manage`.
+
+## Bilder
+
+Kortet **Bilder** på produktsiden holder bildene av produktet: de som kan vises til en
+kunde. Det er det samme kortet for varer og tjenester, og det ligger under
+**Produktdetaljer**.
+
+For å legge til bilder slipper du JPEG- eller PNG-filer på kortet, eller trykker på
+filvelgeren (**Legg til bilder**) og velger dem; flere samtidig går fint. En fil må være
+en **JPEG eller PNG** på høyst **10 MiB** og minst 200 × 200 piksler. Vantigo beholder
+ikke filen slik den ble sendt: bildet snus rett etter orienteringen kameraet registrerte,
+krympes til høyst 2048 piksler på den lengste siden, og lagres på nytt **uten noen
+kameradata** — verken sted, enhet eller tidspunkt når en kunde. En liten versjon lages til
+miniatyrbildene på kortet.
+
+Hvert bilde vises som et miniatyrbilde, i den rekkefølgen en kunde vil se dem, med:
+
+- **Flytt til venstre** og **Flytt til høyre**, som endrer rekkefølgen (det første kan
+  ikke flyttes til venstre, det siste ikke til høyre);
+- en stjerne: den fylte merker **Hovedbilde**; trykk på stjernen på et annet bilde
+  (**Gjør dette til hovedbildet**) for å flytte den. Det første bildet du legger til er
+  hovedbilde, og når du sletter hovedbildet overtar det neste;
+- **Alternativ tekst** — hva bildet viser, for en kunde som ikke kan se det, opptil 250
+  tegn; den lagres når du forlater feltet;
+- **Vis i Kommunikasjon** — på som standard: bildet kan vises til en kunde i en melding;
+- **Vis i markedsføring** — for markedsføring, for eksempel annonser — ingenting leser
+  dette ennå;
+- søppelkassen, **Slett bilde**, som spør først og fjerner bildet fra produktet for godt.
+
+En fil avvises med appens ord: *{name} er ikke et JPEG- eller PNG-bilde.*, *{name} er større
+enn 10 MiB.*, og fra Vantigo selv *Bildet må være minst 200 × 200 piksler.*, *Bildet er
+større enn 10 MiB, eller har mer enn 40 megapiksler.*, *Bare JPEG- og PNG-bilder kan
+lastes opp.* (WebP og HEIC godtas ikke), *Filen kunne ikke leses som et bilde.* og
+*Bildelageret kunne ikke nås. Ingenting ble endret. Prøv igjen.* Å legge til, endre og
+slette bilder krever `products:products-manage`; å se dem krever `products:products-view`.
 
 ## Priser
 
@@ -275,6 +310,8 @@ slettes.**): flytt de produktene til en annen mva-kategori først.
 | Opprette, redigere og arkivere produkter | `products:products-manage` (opprettelse krever også `products:variants-manage`) |
 | Legge til, redigere og fjerne varianter | `products:variants-manage` (redigering og fjerning krever også `products:pricing-manage`) |
 | Legge til, redigere og slette pakninger | `products:variants-manage` |
+| Se et produkts bilder | `products:products-view` |
+| Legge til, endre og slette bilder | `products:products-manage` |
 | Kolonnen **Beholdning** | `inventory:locations-view` og `inventory:stock-view` |
 | Legge til, redigere og slette priser | `products:pricing-manage` |
 | Se området Kategorier | `products:categories-view` |
