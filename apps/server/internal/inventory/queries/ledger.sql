@@ -12,10 +12,11 @@ SELECT id, request_hash FROM inventory.movements WHERE client_request_id = @clie
 -- A concurrent first attempt holding the key makes this wait for it; one that
 -- committed answers no row, and the caller reads it back.
 INSERT INTO inventory.movements (client_request_id, request_hash, site_id, kind, reason, note, supplier_name, supplier_reference,
-                                 posted_by_user_id, posted_by_display, posted_at, count_id)
+                                 posted_by_user_id, posted_by_display, posted_at, count_id,
+                                 source_module, source_kind, source_id, source_line_id)
 VALUES (@client_request_id, @request_hash, @site_id, @kind, sqlc.narg(reason), sqlc.narg(note), sqlc.narg(supplier_name),
         sqlc.narg(supplier_reference), sqlc.narg(posted_by_user_id), sqlc.narg(posted_by_display), @posted_at::timestamptz,
-        sqlc.narg(count_id))
+        sqlc.narg(count_id), sqlc.narg(source_module), sqlc.narg(source_kind), sqlc.narg(source_id), sqlc.narg(source_line_id))
 ON CONFLICT (client_request_id) DO NOTHING
 RETURNING id;
 
@@ -73,3 +74,9 @@ FROM (SELECT unnest(@line_nos::int[]) AS line_no, unnest(@variant_ids::int[]) AS
 -- caller's transaction.
 SELECT coalesce(sum(on_hand), 0)::text AS quantity, count(*)::int AS locations
 FROM inventory.balances WHERE variant_id = @variant_id AND on_hand <> 0;
+
+-- name: VariantReserved :one
+-- VariantReserved is what is reserved of a variant across every site, and at
+-- how many sites, on the caller's transaction (the holder, I23).
+SELECT coalesce(sum(quantity), 0)::text AS quantity, count(DISTINCT site_id)::int AS sites
+FROM inventory.reservations WHERE variant_id = @variant_id;

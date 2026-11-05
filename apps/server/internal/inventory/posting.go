@@ -89,6 +89,15 @@ type movementHeader struct {
 	supplierReference *string
 	countID           *int64
 	poster            actor
+	// source is the document of another module the movement was posted for
+	// (an issue's, orders design O45); nil for the module's own postings.
+	source *movementSource
+}
+
+// movementSource is a movement's source reference (design §12), as text.
+type movementSource struct {
+	module, kind, id string
+	lineID           *string
 }
 
 // engineLine is one line as the engine takes it: a variant, from and to (each
@@ -226,11 +235,15 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 	}
 
 	// 3. The key, claimed.
-	id, err := txq.ClaimMovement(ctx, store.ClaimMovementParams{
+	claim := store.ClaimMovementParams{
 		ClientRequestID: m.clientRequestID, RequestHash: m.requestHash, SiteID: m.siteID, Kind: m.kind,
 		Reason: m.reason, Note: m.note, SupplierName: m.supplierName, SupplierReference: m.supplierReference,
 		PostedByUserID: m.poster.UserID, PostedByDisplay: &m.poster.Display, PostedAt: s.deps.Clock(), CountID: m.countID,
-	})
+	}
+	if src := m.source; src != nil {
+		claim.SourceModule, claim.SourceKind, claim.SourceID, claim.SourceLineID = &src.module, &src.kind, &src.id, src.lineID
+	}
+	id, err := txq.ClaimMovement(ctx, claim)
 	if noRows(err) {
 		res, _, err := replayOf(ctx, txq, m)
 		return res, err

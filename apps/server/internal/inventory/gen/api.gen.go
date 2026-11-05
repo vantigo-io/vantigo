@@ -204,6 +204,7 @@ func (e InventoryLookupMatchKind) Valid() bool {
 const (
 	Adjustment InventoryMovementKind = "adjustment"
 	Count      InventoryMovementKind = "count"
+	Issue      InventoryMovementKind = "issue"
 	Move       InventoryMovementKind = "move"
 	Receipt    InventoryMovementKind = "receipt"
 )
@@ -214,6 +215,8 @@ func (e InventoryMovementKind) Valid() bool {
 	case Adjustment:
 		return true
 	case Count:
+		return true
+	case Issue:
 		return true
 	case Move:
 		return true
@@ -730,7 +733,7 @@ type InventoryMovement struct {
 	CountId *int64 `json:"countId,omitempty"`
 	Id      int64  `json:"id"`
 
-	// Kind An open set (design §12): issue, production and transfer join later.
+	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); production and transfer join later.
 	Kind     InventoryMovementKind   `json:"kind"`
 	Lines    []InventoryMovementLine `json:"lines"`
 	Note     *string                 `json:"note,omitempty"`
@@ -743,13 +746,13 @@ type InventoryMovement struct {
 	// Site A site as other answers name it.
 	Site InventorySiteRef `json:"site"`
 
-	// Source What another module's record caused the movement (design §12); none does in this phase.
+	// Source What another module's record caused the movement (design §12): an issue names the document it was posted for, such as an order's delivery.
 	Source            *InventorySourceRef `json:"source,omitempty"`
 	SupplierName      *string             `json:"supplierName,omitempty"`
 	SupplierReference *string             `json:"supplierReference,omitempty"`
 }
 
-// InventoryMovementKind An open set (design §12): issue, production and transfer join later.
+// InventoryMovementKind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); production and transfer join later.
 type InventoryMovementKind string
 
 // InventoryMovementLine A quantity of a variant from a location, to one, or both (I9).
@@ -785,7 +788,7 @@ type InventoryMovementSummary struct {
 	CountId *int64 `json:"countId,omitempty"`
 	Id      int64  `json:"id"`
 
-	// Kind An open set (design §12): issue, production and transfer join later.
+	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); production and transfer join later.
 	Kind      InventoryMovementKind `json:"kind"`
 	LineCount int32                 `json:"lineCount"`
 	Note      *string               `json:"note,omitempty"`
@@ -881,7 +884,10 @@ type InventorySite struct {
 	// Code 1–16 characters A–Z and 0–9, unique in the deployment; the first segment of every full code in the site.
 	Code      string    `json:"code"`
 	CreatedAt time.Time `json:"createdAt"`
-	Id        int64     `json:"id"`
+
+	// FulfilsOrders Whether orders reserve and deliver stock from the site (orders design O45). A warehouse does by default, a store does not.
+	FulfilsOrders bool  `json:"fulfilsOrders"`
+	Id            int64 `json:"id"`
 
 	// Kind Changes the suggested location kinds and the words on screen, never a rule (I1).
 	Kind InventorySiteKind `json:"kind"`
@@ -913,6 +919,9 @@ type InventorySiteInput struct {
 	// Code Upper-cased before it is checked.
 	Code string `json:"code"`
 
+	// FulfilsOrders Whether orders reserve and deliver stock from the site; when absent, true for a warehouse and false for a store.
+	FulfilsOrders *bool `json:"fulfilsOrders,omitempty"`
+
 	// Kind Changes the suggested location kinds and the words on screen, never a rule (I1).
 	Kind InventorySiteKind `json:"kind"`
 	Name string            `json:"name"`
@@ -939,7 +948,12 @@ type InventorySiteRef struct {
 
 // InventorySiteStock One variant's stock in one site.
 type InventorySiteStock struct {
-	OnHand float64 `json:"onHand"`
+	// Available On hand less reserved; negative when a correction took on hand below what is reserved.
+	Available float64 `json:"available"`
+	OnHand    float64 `json:"onHand"`
+
+	// Reserved What other modules' documents (orders) have reserved of it at the site (orders design O45).
+	Reserved float64 `json:"reserved"`
 
 	// Rows By full code.
 	Rows []InventoryBalanceRow `json:"rows"`
@@ -956,13 +970,16 @@ type InventorySiteUpdate struct {
 	// Code Upper-cased before it is checked.
 	Code string `json:"code"`
 
+	// FulfilsOrders Whether orders reserve and deliver stock from the site; when absent, it is left as it is. Turning it off leaves the site's reservations as they are.
+	FulfilsOrders *bool `json:"fulfilsOrders,omitempty"`
+
 	// Kind Changes the suggested location kinds and the words on screen, never a rule (I1).
 	Kind   InventorySiteKind `json:"kind"`
 	Name   string            `json:"name"`
 	Status InventoryStatus   `json:"status"`
 }
 
-// InventorySourceRef What another module's record caused the movement (design §12); none does in this phase.
+// InventorySourceRef What another module's record caused the movement (design §12): an issue names the document it was posted for, such as an order's delivery.
 type InventorySourceRef struct {
 	Id     string  `json:"id"`
 	Kind   string  `json:"kind"`
@@ -1005,13 +1022,15 @@ type InventoryStatsAttentionItemType string
 // InventoryStatus defines model for InventoryStatus.
 type InventoryStatus string
 
-// InventoryStockTotal A variant's on hand across every location.
+// InventoryStockTotal A variant's on hand across every location, what is reserved of it across every site, and the difference.
 type InventoryStockTotal struct {
+	Available float64 `json:"available"`
 	OnHand    float64 `json:"onHand"`
+	Reserved  float64 `json:"reserved"`
 	VariantId int32   `json:"variantId"`
 }
 
-// InventoryStockTotals One total per variant asked for that has stock; a variant with none is absent.
+// InventoryStockTotals One total per variant asked for that has stock or a reservation; a variant with neither is absent.
 type InventoryStockTotals struct {
 	Totals []InventoryStockTotal `json:"totals"`
 }
@@ -1044,9 +1063,13 @@ type InventoryVariantRef struct {
 
 // InventoryVariantStock One variant's stock by site (I27).
 type InventoryVariantStock struct {
-	// Sites Sites holding stock, by code.
-	Sites       []InventorySiteStock `json:"sites"`
-	TotalOnHand float64              `json:"totalOnHand"`
+	// Sites Sites holding stock or a reservation of it, by code.
+	Sites []InventorySiteStock `json:"sites"`
+
+	// TotalAvailable Total on hand less total reserved.
+	TotalAvailable float64 `json:"totalAvailable"`
+	TotalOnHand    float64 `json:"totalOnHand"`
+	TotalReserved  float64 `json:"totalReserved"`
 
 	// Variant A variant as the catalog answers it, or as its last movement line snapshotted it when the catalog no longer knows it (deleted).
 	Variant InventoryVariantRef `json:"variant"`

@@ -54,10 +54,30 @@ ORDER BY m.posted_at DESC, m.id DESC
 LIMIT @row_limit::int;
 
 -- name: StockTotals :many
--- StockTotals is each of the variants' on hand across every location (I33);
--- a variant with no balance is absent.
-SELECT variant_id, sum(on_hand)::text AS on_hand
-FROM inventory.balances
+-- StockTotals is each of the variants' on hand across every location and
+-- what is reserved of it across every site (I33); a variant with neither is
+-- absent.
+SELECT coalesce(b.variant_id, r.variant_id)::int AS variant_id, coalesce(b.on_hand, 0)::text AS on_hand,
+       coalesce(r.reserved, 0)::text AS reserved
+FROM (SELECT variant_id, sum(on_hand) AS on_hand FROM inventory.balances
+      WHERE variant_id = ANY(@variant_ids::int[]) GROUP BY variant_id) b
+FULL JOIN (SELECT variant_id, sum(quantity) AS reserved FROM inventory.reservations
+           WHERE variant_id = ANY(@variant_ids::int[]) GROUP BY variant_id) r ON r.variant_id = b.variant_id
+ORDER BY 1;
+
+-- name: ReservedOfVariants :many
+-- ReservedOfVariants is what is reserved of each variant, per site.
+SELECT variant_id, site_id, sum(quantity)::text AS reserved
+FROM inventory.reservations
 WHERE variant_id = ANY(@variant_ids::int[])
-GROUP BY variant_id
-ORDER BY variant_id;
+GROUP BY variant_id, site_id
+ORDER BY variant_id, site_id;
+
+-- name: OnHandBySite :many
+-- OnHandBySite is each variant's on hand per site, summed over its locations.
+SELECT b.variant_id, l.site_id, sum(b.on_hand)::text AS on_hand
+FROM inventory.balances b
+JOIN inventory.locations l ON l.id = b.location_id
+WHERE b.variant_id = ANY(@variant_ids::int[])
+GROUP BY b.variant_id, l.site_id
+ORDER BY b.variant_id, l.site_id;

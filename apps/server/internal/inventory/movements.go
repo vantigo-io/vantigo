@@ -164,7 +164,7 @@ func (s *server) ListInventoryMovements(ctx context.Context, req gen.ListInvento
 	params := store.ListMovementsParams{SiteID: p.SiteId, VariantID: p.VariantId, LocationID: p.LocationId, RowLimit: defaultMovementPage + 1}
 	if p.Kind != nil {
 		if !p.Kind.Valid() {
-			f.add("kind", "The kind must be adjustment, move, receipt or count")
+			f.add("kind", "The kind must be adjustment, move, receipt, count or issue")
 		}
 		params.Kind = ptr(string(*p.Kind))
 	}

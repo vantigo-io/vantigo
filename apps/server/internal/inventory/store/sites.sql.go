@@ -21,7 +21,7 @@ func (q *Queries) DeleteSite(ctx context.Context, id int64) error {
 
 const getSite = `-- name: GetSite :one
 SELECT s.id, s.code, s.name, s.kind, s.address_line1, s.address_line2, s.postal_code, s.city, s.country,
-       s.status, s.revision, s.created_at, s.updated_at, r.id AS root_location_id
+       s.status, s.revision, s.created_at, s.updated_at, s.fulfils_orders, r.id AS root_location_id
 FROM inventory.sites s
 JOIN inventory.locations r ON r.site_id = s.id AND r.parent_id IS NULL
 WHERE s.id = $1
@@ -41,6 +41,7 @@ type GetSiteRow struct {
 	Revision       int32
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	FulfilsOrders  bool
 	RootLocationID int64
 }
 
@@ -62,28 +63,31 @@ func (q *Queries) GetSite(ctx context.Context, id int64) (GetSiteRow, error) {
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FulfilsOrders,
 		&i.RootLocationID,
 	)
 	return i, err
 }
 
 const insertSite = `-- name: InsertSite :one
-INSERT INTO inventory.sites (code, name, kind, address_line1, address_line2, postal_code, city, country, status, created_at, updated_at)
+INSERT INTO inventory.sites (code, name, kind, address_line1, address_line2, postal_code, city, country, status, fulfils_orders,
+                             created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7,
-        $8, 'active', $9::timestamptz, $9::timestamptz)
-RETURNING id, code, name, kind, address_line1, address_line2, postal_code, city, country, status, revision, created_at, updated_at
+        $8, 'active', $9, $10::timestamptz, $10::timestamptz)
+RETURNING id, code, name, kind, address_line1, address_line2, postal_code, city, country, status, revision, created_at, updated_at, fulfils_orders
 `
 
 type InsertSiteParams struct {
-	Code         string
-	Name         string
-	Kind         string
-	AddressLine1 *string
-	AddressLine2 *string
-	PostalCode   *string
-	City         *string
-	Country      *string
-	Now          time.Time
+	Code          string
+	Name          string
+	Kind          string
+	AddressLine1  *string
+	AddressLine2  *string
+	PostalCode    *string
+	City          *string
+	Country       *string
+	FulfilsOrders bool
+	Now           time.Time
 }
 
 func (q *Queries) InsertSite(ctx context.Context, arg InsertSiteParams) (InventorySite, error) {
@@ -96,6 +100,7 @@ func (q *Queries) InsertSite(ctx context.Context, arg InsertSiteParams) (Invento
 		arg.PostalCode,
 		arg.City,
 		arg.Country,
+		arg.FulfilsOrders,
 		arg.Now,
 	)
 	var i InventorySite
@@ -113,6 +118,7 @@ func (q *Queries) InsertSite(ctx context.Context, arg InsertSiteParams) (Invento
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FulfilsOrders,
 	)
 	return i, err
 }
@@ -120,7 +126,7 @@ func (q *Queries) InsertSite(ctx context.Context, arg InsertSiteParams) (Invento
 const listSites = `-- name: ListSites :many
 
 SELECT s.id, s.code, s.name, s.kind, s.address_line1, s.address_line2, s.postal_code, s.city, s.country,
-       s.status, s.revision, s.created_at, s.updated_at, r.id AS root_location_id
+       s.status, s.revision, s.created_at, s.updated_at, s.fulfils_orders, r.id AS root_location_id
 FROM inventory.sites s
 JOIN inventory.locations r ON r.site_id = s.id AND r.parent_id IS NULL
 WHERE s.status = $1
@@ -141,6 +147,7 @@ type ListSitesRow struct {
 	Revision       int32
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	FulfilsOrders  bool
 	RootLocationID int64
 }
 
@@ -171,6 +178,7 @@ func (q *Queries) ListSites(ctx context.Context, status string) ([]ListSitesRow,
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.FulfilsOrders,
 			&i.RootLocationID,
 		); err != nil {
 			return nil, err
@@ -184,7 +192,7 @@ func (q *Queries) ListSites(ctx context.Context, status string) ([]ListSitesRow,
 }
 
 const lockSite = `-- name: LockSite :one
-SELECT id, code, name, kind, address_line1, address_line2, postal_code, city, country, status, revision, created_at, updated_at FROM inventory.sites WHERE id = $1 FOR UPDATE
+SELECT id, code, name, kind, address_line1, address_line2, postal_code, city, country, status, revision, created_at, updated_at, fulfils_orders FROM inventory.sites WHERE id = $1 FOR UPDATE
 `
 
 // LockSite takes the site row FOR UPDATE: the first lock of every structural
@@ -206,6 +214,7 @@ func (q *Queries) LockSite(ctx context.Context, id int64) (InventorySite, error)
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FulfilsOrders,
 	)
 	return i, err
 }
@@ -305,7 +314,7 @@ func (q *Queries) SiteHasOpenCount(ctx context.Context, siteID int64) (bool, err
 }
 
 const sitesByIDs = `-- name: SitesByIDs :many
-SELECT id, code, name, kind, address_line1, address_line2, postal_code, city, country, status, revision, created_at, updated_at FROM inventory.sites WHERE id = ANY($1::bigint[])
+SELECT id, code, name, kind, address_line1, address_line2, postal_code, city, country, status, revision, created_at, updated_at, fulfils_orders FROM inventory.sites WHERE id = ANY($1::bigint[])
 `
 
 // SitesByIDs is the sites a response names.
@@ -332,6 +341,7 @@ func (q *Queries) SitesByIDs(ctx context.Context, ids []int64) ([]InventorySite,
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.FulfilsOrders,
 		); err != nil {
 			return nil, err
 		}
@@ -347,23 +357,24 @@ const updateSite = `-- name: UpdateSite :one
 UPDATE inventory.sites
 SET code = $1, name = $2, kind = $3, address_line1 = $4, address_line2 = $5,
     postal_code = $6, city = $7, country = $8, status = $9,
-    revision = revision + 1, updated_at = $10::timestamptz
-WHERE id = $11
-RETURNING id, code, name, kind, address_line1, address_line2, postal_code, city, country, status, revision, created_at, updated_at
+    fulfils_orders = $10, revision = revision + 1, updated_at = $11::timestamptz
+WHERE id = $12
+RETURNING id, code, name, kind, address_line1, address_line2, postal_code, city, country, status, revision, created_at, updated_at, fulfils_orders
 `
 
 type UpdateSiteParams struct {
-	Code         string
-	Name         string
-	Kind         string
-	AddressLine1 *string
-	AddressLine2 *string
-	PostalCode   *string
-	City         *string
-	Country      *string
-	Status       string
-	Now          time.Time
-	ID           int64
+	Code          string
+	Name          string
+	Kind          string
+	AddressLine1  *string
+	AddressLine2  *string
+	PostalCode    *string
+	City          *string
+	Country       *string
+	Status        string
+	FulfilsOrders bool
+	Now           time.Time
+	ID            int64
 }
 
 // UpdateSite replaces a site's fields and moves its revision on.
@@ -378,6 +389,7 @@ func (q *Queries) UpdateSite(ctx context.Context, arg UpdateSiteParams) (Invento
 		arg.City,
 		arg.Country,
 		arg.Status,
+		arg.FulfilsOrders,
 		arg.Now,
 		arg.ID,
 	)
@@ -396,6 +408,7 @@ func (q *Queries) UpdateSite(ctx context.Context, arg UpdateSiteParams) (Invento
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FulfilsOrders,
 	)
 	return i, err
 }

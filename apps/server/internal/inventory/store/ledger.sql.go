@@ -15,10 +15,11 @@ import (
 
 const claimMovement = `-- name: ClaimMovement :one
 INSERT INTO inventory.movements (client_request_id, request_hash, site_id, kind, reason, note, supplier_name, supplier_reference,
-                                 posted_by_user_id, posted_by_display, posted_at, count_id)
+                                 posted_by_user_id, posted_by_display, posted_at, count_id,
+                                 source_module, source_kind, source_id, source_line_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7,
         $8, $9, $10, $11::timestamptz,
-        $12)
+        $12, $13, $14, $15, $16)
 ON CONFLICT (client_request_id) DO NOTHING
 RETURNING id
 `
@@ -36,6 +37,10 @@ type ClaimMovementParams struct {
 	PostedByDisplay   *string
 	PostedAt          time.Time
 	CountID           *int64
+	SourceModule      *string
+	SourceKind        *string
+	SourceID          *string
+	SourceLineID      *string
 }
 
 // ClaimMovement writes the movement's header and so claims its key (step 3).
@@ -55,6 +60,10 @@ func (q *Queries) ClaimMovement(ctx context.Context, arg ClaimMovementParams) (i
 		arg.PostedByDisplay,
 		arg.PostedAt,
 		arg.CountID,
+		arg.SourceModule,
+		arg.SourceKind,
+		arg.SourceID,
+		arg.SourceLineID,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -276,5 +285,24 @@ func (q *Queries) VariantHeld(ctx context.Context, variantID int32) (VariantHeld
 	row := q.db.QueryRow(ctx, variantHeld, variantID)
 	var i VariantHeldRow
 	err := row.Scan(&i.Quantity, &i.Locations)
+	return i, err
+}
+
+const variantReserved = `-- name: VariantReserved :one
+SELECT coalesce(sum(quantity), 0)::text AS quantity, count(DISTINCT site_id)::int AS sites
+FROM inventory.reservations WHERE variant_id = $1
+`
+
+type VariantReservedRow struct {
+	Quantity string
+	Sites    int32
+}
+
+// VariantReserved is what is reserved of a variant across every site, and at
+// how many sites, on the caller's transaction (the holder, I23).
+func (q *Queries) VariantReserved(ctx context.Context, variantID int32) (VariantReservedRow, error) {
+	row := q.db.QueryRow(ctx, variantReserved, variantID)
+	var i VariantReservedRow
+	err := row.Scan(&i.Quantity, &i.Sites)
 	return i, err
 }

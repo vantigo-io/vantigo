@@ -989,10 +989,10 @@ export interface components {
             supplierReference?: string;
         };
         /**
-         * @description An open set (design §12): issue, production and transfer join later.
+         * @description An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); production and transfer join later.
          * @enum {string}
          */
-        InventoryMovementKind: "adjustment" | "move" | "receipt" | "count";
+        InventoryMovementKind: "adjustment" | "move" | "receipt" | "count" | "issue";
         /** @description A quantity of a variant from a location, to one, or both (I9). */
         InventoryMovementLine: {
             entered?: components["schemas"]["InventoryEnteredSnapshot"];
@@ -1121,6 +1121,8 @@ export interface components {
             code: string;
             /** Format: date-time */
             createdAt: string;
+            /** @description Whether orders reserve and deliver stock from the site (orders design O45). A warehouse does by default, a store does not. */
+            fulfilsOrders: boolean;
             /** Format: int64 */
             id: number;
             kind: components["schemas"]["InventorySiteKind"];
@@ -1159,6 +1161,8 @@ export interface components {
             address?: components["schemas"]["InventoryAddress"];
             /** @description Upper-cased before it is checked. */
             code: string;
+            /** @description Whether orders reserve and deliver stock from the site; when absent, true for a warehouse and false for a store. */
+            fulfilsOrders?: boolean;
             kind: components["schemas"]["InventorySiteKind"];
             name: string;
         };
@@ -1182,8 +1186,18 @@ export interface components {
         };
         /** @description One variant's stock in one site. */
         InventorySiteStock: {
+            /**
+             * Format: double
+             * @description On hand less reserved; negative when a correction took on hand below what is reserved.
+             */
+            available: number;
             /** Format: double */
             onHand: number;
+            /**
+             * Format: double
+             * @description What other modules' documents (orders) have reserved of it at the site (orders design O45).
+             */
+            reserved: number;
             /** @description By full code. */
             rows: components["schemas"]["InventoryBalanceRow"][];
             site: components["schemas"]["InventorySiteRef"];
@@ -1193,11 +1207,13 @@ export interface components {
             address?: components["schemas"]["InventoryAddress"];
             /** @description Upper-cased before it is checked. */
             code: string;
+            /** @description Whether orders reserve and deliver stock from the site; when absent, it is left as it is. Turning it off leaves the site's reservations as they are. */
+            fulfilsOrders?: boolean;
             kind: components["schemas"]["InventorySiteKind"];
             name: string;
             status: components["schemas"]["InventoryStatus"];
         };
-        /** @description What another module's record caused the movement (design §12); none does in this phase. */
+        /** @description What another module's record caused the movement (design §12): an issue names the document it was posted for, such as an order's delivery. */
         InventorySourceRef: {
             id: string;
             kind: string;
@@ -1249,14 +1265,18 @@ export interface components {
         };
         /** @enum {string} */
         InventoryStatus: "active" | "archived";
-        /** @description A variant's on hand across every location. */
+        /** @description A variant's on hand across every location, what is reserved of it across every site, and the difference. */
         InventoryStockTotal: {
             /** Format: double */
+            available: number;
+            /** Format: double */
             onHand: number;
+            /** Format: double */
+            reserved: number;
             /** Format: int32 */
             variantId: number;
         };
-        /** @description One total per variant asked for that has stock; a variant with none is absent. */
+        /** @description One total per variant asked for that has stock or a reservation; a variant with neither is absent. */
         InventoryStockTotals: {
             totals: components["schemas"]["InventoryStockTotal"][];
         };
@@ -1289,10 +1309,17 @@ export interface components {
         };
         /** @description One variant's stock by site (I27). */
         InventoryVariantStock: {
-            /** @description Sites holding stock, by code. */
+            /** @description Sites holding stock or a reservation of it, by code. */
             sites: components["schemas"]["InventorySiteStock"][];
+            /**
+             * Format: double
+             * @description Total on hand less total reserved.
+             */
+            totalAvailable: number;
             /** Format: double */
             totalOnHand: number;
+            /** Format: double */
+            totalReserved: number;
             variant: components["schemas"]["InventoryVariantRef"];
         };
         AuthErrorResponse: {

@@ -95,12 +95,15 @@ const (
 const (
 	VariantHoldKindStock         = "stock"
 	VariantHoldKindOpenDocuments = "open_documents"
+	VariantHoldKindReserved      = "reserved"
 )
 
 // VariantHold is what a holder keeps of a variant. Kind says which: "stock"
 // is a quantity in the variant's own unit, as a decimal, and the number of
-// places it lies in; "open_documents" is the number of open documents
-// (quotes, orders, subscriptions) that name it (orders design O30).
+// places it lies in; "reserved" is a quantity reserved for other modules'
+// documents (contracts.StockLedger), as a decimal, and the number of sites
+// it is reserved at, in Locations; "open_documents" is the number of open
+// documents (quotes, orders, subscriptions) that name it (orders design O30).
 type VariantHold struct {
 	Kind      string
 	Quantity  string

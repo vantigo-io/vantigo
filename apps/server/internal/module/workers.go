@@ -51,7 +51,7 @@ func EventHandlers(deps Deps, mods ...Module) ([]events.Handler, error) {
 // through Compose's return value. It resolves each module's contribution from
 // deps as the caller passes it, plus Deps.CustomerPersonalData,
 // Deps.InvoicedWork, Deps.Directory, Deps.Users, Deps.Accounts,
-// Deps.Workforce, Deps.CalendarSources, Deps.IdentityProvisioners,
+// Deps.Workforce, Deps.Stock, Deps.StockLedger, Deps.CalendarSources, Deps.IdentityProvisioners,
 // Deps.MailboxCalendars, Deps.ChannelMailboxes and Deps.PersonalMailboxes,
 // which it resolves from the enabled modules the way
 // Compose does — the same base Deps Compose resolves Directory from, before
@@ -105,6 +105,12 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 		panic(err.Error())
 	}
 	if deps, err = withBillables(deps, enabled); err != nil {
+		panic(err.Error())
+	}
+	// The stock read and the stock ledger, resolved as Compose resolves
+	// them: a worker that cancels an order must release its reservations
+	// as the API does.
+	if deps, err = withStock(deps, mods, enabled); err != nil {
 		panic(err.Error())
 	}
 	// The calendar sources, from the enabled modules only, as Compose
@@ -392,6 +398,32 @@ func withBillables(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if orders != nil {
 		deps.BillableOrders = orders.BillableOrders(deps)
+	}
+	return deps, nil
+}
+
+// withStock resolves contracts.Stock from the enabled modules and
+// contracts.StockLedger from every module given, enabled or not — at most one
+// may declare each — keeping a preset value when none does (orders design
+// O45). The ledger is the holders' kind of slot (rule 24): a reservation made
+// while Inventory was on is still released by a cancel, an edit or a manual
+// marking after it is switched off, so a disabled Inventory still writes
+// its own reservations. Compose and Workers both call it, after the product
+// catalog.
+func withStock(deps Deps, given, enabled []Module) (Deps, error) {
+	stock, err := soleProvider(enabled, "a stock read", func(m Module) bool { return m.Stock != nil })
+	if err != nil {
+		return deps, err
+	}
+	if stock != nil {
+		deps.Stock = stock.Stock(deps)
+	}
+	ledger, err := soleProvider(given, "a stock ledger", func(m Module) bool { return m.StockLedger != nil })
+	if err != nil {
+		return deps, err
+	}
+	if ledger != nil {
+		deps.StockLedger = ledger.StockLedger(deps)
 	}
 	return deps, nil
 }

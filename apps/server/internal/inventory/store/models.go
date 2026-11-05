@@ -116,18 +116,32 @@ type InventoryMovementLine struct {
 	Entered        []byte
 }
 
-type InventorySite struct {
+type InventoryReservation struct {
 	ID           int64
-	Code         string
-	Name         string
-	Kind         string
-	AddressLine1 *string
-	AddressLine2 *string
-	PostalCode   *string
-	City         *string
-	Country      *string
-	Status       string
-	Revision     int32
+	VariantID    int32
+	SiteID       int64
+	Quantity     pgtype.Numeric
+	SourceModule string
+	SourceKind   string
+	SourceID     string
+	SourceLineID string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+}
+
+type InventorySite struct {
+	ID            int64
+	Code          string
+	Name          string
+	Kind          string
+	AddressLine1  *string
+	AddressLine2  *string
+	PostalCode    *string
+	City          *string
+	Country       *string
+	Status        string
+	Revision      int32
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	FulfilsOrders bool
 }
