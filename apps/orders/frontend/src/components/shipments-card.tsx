@@ -145,7 +145,9 @@ const ShipmentPanel = ({ shipment, canManage }: { shipment: Shipment; canManage:
   const { t, money, dateTime } = useOrdersFormat();
   const queryClient = useQueryClient();
   const draft = shipment.status === "draft";
-  const editable = draft && canManage;
+  // A draft whose booking's outcome is unknown is booked again as it was, never changed.
+  const bookable = draft && canManage;
+  const editable = bookable && !shipment.bookAttempted;
   const accounts = useQuery({ ...carrierAccountsQueryOptions(), enabled: editable });
   const [accountId, setAccountId] = useState(shipment.carrierAccountId);
   const services = useQuery({ ...carrierServicesQueryOptions(accountId), enabled: editable });
@@ -266,12 +268,17 @@ const ShipmentPanel = ({ shipment, canManage }: { shipment: Shipment; canManage:
             {t("voidedHint")}
           </Alert>
         )}
-        {editable && shipment.bookAttempted && (
+        {bookable && shipment.bookAttempted && (
           <Alert color="yellow" p="xs">
             {t("bookAttemptedHint")}
           </Alert>
         )}
-        {editable && shipment.test && (
+        {shipment.labelInMybringOnly && !shipment.voided && (
+          <Alert color="yellow" p="xs" data-testid="label-in-mybring">
+            {t("labelInMybringOnly")}
+          </Alert>
+        )}
+        {bookable && shipment.test && (
           <Text size="xs" c="yellow.8">
             {t("testBookingWarning")}
           </Text>
@@ -383,41 +390,45 @@ const ShipmentPanel = ({ shipment, canManage }: { shipment: Shipment; canManage:
                 ))}
           </Table.Tbody>
         </Table>
-        {editable && (
+        {bookable && (
           <Group gap="xs">
-            <Button
-              size="xs"
-              variant="subtle"
-              leftSection={<IconPlus size={14} />}
-              disabled={packages.length >= 20}
-              onClick={() =>
-                touched(setPackages)([
-                  ...packages,
-                  { weightGrams: 1000, lengthMm: 0, widthMm: 0, heightMm: 0, content: "" },
-                ])
-              }
-            >
-              {t("addPackage")}
-            </Button>
-            <Button
-              size="xs"
-              variant="default"
-              disabled={!dirty || busy}
-              loading={save.isPending}
-              onClick={() => save.mutate()}
-            >
-              {t("saveShipment")}
-            </Button>
-            <Button
-              size="xs"
-              variant="light"
-              leftSection={<IconCoin size={14} />}
-              disabled={dirty || busy}
-              loading={price.isPending}
-              onClick={() => price.mutate()}
-            >
-              {t("getRates")}
-            </Button>
+            {editable && (
+              <>
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  leftSection={<IconPlus size={14} />}
+                  disabled={packages.length >= 20}
+                  onClick={() =>
+                    touched(setPackages)([
+                      ...packages,
+                      { weightGrams: 1000, lengthMm: 0, widthMm: 0, heightMm: 0, content: "" },
+                    ])
+                  }
+                >
+                  {t("addPackage")}
+                </Button>
+                <Button
+                  size="xs"
+                  variant="default"
+                  disabled={!dirty || busy}
+                  loading={save.isPending}
+                  onClick={() => save.mutate()}
+                >
+                  {t("saveShipment")}
+                </Button>
+                <Button
+                  size="xs"
+                  variant="light"
+                  leftSection={<IconCoin size={14} />}
+                  disabled={dirty || busy}
+                  loading={price.isPending}
+                  onClick={() => price.mutate()}
+                >
+                  {t("getRates")}
+                </Button>
+              </>
+            )}
             <Button
               size="xs"
               color="teal"

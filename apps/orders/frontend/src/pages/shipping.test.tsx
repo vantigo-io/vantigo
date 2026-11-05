@@ -83,6 +83,7 @@ const shipment = (overrides: Partial<Shipment> = {}): Shipment => ({
   waybill: false,
   waybillNeeded: false,
   bookAttempted: false,
+  labelInMybringOnly: false,
   version: 1,
   createdAt: "2026-11-05T10:00:00Z",
   updatedAt: "2026-11-05T10:00:00Z",
@@ -204,9 +205,68 @@ describe("a posted delivery's shipments", () => {
     expect(screen.getByTestId("shipment-events")).toHaveTextContent("Damaged · 0150 OSLO");
     expect(screen.getByText("Voided in Vantigo; the label must not be used.")).toBeInTheDocument();
   });
+
+  it("keeps an unresolved booking as it was, and sends a recovered booking's label to Mybring", async () => {
+    fakeServer((call) => {
+      if (call.method === "GET" && call.url === deliveryUrl) return jsonResponse(200, posted);
+      if (call.method === "GET" && call.url === shipmentsUrl)
+        return jsonResponse(200, {
+          items: [
+            shipment({ bookAttempted: true }),
+            shipment({ id: 3002, status: "booked", consignmentNumber: "70400000000002", labelInMybringOnly: true }),
+          ],
+        });
+      if (call.method === "GET" && call.url === "/api/v1/orders/carrier-accounts")
+        return jsonResponse(200, { items: [account], carriers: ["bring"] });
+      if (call.method === "GET" && call.url === "/api/v1/orders/carrier-accounts/1001/services")
+        return jsonResponse(200, { items: [] });
+      if (call.method === "POST" && call.url === "/api/v1/orders/shipments/3001/book")
+        return refusal(409, "booking_outcome_unknown");
+      return commonAnswers(call, settings(), meta({ stockKept: true }));
+    });
+    renderRoute("/orders/deliveries/7001");
+
+    expect(await screen.findByTestId("label-in-mybring")).toHaveTextContent("print the label in Mybring");
+    expect(screen.queryByRole("button", { name: "Save shipment" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Book shipment" }));
+    expect(await screen.findByText(/Check Mybring, or wait fifteen minutes/)).toBeInTheDocument();
+  });
 });
 
 describe("Integrations › Shipping", () => {
+  it("saves every site's default it shows, a cleared one as null", async () => {
+    const fake = fakeServer((call) => {
+      if (call.method === "GET" && call.url === "/api/v1/orders/carrier-accounts")
+        return jsonResponse(200, { items: [account], carriers: ["bring"] });
+      if (call.method === "GET" && call.url === "/api/v1/orders/sites")
+        return jsonResponse(200, {
+          items: [
+            { id: 1, code: "OSL", name: "Oslo", active: true, fulfilsOrders: true },
+            { id: 2, code: "BGO", name: "Bergen", active: true, fulfilsOrders: true },
+          ],
+        });
+      if (call.method === "GET" && call.url === "/api/v1/orders/shipping/site-defaults")
+        return jsonResponse(200, { items: [{ siteId: 2, accountId: 1001 }] });
+      if (call.method === "PUT" && call.url === "/api/v1/orders/shipping/site-defaults")
+        return jsonResponse(200, { items: [{ siteId: 1, accountId: 1001 }] });
+      return commonAnswers(call, settings(), meta());
+    });
+    renderShippingSettings();
+
+    const card = await screen.findByTestId("site-defaults");
+    await userEvent.click(within(card).getByRole("combobox", { name: "OSL Default account per site" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Bring" }));
+    await userEvent.click(within(card).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(fake.sent("PUT", "/api/v1/orders/shipping/site-defaults")?.body).toEqual({
+        items: [
+          { siteId: 1, accountId: 1001 },
+          { siteId: 2, accountId: 1001 },
+        ],
+      }),
+    );
+  });
+
   it("adds a carrier account with write-only keys and verifies it", async () => {
     const fake = fakeServer((call) => {
       if (call.method === "GET" && call.url === "/api/v1/orders/carrier-accounts")

@@ -887,7 +887,9 @@ export const ordersCatalog = {
     shipmentBooked: "Shipment booked: {{consignment}}",
     couldNotBookShipment: "The shipment could not be booked",
     bookAttemptedHint:
-      "A booking was made but its answer was lost. Booking again asks the carrier first and books once.",
+      "A booking was made but its answer was lost. Book again in a couple of minutes: the carrier is asked first, and it books once. The shipment cannot be changed until then.",
+    labelInMybringOnly:
+      "The booking was found again after a lost answer, and Bring gives no label link for it: print the label in Mybring.",
     testBookingWarning: "Test mode: Bring still notifies real phone numbers and e-mails.",
     cancelShipment: "Cancel shipment",
     cancelShipmentHint:
@@ -937,6 +939,11 @@ export const ordersCatalog = {
     "refusal.address_missing": "The document has no address to ship to.",
     "refusal.currency_mismatch": "The carrier prices in another currency; type the price.",
     "refusal.freight_product_invalid": "The freight product must be a Service product.",
+    "refusal.booking_in_progress": "The shipment is being booked right now. Wait a couple of minutes and look again.",
+    "refusal.booking_outcome_unknown":
+      "The carrier does not show the earlier booking yet. Check Mybring, or wait fifteen minutes and book again.",
+    "refusal.booking_unresolved":
+      "A booking's outcome is unknown: book again to resolve it before changing the shipment.",
   },
   nb: {
     orders: "Ordre",
@@ -1802,7 +1809,9 @@ export const ordersCatalog = {
     shipmentBooked: "Frakten er bestilt: {{consignment}}",
     couldNotBookShipment: "Frakten kunne ikke bestilles",
     bookAttemptedHint:
-      "En bestilling ble gjort, men svaret gikk tapt. Bestill igjen: transportøren spørres først, og det bestilles én gang.",
+      "En bestilling ble gjort, men svaret gikk tapt. Bestill igjen om et par minutter: transportøren spørres først, og det bestilles én gang. Sendingen kan ikke endres før det.",
+    labelInMybringOnly:
+      "Bestillingen ble funnet igjen etter et tapt svar, og Bring gir ingen etikettlenke for den: skriv ut etiketten i Mybring.",
     testBookingWarning: "Testmodus: Bring varsler likevel ekte telefonnumre og e-postadresser.",
     cancelShipment: "Kanseller sendingen",
     cancelShipmentHint:
@@ -1852,6 +1861,11 @@ export const ordersCatalog = {
     "refusal.address_missing": "Dokumentet har ingen adresse å sende til.",
     "refusal.currency_mismatch": "Transportøren priser i en annen valuta; skriv inn prisen.",
     "refusal.freight_product_invalid": "Fraktproduktet må være et tjenesteprodukt.",
+    "refusal.booking_in_progress": "Sendingen bestilles akkurat nå. Vent et par minutter og se igjen.",
+    "refusal.booking_outcome_unknown":
+      "Transportøren viser ikke den tidligere bestillingen ennå. Sjekk Mybring, eller vent et kvarter og bestill igjen.",
+    "refusal.booking_unresolved":
+      "Utfallet av en bestilling er ukjent: bestill igjen for å avklare det før sendingen endres.",
   },
 } satisfies CatalogResources;
 
