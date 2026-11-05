@@ -744,7 +744,9 @@ it.
   and a line whose quantity the site's available — less what the call's earlier lines
   of the same variant took — does not cover (`insufficient_available`, naming the SKU,
   the site and what is available). Otherwise it adds each line's quantity to the line's
-  reservation at the site, creating it when there is none. A line id names one variant.
+  reservation at the site, creating it when there is none. A line id names one variant: a
+  line already holding another variant at the site is a failure, not a refusal, and
+  nothing is written — the caller releases the old variant's reservation first.
 - **`Release`** gives back reservations of the document: all of them when no release
   is named; a line's whole reservation for a release without a quantity; or that
   quantity of it, site by site in site id order. Never below zero: releasing more than
@@ -757,7 +759,8 @@ it.
   unknown, archived or in another site (`location_unknown`), and stock the location does
   not hold (`insufficient_stock`, Inventory's own rule: a balance never goes below
   zero). Reservations of other documents never stop an issue. Then it consumes, of each
-  issued line's reservation at the site, as much as the line issued, never below zero.
+  issued line's reservation at the site of the variant issued, as much as the line issued,
+  never below zero; an issue of another variant than the line holds consumes nothing.
   **An issue is idempotent by its document**: its key is a UUID derived from the
   document, so a second `Issue` for the same document answers the first movement and
   consumes nothing again; one with different lines is a failure.

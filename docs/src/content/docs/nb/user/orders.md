@@ -248,6 +248,10 @@ på vent**, **Registrert levert** og så videre.
 På en ordre som holder reservasjoner, følger reservasjonene endringen: et større antall
 reserverer differansen — avvist når lagerstedet ikke har den disponibel — et mindre gir resten
 tilbake, en ny varelinje reserverer sitt antall, og en fjernet linje gir reservasjonen tilbake.
+En linje som får et annet produkt, gir tilbake det den holdt av det gamle produktet og
+reserverer antallet av det nye — avvist når lagerstedet ikke har det disponibelt. Når Lager
+ikke fører beholdning, reserverer en endring ikke mer, men beholder det ordren holder, og gir
+bare tilbake det et mindre antall ikke lenger trenger.
 
 ## Sett på vent, lås og kanseller
 
@@ -266,7 +270,11 @@ først, eller [frigjør det det holder](#frigjør-det-fakturautkast-holder).
 
 Å sette på vent, låse og registrere leveranser endrer ikke versjonen.
 
-Begge kanselleringene gir tilbake det ordren har reservert, og kansellerer leveranseutkastene.
+**Kanseller ordren** gir tilbake alt ordren har reservert, og kansellerer leveranseutkastene.
+**Kanseller resten** gir tilbake det som ikke lenger gjenstår å levere, og tar linjene uten noe
+igjen å levere ut av leveranseutkastene — et utkast som blir tomt, kanselleres. En linje som er
+fakturert ut over det som er levert, har fortsatt så mye igjen å levere: den beholder
+reservasjonen for det og blir stående på utkastene.
 
 ## Registrer hva som er levert
 
@@ -277,7 +285,8 @@ registrere dem for hånd virker fortsatt, som en korreksjon, og gir tilbake like
 linjens reservasjon som du registrerer.
 **Registrer levert** spør hvor mye av hver linje som er levert nå (**Lever nå**); en linje
 med 0 endres ikke, og du kan ikke levere mer enn det som gjenstår. **Flere handlinger** →
-**Angre levert** tar antall tilbake (**Ta tilbake**). Hver linje viser fremdriften — «3 av 5
+**Angre levert** tar antall tilbake (**Ta tilbake**); på en linje som faktureres ved levering,
+ikke under det som er fakturert eller ligger på et fakturautkast. Hver linje viser fremdriften — «3 av 5
 levert» — og ordren leveringsstatusen: **Ikke levert**, **Delvis levert** eller **Levert**.
 
 ## Leveranser og lager
