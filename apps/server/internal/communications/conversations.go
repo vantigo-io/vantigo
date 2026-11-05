@@ -256,7 +256,7 @@ func (s *server) GetCommunicationsConversations(ctx context.Context, req gen.Get
 			unread = false
 		}
 		data = append(data, gen.ConversationListItem{
-			Id: r.ID, ChannelId: r.ChannelID, Subject: r.Subject, Status: r.Status,
+			Id: r.ID, ChannelId: r.ChannelID, ChannelType: apicommon.Ptr(r.ChannelType), Subject: r.Subject, Status: r.Status,
 			AssignedUserId: r.AssignedUserID, CustomerId: r.CustomerID,
 			CustomerAssociationSource: r.CustomerAssociationSource, SuggestedCustomerId: r.SuggestedCustomerID,
 			CandidateCustomerIds: batches.candidates[r.ID], LastActivityAt: r.LastActivityAt, PreviewText: r.PreviewText,
@@ -380,9 +380,22 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 		return nil, err
 	}
 
+	// A Messenger conversation's components limits and reply window (N4, N6),
+	// read from its provider's Capabilities and the participant's newest
+	// message: both null for an e-mail conversation.
+	var componentLimits *gen.MessageComponentLimits
+	var window *gen.ReplyWindow
+	if channelDetail.Type == channelTypeMessenger {
+		state, err := s.messengerStateOf(ctx, q, req.Id, channelDetail.Provider, s.deps.Clock())
+		if err != nil {
+			return nil, err
+		}
+		componentLimits, window = componentLimitsOf(state.caps), replyWindowResponse(state.window)
+	}
+
 	// The channel's size budget (M13), and the attachments it takes, which
 	// the composer shows beside them: both null for SMTP.
-	budget, err := s.mailBudget(ctx, channelDetail.Provider)
+	budget, err := s.mailBudget(ctx, channelDetail.Type, channelDetail.Provider)
 	if err != nil {
 		return nil, err
 	}
@@ -411,6 +424,7 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 		Tags: batches.tags[req.Id], LastReadAt: lastReadAt, ReplyRecipients: replyRecipients,
 		MaxMessageBytes: budget, MaxAttachmentBytes: allowance,
 		ChannelAddress: apicommon.Ptr(channelDetail.Address), ChannelDisplayName: channelDetail.DisplayName,
+		ChannelType: apicommon.Ptr(channelDetail.Type), ComponentLimits: componentLimits, ReplyWindow: window,
 		PersonalSender: personalSender,
 	}
 	return gen.GetCommunicationsConversationsById200JSONResponse(resp), nil
@@ -525,7 +539,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 		}{
 			ContentId: a.ContentID, ContentType: a.ContentType, CreatedAt: a.CreatedAt,
 			DownloadAvailable: a.ScanStatus == "clean" || a.ScanStatus == "unscanned", DownloadPath: fmt.Sprintf("/api/v1/communications/attachments/%s/download", a.ID),
-			FileName: a.FileName, Id: a.ID, IsInline: a.IsInline, ScanStatus: a.ScanStatus, SizeBytes: a.SizeBytes,
+			FileName: a.FileName, Id: a.ID, IsInline: a.IsInline, Role: apicommon.Ptr(a.Role), ScanStatus: a.ScanStatus, SizeBytes: a.SizeBytes,
 		})
 	}
 
@@ -647,6 +661,10 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 				replyToAddress = apicommon.Ptr(channelAddress)
 			}
 		}
+		components, err := componentsResponse(r.Components)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, struct {
 			AnswerTo    *gen.MessageAnswer `json:"answerTo"`
 			Attachments []struct {
@@ -702,6 +720,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			AutoSubmitted: apicommon.Ptr(r.AutoSubmitted), Unreadable: apicommon.Ptr(r.Unreadable),
 			RawDownloadPath: rawDownloadPath(r.ID, r.HasRawPayload),
 			FromAddress:     fromAddress, FromDisplayName: fromDisplayName, ReplyToAddress: replyToAddress, SendAs: sendAs,
+			Components: components, AnswerTo: answerResponse(r.Answer), Echo: apicommon.Ptr(r.Echo),
 		})
 	}
 	return out, nil

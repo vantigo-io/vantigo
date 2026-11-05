@@ -418,7 +418,7 @@ func (s *server) PostCommunicationsConversationsByIdAttachments(ctx context.Cont
 
 	// The existence lookup also reads the channel's provider, for its size
 	// budget below (M13).
-	provider, err := q.GetChannelProviderForConversation(ctx, req.Id)
+	channel, err := q.GetChannelProviderForConversation(ctx, req.Id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return gen.PostCommunicationsConversationsByIdAttachments404Response{}, nil
 	} else if err != nil {
@@ -444,7 +444,7 @@ func (s *server) PostCommunicationsConversationsByIdAttachments(ctx context.Cont
 	// provider sends is refused now, not when the reply is sent, saying the
 	// attachments the channel takes (attachmentAllowance), not the budget of
 	// MIME.
-	budget, err := s.mailBudget(ctx, provider)
+	budget, err := s.mailBudget(ctx, channel.Type, channel.Provider)
 	if err != nil {
 		return nil, err
 	}

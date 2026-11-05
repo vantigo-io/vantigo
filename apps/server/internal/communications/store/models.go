@@ -277,6 +277,11 @@ type CommunicationsParticipant struct {
 	CreatedAt   time.Time
 }
 
+type CommunicationsParticipantProfile struct {
+	ParticipantID uuid.UUID
+	FetchedAt     time.Time
+}
+
 type CommunicationsSuppression struct {
 	ID                     uuid.UUID
 	NormalizedEmailAddress string

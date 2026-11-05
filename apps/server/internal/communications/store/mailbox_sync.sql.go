@@ -17,7 +17,7 @@ UPDATE communications.channel_sync s
 SET lease_id = $1, lease_until = $2, updated_at = $3
 FROM communications.channels c
 WHERE s.channel_id = $4
-  AND c.id = s.channel_id AND c.provider <> 'smtp' AND c.is_active
+  AND c.id = s.channel_id AND c.type = 'email' AND c.provider <> 'smtp' AND c.is_active
   AND s.state <> 'stopped'
   AND s.next_sync_at <= $3
   AND (s.lease_until IS NULL OR s.lease_until < $3)
@@ -585,7 +585,7 @@ const selectDueChannelSync = `-- name: SelectDueChannelSync :one
 SELECT s.channel_id
 FROM communications.channel_sync s
 JOIN communications.channels c ON c.id = s.channel_id
-WHERE c.provider <> 'smtp' AND c.is_active
+WHERE c.type = 'email' AND c.provider <> 'smtp' AND c.is_active
   AND s.state <> 'stopped'
   AND s.next_sync_at <= $1
   AND (s.lease_until IS NULL OR s.lease_until < $1)
@@ -598,8 +598,9 @@ LIMIT 1
 // write of a cycle, and the row the channel operations write and read. Every
 // write of a cycle is guarded by the lease (channel_id AND lease_id), so a
 // worker that lost its lease writes nothing: 0 rows is the signal.
-// The candidate: a row of an active mailbox channel, not stopped, due, and
-// not leased (or its lease expired). A channel E's notice marked comes
+// The candidate: a row of an active mailbox channel (an e-mail channel on a
+// provider other than SMTP: a Messenger channel is the messenger sync's, never
+// this one's), not stopped, due, and not leased (or its lease expired). A channel E's notice marked comes
 // first, then the longest due.
 func (q *Queries) SelectDueChannelSync(ctx context.Context, now time.Time) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, selectDueChannelSync, now)

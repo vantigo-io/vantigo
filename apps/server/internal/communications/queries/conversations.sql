@@ -14,10 +14,11 @@
 -- when unreadOnly=true was requested (inventory §2: ".NET only applies the
 -- filter when userId.HasValue", always true through this router, so the Go
 -- caller decides whether to apply it, not whether a user id exists).
-SELECT c.id, c.channel_id, c.subject, c.status, c.assigned_user_id, c.customer_id,
+SELECT c.id, c.channel_id, ch.type AS channel_type, c.subject, c.status, c.assigned_user_id, c.customer_id,
        c.customer_association_source, c.suggested_customer_id, c.last_activity_at, c.preview_text,
        count(*) OVER () AS total_count
 FROM communications.conversations c
+JOIN communications.channels ch ON ch.id = c.channel_id
 WHERE (sqlc.narg(status)::text IS NULL OR c.status = sqlc.narg(status)::text)
   AND (sqlc.narg(assigned_user_id)::uuid IS NULL OR c.assigned_user_id = sqlc.narg(assigned_user_id)::uuid)
   AND (sqlc.narg(customer_id)::int IS NULL OR c.customer_id = sqlc.narg(customer_id)::int)
@@ -97,8 +98,8 @@ FROM communications.conversations c
 WHERE c.id = @id;
 
 -- name: GetConversationChannelDetail :one
--- GetConversation's channel provider, address and display name (M13, M20).
-SELECT ch.provider, ch.address, ch.display_name
+-- GetConversation's channel type, provider, address and display name (M13, M20).
+SELECT ch.type, ch.provider, ch.address, ch.display_name
 FROM communications.conversations c
 JOIN communications.channels ch ON ch.id = c.channel_id
 WHERE c.id = @id;
@@ -108,10 +109,15 @@ WHERE c.id = @id;
 -- (`item.Messages.OrderBy(message => message.OccurredAt)`), each left-joined
 -- to its participant (null for every internal_note and outbound message),
 -- with whether Vantigo keeps its original, the two flags an inbound
--- message's metadata carries, and the personal-sending fields (M20).
+-- message's metadata carries, the personal-sending fields (M20) and, on a
+-- Messenger conversation, the components (N4), the answer an inbound message
+-- is (N5) and whether an outbound one is an echo of the Page's own (N12).
 SELECT m.id, m.direction, m.author_user_id, m.subject, m.text_body, m.html_body,
        m.occurred_at, m.created_at,
        m.send_as, m.from_address, m.from_display_name,
+       m.components,
+       COALESCE((m.channel_metadata_json->>'echo')::boolean, false)::boolean AS echo,
+       (m.channel_metadata_json->'answer')::jsonb AS answer,
        (m.raw_payload_storage_key IS NOT NULL)::boolean AS has_raw_payload,
        COALESCE((m.channel_metadata_json->>'autoSubmitted')::boolean, false)::boolean AS auto_submitted,
        COALESCE((m.channel_metadata_json->>'unreadable')::boolean, false)::boolean AS unreadable,
@@ -127,7 +133,7 @@ ORDER BY m.occurred_at ASC;
 -- a row here (attachments are task 6's scope); kept for symmetry with the
 -- other message-keyed batch loads and so a message that somehow carries
 -- attachments still renders them.
-SELECT id, message_id, file_name, content_type, size_bytes, content_id, scan_status, is_inline, created_at
+SELECT id, message_id, file_name, content_type, size_bytes, content_id, scan_status, is_inline, role, created_at
 FROM communications.message_attachments
 WHERE message_id = ANY(@message_ids::uuid[]);
 
@@ -405,3 +411,12 @@ SET status = 'queued',
     last_error = NULL
 WHERE message_id = @message_id AND status = 'submission_failed'
 RETURNING id;
+
+-- name: LatestInboundOccurredAt :one
+-- The participant's newest message of a conversation, the instant a Messenger
+-- reply window counts from (N6): an echo is outbound and never counts.
+SELECT occurred_at
+FROM communications.conversation_messages
+WHERE conversation_id = @conversation_id AND direction = 'inbound'
+ORDER BY occurred_at DESC, id DESC
+LIMIT 1;

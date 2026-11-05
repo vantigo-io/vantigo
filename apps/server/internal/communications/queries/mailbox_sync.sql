@@ -5,13 +5,14 @@
 -- worker that lost its lease writes nothing: 0 rows is the signal.
 
 -- name: SelectDueChannelSync :one
--- The candidate: a row of an active mailbox channel, not stopped, due, and
--- not leased (or its lease expired). A channel E's notice marked comes
+-- The candidate: a row of an active mailbox channel (an e-mail channel on a
+-- provider other than SMTP: a Messenger channel is the messenger sync's, never
+-- this one's), not stopped, due, and not leased (or its lease expired). A channel E's notice marked comes
 -- first, then the longest due.
 SELECT s.channel_id
 FROM communications.channel_sync s
 JOIN communications.channels c ON c.id = s.channel_id
-WHERE c.provider <> 'smtp' AND c.is_active
+WHERE c.type = 'email' AND c.provider <> 'smtp' AND c.is_active
   AND s.state <> 'stopped'
   AND s.next_sync_at <= @now
   AND (s.lease_until IS NULL OR s.lease_until < @now)
@@ -26,7 +27,7 @@ UPDATE communications.channel_sync s
 SET lease_id = @lease_id, lease_until = @lease_until, updated_at = @now
 FROM communications.channels c
 WHERE s.channel_id = @channel_id
-  AND c.id = s.channel_id AND c.provider <> 'smtp' AND c.is_active
+  AND c.id = s.channel_id AND c.type = 'email' AND c.provider <> 'smtp' AND c.is_active
   AND s.state <> 'stopped'
   AND s.next_sync_at <= @now
   AND (s.lease_until IS NULL OR s.lease_until < @now);

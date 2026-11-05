@@ -411,7 +411,7 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 	// before anything is written: the estimate of the message as MIME over
 	// what the provider sends would only fail at the outbox, after the
 	// caller was told it was queued.
-	budget, err := s.mailBudget(ctx, p.channelProvider)
+	budget, err := s.mailBudget(ctx, p.channelType, p.channelProvider)
 	if err != nil {
 		return nil, err
 	}

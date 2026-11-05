@@ -129,23 +129,29 @@ func (q *Queries) GetConversationByID(ctx context.Context, id uuid.UUID) (Commun
 }
 
 const getConversationChannelDetail = `-- name: GetConversationChannelDetail :one
-SELECT ch.provider, ch.address, ch.display_name
+SELECT ch.type, ch.provider, ch.address, ch.display_name
 FROM communications.conversations c
 JOIN communications.channels ch ON ch.id = c.channel_id
 WHERE c.id = $1
 `
 
 type GetConversationChannelDetailRow struct {
+	Type        string
 	Provider    string
 	Address     string
 	DisplayName *string
 }
 
-// GetConversation's channel provider, address and display name (M13, M20).
+// GetConversation's channel type, provider, address and display name (M13, M20).
 func (q *Queries) GetConversationChannelDetail(ctx context.Context, id uuid.UUID) (GetConversationChannelDetailRow, error) {
 	row := q.db.QueryRow(ctx, getConversationChannelDetail, id)
 	var i GetConversationChannelDetailRow
-	err := row.Scan(&i.Provider, &i.Address, &i.DisplayName)
+	err := row.Scan(
+		&i.Type,
+		&i.Provider,
+		&i.Address,
+		&i.DisplayName,
+	)
 	return i, err
 }
 
@@ -245,6 +251,9 @@ const getConversationMessagesByConversationID = `-- name: GetConversationMessage
 SELECT m.id, m.direction, m.author_user_id, m.subject, m.text_body, m.html_body,
        m.occurred_at, m.created_at,
        m.send_as, m.from_address, m.from_display_name,
+       m.components,
+       COALESCE((m.channel_metadata_json->>'echo')::boolean, false)::boolean AS echo,
+       (m.channel_metadata_json->'answer')::jsonb AS answer,
        (m.raw_payload_storage_key IS NOT NULL)::boolean AS has_raw_payload,
        COALESCE((m.channel_metadata_json->>'autoSubmitted')::boolean, false)::boolean AS auto_submitted,
        COALESCE((m.channel_metadata_json->>'unreadable')::boolean, false)::boolean AS unreadable,
@@ -268,6 +277,9 @@ type GetConversationMessagesByConversationIDRow struct {
 	SendAs                 string
 	FromAddress            *string
 	FromDisplayName        *string
+	Components             []byte
+	Echo                   bool
+	Answer                 []byte
 	HasRawPayload          bool
 	AutoSubmitted          bool
 	Unreadable             bool
@@ -282,7 +294,9 @@ type GetConversationMessagesByConversationIDRow struct {
 // (`item.Messages.OrderBy(message => message.OccurredAt)`), each left-joined
 // to its participant (null for every internal_note and outbound message),
 // with whether Vantigo keeps its original, the two flags an inbound
-// message's metadata carries, and the personal-sending fields (M20).
+// message's metadata carries, the personal-sending fields (M20) and, on a
+// Messenger conversation, the components (N4), the answer an inbound message
+// is (N5) and whether an outbound one is an echo of the Page's own (N12).
 func (q *Queries) GetConversationMessagesByConversationID(ctx context.Context, conversationID uuid.UUID) ([]GetConversationMessagesByConversationIDRow, error) {
 	rows, err := q.db.Query(ctx, getConversationMessagesByConversationID, conversationID)
 	if err != nil {
@@ -304,6 +318,9 @@ func (q *Queries) GetConversationMessagesByConversationID(ctx context.Context, c
 			&i.SendAs,
 			&i.FromAddress,
 			&i.FromDisplayName,
+			&i.Components,
+			&i.Echo,
+			&i.Answer,
 			&i.HasRawPayload,
 			&i.AutoSubmitted,
 			&i.Unreadable,
@@ -729,6 +746,23 @@ func (q *Queries) InsertParticipant(ctx context.Context, arg InsertParticipantPa
 	return i, err
 }
 
+const latestInboundOccurredAt = `-- name: LatestInboundOccurredAt :one
+SELECT occurred_at
+FROM communications.conversation_messages
+WHERE conversation_id = $1 AND direction = 'inbound'
+ORDER BY occurred_at DESC, id DESC
+LIMIT 1
+`
+
+// The participant's newest message of a conversation, the instant a Messenger
+// reply window counts from (N6): an echo is outbound and never counts.
+func (q *Queries) LatestInboundOccurredAt(ctx context.Context, conversationID uuid.UUID) (time.Time, error) {
+	row := q.db.QueryRow(ctx, latestInboundOccurredAt, conversationID)
+	var occurred_at time.Time
+	err := row.Scan(&occurred_at)
+	return occurred_at, err
+}
+
 const listConversationCandidateIDs = `-- name: ListConversationCandidateIDs :many
 SELECT customer_id FROM communications.conversation_customer_candidates
 WHERE conversation_id = $1 ORDER BY customer_id
@@ -926,10 +960,11 @@ func (q *Queries) ListConversationTagsByConversationIDs(ctx context.Context, con
 
 const listConversations = `-- name: ListConversations :many
 
-SELECT c.id, c.channel_id, c.subject, c.status, c.assigned_user_id, c.customer_id,
+SELECT c.id, c.channel_id, ch.type AS channel_type, c.subject, c.status, c.assigned_user_id, c.customer_id,
        c.customer_association_source, c.suggested_customer_id, c.last_activity_at, c.preview_text,
        count(*) OVER () AS total_count
 FROM communications.conversations c
+JOIN communications.channels ch ON ch.id = c.channel_id
 WHERE ($1::text IS NULL OR c.status = $1::text)
   AND ($2::uuid IS NULL OR c.assigned_user_id = $2::uuid)
   AND ($3::int IS NULL OR c.customer_id = $3::int)
@@ -957,6 +992,7 @@ type ListConversationsParams struct {
 type ListConversationsRow struct {
 	ID                        uuid.UUID
 	ChannelID                 uuid.UUID
+	ChannelType               string
 	Subject                   *string
 	Status                    string
 	AssignedUserID            *uuid.UUID
@@ -1002,6 +1038,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 		if err := rows.Scan(
 			&i.ID,
 			&i.ChannelID,
+			&i.ChannelType,
 			&i.Subject,
 			&i.Status,
 			&i.AssignedUserID,
@@ -1023,7 +1060,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 }
 
 const listMessageAttachmentsByMessageIDs = `-- name: ListMessageAttachmentsByMessageIDs :many
-SELECT id, message_id, file_name, content_type, size_bytes, content_id, scan_status, is_inline, created_at
+SELECT id, message_id, file_name, content_type, size_bytes, content_id, scan_status, is_inline, role, created_at
 FROM communications.message_attachments
 WHERE message_id = ANY($1::uuid[])
 `
@@ -1037,6 +1074,7 @@ type ListMessageAttachmentsByMessageIDsRow struct {
 	ContentID   *string
 	ScanStatus  string
 	IsInline    bool
+	Role        string
 	CreatedAt   time.Time
 }
 
@@ -1062,6 +1100,7 @@ func (q *Queries) ListMessageAttachmentsByMessageIDs(ctx context.Context, messag
 			&i.ContentID,
 			&i.ScanStatus,
 			&i.IsInline,
+			&i.Role,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
