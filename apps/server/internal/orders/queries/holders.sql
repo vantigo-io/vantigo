@@ -108,7 +108,11 @@ UPDATE orders.mailings SET
     next_attempt_at = CASE WHEN status = 'queued' THEN NULL ELSE next_attempt_at END
 WHERE (recipient <> '' OR cc <> '' OR status = 'queued')
   AND ((owner_kind = 'quote' AND owner_id IN (SELECT q.id FROM orders.quotes q WHERE q.customer_id = sqlc.arg(customer_id)))
-    OR (owner_kind = 'order' AND owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = sqlc.arg(customer_id))));
+    OR (owner_kind = 'order' AND owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = sqlc.arg(customer_id)))
+    OR (owner_kind = 'shipment' AND owner_id IN (SELECT sh.id FROM orders.shipments sh
+                                                 JOIN orders.deliveries dv ON dv.id = sh.delivery_id
+                                                 JOIN orders.orders o ON o.id = dv.order_id
+                                                 WHERE o.customer_id = sqlc.arg(customer_id))));
 
 -- name: RecordErasure :exec
 -- RecordErasure records a customer whose kept orders the retention sweep
@@ -136,18 +140,29 @@ WHERE orders.erasures.customer_id = sqlc.arg(customer_id) AND completed_at IS NU
                      OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = orders.erasures.customer_id))
                      OR (d.owner_kind = 'delivery' AND d.owner_id IN (SELECT dv.id FROM orders.deliveries dv
                                                                       JOIN orders.orders o ON o.id = dv.order_id
-                                                                      WHERE o.customer_id = orders.erasures.customer_id)));
+                                                                      WHERE o.customer_id = orders.erasures.customer_id)))
+  AND NOT EXISTS (SELECT 1 FROM orders.shipment_documents sd
+                  JOIN orders.shipments sh ON sh.id = sd.shipment_id
+                  JOIN orders.deliveries dv ON dv.id = sh.delivery_id
+                  JOIN orders.orders o ON o.id = dv.order_id
+                  WHERE o.customer_id = orders.erasures.customer_id);
 
 -- name: CustomerHasDocuments :one
 -- CustomerHasDocuments reports whether any quote or order of a customer has a
--- stored PDF: the erase records the customer then, so the retention sweep
--- deletes the PDFs of what was anonymised.
-SELECT EXISTS (SELECT 1 FROM orders.documents d
+-- stored PDF, a packing slip, a label or a waybill: the erase records the
+-- customer then, so the retention sweep deletes the PDFs of what was
+-- anonymised.
+SELECT (EXISTS (SELECT 1 FROM orders.documents d
                WHERE (d.owner_kind = 'quote' AND d.owner_id IN (SELECT q.id FROM orders.quotes q WHERE q.customer_id = sqlc.arg(customer_id)))
                   OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = sqlc.arg(customer_id)))
                   OR (d.owner_kind = 'delivery' AND d.owner_id IN (SELECT dv.id FROM orders.deliveries dv
                                                                    JOIN orders.orders o ON o.id = dv.order_id
-                                                                   WHERE o.customer_id = sqlc.arg(customer_id))))::boolean;
+                                                                   WHERE o.customer_id = sqlc.arg(customer_id))))
+    OR EXISTS (SELECT 1 FROM orders.shipment_documents sd
+               JOIN orders.shipments sh ON sh.id = sd.shipment_id
+               JOIN orders.deliveries dv ON dv.id = sh.delivery_id
+               JOIN orders.orders o ON o.id = dv.order_id
+               WHERE o.customer_id = sqlc.arg(customer_id)))::boolean;
 
 -- name: ErasedDocuments :many
 -- ErasedDocuments is the stored PDFs of a customer's anonymised quotes and
@@ -205,3 +220,29 @@ SELECT (
 -- same thing once.
 UPDATE orders.quotes SET status = 'expired', updated_at = sqlc.arg(now)
 WHERE status = 'sent' AND valid_until < sqlc.arg(today)::date;
+
+-- name: AnonymiseCustomerShipments :execrows
+-- AnonymiseCustomerShipments takes the person out of the shipments of a
+-- customer's anonymised orders (O29, O50): the recipient as it was booked.
+-- The consignment number, the packages and the tracking events stay.
+UPDATE orders.shipments sh SET
+    recipient_name = '', recipient_line1 = '', recipient_line2 = '', recipient_postal_code = '', recipient_city = '',
+    recipient_contact = '', recipient_phone = '', recipient_email = '', pickup_point_id = NULL
+FROM orders.deliveries dv, orders.orders o
+WHERE dv.id = sh.delivery_id AND o.id = dv.order_id AND o.customer_id = sqlc.arg(customer_id) AND o.anonymised_at IS NOT NULL
+  AND (sh.recipient_name <> '' OR sh.recipient_line1 <> '' OR sh.recipient_phone <> '' OR sh.recipient_email <> ''
+       OR sh.recipient_contact <> '');
+
+-- name: ErasedShipmentDocuments :many
+-- ErasedShipmentDocuments is the stored labels and waybills of the shipments
+-- of a customer's anonymised orders: they print the recipient, so they go
+-- with them.
+SELECT sd.* FROM orders.shipment_documents sd
+JOIN orders.shipments sh ON sh.id = sd.shipment_id
+JOIN orders.deliveries dv ON dv.id = sh.delivery_id
+JOIN orders.orders o ON o.id = dv.order_id
+WHERE o.customer_id = sqlc.arg(customer_id) AND o.anonymised_at IS NOT NULL
+ORDER BY sd.id;
+
+-- name: DeleteShipmentDocumentRow :execrows
+DELETE FROM orders.shipment_documents WHERE id = sqlc.arg(id);

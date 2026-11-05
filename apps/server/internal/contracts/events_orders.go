@@ -166,3 +166,34 @@ type DeliveryPosted struct {
 func (DeliveryPosted) EventName() string     { return "orders.delivery.posted" }
 func (DeliveryPosted) EventVersion() int     { return 1 }
 func (e DeliveryPosted) AggregateID() string { return strconv.FormatInt(e.OrderID, 10) }
+
+// ShipmentBooked is orders.shipment.booked v1: a shipment of a delivery was
+// booked with its carrier (orders design O50). It carries no personal data:
+// the consignment number and the carrier only.
+type ShipmentBooked struct {
+	ShipmentID        int64     `json:"shipmentId"`
+	DeliveryID        int64     `json:"deliveryId"`
+	OrderID           int64     `json:"orderId"`
+	Carrier           string    `json:"carrier"`
+	Service           string    `json:"service"`
+	ConsignmentNumber string    `json:"consignmentNumber"`
+	BookedAt          time.Time `json:"bookedAt"`
+}
+
+func (ShipmentBooked) EventName() string     { return "orders.shipment.booked" }
+func (ShipmentBooked) EventVersion() int     { return 1 }
+func (e ShipmentBooked) AggregateID() string { return strconv.FormatInt(e.ShipmentID, 10) }
+
+// ShipmentDelivered is orders.shipment.delivered v1: tracking reported a
+// booked shipment delivered (orders design O50).
+type ShipmentDelivered struct {
+	ShipmentID        int64     `json:"shipmentId"`
+	DeliveryID        int64     `json:"deliveryId"`
+	OrderID           int64     `json:"orderId"`
+	ConsignmentNumber string    `json:"consignmentNumber"`
+	DeliveredAt       time.Time `json:"deliveredAt"`
+}
+
+func (ShipmentDelivered) EventName() string     { return "orders.shipment.delivered" }
+func (ShipmentDelivered) EventVersion() int     { return 1 }
+func (e ShipmentDelivered) AggregateID() string { return strconv.FormatInt(e.ShipmentID, 10) }

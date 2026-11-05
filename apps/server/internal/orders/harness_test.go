@@ -19,6 +19,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/orders"
 	"github.com/vantigo-io/vantigo/server/internal/orders/gen"
+	"github.com/vantigo-io/vantigo/server/internal/shipping/bring/bringtest"
 )
 
 // harness is one orders installation for one test: internal/modtest's shared
@@ -38,6 +39,8 @@ type harness struct {
 	channel uuid.UUID
 	// stock is Inventory's fake stock read and ledger, when composed.
 	stock *fakeStock
+	// bring is the httptest Bring the carrier adapter calls, when composed.
+	bring *bringtest.Server
 	// onSend, when set, runs as each mail is handed to the provider, before
 	// it is taken.
 	onSend func()
@@ -65,6 +68,9 @@ type harnessOptions struct {
 	// Inventory on. stockOff composes the ledger alone: Inventory switched
 	// off after reservations were made (O45).
 	stock, stockOff bool
+	// bring composes an httptest Bring (bringtest) as the carrier the
+	// shipping adapter calls (SHIPPING_BRING_BASE_URL, Deps.HTTPTransport).
+	bring bool
 }
 
 // newHarness is an orders installation with the seeded catalog, VAT codes
@@ -95,6 +101,10 @@ func newHarness(t *testing.T, o harnessOptions) *harness {
 	case o.stockOff:
 		h.stock = newFakeStock()
 		opts = append(opts, modtest.WithStock(nil, h.stock))
+	}
+	if o.bring {
+		h.bring = bringtest.New(t)
+		opts = append(opts, modtest.WithEnv("SHIPPING_BRING_BASE_URL", h.bring.URL()), modtest.WithTransport(h.bring.Transport()))
 	}
 	before := lockedContractCalls.count()
 	h.Harness = modtest.New(t, opts...)

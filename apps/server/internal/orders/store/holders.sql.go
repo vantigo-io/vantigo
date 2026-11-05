@@ -87,6 +87,27 @@ func (q *Queries) AnonymiseCustomerQuotes(ctx context.Context, arg AnonymiseCust
 	return result.RowsAffected(), nil
 }
 
+const anonymiseCustomerShipments = `-- name: AnonymiseCustomerShipments :execrows
+UPDATE orders.shipments sh SET
+    recipient_name = '', recipient_line1 = '', recipient_line2 = '', recipient_postal_code = '', recipient_city = '',
+    recipient_contact = '', recipient_phone = '', recipient_email = '', pickup_point_id = NULL
+FROM orders.deliveries dv, orders.orders o
+WHERE dv.id = sh.delivery_id AND o.id = dv.order_id AND o.customer_id = $1 AND o.anonymised_at IS NOT NULL
+  AND (sh.recipient_name <> '' OR sh.recipient_line1 <> '' OR sh.recipient_phone <> '' OR sh.recipient_email <> ''
+       OR sh.recipient_contact <> '')
+`
+
+// AnonymiseCustomerShipments takes the person out of the shipments of a
+// customer's anonymised orders (O29, O50): the recipient as it was booked.
+// The consignment number, the packages and the tracking events stay.
+func (q *Queries) AnonymiseCustomerShipments(ctx context.Context, customerID int32) (int64, error) {
+	result, err := q.db.Exec(ctx, anonymiseCustomerShipments, customerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const blankCustomerMailings = `-- name: BlankCustomerMailings :execrows
 UPDATE orders.mailings SET
     recipient = '', cc = '',
@@ -95,7 +116,11 @@ UPDATE orders.mailings SET
     next_attempt_at = CASE WHEN status = 'queued' THEN NULL ELSE next_attempt_at END
 WHERE (recipient <> '' OR cc <> '' OR status = 'queued')
   AND ((owner_kind = 'quote' AND owner_id IN (SELECT q.id FROM orders.quotes q WHERE q.customer_id = $1))
-    OR (owner_kind = 'order' AND owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = $1)))
+    OR (owner_kind = 'order' AND owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = $1))
+    OR (owner_kind = 'shipment' AND owner_id IN (SELECT sh.id FROM orders.shipments sh
+                                                 JOIN orders.deliveries dv ON dv.id = sh.delivery_id
+                                                 JOIN orders.orders o ON o.id = dv.order_id
+                                                 WHERE o.customer_id = $1)))
 `
 
 // BlankCustomerMailings blanks the recipient and the copies of every send of
@@ -120,6 +145,11 @@ WHERE orders.erasures.customer_id = $2 AND completed_at IS NULL
                      OR (d.owner_kind = 'delivery' AND d.owner_id IN (SELECT dv.id FROM orders.deliveries dv
                                                                       JOIN orders.orders o ON o.id = dv.order_id
                                                                       WHERE o.customer_id = orders.erasures.customer_id)))
+  AND NOT EXISTS (SELECT 1 FROM orders.shipment_documents sd
+                  JOIN orders.shipments sh ON sh.id = sd.shipment_id
+                  JOIN orders.deliveries dv ON dv.id = sh.delivery_id
+                  JOIN orders.orders o ON o.id = dv.order_id
+                  WHERE o.customer_id = orders.erasures.customer_id)
 `
 
 type CompleteErasureParams struct {
@@ -139,17 +169,23 @@ func (q *Queries) CompleteErasure(ctx context.Context, arg CompleteErasureParams
 }
 
 const customerHasDocuments = `-- name: CustomerHasDocuments :one
-SELECT EXISTS (SELECT 1 FROM orders.documents d
+SELECT (EXISTS (SELECT 1 FROM orders.documents d
                WHERE (d.owner_kind = 'quote' AND d.owner_id IN (SELECT q.id FROM orders.quotes q WHERE q.customer_id = $1))
                   OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = $1))
                   OR (d.owner_kind = 'delivery' AND d.owner_id IN (SELECT dv.id FROM orders.deliveries dv
                                                                    JOIN orders.orders o ON o.id = dv.order_id
-                                                                   WHERE o.customer_id = $1)))::boolean
+                                                                   WHERE o.customer_id = $1)))
+    OR EXISTS (SELECT 1 FROM orders.shipment_documents sd
+               JOIN orders.shipments sh ON sh.id = sd.shipment_id
+               JOIN orders.deliveries dv ON dv.id = sh.delivery_id
+               JOIN orders.orders o ON o.id = dv.order_id
+               WHERE o.customer_id = $1))::boolean
 `
 
 // CustomerHasDocuments reports whether any quote or order of a customer has a
-// stored PDF: the erase records the customer then, so the retention sweep
-// deletes the PDFs of what was anonymised.
+// stored PDF, a packing slip, a label or a waybill: the erase records the
+// customer then, so the retention sweep deletes the PDFs of what was
+// anonymised.
 func (q *Queries) CustomerHasDocuments(ctx context.Context, customerID int32) (bool, error) {
 	row := q.db.QueryRow(ctx, customerHasDocuments, customerID)
 	var column_1 bool
@@ -355,6 +391,18 @@ func (q *Queries) DeleteDocumentRow(ctx context.Context, id int64) (int64, error
 	return result.RowsAffected(), nil
 }
 
+const deleteShipmentDocumentRow = `-- name: DeleteShipmentDocumentRow :execrows
+DELETE FROM orders.shipment_documents WHERE id = $1
+`
+
+func (q *Queries) DeleteShipmentDocumentRow(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteShipmentDocumentRow, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const detachDocumentMailings = `-- name: DetachDocumentMailings :exec
 UPDATE orders.mailings SET document_id = NULL WHERE document_id = $1
 `
@@ -400,6 +448,45 @@ func (q *Queries) ErasedDocuments(ctx context.Context, customerID int32) ([]Orde
 			&i.StorageKey,
 			&i.Sha256,
 			&i.SizeBytes,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const erasedShipmentDocuments = `-- name: ErasedShipmentDocuments :many
+SELECT sd.id, sd.shipment_id, sd.kind, sd.storage_key, sd.format, sd.created_at FROM orders.shipment_documents sd
+JOIN orders.shipments sh ON sh.id = sd.shipment_id
+JOIN orders.deliveries dv ON dv.id = sh.delivery_id
+JOIN orders.orders o ON o.id = dv.order_id
+WHERE o.customer_id = $1 AND o.anonymised_at IS NOT NULL
+ORDER BY sd.id
+`
+
+// ErasedShipmentDocuments is the stored labels and waybills of the shipments
+// of a customer's anonymised orders: they print the recipient, so they go
+// with them.
+func (q *Queries) ErasedShipmentDocuments(ctx context.Context, customerID int32) ([]OrdersShipmentDocument, error) {
+	rows, err := q.db.Query(ctx, erasedShipmentDocuments, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrdersShipmentDocument
+	for rows.Next() {
+		var i OrdersShipmentDocument
+		if err := rows.Scan(
+			&i.ID,
+			&i.ShipmentID,
+			&i.Kind,
+			&i.StorageKey,
+			&i.Format,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -553,7 +640,7 @@ func (q *Queries) LockCustomerQuotes(ctx context.Context, customerID int32) erro
 }
 
 const mailingsOfOwners = `-- name: MailingsOfOwners :many
-SELECT id, owner_kind, owner_id, version, document_id, recipient, cc, subject, channel_id, status, provider_message_id, trigger_event_id, attempts, next_attempt_at, last_error, sent_at, sent_by_user_id, sent_by_display, created_at FROM orders.mailings
+SELECT id, owner_kind, owner_id, version, document_id, recipient, cc, subject, channel_id, status, provider_message_id, trigger_event_id, attempts, next_attempt_at, last_error, sent_at, sent_by_user_id, sent_by_display, created_at, kind FROM orders.mailings
 WHERE owner_kind = $1 AND owner_id = ANY($2::bigint[])
 ORDER BY owner_id, created_at, id
 `
@@ -592,6 +679,7 @@ func (q *Queries) MailingsOfOwners(ctx context.Context, arg MailingsOfOwnersPara
 			&i.SentByUserID,
 			&i.SentByDisplay,
 			&i.CreatedAt,
+			&i.Kind,
 		); err != nil {
 			return nil, err
 		}

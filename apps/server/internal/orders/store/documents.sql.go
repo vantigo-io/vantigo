@@ -23,7 +23,7 @@ WHERE status = 'queued' AND id = (
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, owner_kind, owner_id, version, document_id, recipient, cc, subject, channel_id, status, provider_message_id, trigger_event_id, attempts, next_attempt_at, last_error, sent_at, sent_by_user_id, sent_by_display, created_at
+RETURNING id, owner_kind, owner_id, version, document_id, recipient, cc, subject, channel_id, status, provider_message_id, trigger_event_id, attempts, next_attempt_at, last_error, sent_at, sent_by_user_id, sent_by_display, created_at, kind
 `
 
 type ClaimMailingParams struct {
@@ -61,6 +61,7 @@ func (q *Queries) ClaimMailing(ctx context.Context, arg ClaimMailingParams) (Ord
 		&i.SentByUserID,
 		&i.SentByDisplay,
 		&i.CreatedAt,
+		&i.Kind,
 	)
 	return i, err
 }
@@ -221,7 +222,7 @@ INSERT INTO orders.mailings (
     1, $11, $12, $13, $14,
     $15
 )
-RETURNING id, owner_kind, owner_id, version, document_id, recipient, cc, subject, channel_id, status, provider_message_id, trigger_event_id, attempts, next_attempt_at, last_error, sent_at, sent_by_user_id, sent_by_display, created_at
+RETURNING id, owner_kind, owner_id, version, document_id, recipient, cc, subject, channel_id, status, provider_message_id, trigger_event_id, attempts, next_attempt_at, last_error, sent_at, sent_by_user_id, sent_by_display, created_at, kind
 `
 
 type InsertMailingParams struct {
@@ -283,12 +284,13 @@ func (q *Queries) InsertMailing(ctx context.Context, arg InsertMailingParams) (O
 		&i.SentByUserID,
 		&i.SentByDisplay,
 		&i.CreatedAt,
+		&i.Kind,
 	)
 	return i, err
 }
 
 const mailingsOf = `-- name: MailingsOf :many
-SELECT id, owner_kind, owner_id, version, document_id, recipient, cc, subject, channel_id, status, provider_message_id, trigger_event_id, attempts, next_attempt_at, last_error, sent_at, sent_by_user_id, sent_by_display, created_at FROM orders.mailings
+SELECT id, owner_kind, owner_id, version, document_id, recipient, cc, subject, channel_id, status, provider_message_id, trigger_event_id, attempts, next_attempt_at, last_error, sent_at, sent_by_user_id, sent_by_display, created_at, kind FROM orders.mailings
 WHERE owner_kind = $1 AND owner_id = $2
 ORDER BY created_at DESC, id DESC
 `
@@ -328,6 +330,7 @@ func (q *Queries) MailingsOf(ctx context.Context, arg MailingsOfParams) ([]Order
 			&i.SentByUserID,
 			&i.SentByDisplay,
 			&i.CreatedAt,
+			&i.Kind,
 		); err != nil {
 			return nil, err
 		}

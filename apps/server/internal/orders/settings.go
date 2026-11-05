@@ -53,6 +53,9 @@ func (s *server) settingsView(ctx context.Context, q *store.Queries, st ordersSe
 		SendChannelId: st.sendChannel, SendChannels: []gen.OrdersSendChannel{}, SendChannelState: gen.Disabled,
 		SubscriptionFinalPeriodDefault: gen.OrdersFinalPeriod(st.subscriptionFinalPeriodDefault),
 		DefaultSiteId:                  st.defaultSiteID,
+		FreightVariantId:               st.freightVariantID,
+		FreightMarkupPercent:           wire(orZero(st.freightMarkup), 2),
+		ShippingNoticeOnBook:           st.shippingNoticeOnBook,
 	}
 	for _, t := range st.mailTexts {
 		out.MailTexts = append(out.MailTexts, gen.OrdersMailText{
@@ -122,7 +125,7 @@ func (s *server) PutOrdersSettings(ctx context.Context, req gen.PutOrdersSetting
 		key := string(t.Kind) + "/" + string(t.Language)
 		switch {
 		case !t.Kind.Valid() || !t.Language.Valid():
-			f.add(fmt.Sprintf("mailTexts[%d]", i), "A mail text is for a quote or a confirmation, in nb or en")
+			f.add(fmt.Sprintf("mailTexts[%d]", i), "A mail text is for a quote, a confirmation or a shipping notice, in nb or en")
 		case seen[key]:
 			f.add(fmt.Sprintf("mailTexts[%d]", i), "Each kind and language has one mail text")
 		case utf8.RuneCountInString(t.Subject) > 300 || utf8.RuneCountInString(t.Body) > 4000:
@@ -150,6 +153,18 @@ func (s *server) PutOrdersSettings(ctx context.Context, req gen.PutOrdersSetting
 	if b.DefaultSiteId != nil {
 		if err := s.judgeSite(ctx, &f, "defaultSiteId", *b.DefaultSiteId); err != nil {
 			return nil, err
+		}
+	}
+	if m := b.FreightMarkupPercent; m != nil && (!finite(*m) || *m < 0 || *m > 500 || decimalPlaces(*m) > 2) {
+		f.add("freightMarkupPercent", "A markup is 0 to 500 percent, with at most two decimals")
+	}
+	if b.FreightVariantId != nil {
+		variants, err := s.catalogVariants(ctx, []int32{*b.FreightVariantId})
+		if err != nil {
+			return nil, err
+		}
+		if v, ok := variants[*b.FreightVariantId]; !ok || v.ProductType != productTypeService {
+			f.addCoded("freightVariantId", codeFreightProductInvalid, "The freight product is a variant of a Service product")
 		}
 	}
 	if f.failed() {
@@ -199,11 +214,24 @@ func (s *server) PutOrdersSettings(ctx context.Context, req gen.PutOrdersSetting
 		if b.SubscriptionFinalPeriodDefault != nil {
 			finalPeriod = string(*b.SubscriptionFinalPeriodDefault)
 		}
+		// The shipping settings (O52, O53): absent keeps them; the freight
+		// product is kept only when the body leaves the key out.
+		freight, markup, notice := cur.freightVariantID, orZero(cur.freightMarkup), cur.shippingNoticeOnBook
+		if hasProperty(ctx, "freightVariantId") {
+			freight = b.FreightVariantId
+		}
+		if b.FreightMarkupPercent != nil {
+			markup = ratFromFloat(*b.FreightMarkupPercent)
+		}
+		if b.ShippingNoticeOnBook != nil {
+			notice = *b.ShippingNoticeOnBook
+		}
 		saved, err := txq.UpsertSettings(ctx, store.UpsertSettingsParams{
 			QuoteSeriesStart: b.QuoteSeriesStart, OrderSeriesStart: b.OrderSeriesStart, QuoteValidityDays: b.QuoteValidityDays,
 			DefaultPaymentTermsDays: b.DefaultPaymentTermsDays, SendChannel: channel,
 			ConfirmationOnConfirm: b.ConfirmationOnConfirm, CombineByDefault: b.CombineByDefault, MailTexts: mailTexts,
-			SubscriptionFinalPeriodDefault: finalPeriod, DefaultSiteID: b.DefaultSiteId, UpdatedAt: s.deps.Clock(),
+			SubscriptionFinalPeriodDefault: finalPeriod, DefaultSiteID: b.DefaultSiteId, FreightVariantID: freight,
+			FreightMarkupPercent: numeric(markup, 2), ShippingNoticeOnBook: notice, UpdatedAt: s.deps.Clock(),
 		})
 		if err != nil {
 			return fmt.Errorf("orders: save the settings: %w", err)

@@ -54,7 +54,7 @@ func insertLine(ctx context.Context, txq *store.Queries, ownerKind string, owner
 		DeliveryMethod: cmp.Or(l.deliveryMethod, methodManual),
 		ProductID:      l.productID, PackagingName: l.packagingName, ValidFrom: l.validFrom, ValidTo: l.validTo, ChainID: l.chainID,
 	}
-	if l.kind != kindProduct {
+	if !pricedKind(l.kind) {
 		p.PriceSource = nil
 	}
 	if l.id == nil {

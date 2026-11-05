@@ -200,7 +200,7 @@ WHERE o.status IN ('draft', 'confirmed')
        OR o.customer_id = ANY($2::integer[])
        OR o.id = ANY($3::bigint[]))
   AND ($4::date IS NULL OR o.delivery_date IS NULL OR o.delivery_date <= $4::date)
-  AND l.kind = 'product' AND l.invoice_policy IN ('order', 'delivery')
+  AND l.kind IN ('product', 'shipping') AND l.invoice_policy IN ('order', 'delivery')
   AND l.quantity IS NOT NULL AND l.unit_price IS NOT NULL AND l.vat_code_id IS NOT NULL
   AND (CASE WHEN l.invoice_policy = 'delivery' THEN l.qty_delivered ELSE l.quantity - l.qty_cancelled END)
       - l.qty_invoiced - coalesce(a.allocated, 0) > 0

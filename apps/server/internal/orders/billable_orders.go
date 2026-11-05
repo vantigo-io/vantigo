@@ -485,8 +485,8 @@ func allocationAmount(quantity, unitPrice, discountPercent *big.Rat) *big.Rat {
 // (O48), of a confirmed order not on hold.
 func notInvoiceable(o store.OrdersOrder, l store.OrdersLine) string {
 	switch {
-	case l.Kind != kindProduct || !l.Quantity.Valid || !l.UnitPrice.Valid || l.VatCodeID == nil:
-		return fmt.Sprintf("Line %d is not a priced product line.", l.Position)
+	case !pricedKind(l.Kind) || !l.Quantity.Valid || !l.UnitPrice.Valid || l.VatCodeID == nil:
+		return fmt.Sprintf("Line %d is not a priced product or shipping line.", l.Position)
 	case l.InvoicePolicy != policyOnOrder && l.InvoicePolicy != policyOnDelivery:
 		return fmt.Sprintf("Line %d has an invoice policy this version does not invoice.", l.Position)
 	case o.Status == orderDraft:

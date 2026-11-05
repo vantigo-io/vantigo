@@ -41,6 +41,120 @@ func (e OrdersAcceptInputInto) Valid() bool {
 	}
 }
 
+// Defines values for OrdersCarrierAccountCarrier.
+const (
+	OrdersCarrierAccountCarrierBring OrdersCarrierAccountCarrier = "bring"
+)
+
+// Valid indicates whether the value is a known member of the OrdersCarrierAccountCarrier enum.
+func (e OrdersCarrierAccountCarrier) Valid() bool {
+	switch e {
+	case OrdersCarrierAccountCarrierBring:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersCarrierAccountStatus.
+const (
+	OrdersCarrierAccountStatusActive   OrdersCarrierAccountStatus = "active"
+	OrdersCarrierAccountStatusArchived OrdersCarrierAccountStatus = "archived"
+)
+
+// Valid indicates whether the value is a known member of the OrdersCarrierAccountStatus enum.
+func (e OrdersCarrierAccountStatus) Valid() bool {
+	switch e {
+	case OrdersCarrierAccountStatusActive:
+		return true
+	case OrdersCarrierAccountStatusArchived:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersCarrierAccountInputCarrier.
+const (
+	OrdersCarrierAccountInputCarrierBring OrdersCarrierAccountInputCarrier = "bring"
+)
+
+// Valid indicates whether the value is a known member of the OrdersCarrierAccountInputCarrier enum.
+func (e OrdersCarrierAccountInputCarrier) Valid() bool {
+	switch e {
+	case OrdersCarrierAccountInputCarrierBring:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersCarrierAccountInputStatus.
+const (
+	OrdersCarrierAccountInputStatusActive   OrdersCarrierAccountInputStatus = "active"
+	OrdersCarrierAccountInputStatusArchived OrdersCarrierAccountInputStatus = "archived"
+)
+
+// Valid indicates whether the value is a known member of the OrdersCarrierAccountInputStatus enum.
+func (e OrdersCarrierAccountInputStatus) Valid() bool {
+	switch e {
+	case OrdersCarrierAccountInputStatusActive:
+		return true
+	case OrdersCarrierAccountInputStatusArchived:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersCarrierServiceSegment.
+const (
+	B2b    OrdersCarrierServiceSegment = "b2b"
+	B2c    OrdersCarrierServiceSegment = "b2c"
+	Cargo  OrdersCarrierServiceSegment = "cargo"
+	Return OrdersCarrierServiceSegment = "return"
+)
+
+// Valid indicates whether the value is a known member of the OrdersCarrierServiceSegment enum.
+func (e OrdersCarrierServiceSegment) Valid() bool {
+	switch e {
+	case B2b:
+		return true
+	case B2c:
+		return true
+	case Cargo:
+		return true
+	case Return:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersCarrierVerificationResult.
+const (
+	Ok           OrdersCarrierVerificationResult = "ok"
+	Refused      OrdersCarrierVerificationResult = "refused"
+	Unauthorized OrdersCarrierVerificationResult = "unauthorized"
+	Unreachable  OrdersCarrierVerificationResult = "unreachable"
+)
+
+// Valid indicates whether the value is a known member of the OrdersCarrierVerificationResult enum.
+func (e OrdersCarrierVerificationResult) Valid() bool {
+	switch e {
+	case Ok:
+		return true
+	case Refused:
+		return true
+	case Unauthorized:
+		return true
+	case Unreachable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrdersCustomerSnapshotType.
 const (
 	Business OrdersCustomerSnapshotType = "business"
@@ -202,9 +316,10 @@ func (e OrdersLineInvoicePolicy) Valid() bool {
 
 // Defines values for OrdersLineKind.
 const (
-	OrdersLineKindNote    OrdersLineKind = "note"
-	OrdersLineKindProduct OrdersLineKind = "product"
-	OrdersLineKindSection OrdersLineKind = "section"
+	OrdersLineKindNote     OrdersLineKind = "note"
+	OrdersLineKindProduct  OrdersLineKind = "product"
+	OrdersLineKindSection  OrdersLineKind = "section"
+	OrdersLineKindShipping OrdersLineKind = "shipping"
 )
 
 // Valid indicates whether the value is a known member of the OrdersLineKind enum.
@@ -215,6 +330,8 @@ func (e OrdersLineKind) Valid() bool {
 	case OrdersLineKindProduct:
 		return true
 	case OrdersLineKindSection:
+		return true
+	case OrdersLineKindShipping:
 		return true
 	default:
 		return false
@@ -265,9 +382,10 @@ func (e OrdersLineInputInvoicePolicy) Valid() bool {
 
 // Defines values for OrdersLineInputKind.
 const (
-	OrdersLineInputKindNote    OrdersLineInputKind = "note"
-	OrdersLineInputKindProduct OrdersLineInputKind = "product"
-	OrdersLineInputKindSection OrdersLineInputKind = "section"
+	OrdersLineInputKindNote     OrdersLineInputKind = "note"
+	OrdersLineInputKindProduct  OrdersLineInputKind = "product"
+	OrdersLineInputKindSection  OrdersLineInputKind = "section"
+	OrdersLineInputKindShipping OrdersLineInputKind = "shipping"
 )
 
 // Valid indicates whether the value is a known member of the OrdersLineInputKind enum.
@@ -279,6 +397,23 @@ func (e OrdersLineInputKind) Valid() bool {
 		return true
 	case OrdersLineInputKindSection:
 		return true
+	case OrdersLineInputKindShipping:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersLineInputPriceSource.
+const (
+	OrdersLineInputPriceSourceCarrier OrdersLineInputPriceSource = "carrier"
+)
+
+// Valid indicates whether the value is a known member of the OrdersLineInputPriceSource enum.
+func (e OrdersLineInputPriceSource) Valid() bool {
+	switch e {
+	case OrdersLineInputPriceSourceCarrier:
+		return true
 	default:
 		return false
 	}
@@ -286,8 +421,9 @@ func (e OrdersLineInputKind) Valid() bool {
 
 // Defines values for OrdersMailTextKind.
 const (
-	OrdersMailTextKindConfirmation OrdersMailTextKind = "confirmation"
-	OrdersMailTextKindQuote        OrdersMailTextKind = "quote"
+	OrdersMailTextKindConfirmation   OrdersMailTextKind = "confirmation"
+	OrdersMailTextKindQuote          OrdersMailTextKind = "quote"
+	OrdersMailTextKindShippingNotice OrdersMailTextKind = "shipping_notice"
 )
 
 // Valid indicates whether the value is a known member of the OrdersMailTextKind enum.
@@ -296,6 +432,8 @@ func (e OrdersMailTextKind) Valid() bool {
 	case OrdersMailTextKindConfirmation:
 		return true
 	case OrdersMailTextKindQuote:
+		return true
+	case OrdersMailTextKindShippingNotice:
 		return true
 	default:
 		return false
@@ -677,18 +815,78 @@ func (e OrdersSettingsSendChannelState) Valid() bool {
 	}
 }
 
+// Defines values for OrdersShipmentStatus.
+const (
+	OrdersShipmentStatusBooked    OrdersShipmentStatus = "booked"
+	OrdersShipmentStatusCancelled OrdersShipmentStatus = "cancelled"
+	OrdersShipmentStatusDelivered OrdersShipmentStatus = "delivered"
+	OrdersShipmentStatusDraft     OrdersShipmentStatus = "draft"
+	OrdersShipmentStatusInTransit OrdersShipmentStatus = "in_transit"
+)
+
+// Valid indicates whether the value is a known member of the OrdersShipmentStatus enum.
+func (e OrdersShipmentStatus) Valid() bool {
+	switch e {
+	case OrdersShipmentStatusBooked:
+		return true
+	case OrdersShipmentStatusCancelled:
+		return true
+	case OrdersShipmentStatusDelivered:
+		return true
+	case OrdersShipmentStatusDraft:
+		return true
+	case OrdersShipmentStatusInTransit:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersShipmentEventState.
+const (
+	OrdersShipmentEventStateBooked         OrdersShipmentEventState = "booked"
+	OrdersShipmentEventStateCancelled      OrdersShipmentEventState = "cancelled"
+	OrdersShipmentEventStateDelivered      OrdersShipmentEventState = "delivered"
+	OrdersShipmentEventStateException      OrdersShipmentEventState = "exception"
+	OrdersShipmentEventStateInTransit      OrdersShipmentEventState = "in_transit"
+	OrdersShipmentEventStateReadyForPickup OrdersShipmentEventState = "ready_for_pickup"
+	OrdersShipmentEventStateReturned       OrdersShipmentEventState = "returned"
+)
+
+// Valid indicates whether the value is a known member of the OrdersShipmentEventState enum.
+func (e OrdersShipmentEventState) Valid() bool {
+	switch e {
+	case OrdersShipmentEventStateBooked:
+		return true
+	case OrdersShipmentEventStateCancelled:
+		return true
+	case OrdersShipmentEventStateDelivered:
+		return true
+	case OrdersShipmentEventStateException:
+		return true
+	case OrdersShipmentEventStateInTransit:
+		return true
+	case OrdersShipmentEventStateReadyForPickup:
+		return true
+	case OrdersShipmentEventStateReturned:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrdersSkippedLineReason.
 const (
-	Archived OrdersSkippedLineReason = "archived"
-	Deleted  OrdersSkippedLineReason = "deleted"
+	OrdersSkippedLineReasonArchived OrdersSkippedLineReason = "archived"
+	OrdersSkippedLineReasonDeleted  OrdersSkippedLineReason = "deleted"
 )
 
 // Valid indicates whether the value is a known member of the OrdersSkippedLineReason enum.
 func (e OrdersSkippedLineReason) Valid() bool {
 	switch e {
-	case Archived:
+	case OrdersSkippedLineReasonArchived:
 		return true
-	case Deleted:
+	case OrdersSkippedLineReasonDeleted:
 		return true
 	default:
 		return false
@@ -1506,6 +1704,126 @@ type OrdersBacklogAged struct {
 	Over30Days float64 `json:"over30Days"`
 }
 
+// OrdersCarrierAccount A carrier account under Integrations (O51). The credentials are never answered: hasCredentials says whether they are stored. carrierAllowed is false when SHIPPING_CARRIERS withholds the carrier on this installation.
+type OrdersCarrierAccount struct {
+	Carrier         OrdersCarrierAccountCarrier `json:"carrier"`
+	CarrierAllowed  bool                        `json:"carrierAllowed"`
+	CreatedAt       time.Time                   `json:"createdAt"`
+	CustomerNumbers []string                    `json:"customerNumbers"`
+	DefaultService  *string                     `json:"defaultService,omitempty"`
+	HasCredentials  bool                        `json:"hasCredentials"`
+	Id              int64                       `json:"id"`
+	Name            string                      `json:"name"`
+
+	// Sender The sender address an account books with; empty fields fall back to the seller's address.
+	Sender OrdersCarrierSender        `json:"sender"`
+	Status OrdersCarrierAccountStatus `json:"status"`
+
+	// Test The carrier's test mode: Bring's X-Bring-Test-Indicator.
+	Test      bool      `json:"test"`
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	// VerifiedAt When Verify last passed with the stored keys; cleared when they change.
+	VerifiedAt *time.Time `json:"verifiedAt,omitempty"`
+	Version    int32      `json:"version"`
+}
+
+// OrdersCarrierAccountCarrier defines model for OrdersCarrierAccount.Carrier.
+type OrdersCarrierAccountCarrier string
+
+// OrdersCarrierAccountStatus defines model for OrdersCarrierAccount.Status.
+type OrdersCarrierAccountStatus string
+
+// OrdersCarrierAccountInput A carrier account to create or save (O51). credentials are write-only: on a save, absent keeps the stored ones. version is required on a save.
+type OrdersCarrierAccountInput struct {
+	Carrier OrdersCarrierAccountInputCarrier `json:"carrier"`
+
+	// Credentials Bring's Mybring user id (the login e-mail) and API key. Write-only: sealed when stored and never answered.
+	Credentials *OrdersCarrierCredentials `json:"credentials,omitempty"`
+
+	// CustomerNumbers Bring: the first books parcels, a second (when given) cargo.
+	CustomerNumbers []string `json:"customerNumbers"`
+
+	// DefaultService A product code of the carrier's services.
+	DefaultService *string `json:"defaultService,omitempty"`
+	Name           string  `json:"name"`
+
+	// Sender The sender address an account books with; empty fields fall back to the seller's address.
+	Sender  *OrdersCarrierSender             `json:"sender,omitempty"`
+	Status  *OrdersCarrierAccountInputStatus `json:"status,omitempty"`
+	Test    bool                             `json:"test"`
+	Version *int32                           `json:"version,omitempty"`
+}
+
+// OrdersCarrierAccountInputCarrier defines model for OrdersCarrierAccountInput.Carrier.
+type OrdersCarrierAccountInputCarrier string
+
+// OrdersCarrierAccountInputStatus defines model for OrdersCarrierAccountInput.Status.
+type OrdersCarrierAccountInputStatus string
+
+// OrdersCarrierAccountList The carrier accounts, the active ones first; carriers are the adapters SHIPPING_CARRIERS allows.
+type OrdersCarrierAccountList struct {
+	Carriers []string               `json:"carriers"`
+	Items    []OrdersCarrierAccount `json:"items"`
+}
+
+// OrdersCarrierCredentials Bring's Mybring user id (the login e-mail) and API key. Write-only: sealed when stored and never answered.
+type OrdersCarrierCredentials struct {
+	Key string `json:"key"`
+	Uid string `json:"uid"`
+}
+
+// OrdersCarrierSender The sender address an account books with; empty fields fall back to the seller's address.
+type OrdersCarrierSender struct {
+	City *string `json:"city,omitempty"`
+
+	// Country ISO 3166-1 alpha-2.
+	Country    *string `json:"country,omitempty"`
+	Email      *string `json:"email,omitempty"`
+	Line1      *string `json:"line1,omitempty"`
+	Line2      *string `json:"line2,omitempty"`
+	Name       *string `json:"name,omitempty"`
+	Phone      *string `json:"phone,omitempty"`
+	PostalCode *string `json:"postalCode,omitempty"`
+}
+
+// OrdersCarrierService A product the carrier account may book.
+type OrdersCarrierService struct {
+	Code string `json:"code"`
+
+	// Name The name in the caller's language.
+	Name   string `json:"name"`
+	NameEn string `json:"nameEn"`
+	NameNb string `json:"nameNb"`
+
+	// PickupPoint Delivered to a pickup point.
+	PickupPoint bool                        `json:"pickupPoint"`
+	Segment     OrdersCarrierServiceSegment `json:"segment"`
+
+	// Waybill Has a waybill (fraktbrev) apart from its labels; otherwise the label serves.
+	Waybill bool `json:"waybill"`
+}
+
+// OrdersCarrierServiceSegment defines model for OrdersCarrierService.Segment.
+type OrdersCarrierServiceSegment string
+
+// OrdersCarrierServiceList The products the account may book.
+type OrdersCarrierServiceList struct {
+	Items []OrdersCarrierService `json:"items"`
+}
+
+// OrdersCarrierVerification What Verify learned (O51): ok, unauthorized (the carrier refused the keys), refused (the carrier refused the request, message says why) or unreachable. pricesAvailable is false when the user may not read the account's prices (Bring: the financial role is missing).
+type OrdersCarrierVerification struct {
+	Message         *string                         `json:"message,omitempty"`
+	Notes           []string                        `json:"notes"`
+	PricesAvailable bool                            `json:"pricesAvailable"`
+	Result          OrdersCarrierVerificationResult `json:"result"`
+	Services        []OrdersCarrierService          `json:"services"`
+}
+
+// OrdersCarrierVerificationResult defines model for OrdersCarrierVerification.Result.
+type OrdersCarrierVerificationResult string
+
 // OrdersChange One entry of an order's change log (O26).
 type OrdersChange struct {
 	Actions []OrdersChangeAction `json:"actions"`
@@ -1847,7 +2165,7 @@ type OrdersLine struct {
 	Id               int64                   `json:"id"`
 	InvoicePolicy    OrdersLineInvoicePolicy `json:"invoicePolicy"`
 
-	// Kind An open set (O15): product, section and note in this phase.
+	// Kind An open set (O15): product, section and note, and shipping (O53) — the freight the customer pays: quantity 1, invoiced on order, counted delivered when the order's first shipment is booked; quotes and orders only.
 	Kind OrdersLineKind `json:"kind"`
 
 	// LineAllowance The discount.
@@ -1908,7 +2226,7 @@ type OrdersLineDeliveryMethod string
 // OrdersLineInvoicePolicy defines model for OrdersLine.InvoicePolicy.
 type OrdersLineInvoicePolicy string
 
-// OrdersLineKind An open set (O15): product, section and note in this phase.
+// OrdersLineKind An open set (O15): product, section and note, and shipping (O53) — the freight the customer pays: quantity 1, invoiced on order, counted delivered when the order's first shipment is booked; quotes and orders only.
 type OrdersLineKind string
 
 // OrdersLinePriceSource defines model for OrdersLine.PriceSource.
@@ -1928,7 +2246,7 @@ type OrdersLineInput struct {
 	// InvoicePolicy An order line's invoice policy (O48): order, or delivery to invoice only what is delivered. Absent keeps a kept line's policy and gives a new line the default — delivery for goods on an order with a site, order otherwise. It changes only while nothing of the line is invoiced or in a draft invoice (line_invoiced).
 	InvoicePolicy *OrdersLineInputInvoicePolicy `json:"invoicePolicy,omitempty"`
 
-	// Kind An open set (O15): product, section and note in this phase.
+	// Kind An open set (O15): product, section and note, and shipping (O53) — the freight the customer pays: quantity 1, invoiced on order, counted delivered when the order's first shipment is booked; quotes and orders only.
 	Kind OrdersLineInputKind `json:"kind"`
 
 	// Name A free-text product line's name, or a section's heading or a note's title; a section or a note keeps its text in description.
@@ -1938,6 +2256,9 @@ type OrdersLineInput struct {
 	Optional          *bool    `json:"optional,omitempty"`
 	PackagingId       *int32   `json:"packagingId,omitempty"`
 	PackagingQuantity *float64 `json:"packagingQuantity,omitempty"`
+
+	// PriceSource carrier marks a shipping line's unitPrice as the carrier's estimate with the markup (POST /shipping-estimate, O53); absent, a typed price is manual.
+	PriceSource *OrdersLineInputPriceSource `json:"priceSource,omitempty"`
 
 	// Quantity Greater than 0, at most three decimals.
 	Quantity *float64 `json:"quantity,omitempty"`
@@ -1954,18 +2275,23 @@ type OrdersLineInput struct {
 // OrdersLineInputInvoicePolicy An order line's invoice policy (O48): order, or delivery to invoice only what is delivered. Absent keeps a kept line's policy and gives a new line the default — delivery for goods on an order with a site, order otherwise. It changes only while nothing of the line is invoiced or in a draft invoice (line_invoiced).
 type OrdersLineInputInvoicePolicy string
 
-// OrdersLineInputKind An open set (O15): product, section and note in this phase.
+// OrdersLineInputKind An open set (O15): product, section and note, and shipping (O53) — the freight the customer pays: quantity 1, invoiced on order, counted delivered when the order's first shipment is booked; quotes and orders only.
 type OrdersLineInputKind string
+
+// OrdersLineInputPriceSource carrier marks a shipping line's unitPrice as the carrier's estimate with the markup (POST /shipping-estimate, O53); absent, a typed price is manual.
+type OrdersLineInputPriceSource string
 
 // OrdersMailText An override of a document kind's mail text in one language (O25); empty falls back to the built-in text.
 type OrdersMailText struct {
-	Body     string                 `json:"body"`
+	Body string `json:"body"`
+
+	// Kind quote, confirmation, or shipping_notice — the e-mail a booked shipment queues (O52), which may name {number}, {seller}, {carrier}, {consignment} and {trackingUrl}.
 	Kind     OrdersMailTextKind     `json:"kind"`
 	Language OrdersMailTextLanguage `json:"language"`
 	Subject  string                 `json:"subject"`
 }
 
-// OrdersMailTextKind defines model for OrdersMailText.Kind.
+// OrdersMailTextKind quote, confirmation, or shipping_notice — the e-mail a booked shipment queues (O52), which may name {number}, {seller}, {carrier}, {consignment} and {trackingUrl}.
 type OrdersMailTextKind string
 
 // OrdersMailTextLanguage defines model for OrdersMailText.Language.
@@ -2241,6 +2567,22 @@ type OrdersPerson struct {
 	UserId      *openapi_types.UUID `json:"userId,omitempty"`
 }
 
+// OrdersPickupPoint A pickup point the carrier lists.
+type OrdersPickupPoint struct {
+	Address      string `json:"address"`
+	City         string `json:"city"`
+	Id           string `json:"id"`
+	Locker       bool   `json:"locker"`
+	Name         string `json:"name"`
+	OpeningHours string `json:"openingHours"`
+	PostalCode   string `json:"postalCode"`
+}
+
+// OrdersPickupPointList Pickup points near a postal code.
+type OrdersPickupPointList struct {
+	Items []OrdersPickupPoint `json:"items"`
+}
+
 // OrdersProblem An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, order_in_draft_invoice (a cancel while a draft invoice holds part of the order, O36), line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice (a price or discount change on a line a draft invoice holds part of, O26), client_request_reused, template_name_taken, blocked_by_warning (a block warning refuses send, mark as sent, confirm and accept into a confirmed order; detail holds its text, O33). 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type OrdersProblem struct {
 	Code     *string              `json:"code,omitempty"`
@@ -2479,7 +2821,13 @@ type OrdersSettings struct {
 	DefaultPaymentTermsDays int32 `json:"defaultPaymentTermsDays"`
 
 	// DefaultSiteId The site a new order is fulfilled from (O46); null names none.
-	DefaultSiteId     *int64              `json:"defaultSiteId,omitempty"`
+	DefaultSiteId *int64 `json:"defaultSiteId,omitempty"`
+
+	// FreightMarkupPercent The markup on a carrier's estimate a shipping line takes (O53), 0–500 percent.
+	FreightMarkupPercent float64 `json:"freightMarkupPercent"`
+
+	// FreightVariantId The freight product (a Service variant) whose name, price and VAT code a shipping line takes (O53); null for a free-text line.
+	FreightVariantId  *int32              `json:"freightVariantId,omitempty"`
 	MailTexts         []OrdersMailText    `json:"mailTexts"`
 	NextOrderNumber   int64               `json:"nextOrderNumber"`
 	NextQuoteNumber   int64               `json:"nextQuoteNumber"`
@@ -2496,6 +2844,9 @@ type OrdersSettings struct {
 	SendChannels     []OrdersSendChannel `json:"sendChannels"`
 	SendingAvailable bool                `json:"sendingAvailable"`
 
+	// ShippingNoticeOnBook Booking a shipment queues the shipping notice to the order's contact (O52).
+	ShippingNoticeOnBook bool `json:"shippingNoticeOnBook"`
+
 	// SubscriptionFinalPeriodDefault How a subscription bills the period its end falls in when the end is not the period's last day (owner, 2026-11-06): full, the whole period; prorated, by its days from the period's start to the end, inclusive, over the full period's days, to øre.
 	SubscriptionFinalPeriodDefault OrdersFinalPeriod `json:"subscriptionFinalPeriodDefault"`
 }
@@ -2510,7 +2861,13 @@ type OrdersSettingsInput struct {
 	DefaultPaymentTermsDays int32 `json:"defaultPaymentTermsDays"`
 
 	// DefaultSiteId The site a new order takes (O46): an active site of Inventory's that fulfils orders (site_not_fulfilling otherwise); null names none.
-	DefaultSiteId     *int64              `json:"defaultSiteId,omitempty"`
+	DefaultSiteId *int64 `json:"defaultSiteId,omitempty"`
+
+	// FreightMarkupPercent The markup on a carrier's estimate (O53), 0–500 percent with at most two decimals; absent keeps it.
+	FreightMarkupPercent *float64 `json:"freightMarkupPercent,omitempty"`
+
+	// FreightVariantId The freight product (O53): a variant of a Service product (freight_product_invalid otherwise); null names none, absent keeps it.
+	FreightVariantId  *int32              `json:"freightVariantId,omitempty"`
 	MailTexts         []OrdersMailText    `json:"mailTexts"`
 	OrderSeriesStart  int64               `json:"orderSeriesStart"`
 	QuoteSeriesStart  int64               `json:"quoteSeriesStart"`
@@ -2518,8 +2875,181 @@ type OrdersSettingsInput struct {
 	Revision          int32               `json:"revision"`
 	SendChannelId     *openapi_types.UUID `json:"sendChannelId,omitempty"`
 
+	// ShippingNoticeOnBook Queue the shipping notice when a shipment is booked (O52); absent keeps it.
+	ShippingNoticeOnBook *bool `json:"shippingNoticeOnBook,omitempty"`
+
 	// SubscriptionFinalPeriodDefault How a subscription bills the period its end falls in when the end is not the period's last day (owner, 2026-11-06): full, the whole period; prorated, by its days from the period's start to the end, inclusive, over the full period's days, to øre.
 	SubscriptionFinalPeriodDefault *OrdersFinalPeriod `json:"subscriptionFinalPeriodDefault,omitempty"`
+}
+
+// OrdersShipment A shipment of a posted delivery (O50). status is draft, booked, in_transit, delivered or cancelled; exception is tracking's flag beside it. voided is a cancel of a carrier with no cancel call: the shipment is void in Vantigo and its label must not be used. bookedCost is the carrier's estimate of the business's cost, never invoiced (the customer pays the order's shipping line). label and waybill say what is stored; waybillNeeded is false for a service whose label serves as the waybill.
+type OrdersShipment struct {
+	// BookAttempted A booking was attempted and its outcome may be unknown; booking again asks the carrier first and books once.
+	BookAttempted bool       `json:"bookAttempted"`
+	BookedAt      *time.Time `json:"bookedAt,omitempty"`
+
+	// BookedBy A user as snapshotted on the document: the salesperson or an actor (O13, O29).
+	BookedBy           *OrdersPerson           `json:"bookedBy,omitempty"`
+	BookedCost         *float64                `json:"bookedCost,omitempty"`
+	BookedCostCurrency *string                 `json:"bookedCostCurrency,omitempty"`
+	BookedCostEstimate bool                    `json:"bookedCostEstimate"`
+	BookedService      *string                 `json:"bookedService,omitempty"`
+	CancelledAt        *time.Time              `json:"cancelledAt,omitempty"`
+	Carrier            string                  `json:"carrier"`
+	CarrierAccountId   int64                   `json:"carrierAccountId"`
+	CarrierAccountName string                  `json:"carrierAccountName"`
+	ConsignmentNumber  *string                 `json:"consignmentNumber,omitempty"`
+	CreatedAt          time.Time               `json:"createdAt"`
+	DeliveryId         int64                   `json:"deliveryId"`
+	DeliveryNumber     int64                   `json:"deliveryNumber"`
+	Events             []OrdersShipmentEvent   `json:"events"`
+	Exception          bool                    `json:"exception"`
+	Id                 int64                   `json:"id"`
+	Label              bool                    `json:"label"`
+	OrderId            int64                   `json:"orderId"`
+	OrderNumber        int64                   `json:"orderNumber"`
+	Packages           []OrdersShipmentPackage `json:"packages"`
+	PickupPointId      *string                 `json:"pickupPointId,omitempty"`
+	PlannedWindowEnd   *time.Time              `json:"plannedWindowEnd,omitempty"`
+	PlannedWindowStart *time.Time              `json:"plannedWindowStart,omitempty"`
+
+	// Recipient The recipient as the shipment was made: the order's delivery address, and the contact the carrier notifies.
+	Recipient   OrdersShipmentRecipient `json:"recipient"`
+	Service     string                  `json:"service"`
+	ServiceName string                  `json:"serviceName"`
+	Status      OrdersShipmentStatus    `json:"status"`
+
+	// Test Booked in the carrier's test mode.
+	Test          bool      `json:"test"`
+	TrackingUrl   *string   `json:"trackingUrl,omitempty"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+	Vas           []string  `json:"vas"`
+	Version       int32     `json:"version"`
+	Voided        bool      `json:"voided"`
+	Waybill       bool      `json:"waybill"`
+	WaybillNeeded bool      `json:"waybillNeeded"`
+}
+
+// OrdersShipmentStatus defines model for OrdersShipment.Status.
+type OrdersShipmentStatus string
+
+// OrdersShipmentEvent A tracking event as the carrier reported it, with the state it folds onto.
+type OrdersShipmentEvent struct {
+	Code       string                   `json:"code"`
+	OccurredAt time.Time                `json:"occurredAt"`
+	Place      string                   `json:"place"`
+	State      OrdersShipmentEventState `json:"state"`
+	Text       string                   `json:"text"`
+}
+
+// OrdersShipmentEventState defines model for OrdersShipmentEvent.State.
+type OrdersShipmentEventState string
+
+// OrdersShipmentInput A new draft shipment of a posted delivery (O50): absent account and service take the site's default account and its default service.
+type OrdersShipmentInput struct {
+	CarrierAccountId *int64  `json:"carrierAccountId,omitempty"`
+	Service          *string `json:"service,omitempty"`
+}
+
+// OrdersShipmentList Shipments, oldest first.
+type OrdersShipmentList struct {
+	Items []OrdersShipment `json:"items"`
+}
+
+// OrdersShipmentPackage A package: weight in grams, dimensions in millimetres (0 when not given), and the carrier's package number once booked.
+type OrdersShipmentPackage struct {
+	Content       string  `json:"content"`
+	HeightMm      int32   `json:"heightMm"`
+	LengthMm      int32   `json:"lengthMm"`
+	PackageNumber *string `json:"packageNumber,omitempty"`
+	Position      int32   `json:"position"`
+	WeightGrams   int32   `json:"weightGrams"`
+	WidthMm       int32   `json:"widthMm"`
+}
+
+// OrdersShipmentPackageInput A package of a draft shipment.
+type OrdersShipmentPackageInput struct {
+	Content     *string `json:"content,omitempty"`
+	HeightMm    *int32  `json:"heightMm,omitempty"`
+	LengthMm    *int32  `json:"lengthMm,omitempty"`
+	WeightGrams int32   `json:"weightGrams"`
+	WidthMm     *int32  `json:"widthMm,omitempty"`
+}
+
+// OrdersShipmentRecipient The recipient as the shipment was made: the order's delivery address, and the contact the carrier notifies.
+type OrdersShipmentRecipient struct {
+	City       string `json:"city"`
+	Contact    string `json:"contact"`
+	Country    string `json:"country"`
+	Email      string `json:"email"`
+	Line1      string `json:"line1"`
+	Line2      string `json:"line2"`
+	Name       string `json:"name"`
+	Phone      string `json:"phone"`
+	PostalCode string `json:"postalCode"`
+}
+
+// OrdersShipmentUpdate A draft shipment's account, service, value-added services, packages, pickup point and the contact the carrier notifies.
+type OrdersShipmentUpdate struct {
+	CarrierAccountId int64 `json:"carrierAccountId"`
+
+	// ExpectedUpdatedAt The updatedAt as the client read it.
+	ExpectedUpdatedAt time.Time                    `json:"expectedUpdatedAt"`
+	Packages          []OrdersShipmentPackageInput `json:"packages"`
+	PickupPointId     *string                      `json:"pickupPointId,omitempty"`
+	RecipientContact  *string                      `json:"recipientContact,omitempty"`
+	RecipientEmail    *string                      `json:"recipientEmail,omitempty"`
+	RecipientPhone    *string                      `json:"recipientPhone,omitempty"`
+	Service           string                       `json:"service"`
+	Vas               *[]string                    `json:"vas,omitempty"`
+	Version           int32                        `json:"version"`
+}
+
+// OrdersShippingEstimate A shipping line's price from the carrier (O53): the cheapest option of the default service for the document's delivery address and the estimated weight of its goods lines, plus the settings' markup. unitPrice is as a line enters it — including VAT when the document's prices do — and is saved with priceSource carrier. The freight product, when the settings name one, gives the line's variant, name and VAT code.
+type OrdersShippingEstimate struct {
+	AccountId   int64  `json:"accountId"`
+	AccountName string `json:"accountName"`
+
+	// CarrierPrice The carrier's price excluding VAT.
+	CarrierPrice  float64 `json:"carrierPrice"`
+	Currency      string  `json:"currency"`
+	Estimate      bool    `json:"estimate"`
+	MarkupPercent float64 `json:"markupPercent"`
+	Name          string  `json:"name"`
+
+	// NetPrice The price excluding VAT with the markup.
+	NetPrice    float64 `json:"netPrice"`
+	Service     string  `json:"service"`
+	ServiceName string  `json:"serviceName"`
+	UnitPrice   float64 `json:"unitPrice"`
+	VariantId   *int32  `json:"variantId,omitempty"`
+	VatCodeId   *int32  `json:"vatCodeId,omitempty"`
+	WeightGrams int64   `json:"weightGrams"`
+}
+
+// OrdersShippingEstimateInput The quote or the order a shipping line is estimated for: exactly one.
+type OrdersShippingEstimateInput struct {
+	OrderId *int64 `json:"orderId,omitempty"`
+	QuoteId *int64 `json:"quoteId,omitempty"`
+}
+
+// OrdersShippingOption A product the carrier offers for the shipment, with its price excluding VAT and the VAT (O49). estimate is set when it is not the agreement price.
+type OrdersShippingOption struct {
+	Currency     string              `json:"currency"`
+	Estimate     bool                `json:"estimate"`
+	ExpectedDate *openapi_types.Date `json:"expectedDate,omitempty"`
+	ExpiresAt    *time.Time          `json:"expiresAt,omitempty"`
+	Name         string              `json:"name"`
+	Price        float64             `json:"price"`
+	Service      string              `json:"service"`
+	Vat          float64             `json:"vat"`
+	WindowEnd    *time.Time          `json:"windowEnd,omitempty"`
+	WindowStart  *time.Time          `json:"windowStart,omitempty"`
+}
+
+// OrdersShippingOptionList The carrier's options, cheapest first.
+type OrdersShippingOptionList struct {
+	Items []OrdersShippingOption `json:"items"`
 }
 
 // OrdersSite An Inventory site as Orders offers it (contracts.Stock, O46): an order is fulfilled from an active site that fulfils orders.
@@ -2529,6 +3059,17 @@ type OrdersSite struct {
 	FulfilsOrders bool   `json:"fulfilsOrders"`
 	Id            int64  `json:"id"`
 	Name          string `json:"name"`
+}
+
+// OrdersSiteCarrierDefault The carrier account a site's shipments and estimates use by default (O51).
+type OrdersSiteCarrierDefault struct {
+	AccountId int64 `json:"accountId"`
+	SiteId    int64 `json:"siteId"`
+}
+
+// OrdersSiteCarrierDefaults The default carrier account per site, replaced whole; a site absent has none.
+type OrdersSiteCarrierDefaults struct {
+	Items []OrdersSiteCarrierDefault `json:"items"`
 }
 
 // OrdersSiteList Inventory's sites, by code; empty when Inventory keeps no stock.
@@ -3044,6 +3585,12 @@ type GetOrdersIntakeParamsGroupBy string
 // GetOrdersIntakeParamsFormat defines parameters for GetOrdersIntake.
 type GetOrdersIntakeParamsFormat string
 
+// ListPickupPointsParams defines parameters for ListPickupPoints.
+type ListPickupPointsParams struct {
+	PostalCode string  `form:"postalCode" json:"postalCode"`
+	Country    *string `form:"country,omitempty" json:"country,omitempty"`
+}
+
 // ListDeliveriesParams defines parameters for ListDeliveries.
 type ListDeliveriesParams struct {
 	// Status Any of the statuses; none means all.
@@ -3187,6 +3734,12 @@ type ListOrdersWarningsParams struct {
 // ListOrdersWarningsParamsScope defines parameters for ListOrdersWarnings.
 type ListOrdersWarningsParamsScope string
 
+// CreateCarrierAccountJSONRequestBody defines body for CreateCarrierAccount for application/json ContentType.
+type CreateCarrierAccountJSONRequestBody = OrdersCarrierAccountInput
+
+// UpdateCarrierAccountJSONRequestBody defines body for UpdateCarrierAccount for application/json ContentType.
+type UpdateCarrierAccountJSONRequestBody = OrdersCarrierAccountInput
+
 // CreateDeliveryJSONRequestBody defines body for CreateDelivery for application/json ContentType.
 type CreateDeliveryJSONRequestBody = OrdersDeliveryInput
 
@@ -3198,6 +3751,9 @@ type CancelDeliveryJSONRequestBody = OrdersVersionInput
 
 // PostDeliveryJSONRequestBody defines body for PostDelivery for application/json ContentType.
 type PostDeliveryJSONRequestBody = OrdersVersionInput
+
+// CreateShipmentJSONRequestBody defines body for CreateShipment for application/json ContentType.
+type CreateShipmentJSONRequestBody = OrdersShipmentInput
 
 // CreateSalesOrderJSONRequestBody defines body for CreateSalesOrder for application/json ContentType.
 type CreateSalesOrderJSONRequestBody = OrdersOrderInput
@@ -3271,6 +3827,21 @@ type SendQuoteJSONRequestBody = OrdersSendInput
 // PutOrdersSettingsJSONRequestBody defines body for PutOrdersSettings for application/json ContentType.
 type PutOrdersSettingsJSONRequestBody = OrdersSettingsInput
 
+// UpdateShipmentJSONRequestBody defines body for UpdateShipment for application/json ContentType.
+type UpdateShipmentJSONRequestBody = OrdersShipmentUpdate
+
+// BookShipmentJSONRequestBody defines body for BookShipment for application/json ContentType.
+type BookShipmentJSONRequestBody = OrdersVersionInput
+
+// CancelShipmentJSONRequestBody defines body for CancelShipment for application/json ContentType.
+type CancelShipmentJSONRequestBody = OrdersVersionInput
+
+// EstimateShippingJSONRequestBody defines body for EstimateShipping for application/json ContentType.
+type EstimateShippingJSONRequestBody = OrdersShippingEstimateInput
+
+// PutSiteCarrierDefaultsJSONRequestBody defines body for PutSiteCarrierDefaults for application/json ContentType.
+type PutSiteCarrierDefaultsJSONRequestBody = OrdersSiteCarrierDefaults
+
 // CreateSubscriptionJSONRequestBody defines body for CreateSubscription for application/json ContentType.
 type CreateSubscriptionJSONRequestBody = OrdersSubscriptionInput
 
@@ -3315,6 +3886,27 @@ type ServerInterface interface {
 	// GetOrdersIntake Get the order intake
 	// (GET /api/v1/orders/analysis/intake)
 	GetOrdersIntake(w http.ResponseWriter, r *http.Request, params GetOrdersIntakeParams)
+	// ListCarrierAccounts List carrier accounts
+	// (GET /api/v1/orders/carrier-accounts)
+	ListCarrierAccounts(w http.ResponseWriter, r *http.Request)
+	// CreateCarrierAccount Add a carrier account
+	// (POST /api/v1/orders/carrier-accounts)
+	CreateCarrierAccount(w http.ResponseWriter, r *http.Request)
+	// GetCarrierAccount Get a carrier account
+	// (GET /api/v1/orders/carrier-accounts/{id})
+	GetCarrierAccount(w http.ResponseWriter, r *http.Request, id int64)
+	// UpdateCarrierAccount Save a carrier account
+	// (PUT /api/v1/orders/carrier-accounts/{id})
+	UpdateCarrierAccount(w http.ResponseWriter, r *http.Request, id int64)
+	// ListPickupPoints List pickup points
+	// (GET /api/v1/orders/carrier-accounts/{id}/pickup-points)
+	ListPickupPoints(w http.ResponseWriter, r *http.Request, id int64, params ListPickupPointsParams)
+	// ListCarrierServices List a carrier account's services
+	// (GET /api/v1/orders/carrier-accounts/{id}/services)
+	ListCarrierServices(w http.ResponseWriter, r *http.Request, id int64)
+	// VerifyCarrierAccount Verify a carrier account
+	// (POST /api/v1/orders/carrier-accounts/{id}/verify)
+	VerifyCarrierAccount(w http.ResponseWriter, r *http.Request, id int64)
 	// GetOrdersCustomerSummary Get a customer's orders summary
 	// (GET /api/v1/orders/customers/{customerId}/summary)
 	GetOrdersCustomerSummary(w http.ResponseWriter, r *http.Request, customerId int32)
@@ -3342,6 +3934,12 @@ type ServerInterface interface {
 	// PostDelivery Post a delivery
 	// (POST /api/v1/orders/deliveries/{id}/post)
 	PostDelivery(w http.ResponseWriter, r *http.Request, id int64)
+	// ListDeliveryShipments List a delivery's shipments
+	// (GET /api/v1/orders/deliveries/{id}/shipments)
+	ListDeliveryShipments(w http.ResponseWriter, r *http.Request, id int64)
+	// CreateShipment Create a shipment
+	// (POST /api/v1/orders/deliveries/{id}/shipments)
+	CreateShipment(w http.ResponseWriter, r *http.Request, id int64)
 	// GetOrdersMeta Get what the Orders screens need
 	// (GET /api/v1/orders/meta)
 	GetOrdersMeta(w http.ResponseWriter, r *http.Request)
@@ -3405,6 +4003,9 @@ type ServerInterface interface {
 	// SendSalesOrder Send an order confirmation
 	// (POST /api/v1/orders/orders/{id}/send)
 	SendSalesOrder(w http.ResponseWriter, r *http.Request, id int64)
+	// ListOrderShipments List an order's shipments
+	// (GET /api/v1/orders/orders/{id}/shipments)
+	ListOrderShipments(w http.ResponseWriter, r *http.Request, id int64)
 	// UndoSalesOrderDelivered Undo delivered quantities
 	// (POST /api/v1/orders/orders/{id}/undo-delivered)
 	UndoSalesOrderDelivered(w http.ResponseWriter, r *http.Request, id int64)
@@ -3474,6 +4075,36 @@ type ServerInterface interface {
 	// PutOrdersSettings Save the Orders settings
 	// (PUT /api/v1/orders/settings)
 	PutOrdersSettings(w http.ResponseWriter, r *http.Request)
+	// GetShipment Get a shipment
+	// (GET /api/v1/orders/shipments/{id})
+	GetShipment(w http.ResponseWriter, r *http.Request, id int64)
+	// UpdateShipment Save a shipment
+	// (PUT /api/v1/orders/shipments/{id})
+	UpdateShipment(w http.ResponseWriter, r *http.Request, id int64)
+	// BookShipment Book a shipment
+	// (POST /api/v1/orders/shipments/{id}/book)
+	BookShipment(w http.ResponseWriter, r *http.Request, id int64)
+	// CancelShipment Cancel a shipment
+	// (POST /api/v1/orders/shipments/{id}/cancel)
+	CancelShipment(w http.ResponseWriter, r *http.Request, id int64)
+	// GetShipmentLabel Download a shipment's label
+	// (GET /api/v1/orders/shipments/{id}/label)
+	GetShipmentLabel(w http.ResponseWriter, r *http.Request, id int64)
+	// GetShipmentRates Get a shipment's prices
+	// (GET /api/v1/orders/shipments/{id}/rates)
+	GetShipmentRates(w http.ResponseWriter, r *http.Request, id int64)
+	// GetShipmentWaybill Download a shipment's waybill
+	// (GET /api/v1/orders/shipments/{id}/waybill)
+	GetShipmentWaybill(w http.ResponseWriter, r *http.Request, id int64)
+	// EstimateShipping Estimate a shipping line
+	// (POST /api/v1/orders/shipping-estimate)
+	EstimateShipping(w http.ResponseWriter, r *http.Request)
+	// GetSiteCarrierDefaults Get the default carrier accounts
+	// (GET /api/v1/orders/shipping/site-defaults)
+	GetSiteCarrierDefaults(w http.ResponseWriter, r *http.Request)
+	// PutSiteCarrierDefaults Save the default carrier accounts
+	// (PUT /api/v1/orders/shipping/site-defaults)
+	PutSiteCarrierDefaults(w http.ResponseWriter, r *http.Request)
 	// ListOrdersSites List the sites
 	// (GET /api/v1/orders/sites)
 	ListOrdersSites(w http.ResponseWriter, r *http.Request)
@@ -3725,6 +4356,193 @@ func (siw *ServerInterfaceWrapper) GetOrdersIntake(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetOrdersIntake(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCarrierAccounts operation middleware
+func (siw *ServerInterfaceWrapper) ListCarrierAccounts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCarrierAccounts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCarrierAccount operation middleware
+func (siw *ServerInterfaceWrapper) CreateCarrierAccount(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCarrierAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCarrierAccount operation middleware
+func (siw *ServerInterfaceWrapper) GetCarrierAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCarrierAccount(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateCarrierAccount operation middleware
+func (siw *ServerInterfaceWrapper) UpdateCarrierAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateCarrierAccount(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPickupPoints operation middleware
+func (siw *ServerInterfaceWrapper) ListPickupPoints(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPickupPointsParams
+
+	// ------------- Required query parameter "postalCode" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "postalCode", r.URL.Query(), &params.PostalCode, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "postalCode"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "postalCode", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "country" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "country", r.URL.Query(), &params.Country, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "country"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "country", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPickupPoints(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCarrierServices operation middleware
+func (siw *ServerInterfaceWrapper) ListCarrierServices(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCarrierServices(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// VerifyCarrierAccount operation middleware
+func (siw *ServerInterfaceWrapper) VerifyCarrierAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.VerifyCarrierAccount(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4019,6 +4837,58 @@ func (siw *ServerInterfaceWrapper) PostDelivery(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostDelivery(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDeliveryShipments operation middleware
+func (siw *ServerInterfaceWrapper) ListDeliveryShipments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDeliveryShipments(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateShipment operation middleware
+func (siw *ServerInterfaceWrapper) CreateShipment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateShipment(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4719,6 +5589,32 @@ func (siw *ServerInterfaceWrapper) SendSalesOrder(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ListOrderShipments operation middleware
+func (siw *ServerInterfaceWrapper) ListOrderShipments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrderShipments(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // UndoSalesOrderDelivered operation middleware
 func (siw *ServerInterfaceWrapper) UndoSalesOrderDelivered(w http.ResponseWriter, r *http.Request) {
 
@@ -5399,6 +6295,230 @@ func (siw *ServerInterfaceWrapper) PutOrdersSettings(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutOrdersSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetShipment operation middleware
+func (siw *ServerInterfaceWrapper) GetShipment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetShipment(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateShipment operation middleware
+func (siw *ServerInterfaceWrapper) UpdateShipment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateShipment(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BookShipment operation middleware
+func (siw *ServerInterfaceWrapper) BookShipment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BookShipment(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelShipment operation middleware
+func (siw *ServerInterfaceWrapper) CancelShipment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelShipment(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetShipmentLabel operation middleware
+func (siw *ServerInterfaceWrapper) GetShipmentLabel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetShipmentLabel(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetShipmentRates operation middleware
+func (siw *ServerInterfaceWrapper) GetShipmentRates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetShipmentRates(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetShipmentWaybill operation middleware
+func (siw *ServerInterfaceWrapper) GetShipmentWaybill(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetShipmentWaybill(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EstimateShipping operation middleware
+func (siw *ServerInterfaceWrapper) EstimateShipping(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EstimateShipping(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSiteCarrierDefaults operation middleware
+func (siw *ServerInterfaceWrapper) GetSiteCarrierDefaults(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSiteCarrierDefaults(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutSiteCarrierDefaults operation middleware
+func (siw *ServerInterfaceWrapper) PutSiteCarrierDefaults(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutSiteCarrierDefaults(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6225,6 +7345,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/analysis/backlog", wrapper.GetOrdersBacklog)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/analysis/hit-rate", wrapper.GetOrdersHitRate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/analysis/intake", wrapper.GetOrdersIntake)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/carrier-accounts", wrapper.ListCarrierAccounts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/carrier-accounts", wrapper.CreateCarrierAccount)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/carrier-accounts/{id}", wrapper.GetCarrierAccount)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/orders/carrier-accounts/{id}", wrapper.UpdateCarrierAccount)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/carrier-accounts/{id}/pickup-points", wrapper.ListPickupPoints)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/carrier-accounts/{id}/services", wrapper.ListCarrierServices)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/carrier-accounts/{id}/verify", wrapper.VerifyCarrierAccount)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/customers/{customerId}/summary", wrapper.GetOrdersCustomerSummary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/deliveries", wrapper.ListDeliveries)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/deliveries", wrapper.CreateDelivery)
@@ -6234,6 +7361,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/deliveries/{id}/packing-slip", wrapper.GetDeliveryPackingSlip)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/deliveries/{id}/pick-list", wrapper.GetDeliveryPickList)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/deliveries/{id}/post", wrapper.PostDelivery)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/deliveries/{id}/shipments", wrapper.ListDeliveryShipments)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/deliveries/{id}/shipments", wrapper.CreateShipment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/meta", wrapper.GetOrdersMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/orders", wrapper.ListSalesOrders)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders", wrapper.CreateSalesOrder)
@@ -6255,6 +7384,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/release-draft-allocations", wrapper.ReleaseSalesOrderDraftAllocations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/reserve", wrapper.ReserveSalesOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/send", wrapper.SendSalesOrder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/orders/{id}/shipments", wrapper.ListOrderShipments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/undo-delivered", wrapper.UndoSalesOrderDelivered)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/unlock", wrapper.UnlockSalesOrder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/products/{productId}/grid", wrapper.GetOrdersVariantGrid)
@@ -6278,6 +7408,16 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/salespeople", wrapper.ListOrdersSalespeople)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/settings", wrapper.GetOrdersSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/orders/settings", wrapper.PutOrdersSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/shipments/{id}", wrapper.GetShipment)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/orders/shipments/{id}", wrapper.UpdateShipment)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/shipments/{id}/book", wrapper.BookShipment)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/shipments/{id}/cancel", wrapper.CancelShipment)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/shipments/{id}/label", wrapper.GetShipmentLabel)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/shipments/{id}/rates", wrapper.GetShipmentRates)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/shipments/{id}/waybill", wrapper.GetShipmentWaybill)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/shipping-estimate", wrapper.EstimateShipping)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/shipping/site-defaults", wrapper.GetSiteCarrierDefaults)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/orders/shipping/site-defaults", wrapper.PutSiteCarrierDefaults)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/sites", wrapper.ListOrdersSites)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/subscriptions", wrapper.ListSubscriptions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/subscriptions", wrapper.CreateSubscription)
@@ -6547,6 +7687,551 @@ func (response GetOrdersIntake403JSONResponse) VisitGetOrdersIntakeResponse(w ht
 type GetOrdersIntake503ApplicationProblemPlusJSONResponse OrdersProblem
 
 func (response GetOrdersIntake503ApplicationProblemPlusJSONResponse) VisitGetOrdersIntakeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCarrierAccountsRequestObject struct {
+}
+
+type ListCarrierAccountsResponseObject interface {
+	VisitListCarrierAccountsResponse(w http.ResponseWriter) error
+}
+
+type ListCarrierAccounts200JSONResponse OrdersCarrierAccountList
+
+func (response ListCarrierAccounts200JSONResponse) VisitListCarrierAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCarrierAccounts401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListCarrierAccounts401JSONResponse) VisitListCarrierAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCarrierAccounts403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListCarrierAccounts403JSONResponse) VisitListCarrierAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCarrierAccountRequestObject struct {
+	Body *CreateCarrierAccountJSONRequestBody
+}
+
+type CreateCarrierAccountResponseObject interface {
+	VisitCreateCarrierAccountResponse(w http.ResponseWriter) error
+}
+
+type CreateCarrierAccount201JSONResponse OrdersCarrierAccount
+
+func (response CreateCarrierAccount201JSONResponse) VisitCreateCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCarrierAccount400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CreateCarrierAccount400ApplicationProblemPlusJSONResponse) VisitCreateCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCarrierAccount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateCarrierAccount401JSONResponse) VisitCreateCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCarrierAccount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateCarrierAccount403JSONResponse) VisitCreateCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCarrierAccount409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CreateCarrierAccount409ApplicationProblemPlusJSONResponse) VisitCreateCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCarrierAccount503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CreateCarrierAccount503ApplicationProblemPlusJSONResponse) VisitCreateCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCarrierAccountRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetCarrierAccountResponseObject interface {
+	VisitGetCarrierAccountResponse(w http.ResponseWriter) error
+}
+
+type GetCarrierAccount200JSONResponse OrdersCarrierAccount
+
+func (response GetCarrierAccount200JSONResponse) VisitGetCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCarrierAccount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCarrierAccount401JSONResponse) VisitGetCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCarrierAccount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCarrierAccount403JSONResponse) VisitGetCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCarrierAccount404Response struct {
+}
+
+func (response GetCarrierAccount404Response) VisitGetCarrierAccountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateCarrierAccountRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *UpdateCarrierAccountJSONRequestBody
+}
+
+type UpdateCarrierAccountResponseObject interface {
+	VisitUpdateCarrierAccountResponse(w http.ResponseWriter) error
+}
+
+type UpdateCarrierAccount200JSONResponse OrdersCarrierAccount
+
+func (response UpdateCarrierAccount200JSONResponse) VisitUpdateCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCarrierAccount400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response UpdateCarrierAccount400ApplicationProblemPlusJSONResponse) VisitUpdateCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCarrierAccount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateCarrierAccount401JSONResponse) VisitUpdateCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCarrierAccount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateCarrierAccount403JSONResponse) VisitUpdateCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCarrierAccount404Response struct {
+}
+
+func (response UpdateCarrierAccount404Response) VisitUpdateCarrierAccountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateCarrierAccount409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response UpdateCarrierAccount409ApplicationProblemPlusJSONResponse) VisitUpdateCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCarrierAccount503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response UpdateCarrierAccount503ApplicationProblemPlusJSONResponse) VisitUpdateCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPickupPointsRequestObject struct {
+	Id     int64 `json:"id"`
+	Params ListPickupPointsParams
+}
+
+type ListPickupPointsResponseObject interface {
+	VisitListPickupPointsResponse(w http.ResponseWriter) error
+}
+
+type ListPickupPoints200JSONResponse OrdersPickupPointList
+
+func (response ListPickupPoints200JSONResponse) VisitListPickupPointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPickupPoints400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response ListPickupPoints400ApplicationProblemPlusJSONResponse) VisitListPickupPointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPickupPoints401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPickupPoints401JSONResponse) VisitListPickupPointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPickupPoints403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPickupPoints403JSONResponse) VisitListPickupPointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPickupPoints404Response struct {
+}
+
+func (response ListPickupPoints404Response) VisitListPickupPointsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ListPickupPoints422ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response ListPickupPoints422ApplicationProblemPlusJSONResponse) VisitListPickupPointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPickupPoints503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response ListPickupPoints503ApplicationProblemPlusJSONResponse) VisitListPickupPointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCarrierServicesRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type ListCarrierServicesResponseObject interface {
+	VisitListCarrierServicesResponse(w http.ResponseWriter) error
+}
+
+type ListCarrierServices200JSONResponse OrdersCarrierServiceList
+
+func (response ListCarrierServices200JSONResponse) VisitListCarrierServicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCarrierServices401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListCarrierServices401JSONResponse) VisitListCarrierServicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCarrierServices403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListCarrierServices403JSONResponse) VisitListCarrierServicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCarrierServices404Response struct {
+}
+
+func (response ListCarrierServices404Response) VisitListCarrierServicesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ListCarrierServices503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response ListCarrierServices503ApplicationProblemPlusJSONResponse) VisitListCarrierServicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCarrierAccountRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type VerifyCarrierAccountResponseObject interface {
+	VisitVerifyCarrierAccountResponse(w http.ResponseWriter) error
+}
+
+type VerifyCarrierAccount200JSONResponse OrdersCarrierVerification
+
+func (response VerifyCarrierAccount200JSONResponse) VisitVerifyCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCarrierAccount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response VerifyCarrierAccount401JSONResponse) VisitVerifyCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCarrierAccount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response VerifyCarrierAccount403JSONResponse) VisitVerifyCarrierAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCarrierAccount404Response struct {
+}
+
+func (response VerifyCarrierAccount404Response) VisitVerifyCarrierAccountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type VerifyCarrierAccount503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response VerifyCarrierAccount503ApplicationProblemPlusJSONResponse) VisitVerifyCarrierAccountResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -7236,6 +8921,165 @@ func (response PostDelivery409ApplicationProblemPlusJSONResponse) VisitPostDeliv
 type PostDelivery503ApplicationProblemPlusJSONResponse OrdersProblem
 
 func (response PostDelivery503ApplicationProblemPlusJSONResponse) VisitPostDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveryShipmentsRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type ListDeliveryShipmentsResponseObject interface {
+	VisitListDeliveryShipmentsResponse(w http.ResponseWriter) error
+}
+
+type ListDeliveryShipments200JSONResponse OrdersShipmentList
+
+func (response ListDeliveryShipments200JSONResponse) VisitListDeliveryShipmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveryShipments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListDeliveryShipments401JSONResponse) VisitListDeliveryShipmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveryShipments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListDeliveryShipments403JSONResponse) VisitListDeliveryShipmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveryShipments404Response struct {
+}
+
+func (response ListDeliveryShipments404Response) VisitListDeliveryShipmentsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type CreateShipmentRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *CreateShipmentJSONRequestBody
+}
+
+type CreateShipmentResponseObject interface {
+	VisitCreateShipmentResponse(w http.ResponseWriter) error
+}
+
+type CreateShipment201JSONResponse OrdersShipment
+
+func (response CreateShipment201JSONResponse) VisitCreateShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateShipment400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CreateShipment400ApplicationProblemPlusJSONResponse) VisitCreateShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateShipment401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateShipment401JSONResponse) VisitCreateShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateShipment403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateShipment403JSONResponse) VisitCreateShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateShipment404Response struct {
+}
+
+func (response CreateShipment404Response) VisitCreateShipmentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type CreateShipment409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CreateShipment409ApplicationProblemPlusJSONResponse) VisitCreateShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateShipment503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CreateShipment503ApplicationProblemPlusJSONResponse) VisitCreateShipmentResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -8807,6 +10651,64 @@ func (response SendSalesOrder503ApplicationProblemPlusJSONResponse) VisitSendSal
 	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListOrderShipmentsRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type ListOrderShipmentsResponseObject interface {
+	VisitListOrderShipmentsResponse(w http.ResponseWriter) error
+}
+
+type ListOrderShipments200JSONResponse OrdersShipmentList
+
+func (response ListOrderShipments200JSONResponse) VisitListOrderShipmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrderShipments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListOrderShipments401JSONResponse) VisitListOrderShipmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrderShipments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListOrderShipments403JSONResponse) VisitListOrderShipmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrderShipments404Response struct {
+}
+
+func (response ListOrderShipments404Response) VisitListOrderShipmentsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
 }
 
 type UndoSalesOrderDeliveredRequestObject struct {
@@ -10541,6 +12443,808 @@ func (response PutOrdersSettings409ApplicationProblemPlusJSONResponse) VisitPutO
 	return err
 }
 
+type GetShipmentRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetShipmentResponseObject interface {
+	VisitGetShipmentResponse(w http.ResponseWriter) error
+}
+
+type GetShipment200JSONResponse OrdersShipment
+
+func (response GetShipment200JSONResponse) VisitGetShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetShipment401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetShipment401JSONResponse) VisitGetShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetShipment403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetShipment403JSONResponse) VisitGetShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetShipment404Response struct {
+}
+
+func (response GetShipment404Response) VisitGetShipmentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateShipmentRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *UpdateShipmentJSONRequestBody
+}
+
+type UpdateShipmentResponseObject interface {
+	VisitUpdateShipmentResponse(w http.ResponseWriter) error
+}
+
+type UpdateShipment200JSONResponse OrdersShipment
+
+func (response UpdateShipment200JSONResponse) VisitUpdateShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateShipment400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response UpdateShipment400ApplicationProblemPlusJSONResponse) VisitUpdateShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateShipment401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateShipment401JSONResponse) VisitUpdateShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateShipment403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateShipment403JSONResponse) VisitUpdateShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateShipment404Response struct {
+}
+
+func (response UpdateShipment404Response) VisitUpdateShipmentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateShipment409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response UpdateShipment409ApplicationProblemPlusJSONResponse) VisitUpdateShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateShipment503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response UpdateShipment503ApplicationProblemPlusJSONResponse) VisitUpdateShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BookShipmentRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *BookShipmentJSONRequestBody
+}
+
+type BookShipmentResponseObject interface {
+	VisitBookShipmentResponse(w http.ResponseWriter) error
+}
+
+type BookShipment200JSONResponse OrdersShipment
+
+func (response BookShipment200JSONResponse) VisitBookShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BookShipment401JSONResponse externalRef0.AuthErrorResponse
+
+func (response BookShipment401JSONResponse) VisitBookShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BookShipment403JSONResponse externalRef0.AuthErrorResponse
+
+func (response BookShipment403JSONResponse) VisitBookShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BookShipment404Response struct {
+}
+
+func (response BookShipment404Response) VisitBookShipmentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type BookShipment409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response BookShipment409ApplicationProblemPlusJSONResponse) VisitBookShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BookShipment422ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response BookShipment422ApplicationProblemPlusJSONResponse) VisitBookShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BookShipment503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response BookShipment503ApplicationProblemPlusJSONResponse) VisitBookShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelShipmentRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *CancelShipmentJSONRequestBody
+}
+
+type CancelShipmentResponseObject interface {
+	VisitCancelShipmentResponse(w http.ResponseWriter) error
+}
+
+type CancelShipment200JSONResponse OrdersShipment
+
+func (response CancelShipment200JSONResponse) VisitCancelShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelShipment401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CancelShipment401JSONResponse) VisitCancelShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelShipment403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CancelShipment403JSONResponse) VisitCancelShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelShipment404Response struct {
+}
+
+func (response CancelShipment404Response) VisitCancelShipmentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type CancelShipment409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CancelShipment409ApplicationProblemPlusJSONResponse) VisitCancelShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelShipment503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CancelShipment503ApplicationProblemPlusJSONResponse) VisitCancelShipmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetShipmentLabelRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetShipmentLabelResponseObject interface {
+	VisitGetShipmentLabelResponse(w http.ResponseWriter) error
+}
+
+type GetShipmentLabel200ApplicationpdfResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetShipmentLabel200ApplicationpdfResponse) VisitGetShipmentLabelResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetShipmentLabel401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetShipmentLabel401JSONResponse) VisitGetShipmentLabelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetShipmentLabel403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetShipmentLabel403JSONResponse) VisitGetShipmentLabelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetShipmentLabel404Response struct {
+}
+
+func (response GetShipmentLabel404Response) VisitGetShipmentLabelResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetShipmentRatesRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetShipmentRatesResponseObject interface {
+	VisitGetShipmentRatesResponse(w http.ResponseWriter) error
+}
+
+type GetShipmentRates200JSONResponse OrdersShippingOptionList
+
+func (response GetShipmentRates200JSONResponse) VisitGetShipmentRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetShipmentRates401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetShipmentRates401JSONResponse) VisitGetShipmentRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetShipmentRates403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetShipmentRates403JSONResponse) VisitGetShipmentRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetShipmentRates404Response struct {
+}
+
+func (response GetShipmentRates404Response) VisitGetShipmentRatesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetShipmentRates409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response GetShipmentRates409ApplicationProblemPlusJSONResponse) VisitGetShipmentRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetShipmentRates422ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response GetShipmentRates422ApplicationProblemPlusJSONResponse) VisitGetShipmentRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetShipmentRates503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response GetShipmentRates503ApplicationProblemPlusJSONResponse) VisitGetShipmentRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetShipmentWaybillRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetShipmentWaybillResponseObject interface {
+	VisitGetShipmentWaybillResponse(w http.ResponseWriter) error
+}
+
+type GetShipmentWaybill200ApplicationpdfResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetShipmentWaybill200ApplicationpdfResponse) VisitGetShipmentWaybillResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetShipmentWaybill401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetShipmentWaybill401JSONResponse) VisitGetShipmentWaybillResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetShipmentWaybill403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetShipmentWaybill403JSONResponse) VisitGetShipmentWaybillResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetShipmentWaybill404Response struct {
+}
+
+func (response GetShipmentWaybill404Response) VisitGetShipmentWaybillResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type EstimateShippingRequestObject struct {
+	Body *EstimateShippingJSONRequestBody
+}
+
+type EstimateShippingResponseObject interface {
+	VisitEstimateShippingResponse(w http.ResponseWriter) error
+}
+
+type EstimateShipping200JSONResponse OrdersShippingEstimate
+
+func (response EstimateShipping200JSONResponse) VisitEstimateShippingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EstimateShipping400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response EstimateShipping400ApplicationProblemPlusJSONResponse) VisitEstimateShippingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EstimateShipping401JSONResponse externalRef0.AuthErrorResponse
+
+func (response EstimateShipping401JSONResponse) VisitEstimateShippingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EstimateShipping403JSONResponse externalRef0.AuthErrorResponse
+
+func (response EstimateShipping403JSONResponse) VisitEstimateShippingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EstimateShipping404Response struct {
+}
+
+func (response EstimateShipping404Response) VisitEstimateShippingResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type EstimateShipping409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response EstimateShipping409ApplicationProblemPlusJSONResponse) VisitEstimateShippingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EstimateShipping422ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response EstimateShipping422ApplicationProblemPlusJSONResponse) VisitEstimateShippingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EstimateShipping503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response EstimateShipping503ApplicationProblemPlusJSONResponse) VisitEstimateShippingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteCarrierDefaultsRequestObject struct {
+}
+
+type GetSiteCarrierDefaultsResponseObject interface {
+	VisitGetSiteCarrierDefaultsResponse(w http.ResponseWriter) error
+}
+
+type GetSiteCarrierDefaults200JSONResponse OrdersSiteCarrierDefaults
+
+func (response GetSiteCarrierDefaults200JSONResponse) VisitGetSiteCarrierDefaultsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteCarrierDefaults401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetSiteCarrierDefaults401JSONResponse) VisitGetSiteCarrierDefaultsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteCarrierDefaults403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetSiteCarrierDefaults403JSONResponse) VisitGetSiteCarrierDefaultsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutSiteCarrierDefaultsRequestObject struct {
+	Body *PutSiteCarrierDefaultsJSONRequestBody
+}
+
+type PutSiteCarrierDefaultsResponseObject interface {
+	VisitPutSiteCarrierDefaultsResponse(w http.ResponseWriter) error
+}
+
+type PutSiteCarrierDefaults200JSONResponse OrdersSiteCarrierDefaults
+
+func (response PutSiteCarrierDefaults200JSONResponse) VisitPutSiteCarrierDefaultsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutSiteCarrierDefaults400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response PutSiteCarrierDefaults400ApplicationProblemPlusJSONResponse) VisitPutSiteCarrierDefaultsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutSiteCarrierDefaults401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutSiteCarrierDefaults401JSONResponse) VisitPutSiteCarrierDefaultsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutSiteCarrierDefaults403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutSiteCarrierDefaults403JSONResponse) VisitPutSiteCarrierDefaultsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListOrdersSitesRequestObject struct {
 }
 
@@ -12256,6 +14960,27 @@ type StrictServerInterface interface {
 	// GetOrdersIntake Get the order intake
 	// (GET /api/v1/orders/analysis/intake)
 	GetOrdersIntake(ctx context.Context, request GetOrdersIntakeRequestObject) (GetOrdersIntakeResponseObject, error)
+	// ListCarrierAccounts List carrier accounts
+	// (GET /api/v1/orders/carrier-accounts)
+	ListCarrierAccounts(ctx context.Context, request ListCarrierAccountsRequestObject) (ListCarrierAccountsResponseObject, error)
+	// CreateCarrierAccount Add a carrier account
+	// (POST /api/v1/orders/carrier-accounts)
+	CreateCarrierAccount(ctx context.Context, request CreateCarrierAccountRequestObject) (CreateCarrierAccountResponseObject, error)
+	// GetCarrierAccount Get a carrier account
+	// (GET /api/v1/orders/carrier-accounts/{id})
+	GetCarrierAccount(ctx context.Context, request GetCarrierAccountRequestObject) (GetCarrierAccountResponseObject, error)
+	// UpdateCarrierAccount Save a carrier account
+	// (PUT /api/v1/orders/carrier-accounts/{id})
+	UpdateCarrierAccount(ctx context.Context, request UpdateCarrierAccountRequestObject) (UpdateCarrierAccountResponseObject, error)
+	// ListPickupPoints List pickup points
+	// (GET /api/v1/orders/carrier-accounts/{id}/pickup-points)
+	ListPickupPoints(ctx context.Context, request ListPickupPointsRequestObject) (ListPickupPointsResponseObject, error)
+	// ListCarrierServices List a carrier account's services
+	// (GET /api/v1/orders/carrier-accounts/{id}/services)
+	ListCarrierServices(ctx context.Context, request ListCarrierServicesRequestObject) (ListCarrierServicesResponseObject, error)
+	// VerifyCarrierAccount Verify a carrier account
+	// (POST /api/v1/orders/carrier-accounts/{id}/verify)
+	VerifyCarrierAccount(ctx context.Context, request VerifyCarrierAccountRequestObject) (VerifyCarrierAccountResponseObject, error)
 	// GetOrdersCustomerSummary Get a customer's orders summary
 	// (GET /api/v1/orders/customers/{customerId}/summary)
 	GetOrdersCustomerSummary(ctx context.Context, request GetOrdersCustomerSummaryRequestObject) (GetOrdersCustomerSummaryResponseObject, error)
@@ -12283,6 +15008,12 @@ type StrictServerInterface interface {
 	// PostDelivery Post a delivery
 	// (POST /api/v1/orders/deliveries/{id}/post)
 	PostDelivery(ctx context.Context, request PostDeliveryRequestObject) (PostDeliveryResponseObject, error)
+	// ListDeliveryShipments List a delivery's shipments
+	// (GET /api/v1/orders/deliveries/{id}/shipments)
+	ListDeliveryShipments(ctx context.Context, request ListDeliveryShipmentsRequestObject) (ListDeliveryShipmentsResponseObject, error)
+	// CreateShipment Create a shipment
+	// (POST /api/v1/orders/deliveries/{id}/shipments)
+	CreateShipment(ctx context.Context, request CreateShipmentRequestObject) (CreateShipmentResponseObject, error)
 	// GetOrdersMeta Get what the Orders screens need
 	// (GET /api/v1/orders/meta)
 	GetOrdersMeta(ctx context.Context, request GetOrdersMetaRequestObject) (GetOrdersMetaResponseObject, error)
@@ -12346,6 +15077,9 @@ type StrictServerInterface interface {
 	// SendSalesOrder Send an order confirmation
 	// (POST /api/v1/orders/orders/{id}/send)
 	SendSalesOrder(ctx context.Context, request SendSalesOrderRequestObject) (SendSalesOrderResponseObject, error)
+	// ListOrderShipments List an order's shipments
+	// (GET /api/v1/orders/orders/{id}/shipments)
+	ListOrderShipments(ctx context.Context, request ListOrderShipmentsRequestObject) (ListOrderShipmentsResponseObject, error)
 	// UndoSalesOrderDelivered Undo delivered quantities
 	// (POST /api/v1/orders/orders/{id}/undo-delivered)
 	UndoSalesOrderDelivered(ctx context.Context, request UndoSalesOrderDeliveredRequestObject) (UndoSalesOrderDeliveredResponseObject, error)
@@ -12415,6 +15149,36 @@ type StrictServerInterface interface {
 	// PutOrdersSettings Save the Orders settings
 	// (PUT /api/v1/orders/settings)
 	PutOrdersSettings(ctx context.Context, request PutOrdersSettingsRequestObject) (PutOrdersSettingsResponseObject, error)
+	// GetShipment Get a shipment
+	// (GET /api/v1/orders/shipments/{id})
+	GetShipment(ctx context.Context, request GetShipmentRequestObject) (GetShipmentResponseObject, error)
+	// UpdateShipment Save a shipment
+	// (PUT /api/v1/orders/shipments/{id})
+	UpdateShipment(ctx context.Context, request UpdateShipmentRequestObject) (UpdateShipmentResponseObject, error)
+	// BookShipment Book a shipment
+	// (POST /api/v1/orders/shipments/{id}/book)
+	BookShipment(ctx context.Context, request BookShipmentRequestObject) (BookShipmentResponseObject, error)
+	// CancelShipment Cancel a shipment
+	// (POST /api/v1/orders/shipments/{id}/cancel)
+	CancelShipment(ctx context.Context, request CancelShipmentRequestObject) (CancelShipmentResponseObject, error)
+	// GetShipmentLabel Download a shipment's label
+	// (GET /api/v1/orders/shipments/{id}/label)
+	GetShipmentLabel(ctx context.Context, request GetShipmentLabelRequestObject) (GetShipmentLabelResponseObject, error)
+	// GetShipmentRates Get a shipment's prices
+	// (GET /api/v1/orders/shipments/{id}/rates)
+	GetShipmentRates(ctx context.Context, request GetShipmentRatesRequestObject) (GetShipmentRatesResponseObject, error)
+	// GetShipmentWaybill Download a shipment's waybill
+	// (GET /api/v1/orders/shipments/{id}/waybill)
+	GetShipmentWaybill(ctx context.Context, request GetShipmentWaybillRequestObject) (GetShipmentWaybillResponseObject, error)
+	// EstimateShipping Estimate a shipping line
+	// (POST /api/v1/orders/shipping-estimate)
+	EstimateShipping(ctx context.Context, request EstimateShippingRequestObject) (EstimateShippingResponseObject, error)
+	// GetSiteCarrierDefaults Get the default carrier accounts
+	// (GET /api/v1/orders/shipping/site-defaults)
+	GetSiteCarrierDefaults(ctx context.Context, request GetSiteCarrierDefaultsRequestObject) (GetSiteCarrierDefaultsResponseObject, error)
+	// PutSiteCarrierDefaults Save the default carrier accounts
+	// (PUT /api/v1/orders/shipping/site-defaults)
+	PutSiteCarrierDefaults(ctx context.Context, request PutSiteCarrierDefaultsRequestObject) (PutSiteCarrierDefaultsResponseObject, error)
 	// ListOrdersSites List the sites
 	// (GET /api/v1/orders/sites)
 	ListOrdersSites(ctx context.Context, request ListOrdersSitesRequestObject) (ListOrdersSitesResponseObject, error)
@@ -12599,6 +15363,199 @@ func (sh *strictHandler) GetOrdersIntake(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetOrdersIntakeResponseObject); ok {
 		if err := validResponse.VisitGetOrdersIntakeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCarrierAccounts operation middleware
+func (sh *strictHandler) ListCarrierAccounts(w http.ResponseWriter, r *http.Request) {
+	var request ListCarrierAccountsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCarrierAccounts(ctx, request.(ListCarrierAccountsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCarrierAccounts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCarrierAccountsResponseObject); ok {
+		if err := validResponse.VisitListCarrierAccountsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateCarrierAccount operation middleware
+func (sh *strictHandler) CreateCarrierAccount(w http.ResponseWriter, r *http.Request) {
+	var request CreateCarrierAccountRequestObject
+
+	var body CreateCarrierAccountJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateCarrierAccount(ctx, request.(CreateCarrierAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateCarrierAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateCarrierAccountResponseObject); ok {
+		if err := validResponse.VisitCreateCarrierAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCarrierAccount operation middleware
+func (sh *strictHandler) GetCarrierAccount(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetCarrierAccountRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCarrierAccount(ctx, request.(GetCarrierAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCarrierAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCarrierAccountResponseObject); ok {
+		if err := validResponse.VisitGetCarrierAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateCarrierAccount operation middleware
+func (sh *strictHandler) UpdateCarrierAccount(w http.ResponseWriter, r *http.Request, id int64) {
+	var request UpdateCarrierAccountRequestObject
+
+	request.Id = id
+
+	var body UpdateCarrierAccountJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateCarrierAccount(ctx, request.(UpdateCarrierAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateCarrierAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateCarrierAccountResponseObject); ok {
+		if err := validResponse.VisitUpdateCarrierAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPickupPoints operation middleware
+func (sh *strictHandler) ListPickupPoints(w http.ResponseWriter, r *http.Request, id int64, params ListPickupPointsParams) {
+	var request ListPickupPointsRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPickupPoints(ctx, request.(ListPickupPointsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPickupPoints")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPickupPointsResponseObject); ok {
+		if err := validResponse.VisitListPickupPointsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCarrierServices operation middleware
+func (sh *strictHandler) ListCarrierServices(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ListCarrierServicesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCarrierServices(ctx, request.(ListCarrierServicesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCarrierServices")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCarrierServicesResponseObject); ok {
+		if err := validResponse.VisitListCarrierServicesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// VerifyCarrierAccount operation middleware
+func (sh *strictHandler) VerifyCarrierAccount(w http.ResponseWriter, r *http.Request, id int64) {
+	var request VerifyCarrierAccountRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.VerifyCarrierAccount(ctx, request.(VerifyCarrierAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "VerifyCarrierAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(VerifyCarrierAccountResponseObject); ok {
+		if err := validResponse.VisitVerifyCarrierAccountResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -12859,6 +15816,65 @@ func (sh *strictHandler) PostDelivery(w http.ResponseWriter, r *http.Request, id
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostDeliveryResponseObject); ok {
 		if err := validResponse.VisitPostDeliveryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDeliveryShipments operation middleware
+func (sh *strictHandler) ListDeliveryShipments(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ListDeliveryShipmentsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDeliveryShipments(ctx, request.(ListDeliveryShipmentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDeliveryShipments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDeliveryShipmentsResponseObject); ok {
+		if err := validResponse.VisitListDeliveryShipmentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateShipment operation middleware
+func (sh *strictHandler) CreateShipment(w http.ResponseWriter, r *http.Request, id int64) {
+	var request CreateShipmentRequestObject
+
+	request.Id = id
+
+	var body CreateShipmentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateShipment(ctx, request.(CreateShipmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateShipment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateShipmentResponseObject); ok {
+		if err := validResponse.VisitCreateShipmentResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -13487,6 +16503,32 @@ func (sh *strictHandler) SendSalesOrder(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SendSalesOrderResponseObject); ok {
 		if err := validResponse.VisitSendSalesOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListOrderShipments operation middleware
+func (sh *strictHandler) ListOrderShipments(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ListOrderShipmentsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListOrderShipments(ctx, request.(ListOrderShipmentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListOrderShipments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListOrderShipmentsResponseObject); ok {
+		if err := validResponse.VisitListOrderShipmentsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -14166,6 +17208,295 @@ func (sh *strictHandler) PutOrdersSettings(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutOrdersSettingsResponseObject); ok {
 		if err := validResponse.VisitPutOrdersSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetShipment operation middleware
+func (sh *strictHandler) GetShipment(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetShipmentRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetShipment(ctx, request.(GetShipmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetShipment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetShipmentResponseObject); ok {
+		if err := validResponse.VisitGetShipmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateShipment operation middleware
+func (sh *strictHandler) UpdateShipment(w http.ResponseWriter, r *http.Request, id int64) {
+	var request UpdateShipmentRequestObject
+
+	request.Id = id
+
+	var body UpdateShipmentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateShipment(ctx, request.(UpdateShipmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateShipment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateShipmentResponseObject); ok {
+		if err := validResponse.VisitUpdateShipmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BookShipment operation middleware
+func (sh *strictHandler) BookShipment(w http.ResponseWriter, r *http.Request, id int64) {
+	var request BookShipmentRequestObject
+
+	request.Id = id
+
+	var body BookShipmentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BookShipment(ctx, request.(BookShipmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BookShipment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BookShipmentResponseObject); ok {
+		if err := validResponse.VisitBookShipmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelShipment operation middleware
+func (sh *strictHandler) CancelShipment(w http.ResponseWriter, r *http.Request, id int64) {
+	var request CancelShipmentRequestObject
+
+	request.Id = id
+
+	var body CancelShipmentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelShipment(ctx, request.(CancelShipmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelShipment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelShipmentResponseObject); ok {
+		if err := validResponse.VisitCancelShipmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetShipmentLabel operation middleware
+func (sh *strictHandler) GetShipmentLabel(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetShipmentLabelRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetShipmentLabel(ctx, request.(GetShipmentLabelRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetShipmentLabel")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetShipmentLabelResponseObject); ok {
+		if err := validResponse.VisitGetShipmentLabelResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetShipmentRates operation middleware
+func (sh *strictHandler) GetShipmentRates(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetShipmentRatesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetShipmentRates(ctx, request.(GetShipmentRatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetShipmentRates")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetShipmentRatesResponseObject); ok {
+		if err := validResponse.VisitGetShipmentRatesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetShipmentWaybill operation middleware
+func (sh *strictHandler) GetShipmentWaybill(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetShipmentWaybillRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetShipmentWaybill(ctx, request.(GetShipmentWaybillRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetShipmentWaybill")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetShipmentWaybillResponseObject); ok {
+		if err := validResponse.VisitGetShipmentWaybillResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EstimateShipping operation middleware
+func (sh *strictHandler) EstimateShipping(w http.ResponseWriter, r *http.Request) {
+	var request EstimateShippingRequestObject
+
+	var body EstimateShippingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EstimateShipping(ctx, request.(EstimateShippingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EstimateShipping")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EstimateShippingResponseObject); ok {
+		if err := validResponse.VisitEstimateShippingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSiteCarrierDefaults operation middleware
+func (sh *strictHandler) GetSiteCarrierDefaults(w http.ResponseWriter, r *http.Request) {
+	var request GetSiteCarrierDefaultsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSiteCarrierDefaults(ctx, request.(GetSiteCarrierDefaultsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSiteCarrierDefaults")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSiteCarrierDefaultsResponseObject); ok {
+		if err := validResponse.VisitGetSiteCarrierDefaultsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutSiteCarrierDefaults operation middleware
+func (sh *strictHandler) PutSiteCarrierDefaults(w http.ResponseWriter, r *http.Request) {
+	var request PutSiteCarrierDefaultsRequestObject
+
+	var body PutSiteCarrierDefaultsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutSiteCarrierDefaults(ctx, request.(PutSiteCarrierDefaultsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutSiteCarrierDefaults")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutSiteCarrierDefaultsResponseObject); ok {
+		if err := validResponse.VisitPutSiteCarrierDefaultsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
