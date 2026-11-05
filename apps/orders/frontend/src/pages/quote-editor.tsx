@@ -667,6 +667,7 @@ const AcceptDialog = ({
     endDate: null,
     noticeMonths: 0,
     invoiceDay: "",
+    finalPeriod: null,
   });
   const [lateOk, setLateOk] = useState(quote.status !== "expired");
   return (

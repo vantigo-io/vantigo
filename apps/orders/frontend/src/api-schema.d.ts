@@ -949,7 +949,7 @@ export interface paths {
         put?: never;
         /**
          * End a subscription
-         * @description Sets the end date (O44): its period is the last one billed. The end must be on or after the last day of the last period with a live allocation (end_before_billed), or the user credits first. Publishes orders.subscription.ended.v1.
+         * @description Sets the end date (O44): its period is the last one billed, in full or pro-rated to the end as finalPeriod — or, absent, the subscription's own — says, and the choice is stored and logged. No period with a live allocation may start after the end (end_before_billed), and a final period with a live allocation is not pro-rated (final_period_billed): the user credits first. Publishes orders.subscription.ended.v1.
          */
         post: operations["endSubscription"];
         delete?: never;
@@ -1364,10 +1364,11 @@ export interface components {
             /** Format: int32 */
             version: number;
         };
-        /** @description End a subscription (O44): endDate's period is the last one billed. */
+        /** @description End a subscription (O44): endDate's period is the last one billed, as finalPeriod says; absent is the subscription's own finalPeriod. The choice is stored on the subscription. */
         OrdersEndInput: {
             /** Format: date */
             endDate: string;
+            finalPeriod?: components["schemas"]["OrdersFinalPeriod"];
             /**
              * Format: date-time
              * @description The updatedAt of the subscription as the client read it: the write is refused with version_conflict when it was written since (every write moves it).
@@ -1376,6 +1377,11 @@ export interface components {
             /** Format: int32 */
             version: number;
         };
+        /**
+         * @description How a subscription bills the period its end falls in when the end is not the period's last day (owner, 2026-11-06): full, the whole period; prorated, by its days from the period's start to the end, inclusive, over the full period's days, to øre.
+         * @enum {string}
+         */
+        OrdersFinalPeriod: "full" | "prorated";
         /** @description One axis of the grid: the option's name and its values. */
         OrdersGridOption: {
             name: string;
@@ -2132,6 +2138,7 @@ export interface components {
             /** @description The channels sendChannelId may name: the active mail channels as Communications answers them (contracts.OutboundMail), with whether each can send now. Empty when Communications is off. */
             sendChannels: components["schemas"]["OrdersSendChannel"][];
             sendingAvailable: boolean;
+            subscriptionFinalPeriodDefault: components["schemas"]["OrdersFinalPeriod"];
         };
         /** @description Orders' settings, replaced whole. revision is the one the client read. */
         OrdersSettingsInput: {
@@ -2150,6 +2157,7 @@ export interface components {
             revision: number;
             /** Format: uuid */
             sendChannelId?: string | null;
+            subscriptionFinalPeriodDefault?: components["schemas"]["OrdersFinalPeriod"];
         };
         /** @description A template line left out. */
         OrdersSkippedLine: {
@@ -2215,6 +2223,7 @@ export interface components {
             endDate?: string | null;
             /** Format: date-time */
             endedAt?: string | null;
+            finalPeriod: components["schemas"]["OrdersFinalPeriod"];
             /** Format: int64 */
             id: number;
             internalNote: string;
@@ -2256,6 +2265,7 @@ export interface components {
             billing: "in_advance" | "in_arrears";
             /** Format: date */
             endDate?: string | null;
+            finalPeriod?: components["schemas"]["OrdersFinalPeriod"];
             /** @enum {string} */
             interval: "monthly" | "quarterly" | "half_yearly" | "yearly";
             /**
@@ -2301,7 +2311,7 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
-        /** @description One billing period (O43): its first and last day, whether it is a partial first period, what it bills net of VAT, and its state — invoiced (every line's period on an issued invoice), draft (on a draft invoice), skipped (by a pause), paused (after the pause), due (today, not yet on an invoice) or upcoming. invoiceNumbers are the invoices that billed it. */
+        /** @description One billing period (O43): its first and last day, whether it is partial — a first period from a start that is not the first of a month, or a final period pro-rated to the end — what it bills net of VAT, and its state — invoiced (every line's period on an issued invoice), draft (on a draft invoice), skipped (by a pause), paused (after the pause), due (today, not yet on an invoice) or upcoming. invoiceNumbers are the invoices that billed it. */
         OrdersSubscriptionPeriod: {
             /** Format: double */
             amount: number;
@@ -2323,6 +2333,7 @@ export interface components {
             billing: "in_advance" | "in_arrears";
             /** Format: date */
             endDate?: string | null;
+            finalPeriod?: components["schemas"]["OrdersFinalPeriod"];
             /** @enum {string} */
             interval: "monthly" | "quarterly" | "half_yearly" | "yearly";
             /**
@@ -2367,7 +2378,7 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
-        /** @description Save a subscription (O44). A draft takes everything. An active or paused one takes the header's texts, references, contact and noticeMonths, and lines as they are to be from effectiveFrom on; its interval, billing, start and end are kept (end it with end). Lines named by id are kept when unchanged. */
+        /** @description Save a subscription (O44). A draft takes everything. An active or paused one takes the header's texts, references, contact, noticeMonths and finalPeriod, and lines as they are to be from effectiveFrom on; its interval, billing, start and end are kept (end it with end). Lines named by id are kept when unchanged. */
         OrdersSubscriptionUpdate: {
             /**
              * @description in_advance bills a period when its first day is due, in_arrears when its last day is (O43).
@@ -2376,6 +2387,7 @@ export interface components {
             billing?: "in_advance" | "in_arrears";
             /** Format: date */
             endDate?: string | null;
+            finalPeriod?: components["schemas"]["OrdersFinalPeriod"];
             /** @enum {string} */
             interval?: "monthly" | "quarterly" | "half_yearly" | "yearly";
             /**
@@ -5650,7 +5662,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, change_in_billed_period, subscription_not_editable, line_kind_changed. */
+            /** @description Conflict — version_conflict, change_in_billed_period, subscription_not_editable, line_kind_changed, final_period_billed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5904,7 +5916,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, subscription_not_active, end_before_billed. */
+            /** @description Conflict — version_conflict, subscription_not_active, end_before_billed, final_period_billed. */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -187,6 +187,63 @@ describe("the subscriptions", () => {
     expect(await screen.findByText("The subscription is paused")).toBeInTheDocument();
   });
 
+  it("ends with the final period asked, pre-selected from the subscription's own", async () => {
+    const fake = server(active({ finalPeriod: "prorated" }), (call) =>
+      call.url === `${url}/end`
+        ? jsonResponse(200, active({ status: "ended", endDate: "2026-12-15", finalPeriod: "full", version: 3 }))
+        : undefined,
+    );
+    renderRoute("/orders/subscriptions/3001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "End" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("radio", { name: "Pro-rated to the end date" })).toBeChecked();
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "End" }), "15 Dec 2026");
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Full period" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "End" }));
+    await waitFor(() =>
+      expect(fake.sent("POST", `${url}/end`)?.body).toEqual({
+        version: 2,
+        expectedUpdatedAt: "2026-11-01T08:00:00Z",
+        endDate: "2026-12-15",
+        finalPeriod: "full",
+      }),
+    );
+    expect(await screen.findByText("The subscription has its end")).toBeInTheDocument();
+  });
+
+  it("says why a pro-rated final period was refused", async () => {
+    server(active(), (call) => (call.url === `${url}/end` ? refusal(409, "final_period_billed") : undefined));
+    renderRoute("/orders/subscriptions/3001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "End" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "End" }), "15 Nov 2026");
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Pro-rated to the end date" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "End" }));
+    expect(
+      await screen.findByText(
+        "The final period is already on an invoice or a draft invoice and cannot be pro-rated. Bill it in full, or credit it first.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("saves an active subscription's final period with its plan", async () => {
+    const fake = server(active(), (call) =>
+      call.method === "PUT" && call.url === url
+        ? jsonResponse(200, active({ finalPeriod: "prorated", version: 3, updatedAt: "2026-11-05T09:00:00Z" }))
+        : undefined,
+    );
+    renderRoute("/orders/subscriptions/3001");
+
+    await userEvent.click(await screen.findByRole("combobox", { name: "Final period when a subscription ends" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Pro-rated to the end date" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(fake.sent("PUT", url)).toBeDefined());
+    expect(fake.sent("PUT", url)?.body).toMatchObject({ version: 2, finalPeriod: "prorated" });
+  });
+
   it("offers no steps to a reader", async () => {
     server(active());
     renderRoute("/orders/subscriptions/3001", { canManageSubscriptions: false });

@@ -1,24 +1,29 @@
 import { Group, NumberInput, SegmentedControl, Select, Stack, Text } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
-import type { SubscriptionBilling, SubscriptionInterval } from "../api/types";
+import type { FinalPeriod, SubscriptionBilling, SubscriptionInterval } from "../api/types";
 import { useOrdersFormat } from "../lib/format";
-import { INTERVALS, type PlanState } from "../lib/plan";
+import { FINAL_PERIODS, INTERVALS, type PlanState } from "../lib/plan";
 
 /**
  * A subscription's plan (O42): the interval, billing in advance or in
- * arrears, the start, an optional end, the notice in months and the invoice
- * day. Periods run from the first of the start's month; a start on another
- * day makes the first period partial and pro-rated.
+ * arrears, the start, an optional end, the notice in months, the invoice
+ * day and how the period an end falls in is billed — in full or pro-rated to
+ * the end. Periods run from the first of the start's month; a start on
+ * another day makes the first period partial and pro-rated. The final period
+ * stays editable on an activated subscription (`finalPeriodEditable`); left
+ * empty on a new one, it is the settings' default.
  */
 export const PlanFields = ({
   plan,
   onChange,
   disabled = false,
+  finalPeriodEditable = !disabled,
   errors = {},
 }: {
   plan: PlanState;
   onChange: (patch: Partial<PlanState>) => void;
   disabled?: boolean;
+  finalPeriodEditable?: boolean;
   errors?: Record<string, string>;
 }) => {
   const { t } = useOrdersFormat();
@@ -92,6 +97,18 @@ export const PlanFields = ({
           value={plan.invoiceDay}
           onChange={(value) => onChange({ invoiceDay: value === "" ? "" : Number(value) })}
           error={errors.invoiceDay}
+        />
+        <Select
+          label={t("finalPeriodLabel")}
+          w={220}
+          clearable={plan.finalPeriod === null}
+          placeholder={t("finalPeriodFromSettings")}
+          disabled={!finalPeriodEditable}
+          data={FINAL_PERIODS.map((value) => ({ value, label: t(`finalPeriod.${value}`) }))}
+          value={plan.finalPeriod}
+          onChange={(value) => onChange({ finalPeriod: (value as FinalPeriod | null) ?? null })}
+          error={errors.finalPeriod}
+          data-assist="orders.subscription.final-period"
         />
       </Group>
       {plan.startDate && !plan.startDate.endsWith("-01") && (

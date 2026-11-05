@@ -49,6 +49,11 @@ export const ChangeLog = ({ changes, lines }: { changes: readonly Change[]; line
                       ? t(`changeAction.${action.kind}`)
                       : action.kind;
                     const line = lineName(action.lineId);
+                    // A final period's values are words of their own (owner, 2026-11-06).
+                    const value = (v?: string | null) =>
+                      v != null && action.kind === "final_period" && hasWords(`finalPeriod.${v}`)
+                        ? t(`finalPeriod.${v}`)
+                        : v;
                     return (
                       <Text size="sm" key={index}>
                         {words}
@@ -60,7 +65,7 @@ export const ChangeLog = ({ changes, lines }: { changes: readonly Change[]; line
                         )}
                         {(action.from != null || action.to != null) && (
                           <Text span ff="monospace" size="xs" ml={6}>
-                            {action.from ?? "—"} → {action.to ?? "—"}
+                            {value(action.from) ?? "—"} → {value(action.to) ?? "—"}
                           </Text>
                         )}
                       </Text>
