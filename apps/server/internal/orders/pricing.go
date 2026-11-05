@@ -92,14 +92,19 @@ type pricedLine struct {
 	discount          *big.Rat
 	packagingID       *int32
 	packagingQuantity *big.Rat
-	priceSource       *string
-	vatCodeID         *int32
-	vatCode           *string
-	vatRate           *big.Rat
-	vatCategory       *string
-	amounts           docmath.LineAmounts
-	externalLineID    *string
-	optional          bool
+	// packagingName is the packaging's name when the line was entered in
+	// one, kept for the PDF (O15); productID the variant's product, kept for
+	// the warnings and the analysis (O33, O35).
+	packagingName  *string
+	productID      *int32
+	priceSource    *string
+	vatCodeID      *int32
+	vatCode        *string
+	vatRate        *big.Rat
+	vatCategory    *string
+	amounts        docmath.LineAmounts
+	externalLineID *string
+	optional       bool
 	// frozen is a confirmed order's kept line priced from its own row
 	// (keptFrozen): its variant is held by lockLines, not judged.
 	frozen bool
@@ -111,7 +116,8 @@ func pricedLineOf(l store.OrdersLine) pricedLine {
 	return pricedLine{
 		kind: l.Kind, variantID: l.VariantID, sku: l.Sku, name: l.Name, unit: l.Unit, description: l.Description,
 		quantity: ratOf(l.Quantity), unitPrice: ratOf(l.UnitPrice), discount: ratOrZero(l.DiscountPercent),
-		packagingID: l.PackagingID, packagingQuantity: ratOf(l.PackagingQuantity), priceSource: l.PriceSource,
+		packagingID: l.PackagingID, packagingQuantity: ratOf(l.PackagingQuantity), packagingName: l.PackagingName,
+		productID: l.ProductID, priceSource: l.PriceSource,
 		vatCodeID: l.VatCodeID, vatCode: l.VatCode, vatRate: ratOf(l.VatRatePercent), vatCategory: l.VatCategory,
 		amounts: docmath.LineAmounts{
 			Gross: ratOrZero(l.LineGross), Allowance: ratOrZero(l.LineAllowance), Net: ratOrZero(l.LineNet),
@@ -359,7 +365,7 @@ func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOpt
 	var variant *contracts.VariantEntry
 	switch {
 	case frozen && old.VariantID != nil:
-		p.variantID, p.sku, p.name, p.unit = old.VariantID, old.Sku, old.Name, old.Unit
+		p.variantID, p.sku, p.name, p.unit, p.productID = old.VariantID, old.Sku, old.Name, old.Unit, old.ProductID
 	case l.variantID != nil:
 		v, ok := r.variants[*l.variantID]
 		if !ok {
@@ -367,6 +373,7 @@ func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOpt
 		}
 		variant = &v
 		p.variantID = &v.ID
+		p.productID = &v.ProductID
 		p.sku = textPtr(v.SKU)
 		p.name = textPtr(v.ProductName)
 		p.unit = v.Unit
@@ -453,7 +460,7 @@ func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOpt
 			return p, codeQuantityInvalid, msg
 		}
 		size := new(big.Rat).Quo(ratOf(old.Quantity), ratOf(old.PackagingQuantity))
-		p.packagingID, p.packagingQuantity = old.PackagingID, count
+		p.packagingID, p.packagingQuantity, p.packagingName = old.PackagingID, count, old.PackagingName
 		p.quantity = new(big.Rat).Mul(count, size)
 		if p.quantity.Cmp(maxQuantity) > 0 {
 			return p, codeQuantityInvalid, "The quantity is too large."
@@ -478,7 +485,7 @@ func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOpt
 		if msg != "" {
 			return p, codeQuantityInvalid, msg
 		}
-		p.packagingID, p.packagingQuantity = &pack.ID, count
+		p.packagingID, p.packagingQuantity, p.packagingName = &pack.ID, count, textPtr(pack.Name)
 		p.quantity = new(big.Rat).Mul(count, mustRat(pack.Quantity))
 		if p.quantity.Cmp(maxQuantity) > 0 {
 			return p, codeQuantityInvalid, "The quantity is too large."

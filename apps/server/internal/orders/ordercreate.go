@@ -122,7 +122,7 @@ func (s *server) createOrder(ctx context.Context, _ pgx.Tx, txq *store.Queries, 
 // orders.sales_order.confirmed.v1 on tx, and answers the order as it now is.
 // It makes no call out of the module: the customer's billing profile was read
 // before the transaction and rides in as customer. lifecycle.go sets it.
-var confirmOrderTx func(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, order store.OrdersOrder, lines []store.OrdersLine,
+var confirmOrderTx func(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, order store.OrdersOrder, lines []store.OrdersLine, o warningOverride,
 	by actor, customer *contracts.CustomerBillingProfile) (store.OrdersOrder, error)
 
 // afterOrderConfirmed is what follows a confirmation's commit, outside any
@@ -131,8 +131,9 @@ var confirmOrderTx func(ctx context.Context, s *server, tx pgx.Tx, txq *store.Qu
 // confirm produced. lifecycle.go sets it.
 var afterOrderConfirmed func(ctx context.Context, s *server, order store.OrdersOrder, body []byte)
 
-// orderView is an order with its lines as the API answers it (O13, O18).
-func orderView(o store.OrdersOrder, lines []store.OrdersLine) gen.OrdersOrder {
+// orderView is an order with its lines as the API answers it (O13, O18),
+// with the sales warnings that apply to it (documentWarnings).
+func orderView(o store.OrdersOrder, lines []store.OrdersLine, warnings []gen.OrdersWarning) gen.OrdersOrder {
 	h := headerOfOrder(o)
 	return gen.OrdersOrder{
 		Id: o.ID, Number: o.Number, Status: gen.OrdersOrderStatus(o.Status), OnHold: o.OnHold, HoldReason: o.HoldReason,
@@ -151,7 +152,7 @@ func orderView(o store.OrdersOrder, lines []store.OrdersLine) gen.OrdersOrder {
 		CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt, ProjectId: o.ProjectID,
 		Salesperson: personOut(o.SalespersonID, o.SalespersonDisplay), DeliveryDate: dateOut(o.DeliveryDate),
 		ConfirmedAt: o.ConfirmedAt, ConfirmedBy: personOut(o.ConfirmedByUserID, o.ConfirmedByDisplay), CancelledAt: o.CancelledAt,
-		SourceQuoteId: sourceQuoteID(o),
+		SourceQuoteId: sourceQuoteID(o), Warnings: warningsOrEmpty(warnings),
 	}
 }
 

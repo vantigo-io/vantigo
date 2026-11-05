@@ -316,3 +316,19 @@ func (s *server) searchVariants(ctx context.Context, q string, search contracts.
 	}
 	return v, nil
 }
+
+// variantsOfProduct is every variant of a product in the catalog's order,
+// none when the product does not exist (O33, O34), before any transaction.
+func (s *server) variantsOfProduct(ctx context.Context, productID int32) ([]contracts.VariantEntry, error) {
+	if err := noteContractCall(ctx, "Products.VariantsOfProduct"); err != nil {
+		return nil, err
+	}
+	if s.deps.Products == nil {
+		return nil, errDependencyUnavailable
+	}
+	v, err := s.deps.Products.VariantsOfProduct(ctx, productID)
+	if err != nil {
+		return nil, fmt.Errorf("orders: read product %d's variants: %w", productID, err)
+	}
+	return v, nil
+}

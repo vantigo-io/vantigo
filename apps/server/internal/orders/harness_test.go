@@ -83,6 +83,8 @@ const (
 	catFood     int32 = 20 // → code 31, S 15 %
 	catUnmapped int32 = 30 // mapped to no code
 
+	catHardware int32 = 5 // the bolt's product category
+
 	codeStandard int32 = 3
 	codeFood     int32 = 31
 	codeZero     int32 = 6
@@ -118,6 +120,7 @@ func seed(h *harness) {
 	}
 	bolt := variant(varBolt, "BOLT-M8", "Bolt M8", catStandard)
 	bolt.Description = "Galvanised"
+	bolt.CategoryID, bolt.CategoryName = i32(catHardware), "Hardware"
 	bolt.Packagings = []contracts.PackagingEntry{{ID: packCase, Name: "Case", Kind: "case", Quantity: "15.000"}}
 	old := variant(varOld, "OLD-1", "Old thing", catStandard)
 	old.ProductStatus = "Discontinued"

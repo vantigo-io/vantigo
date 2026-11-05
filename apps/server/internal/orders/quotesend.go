@@ -206,6 +206,7 @@ func (s *server) SendQuote(ctx context.Context, req gen.SendQuoteRequestObject) 
 	}
 	f := s.unknownProperties(ctx, sendInputSchema)
 	send := readSendRequest(&f, *req.Body)
+	override := s.readOverride(ctx, &f, req.Body.OverrideWarnings, req.Body.OverrideReason)
 	if req.Body.Revision == nil {
 		f.add("revision", "A quote's send names the revision it was read at")
 	}
@@ -219,7 +220,7 @@ func (s *server) SendQuote(ctx context.Context, req gen.SendQuoteRequestObject) 
 	if !ok {
 		return answer(sendingDisabled(), resp)
 	}
-	out, err := s.freezeQuote(ctx, req.Id, *req.Body.Revision, req.Body.ExpectedUpdatedAt, req.Body.ValidUntil, &quoteMail{channel: channel, req: send})
+	out, err := s.freezeQuote(ctx, req.Id, *req.Body.Revision, req.Body.ExpectedUpdatedAt, req.Body.ValidUntil, &quoteMail{channel: channel, req: send}, override)
 	if err != nil {
 		return answer(err, resp)
 	}
@@ -238,10 +239,12 @@ func (s *server) MarkQuoteSent(ctx context.Context, req gen.MarkQuoteSentRequest
 			return gen.MarkQuoteSent409ApplicationProblemPlusJSONResponse(p)
 		},
 	}
-	if f := s.unknownProperties(ctx, markSentInputSchema); f.failed() {
+	f := s.unknownProperties(ctx, markSentInputSchema)
+	override := s.readOverride(ctx, &f, req.Body.OverrideWarnings, req.Body.OverrideReason)
+	if f.failed() {
 		return gen.MarkQuoteSent400ApplicationProblemPlusJSONResponse(invalid(invalidSendTitle, f)), nil
 	}
-	out, err := s.freezeQuote(ctx, req.Id, req.Body.Revision, req.Body.ExpectedUpdatedAt, req.Body.ValidUntil, nil)
+	out, err := s.freezeQuote(ctx, req.Id, req.Body.Revision, req.Body.ExpectedUpdatedAt, req.Body.ValidUntil, nil, override)
 	if err != nil {
 		return answer(err, resp)
 	}
@@ -262,7 +265,12 @@ type quoteMail struct {
 // logged and orders.quote.sent.v1 published. A quote that changed while it
 // was being sent is refused (version_conflict); a mail that went out is
 // still logged.
-func (s *server) freezeQuote(ctx context.Context, id int64, revision int32, expected time.Time, validUntilIn *openapi_types.Date, m *quoteMail) (gen.OrdersQuote, error) {
+//
+// A block warning on the quote's customer or its products refuses it
+// (blocked_by_warning) before anything is printed or mailed, and again under
+// the quote's lock, unless o overrides it; an override is appended to the
+// quote's internal note (O33).
+func (s *server) freezeQuote(ctx context.Context, id int64, revision int32, expected time.Time, validUntilIn *openapi_types.Date, m *quoteMail, o warningOverride) (gen.OrdersQuote, error) {
 	q := store.New(s.deps.Pool)
 	quote, err := q.GetQuote(ctx, id)
 	if noRows(err) {
@@ -280,6 +288,9 @@ func (s *server) freezeQuote(ctx context.Context, id int64, revision int32, expe
 	}
 	if failures := sendable(lines); len(failures) > 0 {
 		return gen.OrdersQuote{}, refuseLines(invalidSendTitle, failures)
+	}
+	if _, err := judgeWarnings(ctx, q, quote.CustomerID, lines, o); err != nil {
+		return gen.OrdersQuote{}, err
 	}
 	zone, err := s.businessZone(ctx)
 	if err != nil {
@@ -363,6 +374,16 @@ func (s *server) freezeQuote(ctx context.Context, id int64, revision int32, expe
 			return conflict(codeVersionConflict, "The quote changed",
 				"The quote was saved while it was being sent; nothing was frozen. Reload it and send it again.")
 		}
+		overridden, err := judgeWarnings(ctx, txq, locked.CustomerID, lines, o)
+		if err != nil {
+			return err
+		}
+		if len(overridden) > 0 {
+			note := overrideNote(locked.InternalNote, overridden, o.reason, by, now, zone, locked.Language)
+			if err := txq.SetQuoteInternalNote(ctx, store.SetQuoteInternalNoteParams{ID: id, InternalNote: note}); err != nil {
+				return fmt.Errorf("orders: note quote %d's override: %w", id, err)
+			}
+		}
 		row, err := txq.SetQuoteSent(ctx, store.SetQuoteSentParams{ID: id, Now: &now, ValidUntil: pgtype.Date{Time: validUntil, Valid: true}})
 		if err != nil {
 			return fmt.Errorf("orders: mark quote %d sent: %w", id, err)
@@ -382,7 +403,11 @@ func (s *server) freezeQuote(ctx context.Context, id int64, revision int32, expe
 		}, now); err != nil {
 			return err
 		}
-		out = quoteView(row, lines, nil)
+		warnings, err := documentWarnings(ctx, txq, row.CustomerID, lines)
+		if err != nil {
+			return err
+		}
+		out = quoteView(row, lines, nil, warnings)
 		return nil
 	})
 	if err != nil && sent != nil {

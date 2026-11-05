@@ -50,8 +50,9 @@ func quoteSource(id int64, revision int32) string {
 }
 
 // quoteView is a quote with its lines as the API answers it. acceptedNumber
-// is the number of the document it was accepted into, when it was.
-func quoteView(q store.OrdersQuote, lines []store.OrdersLine, acceptedNumber *int64) gen.OrdersQuote {
+// is the number of the document it was accepted into, when it was; warnings
+// are the sales warnings that apply to it (documentWarnings).
+func quoteView(q store.OrdersQuote, lines []store.OrdersLine, acceptedNumber *int64, warnings []gen.OrdersWarning) gen.OrdersQuote {
 	h := headerOfQuote(q)
 	out := gen.OrdersQuote{
 		Id: q.ID, Number: q.Number, Status: gen.OrdersQuoteStatus(q.Status), Revision: q.Revision,
@@ -67,7 +68,7 @@ func quoteView(q store.OrdersQuote, lines []store.OrdersLine, acceptedNumber *in
 		CreatedAt: q.CreatedAt, UpdatedAt: q.UpdatedAt, ProjectId: q.ProjectID,
 		Salesperson: personOut(q.SalespersonID, q.SalespersonDisplay), DeliveryDate: dateOut(q.DeliveryDate),
 		ValidUntil: dateOut(q.ValidUntil), SentAt: q.SentAt, AcceptedAt: q.AcceptedAt, DeclinedAt: q.DeclinedAt,
-		DeclineReason: q.DeclineReason, CancelledAt: q.CancelledAt,
+		DeclineReason: q.DeclineReason, CancelledAt: q.CancelledAt, Warnings: warningsOrEmpty(warnings),
 	}
 	if q.AcceptedIntoKind != nil && q.AcceptedIntoID != nil && acceptedNumber != nil {
 		out.AcceptedInto = &gen.OrdersDocumentRef{Kind: gen.OrdersDocumentRefKind(*q.AcceptedIntoKind), Id: *q.AcceptedIntoID, Number: *acceptedNumber}
@@ -92,7 +93,11 @@ func readQuoteView(ctx context.Context, q *store.Queries, row store.OrdersQuote)
 			return gen.OrdersQuote{}, fmt.Errorf("orders: read quote %d's order: %w", row.ID, err)
 		}
 	}
-	return quoteView(row, lines, accepted), nil
+	warnings, err := documentWarnings(ctx, q, row.CustomerID, lines)
+	if err != nil {
+		return gen.OrdersQuote{}, err
+	}
+	return quoteView(row, lines, accepted, warnings), nil
 }
 
 // getQuoteView reads a quote and answers it, notFound when there is none.
@@ -373,7 +378,11 @@ func (s *server) CreateQuote(ctx context.Context, req gen.CreateQuoteRequestObje
 		if err != nil {
 			return err
 		}
-		out = quoteView(row, lines, nil)
+		warnings, err := documentWarnings(ctx, txq, row.CustomerID, lines)
+		if err != nil {
+			return err
+		}
+		out = quoteView(row, lines, nil, warnings)
 		return nil
 	})
 	if db.IsUniqueViolation(err, "ux_quotes_client_request") {
@@ -494,7 +503,11 @@ func (s *server) UpdateQuote(ctx context.Context, req gen.UpdateQuoteRequestObje
 		if err != nil {
 			return err
 		}
-		out = quoteView(row, lines, nil)
+		warnings, err := documentWarnings(ctx, txq, row.CustomerID, lines)
+		if err != nil {
+			return err
+		}
+		out = quoteView(row, lines, nil, warnings)
 		return nil
 	})
 	if err != nil {
@@ -831,7 +844,11 @@ func (s *server) CopyQuote(ctx context.Context, req gen.CopyQuoteRequestObject) 
 		if err != nil {
 			return err
 		}
-		out = quoteView(row, lines, nil)
+		warnings, err := documentWarnings(ctx, txq, row.CustomerID, lines)
+		if err != nil {
+			return err
+		}
+		out = quoteView(row, lines, nil, warnings)
 		return nil
 	})
 	if err != nil {

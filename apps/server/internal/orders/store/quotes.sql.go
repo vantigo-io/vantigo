@@ -1080,6 +1080,22 @@ func (q *Queries) ReviseQuoteRow(ctx context.Context, arg ReviseQuoteRowParams) 
 	return i, err
 }
 
+const setQuoteInternalNote = `-- name: SetQuoteInternalNote :exec
+UPDATE orders.quotes SET internal_note = $1 WHERE id = $2
+`
+
+type SetQuoteInternalNoteParams struct {
+	InternalNote string
+	ID           int64
+}
+
+// SetQuoteInternalNote writes a quote's internal note: a send that overrides
+// a block warning appends its reason there (O33). The caller holds the row.
+func (q *Queries) SetQuoteInternalNote(ctx context.Context, arg SetQuoteInternalNoteParams) error {
+	_, err := q.db.Exec(ctx, setQuoteInternalNote, arg.InternalNote, arg.ID)
+	return err
+}
+
 const setQuoteSent = `-- name: SetQuoteSent :one
 UPDATE orders.quotes
 SET status = 'sent', sent_at = $1, valid_until = $2, updated_at = $1

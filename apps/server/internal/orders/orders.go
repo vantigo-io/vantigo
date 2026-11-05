@@ -49,6 +49,9 @@ const (
 	actionUnlocked           = "unlocked"
 	actionDeliveredMarked    = "delivered_marked"
 	actionDeliveredUndone    = "delivered_undone"
+	// actionWarningOverridden is a block warning overridden at confirm
+	// (O33): from is the warning, to the reason.
+	actionWarningOverridden = "warning_overridden"
 )
 
 // changeAction is one typed action of a change log entry: its kind, the line
@@ -155,7 +158,11 @@ func (s *server) getOrderView(ctx context.Context, id int64) (gen.OrdersOrder, e
 		if err != nil {
 			return err
 		}
-		out = orderView(o, lines)
+		warnings, err := documentWarnings(ctx, q, o.CustomerID, lines)
+		if err != nil {
+			return err
+		}
+		out = orderView(o, lines, warnings)
 		return nil
 	})
 	return out, err

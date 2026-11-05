@@ -41,9 +41,10 @@ func TestCustomerReferenceHolder_RepointsQuotesAndOrders(t *testing.T) {
 		moved, err = holder.RepointCustomer(ctx, tx, custPerson, custBusiness)
 		return err
 	})
-	if len(moved) != 2 || moved[0] != (contracts.RepointedReferences{Kind: "orders.quotes", Count: 1}) ||
-		moved[1] != (contracts.RepointedReferences{Kind: "orders.orders", Count: 1}) {
-		t.Errorf("moved %+v; want one quote and one order", moved)
+	if len(moved) != 3 || moved[0] != (contracts.RepointedReferences{Kind: "orders.quotes", Count: 1}) ||
+		moved[1] != (contracts.RepointedReferences{Kind: "orders.orders", Count: 1}) ||
+		moved[2] != (contracts.RepointedReferences{Kind: "orders.warnings"}) {
+		t.Errorf("moved %+v; want one quote, one order and no warning", moved)
 	}
 	res := c.Do(http.MethodGet, orderPath(o.Id), nil)
 	mustStatus(t, res, http.StatusOK, "get")
@@ -127,7 +128,10 @@ func TestCustomerPersonalData_EraseAndRetention(t *testing.T) {
 		erased, err = data.EraseCustomerData(ctx, tx, custPerson)
 		return err
 	})
-	want := []contracts.ErasedData{{Kind: "orders.quotes", Count: 1}, {Kind: "orders.draftOrders", Count: 1}, {Kind: "orders.orders"}, {Kind: "orders.mailings", Count: 1}}
+	want := []contracts.ErasedData{
+		{Kind: "orders.quotes", Count: 1}, {Kind: "orders.draftOrders", Count: 1}, {Kind: "orders.orders"}, {Kind: "orders.mailings", Count: 1},
+		{Kind: "orders.warnings"},
+	}
 	if len(erased) != len(want) {
 		t.Fatalf("erased %+v, want %+v", erased, want)
 	}

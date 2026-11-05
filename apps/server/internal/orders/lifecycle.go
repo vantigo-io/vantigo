@@ -60,7 +60,11 @@ func customerConfirmable(p *contracts.CustomerBillingProfile) error {
 // confirmTx is confirmOrderTx (ordercreate.go): the judge and the write of a
 // confirm on the caller's transaction, which holds the order's row and its
 // lines' variants.
-func confirmTx(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, order store.OrdersOrder, lines []store.OrdersLine,
+//
+// A block warning on the order's customer or its products refuses it
+// (blocked_by_warning) unless o overrides it; an override is logged on the
+// order's change log at the confirmed version (O33).
+func confirmTx(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, order store.OrdersOrder, lines []store.OrdersLine, o warningOverride,
 	by actor, customer *contracts.CustomerBillingProfile) (store.OrdersOrder, error) {
 	if order.Status != orderDraft {
 		return order, conflict(codeOrderNotDraft, "The order is not a draft",
@@ -81,10 +85,17 @@ func confirmTx(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, or
 	if failures := sendable(lines); len(failures) > 0 {
 		return order, refuseLines(invalidConfirmTitle, failures)
 	}
+	overridden, err := judgeWarnings(ctx, txq, order.CustomerID, lines, o)
+	if err != nil {
+		return order, err
+	}
 	now := s.deps.Clock()
 	row, err := txq.ConfirmOrderRow(ctx, store.ConfirmOrderRowParams{ID: order.ID, Now: &now, ByUserID: by.id, ByDisplay: by.display})
 	if err != nil {
 		return order, fmt.Errorf("orders: confirm order %d: %w", order.ID, err)
+	}
+	if err := logChange(ctx, txq, row.ID, row.Version, by, now, overrideActions(overridden, o.reason)); err != nil {
+		return row, err
 	}
 	if err := events.Publish(ctx, tx, moduleName, contracts.SalesOrderConfirmed{
 		OrderID: row.ID, Number: row.Number, Version: row.Version, CustomerID: row.CustomerID, Currency: row.Currency,
@@ -126,7 +137,9 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 		func(p gen.OrdersProblem) gen.ConfirmSalesOrderResponseObject {
 			return gen.ConfirmSalesOrder409ApplicationProblemPlusJSONResponse(p)
 		})
-	if f := s.unknownProperties(ctx, versionInputSchema); f.failed() {
+	f := s.unknownProperties(ctx, confirmInputSchema)
+	override := s.readOverride(ctx, &f, req.Body.OverrideWarnings, req.Body.OverrideReason)
+	if f.failed() {
 		return gen.ConfirmSalesOrder400ApplicationProblemPlusJSONResponse(invalid(invalidOrderTitle, f)), nil
 	}
 	cur, lines, err := readOrder(ctx, store.New(s.deps.Pool), req.Id)
@@ -166,13 +179,17 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 		if err != nil {
 			return err
 		}
-		if confirmed, err = confirmTx(ctx, s, tx, txq, o, locked, by, customer); err != nil {
+		if confirmed, err = confirmTx(ctx, s, tx, txq, o, locked, override, by, customer); err != nil {
 			return err
 		}
 		if printed, err = p.confirmation(confirmed, locked, s.deps.Clock()); err != nil {
 			return err
 		}
-		out = orderView(confirmed, locked)
+		warnings, err := documentWarnings(ctx, txq, confirmed.CustomerID, locked)
+		if err != nil {
+			return err
+		}
+		out = orderView(confirmed, locked, warnings)
 		return nil
 	})
 	if err != nil {
@@ -229,7 +246,11 @@ func (s *server) changeOrder(ctx context.Context, id int64, version int32, expec
 		if lines, err = linesOf(ctx, txq, ownerOrder, id); err != nil {
 			return err
 		}
-		out = orderView(row, lines)
+		warnings, err := documentWarnings(ctx, txq, row.CustomerID, lines)
+		if err != nil {
+			return err
+		}
+		out = orderView(row, lines, warnings)
 		return nil
 	})
 	return out, err
