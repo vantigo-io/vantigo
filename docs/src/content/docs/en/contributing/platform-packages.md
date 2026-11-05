@@ -484,9 +484,10 @@ and the managed one Staff sets, since Staff serves either to the person's collea
 | Function | What it does |
 | --- | --- |
 | `Strip(contentType string, data []byte) ([]byte, error)` | for `image/jpeg`, walks the segments from the start-of-image marker and drops APP1 (Exif, XMP) and APP13 (IPTC), copying everything from the start-of-scan marker on as it is; for `image/png`, walks the chunks and drops `eXIf`, `tEXt`, `zTXt` and `iTXt`, stopping after `IEND`; a file without metadata comes back byte for byte. |
+| `Orientation(data []byte) (int, error)` | the EXIF orientation of a JPEG or PNG, from 1 to 8, read by walking to the first APP1 Exif segment (or the `eXIf` chunk) and the one Orientation tag in its TIFF structure; 1 when there is none or the value is out of range. Product images use it to turn a photo upright before they re-encode it ([Products](/en/reference/products/#images)). |
 | `ErrStructure` | the segments or chunks do not hold together — a truncated or foreign file — which a caller refuses as it refuses a bad image. |
 
-The pixels are never decoded, so a decompression bomb costs the caller nothing here;
+The pixels are never decoded by either function, so a decompression bomb costs the caller nothing here;
 judging the type and the dimensions is the caller's (`image.DecodeConfig`, which reads
 the header alone). The package imports the standard library only, and any module may
 import it.
