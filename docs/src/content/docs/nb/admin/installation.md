@@ -297,7 +297,8 @@ og Microsoft Entra ID-modulens `entra-outlook-sweep`, alltid, som rydder i folks
 Outlook-tilkoblinger hver time, Google Workspace-modulens `google-sweep`, alltid, som gjør
 det samme for folks Google-tilkoblinger, og Assistentens `assistant-runs`, alltid, som feiler en
 kjøring en omstart etterlot som pågående, og `assistant-retention`, alltid, som sletter samtaler
-som er eldre enn oppbevaringstiden én gang i døgnet) inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
+som er eldre enn oppbevaringstiden én gang i døgnet — og plattformens hendelsesutsender
+`events.dispatch`, alltid, uansett hva `MODULES` sier) inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
 skalerer API-et horisontalt bør flytte dem til én dedikert worker-container, slik at
 hver ekstra HTTP-replika ikke mangedobler pollerne:
 
@@ -325,8 +326,8 @@ Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre komman
 Uansett topologi tar oppbevaringsoppryddingen, registerjobbene, EHF-hendelsesjobben,
 kalenderens avlysningsjobb, `entra-outlook-sweep` og `assistant-retention` en rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
 instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben,
-`invoices-billing`-jobben, `invoices-payments`-jobben, `communications-mailbox-sync` og
-kalenderens abonnements- og postboksjobb tar i stedet én rad om gangen under en tidsbegrenset lås, så
+`invoices-billing`-jobben, `invoices-payments`-jobben, `communications-mailbox-sync`,
+kalenderens abonnements- og postboksjobb og `events.dispatch` tar i stedet én rad om gangen under en tidsbegrenset lås, så
 et hvilket som helst antall instanser deler arbeidet uten å sende noe to ganger.
 `google-sweep` tar ingen av delene: hvert av stegene dens tar radene sine i én setning,
 så to instanser behandler aldri samme tilkobling. Purrejobben sender ett brev om
@@ -341,6 +342,13 @@ under **Fakturaer → Fakturakjøringer**, ser etter arbeid hvert 5. sekund og l
 når kjøringen ber om det, utsteder — én kundes fakturaer om gangen, høyst fem kunder
 per syklus, hver under en lås på 10 minutter; den sender ingenting
 ([Billing runs](/en/reference/invoices/#billing-runs)).
+Hendelsesutsenderen har heller ingen innstillinger og trenger ingen oppføring i
+`MODULES`: hvert 5. sekund leverer den hendelsene modulene publiserer til modulene som
+tar imot dem, høyst 100 om gangen, hver under en lås på 2 minutter, prøver en feil på
+nytt med økende ventetid, og lar en levering som har feilet åtte ganger, bli liggende
+død til operatøren prøver den på nytt eller hopper over den på
+[management-lytteren](/nb/admin/management-listener/#hendelsesutboksen), der
+logglinjene også står.
 
 Kundemodulens importjobb kontrollerer og kjører kundefilene folk laster opp. Den ser
 etter arbeid hvert `CUSTOMERS_IMPORT_POLL` (5 sekunder som standard), og i

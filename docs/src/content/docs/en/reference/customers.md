@@ -3031,7 +3031,7 @@ type CustomerDirectory interface {
     Contact(ctx, id int32) (*ContactEntry, error)                // {ID, FirstName, LastName, Email}
     ContactsByEmail(ctx, email string) ([]ContactMatch, error)   // {ContactID, CandidateCustomerIDs}
     ContactsForCustomer(ctx, customerID int32) ([]ContactEntry, error) // the customer's contacts with an address
-    BillingProfile(ctx, id int32) (*CustomerBillingProfile, error) // resolved, see below
+    BillingProfile(ctx, id int32, opts BillingProfileOptions) (*CustomerBillingProfile, error) // resolved, see below
 }
 ```
 
@@ -3101,7 +3101,7 @@ on `ix_customers_legal_identity`.
 
 ### `BillingProfile` — what an invoice needs, already resolved
 
-`BillingProfile(ctx, id)` carries what an invoice needs — and the default bill rate
+`BillingProfile(ctx, id, opts)` carries what an invoice needs — and the default bill rate
 [Time's rate chain](/en/reference/time/#the-rate-chain) prices hours with — in one call: id, customer
 number, name, type, archived, the legal identity's `country`/`id`/`name` when
 present, the resolved invoice address when any, and the billing fields below —
@@ -3117,6 +3117,15 @@ invoice email, a reminder email or a Peppol id for itself.
 | `PaymentTermsDays` | The billing profile's own `paymentTermsDays`, else the customer's **group's** `defaultPaymentTermsDays` ([Groups](#groups)), else `nil`. The only field here with three levels, and the only one that inherits from a group: a nil check, not a zero one, so a profile (or a group) that decided `0` days — due on receipt — is not overridden by the next tier. |
 | `DefaultBillRate` | The billing profile's own `defaultBillRate`, else `nil`, quoted in `Currency` (never `""` when a rate is set). **Own value only** — no group tier; a group default bill rate would slot in beside `defaultPaymentTermsDays` if it is ever wanted. [Time's rate chain](/en/reference/time/#the-rate-chain) reads it: the customer step, between the project default and the person card. |
 | `Currency`, `Language`, `InvoiceDelivery`, `ReminderDelivery`, `GLN`, `BuyerReference` | The billing profile's own value, `nil`/`""` if never set — no further resolution. |
+| `DeliveryAddresses` | Only with `opts.WithDelivery`, else `nil`: the customer's `delivery` addresses, the primary one first, then the others by id (`DirectoryDeliveryAddresses`), each a `CustomerAddressEntry` **with its `ID`**, so a document's chosen delivery address is found again on a refresh and the caller can fall back to the primary one when its id has gone; empty, not nil, when the customer has none. `InvoiceAddress` carries `ID` 0: a consumer never asks for it again. |
+| `Contacts` | Only with `opts.WithContacts`, else `nil`: every contact associated with the customer, by last name, then first name, then id (`DirectoryBillingContacts`), as `CustomerContactEntry{ID, Name, Email, Phone, Roles}` — `Name` the first, the middle when there is one, and the last name; `Email` and `Phone` the association's own when it has one, else the contact's, else `""`; `Roles` the contact's typed roles on this customer, sorted, empty when none. Contacts have no archived state, so none is left out. |
+
+`BillingProfileOptions{WithDelivery, WithContacts}` exists so a caller that needs
+neither — every invoice, Time's rate chain — pays nothing for them: each is a query of
+its own, made only when asked (orders design O10). The profile, its invoice address, its
+delivery addresses and its contacts are read in separate statements, not one snapshot,
+so a concurrent edit can show in one part and not yet in another. Orders, its delivery
+A, is the caller they were made for.
 
 **Every consumer treats `""` (a string field) or `nil` (`PaymentTermsDays`,
 `DefaultBillRate`, `InvoiceAddress`) as "not decided — use your own default"**, never as an error or

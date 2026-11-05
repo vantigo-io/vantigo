@@ -198,6 +198,28 @@ and 7), so most businesses need to change nothing here.
   it still lies in the future. A rate cannot be changed from a day on or before an
   issued document's date ([the rules](/en/reference/invoices/#endpoints)).
 
+### Products' tax categories
+
+The card **Products' tax categories**, under **VAT codes**, says which VAT code each tax
+category in Products is invoiced at. It lists every category with a **VAT code** list
+beside it.
+
+- Choose a code in a category's list and it is saved at once; there is no **Save** to
+  click. The list offers the codes offered for new lines, and a category's own code
+  when it has since been taken out of the list, marked *(no longer offered)*.
+- Clear the list (**Remove the VAT code of …**) and the category has no VAT code again.
+- A category with no VAT code has none: *there is no default*. Orders, when it comes,
+  will not confirm an order line in such a category until it has one.
+- Taking a code out of the list (the box **Offered for new lines** above) is not
+  refused while a category uses it, but the category then counts as having no VAT code
+  until you choose another one for it.
+
+The names come from Products. They need the Products module switched on and the
+permission `products:tax-categories-view`; without them the card says so, and lists
+the categories that already have a VAT code by their id, as **Tax category 4**. A
+category Products no longer has stays listed, marked *(no longer in Products)*, so you
+can remove its VAT code ([the mapping](/en/reference/invoices/#tax-categories-and-vat-codes)).
+
 ### Work to invoice
 
 The card **Work to invoice** on the same page — *The VAT code each kind of work is

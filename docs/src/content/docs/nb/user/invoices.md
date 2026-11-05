@@ -200,6 +200,28 @@ og 7), så de fleste bedrifter trenger ikke endre noe her.
   ligger i framtiden. En sats kan ikke endres fra en dag på eller før et utstedt
   dokuments dato ([reglene](/en/reference/invoices/#endpoints)).
 
+### Avgiftskategoriene i Produkter
+
+Kortet **Avgiftskategoriene i Produkter**, under **Mva-koder**, sier hvilken mva-kode
+hver avgiftskategori i Produkter faktureres med. Det lister hver kategori med en liste
+**Mva-kode** ved siden av.
+
+- Velg en kode i listen til en kategori, så lagres den med en gang; det er ingen
+  **Lagre** å klikke på. Listen tilbyr kodene som tilbys på nye linjer, og kategoriens
+  egen kode når den siden er tatt ut av listen, merket *(tilbys ikke lenger)*.
+- Tøm listen (**Fjern mva-koden for …**), så har kategorien ingen mva-kode igjen.
+- En kategori uten mva-kode har ingen: *det finnes ingen standard*. Ordre, når den
+  kommer, vil ikke bekrefte en ordrelinje i en slik kategori før den har fått en.
+- Å ta en kode ut av listen (boksen **Tilbys på nye linjer** over) avvises ikke selv om
+  en kategori bruker den, men kategorien regnes da som uten mva-kode til du velger en
+  annen.
+
+Navnene kommer fra Produkter. De krever at Produkter-modulen er på og tillatelsen
+`products:tax-categories-view`; uten dem sier kortet fra, og lister kategoriene som
+allerede har en mva-kode, med id-en sin, som **Avgiftskategori 4**. En kategori som
+ikke lenger finnes i Produkter, blir stående, merket *(finnes ikke lenger i Produkter)*,
+så du kan fjerne mva-koden dens ([koblingen](/en/reference/invoices/#tax-categories-and-vat-codes)).
+
 ### Arbeid til fakturering
 
 Kortet **Arbeid til fakturering** på samme side — *Mva-koden hver type arbeid faktureres

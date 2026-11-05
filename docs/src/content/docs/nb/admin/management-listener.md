@@ -1,15 +1,17 @@
 ---
 title: "Management-lytter"
-description: "Det private, bærerbeskyttede statusendepunktet et kontrollplan spør, og hvordan den første eieren settes inn ved invitasjon."
+description: "Det private, bærerbeskyttede statusendepunktet et kontrollplan spør, leveringene i hendelsesutboksen som står fast og hvordan de prøves på nytt eller hoppes over, og hvordan den første eieren settes inn ved invitasjon."
 sidebar:
   order: 40
 sources:
   - apps/server/internal/management
+  - apps/server/internal/events
 ---
 Et kontrollplan som kjører mange Vantigo-instanser trenger å spørre hver av dem om
 tre ting uten å holde en brukerøkt: hvilken versjon som kjører, om den første
 eieren er satt inn, og hvor mye den brukes. Management-lytteren svarer nøyaktig
-på det, og ikke noe annet.
+på det — og lar operatøren se og rydde leveringene i hendelsesutboksen som står fast
+([Hendelsesutboksen](#hendelsesutboksen)) — og ikke noe annet.
 
 | Variabel | Formål | Standard |
 | --- | --- | --- |
@@ -53,6 +55,102 @@ logges, aldri returneres. Et tomt konfigurert token — ikke mulig å nå gjenno
 vanlig konfigurasjon, siden `MANAGEMENT_TOKEN` må være minst 32 tegn, men lytteren
 stoler ikke på den oppstrøms kontrollen — stenger endepunktet i stedet for å åpne
 det: hver forespørsel avvises da, `401`, uansett hva som presenteres.
+
+## Hendelsesutboksen
+
+Modulene forteller hverandre hva som har skjedd gjennom plattformens hendelsesutboks:
+en hendelse skrives sammen med endringen som førte til den, og arbeideren
+`events.dispatch` leverer den til hver modul som tar imot den — én **levering** per
+hendelse og mottaker
+([The domain-events outbox](/en/contributing/platform-packages/#the-domain-events-outbox)).
+En levering som feiler, prøves på nytt etter 1 minutt, 5 minutter, 30 minutter,
+2 timer og 12 timer, og deretter hver 12. time; etter det åttende forsøket som feiler,
+er den **død** og prøves aldri igjen av seg selv. En feilet eller død levering holder
+også tilbake de senere leveringene til samme mottaker for samme dokument, så de holder
+rekkefølgen. Å rydde den er operatørens jobb, med tre kall på denne lytteren, bak det
+samme bærertokenet. Ingen bruker i arbeidsområdet og ingen tillatelse når dem.
+
+Utsenderen kjører der arbeiderne kjører — kommandoen `worker`, eller `api` med
+`WORKERS_IN_PROCESS=1` — og har ingen innstilling av sin egen. Den logger det du skal
+se etter:
+
+| Logglinje | Nivå | Betydning |
+| --- | --- | --- |
+| `events delivery failed` | warn | Ett forsøk feilet; det prøves igjen etter ventetiden |
+| `events delivery is dead` | error | Det åttende forsøket feilet; leveringen venter på et nytt forsøk eller at den hoppes over |
+| `events deliveries wait for handlers that are not composed` | warn | Leveringer navngir en mottaker denne versjonen ikke lenger har, som regel etter en nedgradering eller en fjernet modul; hopp over dem |
+| `events dispatch failed` | error | En runde i utsenderen feilet, oftest databasen; neste runde prøver igjen |
+
+### List leveringene som står fast
+
+`GET /management/events/deliveries?state=dead` (eller `state=failed`; uten `state`
+begge) svarer med høyst 200 leveringer, de sist endrede først, med
+`Cache-Control: no-store`. Enhver annen `state` er `400`.
+
+```json
+{
+  "deliveries": [
+    {
+      "id": 812,
+      "eventId": 5531,
+      "event": "orders.sales_order.confirmed",
+      "version": 1,
+      "module": "orders",
+      "aggregateId": "1042",
+      "handler": "customers.timeline_orders",
+      "state": "dead",
+      "attempts": 8,
+      "lastError": "…",
+      "note": null,
+      "nextAttemptAt": "2026-11-05T21:14:03Z",
+      "occurredAt": "2026-11-02T09:12:44Z",
+      "createdAt": "2026-11-02T09:12:47Z",
+      "updatedAt": "2026-11-05T09:14:03Z"
+    }
+  ]
+}
+```
+
+| Felt | Betydning |
+| --- | --- |
+| `id` | Leveringens id, som de to kallene under tar |
+| `eventId`, `event`, `version`, `module`, `aggregateId` | Hendelsen: id-en, navnet og versjonen av innholdet, modulen som publiserte den, og id-en til det den gjelder |
+| `handler` | Mottakeren den leveres til, `<modul>.<hva>` |
+| `state` | `failed` (prøves igjen) eller `dead` |
+| `attempts` | Forsøk som har feilet så langt |
+| `lastError` | Den siste feilen, høyst 2 000 tegn |
+| `note` | Operatørens merknad, satt når leveringen hoppes over |
+| `nextAttemptAt` | Når en feilet levering prøves neste gang |
+| `occurredAt` | Når hendelsen skjedde |
+| `createdAt`, `updatedAt` | Når leveringen ble skrevet og sist endret |
+
+Innholdet i en hendelse vises ikke. Det bærer bare id-er, tall, beløp og tilstander,
+aldri en persons navn, adresse, e-post eller telefon.
+
+### Prøv én på nytt
+
+`POST /management/events/deliveries/{id}/retry` setter en `failed` eller `dead`
+levering tilbake til ventende, forfallen med en gang: `204`. Forsøkene beholdes, så en
+død levering som feiler igjen, er død igjen med en gang — rett årsaken først, prøv så
+igjen. Ingen slik levering er `404`; én i en annen tilstand (ventende eller ferdig) er
+`409`.
+
+### Hopp over én
+
+`POST /management/events/deliveries/{id}/skip` med `{"note": "…"}` markerer en levering
+som ikke er ferdig, som ferdig uten å behandle den, beholder merknaden, og slipper
+dermed leveringene som venter bak den: `204`. Merknaden er påkrevd, høyst 500 tegn
+(ellers `400`). Ingen slik levering er `404`; én som alt er ferdig, er `409`. Å hoppe
+over betyr at behandlingen aldri skjer — det mottakeren ville ha skrevet (en
+bekreftelse lagt i kø, en linje på en tidslinje), blir ikke skrevet.
+
+### Kontroller
+
+List igjen: leveringen er borte fra `state=dead`. En som er prøvd på nytt, vises som
+`failed` om den feiler igjen, eller `dead` med en gang om den var død før; en som lyktes,
+listes ikke lenger.
+
+Hendelser der alle leveringene er ferdige, slettes etter 30 dager.
 
 ## Hold den privat
 

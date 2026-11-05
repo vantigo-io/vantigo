@@ -1663,8 +1663,9 @@ methods:
   (one that does not exist is absent), writes them as draft rows
   ([above](#drafts-revisions-and-housekeeping)), writes the corrections
   ([above](#corrections)) and answers the drafts, by supply period, period, regular
-  before correction. The one method of any contract that writes,
-  and named a command for it.
+  before correction. It writes, and is named a command for it: a provider command,
+  which writes only Energy's own schema on Energy's own transactions
+  ([rule 5](/en/contributing/module-boundaries/#the-rules)).
 - **`Settlements(ids)`** — settlements by id as they stand now: a draft recomputed
   (and written when changed), an invoiced or released one as frozen.
 

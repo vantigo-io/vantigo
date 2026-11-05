@@ -76,7 +76,9 @@ The bill rate, when the entry is billable:
 
 1. **The billing line's rule.** `fixed` uses the line's amount. `list` and `discount`
    ask `contracts.ProductCatalog.ListPrice(variant, project currency, entry date)`
-   for the variant the line is pinned to; `discount` then applies the line's
+   for the variant the line is pinned to. The catalog answers the price as exact
+   decimal text, never a float, and the chain reads it exactly; `list` takes it at
+   cents, and `discount` then applies the line's
    percentage with **exact decimal arithmetic** — the price and the percentage are
    read as decimals, multiplied as rationals and rounded once, half away from zero,
    to cents. 101.10 less 15 % is 85.94, where float arithmetic gives 85.93.

@@ -1497,7 +1497,10 @@ missing row is `(nil, nil)`, never an error.
   `ListPrice(variantID, currency, at)`, which reuses Products' own active-price
   resolution (a bounded campaign price beats the open-ended base row) rather than
   restating it. A variant with no price in that currency at that moment is
-  `(nil, nil)`.
+  `(nil, nil)`. The price's `Amount` is exact decimal text (`"1234.50"`); Projects turns
+  it into the JSON number its billing line's `listPrice` carries, which a two-place
+  price survives exactly, and a text it cannot read is reported as the catalog being
+  unavailable for that line.
 - **`contracts.ProjectDirectory`** — provided by *projects*. `Project`,
   `Projects` (batch, for a list of ids), `ProjectByCode` (case-insensitive),
   `Role(projectID, userID)` (`""` means no role), `BillingLine`, `BillingLines`

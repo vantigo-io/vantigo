@@ -54,12 +54,23 @@ schema or HTTP endpoints — see [module boundaries](/en/contributing/module-bou
 Products provides `contracts.ProductCatalog`
 ([`catalog.go`](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/contracts/catalog.go)).
 A `VariantEntry` names a variant — its id, product id and product name, SKU, unit, the
-product's type and status, its own barcode (nil when it has none) and its
+product's type and status, the product's tax category id (`TaxCategoryID`) and
+description (`""` when it has none), its own barcode (nil when it has none) and its
 **packagings** (`PackagingEntry`: id, name, kind, quantity as a three-place decimal
 such as `"600.000"`, barcode; by sort order then id, empty when it has none) — never
 enough to manage the catalog. Every read fills the packagings, `LockVariants` included,
 inside the caller's transaction, so what Inventory resolves an entry in packagings
 against holds until it commits. A missing row is an absent answer, never an error.
+
+The entry carries the tax category's id, never its kind or rate: the VAT a sale is
+invoiced at comes from Invoices' dated VAT codes, which map each tax category to one
+code ([Tax categories and VAT codes](/en/reference/invoices/#tax-categories-and-vat-codes)),
+and Products' undated rate would be a second, wrong source. **No new float carries money
+across a contract**: `ListPrice` answers `Money{Amount, Currency}` with `Amount` as exact
+decimal text at two places (`"1234.50"`), the chosen price row's numeric as stored —
+the form `WorkSource.Amount` uses. Time's rate chain reads it exactly and applies a
+billing line's discount to the exact value; Projects' billing-line pricing turns it into
+the JSON number its response carries, which a two-place price survives exactly.
 
 | Method | Answers |
 | --- | --- |
@@ -69,7 +80,7 @@ against holds until it commits. A missing row is an absent answer, never an erro
 | `VariantsOfProduct(productID)` | Every variant of the product, by id; empty when the product does not exist. |
 | `LookupCode(code)` | A `CodeMatch` for every variant whose SKU equals the trimmed code, ignoring case, or whose barcode equals it exactly — the variant matches first — then one per **packaging** whose barcode equals it, with `Packaging` set to the packaging that matched. |
 | `LookupSKUs(skus)` | For each SKU, keyed exactly as the caller wrote it, every variant whose SKU equals it trimmed and ignoring case, by id — `LookupCode`'s SKU half for many codes at once, barcodes not matched. A SKU no variant has, or a blank one, is absent. One query per 1,000 distinct SKUs and one load of their packagings. |
-| `SearchVariants(q, limit)` | At most `limit` (capped at 50) variants of **Goods** products whose SKU, product name or barcode contains `q`, ignoring case, by SKU; `%` and `_` are matched literally. Packaging barcodes are not searched. |
+| `SearchVariants(q, VariantSearch{Types, Limit, IncludeInactive})` | At most `Limit` (capped at 50) variants of products of `Types` (`Goods`, `Service`; both when empty) whose SKU, product name or barcode contains `q`, ignoring case, by SKU — of **active** products only unless `IncludeInactive`; `%` and `_` are matched literally, and a blank `q` (or a `Limit` of 0) answers nothing. Packaging barcodes are not searched. Inventory's picker asks for `Goods` of every status, as it always has; Orders will ask for both types, active only. |
 | `LockVariants(tx, ids)` | Takes `FOR SHARE` on the variants' rows and their products' rows, in id order, **on the caller's transaction**, and answers the entries. |
 
 Every method but `LockVariants` runs on the module's pool and is called before the
@@ -89,9 +100,13 @@ many-provider slot `Module.VariantReferences` with a `contracts.VariantReference
 collected from every module the binary composes, enabled or not
 ([rule 20](/en/contributing/module-boundaries/#the-rules)). Only Products calls it,
 inside the transaction that deletes a variant or turns a product into a service, after
-locking the variants. Its `VariantHeld` answers nil, or the quantity the holder keeps in
-the variant's unit and the number of locations it lies at. Today Inventory is the one
-holder.
+locking the variants. Its `VariantHeld(tx, variantID, purpose)` is told which write
+asks — `delete` or `type_change` — and answers nil, or a `VariantHold` whose `Kind` is
+`stock` — the quantity the holder keeps in the variant's unit and the number of
+locations it lies at — or `open_documents`, the number of open quotes, orders and
+subscriptions that name the variant. A holder may stop one write and not the other:
+open orders will stop a delete but never a change to Service (orders design O30). Today
+Inventory is the one holder, and its stock stops both.
 
 **Deleting a variant** (`DELETE /api/v1/products/{id}/variants/{variantId}`) is one
 transaction:
@@ -103,7 +118,9 @@ transaction:
 3. Ask every holder. The first hold refuses: 409 *Variant has stock*, "This variant still
    has 34 pcs in stock at 3 locations. Move the stock or adjust it to zero before you
    delete the variant." — the quantity with trailing zeros trimmed, the unit from the
-   variant, and *location* in the singular for one.
+   variant, and *location* in the singular for one. An `open_documents` hold is 409
+   *Variant is on open documents*, "This variant is on 3 open quotes or orders. Finish
+   or cancel them before you delete the variant." (*1 open quote or order* for one).
 4. Delete the variant and its prices: 204.
 
 A posting holds `FOR SHARE` on the same variant, so it has either committed before the
@@ -115,7 +132,9 @@ movement lines keep their snapshot of it.
 `type: Service`) locks every variant of the product `FOR UPDATE`, in id order, asks the
 holders variant by variant and refuses on the first that holds: 409 *Product has stock*,
 "Variant {sku} still has 34 pcs in stock at 3 locations. Move the stock or adjust it to
-zero before you make the product a service." Otherwise the product is updated, and
+zero before you make the product a service.", or, for an `open_documents` hold, 409
+*Product is on open documents*, "Variant {sku} is on 3 open quotes or orders. Finish or
+cancel them before you make the product a service." Otherwise the product is updated, and
 then, on the same transaction, its variants are listed again and the holders asked about
 any variant added meanwhile; a hold refuses with the same 409 *Product has stock* and
 the update rolls back. Otherwise it commits. A change from Service to Goods, or one that keeps the type, never asks.
