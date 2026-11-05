@@ -1,5 +1,12 @@
 import { Button } from "@mantine/core";
-import { IconBolt, IconBriefcase, IconFileInvoice, IconLayoutDashboard, IconMessages } from "@tabler/icons-react";
+import {
+  IconBolt,
+  IconBriefcase,
+  IconFileInvoice,
+  IconLayoutDashboard,
+  IconMessages,
+  IconShoppingCart,
+} from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useMatches, useNavigate, useParams } from "@tanstack/react-router";
 import { NewAppointmentButton } from "@vantigo/calendar-ui/components/new-appointment-button";
@@ -19,17 +26,23 @@ interface CustomerDetailGate {
   requiredPermissions?: readonly string[];
 }
 
-type CustomerDetailView = "overview" | "energy" | "projects" | "invoices";
+type CustomerDetailView = "overview" | "energy" | "projects" | "invoices" | "orders";
 
 interface CustomerDetailTab extends CustomerDetailGate {
   value: CustomerDetailView;
-  labelKey: "customer.overviewTab" | "customer.energyTab" | "customer.projectsTab" | "customer.invoicesTab";
+  labelKey:
+    | "customer.overviewTab"
+    | "customer.energyTab"
+    | "customer.projectsTab"
+    | "customer.invoicesTab"
+    | "customer.ordersTab";
   icon: typeof IconLayoutDashboard;
   to:
     | "/customers/$customerId"
     | "/customers/$customerId/energy"
     | "/customers/$customerId/projects"
-    | "/customers/$customerId/invoices";
+    | "/customers/$customerId/invoices"
+    | "/customers/$customerId/orders";
 }
 
 /** The views of the customer page, each a child route, so the tab row follows the URL. */
@@ -63,6 +76,15 @@ export const customerDetailTabs: CustomerDetailTab[] = [
     to: "/customers/$customerId/invoices",
     module: "invoices",
     requiredPermissions: ["invoices:access"],
+  },
+  {
+    // The customer's quotes and orders (orders design O31a).
+    value: "orders",
+    labelKey: "customer.ordersTab",
+    icon: IconShoppingCart,
+    to: "/customers/$customerId/orders",
+    module: "orders",
+    requiredPermissions: ["orders:access"],
   },
 ];
 
@@ -113,7 +135,9 @@ export const activeCustomerDetailTab = (routeIds: readonly string[]): CustomerDe
       ? "projects"
       : routeIds.includes("/customers/$customerId/invoices")
         ? "invoices"
-        : "overview";
+        : routeIds.includes("/customers/$customerId/orders")
+          ? "orders"
+          : "overview";
 
 export const CustomerDetailLayout = () => {
   const { t } = useI18n("host");

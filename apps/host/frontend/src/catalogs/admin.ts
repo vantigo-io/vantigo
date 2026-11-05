@@ -489,6 +489,60 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.inventoryCountsManage",
     descriptionKey: "admin.permission.inventoryCountsManageDescription",
   },
+  "orders:access": {
+    moduleKey: "admin.permission.module.orders",
+    categoryKey: "admin.permission.category.orders",
+    displayNameKey: "admin.permission.ordersAccess",
+    descriptionKey: "admin.permission.ordersAccessDescription",
+  },
+  "orders:quotes-manage": {
+    moduleKey: "admin.permission.module.orders",
+    categoryKey: "admin.permission.category.orders",
+    displayNameKey: "admin.permission.ordersQuotesManage",
+    descriptionKey: "admin.permission.ordersQuotesManageDescription",
+  },
+  "orders:sales-manage": {
+    moduleKey: "admin.permission.module.orders",
+    categoryKey: "admin.permission.category.orders",
+    displayNameKey: "admin.permission.ordersSalesManage",
+    descriptionKey: "admin.permission.ordersSalesManageDescription",
+  },
+  "orders:sales-confirm": {
+    moduleKey: "admin.permission.module.orders",
+    categoryKey: "admin.permission.category.orders",
+    displayNameKey: "admin.permission.ordersSalesConfirm",
+    descriptionKey: "admin.permission.ordersSalesConfirmDescription",
+  },
+  "orders:subscriptions-manage": {
+    moduleKey: "admin.permission.module.orders",
+    categoryKey: "admin.permission.category.orders",
+    displayNameKey: "admin.permission.ordersSubscriptionsManage",
+    descriptionKey: "admin.permission.ordersSubscriptionsManageDescription",
+  },
+  "orders:deliveries-manage": {
+    moduleKey: "admin.permission.module.orders",
+    categoryKey: "admin.permission.category.orders",
+    displayNameKey: "admin.permission.ordersDeliveriesManage",
+    descriptionKey: "admin.permission.ordersDeliveriesManageDescription",
+  },
+  "orders:carriers-manage": {
+    moduleKey: "admin.permission.module.orders",
+    categoryKey: "admin.permission.category.orders",
+    displayNameKey: "admin.permission.ordersCarriersManage",
+    descriptionKey: "admin.permission.ordersCarriersManageDescription",
+  },
+  "orders:analysis-view": {
+    moduleKey: "admin.permission.module.orders",
+    categoryKey: "admin.permission.category.orders",
+    displayNameKey: "admin.permission.ordersAnalysisView",
+    descriptionKey: "admin.permission.ordersAnalysisViewDescription",
+  },
+  "orders:settings": {
+    moduleKey: "admin.permission.module.orders",
+    categoryKey: "admin.permission.category.orders",
+    displayNameKey: "admin.permission.ordersSettings",
+    descriptionKey: "admin.permission.ordersSettingsDescription",
+  },
   "calendar:access": {
     moduleKey: "admin.permission.module.calendar",
     categoryKey: "admin.permission.category.calendar",
@@ -739,6 +793,7 @@ const en = {
   "admin.permission.module.staff": "Staff",
   "admin.permission.module.planning": "Planning",
   "admin.permission.module.inventory": "Inventory",
+  "admin.permission.module.orders": "Orders",
   "admin.permission.category.administration": "Administration",
   "admin.permission.category.customers": "Customers",
   "admin.permission.category.legalIdentity": "Legal identity",
@@ -762,6 +817,7 @@ const en = {
   "admin.permission.category.staff": "Staff",
   "admin.permission.category.planning": "Planning",
   "admin.permission.category.inventory": "Inventory",
+  "admin.permission.category.orders": "Orders",
   "admin.permission.identityManage": "Manage identity",
   "admin.permission.identityManageDescription": "Manage accounts, roles, and access.",
   "admin.permission.customersView": "View customers",
@@ -953,6 +1009,29 @@ const en = {
     "Post goods receipts, putting delivered goods on the locations of a site.",
   "admin.permission.inventoryCountsManage": "Count stock",
   "admin.permission.inventoryCountsManageDescription": "Open, count, post and cancel stock counts.",
+  "admin.permission.ordersAccess": "Use Orders",
+  "admin.permission.ordersAccessDescription":
+    "See the Orders app and read quotes, orders, subscriptions and deliveries.",
+  "admin.permission.ordersQuotesManage": "Manage quotes",
+  "admin.permission.ordersQuotesManageDescription": "Create, edit, send, revise, accept, decline and cancel quotes.",
+  "admin.permission.ordersSalesManage": "Manage orders",
+  "admin.permission.ordersSalesManageDescription":
+    "Create and edit orders, hold and release them, cancel them and register what was delivered.",
+  "admin.permission.ordersSalesConfirm": "Confirm orders",
+  "admin.permission.ordersSalesConfirmDescription": "Confirm orders, and lock and unlock them.",
+  "admin.permission.ordersSubscriptionsManage": "Manage subscriptions",
+  "admin.permission.ordersSubscriptionsManageDescription": "Create, activate, change, pause and end subscriptions.",
+  "admin.permission.ordersDeliveriesManage": "Manage deliveries",
+  "admin.permission.ordersDeliveriesManageDescription":
+    "Create, pick, post and cancel deliveries; create, book and cancel shipments and print their labels.",
+  "admin.permission.ordersCarriersManage": "Manage carriers",
+  "admin.permission.ordersCarriersManageDescription":
+    "Connect carrier accounts and manage their keys under Integrations.",
+  "admin.permission.ordersAnalysisView": "View sales analysis",
+  "admin.permission.ordersAnalysisViewDescription": "See the analysis of quotes and orders.",
+  "admin.permission.ordersSettings": "Manage Orders settings",
+  "admin.permission.ordersSettingsDescription":
+    "Change the settings, the number series, the templates and the warnings, and override a warning's block.",
   "admin.permission.calendarAccess": "Use Calendar",
   "admin.permission.calendarAccessDescription":
     "Use the Calendar app: your own calendar, your appointments and your answers to them, and the dashboard's agenda.",
@@ -1429,6 +1508,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.module.staff": "Ansatte",
   "admin.permission.module.planning": "Bemanning",
   "admin.permission.module.inventory": "Lager",
+  "admin.permission.module.orders": "Ordre",
   "admin.permission.category.administration": "Administrasjon",
   "admin.permission.category.customers": "Kunder",
   "admin.permission.category.legalIdentity": "Juridisk identitet",
@@ -1452,6 +1532,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.category.staff": "Ansatte",
   "admin.permission.category.planning": "Bemanning",
   "admin.permission.category.inventory": "Lager",
+  "admin.permission.category.orders": "Ordre",
   "admin.permission.identityManage": "Administrer identitet",
   "admin.permission.identityManageDescription": "Administrer kontoer, roller og tilgang.",
   "admin.permission.customersView": "Se kunder",
@@ -1647,6 +1728,30 @@ const nb: { [Key in keyof typeof en]: string } = {
     "Bokføre varemottak og legge leverte varer på lokasjonene til et lagersted.",
   "admin.permission.inventoryCountsManage": "Telle varer",
   "admin.permission.inventoryCountsManageDescription": "Åpne, telle, bokføre og avbryte varetellinger.",
+  "admin.permission.ordersAccess": "Bruke Ordre",
+  "admin.permission.ordersAccessDescription": "Se Ordre-appen og lese tilbud, ordrer, abonnementer og leveranser.",
+  "admin.permission.ordersQuotesManage": "Håndtere tilbud",
+  "admin.permission.ordersQuotesManageDescription":
+    "Opprette, endre, sende, revidere, godta, avslå og kansellere tilbud.",
+  "admin.permission.ordersSalesManage": "Håndtere ordrer",
+  "admin.permission.ordersSalesManageDescription":
+    "Opprette og endre ordrer, sette dem på vent og frigi dem, kansellere dem og registrere hva som er levert.",
+  "admin.permission.ordersSalesConfirm": "Bekrefte ordrer",
+  "admin.permission.ordersSalesConfirmDescription": "Bekrefte ordrer, og låse dem og låse dem opp.",
+  "admin.permission.ordersSubscriptionsManage": "Håndtere abonnementer",
+  "admin.permission.ordersSubscriptionsManageDescription":
+    "Opprette, aktivere, endre, sette på pause og avslutte abonnementer.",
+  "admin.permission.ordersDeliveriesManage": "Håndtere leveranser",
+  "admin.permission.ordersDeliveriesManageDescription":
+    "Opprette, plukke, bokføre og kansellere leveranser; opprette, bestille og kansellere sendinger og skrive ut etikettene deres.",
+  "admin.permission.ordersCarriersManage": "Håndtere fraktselskaper",
+  "admin.permission.ordersCarriersManageDescription":
+    "Koble til fraktavtaler og håndtere nøklene deres under Integrasjoner.",
+  "admin.permission.ordersAnalysisView": "Se salgsanalyse",
+  "admin.permission.ordersAnalysisViewDescription": "Se analysen av tilbud og ordrer.",
+  "admin.permission.ordersSettings": "Håndtere innstillinger for Ordre",
+  "admin.permission.ordersSettingsDescription":
+    "Endre innstillingene, nummerseriene, malene og varslene, og overstyre blokkeringen fra et varsel.",
   "admin.permission.calendarAccess": "Bruk Kalender",
   "admin.permission.calendarAccessDescription":
     "Bruk Kalender-appen: din egen kalender, avtalene dine og svarene dine på dem, og agendaen på kontrollpanelet.",

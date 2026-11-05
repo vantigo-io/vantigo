@@ -23,6 +23,7 @@ import { Route as ExpensesRouteImport } from './routes/expenses'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as InvoicesRouteImport } from './routes/invoices'
+import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as PasswordResetRouteImport } from './routes/password-reset'
 import { Route as PayRouteImport } from './routes/pay'
 import { Route as PlanningRouteImport } from './routes/planning'
@@ -67,6 +68,9 @@ import { Route as InvoicesJournalRouteImport } from './routes/invoices/journal'
 import { Route as InvoicesOverdueRouteImport } from './routes/invoices/overdue'
 import { Route as InvoicesQuickRouteImport } from './routes/invoices/quick'
 import { Route as InvoicesSettingsRouteImport } from './routes/invoices/settings'
+import { Route as OrdersIndexRouteImport } from './routes/orders/index'
+import { Route as OrdersSettingsRouteImport } from './routes/orders/settings'
+import { Route as OrdersTemplatesRouteImport } from './routes/orders/templates'
 import { Route as PlanningIndexRouteImport } from './routes/planning/index'
 import { Route as PlanningIntakeRouteImport } from './routes/planning/intake'
 import { Route as PlanningMeRouteImport } from './routes/planning/me'
@@ -109,6 +113,7 @@ import { Route as WorkspaceUsersRouteImport } from './routes/workspace/users'
 import { Route as CustomersCustomerIdIndexRouteImport } from './routes/customers/$customerId.index'
 import { Route as CustomersCustomerIdEnergyRouteImport } from './routes/customers/$customerId.energy'
 import { Route as CustomersCustomerIdInvoicesRouteImport } from './routes/customers/$customerId.invoices'
+import { Route as CustomersCustomerIdOrdersRouteImport } from './routes/customers/$customerId.orders'
 import { Route as CustomersCustomerIdProjectsRouteImport } from './routes/customers/$customerId.projects'
 import { Route as CustomersContactsIndexRouteImport } from './routes/customers/contacts/index'
 import { Route as CustomersContactsContactIdRouteImport } from './routes/customers/contacts/$contactId'
@@ -130,6 +135,12 @@ import { Route as InvoicesPaymentsIndexRouteImport } from './routes/invoices/pay
 import { Route as InvoicesPaymentsVippsRouteImport } from './routes/invoices/payments.vipps'
 import { Route as InvoicesReminderRunsRunIdRouteImport } from './routes/invoices/reminder-runs.$runId'
 import { Route as InvoicesRemindersPrintRouteImport } from './routes/invoices/reminders.print'
+import { Route as OrdersOrdersIndexRouteImport } from './routes/orders/orders.index'
+import { Route as OrdersOrdersOrderIdRouteImport } from './routes/orders/orders.$orderId'
+import { Route as OrdersOrdersNewRouteImport } from './routes/orders/orders.new'
+import { Route as OrdersQuotesIndexRouteImport } from './routes/orders/quotes.index'
+import { Route as OrdersQuotesQuoteIdRouteImport } from './routes/orders/quotes.$quoteId'
+import { Route as OrdersQuotesNewRouteImport } from './routes/orders/quotes.new'
 import { Route as PlanningPeoplePersonIdRouteImport } from './routes/planning/people.$personId'
 import { Route as PlanningProjectsProjectIdRouteImport } from './routes/planning/projects.$projectId'
 import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$projectId.index'
@@ -228,6 +239,11 @@ const InventoryRoute = InventoryRouteImport.update({
 const InvoicesRoute = InvoicesRouteImport.update({
   id: '/invoices',
   path: '/invoices',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrdersRoute = OrdersRouteImport.update({
+  id: '/orders',
+  path: '/orders',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PasswordResetRoute = PasswordResetRouteImport.update({
@@ -451,6 +467,21 @@ const InvoicesSettingsRoute = InvoicesSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => InvoicesRoute,
 } as any)
+const OrdersIndexRoute = OrdersIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => OrdersRoute,
+} as any)
+const OrdersSettingsRoute = OrdersSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => OrdersRoute,
+} as any)
+const OrdersTemplatesRoute = OrdersTemplatesRouteImport.update({
+  id: '/templates',
+  path: '/templates',
+  getParentRoute: () => OrdersRoute,
+} as any)
 const PlanningIndexRoute = PlanningIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -664,6 +695,12 @@ const CustomersCustomerIdInvoicesRoute =
     path: '/invoices',
     getParentRoute: () => CustomersCustomerIdRoute,
   } as any)
+const CustomersCustomerIdOrdersRoute =
+  CustomersCustomerIdOrdersRouteImport.update({
+    id: '/orders',
+    path: '/orders',
+    getParentRoute: () => CustomersCustomerIdRoute,
+  } as any)
 const CustomersCustomerIdProjectsRoute =
   CustomersCustomerIdProjectsRouteImport.update({
     id: '/projects',
@@ -778,6 +815,36 @@ const InvoicesRemindersPrintRoute = InvoicesRemindersPrintRouteImport.update({
   id: '/reminders/print',
   path: '/reminders/print',
   getParentRoute: () => InvoicesRoute,
+} as any)
+const OrdersOrdersIndexRoute = OrdersOrdersIndexRouteImport.update({
+  id: '/orders/',
+  path: '/orders/',
+  getParentRoute: () => OrdersRoute,
+} as any)
+const OrdersOrdersOrderIdRoute = OrdersOrdersOrderIdRouteImport.update({
+  id: '/orders/$orderId',
+  path: '/orders/$orderId',
+  getParentRoute: () => OrdersRoute,
+} as any)
+const OrdersOrdersNewRoute = OrdersOrdersNewRouteImport.update({
+  id: '/orders/new',
+  path: '/orders/new',
+  getParentRoute: () => OrdersRoute,
+} as any)
+const OrdersQuotesIndexRoute = OrdersQuotesIndexRouteImport.update({
+  id: '/quotes/',
+  path: '/quotes/',
+  getParentRoute: () => OrdersRoute,
+} as any)
+const OrdersQuotesQuoteIdRoute = OrdersQuotesQuoteIdRouteImport.update({
+  id: '/quotes/$quoteId',
+  path: '/quotes/$quoteId',
+  getParentRoute: () => OrdersRoute,
+} as any)
+const OrdersQuotesNewRoute = OrdersQuotesNewRouteImport.update({
+  id: '/quotes/new',
+  path: '/quotes/new',
+  getParentRoute: () => OrdersRoute,
 } as any)
 const PlanningPeoplePersonIdRoute = PlanningPeoplePersonIdRouteImport.update({
   id: '/people/$personId',
@@ -955,6 +1022,7 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/inventory': typeof InventoryRouteWithChildren
   '/invoices': typeof InvoicesRouteWithChildren
+  '/orders': typeof OrdersRouteWithChildren
   '/password-reset': typeof PasswordResetRoute
   '/pay': typeof PayRoute
   '/planning': typeof PlanningRouteWithChildren
@@ -989,6 +1057,8 @@ export interface FileRoutesByFullPath {
   '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
+  '/orders/settings': typeof OrdersSettingsRoute
+  '/orders/templates': typeof OrdersTemplatesRoute
   '/planning/intake': typeof PlanningIntakeRoute
   '/planning/me': typeof PlanningMeRoute
   '/planning/requests': typeof PlanningRequestsRoute
@@ -1031,6 +1101,7 @@ export interface FileRoutesByFullPath {
   '/expenses/': typeof ExpensesIndexRoute
   '/inventory/': typeof InventoryIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
+  '/orders/': typeof OrdersIndexRoute
   '/planning/': typeof PlanningIndexRoute
   '/products/': typeof ProductsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
@@ -1040,6 +1111,7 @@ export interface FileRoutesByFullPath {
   '/workspace/': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
   '/customers/$customerId/invoices': typeof CustomersCustomerIdInvoicesRoute
+  '/customers/$customerId/orders': typeof CustomersCustomerIdOrdersRoute
   '/customers/$customerId/projects': typeof CustomersCustomerIdProjectsRoute
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/customers/import/$importId': typeof CustomersImportImportIdRoute
@@ -1054,6 +1126,10 @@ export interface FileRoutesByFullPath {
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
+  '/orders/orders/$orderId': typeof OrdersOrdersOrderIdRoute
+  '/orders/orders/new': typeof OrdersOrdersNewRoute
+  '/orders/quotes/$quoteId': typeof OrdersQuotesQuoteIdRoute
+  '/orders/quotes/new': typeof OrdersQuotesNewRoute
   '/planning/people/$personId': typeof PlanningPeoplePersonIdRoute
   '/planning/projects/$projectId': typeof PlanningProjectsProjectIdRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
@@ -1080,6 +1156,8 @@ export interface FileRoutesByFullPath {
   '/inventory/movements/': typeof InventoryMovementsIndexRoute
   '/invoices/billing-runs/': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
+  '/orders/orders/': typeof OrdersOrdersIndexRoute
+  '/orders/quotes/': typeof OrdersQuotesIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/staff/groups/': typeof StaffGroupsIndexRoute
   '/staff/people/': typeof StaffPeopleIndexRoute
@@ -1123,6 +1201,8 @@ export interface FileRoutesByTo {
   '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
+  '/orders/settings': typeof OrdersSettingsRoute
+  '/orders/templates': typeof OrdersTemplatesRoute
   '/planning/intake': typeof PlanningIntakeRoute
   '/planning/me': typeof PlanningMeRoute
   '/planning/requests': typeof PlanningRequestsRoute
@@ -1162,6 +1242,7 @@ export interface FileRoutesByTo {
   '/expenses': typeof ExpensesIndexRoute
   '/inventory': typeof InventoryIndexRoute
   '/invoices': typeof InvoicesIndexRoute
+  '/orders': typeof OrdersIndexRoute
   '/planning': typeof PlanningIndexRoute
   '/products': typeof ProductsIndexRoute
   '/projects': typeof ProjectsIndexRoute
@@ -1171,6 +1252,7 @@ export interface FileRoutesByTo {
   '/workspace': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
   '/customers/$customerId/invoices': typeof CustomersCustomerIdInvoicesRoute
+  '/customers/$customerId/orders': typeof CustomersCustomerIdOrdersRoute
   '/customers/$customerId/projects': typeof CustomersCustomerIdProjectsRoute
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/customers/import/$importId': typeof CustomersImportImportIdRoute
@@ -1185,6 +1267,10 @@ export interface FileRoutesByTo {
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
+  '/orders/orders/$orderId': typeof OrdersOrdersOrderIdRoute
+  '/orders/orders/new': typeof OrdersOrdersNewRoute
+  '/orders/quotes/$quoteId': typeof OrdersQuotesQuoteIdRoute
+  '/orders/quotes/new': typeof OrdersQuotesNewRoute
   '/planning/people/$personId': typeof PlanningPeoplePersonIdRoute
   '/planning/projects/$projectId': typeof PlanningProjectsProjectIdRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
@@ -1211,6 +1297,8 @@ export interface FileRoutesByTo {
   '/inventory/movements': typeof InventoryMovementsIndexRoute
   '/invoices/billing-runs': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments': typeof InvoicesPaymentsIndexRoute
+  '/orders/orders': typeof OrdersOrdersIndexRoute
+  '/orders/quotes': typeof OrdersQuotesIndexRoute
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
   '/staff/groups': typeof StaffGroupsIndexRoute
   '/staff/people': typeof StaffPeopleIndexRoute
@@ -1239,6 +1327,7 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/inventory': typeof InventoryRouteWithChildren
   '/invoices': typeof InvoicesRouteWithChildren
+  '/orders': typeof OrdersRouteWithChildren
   '/password-reset': typeof PasswordResetRoute
   '/pay': typeof PayRoute
   '/planning': typeof PlanningRouteWithChildren
@@ -1273,6 +1362,8 @@ export interface FileRoutesById {
   '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
+  '/orders/settings': typeof OrdersSettingsRoute
+  '/orders/templates': typeof OrdersTemplatesRoute
   '/planning/intake': typeof PlanningIntakeRoute
   '/planning/me': typeof PlanningMeRoute
   '/planning/requests': typeof PlanningRequestsRoute
@@ -1315,6 +1406,7 @@ export interface FileRoutesById {
   '/expenses/': typeof ExpensesIndexRoute
   '/inventory/': typeof InventoryIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
+  '/orders/': typeof OrdersIndexRoute
   '/planning/': typeof PlanningIndexRoute
   '/products/': typeof ProductsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
@@ -1324,6 +1416,7 @@ export interface FileRoutesById {
   '/workspace/': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
   '/customers/$customerId/invoices': typeof CustomersCustomerIdInvoicesRoute
+  '/customers/$customerId/orders': typeof CustomersCustomerIdOrdersRoute
   '/customers/$customerId/projects': typeof CustomersCustomerIdProjectsRoute
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/customers/import/$importId': typeof CustomersImportImportIdRoute
@@ -1338,6 +1431,10 @@ export interface FileRoutesById {
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
+  '/orders/orders/$orderId': typeof OrdersOrdersOrderIdRoute
+  '/orders/orders/new': typeof OrdersOrdersNewRoute
+  '/orders/quotes/$quoteId': typeof OrdersQuotesQuoteIdRoute
+  '/orders/quotes/new': typeof OrdersQuotesNewRoute
   '/planning/people/$personId': typeof PlanningPeoplePersonIdRoute
   '/planning/projects/$projectId': typeof PlanningProjectsProjectIdRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
@@ -1364,6 +1461,8 @@ export interface FileRoutesById {
   '/inventory/movements/': typeof InventoryMovementsIndexRoute
   '/invoices/billing-runs/': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
+  '/orders/orders/': typeof OrdersOrdersIndexRoute
+  '/orders/quotes/': typeof OrdersQuotesIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/staff/groups/': typeof StaffGroupsIndexRoute
   '/staff/people/': typeof StaffPeopleIndexRoute
@@ -1393,6 +1492,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/inventory'
     | '/invoices'
+    | '/orders'
     | '/password-reset'
     | '/pay'
     | '/planning'
@@ -1427,6 +1527,8 @@ export interface FileRouteTypes {
     | '/invoices/overdue'
     | '/invoices/quick'
     | '/invoices/settings'
+    | '/orders/settings'
+    | '/orders/templates'
     | '/planning/intake'
     | '/planning/me'
     | '/planning/requests'
@@ -1469,6 +1571,7 @@ export interface FileRouteTypes {
     | '/expenses/'
     | '/inventory/'
     | '/invoices/'
+    | '/orders/'
     | '/planning/'
     | '/products/'
     | '/projects/'
@@ -1478,6 +1581,7 @@ export interface FileRouteTypes {
     | '/workspace/'
     | '/customers/$customerId/energy'
     | '/customers/$customerId/invoices'
+    | '/customers/$customerId/orders'
     | '/customers/$customerId/projects'
     | '/customers/contacts/$contactId'
     | '/customers/import/$importId'
@@ -1492,6 +1596,10 @@ export interface FileRouteTypes {
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
+    | '/orders/orders/$orderId'
+    | '/orders/orders/new'
+    | '/orders/quotes/$quoteId'
+    | '/orders/quotes/new'
     | '/planning/people/$personId'
     | '/planning/projects/$projectId'
     | '/projects/$projectId/billing'
@@ -1518,6 +1626,8 @@ export interface FileRouteTypes {
     | '/inventory/movements/'
     | '/invoices/billing-runs/'
     | '/invoices/payments/'
+    | '/orders/orders/'
+    | '/orders/quotes/'
     | '/projects/$projectId/'
     | '/staff/groups/'
     | '/staff/people/'
@@ -1561,6 +1671,8 @@ export interface FileRouteTypes {
     | '/invoices/overdue'
     | '/invoices/quick'
     | '/invoices/settings'
+    | '/orders/settings'
+    | '/orders/templates'
     | '/planning/intake'
     | '/planning/me'
     | '/planning/requests'
@@ -1600,6 +1712,7 @@ export interface FileRouteTypes {
     | '/expenses'
     | '/inventory'
     | '/invoices'
+    | '/orders'
     | '/planning'
     | '/products'
     | '/projects'
@@ -1609,6 +1722,7 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/customers/$customerId/energy'
     | '/customers/$customerId/invoices'
+    | '/customers/$customerId/orders'
     | '/customers/$customerId/projects'
     | '/customers/contacts/$contactId'
     | '/customers/import/$importId'
@@ -1623,6 +1737,10 @@ export interface FileRouteTypes {
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
+    | '/orders/orders/$orderId'
+    | '/orders/orders/new'
+    | '/orders/quotes/$quoteId'
+    | '/orders/quotes/new'
     | '/planning/people/$personId'
     | '/planning/projects/$projectId'
     | '/projects/$projectId/billing'
@@ -1649,6 +1767,8 @@ export interface FileRouteTypes {
     | '/inventory/movements'
     | '/invoices/billing-runs'
     | '/invoices/payments'
+    | '/orders/orders'
+    | '/orders/quotes'
     | '/projects/$projectId'
     | '/staff/groups'
     | '/staff/people'
@@ -1676,6 +1796,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/inventory'
     | '/invoices'
+    | '/orders'
     | '/password-reset'
     | '/pay'
     | '/planning'
@@ -1710,6 +1831,8 @@ export interface FileRouteTypes {
     | '/invoices/overdue'
     | '/invoices/quick'
     | '/invoices/settings'
+    | '/orders/settings'
+    | '/orders/templates'
     | '/planning/intake'
     | '/planning/me'
     | '/planning/requests'
@@ -1752,6 +1875,7 @@ export interface FileRouteTypes {
     | '/expenses/'
     | '/inventory/'
     | '/invoices/'
+    | '/orders/'
     | '/planning/'
     | '/products/'
     | '/projects/'
@@ -1761,6 +1885,7 @@ export interface FileRouteTypes {
     | '/workspace/'
     | '/customers/$customerId/energy'
     | '/customers/$customerId/invoices'
+    | '/customers/$customerId/orders'
     | '/customers/$customerId/projects'
     | '/customers/contacts/$contactId'
     | '/customers/import/$importId'
@@ -1775,6 +1900,10 @@ export interface FileRouteTypes {
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
+    | '/orders/orders/$orderId'
+    | '/orders/orders/new'
+    | '/orders/quotes/$quoteId'
+    | '/orders/quotes/new'
     | '/planning/people/$personId'
     | '/planning/projects/$projectId'
     | '/projects/$projectId/billing'
@@ -1801,6 +1930,8 @@ export interface FileRouteTypes {
     | '/inventory/movements/'
     | '/invoices/billing-runs/'
     | '/invoices/payments/'
+    | '/orders/orders/'
+    | '/orders/quotes/'
     | '/projects/$projectId/'
     | '/staff/groups/'
     | '/staff/people/'
@@ -1829,6 +1960,7 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   InventoryRoute: typeof InventoryRouteWithChildren
   InvoicesRoute: typeof InvoicesRouteWithChildren
+  OrdersRoute: typeof OrdersRouteWithChildren
   PasswordResetRoute: typeof PasswordResetRoute
   PayRoute: typeof PayRoute
   PlanningRoute: typeof PlanningRouteWithChildren
@@ -1944,6 +2076,13 @@ declare module '@tanstack/react-router' {
       path: '/invoices'
       fullPath: '/invoices'
       preLoaderRoute: typeof InvoicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/orders': {
+      id: '/orders'
+      path: '/orders'
+      fullPath: '/orders'
+      preLoaderRoute: typeof OrdersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/password-reset': {
@@ -2254,6 +2393,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InvoicesSettingsRouteImport
       parentRoute: typeof InvoicesRoute
     }
+    '/orders/': {
+      id: '/orders/'
+      path: '/'
+      fullPath: '/orders/'
+      preLoaderRoute: typeof OrdersIndexRouteImport
+      parentRoute: typeof OrdersRoute
+    }
+    '/orders/settings': {
+      id: '/orders/settings'
+      path: '/settings'
+      fullPath: '/orders/settings'
+      preLoaderRoute: typeof OrdersSettingsRouteImport
+      parentRoute: typeof OrdersRoute
+    }
+    '/orders/templates': {
+      id: '/orders/templates'
+      path: '/templates'
+      fullPath: '/orders/templates'
+      preLoaderRoute: typeof OrdersTemplatesRouteImport
+      parentRoute: typeof OrdersRoute
+    }
     '/planning/': {
       id: '/planning/'
       path: '/'
@@ -2548,6 +2708,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CustomersCustomerIdInvoicesRouteImport
       parentRoute: typeof CustomersCustomerIdRoute
     }
+    '/customers/$customerId/orders': {
+      id: '/customers/$customerId/orders'
+      path: '/orders'
+      fullPath: '/customers/$customerId/orders'
+      preLoaderRoute: typeof CustomersCustomerIdOrdersRouteImport
+      parentRoute: typeof CustomersCustomerIdRoute
+    }
     '/customers/$customerId/projects': {
       id: '/customers/$customerId/projects'
       path: '/projects'
@@ -2694,6 +2861,48 @@ declare module '@tanstack/react-router' {
       fullPath: '/invoices/reminders/print'
       preLoaderRoute: typeof InvoicesRemindersPrintRouteImport
       parentRoute: typeof InvoicesRoute
+    }
+    '/orders/orders/': {
+      id: '/orders/orders/'
+      path: '/orders'
+      fullPath: '/orders/orders/'
+      preLoaderRoute: typeof OrdersOrdersIndexRouteImport
+      parentRoute: typeof OrdersRoute
+    }
+    '/orders/orders/$orderId': {
+      id: '/orders/orders/$orderId'
+      path: '/orders/$orderId'
+      fullPath: '/orders/orders/$orderId'
+      preLoaderRoute: typeof OrdersOrdersOrderIdRouteImport
+      parentRoute: typeof OrdersRoute
+    }
+    '/orders/orders/new': {
+      id: '/orders/orders/new'
+      path: '/orders/new'
+      fullPath: '/orders/orders/new'
+      preLoaderRoute: typeof OrdersOrdersNewRouteImport
+      parentRoute: typeof OrdersRoute
+    }
+    '/orders/quotes/': {
+      id: '/orders/quotes/'
+      path: '/quotes'
+      fullPath: '/orders/quotes/'
+      preLoaderRoute: typeof OrdersQuotesIndexRouteImport
+      parentRoute: typeof OrdersRoute
+    }
+    '/orders/quotes/$quoteId': {
+      id: '/orders/quotes/$quoteId'
+      path: '/quotes/$quoteId'
+      fullPath: '/orders/quotes/$quoteId'
+      preLoaderRoute: typeof OrdersQuotesQuoteIdRouteImport
+      parentRoute: typeof OrdersRoute
+    }
+    '/orders/quotes/new': {
+      id: '/orders/quotes/new'
+      path: '/quotes/new'
+      fullPath: '/orders/quotes/new'
+      preLoaderRoute: typeof OrdersQuotesNewRouteImport
+      parentRoute: typeof OrdersRoute
     }
     '/planning/people/$personId': {
       id: '/planning/people/$personId'
@@ -2960,6 +3169,7 @@ const CommunicationsRouteWithChildren = CommunicationsRoute._addFileChildren(
 interface CustomersCustomerIdRouteChildren {
   CustomersCustomerIdEnergyRoute: typeof CustomersCustomerIdEnergyRoute
   CustomersCustomerIdInvoicesRoute: typeof CustomersCustomerIdInvoicesRoute
+  CustomersCustomerIdOrdersRoute: typeof CustomersCustomerIdOrdersRoute
   CustomersCustomerIdProjectsRoute: typeof CustomersCustomerIdProjectsRoute
   CustomersCustomerIdIndexRoute: typeof CustomersCustomerIdIndexRoute
 }
@@ -2967,6 +3177,7 @@ interface CustomersCustomerIdRouteChildren {
 const CustomersCustomerIdRouteChildren: CustomersCustomerIdRouteChildren = {
   CustomersCustomerIdEnergyRoute: CustomersCustomerIdEnergyRoute,
   CustomersCustomerIdInvoicesRoute: CustomersCustomerIdInvoicesRoute,
+  CustomersCustomerIdOrdersRoute: CustomersCustomerIdOrdersRoute,
   CustomersCustomerIdProjectsRoute: CustomersCustomerIdProjectsRoute,
   CustomersCustomerIdIndexRoute: CustomersCustomerIdIndexRoute,
 }
@@ -3124,6 +3335,33 @@ const InvoicesRouteChildren: InvoicesRouteChildren = {
 const InvoicesRouteWithChildren = InvoicesRoute._addFileChildren(
   InvoicesRouteChildren,
 )
+
+interface OrdersRouteChildren {
+  OrdersSettingsRoute: typeof OrdersSettingsRoute
+  OrdersTemplatesRoute: typeof OrdersTemplatesRoute
+  OrdersIndexRoute: typeof OrdersIndexRoute
+  OrdersOrdersOrderIdRoute: typeof OrdersOrdersOrderIdRoute
+  OrdersOrdersNewRoute: typeof OrdersOrdersNewRoute
+  OrdersQuotesQuoteIdRoute: typeof OrdersQuotesQuoteIdRoute
+  OrdersQuotesNewRoute: typeof OrdersQuotesNewRoute
+  OrdersOrdersIndexRoute: typeof OrdersOrdersIndexRoute
+  OrdersQuotesIndexRoute: typeof OrdersQuotesIndexRoute
+}
+
+const OrdersRouteChildren: OrdersRouteChildren = {
+  OrdersSettingsRoute: OrdersSettingsRoute,
+  OrdersTemplatesRoute: OrdersTemplatesRoute,
+  OrdersIndexRoute: OrdersIndexRoute,
+  OrdersOrdersOrderIdRoute: OrdersOrdersOrderIdRoute,
+  OrdersOrdersNewRoute: OrdersOrdersNewRoute,
+  OrdersQuotesQuoteIdRoute: OrdersQuotesQuoteIdRoute,
+  OrdersQuotesNewRoute: OrdersQuotesNewRoute,
+  OrdersOrdersIndexRoute: OrdersOrdersIndexRoute,
+  OrdersQuotesIndexRoute: OrdersQuotesIndexRoute,
+}
+
+const OrdersRouteWithChildren =
+  OrdersRoute._addFileChildren(OrdersRouteChildren)
 
 interface PlanningRouteChildren {
   PlanningIntakeRoute: typeof PlanningIntakeRoute
@@ -3359,6 +3597,7 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   InventoryRoute: InventoryRouteWithChildren,
   InvoicesRoute: InvoicesRouteWithChildren,
+  OrdersRoute: OrdersRouteWithChildren,
   PasswordResetRoute: PasswordResetRoute,
   PayRoute: PayRoute,
   PlanningRoute: PlanningRouteWithChildren,

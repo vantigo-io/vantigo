@@ -140,3 +140,15 @@ func TestModulesEnv_ListsProductsBesideInventory(t *testing.T) {
 		t.Errorf("modulesEnv(inventory) = %q, want exactly %q", got, "customers,inventory,products")
 	}
 }
+
+// TestModulesEnv_ListsProductsAndInvoicesBesideOrders proves a harness
+// composing orders lists products and invoices as enabled: config.go refuses
+// "orders" without either, and orders' own tests stand in fakes of the
+// catalog and the sales tax rather than compose them.
+func TestModulesEnv_ListsProductsAndInvoicesBesideOrders(t *testing.T) {
+	t.Parallel()
+
+	if got := modulesEnv([]module.Module{{Name: "orders"}}); got != "customers,invoices,orders,products" {
+		t.Errorf("modulesEnv(orders) = %q, want exactly %q", got, "customers,invoices,orders,products")
+	}
+}

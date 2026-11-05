@@ -145,6 +145,7 @@ type setup struct {
 	timesheets        contracts.Timesheets
 	expenses          contracts.ProjectExpenses
 	receivables       contracts.CustomerReceivables
+	salesTax          contracts.SalesTax
 	holders           []contracts.CustomerReferenceHolder
 	variantHolders    []contracts.VariantReferenceHolder
 	personalData      []contracts.CustomerPersonalDataHolder
@@ -306,6 +307,16 @@ func WithExpenses(p contracts.ProjectExpenses) Option {
 // than as zeroes.
 func WithReceivables(p contracts.CustomerReceivables) Option {
 	return func(s *setup) { s.receivables = p }
+}
+
+// WithSalesTax sets Deps.SalesTax directly to p, for a module under test that
+// reads Invoices' VAT codes and seller (contracts.SalesTax, orders design O8)
+// without composing invoices — depguard keeps invoices out of orders' tests.
+// module.Compose only ever overwrites Deps.SalesTax when one of the composed
+// modules declares Module.SalesTax, so a value set here survives Compose
+// unchanged.
+func WithSalesTax(p contracts.SalesTax) Option {
+	return func(s *setup) { s.salesTax = p }
 }
 
 // WithCustomerReferenceHolders adds holders to Deps.CustomerReferenceHolders,
@@ -621,6 +632,11 @@ func WithEnv(key, value string) Option {
 // config.go rejects "inventory" without "products", and inventory's own tests
 // stand in a fake catalog (WithProducts) rather than compose products.
 //
+// "products" and "invoices" are likewise included whenever "orders" is among
+// mods: config.go rejects "orders" without either (orders design O9), and
+// orders' own tests stand in fakes of the catalog and the sales tax rather
+// than compose them.
+//
 // "staff" is likewise included whenever "entra" or "google" is among mods:
 // config.go rejects either without "staff" (Staff's accounts worker is the
 // provider's only caller), and their own tests drive the provider and its
@@ -647,6 +663,10 @@ func modulesEnv(mods []module.Module, stubbed ...string) string {
 	}
 	if moduleSet["inventory"] {
 		moduleSet["products"] = true
+	}
+	if moduleSet["orders"] {
+		moduleSet["products"] = true
+		moduleSet["invoices"] = true
 	}
 	for _, name := range stubbed {
 		moduleSet[name] = true
@@ -737,6 +757,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		Timesheets:               s.timesheets,
 		Expenses:                 s.expenses,
 		Receivables:              s.receivables,
+		SalesTax:                 s.salesTax,
 		CustomerReferenceHolders: s.holders,
 		VariantReferenceHolders:  s.variantHolders,
 		CustomerPersonalData:     s.personalData,

@@ -12,7 +12,7 @@ const values = (enabledModules: Parameters<typeof visibleCustomerDetailTabs>[0],
 
 describe("customer detail tab visibility", () => {
   it("shows every tab when all modules are enabled and permissions granted", () => {
-    expect(values(moduleKeys, ["*"])).toEqual(["overview", "energy", "projects", "invoices"]);
+    expect(values(moduleKeys, ["*"])).toEqual(["overview", "energy", "projects", "invoices", "orders"]);
   });
 
   it("hides the energy tab when the energy module is disabled for the tenant", () => {
@@ -43,6 +43,12 @@ describe("customer detail tab visibility", () => {
     expect(values(["customers", "invoices"], ["invoices:access"])).toEqual(["overview", "invoices"]);
   });
 
+  it("shows the orders tab only with the orders module and orders:access", () => {
+    expect(values(moduleKeys, ["orders:access"])).toEqual(["overview", "orders"]);
+    expect(values(["customers", "invoices", "products"], ["*"])).toEqual(["overview", "invoices"]);
+    expect(values(moduleKeys, ["orders:quotes-manage", "orders:sales-manage"])).toEqual(["overview"]);
+  });
+
   it("hides the invoices tab without invoices:access even though the module is enabled", () => {
     expect(values(moduleKeys, ["customers:view", "invoices:create", "invoices:issue"])).toEqual(["overview"]);
   });
@@ -66,6 +72,7 @@ describe("the active customer detail tab", () => {
     expect(activeCustomerDetailTab(routeIds("/customers/$customerId/energy"))).toBe("energy");
     expect(activeCustomerDetailTab(routeIds("/customers/$customerId/projects"))).toBe("projects");
     expect(activeCustomerDetailTab(routeIds("/customers/$customerId/invoices"))).toBe("invoices");
+    expect(activeCustomerDetailTab(routeIds("/customers/$customerId/orders"))).toBe("orders");
   });
 });
 

@@ -11,7 +11,7 @@ import (
 // promptVersion names the system prompt below. It is bumped with any change of
 // the rules, so a conversation's behaviour can be traced to the prompt it ran
 // under.
-const promptVersion = "2026-11-03.2"
+const promptVersion = "2026-11-05.1"
 
 // appRoutes are the host's route shapes the assistant links records with: the
 // in-app routes of apps.ts and routes/, kept here because the prompt states
@@ -19,7 +19,7 @@ const promptVersion = "2026-11-03.2"
 // begin with one of these prefixes is refused by navigate.
 var appRoutes = []struct{ prefix, shape, what string }{
 	{"/dashboard", "/dashboard", "the dashboard"},
-	{"/customers", "/customers/{customerId}", "a customer (tabs: /invoices, /projects, /energy); /customers/follow-ups, /customers/import"},
+	{"/customers", "/customers/{customerId}", "a customer (tabs: /invoices, /projects, /energy, /orders); /customers/follow-ups, /customers/import"},
 	{"/energy", "/energy/metering-points, /energy/tariffs, /energy/prices", "energy"},
 	{"/invoices", "/invoices/{invoiceId}", "an invoice; /invoices/overdue, /invoices/billing-runs, /invoices/payments"},
 	{"/projects", "/projects/{projectId}", "a project; /projects/my-tasks"},
@@ -30,6 +30,7 @@ var appRoutes = []struct{ prefix, shape, what string }{
 	{"/staff", "/staff/people/{id}, /staff/absence", "staff"},
 	{"/planning", "/planning, /planning/unbooked", "planning"},
 	{"/inventory", "/inventory/sites/{siteId}, /inventory/locations/{locationId}, /inventory/variants/{variantId}, /inventory/movements", "inventory: sites, locations, stock and movements"},
+	{"/orders", "/orders/quotes/{quoteId}, /orders/orders/{orderId}, /orders/templates, /orders/settings", "orders: quotes, sales orders and quote templates"},
 	{"/calendar", "/calendar", "the calendar"},
 	{"/assistant", "/assistant", "the Assistant app"},
 	{"/settings", "/settings", "the person's own settings"},

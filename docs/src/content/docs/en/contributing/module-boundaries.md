@@ -20,6 +20,7 @@ sources:
   - apps/invoices/frontend/eslint.config.js
   - apps/planning/frontend/eslint.config.js
   - apps/inventory/frontend/eslint.config.js
+  - apps/orders/frontend/eslint.config.js
   - apps/assistant/frontend/eslint.config.js
   - apps/products/frontend/eslint.config.js
   - apps/projects/frontend/eslint.config.js
@@ -29,7 +30,7 @@ sources:
 Vantigo is a modular monolith: one Go binary, one container, one PostgreSQL
 database — with strict module boundaries so any module can later be extracted into
 its own deployable without a rewrite. Customers, Products, Energy, Communications,
-Projects, Time, Expenses, Invoices, Staff, Calendar, Entra, Google, Planning, Inventory and Assistant are vertical-slice modules composed only
+Projects, Time, Expenses, Invoices, Staff, Calendar, Entra, Google, Planning, Inventory, Orders and Assistant are vertical-slice modules composed only
 by `cmd/vantigo`, on the Identity platform.
 
 Modules never reference each other directly. Synchronous cross-module needs go
@@ -92,7 +93,7 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    type, never a store type, and the reason is rules 8, 9 and 10's.
 4. **One schema per module.** Each module maps tables only into its own PostgreSQL
    schema (`identity`, `customers`, `products`, `energy`, `communications`,
-   `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar`, `entra`, `google`, `planning`, `assistant`), and no module's migrations or queries reference
+   `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar`, `entra`, `google`, `planning`, `inventory`, `orders`, `assistant`), and no module's migrations or queries reference
    another's. **No cross-schema foreign keys or joins** — reference other modules'
    data by opaque ID only. That is what keeps a future "move this schema to its own
    server" a connection-string change instead of a data migration.

@@ -24,6 +24,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
 	"github.com/vantigo-io/vantigo/server/internal/openapi/contracttest"
 	"github.com/vantigo-io/vantigo/server/internal/operations"
+	"github.com/vantigo-io/vantigo/server/internal/orders"
 	"github.com/vantigo-io/vantigo/server/internal/planning"
 	"github.com/vantigo-io/vantigo/server/internal/products"
 	"github.com/vantigo-io/vantigo/server/internal/projects"
@@ -43,7 +44,7 @@ func everyModule() []module.Module {
 	return []module.Module{
 		customers.Module(), products.Module(), energy.Module(), communications.Module(),
 		projects.Module(), timetracking.Module(), expenses.Module(), invoices.Module(),
-		staff.Module(), planning.Module(), inventory.Module(), calendar.Module(), entra.Module(), google.Module(), assistant.Module(),
+		staff.Module(), planning.Module(), inventory.Module(), orders.Module(), calendar.Module(), entra.Module(), google.Module(), assistant.Module(),
 	}
 }
 
@@ -320,6 +321,10 @@ var filesOrRedirects = []string{
 	"putStaffPeopleByIdPhoto",
 	"postInvoicesBankFiles",
 	"printInventoryLabels",
+	"getQuotePdf",
+	"getQuoteProforma",
+	"getSalesOrderPdf",
+	"getSalesOrderProforma",
 }
 
 func equalMaps(a, b map[string]string) bool {

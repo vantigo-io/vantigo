@@ -20,6 +20,7 @@ import {
   IconClipboardCheck,
   IconClock,
   IconClockExclamation,
+  IconFileDollar,
   IconFileImport,
   IconFileInvoice,
   IconFilePlus,
@@ -41,6 +42,7 @@ import {
   IconReportMoney,
   IconShieldCheck,
   IconShieldLock,
+  IconShoppingCart,
   IconSparkles,
   IconTelescope,
   IconTemplate,
@@ -53,6 +55,7 @@ import {
   IconUsersGroup,
 } from "@tabler/icons-react";
 import { type InventoryNavItem, inventoryNavItems } from "@vantigo/inventory-ui";
+import { type OrdersNavItem, ordersNavItems } from "@vantigo/orders-ui";
 import { type PlanningNavItem, planningNavItems } from "@vantigo/planning-ui";
 import { type StaffNavItem, staffNavItems } from "@vantigo/staff-ui";
 import { accountMenuSections } from "./account-menu";
@@ -176,6 +179,20 @@ const planningNavPresentation: Record<PlanningNavItem["key"], Pick<NavItem, "lab
   wishes: { label: "navigation.planningWishes", icon: IconHeartHandshake },
   myPlanning: { label: "navigation.planningMyPlanning", icon: IconCalendarUser },
   settings: { label: "navigation.planningSettings", icon: IconAdjustments },
+};
+
+/**
+ * The host's half of an Orders sidebar entry, as Planning's above: where each
+ * destination is and which permissions offer it are the package's
+ * (`ordersNavItems`); the label and the icon are the host's. Orders is "Sales
+ * orders" in English, as People is "Staff directory": Spotlight flattens every
+ * app's destinations into one list, where a bare "Orders" would name the app.
+ */
+const ordersNavPresentation: Record<OrdersNavItem["key"], Pick<NavItem, "label" | "icon">> = {
+  quotes: { label: "navigation.ordersQuotes", icon: IconFileDollar },
+  orders: { label: "navigation.ordersOrders", icon: IconShoppingCart },
+  templates: { label: "navigation.ordersTemplates", icon: IconTemplate },
+  settings: { label: "navigation.ordersSettings", icon: IconAdjustments },
 };
 
 /**
@@ -479,6 +496,23 @@ export const apps: readonly AppDefinition[] = [
       requiredPermissions: ["invoices:manage"],
     },
   ]),
+  // Every Orders call asks for orders:access (orders design §8), so the tile
+  // asks for it alone; Templates and Settings need orders:settings as well.
+  {
+    ...moduleApp(
+      "orders",
+      "navigation.orders",
+      IconShoppingCart,
+      "/orders",
+      ordersNavItems.map(({ key, to, requiredPermissions, requiredAllPermissions }) => ({
+        ...ordersNavPresentation[key],
+        to,
+        requiredPermissions,
+        requiredAllPermissions,
+      })),
+    ),
+    requiredPermissions: ["orders:access"],
+  },
   moduleApp("communications", "navigation.communications", IconInbox, "/communications", [
     {
       label: "navigation.inbox",

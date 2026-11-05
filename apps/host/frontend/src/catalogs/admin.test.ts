@@ -241,6 +241,50 @@ describe("the admin permission catalog", () => {
     expect(en["admin.permission.inventoryCountsManageDescription"]).toBe("Open, count, post and cancel stock counts.");
   });
 
+  // Hand-kept in step with `apps/server/internal/orders/module.go` (`var
+  // permissions`), for the same reason as the lists above.
+  it("names the nine orders permissions in English and Norwegian, the English the server's own", () => {
+    const server: Record<string, [string, string]> = {
+      "orders:access": ["Use Orders", "See the Orders app and read quotes, orders, subscriptions and deliveries."],
+      "orders:quotes-manage": ["Manage quotes", "Create, edit, send, revise, accept, decline and cancel quotes."],
+      "orders:sales-manage": [
+        "Manage orders",
+        "Create and edit orders, hold and release them, cancel them and register what was delivered.",
+      ],
+      "orders:sales-confirm": ["Confirm orders", "Confirm orders, and lock and unlock them."],
+      "orders:subscriptions-manage": ["Manage subscriptions", "Create, activate, change, pause and end subscriptions."],
+      "orders:deliveries-manage": [
+        "Manage deliveries",
+        "Create, pick, post and cancel deliveries; create, book and cancel shipments and print their labels.",
+      ],
+      "orders:carriers-manage": [
+        "Manage carriers",
+        "Connect carrier accounts and manage their keys under Integrations.",
+      ],
+      "orders:analysis-view": ["View sales analysis", "See the analysis of quotes and orders."],
+      "orders:settings": [
+        "Manage Orders settings",
+        "Change the settings, the number series, the templates and the warnings, and override a warning's block.",
+      ],
+    };
+    const en = adminCatalog.en as Record<string, string>;
+    for (const [key, [display, description]] of Object.entries(server)) {
+      const translation = hostPermissionTranslationKeys[key as keyof typeof hostPermissionTranslationKeys];
+      expect(translation, `no catalog entry for ${key}`).toBeDefined();
+      expect(translation.moduleKey).toBe("admin.permission.module.orders");
+      expect(translation.categoryKey).toBe("admin.permission.category.orders");
+      expect(en[translation.displayNameKey]).toBe(display);
+      expect(en[translation.descriptionKey]).toBe(description);
+      for (const lng of ["en", "nb"] as const) {
+        const catalog = adminCatalog[lng] as Record<string, string>;
+        expect(catalog[translation.displayNameKey], `${key} display name (${lng})`).toBeTruthy();
+        expect(catalog[translation.descriptionKey], `${key} description (${lng})`).toBeTruthy();
+        expect(catalog[translation.moduleKey], `${key} module (${lng})`).toBeTruthy();
+        expect(catalog[translation.categoryKey], `${key} category (${lng})`).toBeTruthy();
+      }
+    }
+  });
+
   // Hand-kept in step with `apps/server/internal/calendar/module.go` (`var
   // permissions`), for the same reason as the lists above.
   it("names the three calendar permissions in English and Norwegian, the English the server's own", () => {
