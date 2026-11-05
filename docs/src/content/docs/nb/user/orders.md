@@ -45,7 +45,9 @@ En deaktivert, arkivert eller sammenslått kunde kan ikke få et nytt tilbud.
 ### Hodet
 
 Så lenge tilbudet er et utkast, kan du endre **Leveringsadresse** (som standard kundens
-adresse), **Kontaktperson**, **Deres referanse**, **Selger** (**Gjør meg til selger**
+primære leveringsadresse; alle kundens adresser kan velges, og en som ikke er en
+leveringsadresse på kunden — for eksempel en besøks- eller postadresse — godtas med den gule
+merknaden *Dette er ikke en leveringsadresse på kunden.*), **Kontaktperson**, **Deres referanse**, **Selger** (**Gjør meg til selger**
 setter deg), **Prosjekt**, **Valuta**, **Priser** (**eks. mva** eller **inkl. mva**),
 **Betalingsbetingelser**, **Dokumentspråk**, **Gyldig til**, **Leveringsdato** og **Vis
 rabatten på PDF-en**, og under **Tekster** **Innledning**, **Avslutning** og et **Internt

@@ -114,6 +114,10 @@ export const HeaderCard = ({
     !addressOptions.some((o) => o.value === String(header.deliveryAddressId))
   )
     addressOptions.unshift({ value: String(header.deliveryAddressId), label: addressLine(snapshot?.deliveryAddress) });
+  // Any of the customer's addresses may be chosen; one that is not a delivery
+  // address on the customer is allowed but called out (O13).
+  const chosenAddress = (addresses.data ?? []).find((a) => a.id === header.deliveryAddressId);
+  const notADeliveryAddress = chosenAddress !== undefined && chosenAddress.type !== "delivery";
   const contactOptions = (contacts.data ?? []).map((c) => ({
     value: String(c.contact.id),
     label: [`${c.contact.firstName} ${c.contact.lastName}`.trim(), c.email ?? c.contact.email]
@@ -171,15 +175,22 @@ export const HeaderCard = ({
             </Field>
           )}
           {editable.delivery && access.canViewCustomers ? (
-            <Select
-              label={t("deliveryAddress")}
-              placeholder={t("deliveryAddressDefault")}
-              data={addressOptions}
-              value={header.deliveryAddressId === null ? null : String(header.deliveryAddressId)}
-              onChange={(value) => onChange({ deliveryAddressId: value === null ? null : Number(value) })}
-              clearable
-              error={errors.deliveryAddressId}
-            />
+            <div>
+              <Select
+                label={t("deliveryAddress")}
+                placeholder={t("deliveryAddressDefault")}
+                data={addressOptions}
+                value={header.deliveryAddressId === null ? null : String(header.deliveryAddressId)}
+                onChange={(value) => onChange({ deliveryAddressId: value === null ? null : Number(value) })}
+                clearable
+                error={errors.deliveryAddressId ? t("deliveryAddressUnknown") : undefined}
+              />
+              {notADeliveryAddress && !errors.deliveryAddressId && (
+                <Text size="xs" c="yellow.8" mt={4} data-testid="delivery-address-warning">
+                  {t("deliveryAddressNotDelivery")}
+                </Text>
+              )}
+            </div>
           ) : (
             <Field label={t("deliveryAddress")}>{addressLine(snapshot?.deliveryAddress)}</Field>
           )}

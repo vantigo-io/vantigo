@@ -466,3 +466,25 @@ func TestQuote_DeleteCancelDeclineAndCopy(t *testing.T) {
 
 // dateOf is a civil date for the API.
 func dateOf(t time.Time) *openapi_types.Date { return &openapi_types.Date{Time: t} }
+
+// Any of the customer's addresses may be the delivery address — a visiting
+// address too — but only a delivery address is chosen by itself (O13).
+func TestQuote_DeliversToAnyOfTheCustomersAddresses(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	c := h.SignIn(t, quoter...)
+	q := createQuote(t, c, custBusiness)
+	if q.Customer.DeliveryAddressId == nil || *q.Customer.DeliveryAddressId != addrWarehouse {
+		t.Fatalf("delivery address %v, want the primary delivery address", q.Customer.DeliveryAddressId)
+	}
+	res := c.Do(http.MethodPut, quotePath(q.Id), gen.OrdersQuoteUpdate{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: q.Revision,
+		CustomerId: custBusiness, DeliveryAddressId: i32(addrVisiting), Lines: []gen.OrdersLineInput{}})
+	mustStatus(t, res, http.StatusOK, "a visiting address")
+	var got gen.OrdersQuote
+	res.JSON(&got)
+	if got.Customer.DeliveryAddressId == nil || *got.Customer.DeliveryAddressId != addrVisiting {
+		t.Errorf("delivery address %v, want the visiting address", got.Customer.DeliveryAddressId)
+	}
+	expectRefusal(t, c.Do(http.MethodPut, quotePath(q.Id), gen.OrdersQuoteUpdate{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: got.Revision,
+		CustomerId: custBusiness, DeliveryAddressId: i32(9999), Lines: []gen.OrdersLineInput{}}), http.StatusBadRequest, "", "an address the customer has not")
+}

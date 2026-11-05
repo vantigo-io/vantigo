@@ -180,12 +180,15 @@ LIMIT 1;
 
 -- name: DirectoryDeliveryAddresses :many
 -- DirectoryDeliveryAddresses is contracts.CustomerDirectory.BillingProfile's
--- delivery addresses, read only when the caller asks (orders design O10): the
--- primary one first, then the others by id, each with its id.
-SELECT id, label, line1, line2, postal_code, city, region, country
+-- delivery addresses, read only when the caller asks (orders design O10):
+-- every address of the customer a delivery may go to, the delivery addresses
+-- first (the primary one first), then the visiting, postal and invoice ones,
+-- each type's primary first, then by id, each with its id and type.
+SELECT id, type, label, line1, line2, postal_code, city, region, country
 FROM customers.customer_addresses
-WHERE customer_id = @customer_id AND type = 'delivery'
-ORDER BY is_primary DESC, id;
+WHERE customer_id = @customer_id
+ORDER BY CASE type WHEN 'delivery' THEN 0 WHEN 'visiting' THEN 1 WHEN 'postal' THEN 2 ELSE 3 END,
+         is_primary DESC, id;
 
 -- name: DeleteCustomerAddress :exec
 -- DeleteCustomerAddress is DeleteCustomersByIdAddressesByAddressId's write,

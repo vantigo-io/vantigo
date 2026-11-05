@@ -89,7 +89,9 @@ profile:
 
 - **The customer snapshot** — number, name, type, organisation number or foreign id,
   country and invoice address, the invoice e-mail — and the **delivery address** (the
-  request's, else the customer's primary address) and the **contact** (the request's,
+  request's — any of the customer's addresses, of any type; an id the customer does not have
+  is a field error on `deliveryAddressId` — else the customer's primary *delivery* address,
+  else none: a visiting, postal or invoice address is never chosen by itself) and the **contact** (the request's,
   else none), each copied in.
 - **Your reference** defaults to the customer's buyer reference; the **currency** to the
   customer's, else the deployment's base currency; **prices include VAT** to true for a

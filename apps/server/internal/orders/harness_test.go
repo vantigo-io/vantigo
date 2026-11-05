@@ -144,6 +144,7 @@ const (
 
 	addrWarehouse int32 = 11
 	addrShop      int32 = 12
+	addrVisiting  int32 = 13
 	contactKari   int32 = 21
 )
 
@@ -179,8 +180,9 @@ func seed(h *harness) {
 		LegalID: "987654321", InvoiceAddress: &contracts.CustomerAddressEntry{Line1: "Kundeveien 2", PostalCode: "0150", City: "Oslo", Country: "no"},
 		InvoiceEmail: "faktura@acme.example", PaymentTermsDays: &terms, Currency: "NOK", Language: "nb", BuyerReference: "PO-77",
 		DeliveryAddresses: []contracts.CustomerAddressEntry{
-			{ID: addrWarehouse, Label: "Lager", Line1: "Lagerveien 5", PostalCode: "2000", City: "Lillestrøm", Country: "no"},
-			{ID: addrShop, Label: "Butikk", Line1: "Butikkgata 1", PostalCode: "0151", City: "Oslo", Country: "no"},
+			{ID: addrWarehouse, Type: "delivery", Label: "Lager", Line1: "Lagerveien 5", PostalCode: "2000", City: "Lillestrøm", Country: "no"},
+			{ID: addrShop, Type: "delivery", Label: "Butikk", Line1: "Butikkgata 1", PostalCode: "0151", City: "Oslo", Country: "no"},
+			{ID: addrVisiting, Type: "visiting", Label: "Besøk", Line1: "Besøksveien 3", PostalCode: "0152", City: "Oslo", Country: "no"},
 		},
 		Contacts: []contracts.CustomerContactEntry{{ID: contactKari, Name: "Kari Nordmann", Email: "kari@acme.example", Phone: "+4712345678"}},
 	})

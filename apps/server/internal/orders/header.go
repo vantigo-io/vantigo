@@ -244,8 +244,10 @@ func resolveHeader(f *fieldErrors, in headerInput, base *header, r headerReads) 
 	}
 	switch {
 	case chosen == nil && in.DeliveryAddressID != nil:
-		f.add("deliveryAddressId", "The customer has no such delivery address")
-	case chosen == nil && len(p.DeliveryAddresses) > 0:
+		f.add("deliveryAddressId", "The customer has no such address")
+	case chosen == nil && len(p.DeliveryAddresses) > 0 && p.DeliveryAddresses[0].Type == "delivery":
+		// Only a delivery address is chosen by itself; a visiting, postal or
+		// invoice address is offered but must be picked.
 		chosen = &p.DeliveryAddresses[0]
 	}
 	if chosen != nil {

@@ -20,6 +20,26 @@ const server = (
   });
 
 describe("the quote editor", () => {
+  it("warns, in yellow, when the delivery address is not a delivery address on the customer", async () => {
+    const current = quote();
+    server({ ...current, customer: { ...current.customer, deliveryAddressId: 6 } });
+    renderRoute("/orders/quotes/1001");
+    expect(await screen.findByTestId("delivery-address-warning")).toHaveTextContent(
+      "This is not a delivery address on the customer.",
+    );
+  });
+
+  it("gives no warning for one of the customer's delivery addresses", async () => {
+    const current = quote();
+    server({ ...current, customer: { ...current.customer, deliveryAddressId: 7 } });
+    renderRoute("/orders/quotes/1001");
+    expect(await screen.findByRole("heading", { name: /Quote 1042/ })).toBeInTheDocument();
+    await waitFor(() =>
+      expect((screen.getByPlaceholderText("The customer's address") as HTMLInputElement).value).toContain("Lager"),
+    );
+    expect(screen.queryByTestId("delivery-address-warning")).not.toBeInTheDocument();
+  });
+
   it("shows the quote's header, its lines and the server's totals", async () => {
     server();
     renderRoute("/orders/quotes/1001");
