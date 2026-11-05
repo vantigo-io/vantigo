@@ -81,8 +81,9 @@ var billingLease = billingDefaultLease
 var errBillingLeaseLost = errors.New("invoices: the billing run item is no longer under this claim")
 
 // BillingWorker carries the billing runs' items. It implements
-// worker.Worker; Module.Workers registers it always — a run is made only
-// while Energy is composed, and an item judges Energy again.
+// worker.Worker; Module.Workers registers it always — a run of consumption is
+// made only while Energy is composed, one of orders only while Orders is
+// (orders design O40), and an item judges its source's module again.
 type BillingWorker struct {
 	srv *server
 	// srvErr is newServer's failure, kept so the worker still starts and
@@ -265,6 +266,9 @@ func (c *billingClaim) release(ctx context.Context) error {
 
 // bill is the item's steps up to its outcome.
 func (c *billingClaim) bill(ctx context.Context) (itemOutcome, error) {
+	if c.run.Source == runSourceOrders {
+		return c.billOrders(ctx)
+	}
 	s, customer := c.s, c.row.CustomerID
 	// (1) Energy off.
 	if s.deps.Consumption == nil {
@@ -339,6 +343,94 @@ func (c *billingClaim) bill(ctx context.Context) (itemOutcome, error) {
 		if c.run.Issue {
 			if out, refused, err := c.issue(ctx, out.doc.ID); refused || err != nil {
 				return out, err
+			}
+		}
+	}
+	if c.run.Issue {
+		return itemOutcome{status: itemIssued}, nil
+	}
+	return itemOutcome{status: itemDrafted}, nil
+}
+
+// billOrders is an item of a run of orders (orders design O40), in order:
+// Orders off is skipped orders_unavailable; DueOrders for the customer
+// through the run's date, on the pool — a draft allocation's quantity is not
+// offered again, so this item's documents of an earlier attempt are not
+// drafted twice, and are carried on instead; nothing left and nothing made
+// before is skipped no_orders_due. Every line of every order not blocked is
+// invoiced in full by the wizard's own core (fromOrders), one invoice per
+// order or combined as the run says, each draft recorded on the item at once,
+// then — when the run issues — issued by the issue's own core for today. A
+// wizard refusal skips the item with its code, an issue refusal fails it.
+func (c *billingClaim) billOrders(ctx context.Context) (itemOutcome, error) {
+	s, customer := c.s, c.row.CustomerID
+	if s.deps.BillableOrders == nil {
+		p := ordersUnavailable()
+		return skipped(codeOrdersUnavailable, *p.Detail), nil
+	}
+	through := utcDay(c.run.Through.Time)
+	page, err := s.dueOrders(ctx, contracts.DueOrdersRequest{CustomerIDs: []int32{customer}, Until: through})
+	if err != nil {
+		return itemOutcome{}, fmt.Errorf("invoices: read customer %d's due orders: %w", customer, err)
+	}
+	if page.More {
+		return skipped(codeTooManySources, fmt.Sprintf(
+			"Orders has more than %d order lines to invoice for this customer; invoice them with From orders.", contracts.MaxBillableRows)), nil
+	}
+	var lines []orderLineInput
+	for _, o := range page.Orders {
+		if o.Blocked != "" {
+			continue
+		}
+		for _, l := range o.Lines {
+			quantity, err := billableAmount(l.ToInvoice)
+			if err != nil {
+				return itemOutcome{}, err
+			}
+			if quantity.Sign() > 0 {
+				lines = append(lines, orderLineInput{orderID: o.ID, lineID: l.LineID, quantity: quantity})
+			}
+		}
+	}
+	q := store.New(s.deps.Pool)
+	earlier, err := c.earlierDocuments(ctx, q)
+	if err != nil {
+		return itemOutcome{}, err
+	}
+	if len(lines) == 0 && len(earlier) == 0 {
+		return skipped(codeNoOrdersDue, fmt.Sprintf(
+			"No order line of this customer's is left to invoice through %s.", through.Format(time.DateOnly))), nil
+	}
+	if c.run.Issue {
+		for _, d := range earlier {
+			if d.Status != statusDraft {
+				continue
+			}
+			if out, refused, err := c.issue(ctx, d.ID); refused || err != nil {
+				return out, err
+			}
+		}
+	}
+	if len(lines) > 0 {
+		out, err := s.fromOrders(ctx, lines, c.run.Combine)
+		switch {
+		case err != nil:
+			return itemOutcome{}, err
+		case out.invalid != nil:
+			return skipped(codeInvalidRequest, fieldErrorsDetail(out.invalid)), nil
+		case out.refusal != nil:
+			return skipped(problemCode(*out.refusal), problemDetail(*out.refusal)), nil
+		}
+		for _, d := range out.drafts {
+			if err := c.addInvoice(ctx, d.InvoiceId); err != nil {
+				return itemOutcome{}, err
+			}
+		}
+		if c.run.Issue {
+			for _, d := range out.drafts {
+				if out, refused, err := c.issue(ctx, d.InvoiceId); refused || err != nil {
+					return out, err
+				}
 			}
 		}
 	}

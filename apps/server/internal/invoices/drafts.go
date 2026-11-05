@@ -162,14 +162,18 @@ const unitPricePlaces = 8
 // linePricePlaces is the decimals a request may give line's unit price, v:
 // the eight unit_price stores on a line billing an energy settlement — its
 // price is its settlement line's amount over its quantity (invoices from
-// consumption plan reading 3) — and four on any other; a credit note's line
+// consumption plan reading 3) — or an order line's allocation, whose price is
+// the order line's own at eight decimals (orders design O37), and four on any
+// other; a credit note's line
 // is judged against the line it credits (putCreditDraft). A line giving back
 // a price the draft already stores with more than four decimals (stored) may
 // keep it: a save that changes the customer or detaches a settlement sends
 // its lines with no sources, and must not be refused the prices the draft
 // was built with.
 func linePricePlaces(line draftLine, v float64, stored map[string]bool) int {
-	if line.creditsLineID != nil || slices.ContainsFunc(line.sources, func(r sourceRef) bool { return r.kind == contracts.WorkSourceSettlement }) {
+	if line.creditsLineID != nil || slices.ContainsFunc(line.sources, func(r sourceRef) bool {
+		return r.kind == contracts.WorkSourceSettlement || r.kind == contracts.WorkSourceOrderAllocation
+	}) {
 		return unitPricePlaces
 	}
 	if len(stored) > 0 && finite(v) && stored[ratFromFloat(v).RatString()] {
@@ -755,6 +759,9 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 		return nil, err
 	}
 	withReleased(saved.released, &resp)
+	// The order allocations the save dropped go back to Orders now that it
+	// has committed (orders design O36): best effort, logged.
+	s.releaseOrderAllocations(ctx, req.Id, allocationIDs(saved.released))
 	return gen.PutInvoicesById200JSONResponse(resp), nil
 }
 
@@ -912,8 +919,13 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 
 // DeleteInvoicesById Delete a draft
 // (DELETE /api/v1/invoices/{id})
+//
+// The order allocations the draft held are read under its lock and given back
+// to Orders once the delete has committed (orders design O36): best effort,
+// logged — Orders' sweep releases what a failed call leaves.
 func (s *server) DeleteInvoicesById(ctx context.Context, req gen.DeleteInvoicesByIdRequestObject) (gen.DeleteInvoicesByIdResponseObject, error) {
 	var notFound, issued bool
+	var allocations []int64
 	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		locked, err := txq.LockInvoice(ctx, req.Id)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -927,6 +939,15 @@ func (s *server) DeleteInvoicesById(ctx context.Context, req gen.DeleteInvoicesB
 			issued = true
 			return errRefused
 		}
+		held, err := sourcesOf(ctx, txq, req.Id)
+		if err != nil {
+			return err
+		}
+		for _, h := range held {
+			if h.kind == contracts.WorkSourceOrderAllocation && h.state == sourceHeld {
+				allocations = append(allocations, h.id)
+			}
+		}
 		_, err = txq.DeleteDraft(ctx, req.Id)
 		return err
 	})
@@ -938,6 +959,7 @@ func (s *server) DeleteInvoicesById(ctx context.Context, req gen.DeleteInvoicesB
 	case err != nil:
 		return nil, fmt.Errorf("invoices: delete draft %d: %w", req.Id, err)
 	}
+	s.releaseOrderAllocations(ctx, req.Id, allocations)
 	return gen.DeleteInvoicesById204Response{}, nil
 }
 

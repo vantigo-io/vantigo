@@ -56,7 +56,7 @@ const (
 	msgSourceTwice     = "A source is named on one line, once"
 	msgSourcesOnCreate = "Work is added to a draft through the uninvoiced view"
 	msgSourcesOnCredit = "A credit note adds no work"
-	msgSourceKind      = "A source's kind is time.entry, expenses.entry, projects.milestone or energy.settlement, and its id is positive"
+	msgSourceKind      = "A source's kind is time.entry, expenses.entry, projects.milestone, energy.settlement or orders.allocation, and its id is positive"
 	msgSpanSplit       = "A settlement's lines stay together, one after another"
 )
 
@@ -91,7 +91,7 @@ type heldSource struct {
 	id               int64
 	revision         int32
 	subkind          *string
-	projectID        int32 // 0 for a settlement, which carries no project
+	projectID        int32 // 0 for a settlement, and for an order allocation whose order has none
 	quantity, amount *big.Rat
 	currency         string
 	date             time.Time
@@ -99,6 +99,9 @@ type heldSource struct {
 	linePosition     int32
 	lineCount        int32
 	point            *settlementPoint // a settlement's snapshot, nil for work
+	// periodFrom is an order allocation's subscription period's first day
+	// (orders design O39), date its last; nil for anything else.
+	periodFrom *time.Time
 }
 
 // settlementPoint is what a settlement's row keeps of its metering point and
@@ -124,6 +127,12 @@ func (h heldSource) billsLine(position int32) bool {
 // isSettlement reports whether the source is an energy settlement.
 func (h heldSource) isSettlement() bool { return h.kind == contracts.WorkSourceSettlement }
 
+// isWork reports whether the source is work of a project — an hour, an
+// expense or a milestone — whose project the issue judges (invoices work
+// design D1). A settlement carries no project, and an order allocation's is
+// its order's, which Orders judges (orders design O38).
+func (h heldSource) isWork() bool { return slices.Contains(workKinds, h.kind) }
+
 // isCorrection reports whether the source is an energy correction
 // settlement, whose lines may be negative (plan reading 3).
 func (h heldSource) isCorrection() bool {
@@ -146,10 +155,20 @@ func heldSources(rows []store.LineSourcesOfRow) ([]heldSource, error) {
 			kind: contracts.WorkSourceKind(r.SourceKind), id: r.SourceID, revision: r.SourceRevision, subkind: r.SourceSubkind,
 			projectID: derefInt32(r.ProjectID), quantity: quantity, amount: amount, currency: r.Currency, date: r.SourceDate.Time,
 			state: r.State, linePosition: r.LinePosition, lineCount: r.LineCount,
-			point: pointOf(r.PointGsrn, r.PointAddress, r.PriceArea, r.ContractName, r.PeriodFrom, r.Estimated),
+			point:      pointOf(r.PointGsrn, r.PointAddress, r.PriceArea, r.ContractName, r.PeriodFrom, r.Estimated),
+			periodFrom: allocationPeriodFrom(contracts.WorkSourceKind(r.SourceKind), r.PeriodFrom),
 		})
 	}
 	return out, nil
+}
+
+// allocationPeriodFrom is an order allocation's row's period_from — a
+// subscription period's first day — nil for any other row or none.
+func allocationPeriodFrom(kind contracts.WorkSourceKind, from pgtype.Date) *time.Time {
+	if kind != contracts.WorkSourceOrderAllocation || !from.Valid {
+		return nil
+	}
+	return &from.Time
 }
 
 // pointOf is a row's settlement snapshot, nil for a work row (whose columns
@@ -185,9 +204,11 @@ func sourcesOf(ctx context.Context, q *store.Queries, invoiceID int64) ([]heldSo
 var workKinds = []contracts.WorkSourceKind{contracts.WorkSourceMilestone, contracts.WorkSourceExpense, contracts.WorkSourceHours}
 
 // lineSourceKinds are the kinds an invoice line may name as its source: the
-// work, and energy's settlements (energy consumption billing design D7),
-// which the From consumption wizard takes (POST /invoices/from-consumption).
-var lineSourceKinds = append(slices.Clone(workKinds), contracts.WorkSourceSettlement)
+// work, energy's settlements (energy consumption billing design D7), which
+// the From consumption wizard takes (POST /invoices/from-consumption), and
+// order lines' allocations (orders design O38), which the From orders wizard
+// takes (POST /invoices/from-orders).
+var lineSourceKinds = append(slices.Clone(workKinds), contracts.WorkSourceSettlement, contracts.WorkSourceOrderAllocation)
 
 // parseLineSources is line i's sources as the request names them: nil when
 // the field is absent, empty for [], and a 400 on lines[i].sources for a kind
@@ -319,9 +340,18 @@ func insertSources(ctx context.Context, txq *store.Queries, invoiceID int64, lin
 		if r.subkind != nil {
 			subkind = *r.subkind
 		}
+		// A work row's period_from is dropped by the statement; an
+		// allocation's is its period's first day, or NULL.
 		point := settlementPoint{periodFrom: r.date}
 		if r.point != nil {
 			point = *r.point
+		}
+		periodFrom := pgDate(point.periodFrom)
+		if r.kind == contracts.WorkSourceOrderAllocation {
+			periodFrom = pgtype.Date{}
+			if r.periodFrom != nil {
+				periodFrom = pgDate(*r.periodFrom)
+			}
 		}
 		p.LineIds = append(p.LineIds, lineIDs[r.linePosition-1])
 		p.Kinds, p.Ids, p.Revisions = append(p.Kinds, string(r.kind)), append(p.Ids, r.id), append(p.Revisions, r.revision)
@@ -331,7 +361,7 @@ func insertSources(ctx context.Context, txq *store.Queries, invoiceID int64, lin
 		p.LineCounts = append(p.LineCounts, r.lines())
 		p.PointGsrns, p.PointAddresses = append(p.PointGsrns, point.gsrn), append(p.PointAddresses, point.address)
 		p.PriceAreas, p.ContractNames = append(p.PriceAreas, point.priceArea), append(p.ContractNames, point.contractName)
-		p.PeriodFroms, p.Estimateds = append(p.PeriodFroms, pgDate(point.periodFrom)), append(p.Estimateds, point.estimated)
+		p.PeriodFroms, p.Estimateds = append(p.PeriodFroms, periodFrom), append(p.Estimateds, point.estimated)
 	}
 	err := txq.InsertLineSources(ctx, p)
 	var pgErr *pgconn.PgError
@@ -509,11 +539,23 @@ func withSources(held []heldSource, draft bool, lines []store.InvoicesLine, resp
 
 // lineSourceWire is one held row on the wire (D2): work with its project; a
 // settlement (energy consumption billing design D7) with its subkind, its
-// line count and the snapshot of its metering point instead.
+// line count and the snapshot of its metering point instead; an order
+// allocation (orders design O38) with its subkind, its order's project when
+// it has one, and a subscription period's first day.
 func lineSourceWire(r heldSource) gen.InvoicesLineSource {
 	out := gen.InvoicesLineSource{
 		Kind: string(r.kind), Id: r.id, Date: wireDate(r.date),
 		Quantity: floatFromRat(r.quantity, 3), Amount: floatFromRat(r.amount, 8), State: r.state,
+	}
+	if r.kind == contracts.WorkSourceOrderAllocation {
+		out.Subkind = r.subkind
+		if r.projectID != 0 {
+			out.ProjectId = ptr(r.projectID)
+		}
+		if r.periodFrom != nil {
+			out.PeriodFrom = ptr(wireDate(*r.periodFrom))
+		}
+		return out
 	}
 	if r.point == nil {
 		out.ProjectId = ptr(r.projectID)
@@ -679,6 +721,34 @@ func (s *server) billableNow(ctx context.Context, held []heldSource, loc *time.L
 			now[n.ref()], settlements[st.ID] = n, st
 		}
 		read[contracts.WorkSourceSettlement] = true
+	}
+	// Orders' allocations are read through BillableOrders (orders design
+	// O37, O38): one is still billable while it is a draft allocation, its
+	// snapshot keeping the held row's date and line.
+	if want := ids[contracts.WorkSourceOrderAllocation]; len(want) > 0 && s.deps.BillableOrders != nil {
+		found, err := s.orderAllocations(ctx, want)
+		if err != nil {
+			return nil, nil, nil, nil, fmt.Errorf("invoices: read the held order allocations: %w", err)
+		}
+		stored := map[int64]heldSource{}
+		for _, h := range held {
+			if h.kind == contracts.WorkSourceOrderAllocation {
+				stored[h.id] = h
+			}
+		}
+		for _, a := range found {
+			h, ok := stored[a.ID]
+			if !ok || a.State != contracts.AllocationDraft {
+				continue
+			}
+			n, err := allocationSource(a, h.date)
+			if err != nil {
+				return nil, nil, nil, nil, err
+			}
+			n.linePosition = h.linePosition
+			now[n.ref()] = n
+		}
+		read[contracts.WorkSourceOrderAllocation] = true
 	}
 	return now, read, hours, settlements, nil
 }
@@ -912,11 +982,12 @@ func projectCodes(entries []contracts.ProjectEntry) map[int32]string {
 
 // oneProject is the project every row of work belongs to, false when they
 // span two or there are none. An energy settlement carries no project and is
-// left out (invoices from consumption plan reading 5).
+// left out (invoices from consumption plan reading 5), as is an order
+// allocation whose order has none (orders design O39).
 func oneProject(rows []heldSource) (int32, bool) {
 	var work []heldSource
 	for _, r := range rows {
-		if !r.isSettlement() {
+		if r.isWork() || (r.kind == contracts.WorkSourceOrderAllocation && r.projectID != 0) {
 			work = append(work, r)
 		}
 	}

@@ -106,12 +106,13 @@ func schemaReference(schema string) *regexp.Regexp {
 // comments are not modelled; none of the scanned files uses one.
 var sqlComments = regexp.MustCompile(`(?s)--[^\n]*|/\*.*?\*/`)
 
-// workSourceKinds matches the three invoiced-work source kinds as SQL string
-// literals — contracts.WorkSourceKind's values, which invoices.line_sources
-// stores and CHECKs (invoices work design D2). 'time.entry' is a contract
-// value, not a qualified name, so it is blanked like a comment; any other
-// literal, a 'time.entries'::regclass among them, is still scanned.
-var workSourceKinds = regexp.MustCompile(`'(time\.entry|expenses\.entry|projects\.milestone)'`)
+// workSourceKinds matches the invoiced-work source kinds invoices names as
+// SQL string literals — contracts.WorkSourceKind's values, which
+// invoices.line_sources stores and CHECKs (invoices work design D2; orders
+// design O38's 'orders.allocation'). 'time.entry' is a contract value, not a
+// qualified name, so it is blanked like a comment; any other literal, a
+// 'time.entries'::regclass among them, is still scanned.
+var workSourceKinds = regexp.MustCompile(`'(time\.entry|expenses\.entry|projects\.milestone|orders\.allocation)'`)
 
 // scannedSQL is body as the cross-schema scan reads it: its comments and its
 // work-source kind literals each replaced by a space rather than removed, so
@@ -176,6 +177,8 @@ func TestSchemaReference_MatchesQualifiedNamesOnly(t *testing.T) {
 		{"time", "SELECT 1 -- a second time.\nFROM x", false},
 		{"time", "CHECK (source_kind IN ('time.entry', 'expenses.entry'))", false},
 		{"projects", "WHERE source_kind = 'projects.milestone'", false},
+		{"orders", "WHEN u.kind = 'orders.allocation' THEN", false},
+		{"orders", "SELECT 'orders.allocations'::regclass", true},
 		{"time", "SELECT 'time.entries'::regclass", true},
 		{"time", "SELECT 'time.entry' FROM time.entries", true},
 	} {

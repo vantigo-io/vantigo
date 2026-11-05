@@ -8,9 +8,10 @@
 
 -- name: InsertBillingRun :one
 -- InsertBillingRun makes a queued run. ux_billing_runs_active refuses a
--- second run while one is queued or running (23505).
-INSERT INTO invoices.billing_runs (through, issue, customers, created_by_user_id, created_at)
-VALUES (@through, @issue, @customers, @created_by_user_id, @created_at)
+-- second run while one is queued or running (23505). source is consumption
+-- or orders, and combine the orders source's grouping (orders design O40).
+INSERT INTO invoices.billing_runs (through, issue, source, combine, customers, created_by_user_id, created_at)
+VALUES (@through, @issue, @source, @combine, @customers, @created_by_user_id, @created_at)
 RETURNING *;
 
 -- name: InsertBillingRunItems :exec

@@ -200,14 +200,19 @@ func (s *server) readIssueWork(ctx context.Context, q *store.Queries, draft stor
 			return issueWork{}, nil, fmt.Errorf("invoices: no holder claims %s", r.kind)
 		}
 	}
+	// Only work is judged by its project (Q5 of orders design §15): an
+	// order allocation's project is its order's, carried for the document's
+	// project, and the issue neither needs Projects for it nor refuses it
+	// projects_unavailable — Orders' holder judges the allocation.
 	var ids []int32
 	var settlements []heldSource
 	for _, r := range rows {
-		if r.isSettlement() {
+		switch {
+		case r.isSettlement():
 			settlements = append(settlements, r)
-			continue
+		case r.isWork():
+			ids = append(ids, r.projectID)
 		}
-		ids = append(ids, r.projectID)
 	}
 	projects := map[int32]contracts.ProjectEntry{}
 	if len(ids) > 0 {
@@ -224,7 +229,7 @@ func (s *server) readIssueWork(ctx context.Context, q *store.Queries, draft stor
 			projects[e.ID] = e
 		}
 		for _, r := range rows {
-			if r.isSettlement() {
+			if !r.isWork() {
 				continue
 			}
 			p, ok := projects[r.projectID]
@@ -320,12 +325,12 @@ func sameIssueWork(before, locked []heldSource) bool {
 // notSelectable is the wizard's rule applied again under the issue's lock
 // from the projects read before it (plan reading 19): hours of a project now
 // fixed-price or non-billable, and any work of one now non-billable, refuse
-// the issue on the first line holding such a source. An energy settlement is
-// not judged here.
+// the issue on the first line holding such a source. An energy settlement and
+// an order allocation are not judged here.
 func (w issueWork) notSelectable() *gen.InvoicesConflictProblem {
 	for _, r := range w.rows {
-		if r.isSettlement() {
-			continue // an energy settlement belongs to no project
+		if !r.isWork() {
+			continue // a settlement belongs to no project; an allocation's is Orders' to judge
 		}
 		switch billing := w.projects[r.projectID].BillingType; {
 		case billing == billingNonBillable,
