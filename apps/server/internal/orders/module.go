@@ -94,6 +94,7 @@ func Module() module.Module {
 		Name:        "orders",
 		Permissions: permissions,
 		Mount:       mount,
+		Workers:     workers,
 	}
 }
 
@@ -111,16 +112,24 @@ func mount(d module.Deps) (http.Handler, error) {
 	if d.SalesTax == nil {
 		return nil, errors.New("orders: no sales tax; the orders module requires the invoices module")
 	}
+	if err := checkClosedSchemas(d.Doc); err != nil {
+		return nil, err
+	}
+	srv, err := newServer(d)
+	if err != nil {
+		return nil, err
+	}
 	router := module.NewRouter(module.RouterOptions{
 		Doc: d.Doc, Access: d.Access, Limiter: d.Limiter, Limits: limits, Catalog: d.Catalog,
 	})
-	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
+	strict := gen.NewStrictHandlerWithOptions(srv, nil, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(apicommon.WriteDecodeError),
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})
 	handler := gen.HandlerWithOptions(strict, gen.StdHTTPServerOptions{
 		BaseRouter:       router,
 		ErrorHandlerFunc: module.DecodeError(apicommon.WriteDecodeError),
+		Middlewares:      []gen.MiddlewareFunc{keepRawBody},
 	})
 	if err := router.Err(); err != nil {
 		return nil, err

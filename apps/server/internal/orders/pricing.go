@@ -1,0 +1,634 @@
+package orders
+
+import (
+	"context"
+	"fmt"
+	"math/big"
+	"slices"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/docmath"
+	"github.com/vantigo-io/vantigo/server/internal/orders/gen"
+	"github.com/vantigo-io/vantigo/server/internal/orders/store"
+)
+
+// This file prices a document's lines (O15, O16, O19) and sums them (O17):
+// every amount is internal/docmath's, Invoices' own arithmetic, so a line is
+// the same number on the order and on the invoice by construction.
+
+// The line kinds of this phase (O15); the set is open.
+const (
+	kindProduct = "product"
+	kindSection = "section"
+	kindNote    = "note"
+)
+
+// The price sources (O16, O53).
+const (
+	priceCatalog = "catalog"
+	priceManual  = "manual"
+	priceChannel = "channel"
+)
+
+// maxLines is how many lines one document may have (too_many_lines).
+const maxLines = 500
+
+// lineInput is one line as a save, a template or a copy hands it in, before
+// it is priced. The wire's numbers are kept as they came; unitPriceNet is a
+// price already net and exact — a template's override, a copied manual line's
+// — which bypasses the including-VAT entry of O19.
+type lineInput struct {
+	id                *int64
+	kind              string
+	variantID         *int32
+	name, description *string
+	unit              *string
+	quantity          *float64
+	unitPrice         *float64
+	unitPriceNet      *big.Rat
+	discount          *float64
+	packagingID       *int32
+	packagingQuantity *float64
+	vatCodeID         *int32
+	optional          bool
+	// skippable is a template's or a copy's line, left out rather than
+	// refused when its variant went away (O23); skipDiscontinued, a
+	// template's, also when its product was discontinued.
+	skippable, skipDiscontinued bool
+}
+
+// lineInputsOf reads the API's lines.
+func lineInputsOf(in []gen.OrdersLineInput) []lineInput {
+	out := make([]lineInput, 0, len(in))
+	for _, l := range in {
+		li := lineInput{
+			id: l.Id, kind: string(l.Kind), variantID: l.VariantId, name: l.Name, description: l.Description, unit: l.Unit,
+			quantity: l.Quantity, unitPrice: l.UnitPrice, discount: l.DiscountPercent, packagingID: l.PackagingId,
+			packagingQuantity: l.PackagingQuantity, vatCodeID: l.VatCodeId,
+		}
+		if l.Optional != nil {
+			li.optional = *l.Optional
+		}
+		out = append(out, li)
+	}
+	return out
+}
+
+// pricedLine is one line ready to store: its snapshot, its price and VAT, and
+// docmath's amounts.
+type pricedLine struct {
+	id                *int64
+	kind              string
+	variantID         *int32
+	sku, name         *string
+	unit, description string
+	quantity          *big.Rat
+	unitPrice         *big.Rat
+	discount          *big.Rat
+	packagingID       *int32
+	packagingQuantity *big.Rat
+	priceSource       *string
+	vatCodeID         *int32
+	vatCode           *string
+	vatRate           *big.Rat
+	vatCategory       *string
+	amounts           docmath.LineAmounts
+	externalLineID    *string
+	optional          bool
+}
+
+// pricedLineOf is a stored line as it would be written again, unchanged:
+// accept and copy carry a line with its frozen price this way.
+func pricedLineOf(l store.OrdersLine) pricedLine {
+	return pricedLine{
+		kind: l.Kind, variantID: l.VariantID, sku: l.Sku, name: l.Name, unit: l.Unit, description: l.Description,
+		quantity: ratOf(l.Quantity), unitPrice: ratOf(l.UnitPrice), discount: ratOrZero(l.DiscountPercent),
+		packagingID: l.PackagingID, packagingQuantity: ratOf(l.PackagingQuantity), priceSource: l.PriceSource,
+		vatCodeID: l.VatCodeID, vatCode: l.VatCode, vatRate: ratOf(l.VatRatePercent), vatCategory: l.VatCategory,
+		amounts: docmath.LineAmounts{
+			Gross: ratOrZero(l.LineGross), Allowance: ratOrZero(l.LineAllowance), Net: ratOrZero(l.LineNet),
+		},
+		externalLineID: l.ExternalLineID, optional: l.Optional,
+	}
+}
+
+// computeAmounts sets a product line's amounts from its quantity, price and
+// discount (O17); a line without a price is 0 until it has one.
+func (p *pricedLine) computeAmounts() {
+	if p.kind != kindProduct || p.quantity == nil || p.unitPrice == nil {
+		p.amounts = docmath.LineAmounts{Gross: new(big.Rat), Allowance: new(big.Rat), Net: new(big.Rat)}
+		return
+	}
+	p.amounts = docmath.Line(p.quantity, p.unitPrice, p.discount)
+}
+
+// pricingReads are the catalog's and the VAT tables' answers a set of lines
+// is priced from, all read before any transaction (O16).
+type pricingReads struct {
+	variants map[int32]contracts.VariantEntry
+	// prices are the list prices in the document's currency at the day, nil
+	// for a variant with none.
+	prices map[int32]*big.Rat
+	// taxes map a tax category to its VAT code at the day.
+	taxes map[int32]contracts.VATCodeEntry
+	// codes are every active VAT code at the day, for a free-text line.
+	codes []contracts.VATCodeEntry
+}
+
+// readPricing reads what lines priced in currency at at need: the variants,
+// their list prices, their categories' VAT codes, and the VAT codes for the
+// free-text lines.
+func (s *server) readPricing(ctx context.Context, lines []lineInput, currency string, at time.Time) (pricingReads, error) {
+	r := pricingReads{prices: map[int32]*big.Rat{}}
+	var ids []int32
+	freeText := false
+	for _, l := range lines {
+		if l.kind != kindProduct {
+			continue
+		}
+		if l.variantID == nil {
+			freeText = true
+			continue
+		}
+		if !slices.Contains(ids, *l.variantID) {
+			ids = append(ids, *l.variantID)
+		}
+	}
+	slices.Sort(ids)
+	var err error
+	if r.variants, err = s.catalogVariants(ctx, ids); err != nil {
+		return r, err
+	}
+	var categories []int32
+	for _, id := range ids {
+		v, ok := r.variants[id]
+		if !ok {
+			continue
+		}
+		m, err := s.listPrice(ctx, id, currency, at)
+		if err != nil {
+			return r, err
+		}
+		if m != nil && strings.EqualFold(m.Currency, currency) {
+			if price, ok := new(big.Rat).SetString(m.Amount); ok {
+				r.prices[id] = price
+			}
+		}
+		if !slices.Contains(categories, v.TaxCategoryID) {
+			categories = append(categories, v.TaxCategoryID)
+		}
+	}
+	if r.taxes, err = s.taxCodes(ctx, categories, at); err != nil {
+		return r, err
+	}
+	if freeText || slices.ContainsFunc(lines, func(l lineInput) bool { return l.vatCodeID != nil }) {
+		if r.codes, err = s.vatCodes(ctx, at); err != nil {
+			return r, err
+		}
+	}
+	return r, nil
+}
+
+// defaultCode is a free-text line's VAT code when it names none (O16): the
+// standard category's, the highest rate if several; nil when there is none.
+func (r pricingReads) defaultCode() *contracts.VATCodeEntry {
+	var best *contracts.VATCodeEntry
+	for i := range r.codes {
+		c := &r.codes[i]
+		if c.Category != "S" {
+			continue
+		}
+		if best == nil || mustRat(c.RatePercent).Cmp(mustRat(best.RatePercent)) > 0 {
+			best = c
+		}
+	}
+	return best
+}
+
+// code is the active VAT code id names, nil when none.
+func (r pricingReads) code(id int32) *contracts.VATCodeEntry {
+	for i := range r.codes {
+		if r.codes[i].ID == id {
+			return &r.codes[i]
+		}
+	}
+	return nil
+}
+
+// priceOptions are what pricing a document's lines depends on beyond the
+// lines: whether prices are entered including VAT (O19), whether optional
+// lines are allowed (quotes and templates, O21), and whether a kept catalog
+// line is priced again (O16: the currency or the day moved since it was).
+type priceOptions struct {
+	pricesIncludeVat bool
+	allowOptional    bool
+	repriceKept      bool
+}
+
+// priceLines prices every line in (O16), over existing — the document's
+// lines now, by id, on a save — and answers them in order, or every failing
+// line at once.
+func priceLines(in []lineInput, existing map[int64]store.OrdersLine, r pricingReads, opts priceOptions) ([]pricedLine, []lineFailure) {
+	var failures []lineFailure
+	fail := func(i int, code, detail string) {
+		failures = append(failures, lineFailure{index: i, code: code, detail: detail})
+	}
+	if len(in) > maxLines {
+		fail(maxLines, codeTooManyLines, fmt.Sprintf("A document has at most %d lines.", maxLines))
+		return nil, failures
+	}
+	seen := map[int64]bool{}
+	out := make([]pricedLine, 0, len(in))
+	for i, l := range in {
+		var old *store.OrdersLine
+		if l.id != nil {
+			o, ok := existing[*l.id]
+			if !ok || seen[*l.id] {
+				fail(i, codeLineInvalid, fmt.Sprintf("Line %d is not one of this document's lines.", *l.id))
+				continue
+			}
+			seen[*l.id] = true
+			old = &o
+		}
+		p, code, detail := priceLine(l, old, r, opts)
+		if code != "" {
+			fail(i, code, detail)
+			continue
+		}
+		out = append(out, p)
+	}
+	return out, failures
+}
+
+// priceLine prices one line, or names why it cannot be.
+func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOptions) (pricedLine, string, string) {
+	p := pricedLine{kind: l.kind, id: l.id, discount: new(big.Rat)}
+	text := func(in *string, was string, maxLen int, what string) (string, string) {
+		v := was
+		if in != nil {
+			v = strings.TrimSpace(*in)
+		}
+		if utf8.RuneCountInString(v) > maxLen {
+			return "", fmt.Sprintf("The %s is at most %d characters.", what, maxLen)
+		}
+		return v, ""
+	}
+	oldDescription := ""
+	if old != nil {
+		oldDescription = old.Description
+	}
+	desc, msg := text(l.description, oldDescription, 2000, "description")
+	if msg != "" {
+		return p, codeLineInvalid, msg
+	}
+	p.description = desc
+
+	switch l.kind {
+	case kindSection, kindNote:
+		if l.name != nil {
+			name, msg := text(l.name, "", 255, "name")
+			if msg != "" {
+				return p, codeLineInvalid, msg
+			}
+			p.name = textPtr(name)
+		}
+		if l.optional {
+			return p, codeOptionalNotAllowed, "Only a product line can be optional."
+		}
+		p.computeAmounts()
+		return p, "", ""
+	case kindProduct:
+	default:
+		return p, codeLineInvalid, "A line is a product, a section or a note."
+	}
+
+	if l.optional && !opts.allowOptional {
+		return p, codeOptionalNotAllowed, "Only a quote's lines can be optional."
+	}
+	p.optional = l.optional
+
+	// The catalog item and its snapshot.
+	var variant *contracts.VariantEntry
+	if l.variantID != nil {
+		v, ok := r.variants[*l.variantID]
+		if !ok {
+			return p, codeVariantNotFound, fmt.Sprintf("Variant %d is not in the catalog.", *l.variantID)
+		}
+		variant = &v
+		p.variantID = &v.ID
+		p.sku = textPtr(v.SKU)
+		p.name = textPtr(v.ProductName)
+		p.unit = v.Unit
+		if l.description == nil && (old == nil || old.VariantID == nil || *old.VariantID != v.ID) {
+			p.description = v.Description
+		}
+	} else {
+		oldName := ""
+		if old != nil && old.VariantID == nil {
+			oldName = deref(old.Name)
+		}
+		name, msg := text(l.name, oldName, 255, "name")
+		if msg != "" {
+			return p, codeLineInvalid, msg
+		}
+		if name == "" && p.description == "" {
+			return p, codeLineInvalid, "A free-text line needs a name or a description."
+		}
+		p.name = textPtr(name)
+	}
+	if l.unit != nil || variant == nil {
+		oldUnit := ""
+		if old != nil {
+			oldUnit = old.Unit
+		}
+		unit, msg := text(l.unit, oldUnit, 20, "unit")
+		if msg != "" {
+			return p, codeLineInvalid, msg
+		}
+		p.unit = unit
+	}
+
+	// The VAT code: a catalog line's from its category (O16), a free-text
+	// line's as picked, else the standard category's.
+	var code *contracts.VATCodeEntry
+	if variant != nil {
+		if c, ok := r.taxes[variant.TaxCategoryID]; ok {
+			code = &c
+		}
+	} else {
+		switch {
+		case l.vatCodeID != nil:
+			if code = r.code(*l.vatCodeID); code == nil {
+				return p, codeVATCodeUnknown, fmt.Sprintf("VAT code %d is not an active code.", *l.vatCodeID)
+			}
+		case old != nil && old.VariantID == nil && old.VatCodeID != nil:
+			if code = r.code(*old.VatCodeID); code == nil {
+				code = r.defaultCode()
+			}
+		default:
+			code = r.defaultCode()
+		}
+	}
+	if code != nil {
+		id, c, category := code.ID, code.Code, code.Category
+		p.vatCodeID, p.vatCode, p.vatCategory = &id, &c, &category
+		p.vatRate = mustRat(code.RatePercent)
+	}
+
+	// The quantity, through a packaging when one is named (O15).
+	switch {
+	case l.packagingID != nil:
+		if variant == nil {
+			return p, codePackagingNotFound, "A free-text line has no packagings."
+		}
+		var pack *contracts.PackagingEntry
+		for i := range variant.Packagings {
+			if variant.Packagings[i].ID == *l.packagingID {
+				pack = &variant.Packagings[i]
+			}
+		}
+		if pack == nil {
+			return p, codePackagingNotFound, fmt.Sprintf("Packaging %d is not one of the variant's.", *l.packagingID)
+		}
+		if l.packagingQuantity == nil {
+			return p, codeQuantityInvalid, "A line entered in a packaging needs how many of it."
+		}
+		count, msg := parseQuantity(*l.packagingQuantity)
+		if msg != "" {
+			return p, codeQuantityInvalid, msg
+		}
+		p.packagingID, p.packagingQuantity = &pack.ID, count
+		p.quantity = new(big.Rat).Mul(count, mustRat(pack.Quantity))
+		if p.quantity.Cmp(maxQuantity) > 0 {
+			return p, codeQuantityInvalid, "The quantity is too large."
+		}
+	case l.quantity != nil:
+		q, msg := parseQuantity(*l.quantity)
+		if msg != "" {
+			return p, codeQuantityInvalid, msg
+		}
+		p.quantity = q
+	case old != nil && old.Kind == kindProduct && old.Quantity.Valid:
+		p.quantity = ratOf(old.Quantity)
+	default:
+		return p, codeQuantityInvalid, "A product line needs a quantity."
+	}
+
+	// The discount.
+	switch {
+	case l.discount != nil:
+		d := *l.discount
+		if !finite(d) || d < 0 || d > 100 || decimalPlaces(d) > discountPlaces {
+			return p, codeDiscountInvalid, "A discount is 0 to 100 percent, with at most two decimals."
+		}
+		p.discount = ratFromFloat(d)
+	case old != nil:
+		p.discount = ratOrZero(old.DiscountPercent)
+	}
+
+	// The price (O16, O19): typed is manual — net, or including VAT when the
+	// document's prices do — a kept manual price stays, and a catalog line
+	// takes its list price, none leaving it unpriced (line_unpriced at send).
+	switch {
+	case l.unitPriceNet != nil:
+		p.unitPrice = l.unitPriceNet
+		p.priceSource = ptr(priceManual)
+	case l.unitPrice != nil:
+		v := *l.unitPrice
+		if !finite(v) || v < 0 || decimalPlaces(v) > entryPlaces || ratFromFloat(v).Cmp(maxPrice) > 0 {
+			return p, codePriceInvalid, "A unit price is 0 or more, with at most four decimals."
+		}
+		price := ratFromFloat(v)
+		if opts.pricesIncludeVat && p.vatRate != nil {
+			price = withoutVAT(price, p.vatRate)
+		}
+		p.unitPrice = price
+		p.priceSource = ptr(priceManual)
+	case old != nil && keepsPrice(*old, p.variantID, opts.repriceKept):
+		p.unitPrice = ratOf(old.UnitPrice)
+		p.priceSource = old.PriceSource
+	case variant != nil:
+		p.priceSource = ptr(priceCatalog)
+		if price, ok := r.prices[variant.ID]; ok {
+			p.unitPrice = price
+		}
+	}
+	p.computeAmounts()
+	return p, "", ""
+}
+
+// keepsPrice reports whether a kept line keeps its stored price on a save
+// that names none: a manual (or channel) price always, while the line keeps
+// its variant; a catalog price unless the currency or the day moved.
+func keepsPrice(old store.OrdersLine, variantID *int32, reprice bool) bool {
+	if !old.UnitPrice.Valid || old.Kind != kindProduct {
+		return false
+	}
+	sameVariant := (old.VariantID == nil && variantID == nil) ||
+		(old.VariantID != nil && variantID != nil && *old.VariantID == *variantID)
+	if !sameVariant {
+		return false
+	}
+	if old.PriceSource != nil && *old.PriceSource == priceCatalog {
+		return !reprice
+	}
+	return true
+}
+
+// parseQuantity is a quantity as an exact decimal, or why it is not one:
+// more than 0, at most three decimals.
+func parseQuantity(v float64) (*big.Rat, string) {
+	if !finite(v) || v <= 0 {
+		return nil, "A quantity is more than 0."
+	}
+	if decimalPlaces(v) > quantityPlaces {
+		return nil, "A quantity has at most three decimals."
+	}
+	q := ratFromFloat(v)
+	if q.Cmp(maxQuantity) > 0 {
+		return nil, "The quantity is too large."
+	}
+	return q, ""
+}
+
+// ptr is a pointer to v.
+func ptr[T any](v T) *T { return &v }
+
+// docTotals are a document's VAT rows and totals (O17), leaving out a quote's
+// optional lines (O21).
+type docTotals struct {
+	summaries       []docmath.VATSummary
+	net, vat, gross *big.Rat
+}
+
+// taxable is one line as the totals see it.
+type taxable struct {
+	net      *big.Rat
+	category *string
+	rate     *big.Rat
+}
+
+// sumLines is the totals of lines: VAT per (category, rate) on the sum of the
+// nets, never per line. A line without a VAT code yet — refused at send and
+// confirm (vat_code_unmapped) — adds its net to the totals and no VAT.
+func sumLines(lines []taxable) docTotals {
+	var taxed []docmath.TaxedLine
+	untaxed := new(big.Rat)
+	for _, l := range lines {
+		if l.category == nil || l.rate == nil {
+			untaxed.Add(untaxed, l.net)
+			continue
+		}
+		taxed = append(taxed, docmath.TaxedLine{Net: l.net, Category: *l.category, Rate: l.rate})
+	}
+	rows, totals, _ := docmath.Summarize(taxed, big.NewRat(1, 1))
+	return docTotals{
+		summaries: rows,
+		net:       new(big.Rat).Add(totals.Net, untaxed),
+		vat:       totals.VAT,
+		gross:     new(big.Rat).Add(totals.Gross, untaxed),
+	}
+}
+
+// totalsOfPriced and totalsOfRows are the totals of priced or stored lines.
+func totalsOfPriced(lines []pricedLine) docTotals {
+	var in []taxable
+	for _, l := range lines {
+		if l.kind == kindProduct && !l.optional {
+			in = append(in, taxable{net: l.amounts.Net, category: l.vatCategory, rate: l.vatRate})
+		}
+	}
+	return sumLines(in)
+}
+
+func totalsOfRows(lines []store.OrdersLine) docTotals {
+	var in []taxable
+	for _, l := range lines {
+		if l.Kind == kindProduct && !l.Optional {
+			in = append(in, taxable{net: ratOrZero(l.LineNet), category: l.VatCategory, rate: ratOf(l.VatRatePercent)})
+		}
+	}
+	return sumLines(in)
+}
+
+// totalsOut is a document's totals as the API answers them.
+func totalsOut(t docTotals) gen.OrdersTotals {
+	out := gen.OrdersTotals{
+		Net: wire(t.net, amountPlaces), Vat: wire(t.vat, amountPlaces), Gross: wire(t.gross, amountPlaces),
+		VatSummaries: []gen.OrdersVatSummary{},
+	}
+	for _, r := range t.summaries {
+		out.VatSummaries = append(out.VatSummaries, gen.OrdersVatSummary{
+			Category: r.Category, RatePercent: wire(r.Rate, ratePlaces),
+			TaxableAmount: wire(r.Taxable, amountPlaces), VatAmount: wire(r.VAT, amountPlaces),
+		})
+	}
+	return out
+}
+
+// sendable is the lines' refusal at send or confirm (O16, O18): every product
+// line priced (line_unpriced) and with a VAT code (vat_code_unmapped),
+// optional lines too, since the customer may take them.
+func sendable(lines []store.OrdersLine) []lineFailure {
+	var failures []lineFailure
+	for i, l := range lines {
+		if l.Kind != kindProduct {
+			continue
+		}
+		switch {
+		case !l.UnitPrice.Valid:
+			failures = append(failures, lineFailure{index: i, code: codeLineUnpriced,
+				detail: fmt.Sprintf("Line %d has no price in the document's currency.", l.Position)})
+		case l.VatCodeID == nil:
+			failures = append(failures, lineFailure{index: i, code: codeVATCodeUnmapped,
+				detail: fmt.Sprintf("Line %d's tax category is mapped to no VAT code.", l.Position)})
+		}
+	}
+	return failures
+}
+
+// variantIDsOf are the variants lines name, sorted and once each: what
+// lockVariants takes.
+func variantIDsOf(lines []pricedLine) []int32 {
+	var ids []int32
+	for _, l := range lines {
+		if l.variantID != nil && !slices.Contains(ids, *l.variantID) {
+			ids = append(ids, *l.variantID)
+		}
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+// lockLines takes the lines' variants' locks on tx first (MB rule 21) and
+// refuses a line whose variant went away since it was priced.
+func (s *server) lockLines(ctx context.Context, tx pgx.Tx, title string, lines []pricedLine) error {
+	ids := variantIDsOf(lines)
+	if len(ids) == 0 {
+		return nil
+	}
+	locked, err := s.lockVariants(ctx, tx, ids)
+	if err != nil {
+		return err
+	}
+	present := map[int32]bool{}
+	for _, v := range locked {
+		present[v.ID] = true
+	}
+	var failures []lineFailure
+	for i, l := range lines {
+		if l.variantID != nil && !present[*l.variantID] {
+			failures = append(failures, lineFailure{index: i, code: codeVariantNotFound,
+				detail: fmt.Sprintf("Variant %d is no longer in the catalog.", *l.variantID)})
+		}
+	}
+	if len(failures) > 0 {
+		return refuseLines(title, failures)
+	}
+	return nil
+}
