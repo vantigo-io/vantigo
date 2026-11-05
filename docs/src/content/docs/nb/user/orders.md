@@ -1,6 +1,6 @@
 ---
 title: Ordre
-description: Ordre-appen — lag et tilbud, fra appen, kundesiden eller en mal; legg til produkt-, fritekst-, seksjons- og merknadslinjer, valgfrie linjer og rabatter; send det eller marker det som sendt, revider, aksepter, avslå, kanseller og kopier det; lag en ordre, bekreft den, endre den etter bekreftelse, sett den på vent, lås den, kanseller den eller resten, registrer hva som er levert, send ordrebekreftelsen og skriv ut en proforma; fakturer den, se fakturaene dens og frigjør det fakturautkast holder; lag et abonnement, aktiver, endre, pause, gjenoppta, avslutt og kanseller det, aksepter et tilbud som abonnement og se periodene; endringsloggen; linjer i forpakninger og fra variantrutenettet; kunde- og produktadvarsler og overstyring av en sperre; salgsanalysen; kundens Ordre-fane; og hva en avvisning betyr.
+description: Ordre-appen — lag et tilbud, fra appen, kundesiden eller en mal; legg til produkt-, fritekst-, seksjons- og merknadslinjer, valgfrie linjer og rabatter; send det eller marker det som sendt, revider, aksepter, avslå, kanseller og kopier det; lag en ordre, bekreft den, endre den etter bekreftelse, sett den på vent, lås den, kanseller den eller resten, registrer hva som er levert, send ordrebekreftelsen og skriv ut en proforma; reserver varer på et lagersted, lag, plukk og bokfør leveranser med plukkliste og pakkseddel, og følg restordrene; fakturer den, se fakturaene dens og frigjør det fakturautkast holder; lag et abonnement, aktiver, endre, pause, gjenoppta, avslutt og kanseller det, aksepter et tilbud som abonnement og se periodene; endringsloggen; linjer i forpakninger og fra variantrutenettet; kunde- og produktadvarsler og overstyring av en sperre; salgsanalysen; kundens Ordre-fane; og hva en avvisning betyr.
 sidebar:
   order: 55
 sources:
@@ -15,7 +15,7 @@ leverer og fakturerer.
 
 ## Appen og sidemenyen
 
-Sidemenyen har **Tilbud**, **Ordre** og **Abonnement** for alle med tilgang til appen, **Analyse** for dem
+Sidemenyen har **Tilbud**, **Ordre**, **Leveranser** og **Abonnement** for alle med tilgang til appen, **Analyse** for dem
 som kan se salgsanalysen, og **Tilbudsmaler** og **Ordreinnstillinger** for dem som
 håndterer innstillingene for Ordre. Hva du kan gjøre
 i hver, avhenger av rettighetene dine: å lage og endre tilbud, å lage og endre ordrer og å
@@ -190,6 +190,11 @@ Når et tilbud aksepteres, lages en ordre. For å lage en direkte velger du **Ny
 En ordre har samme hode og linjer som et tilbud, bortsett fra at den ikke har valgfrie
 linjer eller gyldighetsdato.
 
+Når Lager fører beholdning, får en ny ordre også et **Lagersted** — lageret varene
+reserveres på og leveres fra — fra **Standard lagersted** i innstillingene for Ordre. Endre
+det i ordrehodet mens ordren er et utkast; på en bekreftet ordre kan lagerstedet byttes til
+et annet til ordren har en leveranse, og reservasjonene flyttes med.
+
 ## Bekreft en ordre
 
 **Bekreft** på et ordreutkast låser kundeopplysningene og prisene, lagrer
@@ -199,6 +204,12 @@ i ordrens valuta, eller et produkts avgiftskategori ikke har mva-kode — koble 
 Fakturaer først ([Avgiftskategoriene i Produkter](/nb/user/invoices/#avgiftskategoriene-i-produkter)).
 En sperre på kunden eller et produkt stopper den også, til den som håndterer innstillingene
 for Ordre, overstyrer den ([Advarsler](#advarsler-på-en-kunde-eller-et-produkt)).
+
+På en ordre med lagersted reserverer **Bekreft** også hver varelinjes antall på lagerstedet,
+så ingen annen ordre kan ta det. Når lagerstedet ikke har nok disponibelt, avvises
+bekreftelsen, og **Ikke nok disponibelt** viser linjene det mangler på, med hva som er
+disponibelt av hver. Velg **Bekreft uten å reservere** for å bekrefte ordren likevel —
+endringsloggen viser det — og reserver senere med **Reserver nå** når varene er kommet.
 
 Når innstillingene for Ordre sier det, sendes ordrebekreftelsen av seg selv på e-post til
 kontaktpersonen, ellers til kundens faktura-e-post. For å sende den selv velger du **Send
@@ -234,6 +245,10 @@ har tittelen **Revidert ordrebekreftelse**. **Endringslogg** viser hver endring 
 ordren ble bekreftet: når, av hvem og hva — **Linje lagt til**, **Antall endret**, **Satt
 på vent**, **Registrert levert** og så videre.
 
+På en ordre som holder reservasjoner, følger reservasjonene endringen: et større antall
+reserverer differansen — avvist når lagerstedet ikke har den disponibel — et mindre gir resten
+tilbake, en ny varelinje reserverer sitt antall, og en fjernet linje gir reservasjonen tilbake.
+
 ## Sett på vent, lås og kanseller
 
 - **Sett på vent**, med en **Begrunnelse**: en ordre på vent faktureres ikke og tar ikke
@@ -251,21 +266,71 @@ først, eller [frigjør det det holder](#frigjør-det-fakturautkast-holder).
 
 Å sette på vent, låse og registrere leveranser endrer ikke versjonen.
 
+Begge kanselleringene gir tilbake det ordren har reservert, og kansellerer leveranseutkastene.
+
 ## Registrer hva som er levert
 
-Til leveranser fra lager kommer, registrerer du leveranser for hånd på en bekreftet ordre
-som ikke er på vent.
+Når ordren ikke har lagersted, eller Lager ikke fører beholdning, og for tjenester og
+linjer uten produkt, registrerer du leveranser for hånd på en bekreftet ordre som ikke er på
+vent. Varer på en ordre med lagersted leveres med en [leveranse](#leveranser-og-lager); å
+registrere dem for hånd virker fortsatt, som en korreksjon, og gir tilbake like mye av
+linjens reservasjon som du registrerer.
 **Registrer levert** spør hvor mye av hver linje som er levert nå (**Lever nå**); en linje
 med 0 endres ikke, og du kan ikke levere mer enn det som gjenstår. **Flere handlinger** →
 **Angre levert** tar antall tilbake (**Ta tilbake**). Hver linje viser fremdriften — «3 av 5
 levert» — og ordren leveringsstatusen: **Ikke levert**, **Delvis levert** eller **Levert**.
 
+## Leveranser og lager
+
+Når Lager fører beholdning, leveres en ordre med lagersted fra det lagerstedet med en
+**leveranse**. Å lage, plukke, bokføre og kansellere leveranser krever tilgangen til å
+håndtere leveranser.
+
+### Hva hver linje holder
+
+På en bekreftet ordre med lagersted viser hver varelinje **Reservert** — det som er reservert
+for den på lagerstedet — og **Disponibelt** — det av produktet som er på lagerstedet og ikke
+reservert for noen ordre. Disponibelt kan bli negativt etter en lagerkorreksjon i Lager. Når en
+linje holder mindre enn det som gjenstår å levere, reserverer **Reserver nå** resten; det
+avvises når lagerstedet ikke har det disponibelt.
+
+### Lag en leveranse
+
+1. På den bekreftede ordren viser kortet **Leveranser** ordrens leveranser. Velg **Lag
+   leveranse**. Den er deaktivert mens ordren er på vent, når ingenting gjenstår å levere, og
+   mens du har endringer som ikke er lagret.
+2. Det nye leveranseutkastet åpnes med hver linje som gjenstår å levere, med det som kan gå fra
+   lagerstedet: det linjen har reservert, og det som er disponibelt i tillegg. Hver linje
+   plukkes fra den første lokasjonen som har hele antallet.
+3. Endre en linjes **Antall**, eller sett det til 0 for å utelate den, og velg **Fra lokasjon**
+   blant lagerstedets lokasjoner som har produktet, og velg så **Lagre**.
+4. **Plukkliste** skriver ut linjene sortert etter lokasjon, med alle lokasjoner som har hvert
+   produkt, for den som plukker varene.
+5. **Bokfør leveranse** trekker varene fra de valgte lokasjonene i Lager, legger antallene til
+   ordrens leverte antall og lagrer **Pakkseddel** — linjene, hva som ble bestilt, hva denne
+   leveransen tar, hva som står igjen som restordre og leveringsadressen. Alle linjer må være
+   plukket, og den avvises når en lokasjon ikke lenger har det den skal ta.
+
+En bokført leveranse endres ikke. En feil rettes med en lagerkorreksjon i Lager og **Angre
+levert** på ordrelinjen. Et leveranseutkast kan kanselleres; antallene står da åpne på ordren
+igjen.
+
+### Restordre
+
+Det som ikke er levert, står igjen på ordren som restordre; det lages ikke noe eget dokument.
+**Leveranser** → **Til levering** viser de bekreftede ordrene som har noe igjen å levere; lag
+neste leveranse fra ordren når varene er kommet. **Leveranser** → **Leveranser** viser
+leveransene, med utkastene først.
+
 ## Fakturer en ordre
 
 En ordre faktureres i Fakturaer, fra linjene: du velger hvor mye av hver linje som skal
 faktureres, og utstedelsen av fakturaen markerer det som fakturert på ordren. Linjene
-faktureres ved ordre — det som er bestilt, kan faktureres så snart ordren er bekreftet,
-levert eller ikke.
+faktureres **ved ordre** — det som er bestilt, kan faktureres så snart ordren er bekreftet,
+levert eller ikke — eller **ved levering**: bare det som er levert, kan faktureres. Varer på en
+ordre med lagersted faktureres ved levering hvis du ikke velger noe annet; alt annet ved
+ordre. Endre en linjes regel under navnet i linjene mens ingenting av den er fakturert eller
+på et fakturautkast.
 
 1. På en bekreftet ordre velger du **Fakturer**. Den krever **Bruke Fakturaer**
    (`invoices:access`) og **Lage fakturaer** (`invoices:create`) i Fakturaer, og vises
@@ -469,6 +534,12 @@ eller kansellert ([tidslinjen](/nb/user/customers/#tidslinjen)).
 | Utsending er av | Last ned PDF-en og **Marker som sendt**, eller be en administrator velge en avsenderkanal. |
 | E-posten kunne ikke sendes. Ingenting ble endret; prøv igjen, eller last ned PDF-en og merk den som sendt. | E-postleverandøren tok ikke imot e-posten: **Dokumenter og utsendelser** viser sendingen som **Feilet**. Prøv igjen, eller last ned PDF-en og marker som sendt. |
 | Et dokument kan ha høyst 500 linjer | Del det i to. |
+| Det er ikke nok disponibelt på lagerstedet. | Bekreft uten å reservere og reserver senere, sett ned antallet, eller lever fra et annet lagersted. |
+| Lokasjonen har ikke så mye. | Noen har tatt varer i mellomtiden: velg en annen lokasjon, sett ned antallet, eller korriger beholdningen i Lager. |
+| Velg lokasjonen hver linje tas fra. | Velg **Fra lokasjon** for hver linje, og bokfør så. |
+| Ingenting av ordren er åpent og disponibelt på lagerstedet. | Vent på varene, reserver dem, eller gjør ferdig leveranseutkastet som alt holder dem. |
+| Ordren har leveranser; lagerstedet kan ikke lenger endres. | La lagerstedet være som det er. |
+| En bokført leveranse kan ikke endres. | Korriger beholdningen i Lager og bruk **Angre levert** på ordren. |
 | En advarsel sperrer dette | En kunde eller et produkt på dokumentet har en sperre. Den som håndterer innstillingene for Ordre, kan **Overstyr advarselen** med en begrunnelse, eller endre advarselen. |
 | Forpakningen hører ikke til produktet | Velg produktet på nytt og en av forpakningene, eller skriv antallet i enheten. |
 | Siste periode er alt på en faktura eller et fakturautkast og kan ikke gjøres forholdsmessig. | Velg **Full periode**, eller krediter perioden — eller slett fakturautkastet — først. |

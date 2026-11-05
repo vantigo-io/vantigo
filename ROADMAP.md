@@ -1543,10 +1543,22 @@ Customers and Invoices; Inventory and Communications stay optional.
   `00124`. Documented in [Orders](docs/src/content/docs/en/user/orders.md#subscriptions)
   and the references ([Orders](docs/src/content/docs/en/reference/orders.md#subscriptions),
   [Invoices](docs/src/content/docs/en/reference/invoices.md#invoicing-orders)).
-- **C — Deliveries and stock.** `contracts.Stock` and `StockLedger`, reservations made
-  synchronously on the order's transaction, and deliveries. Inventory's side — the
-  reservations, the `issue` kind, *Fulfils orders* and the two contracts — is done
-  ([Inventory](#reservations-with-orders-delivery-c)); Orders' side is next.
+- **C — Deliveries and stock (done).** An order names the Inventory site it is fulfilled
+  from, defaulting from the settings' default site; confirm reserves each goods line's
+  open quantity there through `contracts.StockLedger` on the order's transaction, refusing
+  a shortfall per line unless confirmed without reserving, with **Reserve now** after;
+  edits, cancels and manual marking move and release the reservations. Deliveries
+  (*leveranse*, the `delivery` series) propose what is open and available, are picked per
+  location and posted — Inventory issues the stock, idempotent by the delivery, consuming
+  the reservations — with a pick list and a stored packing slip and the
+  `orders.delivery.posted` event; what is left is the back order the **To deliver** list
+  shows. A goods line at a site is invoiced on delivery by default, so Invoices is offered
+  only what is delivered. `contracts.Stock` gained `Sites` and `Locations`. Inventory's
+  side — the reservations, the `issue` kind, *Fulfils orders* and the two contracts — came
+  first ([Inventory](#reservations-with-orders-delivery-c)). On migration `00126`.
+  Documented in [Orders](docs/src/content/docs/en/user/orders.md#deliveries-and-stock),
+  [administration](docs/src/content/docs/en/admin/orders.md) and the
+  [reference](docs/src/content/docs/en/reference/orders.md#deliveries-and-stock).
 - **D — Shipping.** Carriers (Bring first), shipments and the shipping line, revised
   from the carrier research.
 

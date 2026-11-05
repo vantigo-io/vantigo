@@ -1,6 +1,6 @@
 ---
 title: Orders
-description: Turning Orders on — the modules it requires, mapping Products' tax categories to VAT codes, the nine permissions and the roles to build from them — and keeping its settings — the number series, quote validity, payment terms, the send channel, the confirmation on confirm the mail texts and a subscription's final period — its quote templates and its sales warnings, who sees the sales analysis, who keeps subscriptions, and who invoices orders and subscriptions; how to verify it, and what can go wrong.
+description: Turning Orders on — the modules it requires, mapping Products' tax categories to VAT codes, the nine permissions and the roles to build from them — and keeping its settings — the number series, quote validity, payment terms, the send channel, the confirmation on confirm the mail texts, a subscription's final period and the default site — Inventory's part in reservations and deliveries, its quote templates and its sales warnings, who sees the sales analysis, who keeps subscriptions, and who invoices orders and subscriptions; how to verify it, and what can go wrong.
 sidebar:
   order: 48
 sources:
@@ -29,6 +29,13 @@ how people use it is in [Orders](/en/user/orders/), and every rule in the
   first.
 - **Communications** is optional. Without it, or without a channel to send from, quotes
   and confirmations are downloaded and handed over by other means.
+- **Inventory** is optional. With it on, an order names the **site** it is fulfilled from,
+  reserves its goods there when it is confirmed and is delivered with deliveries that take
+  the stock off the site's locations. Without it, nothing is reserved and every line is
+  delivered by hand. Switching Inventory off later strands nothing: what orders reserved is
+  still released when they are cancelled, changed or delivered by hand. A site fulfils
+  orders when **Fulfils orders** is set on it in Inventory — a warehouse does unless changed,
+  a store does not.
 
 ## Enable the module
 
@@ -65,13 +72,14 @@ Every Orders permission needs **Use Orders** (`orders:access`) beside it.
 | Manage quotes | `orders:quotes-manage` | Making, sending, answering and copying quotes |
 | Manage orders | `orders:sales-manage` | Making and changing orders, hold, cancel, register delivered, send the confirmation |
 | Confirm orders | `orders:sales-confirm` | Confirm, lock and unlock; accept a quote straight into a confirmed order |
+| Manage deliveries | `orders:deliveries-manage` | Making, picking, posting and cancelling deliveries; reading them needs only Use Orders |
 | Manage subscriptions | `orders:subscriptions-manage` | Making, activating, changing, pausing, resuming, ending and cancelling subscriptions; accepting a quote as a subscription |
 | View sales analysis | `orders:analysis-view` | **Analysis**: the quote hit rate, the order intake and the backlog, with their CSV files |
 | Manage Orders settings | `orders:settings` | The settings, the quote templates and the sales warnings, and overriding a block warning; cannot be delegated |
 
-**Manage deliveries** and **Manage carriers** (sensitive, not delegable) are listed
-already and do nothing yet: they belong to the deliveries that bring deliveries and
-shipping.
+**Manage carriers** (sensitive, not delegable) is listed already and does nothing yet: it
+belongs to the delivery that brings shipping. Whoever packs and ships gets **Manage
+deliveries** beside Use Orders; **Reserve now** on an order needs **Manage orders**.
 
 Whoever keeps the customers' subscriptions — support agreements, hosting, licences — gets
 **Manage subscriptions**; the **Subscriptions** list and each subscription's page are
@@ -113,6 +121,9 @@ Whoever invoices needs no Orders permission to do it; the order's **Invoices** c
   to the end date** bills it by its days to the end. Each subscription keeps its own,
   which can be changed on it and when it is ended; changing the default changes no
   existing subscription.
+- **Default site** — shown while Inventory keeps stock: the site a new order is fulfilled
+  from. It must be an active site that fulfils orders. Each order keeps its own, which can
+  be changed on it; changing the default changes no existing order.
 - **Sending** — the **Send channel**: the Communications mailbox quotes and order
   confirmations are sent from, or **None — nothing is sent**. **Send the order
   confirmation when an order is confirmed** e-mails it by itself to the order's contact
@@ -185,6 +196,11 @@ A product warning outlives a deleted product: the list marks it **Product delete
    order, **Create the drafts** and issue the draft in Invoices: the order's **Invoices**
    card lists the invoice, and its invoicing status is **Invoiced**.
 
+8. With Inventory on, set a **Default site**, receive a product there in Inventory, and
+   confirm an order of it: the line shows **Reserved**. **Create delivery**, pick the
+   location and **Post delivery**: Inventory's movements list an **Issue**, and the order is
+   **Delivered**.
+
 ## What can go wrong
 
 | Symptom | Cause | Fix |
@@ -204,3 +220,8 @@ A product warning outlives a deleted product: the list marks it **Product delete
 | An invoice's issue is refused: "Work on line … can no longer be invoiced" | The order's draft allocations were released on the order, or the order was put on hold | Delete the draft and invoice the order again |
 | An order is greyed out in **Invoice from orders**: "in another currency than invoices are made in" | The order's currency is not the invoice settings' default currency (NOK) | Invoice it outside Vantigo, or change the order's currency while it is still a draft |
 | "A warning blocks this", and no **Override the warning** | A block warning applies, and the person lacks Manage Orders settings | Ask a settings holder to override it, or change the warning |
+| No **Site** on orders, no **Default site** in the settings | Inventory is off | Turn Inventory on, or deliver by hand |
+| "The site is archived or does not fulfil orders" when saving the default site | The site is a store, archived, or **Fulfils orders** is off | Set **Fulfils orders** on the site in Inventory, or choose another |
+| "There is not enough available at the site" on confirm | Other orders hold the stock, or it is not received yet | Receive the goods, or **Confirm without reserving** and **Reserve now** later |
+| "The location does not hold that much" on posting a delivery | Stock was moved, corrected or issued since the delivery was picked | Pick another location, or correct the stock in Inventory |
+| **Deliveries** shows nothing to create | The order is on hold, has no site, or its goods are all delivered or in a draft delivery | Release it, set a site, or finish the draft delivery |

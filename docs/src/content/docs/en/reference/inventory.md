@@ -135,10 +135,18 @@ rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
     holding it; with `siteID` set, at that site only;
   - `Available(ctx, variantIDs, siteID)` — on hand less reserved, the same way, per
     site where the variant lies or is reserved; it may be negative.
+  - `Sites(ctx)` — every site that is not archived, by code, with its id, code, name,
+    whether it fulfils orders and whether it is active: what Orders offers as an order's
+    site and checks one against;
+  - `Locations(ctx, variantIDs, siteID)` — per variant, every active location of the site
+    holding more than 0 of it, by full code, with its id, full code and on hand: where
+    Orders' pick list and delivery editor take a line from.
 
-  Both read on the pool in one snapshot, answer every variant asked in the order
-  asked (one with nothing at `"0"` and no sites), as exact decimal text, and refuse
-  none or more than `MaxStockVariants` (1000) variants, or one named twice.
+  `OnHand` and `Available` read on the pool in one snapshot, answer every variant asked
+  in the order asked (one with nothing at `"0"` and no sites), as exact decimal text,
+  and refuse none or more than `MaxStockVariants` (1000) variants, or one named twice;
+  `Locations` refuses the same, and answers no entry for a variant held nowhere at the
+  site.
 - **`Module.StockLedger`** — **`contracts.StockLedger`**, resolved from **every module
   given, enabled or not**, as the holders are, so `Deps.StockLedger` is there even when
   `inventory` is off and a reservation made while it was on is still released. Its
