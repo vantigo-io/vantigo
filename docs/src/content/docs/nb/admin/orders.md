@@ -1,6 +1,6 @@
 ---
 title: Ordre
-description: Slå på Ordre — modulene den krever, koblingen av avgiftskategoriene i Produkter til mva-koder, de ni rettighetene og rollene du bygger av dem — og hold innstillingene — nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen, ordrebekreftelse ved bekreftelse, e-posttekstene og et abonnements siste periode — tilbudsmalene og salgsadvarslene, hvem som ser salgsanalysen, hvem som holder abonnementene, og hvem som fakturerer ordre og abonnement; hvordan du kontrollerer det, og hva som kan gå galt.
+description: Slå på Ordre — modulene den krever, koblingen av avgiftskategoriene i Produkter til mva-koder, de ni rettighetene og rollene du bygger av dem — og hold innstillingene — nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen, ordrebekreftelse ved bekreftelse, e-posttekstene, et abonnements siste periode og standard lagersted — Lagers del i reservasjoner og leveranser, tilbudsmalene og salgsadvarslene, hvem som ser salgsanalysen, hvem som holder abonnementene, og hvem som fakturerer ordre og abonnement; hvordan du kontrollerer det, og hva som kan gå galt.
 sidebar:
   order: 48
 sources:
@@ -29,6 +29,12 @@ den brukes, står i [Ordre](/nb/user/orders/), og hver regel i
   først.
 - **Kommunikasjon** er valgfri. Uten den, eller uten en kanal å sende fra, lastes tilbud og
   ordrebekreftelser ned og leveres på annen måte.
+- **Lager** er valgfri. Når den er på, har en ordre et **lagersted** den leveres fra,
+  reserverer varene der når den bekreftes, og leveres med leveranser som trekker varene fra
+  lagerstedets lokasjoner. Uten Lager reserveres ingenting, og hver linje leveres for hånd. Å
+  slå av Lager senere etterlater ingenting: det ordrene har reservert, frigjøres fortsatt når de
+  kanselleres, endres eller leveres for hånd. Et lagersted leverer ordrer når **Leverer ordrer**
+  er satt på det i Lager — et lager gjør det om ikke endret, en butikk gjør det ikke.
 
 ## Slå på modulen
 
@@ -66,13 +72,15 @@ Ingen andre enn eieren kan bruke appen før en rolle gir rettighetene, under
 | Håndtere tilbud | `orders:quotes-manage` | Lage, sende, besvare og kopiere tilbud |
 | Håndtere ordrer | `orders:sales-manage` | Lage og endre ordrer, sette på vent, kansellere, registrere levert, sende ordrebekreftelsen |
 | Bekrefte ordrer | `orders:sales-confirm` | Bekrefte, låse og låse opp; akseptere et tilbud rett til en bekreftet ordre |
+| Håndtere leveranser | `orders:deliveries-manage` | Lage, plukke, bokføre og kansellere leveranser; å lese dem krever bare Bruke Ordre |
 | Håndtere abonnementer | `orders:subscriptions-manage` | Lage, aktivere, endre, pause, gjenoppta, avslutte og kansellere abonnement; akseptere et tilbud som abonnement |
 | Se salgsanalyse | `orders:analysis-view` | **Analyse**: treffprosenten på tilbud, ordreinngangen og ordrereserven, med CSV-filene |
 | Håndtere innstillinger for Ordre | `orders:settings` | Innstillingene, tilbudsmalene og salgsadvarslene, og overstyring av en sperre; kan ikke delegeres |
 
-**Håndtere leveranser** og **Håndtere fraktselskaper** (sensitiv, kan ikke delegeres) er
-allerede listet og gjør ingenting ennå: de hører til leveransene som bringer leveranser og
-frakt.
+**Håndtere fraktselskaper** (sensitiv, kan ikke delegeres) er allerede listet og gjør
+ingenting ennå: den hører til leveransen som bringer frakt. Den som pakker og sender, får
+**Håndtere leveranser** sammen med Bruke Ordre; **Reserver nå** på en ordre krever **Håndtere
+ordrer**.
 
 Den som holder kundenes abonnement — supportavtaler, drift, lisenser — får **Håndtere
 abonnementer**; listen **Abonnement** og hvert abonnements side er åpne for alle med
@@ -115,6 +123,9 @@ ordrer**.
   **Forholdsmessig til sluttdato** fakturerer den etter dagene fram til sluttdatoen. Hvert
   abonnement har sin egen, som kan endres på abonnementet og når det avsluttes; å endre
   standarden endrer ingen eksisterende abonnement.
+- **Standard lagersted** — vises når Lager fører beholdning: lagerstedet en ny ordre leveres
+  fra. Det må være et aktivt lagersted som leverer ordrer. Hver ordre har sitt eget, som kan
+  endres på ordren; å endre standarden endrer ingen eksisterende ordre.
 - **Utsending** — **Avsenderkanal**: postkassen i Kommunikasjon som tilbud og
   ordrebekreftelser sendes fra, eller **Ingen — ingenting sendes**. **Send
   ordrebekreftelsen når en ordre bekreftes** sender den av seg selv til ordrens
@@ -185,6 +196,10 @@ og **Fjern** er alt den tilbyr.
    ordren, **Lag utkastene** og utsteder utkastet i Fakturaer: kortet **Fakturaer** på
    ordren viser fakturaen, og faktureringsstatusen er **Fakturert**.
 
+8. Med Lager på setter du et **Standard lagersted**, tar imot et produkt der i Lager og
+   bekrefter en ordre på det: linjen viser **Reservert**. **Lag leveranse**, velg lokasjonen og
+   **Bokfør leveranse**: bevegelsene i Lager viser et **Uttak**, og ordren er **Levert**.
+
 ## Hva som kan gå galt
 
 | Symptom | Årsak | Løsning |
@@ -204,3 +219,8 @@ og **Fjern** er alt den tilbyr.
 | Utstedelsen av en faktura avvises: «Arbeid på linje … kan ikke lenger faktureres» | Det fakturautkastet holdt av ordren, ble frigjort på ordren, eller ordren ble satt på vent | Slett utkastet og fakturer ordren på nytt |
 | En ordre er grået ut i **Fakturer fra ordre**: «i en annen valuta enn fakturaene lages i» | Ordrens valuta er ikke standardvalutaen i fakturainnstillingene (NOK) | Fakturer den utenfor Vantigo, eller endre ordrens valuta mens den fortsatt er et utkast |
 | «En advarsel sperrer dette», og ingen **Overstyr advarselen** | En sperre gjelder, og personen mangler Håndtere innstillinger for Ordre | Be noen med innstillingene overstyre den, eller endre advarselen |
+| Ingen **Lagersted** på ordrene, ingen **Standard lagersted** i innstillingene | Lager er av | Slå på Lager, eller lever for hånd |
+| «Lagerstedet er arkivert eller leverer ikke ordrer.» når standard lagersted lagres | Lagerstedet er en butikk, er arkivert, eller **Leverer ordrer** er av | Sett **Leverer ordrer** på lagerstedet i Lager, eller velg et annet |
+| «Det er ikke nok disponibelt på lagerstedet» ved bekreftelse | Andre ordrer holder varene, eller de er ikke tatt imot ennå | Ta imot varene, eller **Bekreft uten å reservere** og **Reserver nå** senere |
+| «Lokasjonen har ikke så mye» når en leveranse bokføres | Varer er flyttet, korrigert eller tatt ut siden leveransen ble plukket | Velg en annen lokasjon, eller korriger beholdningen i Lager |
+| **Leveranser** har ingenting å lage | Ordren er på vent, har ikke lagersted, eller varene er levert eller ligger i et leveranseutkast | Frigi den, sett et lagersted, eller gjør ferdig leveranseutkastet |

@@ -1,6 +1,6 @@
 ---
 title: "Orders module"
-description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, subscriptions — the plan, the period calendar, proration, the due rule and the twelve-month limit, the per-period allocations, billed through, dated lines and changes, pause, resume, end and cancel —, PDFs, sending and the cover mail, the events, the handler and the four workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, the refusal codes, the assist targets and every endpoint with its permission and status codes."
+description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, subscriptions — the plan, the period calendar, proration, the due rule and the twelve-month limit, the per-period allocations, billed through, dated lines and changes, pause, resume, end and cancel —, PDFs, sending and the cover mail, the events, the handler and the four workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, deliveries and stock — the site, reservations at confirm and on edits, the delivery, its pick list and packing slip, the back order and invoicing on delivery —, the refusal codes, the assist targets and every endpoint with its permission and status codes."
 sources:
   - apps/server/internal/orders
   - apps/orders/frontend
@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/db/migrations/00120_orders_warnings.sql
   - apps/server/internal/db/migrations/00121_orders_allocations.sql
   - apps/server/internal/db/migrations/00124_orders_subscriptions.sql
+  - apps/server/internal/db/migrations/00126_orders_deliveries.sql
   - apps/server/internal/contracts/billable_orders.go
   - apps/server/internal/contracts/events_orders.go
   - apps/host/frontend/src/routes/orders
@@ -24,8 +25,9 @@ an order's life from draft to confirmed, delivered and cancelled. In Norwegian t
 (decisions O1–O54); this page describes delivery A, quotes and orders, delivery A2,
 selling comfort — sales warnings, packagings and the variant grid, and the analysis
 views — delivery B, invoicing from orders ([Invoicing from orders](#invoicing-from-orders)),
-and delivery S, subscriptions ([Subscriptions](#subscriptions)). Deliveries from stock (C)
-and shipping (D) come later and are described as they land.
+delivery S, subscriptions ([Subscriptions](#subscriptions)), and delivery C, deliveries and
+stock ([Deliveries and stock](#deliveries-and-stock)). Shipping (D) comes later and is
+described as it lands.
 
 ## The module
 
@@ -64,13 +66,13 @@ hold a subscription's, and an allocation bill a subscription's period.
 | `orders:sales-confirm` | Confirm orders | Confirm, lock and unlock; accept a quote into a confirmed order | no | yes |
 | `orders:settings` | Manage Orders settings | The settings, the number series, the quote templates and the sales warnings; overriding a block warning | no | no |
 | `orders:subscriptions-manage` | Manage subscriptions | Create, save, activate, pause, resume, end and cancel subscriptions; accept a quote into a subscription | no | yes |
-| `orders:deliveries-manage` | Manage deliveries | Deliveries (delivery C) and shipments (delivery D) | no | yes |
+| `orders:deliveries-manage` | Manage deliveries | Create, save, post and cancel deliveries (delivery C); shipments (delivery D) | no | yes |
 | `orders:carriers-manage` | Manage carriers | Carrier accounts and their keys under Integrations — delivery D | yes | no |
 | `orders:analysis-view` | View sales analysis | The analysis views and their CSV files | no | yes |
 
 Every operation asks for `orders:access` **and** its own key, so a role that gives
-`orders:quotes-manage` without `orders:access` gives nothing. The deliveries and carriers
-keys are declared now so a role can be built once; no operation asks for them yet.
+`orders:quotes-manage` without `orders:access` gives nothing. The carriers key is declared
+now so a role can be built once; no operation asks for it yet.
 
 The screens read other modules over HTTP and need their keys too: the customer picker
 `customers:view`, a customer's contacts `customers:contacts-view` with
@@ -365,8 +367,9 @@ credit note's release are not logged: the order's **Invoices** list is their rec
 
 ### Delivered by hand
 
-Until deliveries from stock come with delivery C, delivery is registered by hand (O32) on
-a confirmed order: **mark-delivered** adds per-line quantities, never beyond what is
+Delivery is registered by hand (O32) on a line no [delivery](#deliveries-and-stock) takes —
+a service, a free-text line, any line of an order without a site or while Inventory keeps no
+stock — and, as a correction, on any line of a confirmed order: **mark-delivered** adds per-line quantities, never beyond what is
 ordered less cancelled (`over_delivery`, 400), and **undo-delivered** takes them back,
 never below 0 (`undo_exceeds_delivered`) nor below what is invoiced
 (`delivered_below_invoiced`). A line not on the order is `line_not_found`; a quantity that
@@ -374,7 +377,10 @@ is not a positive number with at most three decimals is `quantity_invalid`. Ever
 the request is judged at once. Each marking logs `delivered_marked` or `delivered_undone`
 and recomputes the delivery status. A locked order still takes it; an order on hold takes
 neither (`order_on_hold`, 409) — release it first. Marking and undoing lock the lines'
-variants, since an open line holds its variant against a delete.
+variants, since an open line holds its variant against a delete. A marking releases what a
+line holds reserved beyond its open quantity — as much as it marked — and an undo reserves
+nothing again ([Reservations](#reservations)). On a line invoiced on delivery, undo stops at
+what is invoiced.
 
 ## Invoicing from orders
 
@@ -708,6 +714,134 @@ they become a draft subscription's lines with their frozen prices, its origin `q
 `quoteId@revision`. The quote records `accepted_into_kind` `subscription`, and
 `orders.quote.accepted` names it. The answer carries `subscription` instead of `order`.
 
+## Deliveries and stock
+
+Delivery C (O45–O48) brings stock into an order: the site it is fulfilled from, the
+reservations its goods lines hold there, the deliveries that issue the stock, the back
+order and invoicing on delivery. Inventory serves it through two contracts
+([the stock contracts](/en/reference/inventory/#reservations-and-issues)): `contracts.Stock`,
+a read of sites, on hand, available and the locations holding a variant, nil when Inventory
+is off; and `contracts.StockLedger`, which reserves, releases and issues on Orders' own
+transaction (module-boundaries rule 24) and is composed whatever `MODULES` says.
+
+### The site and the line's delivery method
+
+An order carries `site_id`, Inventory's site, opaque here. A new order — the API's create,
+an accepted quote — takes the settings' `defaultSiteId` while Inventory keeps stock
+(`Deps.Stock`); the API's create may name one. A draft's save sets it from the body (absent
+or null is none); a confirmed order's save keeps it unless the body names another, which is
+refused once the order has a draft or posted delivery (`order_has_deliveries`, 409). Every
+site a request names is checked through `Stock.Sites`: an active site that fulfils orders,
+else `site_not_fulfilling` (400).
+
+Every save settles each line's **delivery method** under the variants' locks: `delivery` for
+a product line whose variant the catalog calls Goods on an order with a site while Inventory
+keeps stock, `manual` for every other line. A line whose variant the catalog no longer
+answers keeps what it had. The order answers the site as `siteId`, and each line, after
+the transaction, its `qtyReserved` — what Inventory holds for it, summed over sites,
+read through `ReservationsFor` — and `available`, `Stock.Available` of its variant at the
+site (null without stock, a site or a goods variant; negative after Inventory's own
+corrections).
+
+### Reservations
+
+What a line holds is Inventory's to say; Orders keeps no copy. The ledger names an order
+`{orders, order, <id>}` and a line by its id, and every call runs after
+`ProductCatalog.LockVariants` and the order's row lock (MB rule 21, rule 24).
+
+- **Confirm** reserves every delivery-method line's open quantity — ordered less cancelled
+  less delivered — at the site in one `Reserve`. A shortfall refuses the confirm with 409
+  `insufficient_available`, naming every short line in `lines` by its index in the order.
+  `reserve: false` in the confirm body confirms without reserving and logs
+  `confirmed_without_reserving`. Accepting a quote into a confirmed order reserves.
+- **Reserve now** (`POST /orders/{id}/reserve`, sales-manage) reserves what of each line's
+  open quantity is not held yet, logging `reserved`; a shortfall refuses it all, 409
+  `insufficient_available`. Without stock it is 503 `dependency_unavailable`; without a site
+  409 `order_has_no_site`.
+- **A confirmed order's save**, while the order holds any reservation, releases a removed
+  line's reservation and what a line holds beyond its new open quantity, and reserves what a
+  kept line's open quantity grew by and a new line's whole — refused as confirm is. An order
+  holding none — confirmed without reserving — reserves nothing on a save. A new site
+  releases everything at the old one and reserves the open quantities at the new one when
+  the order held anything; it is logged `site_changed`.
+- **Cancel** and **cancel remaining** release every reservation and cancel the order's draft
+  deliveries.
+- **Mark delivered** releases what a line holds beyond what is left open; **undo
+  delivered** reserves nothing.
+- **Posting a delivery** issues against the reservations; Inventory consumes what it
+  issued of each line's.
+
+Releasing never asks `Deps.Stock`: a reservation made while Inventory was on is released
+after it is switched off.
+
+### Deliveries
+
+A delivery (`orders.deliveries`, *leveranse*) has a number from the `delivery` series
+(starting at 1), the order, the site, `status` `draft`, `posted` or `cancelled`, the movement
+Inventory posted, who posted it and when, the stored packing slip, a `version` and its
+lines (`orders.delivery_lines`): the order line, its variant, the quantity (more than 0, at
+most three decimals) and the location it is picked from with its full code, null until
+picked. One delivery names an order line once.
+
+- **Create** (`POST /deliveries`, deliveries-manage) needs a confirmed order not on hold
+  (`order_on_hold`, 409) with a site while stock is kept (`order_has_no_site`, 409; 503
+  without stock). It proposes every delivery-method line open beyond what other draft
+  deliveries hold, at what can go from the site — the line's own reservation plus what is
+  available, shared between the lines of one variant in line order — never more than is
+  open; each proposed line is picked from the first location by full code holding all of
+  it. Nothing to propose is `nothing_to_deliver` (409). Several drafts may exist.
+- **Save** (`PUT /deliveries/{id}`) replaces a draft's lines: each names a delivery-method
+  line of the order (`line_not_found`), once (`line_invalid`), at most what is open outside
+  this delivery (`over_delivery`), and a location among `Stock.Locations` of the variant at
+  the site (`location_unknown`), all 400 with `lines`. A delivery no longer a draft is
+  `delivery_not_draft` (409); a stale `version` or `expectedUpdatedAt` `version_conflict`.
+- **Post** (`POST /deliveries/{id}/post`) locks the variants, the order and the delivery;
+  every line must be picked (`location_missing`, 400) and within what the order line has
+  left (`over_delivery`, 400); the order must be confirmed and not on hold. It calls
+  `StockLedger.Issue` with the order as source and the delivery `{orders, delivery, <id>}` as
+  the movement's document, one line per delivery line — idempotent by that document. A
+  refusal is 409 with Inventory's code — `insufficient_stock` above all,
+  `location_unknown`, `site_not_fulfilling`, `variant_not_stocked` — naming each failing line
+  by its index in the delivery. The order lines' delivered quantities grow, the delivery
+  status is recomputed (the version is not bumped), `delivery_posted` is logged per line,
+  `orders.delivery.posted` is published and the packing slip is printed — and stored
+  after the commit; a store that fails is retried by the first download.
+- **Cancel** (`POST /deliveries/{id}/cancel`) cancels a draft; its quantities are open again.
+  A posted delivery is immutable: a mistake is a stock correction in Inventory and **undo
+  delivered** on the line.
+
+A confirmed order's save refuses to remove a line a draft delivery names, or change its
+item (`line_has_progress`, 409).
+
+### Back orders
+
+What is not delivered stays open on the order; no back-order document is made. `GET
+/orders?toDeliver=true` lists the confirmed orders with a product line whose ordered less
+cancelled less delivered is above 0.
+
+### The pick list and the packing slip
+
+Both are A4 PDFs in the module's style, in the order's language. The **pick list**
+(`GET /deliveries/{id}/pick-list`, *plukkliste*) is printed on demand and never stored:
+the lines sorted by the picked location's full code, those not picked last, each with the
+site's locations holding its variant and how much. The **packing slip** (`GET
+/deliveries/{id}/packing-slip`, *pakkseddel*) prints the seller, the order's delivery
+address, contact and references, and per line what was ordered, what this delivery takes
+and what is left as back order; a posted delivery's is the stored one (`orders.documents`,
+owner kind `delivery`, kind `packing_slip`), a draft's is printed now with the draft mark.
+The consignment's carrier, number and tracking are delivery D's.
+
+### Invoicing on delivery
+
+A line's `invoice_policy` is `order` or `delivery` (O48). A goods line on an order with a
+site defaults to `delivery`, every other line to `order`; a line's own `invoicePolicy` in a
+save wins, a kept line keeps its policy otherwise, and a draft whose site changed takes the
+defaults again. A confirmed order's save changing the policy of a line with anything
+invoiced or in a draft invoice is `line_invoiced` (409), logged `policy_changed` otherwise.
+For a line on delivery, [the billable read](#the-billable-read) offers delivered less
+invoiced less draft-allocated, `Allocate` refuses beyond it (`exceeds_open`), and the
+invoiced-work holder judges an allocation against delivered less invoiced.
+
 ## PDFs
 
 There are three prints (O24), each in the document's language, laid out from the seller as
@@ -781,6 +915,7 @@ each on the transaction that makes the change and while it holds the document's 
 | `orders.sales_order.cancelled` | A confirmed order is cancelled | `orderId`, `number`, `customerId`, `cancelledAt` |
 | `orders.sales_order.changed` | A confirmed order is edited, or the rest cancelled, at a new version | `orderId`, `number`, `version`, `customerId`, `changedAt` |
 | `orders.sales_order.invoiced` | An invoice's issue stamped allocations of the order — once per order the invoice bills, by the [holder](#the-invoiced-work-holder) on the issue's transaction | `orderId`, `number`, `customerId`, `invoiceId`, `invoiceNumber`, `invoicedAt` (the issue's time) |
+| `orders.delivery.posted` | A delivery is posted; its aggregate is the order | `deliveryId`, `number`, `orderId`, `siteId`, `postedAt` |
 | `orders.subscription.started` | A subscription is activated | `subscriptionId`, `number`, `version`, `customerId`, `currency`, `interval`, `startDate`, `startedAt` |
 | `orders.subscription.changed` | An activated subscription's lines are changed from a period on, or it is paused or resumed | `subscriptionId`, `number`, `version`, `customerId`, `status`, `changedAt` |
 | `orders.subscription.ended` | A subscription is given its end, or an activated one is cancelled | `subscriptionId`, `number`, `version`, `customerId`, `status` (`ended` or `cancelled`), `endDate`, `endedAt` |
@@ -828,7 +963,10 @@ one, and is composed whether or not `orders` is enabled.
   `orders.warnings` and `orders.subscriptions`.
 - **Customer export**: every quote, order and subscription of the customer, each with its
   snapshot, status, revision or version, totals, texts, lines — a subscription's with their
-  validity, and its plan — and sends, and the customer's sales warning, in one read-only snapshot; nothing for a customer with none of them.
+  validity, and its plan — and sends, an order's deliveries with their number, state,
+  posting time and lines, and the customer's sales warning, in one read-only snapshot;
+  nothing for a customer with none of them. A delivery holds no personal data of its own:
+  the address it ships to is the order's.
 - **Customer erase** (O29, O54), inside Customers' anonymisation: blanks the name, the
   legal ids, the addresses, the contact, the invoice e-mail, your reference and the
   internal note **at once** on every quote — a quote is offer text, no bookkeeping record
@@ -851,7 +989,7 @@ one, and is composed whether or not `orders` is enabled.
   document names it — a draft or sent quote, an order not cancelled with a line of it
   that is not delivered or not invoiced in full, or a subscription still to bill — draft,
   active or paused, or ended on or after today — with a line of it in force on or after
-  today — as an `open_documents` hold
+  today — or a draft delivery naming it, as an `open_documents` hold
   with the count. A change of a product to a service is never held. A template is no document: a
   variant gone from it is skipped when it is applied.
 
@@ -868,7 +1006,8 @@ order's last change once it is confirmed, delivered and invoiced. A confirmed or
 done is kept. Each day `orders.retention` works through the recorded erasures and
 anonymises every such order whose year has run. It then deletes the stored PDFs of the
 customer's anonymised quotes and orders — the quotes' on the first cycle after the erase,
-so within about a day, and an order's once it has been anonymised after its retention —
+so within about a day, and an order's, with its deliveries' packing slips, once it has been
+anonymised after its retention —
 each object from the store first, then its row; the send rows stay, blanked, with their
 link to the PDF removed. An activated subscription is kept the same way until 3 years and
 6 months after the end of the financial year it ended in — its end date, or the day it was
@@ -1068,11 +1207,15 @@ a bare 400.
 | `confirmationOnConfirm` | off | Queue the confirmation when an order is confirmed ([The handler](#the-handler)) |
 | `combineByDefault` | off | Not read by Invoices: the From orders wizard starts at one invoice per order and a billing run of orders carries its own `combine`, so it has no effect yet |
 | `mailTexts` | none | One subject and body per kind and language ([Sending](#sending)) |
+| `defaultSiteId` | none | The site a new order takes while Inventory keeps stock: an active site that fulfils orders (`site_not_fulfilling`); none names none |
 | `subscriptionFinalPeriodDefault` | `full` | The final period a new subscription takes, `full` or `prorated` ([The final period](#the-final-period)); a save that leaves it out keeps it |
 
 The answer also lists the send channels Communications offers and whether sending is
 available. `GET /meta` gives every holder of `orders:access` what the screens need of it:
-`sendingAvailable`, `quoteValidityDays`, `defaultPaymentTermsDays` and `baseCurrency`.
+`sendingAvailable`, `quoteValidityDays`, `defaultPaymentTermsDays`, `baseCurrency` and
+`stockKept` — whether Inventory keeps stock. `GET /sites` lists Inventory's sites that are
+not archived, through `contracts.Stock`, for the order's and the default site's pickers;
+empty without Inventory.
 
 ## Assistant tour targets
 
@@ -1102,6 +1245,12 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `orders.settings.warnings` | `/orders/settings` | The sales warnings in the settings |
 | `orders.analysis.views` | `/orders/analysis` | The analysis's three views |
 | `orders.analysis.csv` | `/orders/analysis` | Download CSV of the open view |
+| `orders.order.site` | `/orders/orders/{orderId}` | The order's site, while Inventory keeps stock |
+| `orders.order.create-delivery` | `/orders/orders/{orderId}` | Create delivery, on the Deliveries card |
+| `orders.deliveries.view` | `/orders/deliveries` | To deliver or Deliveries |
+| `orders.delivery.pick-list` | `/orders/deliveries/{deliveryId}` | Pick list |
+| `orders.delivery.post` | `/orders/deliveries/{deliveryId}` | Post delivery |
+| `orders.settings.default-site` | `/orders/settings` | Default site |
 | `orders.subscriptions.new` | `/orders/subscriptions` | New subscription |
 | `orders.new-subscription.customer` | `/orders/subscriptions/new` | The customer picker |
 | `orders.new-subscription.create` | `/orders/subscriptions/new` | Create the subscription |
@@ -1139,7 +1288,8 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 
 | Operation | Permission | Answers |
 | --- | --- | --- |
-| `GET /meta` | access | 200 — sending available, default validity and payment terms, base currency |
+| `GET /meta` | access | 200 — sending available, default validity and payment terms, base currency, stock kept |
+| `GET /sites` | access | 200 — Inventory's sites not archived, by code; empty without Inventory |
 | `GET /salespeople` | access | 200 — the active users holding `quotes-manage` or `sales-manage`, by display name; `q` narrows |
 | `GET /variants` | access | 200 — active products' variants whose SKU, name or barcode contains `q`, each with its list price in `currency` today and its VAT code; 400 currency not three letters; 503 |
 | `GET /customers/{customerId}/summary` | access | 200 — [the customer summary](#the-customer-summary) |
@@ -1160,12 +1310,13 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `GET /quotes/{id}/proforma` | access | 200; 404 |
 | `GET /quotes/{id}/documents` | access | 200 the stored PDFs; 404 |
 | `GET /quotes/{id}/mailings` | access | 200 every send; 404 |
-| `GET /orders` | access | 200 — newest first, by customer, status, delivery and invoice status, open or done, salesperson and a search; 400 paging |
+| `GET /orders` | access | 200 — newest first, by customer, status, delivery and invoice status, open or done, to deliver, salesperson and a search; 400 paging |
 | `POST /orders` | sales-manage | 201; 200 a repeat; 400; 409 `client_request_reused`; 503 |
 | `GET /orders/{id}` | access | 200 with lines, buckets and totals; 404 |
-| `PUT /orders/{id}` | sales-manage | 200; 400 incl. `quantity_below_progress`, `line_invalid`; 404; 409 `version_conflict`, `order_locked`, `line_invoiced`, `line_in_draft_invoice`, `line_has_progress`, `line_kind_changed`; 503 |
+| `PUT /orders/{id}` | sales-manage | 200; 400 incl. `quantity_below_progress`, `line_invalid`, `site_not_fulfilling`; 404; 409 `version_conflict`, `order_locked`, `line_invoiced`, `line_in_draft_invoice`, `line_has_progress`, `line_kind_changed`, `order_has_deliveries`, `insufficient_available`; 503 |
 | `DELETE /orders/{id}` | sales-manage | 204 — a draft accepted from a quote puts the quote back to `sent`; 404; 409 `order_not_draft`, `version_conflict` (`expectedUpdatedAt` in the query) |
-| `POST /orders/{id}/confirm` | sales-confirm (+ settings to override) | 200; 400 `customer_disabled`, `order_empty`, `line_unpriced`, `vat_code_unmapped`, `overrideReason`; 404; 409 `order_not_draft`, `blocked_by_warning` |
+| `POST /orders/{id}/confirm` | sales-confirm (+ settings to override) | 200; 400 `customer_disabled`, `order_empty`, `line_unpriced`, `vat_code_unmapped`, `overrideReason`; 404; 409 `order_not_draft`, `blocked_by_warning`, `insufficient_available`, `site_not_fulfilling`, `variant_not_stocked` |
+| `POST /orders/{id}/reserve` | sales-manage | 200; 404; 409 `order_not_confirmed`, `order_has_no_site`, `insufficient_available`; 503 without stock |
 | `POST /orders/{id}/hold` | sales-manage | 200; 400 reason; 404; 409 `order_not_confirmed` |
 | `POST /orders/{id}/release` | sales-manage | 200; 404; 409 |
 | `POST /orders/{id}/lock` | sales-confirm | 200; 404; 409 `order_not_confirmed` |
@@ -1181,6 +1332,14 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `GET /orders/{id}/documents` | access | 200 the stored confirmations; 404 |
 | `GET /orders/{id}/mailings` | access | 200 every send, with the version that went out; 404 |
 | `GET /orders/{id}/changes` | access | 200 the change log; 404 |
+| `GET /deliveries` | access | 200 — newest first, by status, order, site and a search; 400 paging |
+| `POST /deliveries` | deliveries-manage | 201; 400; 404 the order; 409 `order_not_confirmed`, `order_on_hold`, `order_has_no_site`, `nothing_to_deliver`; 503 without stock |
+| `GET /deliveries/{id}` | access | 200 with lines and, on a draft, the locations holding each variant; 404 |
+| `PUT /deliveries/{id}` | deliveries-manage | 200; 400 `line_not_found`, `line_invalid`, `quantity_invalid`, `over_delivery`, `location_unknown`; 404; 409 `version_conflict`, `delivery_not_draft`; 503 |
+| `POST /deliveries/{id}/post` | deliveries-manage | 200; 400 `location_missing`, `over_delivery`; 404; 409 `version_conflict`, `delivery_not_draft`, `order_on_hold`, `insufficient_stock`, `location_unknown`, `site_not_fulfilling`, `variant_not_stocked`; 503 |
+| `POST /deliveries/{id}/cancel` | deliveries-manage | 200; 404; 409 `version_conflict`, `delivery_not_draft` |
+| `GET /deliveries/{id}/pick-list` | access | 200 printed now; 404 |
+| `GET /deliveries/{id}/packing-slip` | access | 200 the stored one of a posted delivery, a draft's printed now; 404 |
 | `GET /subscriptions` | access | 200 — newest first, by customer, status and a search; 400 paging |
 | `POST /subscriptions` | subscriptions-manage | 201; 200 a repeat; 400 fields, plan, lines, `subscription_goods_not_allowed`, `customer_disabled`; 409 `client_request_reused`; 503 |
 | `GET /subscriptions/{id}` | access | 200 with lines, earlier lines, periods and billed through; 404 |
@@ -1197,7 +1356,7 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `PUT /templates/{id}` | settings | 200; 400; 404; 409 `version_conflict`, `template_name_taken` |
 | `DELETE /templates/{id}` | settings | 204; 404 |
 | `GET /settings` | settings | 200 |
-| `PUT /settings` | settings | 200; 400 `series_start_too_low`, `send_channel_unknown`; 409 `version_conflict` |
+| `PUT /settings` | settings | 200; 400 `series_start_too_low`, `send_channel_unknown`, `site_not_fulfilling`; 409 `version_conflict` |
 | `GET /warnings` | access | 200 — every warning, customers' first, each by name, a deleted product's `orphaned`; `scope` narrows |
 | `GET /warnings/customers/{customerId}` | access | 200; 404 none |
 | `PUT /warnings/customers/{customerId}` | settings | 200; 400 level or text; 404 no such customer; 503 |

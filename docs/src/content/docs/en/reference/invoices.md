@@ -1406,9 +1406,12 @@ it does not know the customer), `currency`, `projectId`, `yourReference`, `deliv
 invoiced now — `draft` or `on_hold`, as Orders answers it, or **`currency_not_supported`**,
 set here for an order in another currency than the settings' `defaultCurrency`, which the
 wizard shows greyed with its reason; each line its `lineId`, `position`,
-`description`, `unit`, `toInvoice` (ordered − cancelled − invoiced − draft-allocated,
-three decimals), `unitPrice` (eight decimals), `discountPercent`, `vatCodeId`,
-`invoicePolicy` and `amount`, docmath's net of `toInvoice` — and a subscription's line its
+`description`, `unit`, `toInvoice` (ordered − cancelled − invoiced − draft-allocated for
+a line invoiced on order; delivered − invoiced − draft-allocated for one invoiced on
+delivery, so only what is delivered is offered — [invoicing on
+delivery](/en/reference/orders/#invoicing-on-delivery); three decimals), `unitPrice`
+(eight decimals), `discountPercent`, `vatCodeId`, `invoicePolicy` (`order` or `delivery`)
+and `amount`, docmath's net of `toInvoice` — and a subscription's line its
 `periodStart` and `periodEnd`, listed once per due period, a pro-rated first period — or a
 final period pro-rated to the subscription's end, whose `periodEnd` is the end date — at
 its pro-rated unit price. The wizard names a subscription "Abonnement 3001 – januar 2027"

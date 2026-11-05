@@ -1091,8 +1091,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     - **It is composed whatever `MODULES` says**, as rule 8's holders are: a
       reservation made while Inventory was on is still released by a cancel, an edit or
       a manual marking after it is turned off. Whether to reserve and issue at all the
-      caller reads from `Deps.Stock`, the read of on hand and available
-      (`contracts.Stock`, a single-provider slot set only when Inventory is enabled).
+      caller reads from `Deps.Stock`, the read of on hand, available, the sites and the
+      locations holding a variant (`contracts.Stock`, a single-provider slot set only when
+      Inventory is enabled), on the pool and never inside the caller's transaction.
     - **Inventory's own corrections ignore reservations.** Its adjustments, moves and
       counts may take on hand below what is reserved, and available shows negative; an
       issue still refuses beyond on hand.
