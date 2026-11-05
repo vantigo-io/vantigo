@@ -14,13 +14,15 @@ import (
 // itself proves the interface is complete.
 type server struct {
 	deps module.Deps
+	// objects is where the images' bytes live (objects.go).
+	objects objects
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
 
 // newServer builds the module's operations over d.
 func newServer(d module.Deps) *server {
-	return &server{deps: d}
+	return &server{deps: d, objects: newObjects(d)}
 }
 
 // pricingManage and pricingView are the two permissions the conditional
