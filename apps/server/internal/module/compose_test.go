@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -3128,4 +3129,14 @@ func TestCompose_PresetConsumptionSurvivesWhenNoProvider(t *testing.T) {
 	if got.Consumption != preset {
 		t.Errorf("Deps.Consumption = %v, want the preset value to survive with no provider", got.Consumption)
 	}
+}
+
+// ProductImages and OpenProductImage are the catalog's image calls (messenger
+// design N15), which this test never asks.
+func (*fakeProductCatalog) ProductImages(context.Context, int32, string) ([]contracts.ProductImage, error) {
+	return nil, nil
+}
+
+func (*fakeProductCatalog) OpenProductImage(context.Context, int32) (io.ReadCloser, contracts.ProductImage, error) {
+	return nil, contracts.ProductImage{}, nil
 }

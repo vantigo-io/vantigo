@@ -299,6 +299,8 @@ var filesOrRedirects = []string{
 	"getInvoicesByIdPreviewPdf",
 	"getInvoicesByIdTransmissionsByTransmissionIdUbl",
 	"getInvoicesVippsPaymentsCsv",
+	"getProductsByIdImagesByImageIdContent",
+	"postProductsByIdImages",
 	"getStaffDocumentsById",
 	"getStaffPayrollExport",
 	"getStaffPeopleExportCsv",

@@ -8,6 +8,7 @@ sql:
     schema:
       - ../db/migrations/00004_products_baseline.sql
       - ../db/migrations/00109_products_packagings.sql
+      - ../db/migrations/00131_products_images.sql
     queries: queries
     gen:
       go:

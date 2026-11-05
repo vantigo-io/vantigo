@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"context"
+	"io"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -44,6 +45,24 @@ type VariantEntry struct {
 	// (orders design O50: a shipment's parcel is proposed at the sum of its
 	// variants' weights).
 	WeightGrams *int64
+}
+
+// ProductImage is an image of a product as another module may read it
+// (messenger design N15): what names and describes the picture, never where
+// its bytes are kept — OpenProductImage streams those. The image is the
+// normalised file, upright and without metadata (N13).
+type ProductImage struct {
+	ID, ProductID int32
+	// AltText is what the picture shows, "" when none was written.
+	AltText     string
+	ContentType string // "image/jpeg" | "image/png"
+	Width       int32
+	Height      int32
+	// Uses is where the image may be shown: "communications" and
+	// "marketing".
+	Uses []string
+	// SortOrder is the image's place among the product's images, from 0.
+	SortOrder int32
 }
 
 // PackagingEntry is a packaging of a variant — a box of 15, a Euro pallet of
@@ -144,4 +163,13 @@ type ProductCatalog interface {
 	// that does not exist is absent from the answer. It never begins, commits
 	// or rolls back tx.
 	LockVariants(ctx context.Context, tx pgx.Tx, ids []int32) ([]VariantEntry, error)
+	// ProductImages is the product's images marked for use ("communications"
+	// or "marketing"), in their order; empty when it has none, or the
+	// product does not exist (messenger design N15). Like the rest of the
+	// catalog it checks no user permission: the caller's own picker does.
+	ProductImages(ctx context.Context, productID int32, use string) ([]ProductImage, error)
+	// OpenProductImage streams an image's bytes with its description. It
+	// answers (nil, ProductImage{}, nil) when the image is gone, the way a
+	// missing variant is (nil, nil); the caller closes the stream.
+	OpenProductImage(ctx context.Context, imageID int32) (io.ReadCloser, ProductImage, error)
 }

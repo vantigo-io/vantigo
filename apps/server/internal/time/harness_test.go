@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v5"
+	"io"
 	"maps"
 	"net/http"
 	"slices"
@@ -1061,4 +1062,14 @@ func setDisplayName(t *testing.T, h *harness, userID uuid.UUID, name string) {
 // ProjectsByStatus answers nothing: no test here lists projects by status.
 func (*fakeProjects) ProjectsByStatus(context.Context, []string) ([]contracts.ProjectEntry, error) {
 	return nil, nil
+}
+
+// ProductImages and OpenProductImage are the catalog's image calls (messenger
+// design N15), which this test never asks.
+func (c *fakeCatalog) ProductImages(context.Context, int32, string) ([]contracts.ProductImage, error) {
+	return nil, nil
+}
+
+func (c *fakeCatalog) OpenProductImage(context.Context, int32) (io.ReadCloser, contracts.ProductImage, error) {
+	return nil, contracts.ProductImage{}, nil
 }

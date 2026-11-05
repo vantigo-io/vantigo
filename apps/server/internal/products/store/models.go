@@ -7,6 +7,7 @@ package store
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -26,6 +27,24 @@ type ProductsProductCategory struct {
 	ID       int32
 	Name     string
 	ParentID *int32
+}
+
+type ProductsProductImage struct {
+	ID              int32
+	ProductID       int32
+	StorageKey      string
+	ThumbStorageKey string
+	ContentType     string
+	ByteSize        int32
+	Width           int32
+	Height          int32
+	Sha256          string
+	AltText         *string
+	SortOrder       int32
+	IsPrimary       bool
+	Uses            []string
+	CreatedAt       time.Time
+	CreatedBy       uuid.UUID
 }
 
 type ProductsProductPrice struct {

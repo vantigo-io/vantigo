@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/jackc/pgx/v5"
+	"io"
 	"strconv"
 	"sync"
 	"testing"
@@ -481,4 +482,14 @@ func TestResolveRates_DiscountLine_HalfCentRoundsUp(t *testing.T) {
 	if got.Source != "line" || !equalPtr(got.BillRate, float(85.94)) {
 		t.Errorf("rate = %s %v, want line 85.94", got.Source, show(got.BillRate))
 	}
+}
+
+// ProductImages and OpenProductImage are the catalog's image calls (messenger
+// design N15), which this test never asks.
+func (*priceList) ProductImages(context.Context, int32, string) ([]contracts.ProductImage, error) {
+	return nil, nil
+}
+
+func (*priceList) OpenProductImage(context.Context, int32) (io.ReadCloser, contracts.ProductImage, error) {
+	return nil, contracts.ProductImage{}, nil
 }
