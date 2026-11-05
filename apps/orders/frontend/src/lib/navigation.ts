@@ -3,12 +3,13 @@ import {
   QUOTES_ROUTE_PATH,
   SALES_ORDERS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  SUBSCRIPTIONS_ROUTE_PATH,
   TEMPLATES_ROUTE_PATH,
 } from "./routes";
 
 /** One sidebar destination of the app (orders design O11); the host owns its label and icon. */
 export interface OrdersNavItem {
-  key: "quotes" | "orders" | "analysis" | "templates" | "settings";
+  key: "quotes" | "orders" | "subscriptions" | "analysis" | "templates" | "settings";
   /** The key of the destination's label in the package catalog. */
   label: string;
   to: string;
@@ -23,6 +24,14 @@ const access = ["orders:access"] as const;
 export const ordersNavItems: readonly OrdersNavItem[] = [
   { key: "quotes", label: "navQuotes", to: QUOTES_ROUTE_PATH, requiredPermissions: access },
   { key: "orders", label: "navOrders", to: SALES_ORDERS_ROUTE_PATH, requiredPermissions: access },
+  // Read under orders:access, managed with orders:subscriptions-manage (O42).
+  {
+    key: "subscriptions",
+    label: "navSubscriptions",
+    to: SUBSCRIPTIONS_ROUTE_PATH,
+    requiredPermissions: ["orders:subscriptions-manage", "orders:access"],
+    requiredAllPermissions: access,
+  },
   {
     key: "analysis",
     label: "navAnalysis",

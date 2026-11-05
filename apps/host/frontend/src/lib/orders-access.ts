@@ -30,6 +30,7 @@ export const ordersAccessOf = (
     canManageQuotes: orders("orders:quotes-manage"),
     canManageOrders: orders("orders:sales-manage"),
     canConfirmOrders: orders("orders:sales-confirm"),
+    canManageSubscriptions: orders("orders:subscriptions-manage"),
     canManageSettings: orders("orders:settings"),
     canViewAnalysis: orders("orders:analysis-view"),
     canViewCustomers: mounted("customers", ["customers:view"]),

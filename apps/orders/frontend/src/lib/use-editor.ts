@@ -2,19 +2,19 @@ import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiValidationError, isVersionConflict, ORDERS_QUERY_KEY, refusedLines } from "../api/request";
-import type { Order, Quote } from "../api/types";
+import type { Order, Quote, Subscription } from "../api/types";
 import { lineRefusalWords, refusalMessage } from "./errors";
 import { useOrdersFormat } from "./format";
 import { type HeaderState, headerOf } from "./header";
 import { type EditableLine, fromLine, incompleteLines } from "./lines";
 
 /**
- * A quote's or an order's editor state: the header and the lines as the
+ * A quote's, an order's or a subscription's editor state: the header and the lines as the
  * person edits them, from the document the page read. The page keys the
  * editor by the document's version, so a save's answer — or a reload after a
  * conflict — starts it afresh from the server's document, amounts and all.
  */
-export const useEditorState = (document: Quote | Order) => {
+export const useEditorState = (document: Quote | Order | Subscription) => {
   const { t } = useOrdersFormat();
   const [header, setHeader] = useState<HeaderState>(() => headerOf(document));
   const [lines, setLines] = useState<EditableLine[]>(() => document.lines.map((line) => fromLine(line)));
@@ -87,7 +87,7 @@ export const useEditorState = (document: Quote | Order) => {
  * which starts the editor afresh from it — every other orders query is read
  * again, and the person is told it is done; a refusal is said by the editor.
  */
-export const useDocumentWrite = <D extends Quote | Order, A = void>(options: {
+export const useDocumentWrite = <D extends Quote | Order | Subscription, A = void>(options: {
   detailKey: readonly unknown[];
   write: (argument: A) => Promise<D>;
   done?: string;

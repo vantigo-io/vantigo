@@ -12,6 +12,7 @@ const summary = {
   ],
   orderedNotDelivered: [{ currency: "NOK", count: 1, amount: 4000 }],
   deliveredNotInvoiced: [],
+  activeSubscriptions: [{ currency: "NOK", count: 1, amount: 18000 }],
 };
 
 const server = () =>
@@ -58,6 +59,26 @@ const server = () =>
         ],
         total: 1,
       });
+    if (call.url.startsWith("/api/v1/orders/subscriptions?"))
+      return jsonResponse(200, {
+        items: [
+          {
+            id: 3001,
+            number: 7001,
+            status: "active",
+            interval: "monthly",
+            billing: "in_advance",
+            startDate: "2026-10-01",
+            customerId: 42,
+            customerName: "Acme AS",
+            currency: "NOK",
+            net: 1500,
+            gross: 1875,
+            updatedAt: "2026-11-01T08:00:00Z",
+          },
+        ],
+        total: 1,
+      });
     return commonAnswers(call);
   });
 
@@ -84,6 +105,14 @@ describe("the customer page's Orders tab", () => {
       fake.calls.some((c) => c.url === "/api/v1/orders/quotes?customerId=42&status=draft&status=sent&pageSize=10"),
     ).toBe(true);
     expect(fake.calls.some((c) => c.url === "/api/v1/orders/orders?customerId=42&open=true&pageSize=10")).toBe(true);
+    // The subscriptions, each at its value per period, and per year in the summary.
+    expect(tiles[3]).toHaveTextContent("NOK 18,000.00");
+    const subscriptions = await screen.findByTestId("subscription-table");
+    expect(within(subscriptions).getByRole("link", { name: "7001" })).toHaveAttribute(
+      "href",
+      "/orders/subscriptions/3001",
+    );
+    expect(subscriptions).toHaveTextContent("NOK 1,500.00");
   });
 
   it("shows every order when asked", async () => {

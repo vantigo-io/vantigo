@@ -1,6 +1,13 @@
 import { Badge, Group } from "@mantine/core";
 import { IconCircleCheck, IconLock, IconPlayerPause } from "@tabler/icons-react";
-import type { DeliveryStatus, InvoiceStatus, OrderStatus, QuoteStatus } from "../api/types";
+import type {
+  DeliveryStatus,
+  InvoiceStatus,
+  OrderStatus,
+  PeriodState,
+  QuoteStatus,
+  SubscriptionStatus,
+} from "../api/types";
 import { hasWords } from "../lib/errors";
 import { useOrdersFormat } from "../lib/format";
 
@@ -14,6 +21,21 @@ const quoteColours: Record<string, string> = {
   cancelled: "gray",
 };
 const orderColours: Record<string, string> = { draft: "gray", confirmed: "blue", cancelled: "gray" };
+const subscriptionColours: Record<string, string> = {
+  draft: "gray",
+  active: "green",
+  paused: "orange",
+  ended: "blue",
+  cancelled: "gray",
+};
+const periodColours: Record<string, string> = {
+  invoiced: "teal",
+  draft: "blue",
+  skipped: "gray",
+  paused: "orange",
+  due: "yellow",
+  upcoming: "gray",
+};
 const progressColours: Record<string, string> = {
   none: "gray",
   partial: "yellow",
@@ -37,6 +59,25 @@ export const QuoteStatusBadge = ({ status }: { status: QuoteStatus }) => (
 export const OrderStatusBadge = ({ status }: { status: OrderStatus }) => (
   <Badge variant="light" color={orderColours[status] ?? "gray"} data-testid="order-status" data-status={status}>
     <Words prefix="orderStatus" value={status} />
+  </Badge>
+);
+
+/** A subscription's state (O42) as a badge. */
+export const SubscriptionStatusBadge = ({ status }: { status: SubscriptionStatus }) => (
+  <Badge
+    variant="light"
+    color={subscriptionColours[status] ?? "gray"}
+    data-testid="subscription-status"
+    data-status={status}
+  >
+    <Words prefix="subscriptionStatus" value={status} />
+  </Badge>
+);
+
+/** A billing period's state (O43): invoiced, on a draft invoice, skipped, paused, due or upcoming. */
+export const PeriodStateBadge = ({ state }: { state: PeriodState }) => (
+  <Badge variant="dot" color={periodColours[state] ?? "gray"} data-testid="period-state" data-state={state}>
+    <Words prefix="periodState" value={state} />
   </Badge>
 );
 

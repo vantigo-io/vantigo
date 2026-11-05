@@ -143,6 +143,9 @@ import { Route as OrdersOrdersNewRouteImport } from './routes/orders/orders.new'
 import { Route as OrdersQuotesIndexRouteImport } from './routes/orders/quotes.index'
 import { Route as OrdersQuotesQuoteIdRouteImport } from './routes/orders/quotes.$quoteId'
 import { Route as OrdersQuotesNewRouteImport } from './routes/orders/quotes.new'
+import { Route as OrdersSubscriptionsIndexRouteImport } from './routes/orders/subscriptions.index'
+import { Route as OrdersSubscriptionsSubscriptionIdRouteImport } from './routes/orders/subscriptions.$subscriptionId'
+import { Route as OrdersSubscriptionsNewRouteImport } from './routes/orders/subscriptions.new'
 import { Route as PlanningPeoplePersonIdRouteImport } from './routes/planning/people.$personId'
 import { Route as PlanningProjectsProjectIdRouteImport } from './routes/planning/projects.$projectId'
 import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$projectId.index'
@@ -858,6 +861,23 @@ const OrdersQuotesNewRoute = OrdersQuotesNewRouteImport.update({
   path: '/quotes/new',
   getParentRoute: () => OrdersRoute,
 } as any)
+const OrdersSubscriptionsIndexRoute =
+  OrdersSubscriptionsIndexRouteImport.update({
+    id: '/subscriptions/',
+    path: '/subscriptions/',
+    getParentRoute: () => OrdersRoute,
+  } as any)
+const OrdersSubscriptionsSubscriptionIdRoute =
+  OrdersSubscriptionsSubscriptionIdRouteImport.update({
+    id: '/subscriptions/$subscriptionId',
+    path: '/subscriptions/$subscriptionId',
+    getParentRoute: () => OrdersRoute,
+  } as any)
+const OrdersSubscriptionsNewRoute = OrdersSubscriptionsNewRouteImport.update({
+  id: '/subscriptions/new',
+  path: '/subscriptions/new',
+  getParentRoute: () => OrdersRoute,
+} as any)
 const PlanningPeoplePersonIdRoute = PlanningPeoplePersonIdRouteImport.update({
   id: '/people/$personId',
   path: '/people/$personId',
@@ -1144,6 +1164,8 @@ export interface FileRoutesByFullPath {
   '/orders/orders/new': typeof OrdersOrdersNewRoute
   '/orders/quotes/$quoteId': typeof OrdersQuotesQuoteIdRoute
   '/orders/quotes/new': typeof OrdersQuotesNewRoute
+  '/orders/subscriptions/$subscriptionId': typeof OrdersSubscriptionsSubscriptionIdRoute
+  '/orders/subscriptions/new': typeof OrdersSubscriptionsNewRoute
   '/planning/people/$personId': typeof PlanningPeoplePersonIdRoute
   '/planning/projects/$projectId': typeof PlanningProjectsProjectIdRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
@@ -1172,6 +1194,7 @@ export interface FileRoutesByFullPath {
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/orders/orders/': typeof OrdersOrdersIndexRoute
   '/orders/quotes/': typeof OrdersQuotesIndexRoute
+  '/orders/subscriptions/': typeof OrdersSubscriptionsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/staff/groups/': typeof StaffGroupsIndexRoute
   '/staff/people/': typeof StaffPeopleIndexRoute
@@ -1287,6 +1310,8 @@ export interface FileRoutesByTo {
   '/orders/orders/new': typeof OrdersOrdersNewRoute
   '/orders/quotes/$quoteId': typeof OrdersQuotesQuoteIdRoute
   '/orders/quotes/new': typeof OrdersQuotesNewRoute
+  '/orders/subscriptions/$subscriptionId': typeof OrdersSubscriptionsSubscriptionIdRoute
+  '/orders/subscriptions/new': typeof OrdersSubscriptionsNewRoute
   '/planning/people/$personId': typeof PlanningPeoplePersonIdRoute
   '/planning/projects/$projectId': typeof PlanningProjectsProjectIdRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
@@ -1315,6 +1340,7 @@ export interface FileRoutesByTo {
   '/invoices/payments': typeof InvoicesPaymentsIndexRoute
   '/orders/orders': typeof OrdersOrdersIndexRoute
   '/orders/quotes': typeof OrdersQuotesIndexRoute
+  '/orders/subscriptions': typeof OrdersSubscriptionsIndexRoute
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
   '/staff/groups': typeof StaffGroupsIndexRoute
   '/staff/people': typeof StaffPeopleIndexRoute
@@ -1453,6 +1479,8 @@ export interface FileRoutesById {
   '/orders/orders/new': typeof OrdersOrdersNewRoute
   '/orders/quotes/$quoteId': typeof OrdersQuotesQuoteIdRoute
   '/orders/quotes/new': typeof OrdersQuotesNewRoute
+  '/orders/subscriptions/$subscriptionId': typeof OrdersSubscriptionsSubscriptionIdRoute
+  '/orders/subscriptions/new': typeof OrdersSubscriptionsNewRoute
   '/planning/people/$personId': typeof PlanningPeoplePersonIdRoute
   '/planning/projects/$projectId': typeof PlanningProjectsProjectIdRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
@@ -1481,6 +1509,7 @@ export interface FileRoutesById {
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/orders/orders/': typeof OrdersOrdersIndexRoute
   '/orders/quotes/': typeof OrdersQuotesIndexRoute
+  '/orders/subscriptions/': typeof OrdersSubscriptionsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/staff/groups/': typeof StaffGroupsIndexRoute
   '/staff/people/': typeof StaffPeopleIndexRoute
@@ -1620,6 +1649,8 @@ export interface FileRouteTypes {
     | '/orders/orders/new'
     | '/orders/quotes/$quoteId'
     | '/orders/quotes/new'
+    | '/orders/subscriptions/$subscriptionId'
+    | '/orders/subscriptions/new'
     | '/planning/people/$personId'
     | '/planning/projects/$projectId'
     | '/projects/$projectId/billing'
@@ -1648,6 +1679,7 @@ export interface FileRouteTypes {
     | '/invoices/payments/'
     | '/orders/orders/'
     | '/orders/quotes/'
+    | '/orders/subscriptions/'
     | '/projects/$projectId/'
     | '/staff/groups/'
     | '/staff/people/'
@@ -1763,6 +1795,8 @@ export interface FileRouteTypes {
     | '/orders/orders/new'
     | '/orders/quotes/$quoteId'
     | '/orders/quotes/new'
+    | '/orders/subscriptions/$subscriptionId'
+    | '/orders/subscriptions/new'
     | '/planning/people/$personId'
     | '/planning/projects/$projectId'
     | '/projects/$projectId/billing'
@@ -1791,6 +1825,7 @@ export interface FileRouteTypes {
     | '/invoices/payments'
     | '/orders/orders'
     | '/orders/quotes'
+    | '/orders/subscriptions'
     | '/projects/$projectId'
     | '/staff/groups'
     | '/staff/people'
@@ -1928,6 +1963,8 @@ export interface FileRouteTypes {
     | '/orders/orders/new'
     | '/orders/quotes/$quoteId'
     | '/orders/quotes/new'
+    | '/orders/subscriptions/$subscriptionId'
+    | '/orders/subscriptions/new'
     | '/planning/people/$personId'
     | '/planning/projects/$projectId'
     | '/projects/$projectId/billing'
@@ -1956,6 +1993,7 @@ export interface FileRouteTypes {
     | '/invoices/payments/'
     | '/orders/orders/'
     | '/orders/quotes/'
+    | '/orders/subscriptions/'
     | '/projects/$projectId/'
     | '/staff/groups/'
     | '/staff/people/'
@@ -2942,6 +2980,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrdersQuotesNewRouteImport
       parentRoute: typeof OrdersRoute
     }
+    '/orders/subscriptions/': {
+      id: '/orders/subscriptions/'
+      path: '/subscriptions'
+      fullPath: '/orders/subscriptions/'
+      preLoaderRoute: typeof OrdersSubscriptionsIndexRouteImport
+      parentRoute: typeof OrdersRoute
+    }
+    '/orders/subscriptions/$subscriptionId': {
+      id: '/orders/subscriptions/$subscriptionId'
+      path: '/subscriptions/$subscriptionId'
+      fullPath: '/orders/subscriptions/$subscriptionId'
+      preLoaderRoute: typeof OrdersSubscriptionsSubscriptionIdRouteImport
+      parentRoute: typeof OrdersRoute
+    }
+    '/orders/subscriptions/new': {
+      id: '/orders/subscriptions/new'
+      path: '/subscriptions/new'
+      fullPath: '/orders/subscriptions/new'
+      preLoaderRoute: typeof OrdersSubscriptionsNewRouteImport
+      parentRoute: typeof OrdersRoute
+    }
     '/planning/people/$personId': {
       id: '/planning/people/$personId'
       path: '/people/$personId'
@@ -3385,8 +3444,11 @@ interface OrdersRouteChildren {
   OrdersOrdersNewRoute: typeof OrdersOrdersNewRoute
   OrdersQuotesQuoteIdRoute: typeof OrdersQuotesQuoteIdRoute
   OrdersQuotesNewRoute: typeof OrdersQuotesNewRoute
+  OrdersSubscriptionsSubscriptionIdRoute: typeof OrdersSubscriptionsSubscriptionIdRoute
+  OrdersSubscriptionsNewRoute: typeof OrdersSubscriptionsNewRoute
   OrdersOrdersIndexRoute: typeof OrdersOrdersIndexRoute
   OrdersQuotesIndexRoute: typeof OrdersQuotesIndexRoute
+  OrdersSubscriptionsIndexRoute: typeof OrdersSubscriptionsIndexRoute
 }
 
 const OrdersRouteChildren: OrdersRouteChildren = {
@@ -3398,8 +3460,12 @@ const OrdersRouteChildren: OrdersRouteChildren = {
   OrdersOrdersNewRoute: OrdersOrdersNewRoute,
   OrdersQuotesQuoteIdRoute: OrdersQuotesQuoteIdRoute,
   OrdersQuotesNewRoute: OrdersQuotesNewRoute,
+  OrdersSubscriptionsSubscriptionIdRoute:
+    OrdersSubscriptionsSubscriptionIdRoute,
+  OrdersSubscriptionsNewRoute: OrdersSubscriptionsNewRoute,
   OrdersOrdersIndexRoute: OrdersOrdersIndexRoute,
   OrdersQuotesIndexRoute: OrdersQuotesIndexRoute,
+  OrdersSubscriptionsIndexRoute: OrdersSubscriptionsIndexRoute,
 }
 
 const OrdersRouteWithChildren =

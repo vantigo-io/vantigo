@@ -62,6 +62,7 @@ import { Lifecycle, type LifecycleStep } from "../components/lifecycle";
 import { LineGrid } from "../components/line-grid";
 import { NewDocument } from "../components/new-document";
 import { PdfButton } from "../components/pdf-button";
+import { PlanFields } from "../components/plan-fields";
 import { ReasonDialog } from "../components/reason-dialog";
 import { SendDialog } from "../components/send-dialog";
 import { QuoteStatusBadge } from "../components/status-badges";
@@ -73,7 +74,8 @@ import { refusalMessage } from "../lib/errors";
 import { addDays, today, useOrdersFormat } from "../lib/format";
 import { headerInput } from "../lib/header";
 import { toLineInput } from "../lib/lines";
-import { QUOTES_ROUTE_PATH, quoteLinkOptions, salesOrderLinkOptions } from "../lib/routes";
+import { type PlanState, planInput } from "../lib/plan";
+import { QUOTES_ROUTE_PATH, quoteLinkOptions, salesOrderLinkOptions, subscriptionLinkOptions } from "../lib/routes";
 import { useDocumentWrite, useEditorState } from "../lib/use-editor";
 
 export interface QuoteEditorPageProps {
@@ -253,7 +255,7 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
     onError: (error) => editor.showRefusal(error, t("couldNotDelete")),
   });
   const accept = useMutation({
-    mutationFn: (input: { into: "draft_order" | "confirmed_order"; optionalLineIds: number[] }) =>
+    mutationFn: (input: AcceptChoice) =>
       acceptQuote(quote.id, {
         revision: quote.revision,
         expectedUpdatedAt: quote.updatedAt,
@@ -267,6 +269,15 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
         predicate: (q) => q.queryKey[2] !== "detail",
       });
       setOverride(null);
+      if (accepted.subscription) {
+        notifications.show({
+          color: "green",
+          message: t("quoteAcceptedAsSubscription", { number: accepted.subscription.number }),
+        });
+        navigate(subscriptionLinkOptions(accepted.subscription.id));
+        return;
+      }
+      if (!accepted.order) return;
       notifications.show({ color: "green", message: t("quoteAccepted", { number: accepted.order.number }) });
       navigate(salesOrderLinkOptions(accepted.order.id));
     },
@@ -419,13 +430,23 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
         <Alert color="green" icon={<IconCheck size={16} />}>
           <Group gap={6}>
             <Text size="sm">{t("acceptedInto")}</Text>
-            <Anchor
-              size="sm"
-              fw={600}
-              renderRoot={(props) => <Link {...salesOrderLinkOptions(quote.acceptedInto?.id ?? 0)} {...props} />}
-            >
-              {t("orderNumber", { number: quote.acceptedInto.number })}
-            </Anchor>
+            {quote.acceptedInto.kind === "subscription" ? (
+              <Anchor
+                size="sm"
+                fw={600}
+                renderRoot={(props) => <Link {...subscriptionLinkOptions(quote.acceptedInto?.id ?? 0)} {...props} />}
+              >
+                {t("subscriptionNumber", { number: quote.acceptedInto.number })}
+              </Anchor>
+            ) : (
+              <Anchor
+                size="sm"
+                fw={600}
+                renderRoot={(props) => <Link {...salesOrderLinkOptions(quote.acceptedInto?.id ?? 0)} {...props} />}
+              >
+                {t("orderNumber", { number: quote.acceptedInto.number })}
+              </Anchor>
+            )}
           </Group>
         </Alert>
       )}
@@ -582,6 +603,7 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
           quote={quote}
           optionalLines={optionalLines}
           canConfirm={access.canConfirmOrders}
+          canSubscribe={access.canManageSubscriptions}
           loading={accept.isPending}
           onAccept={(input) => accept.mutate(input)}
           onClose={close}
@@ -602,12 +624,21 @@ const PdfMenuItem = ({ url, label }: { url: string; label: string }) => (
   </Menu.Item>
 );
 
+/** What an accept makes (O20): a draft or a confirmed order, or — from S — a subscription on its plan. */
+type AcceptChoice = {
+  into: "draft_order" | "confirmed_order" | "subscription";
+  optionalLineIds: number[];
+  plan?: ReturnType<typeof planInput>;
+};
+
 interface AcceptDialogProps {
   quote: Quote;
   optionalLines: Quote["lines"];
   canConfirm: boolean;
+  /** `orders:subscriptions-manage`: the quote may be accepted as a subscription. */
+  canSubscribe: boolean;
   loading: boolean;
-  onAccept: (input: { into: "draft_order" | "confirmed_order"; optionalLineIds: number[] }) => void;
+  onAccept: (input: AcceptChoice) => void;
   onClose: () => void;
 }
 
@@ -617,10 +648,26 @@ interface AcceptDialogProps {
  * expired quote asks once more, as honouring a quote a few days late is
  * common but should be meant.
  */
-const AcceptDialog = ({ quote, optionalLines, canConfirm, loading, onAccept, onClose }: AcceptDialogProps) => {
+const AcceptDialog = ({
+  quote,
+  optionalLines,
+  canConfirm,
+  canSubscribe,
+  loading,
+  onAccept,
+  onClose,
+}: AcceptDialogProps) => {
   const { t, money } = useOrdersFormat();
   const [chosen, setChosen] = useState<number[]>([]);
-  const [into, setInto] = useState<"draft_order" | "confirmed_order">("draft_order");
+  const [into, setInto] = useState<AcceptChoice["into"]>("draft_order");
+  const [plan, setPlan] = useState<PlanState>({
+    interval: "monthly",
+    billing: "in_advance",
+    startDate: null,
+    endDate: null,
+    noticeMonths: 0,
+    invoiceDay: "",
+  });
   const [lateOk, setLateOk] = useState(quote.status !== "expired");
   return (
     <Modal opened onClose={onClose} title={t("acceptQuote")} size="lg">
@@ -661,8 +708,17 @@ const AcceptDialog = ({ quote, optionalLines, canConfirm, loading, onAccept, onC
               description={canConfirm ? t("acceptIntoConfirmedHint") : t("acceptIntoConfirmedNeeds")}
               disabled={!canConfirm}
             />
+            <Radio
+              value="subscription"
+              label={t("acceptIntoSubscription")}
+              description={canSubscribe ? t("acceptIntoSubscriptionHint") : t("acceptIntoSubscriptionNeeds")}
+              disabled={!canSubscribe}
+            />
           </Stack>
         </Radio.Group>
+        {into === "subscription" && (
+          <PlanFields plan={plan} onChange={(patch) => setPlan((current) => ({ ...current, ...patch }))} />
+        )}
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>
             {t("cancelDialog")}
@@ -670,10 +726,20 @@ const AcceptDialog = ({ quote, optionalLines, canConfirm, loading, onAccept, onC
           <Button
             color="green"
             loading={loading}
-            disabled={!lateOk}
-            onClick={() => onAccept({ into, optionalLineIds: chosen })}
+            disabled={!lateOk || (into === "subscription" && !plan.startDate)}
+            onClick={() =>
+              onAccept({
+                into,
+                optionalLineIds: chosen,
+                ...(into === "subscription" ? { plan: planInput(plan) } : {}),
+              })
+            }
           >
-            {into === "confirmed_order" ? t("acceptAndConfirm") : t("accept")}
+            {into === "confirmed_order"
+              ? t("acceptAndConfirm")
+              : into === "subscription"
+                ? t("acceptAsSubscription")
+                : t("accept")}
           </Button>
         </Group>
       </Stack>

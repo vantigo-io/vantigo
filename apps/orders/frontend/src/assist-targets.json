@@ -250,5 +250,113 @@
       "en": "Downloads the open view's table as a CSV file.",
       "nb": "Laster ned tabellen i visningen som en CSV-fil."
     }
+  },
+  {
+    "key": "orders.subscriptions.new",
+    "route": "/orders/subscriptions",
+    "label": {
+      "en": "New subscription",
+      "nb": "Nytt abonnement"
+    },
+    "description": {
+      "en": "The button above the subscription list that starts a new subscription.",
+      "nb": "Knappen over abonnementslisten som starter et nytt abonnement."
+    }
+  },
+  {
+    "key": "orders.new-subscription.customer",
+    "route": "/orders/subscriptions/new",
+    "label": {
+      "en": "Customer",
+      "nb": "Kunde"
+    },
+    "description": {
+      "en": "The customer picker a new subscription starts from.",
+      "nb": "Kundevelgeren et nytt abonnement starter fra."
+    }
+  },
+  {
+    "key": "orders.new-subscription.create",
+    "route": "/orders/subscriptions/new",
+    "label": {
+      "en": "Create the subscription",
+      "nb": "Opprett abonnementet"
+    },
+    "description": {
+      "en": "Creates the draft subscription on the plan chosen and opens its editor.",
+      "nb": "Oppretter abonnementsutkastet på den valgte planen og åpner det."
+    }
+  },
+  {
+    "key": "orders.subscription.save",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "label": {
+      "en": "Save",
+      "nb": "Lagre"
+    },
+    "description": {
+      "en": "Saves the subscription: a draft whole, an active one's lines from the period chosen.",
+      "nb": "Lagrer abonnementet: et utkast helt, et aktivt abonnements linjer fra den valgte perioden."
+    }
+  },
+  {
+    "key": "orders.subscription.activate",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "label": {
+      "en": "Activate",
+      "nb": "Aktiver"
+    },
+    "description": {
+      "en": "Activates a draft subscription, so its periods are billed.",
+      "nb": "Aktiverer et abonnementsutkast, slik at periodene faktureres."
+    }
+  },
+  {
+    "key": "orders.subscription.pause",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "label": {
+      "en": "Pause",
+      "nb": "Pause"
+    },
+    "description": {
+      "en": "Stops billing from a period start.",
+      "nb": "Stopper faktureringen fra en periodestart."
+    }
+  },
+  {
+    "key": "orders.subscription.resume",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "label": {
+      "en": "Resume",
+      "nb": "Gjenoppta"
+    },
+    "description": {
+      "en": "Restarts billing from a period start; the periods between are skipped.",
+      "nb": "Starter faktureringen igjen fra en periodestart; periodene imellom hoppes over."
+    }
+  },
+  {
+    "key": "orders.subscription.end",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "label": {
+      "en": "End",
+      "nb": "Avslutt"
+    },
+    "description": {
+      "en": "Sets the subscription's end; its period is the last one billed.",
+      "nb": "Setter abonnementets sluttdato; perioden den faller i, er den siste som faktureres."
+    }
+  },
+  {
+    "key": "orders.subscription.effective-from",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "label": {
+      "en": "Changes take effect from",
+      "nb": "Endringene gjelder fra"
+    },
+    "description": {
+      "en": "The period start an active subscription's line changes take effect from.",
+      "nb": "Periodestarten endringer i et aktivt abonnements linjer gjelder fra."
+    }
   }
 ]

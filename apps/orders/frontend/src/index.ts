@@ -13,4 +13,6 @@ export { OrdersPage } from "./pages/orders";
 export { QuoteEditorPage } from "./pages/quote-editor";
 export { QuotesPage } from "./pages/quotes";
 export { SettingsPage } from "./pages/settings";
+export { SubscriptionEditorPage } from "./pages/subscription-editor";
+export { SubscriptionsPage } from "./pages/subscriptions";
 export { TemplatesPage } from "./pages/templates";

@@ -6,13 +6,14 @@ import { ContentSkeleton, EmptyState } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { orderListQueryOptions } from "../api/orders";
 import { quoteListQueryOptions } from "../api/quotes";
+import { subscriptionListQueryOptions } from "../api/subscriptions";
 import { customerSummaryQueryOptions } from "../api/summary";
 import type { CurrencySum } from "../api/types";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useOrdersFormat } from "../lib/format";
 import { newQuoteLinkOptions, newSalesOrderLinkOptions } from "../lib/routes";
-import { OrderTable, QuoteTable } from "./document-tables";
+import { OrderTable, QuoteTable, SubscriptionTable } from "./document-tables";
 
 export interface CustomerOrdersPanelProps {
   customerId: number;
@@ -62,9 +63,10 @@ const SummaryTile = ({ label, sums, accent }: { label: string; sums: readonly Cu
  * The customer page's Orders tab (orders design O31a): the summary per
  * currency — open quotes, ordered and not delivered, delivered and not
  * invoiced — then the open quotes (draft and sent) and the orders, open or
- * all, each row linking to the document in the Orders app. *New quote* and
- * *New order* open the editors with the customer filled in. The
- * subscriptions list joins in delivery S.
+ * all, each row linking to the document in the Orders app, and the
+ * subscriptions with each one's value per period (O42); the summary counts
+ * the active ones at their value per year. *New quote* and *New order* open
+ * the editors with the customer filled in.
  */
 export const CustomerOrdersPanel = ({ customerId, canCreateQuote, canCreateOrder }: CustomerOrdersPanelProps) => {
   const { t } = useOrdersFormat();
@@ -74,6 +76,7 @@ export const CustomerOrdersPanel = ({ customerId, canCreateQuote, canCreateOrder
   const orders = useQuery(
     orderListQueryOptions({ customerId, open: ordersOpen ? true : undefined, pageSize: PANEL_PAGE_SIZE }),
   );
+  const subscriptions = useQuery(subscriptionListQueryOptions({ customerId, pageSize: PANEL_PAGE_SIZE }));
   return (
     <Stack gap="lg" data-testid="customer-orders-panel">
       <Group justify="space-between">
@@ -104,10 +107,11 @@ export const CustomerOrdersPanel = ({ customerId, canCreateQuote, canCreateOrder
       {summary.isPending && <ContentSkeleton rows={1} rowHeight={88} />}
       {summary.isError && <Alert color="red">{refusalMessage(summary.error, t)}</Alert>}
       {summary.data && (
-        <SimpleGrid cols={{ base: 1, sm: 3 }}>
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
           <SummaryTile label={t("summaryOpenQuotes")} sums={summary.data.openQuotes} accent="blue" />
           <SummaryTile label={t("summaryNotDelivered")} sums={summary.data.orderedNotDelivered} accent="yellow" />
           <SummaryTile label={t("summaryNotInvoiced")} sums={summary.data.deliveredNotInvoiced} accent="teal" />
+          <SummaryTile label={t("summarySubscriptions")} sums={summary.data.activeSubscriptions ?? []} accent="grape" />
         </SimpleGrid>
       )}
 
@@ -164,6 +168,27 @@ export const CustomerOrdersPanel = ({ customerId, canCreateQuote, canCreateOrder
               {orders.data.total > orders.data.items.length && (
                 <Text size="xs" c="dimmed">
                   {t("moreInApp", { count: orders.data.total - orders.data.items.length })}
+                </Text>
+              )}
+            </>
+          )}
+        </Stack>
+      </Card>
+
+      <Card withBorder padding="lg">
+        <Stack gap="sm">
+          <Title order={4}>{t("subscriptionsTitle")}</Title>
+          {subscriptions.isPending && <ContentSkeleton rows={2} rowHeight={36} />}
+          {subscriptions.isError && <Alert color="red">{refusalMessage(subscriptions.error, t)}</Alert>}
+          {subscriptions.data && subscriptions.data.items.length === 0 && (
+            <EmptyState size="sm" title={t("noSubscriptions")} description={t("noCustomerSubscriptionsDescription")} />
+          )}
+          {subscriptions.data && subscriptions.data.items.length > 0 && (
+            <>
+              <SubscriptionTable rows={subscriptions.data.items} showCustomer={false} />
+              {subscriptions.data.total > subscriptions.data.items.length && (
+                <Text size="xs" c="dimmed">
+                  {t("moreInApp", { count: subscriptions.data.total - subscriptions.data.items.length })}
                 </Text>
               )}
             </>

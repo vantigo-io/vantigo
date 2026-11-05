@@ -1,4 +1,4 @@
-import type { Line, Order, Quote, Totals } from "../api/types";
+import type { Line, Order, Quote, Subscription, SubscriptionPeriod, Totals } from "../api/types";
 
 export const totals = (overrides: Partial<Totals> = {}): Totals => ({
   net: 1500,
@@ -101,6 +101,40 @@ export const order = (overrides: Partial<Order> = {}): Order => ({
   ...header,
   ...overrides,
 });
+
+export const period = (overrides: Partial<SubscriptionPeriod> = {}): SubscriptionPeriod => ({
+  start: "2026-10-01",
+  end: "2026-10-31",
+  partial: false,
+  amount: 1500,
+  state: "upcoming",
+  invoiceNumbers: [],
+  ...overrides,
+});
+
+export const subscription = (overrides: Partial<Subscription> = {}): Subscription => {
+  const shared: Partial<typeof header> = { ...header };
+  delete shared.deliveryDate;
+  delete shared.warnings;
+  delete shared.defaultRecipient;
+  return {
+    id: 3001,
+    number: 7001,
+    status: "draft",
+    interval: "monthly",
+    billing: "in_advance",
+    startDate: "2026-10-01",
+    noticeMonths: 1,
+    version: 1,
+    nextChangeFrom: "2026-10-01",
+    origin: { channel: "manual" },
+    lines: [line()],
+    earlierLines: [],
+    periods: [period()],
+    ...(shared as Omit<typeof header, "deliveryDate" | "warnings" | "defaultRecipient">),
+    ...overrides,
+  };
+};
 
 /** What GET /meta answers: sending on, a quote valid 30 days. */
 export const meta = (overrides: Record<string, unknown> = {}) => ({

@@ -1,4 +1,4 @@
-import type { Address, Order, Quote } from "../api/types";
+import type { Address, Order, Quote, Subscription } from "../api/types";
 
 /** The header a quote and an order share (O13), as the editor holds it. */
 export interface HeaderState {
@@ -23,8 +23,8 @@ export interface HeaderState {
   validUntil: string | null;
 }
 
-/** A quote's or an order's header as the editor holds it. */
-export const headerOf = (document: Quote | Order): HeaderState => ({
+/** A quote's, an order's or a subscription's header as the editor holds it; a subscription has no delivery date. */
+export const headerOf = (document: Quote | Order | Subscription): HeaderState => ({
   customerId: document.customer.customerId,
   deliveryAddressId: document.customer.deliveryAddressId ?? null,
   contactId: document.customer.contactId ?? null,
@@ -40,7 +40,7 @@ export const headerOf = (document: Quote | Order): HeaderState => ({
   introText: document.introText,
   closingText: document.closingText,
   internalNote: document.internalNote,
-  deliveryDate: document.deliveryDate ?? null,
+  deliveryDate: "deliveryDate" in document ? (document.deliveryDate ?? null) : null,
   validUntil: "validUntil" in document ? (document.validUntil ?? null) : null,
 });
 
@@ -71,3 +71,10 @@ export const addressLine = (address?: Address | null) =>
   [address?.name, address?.line1, address?.line2, [address?.postalCode, address?.city].filter(Boolean).join(" ")]
     .filter((part) => part && String(part).trim() !== "")
     .join(", ");
+
+/** A subscription's header fields of a save (OrdersSubscriptionUpdate): a quote's and an order's, but the delivery date. */
+export const subscriptionHeaderInput = (header: HeaderState) => {
+  const fields: Partial<ReturnType<typeof headerInput>> = headerInput(header);
+  delete fields.deliveryDate;
+  return fields as Omit<ReturnType<typeof headerInput>, "deliveryDate">;
+};

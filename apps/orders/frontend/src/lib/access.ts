@@ -11,6 +11,8 @@ export interface OrdersAccess {
   canManageOrders: boolean;
   /** `orders:sales-confirm`: confirm, lock and unlock, and accept a quote into a confirmed order. */
   canConfirmOrders: boolean;
+  /** `orders:subscriptions-manage`: create, activate, change, pause, resume, end and cancel subscriptions, and accept a quote as one (O42). */
+  canManageSubscriptions: boolean;
   /** `orders:settings`: the settings, the templates and the warnings, and a warning's override. */
   canManageSettings: boolean;
   /** `orders:analysis-view`: the analysis of quotes and orders (O35). */
@@ -40,6 +42,7 @@ export const noOrdersAccess: OrdersAccess = {
   canManageQuotes: false,
   canManageOrders: false,
   canConfirmOrders: false,
+  canManageSubscriptions: false,
   canManageSettings: false,
   canViewAnalysis: false,
   canViewCustomers: false,

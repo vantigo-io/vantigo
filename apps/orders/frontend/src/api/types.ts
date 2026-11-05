@@ -69,8 +69,20 @@ export type IntakeGroupBy = Intake["groupBy"];
 export type Backlog = Schemas["OrdersBacklog"];
 export type BacklogAged = Schemas["OrdersBacklogAged"];
 
+export type Subscription = Schemas["OrdersSubscription"];
+export type SubscriptionSummary = Schemas["OrdersSubscriptionSummary"];
+export type SubscriptionPage = Schemas["OrdersSubscriptionPage"];
+export type SubscriptionInput = Schemas["OrdersSubscriptionInput"];
+export type SubscriptionUpdate = Schemas["OrdersSubscriptionUpdate"];
+export type SubscriptionPlan = Schemas["OrdersSubscriptionPlan"];
+export type SubscriptionPeriod = Schemas["OrdersSubscriptionPeriod"];
+export type SubscriptionStatus = Subscription["status"];
+export type SubscriptionInterval = Subscription["interval"];
+export type SubscriptionBilling = Subscription["billing"];
+export type PeriodState = SubscriptionPeriod["state"];
+
 export type CustomerSummary = Schemas["OrdersCustomerSummary"];
 export type CurrencySum = Schemas["OrdersCurrencySum"];
 
-/** The header fields a quote and an order share (O13), as the editor holds them. */
-export type DocumentKind = "quote" | "order";
+/** The header fields a quote, an order and a subscription share (O13), as the editor holds them. */
+export type DocumentKind = "quote" | "order" | "subscription";

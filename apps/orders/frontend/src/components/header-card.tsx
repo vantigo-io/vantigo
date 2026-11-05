@@ -37,7 +37,8 @@ export interface HeaderEditable {
 }
 
 export interface HeaderCardProps {
-  kind: "quote" | "order";
+  /** A subscription has no delivery date. */
+  kind: "quote" | "order" | "subscription";
   header: HeaderState;
   onChange: (patch: Partial<HeaderState>) => void;
   /** The document's customer as the server holds it; absent on a new document. */
@@ -302,16 +303,18 @@ export const HeaderCard = ({
               error={errors.validUntil}
             />
           )}
-          <DateInput
-            label={t("deliveryDate")}
-            w={170}
-            clearable
-            valueFormat={t("dateInputFormat")}
-            disabled={!editable.delivery}
-            value={header.deliveryDate}
-            onChange={(value) => onChange({ deliveryDate: value ?? null })}
-            error={errors.deliveryDate}
-          />
+          {kind !== "subscription" && (
+            <DateInput
+              label={t("deliveryDate")}
+              w={170}
+              clearable
+              valueFormat={t("dateInputFormat")}
+              disabled={!editable.delivery}
+              value={header.deliveryDate}
+              onChange={(value) => onChange({ deliveryDate: value ?? null })}
+              error={errors.deliveryDate}
+            />
+          )}
           <Switch
             label={t("discountVisible")}
             disabled={!editable.draft}
