@@ -42,6 +42,7 @@ import {
 import { toIsoTimestamp, toPickerValue } from "../lib/dates";
 import { PackagingsEditor } from "./-packagings-editor";
 import { ProductFormModal, type ProductModalState } from "./-product-form-modal";
+import { ProductImages } from "./-product-images";
 
 const statusColor = (status: ProductStatus) => ({ Draft: "gray", Active: "teal", Discontinued: "red" })[status];
 
@@ -351,6 +352,7 @@ export const ProductDetailsPage = ({ extraPanels, stockHref }: ProductDetailsPag
           )}
         </Stack>
       </PageSection>
+      <ProductImages productId={product.id} />
       {product.variants.length > 1 && (
         <PageSection>
           <Stack>

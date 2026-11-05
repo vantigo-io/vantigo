@@ -1,4 +1,5 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
+import { appUrl } from "@vantigo/frontend-shell";
 import { NotFoundError, request } from "./request";
 
 export { ApiConflictError, ApiValidationError, NotFoundError } from "./request";
@@ -238,3 +239,63 @@ export const updatePackaging = (productId: number, variantId: number, packagingI
   });
 export const deletePackaging = (productId: number, variantId: number, packagingId: number) =>
   request<void>(`${packagingsPath(productId, variantId)}/${packagingId}`, { method: "DELETE" });
+
+export const PRODUCT_IMAGE_USES = ["communications", "marketing"] as const;
+export type ProductImageUse = (typeof PRODUCT_IMAGE_USES)[number];
+/** An image of a product (messenger design N13): the normalised file, upright and without metadata. */
+export interface ProductImage {
+  id: number;
+  productId: number;
+  /** The server omits an empty alt text rather than sending null. */
+  altText?: string | null;
+  contentType: string;
+  byteSize: number;
+  width: number;
+  height: number;
+  /** The place among the product's images, from 0 with no gaps. */
+  sortOrder: number;
+  isPrimary: boolean;
+  uses: ProductImageUse[];
+  createdAt: string;
+}
+/** Every field is optional, and one left out is left as it is. An empty altText clears it. */
+export interface ProductImageUpdate {
+  altText?: string;
+  uses?: ProductImageUse[];
+  /** The place to move the image to; the others close the gap. */
+  sortOrder?: number;
+  /** Only true is allowed for the primary image's neighbours: another image's true is what unmarks it. */
+  isPrimary?: boolean;
+}
+/** The key an image write invalidates: the section reads the product's list. */
+export const productImagesQueryKey = (productId: number) => ["products", productId, "images"] as const;
+export const productImagesQueryOptions = (productId: number) =>
+  queryOptions({
+    queryKey: productImagesQueryKey(productId),
+    queryFn: ({ signal }) => request<ProductImage[]>(`/api/v1/products/${productId}/images`, { signal }),
+  });
+/**
+ * Where an image's bytes are streamed from, for an img element; `thumb` is the
+ * 320 px thumbnail. Images are never replaced in place, so the address is stable.
+ */
+export const productImageUrl = (productId: number, imageId: number, size?: "thumb"): string =>
+  appUrl(`/api/v1/products/${productId}/images/${imageId}/content${size ? `?size=${size}` : ""}`);
+/**
+ * Sends one file: a part named `file`, the `Content-Type` left to the browser
+ * so the multipart boundary is its own. Refused 422 with `code`
+ * image_type_unsupported, image_too_large, image_too_small or image_invalid,
+ * 503 storage_unavailable when the store cannot be written.
+ */
+export const uploadProductImage = (productId: number, file: File): Promise<ProductImage> => {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  return request<ProductImage>(`/api/v1/products/${productId}/images`, { method: "POST", body: form });
+};
+export const updateProductImage = (productId: number, imageId: number, input: ProductImageUpdate) =>
+  request<ProductImage>(`/api/v1/products/${productId}/images/${imageId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+export const deleteProductImage = (productId: number, imageId: number) =>
+  request<void>(`/api/v1/products/${productId}/images/${imageId}`, { method: "DELETE" });
