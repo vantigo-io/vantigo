@@ -69,8 +69,9 @@ application.
   domain-wide delegation: `google` in `MODULES` beside `staff`, which it requires; a
   Google Cloud project with the Admin SDK API, the service account's JSON key uploaded
   and rotated by an Owner, the scopes delegated in the Admin console, the admin to
-  impersonate, and the Internal web client. This release reads the organisation; the
-  accounts, calendar and Gmail come later. Nothing of it is in `vantigo.env`; its page
+  impersonate, and the Internal web client. Staff keeps the accounts and groups there,
+  each person connects their own Google account for calendar sync and sending from their
+  Gmail address, and Communications' channels can use licensed Gmail mailboxes. Nothing of it is in `vantigo.env`; its page
   is under **Integrations** in Workspace admin.
 - **Shipping.** [Shipping](/en/admin/shipping/) sets up the carrier accounts Orders books
   shipments with: Bring's Mybring user and API key — with the financial role for prices —,

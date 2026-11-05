@@ -1,6 +1,6 @@
 ---
 title: Kommunikasjon
-description: Delte postkasser, samtaler med kunder, mottak og sending av e-post og blokkeringer — kanaler på SMTP eller på en delt postboks i Microsoft 365, e-post mottatt i en Microsoft 365-kanal, svar og svar alle, å bytte en kanal til Microsoft 365, og størrelsen en Microsoft 365-kanal sender — og chat-samtaler på en Facebook Messenger-kanal, med svaralternativer og vinduet et svar kan sendes i.
+description: Delte postkasser, samtaler med kunder, mottak og sending av e-post og blokkeringer — kanaler på SMTP eller på en delt postboks i Microsoft 365, e-post mottatt i en Microsoft 365-kanal, svar og svar alle, sending fra din egen Outlook- eller Gmail-adresse, å bytte en kanal til Microsoft 365, og størrelsen en Microsoft 365-kanal sender — og chat-samtaler på en Facebook Messenger-kanal, med svaralternativer og vinduet et svar kan sendes i.
 sidebar:
   order: 80
 sources:
@@ -123,11 +123,15 @@ administratorens side av det står under
 Velg **Ny samtale** i verktøylinjen for å starte en ny kundesamtale: skriv inn mottakerens
 e-postadresse i **Til**, **Emne**, og skriv meldingen din.
 
-Dersom du har koblet til din egen Outlook under **Innstillinger → Tilkoblinger** (med
-tillatelsen E-post innvilget), kan du huke av for **Send fra min Outlook-adresse (`du@dittfirma.no`)**
-— avkrysningsboksen navngir tjenesten din egen adresse sendes gjennom. E-posten sendes gjennom din personlige Microsoft 365-postboks, slik at den vises i dine egne
-sendte elementer. Kundens svar sendes likevel til kanalens delte postkasse (`Reply-To`), slik
-at samtalen holdes samlet i den delte innboksen for teamet ditt.
+Dersom du har koblet til din egen postboks under **Innstillinger → Tilkoblinger** — Outlook
+med tillatelsen E-post innvilget, eller Google med **Gmail** blant funksjonene —, kan du huke
+av for **Send fra min Outlook-adresse (`du@dittfirma.no`)** eller **Send fra min
+Gmail-adresse (`du@dittfirma.no`)**: avkrysningsboksen navngir tjenesten din egen adresse
+sendes gjennom. E-posten sendes gjennom din egen postboks, slik at den vises i dine egne
+**sendte elementer** i Microsoft 365 eller under **Sendt** i Gmail. Kundens svar sendes
+likevel til kanalens delte postkasse (`Reply-To`), slik at samtalen holdes samlet i den delte
+innboksen for teamet ditt. Dette virker på alle kanaler, uansett hvilken tjeneste kanalen
+selv bruker.
 
 ## Svar en kunde
 
@@ -136,25 +140,40 @@ går til («Svarer til …»): avsenderen av kundens siste e-post. Når den e-po
 sendt til andre i kopi (Cc), tilbyr velgeren **Svarmodus** valgene **Svar**, bare til
 avsenderen, og **Svar alle · N**, som tar dem med i kopi også — uten den delte postboksen
 selv. Som standard sendes svaret fra kanalen samtalen hører til. Dersom du har koblet til
-din egen Outlook med e-posttillatelse, kan du også huke av for **Send fra min Outlook-adresse (`du@dittfirma.no`)**
-for å sende fra din egen postboks i stedet, mens kundens svar havner i den delte kanalen. Det sendes
+din egen Outlook med e-posttillatelse, eller din egen Google-konto med Gmail, kan du også huke
+av for **Send fra min Outlook-adresse (`du@dittfirma.no`)** eller **Send fra min
+Gmail-adresse (`du@dittfirma.no`)** for å sende fra din egen postboks i stedet, mens kundens
+svar havner i den delte kanalen. Det sendes
 som et svar på kundens e-post, så det havner i samme tråd i kundens e-postprogram.
 
 ### Personlig sending og ny prøving
 
 Når **Send fra min …-adresse** er valgt:
 - `From`-adressen er din e-postadresse og visningsnavn fra katalogen, og e-posten havner i
-  dine egne sendte elementer i Microsoft 365.
+  dine egne sendte elementer i Microsoft 365, eller under **Sendt** i din egen Gmail.
 - `Reply-To`-adressen er kanalens adresse og visningsnavn, slik at svar fra kunden kommer
   tilbake til den delte kanalen og trådes inn i samtalen.
-- Dersom Outlook-tilkoblingen din må kobles til på nytt, tilbyr skrivefeltet en integrert knapp
-  for **Koble til Outlook** eller **Koble til Outlook på nytt**. Når Microsoft har svart, er du
+- Meldingen sendes aldri fra kanalen i stedet: kan ikke din egen postboks sende den,
+  mislykkes den, og du velger selv hva du gjør.
+- Dersom tilkoblingen din ennå ikke tillater sending, eller må kobles til på nytt, tilbyr
+  skrivefeltet en integrert knapp: **Koble til Outlook** eller **Koble til Outlook på nytt**,
+  eller **Koble til Google** eller **Koble til Google på nytt**. En Google-tilkobling laget
+  bare for kalenderen viser også **Koble til Google** her: den ber Google om samtykke til å
+  sende som deg (Gmail), og kalenderen beholdes. Når Microsoft eller Google har svart, er du
   tilbake i den samme samtalen, med filtrene du hadde.
-- Dersom en personlig sending mislykkes ved utsending fordi Microsoft avviste påloggingen din
-  eller krevde ny flerfaktorautentisering, viser meldingskortet:
-  *Sendingen mislyktes fordi e-posttilkoblingen din må kobles til på nytt.* med en knapp for
-  **Koble til Outlook på nytt** og en knapp for **Prøv å sende på nytt**. Når du har koblet
-  til Outlook på nytt, trykker du på **Prøv å sende på nytt** for å legge meldingen i kø igjen.
+- Dersom en personlig sending mislykkes ved utsending fordi tilkoblingen din er utløpt, ble
+  avvist, krever ny flerfaktorautentisering eller ikke lenger tillater sending, viser
+  meldingskortet: *Sendingen mislyktes fordi e-posttilkoblingen din må kobles til på nytt.*
+  med en knapp for **Koble til Outlook på nytt** eller **Koble til Google på nytt** og en knapp
+  for **Prøv å sende på nytt**. Når du har koblet til på nytt, trykker du på **Prøv å sende på
+  nytt** for å legge meldingen i kø igjen.
+- En melding sendt fra din egen adresse kan være omtrent 3 MB i alt, vedlegg medregnet,
+  uansett hvilken tjeneste som sender den.
+- **Gmail og tråder.** Gmail kan gi en melding den sender sin egen Message-ID, og Vantigo
+  kan ikke lese den tilbake fra postboksen din — Vantigo har bare lov til å sende. Kundens
+  svar på et **svar** du sendte fra Gmail, trådes likevel, gjennom de tidligere meldingene
+  det viser til. Et svar på en **ny samtale** du startet fra Gmail, trådes bare dersom Gmail
+  beholdt Vantigos Message-ID; ellers kommer det som en ny samtale i kanalen.
 
 1. Skriv meldingen i editoren; fet, kursiv og punktlister er tilgjengelige.
 2. **Legg ved fil** klargjør en fil. Den vises som et merke med navnet sitt: grønt når

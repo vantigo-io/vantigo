@@ -70,8 +70,10 @@ applikasjonen.
   domenedekkende delegering: `google` i `MODULES` ved siden av `staff`, som den krever;
   et Google Cloud-prosjekt med Admin SDK API, tjenestekontoens JSON-nøkkel som en eier
   laster opp og roterer, tilgangsområdene delegert i administrasjonskonsollen,
-  administratoren som etterlignes, og den interne nettklienten. Denne versjonen leser
-  organisasjonen; kontoene, kalenderen og Gmail kommer senere. Ingenting av det står i
+  administratoren som etterlignes, og den interne nettklienten. Ansatte holder kontoene og
+  gruppene der, hver person kobler til sin egen Google-konto for kalendersynkronisering og
+  sending fra Gmail-adressen sin, og kanalene i Kommunikasjon kan bruke lisensierte
+  Gmail-postbokser. Ingenting av det står i
   `vantigo.env`; siden ligger under **Integrasjoner** i Administrer arbeidsområde.
 - **Frakt.** [Frakt](/nb/admin/shipping/) setter opp fraktkontoene Ordre bestiller sendinger
   med: Mybring-brukeren og API-nøkkelen hos Bring — med økonomirollen for priser —,

@@ -15,8 +15,8 @@ domain-wide delegation. Through it Staff keeps your people's Google accounts and
 groups in the organisation, by the account rules on the **Accounts** tab; each person's
 own Google connection is turned on for everyone on the **Calendar and Gmail** tab, and
 calendar sync uses it; on the same tab, **Mail channels** lets Communications' channels
-send from and read the organisation's Gmail mailboxes; sending from a person's own Gmail
-comes later. The operator's procedure, with what to do in the Google consoles, is in
+send from and read the organisation's Gmail mailboxes, and a person whose connection holds
+Gmail can send from their own address in Communications. The operator's procedure, with what to do in the Google consoles, is in
 [the administration guide](/en/admin/google-workspace/); the rules are in [the
 reference](/en/reference/google/).
 
@@ -225,8 +225,10 @@ guide](/en/admin/sso-scim/#google-workspace).
 
 **Connection for people** lets each person connect their own Google account to Vantigo
 once, under **Settings › Connections** ([Connections](/en/user/connections/#connect-your-google-account)).
-[Calendar sync](/en/user/calendar/#sync-with-google-calendar) uses that connection, and
-sending from a person's own Gmail address will, in a later release.
+[Calendar sync](/en/user/calendar/#sync-with-google-calendar) uses that connection, and so
+does [sending from a person's own Gmail address](/en/user/communications/#personal-sending-and-retrying)
+in Communications — each feature with the person's own consent, given when they connect.
+Nothing else on this tab needs turning on for sending from Gmail.
 
 - **The switch.** Turn on **Connection for people** to offer the **Google** card to
   everyone whose Staff record names a Google account Vantigo manages. Only an Owner
@@ -282,6 +284,3 @@ provider ([Add a Google Workspace channel](/en/user/communications/#add-a-google
 **Recent events** on the **Status** tab records each time the switch is turned on or off.
 What to set up in Google first is in [the administration
 guide](/en/admin/google-workspace/#mail-channels).
-
-Underneath, *Sending from Gmail is coming*: sending from a person's own Gmail address
-comes in a later release.

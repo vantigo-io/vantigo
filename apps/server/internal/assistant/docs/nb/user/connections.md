@@ -126,9 +126,22 @@ organisasjonen ferdig: si fra til administratoren.
 
 Kortet **Google** er det samme for et selskap på Google Workspace: du kobler din egen
 Google-konto til én gang, og Vantigo beholder tilkoblingen til du kobler den fra,
-slutter, eller administratoren din slår den av. Ingenting bruker den ennå:
-kalendersynkronisering med Google Kalender og sending fra Gmail-adressen din kommer i
-senere versjoner, hver på denne ene tilkoblingen.
+slutter, eller administratoren din slår den av. To funksjoner bruker den, hver med sitt
+eget samtykke på Googles side: **Kalender** — kalenderens
+[synkronisering med Google Kalender](/nb/user/calendar/#synkroniser-med-google-kalender) — og
+**Gmail** — å sende en melding i Kommunikasjon fra din egen Gmail-adresse
+([Send fra din egen adresse](/nb/user/communications/#personlig-sending-og-ny-prøving)), mens
+kundens svar havner i den delte kanalen. Gmail lar Vantigo **sende** som deg og ingenting
+annet: Vantigo leser aldri postboksen din.
+
+### Legg Gmail til tilkoblingen
+
+Å koble til fra kalenderen ber bare om kalenderen. For å sende fra Gmail-adressen din velger
+du **Koble til Google** der Kommunikasjon tilbyr det — ved **Send fra min adresse** i
+skrivefeltet, eller i innboksen — og tillater sending på Googles side. Google spør om
+kalenderen på nytt også, så tilkoblingen beholder begge; fjerner du haken for et punkt, gis
+ikke den funksjonen, og knappen blir stående. Når Gmail er gitt, viser kortets **Brukes av:**
+*Gmail*, og skrivefeltet tilbyr **Send fra min Gmail-adresse (`du@dittfirma.no`)**.
 
 Kortet **Google** tilbyr en tilkobling bare når to ting stemmer:
 
@@ -158,8 +171,7 @@ fra en annen organisasjon — avvises det, og ingenting kobles til.
 ### Tilkoblet til Google
 
 Kortet sier **Tilkoblet som** og adressen til kontoen din, **Siden** dagen du koblet til,
-og **Brukes av:** funksjonene tilkoblingen tjener: *Kalender* i dag, *Gmail* når
-organisasjonen bruker den til å sende. Velg **Koble fra** og bekreft for å stoppe:
+og **Brukes av:** funksjonene tilkoblingen tjener: *Kalender*, *Gmail* eller begge. Velg **Koble fra** og bekreft for å stoppe:
 Vantigo slutter å bruke Google-kontoen din til du kobler til igjen, og ber senere, når
 ingenting trenger den, Google glemme tilkoblingen. Å koble fra logger deg ikke ut av
 Google eller Vantigo. Du kan også avslutte tilkoblingen selv på Google-kontoens
@@ -172,7 +184,7 @@ på nytt** neste gang den bruker tilkoblingen.
 | --- | --- |
 | *Google godtar ikke lenger tilkoblingen: den ble trukket tilbake, den utløp, eller du byttet passord. Koble til på nytt.* | Du fjernet Vantigos tilgang i Google-kontoen din, tilkoblingen var ubrukt i seks måneder, eller et passordbytte avsluttet den. |
 | *Organisasjonens Google-regler blokkerer tilkoblingen. Spør Google Workspace-administratoren din.* | En administrator begrenset Vantigos nettklient i administrasjonskonsollen, eller kontoen din er utenfor organisasjonen appen er for. |
-| *Google ga ikke alt Vantigo ba om. Koble til på nytt og tillat hvert punkt på Googles side.* | Du, eller en endring hos Google, fjernet en del av det tilkoblingen trenger. |
+| *Google ga ikke alt Vantigo ba om. Koble til på nytt og tillat hvert punkt på Googles side.* | Du, eller en endring hos Google, fjernet en del av det tilkoblingen trenger. En melding du holdt på å sende fra Gmail, mislykkes da med *Sendingen mislyktes fordi e-posttilkoblingen din må kobles til på nytt.*; koble til på nytt og velg **Prøv å sende på nytt**. |
 | *Logg på Google igjen for å beholde tilkoblingen.* | Google avviste tilkoblingen av en annen grunn. |
 
 Bare du ser dette. Administratoren din ser hvor mange som venter på å koble til på nytt
