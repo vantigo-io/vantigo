@@ -63,11 +63,11 @@ const dueView = (): DueOrdersView => ({
   warnings: [],
 });
 
-const server = (answer: () => Response = () => jsonResponse(201, made([1001]))) =>
+const server = (answer: () => Response = () => jsonResponse(201, made([1001])), view: () => DueOrdersView = dueView) =>
   stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
     const url = path(input);
     const method = init?.method ?? "GET";
-    if (url === DUE) return jsonResponse(200, dueView());
+    if (url === DUE) return jsonResponse(200, view());
     if (url === POST && method === "POST") return answer();
     return new Response(null, { status: 404 });
   });
@@ -137,6 +137,36 @@ describe("the From orders wizard", () => {
         { orderId: 5211, lineId: 3, quantity: 2 },
       ],
     });
+  });
+
+  it("keeps orders to other delivery addresses apart, and greys an order in another currency", async () => {
+    server(undefined, () => {
+      const view = dueView();
+      view.orders[0].deliveryAddress = { line1: "Havnegata 1", postalCode: "9008", city: "Tromsø", country: "NO" };
+      view.orders[1].deliveryAddress = { line1: "  havnegata  1", postalCode: "9008", city: "TROMSØ", country: "no" };
+      view.orders.push(
+        order({
+          id: 5213,
+          number: 2213,
+          deliveryAddress: { line1: "Storgata 9", postalCode: "0155", city: "Oslo", country: "NO" },
+          lines: [{ ...order().lines[0], lineId: 4 }],
+        }),
+        order({ id: 5214, number: 2214, currency: "EUR", blocked: "currency_not_supported" }),
+      );
+      return view;
+    });
+    await open();
+    expect(screen.getByRole("checkbox", { name: "Choose order 2214" })).toBeDisabled();
+    expect(screen.getByText(/in another currency than invoices are made in/)).toBeInTheDocument();
+
+    await next();
+    await next();
+    await userEvent.click(screen.getByRole("radio", { name: "Combined per customer" }));
+    expect(screen.getByText("2 invoices")).toBeInTheDocument();
+    const preview = screen.getByTestId("from-orders-preview");
+    expect(preview).toHaveTextContent("Acme AS: order 2210, 2211");
+    expect(preview).toHaveTextContent("Acme AS: order 2213");
+    expect(preview).toHaveTextContent("Kept apart from the customer's other invoice by its delivery address.");
   });
 
   it("lists the drafts when it made several", async () => {

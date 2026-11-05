@@ -201,9 +201,9 @@ const ItemRow = ({ item }: { item: BillingRunItem }) => {
         </Group>
       </Table.Td>
       <Table.Td>
-        {item.code && (
+        {(item.code || item.detail) && (
           <Stack gap={2}>
-            <Text size="sm">{itemCodeWords(item.code, t)}</Text>
+            {item.code && <Text size="sm">{itemCodeWords(item.code, t)}</Text>}
             {item.detail && (
               <Text size="xs" c="dimmed">
                 {item.detail}

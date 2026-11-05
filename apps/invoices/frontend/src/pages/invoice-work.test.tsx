@@ -477,6 +477,49 @@ describe("an invoice draft that bills consumption", () => {
     expect(screen.queryByTestId("line-work-4")).not.toBeInTheDocument();
   });
 
+  it("InvoiceEditor_KeepsALineBillingAnOrderAllocationAsTheAllocationIs", async () => {
+    const base = workDraft();
+    const doc = workDraft({
+      lines: [
+        {
+          ...base.lines[0],
+          unitPrice: 850.12345678,
+          sources: [
+            {
+              kind: "orders.allocation",
+              id: 7001,
+              subkind: "order_line",
+              date: "2026-09-01",
+              quantity: 4,
+              amount: 3400.49,
+              state: "held",
+            },
+          ],
+          warnings: [],
+        },
+        base.lines[2],
+      ],
+    });
+    const fetchMock = server(doc);
+    renderRoute("/invoices/1001");
+
+    const price = await screen.findByRole("textbox", { name: "Line 1 unit price" });
+    expect(price).toHaveValue("850.12345678");
+    expect(price).toHaveAttribute("readonly");
+    expect(screen.getByRole("textbox", { name: "Line 1 quantity" })).toHaveAttribute("readonly");
+    expect(screen.getByRole("textbox", { name: "Line 1 discount" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Line 1 VAT code" })).toBeDisabled();
+    // The line without an allocation stays editable.
+    expect(screen.getByRole("textbox", { name: "Line 2 quantity" })).not.toHaveAttribute("readonly");
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Line 1 description" }), ", eik");
+    await save();
+    await waitFor(() => expect(requestTo(fetchMock, "PUT", "/api/v1/invoices/1001")).toBeDefined());
+    const body = requestTo(fetchMock, "PUT", "/api/v1/invoices/1001") as InvoiceInput;
+    expect(body.lines[0].sources).toEqual([{ kind: "orders.allocation", id: 7001 }]);
+    expect(body.lines[0].unitPrice).toBe(850.12345678);
+  });
+
   it("InvoiceEditor_KeepsASettlementOnEachOfItsLinesTheCorrectionsMinusOneAndTheEightDecimalPrice", async () => {
     const fetchMock = server(consumptionDraft());
     renderRoute("/invoices/1001");

@@ -958,6 +958,12 @@ export const invoicesCatalog = {
     "refusal.allocation_exceeds_open": "That is more than is left to invoice of the line. Lower the quantity.",
     "refusal.line_not_invoiceable": "The line can no longer be invoiced: it is invoiced already, or its order changed.",
     "refusal.no_orders_due": "No customer has order lines left to invoice through that day.",
+    "refusal.orders_held_by_drafts":
+      "What the customer's orders have left to invoice is on draft invoices already. Issue or delete those drafts.",
+    "refusal.currency_not_supported":
+      "The customer's orders due are in another currency than invoices are made in, so they were left out.",
+    "refusal.line_holds_order_allocation":
+      "The line bills part of an order, and keeps its quantity, price, discount and VAT code. Remove the line and invoice the order again.",
     "fromOrders.title": "Invoice from orders",
     "fromOrders.description":
       "Choose the orders, how much of each line to invoice, and whether a customer's orders share one invoice.",
@@ -979,6 +985,8 @@ export const invoicesCatalog = {
     "fromOrders.deliveryDate": "Delivery {{date}}",
     "fromOrders.blocked.draft": "A draft order: confirm it before invoicing it.",
     "fromOrders.blocked.on_hold": "The order is on hold.",
+    "fromOrders.blocked.currency_not_supported":
+      "The order is in another currency than invoices are made in, so it cannot be invoiced here.",
     "fromOrders.partialHint":
       "Lower a quantity to invoice part of a line (part invoicing). What remains stays on the order, to invoice later.",
     "fromOrders.partial": "Part invoicing",
@@ -1003,6 +1011,7 @@ export const invoicesCatalog = {
     "fromOrders.field.your_reference": "your reference",
     "fromOrders.field.project": "project",
     "fromOrders.field.payment_terms": "payment terms",
+    "fromOrders.field.delivery_address": "delivery address",
     "fromOrders.next": "Next",
     "fromOrders.back": "Back",
     "fromOrders.create": "Create the drafts",
@@ -3111,6 +3120,12 @@ export const invoicesCatalog = {
     "refusal.line_not_invoiceable":
       "Linjen kan ikke lenger faktureres: den er allerede fakturert, eller ordren er endret.",
     "refusal.no_orders_due": "Ingen kunde har ordrelinjer som gjenstår å fakturere til og med den dagen.",
+    "refusal.orders_held_by_drafts":
+      "Det kundens ordre har igjen å fakturere, ligger allerede på fakturautkast. Utsted eller slett de utkastene.",
+    "refusal.currency_not_supported":
+      "Kundens ordre som skal faktureres, er i en annen valuta enn fakturaene lages i, og ble utelatt.",
+    "refusal.line_holds_order_allocation":
+      "Linjen fakturerer en del av en ordre og beholder antall, pris, rabatt og mva-kode. Fjern linjen og fakturer ordren på nytt.",
     "fromOrders.title": "Fakturer fra ordre",
     "fromOrders.description":
       "Velg ordrene, hvor mye av hver linje som skal faktureres, og om en kundes ordre skal samles på én faktura.",
@@ -3132,6 +3147,8 @@ export const invoicesCatalog = {
     "fromOrders.deliveryDate": "Levering {{date}}",
     "fromOrders.blocked.draft": "Ordren er et utkast: bekreft den før den faktureres.",
     "fromOrders.blocked.on_hold": "Ordren er satt på vent.",
+    "fromOrders.blocked.currency_not_supported":
+      "Ordren er i en annen valuta enn fakturaene lages i, så den kan ikke faktureres her.",
     "fromOrders.partialHint":
       "Sett ned et antall for å fakturere deler av en linje (delfakturering). Det som gjenstår, blir stående på ordren til senere.",
     "fromOrders.partial": "Delfakturering",
@@ -3156,6 +3173,7 @@ export const invoicesCatalog = {
     "fromOrders.field.your_reference": "deres referanse",
     "fromOrders.field.project": "prosjekt",
     "fromOrders.field.payment_terms": "betalingsbetingelser",
+    "fromOrders.field.delivery_address": "leveringsadresse",
     "fromOrders.next": "Neste",
     "fromOrders.back": "Tilbake",
     "fromOrders.create": "Lag utkastene",
