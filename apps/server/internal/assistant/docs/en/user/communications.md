@@ -279,10 +279,13 @@ greyed, with *Not available now* and the reason beside it:
   once an Owner has turned on **Mail channels** on the Google Workspace page and a Google
   super admin has delegated the Gmail scopes ([the administration
   guide](/en/admin/google-workspace/#mail-channels)). Google cannot limit Vantigo's access
-  to some mailboxes, so the orange notice *Mail access reaches every mailbox* shows above
-  the table whenever Google Workspace can be used; its sentence is written for
-  Microsoft 365, but holds for Google too: Vantigo uses only the mailboxes that are
-  channels, and refuses a person's own.
+  to some mailboxes, so an orange notice *Mail access reaches every mailbox* shows above
+  the table whenever Google Workspace can be used: *Mail access through Google Workspace
+  reaches every mailbox in the domain: domain-wide delegation cannot be limited to some
+  mailboxes. While this shows, anyone who manages channels in Communications can send as
+  any mailbox in the domain that is no person's own.* Vantigo uses only the mailboxes that
+  are channels, and refuses a person's own. When both services reach every mailbox, each
+  has its own notice.
 
 The provider list in the **Add email channel** dialog ends with **Vantigo hosted mail**,
 greyed, with *Not yet available*: it is not offered yet, and cannot be chosen.
@@ -344,11 +347,10 @@ Each message names the provider you chose. Adding, switching and verifying chann
 
 Click **Add channel**, and choose **Google Workspace** as the **Provider**. The dialog
 asks for the same as for Microsoft 365: the **Email address** of the mailbox, a **Display
-name**, **Import history** and **When a conversation is closed**. Its note, *The mailbox
-must be a shared mailbox in the application's scope.*, is Microsoft 365's wording; for
-Google Workspace, the mailbox is a **licensed user** of the organisation made for the
-purpose, such as `post@` — Google Workspace has no shared mailbox of its own, so it takes
-a licence.
+name**, **Import history** and **When a conversation is closed**. Its note says *The
+mailbox must be a licensed user of the organisation in Google Workspace that is no
+person's own, such as post@. A group cannot be a channel.*: Google Workspace has no shared
+mailbox of its own, so the mailbox is a user made for the purpose, and takes a licence.
 
 **Create channel** checks the address with Google Workspace first. An alias is taken as
 its mailbox, and the channel is created active with the mailbox's primary address. The
@@ -358,12 +360,18 @@ check refuses, with the messages in the table above:
   read; use a licensed mailbox.* A Google Group, a Collaborative Inbox included, receives
   mail for its members but has no mailbox of its own. Use a licensed user's address, and
   let the group forward to it if you need both.
-- **A person's own mailbox** — *This is a person's own mailbox. Only a shared mailbox can be
-  a channel.* when the address belongs to someone whose Google account Vantigo keeps
-  through Staff. A channel must never read or send from a colleague's own mail.
+- **A person's own mailbox** — *This is a person's own mailbox in Google Workspace. Only a
+  mailbox that is no person's own, such as post@, can be a channel.* when the address
+  belongs to someone whose Google account Vantigo keeps through Staff, or who connected
+  their own Google account to Vantigo. A channel must never read or send from a
+  colleague's own mail.
 - **An address Google Workspace does not know** — *Google Workspace has no mailbox with
-  this address.*: no user has it, or the user is suspended, archived, or has no Gmail
-  licence.
+  this address.*: no user has it, the user is suspended, archived, or has no Gmail
+  licence, or the address is not in one of your organisation's verified domains.
+- **A mailbox Google refuses** — *Google Workspace refused the mailbox for another reason
+  than the delegation, such as a policy on the user. Check the user in the Google Admin
+  console.*, with a link, **Mail channels in Google Workspace**, to [the administration
+  guide](/en/admin/google-workspace/#mail-channels).
 - *Mail channels through Google Workspace are not available…* while **Mail channels** is
   off on the Google Workspace page, or the Gmail scopes are not delegated yet.
 
@@ -382,6 +390,15 @@ What differs from Microsoft 365, once the channel works:
   created if it does not exist, and takes it out of the **Inbox**.
 - **Archiving or deleting** a message in Gmail after Vantigo read it changes nothing in
   Vantigo; mail a Gmail filter keeps out of the Inbox is never read.
+- **A mailbox that becomes a person's own** stops: if Staff later keeps a Google account
+  for the mailbox's user, the user connects their own Google account, or the mailbox's
+  address is renamed or given to someone else, the channel fails with *The mailbox no
+  longer exists in Google Workspace.* and sends and reads nothing more. A refused mailbox
+  reads *Failed: Google Workspace refuses the mailbox. Check the user in the Google Admin
+  console.*
+- **A folder or a category named as a Gmail system label** — *Inbox*, *Sent*, *Trash*,
+  *Spam*, *Drafts*, *Starred*, *Important*, *Unread*, *Chat* — is refused: choose another
+  **Mailbox folder** name.
 
 ### Switch an SMTP channel to a mailbox service
 
