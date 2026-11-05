@@ -251,7 +251,8 @@ Every call to Google — the token exchange included — goes through one client
   ([U12](#unverified-items)).
 - **The transport** dials through netguard, so every address is checked against the one
   table of forbidden addresses; no proxy, and no redirect is followed.
-- **Budgets.** 30 seconds per call; a 429 waits `Retry-After` once, at most 10 seconds
+- **Budgets.** 30 seconds per call — a call moving a message, a Gmail send's upload or a
+  raw read, 30 seconds and one more for each megabyte it moves, at most two minutes; a 429 waits `Retry-After` once, at most 10 seconds
   (a longer one fails at once); a 5xx is retried once after a second; a 401 drops the
   token and retries once with a fresh one. Every answer is read through a 1 MiB cap. A
   create (`users.insert`, `groups.insert`, a licence's insert) is made once: its 5xx is
@@ -947,17 +948,33 @@ switch is off). `MaxMessage()` is **25 000 000** bytes of MIME (P4, Gmail's 25 M
 `00118_google_mail_channels.sql` adds `connection.mail_channels` (`boolean`, false) and
 **`channel_mailboxes`**: `google_user_id` (32, the primary key, the Directory id),
 `address` (320, the primary address in lower case, the subject the Gmail calls
-impersonate) and `checked_at` (the last `Check` that reached it). The module answers only
-for a mailbox recorded here: `Send`, `Delta`, `Raw`, `Mark` and `EnsureFolder` of any other
-id are `ErrMailboxUnknown` with no call. Communications is the authority on which mailboxes
-are channels; `Forget` deletes the row. A person's account (`accounts`) is never recorded
-(P2). The down step drops the table and the column; nothing at Google is touched.
+impersonate) and `checked_at` (when the mailbox was last resolved: by `Check`, or again
+before a call). There is no history id column: the history id travels in the
+[delta link](#delta-and-raw). The module answers only for a mailbox recorded here: `Send`,
+`Delta`, `Raw`, `Mark` and `EnsureFolder` of any other id are `ErrMailboxUnknown` with no
+call. Communications is the authority on which mailboxes are channels; `Forget` deletes the
+row. A person's own mailbox is never recorded (P2). The down step drops the table and the
+column; nothing at Google is touched.
+
+**A person's own mailbox, later.** Before every call, on the pool and before any call to
+Google, a recorded mailbox is refused **`ErrMailboxGone`** (`mailbox_gone` at
+Communications) when it has since become a person's own: a row of `accounts` under its
+Directory id (a user Staff adopted after the channel was made) or under its address (the
+address passed on to a person), or a row of `connections` under its Directory id (the user
+connected their own account). **Before a fresh delta, and when `checked_at` is a day old**,
+the mailbox is resolved again as the admin to impersonate — `users.get(<Directory id>)`
+with `admin.directory.user` — and a 404, a primary address other than the one recorded (the
+user renamed, the address recycled to another user) or the user suspended or archived is
+`ErrMailboxGone`; otherwise `checked_at` moves on.
 
 ### Check
 
 `Check(address)` takes a bare addr-spec only — no display name, white space, control
 character or one of `/ \ ? # %`, at most 320 bytes — else `ErrMailboxUnknown` with no call;
-the provider not available is `ErrMailboxUnavailable`. Then, as the admin to impersonate:
+the provider not available is `ErrMailboxUnavailable`; an address whose domain is none of
+the Workspace's verified domains (as the last test read them, ignoring case) is
+`ErrMailboxUnknown` (422 `mailbox_unknown`) with no call. Then, as the admin to
+impersonate:
 
 1. **`groups.get(address)`** with `admin.directory.group`: found is **`ErrMailboxGroup`**
    (422 `group_address`) — a Google Group, a Collaborative Inbox included, has no mailbox
@@ -966,9 +983,12 @@ the provider not available is `ErrMailboxUnavailable`. Then, as the admin to imp
    `ErrMailboxUnknown`; a suspended or archived user `ErrMailboxGone` (both 422
    `mailbox_unknown` at Communications). An alias answers its user, whose primary address
    the channel takes.
-3. **A user the module keeps an account for** — a row of `accounts`, made or adopted for a
-   person in Staff — is answered `Shared` false and not recorded, **with no call to that
-   mailbox**: Communications answers 422 `personal_mailbox`.
+3. **A person's own mailbox** — a row of `accounts`, made or adopted for a person in Staff,
+   under the user's Directory id or its primary address, or a row of `connections`, the
+   user's own connection — is answered `Shared` false, its row of `channel_mailboxes`
+   deleted if there was one, **with no call to that mailbox**: Communications answers 422
+   `personal_mailbox`. A primary address outside the verified domains is
+   `ErrMailboxUnknown`.
 4. **`users.getProfile`** as the mailbox, with `gmail.modify`: it proves the delegation
    reaches the mailbox and the user has Gmail. A 404, or a refusal of the user as the
    token's subject, is `ErrMailboxGone`; the rest as [the refusals](#refusals-of-a-channels-calls).
@@ -988,15 +1008,17 @@ delivers the header's blind copies and strips the header, so it is the only way 
 travel. The MIME is posted whole to
 `https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=media` as
 `message/rfc822`, with `gmail.send`, **made once**: a 5xx is not retried, Gmail may have
-taken it, and the outbox's own retry is the one (at least once). Gmail files the message
-under the mailbox's **Sent**.
+taken it, and the outbox's own retry is the one (at least once). The upload's budget is
+30 seconds and one more per megabyte of MIME (55 seconds for 25 MB), in place of the
+client's 30. Gmail files the message under the mailbox's **Sent**.
 
 It answers `contracts.SentMessage`: `ThreadID` Gmail's `threadId` (Communications' `providerThreadId`),
 and `MessageID` **read back** by `messages.get(format=metadata,
 metadataHeaders=Message-ID)` — Gmail may replace the Message-ID the MIME carried (U6), and
 Communications records the one Gmail sent with as `sent_message_id` when it differs, so a
-reply threads by either, or by Gmail's thread. A read-back that fails answers the thread
-alone; the message is sent. A 413 is `ErrMailTooLarge` (`too_large`, never retried).
+reply threads by either, or by Gmail's thread. The read-back runs on a context of its own,
+ten seconds long, so an upload that took the caller's time does not lose it. A read-back
+that fails answers the thread alone; the message is sent. A 413 is `ErrMailTooLarge` (`too_large`, never retried).
 
 **Quota.** Gmail charges a send to the mailbox, 100 units of its per-user budget, so a
 channel sends at most about 60 messages a minute; a usage limit is waited once, then a
@@ -1023,9 +1045,10 @@ most 50 (`MailDeltaPageMax`):
   metadataHeaders=Message-ID)`: the Message-ID, `internalDate` as the received time and
   `threadId` as `ConversationID`; a 404 there is `Removed`. Nothing of what a message says
   is read here.
-- **Expired.** A history start Gmail no longer keeps — 404, or 400 — and a listing's page
-  token refused 400 are `ErrMailboxDeltaExpired` (U15); Communications restarts from its
-  restart point.
+- **Expired.** A history start Gmail no longer keeps — 404, or 400 — a listing's page
+  token refused 400, and a queue so long the link would exceed 64 KiB are
+  `ErrMailboxDeltaExpired` (U15); Communications restarts from its restart point, its
+  receipts de-duplicating what it had read.
 
 **The link** is `g1.` and the base64url of `{m, h, p, l, a, q}` — the mailbox, the history
 id to read from, the page token under way, whether it is the fresh listing, the instant it
@@ -1035,7 +1058,8 @@ lists after, and the queue (ids, `-` before a removed one) — at most 64 KiB. A
 refused with a failure, unsent.
 
 **`Raw(mailbox, id, max)`** is `messages.get(format=raw)`, read through a cap of the
-base64url of `max` plus 64 KiB for the JSON around it; more than `max` either way is
+base64url of `max` plus 64 KiB for the JSON around it, under a budget scaled to that cap as
+a send's is; more than `max` either way is
 `ErrMailTooLarge` (Communications records `skipped`/`too_large`), a 404 `ErrMailItemGone`.
 `max` is Communications' `COMMUNICATIONS_INBOUND_MAX_BYTES`.
 
@@ -1047,16 +1071,21 @@ Gmail has labels where Exchange has folders and categories:
   (ignoring case; 1 to 120 characters, no control character, no `/` at either end):
   `labels.list`, else `labels.create` (shown in the label list and the message list), made
   once; a 409 — created meanwhile — reads the list again. A system label is never
-  answered.
+  answered, and the name of one — `INBOX`, `SENT`, `TRASH`, `SPAM`, `DRAFT`, `STARRED`,
+  `IMPORTANT`, `UNREAD`, `CHAT` or a form Gmail shows them by (*Sent Mail*, *Bin*,
+  *Drafts*, *Chats*), in any case — is refused before any call, `ErrMailboxDenied`
+  (`mailbox_denied`: the mark is not tried again).
 - **`Mark`** is `messages.modify`: `read` removes `UNREAD`; `move` adds the label
-  `EnsureFolder` answered and removes `INBOX`; `category` adds a label per category (at
-  most 25), each found or created. A 404 is `ErrMailItemGone`.
+  `EnsureFolder` answered — a user label's id, `Label_…`; a system label's id is refused
+  with no call — and removes `INBOX`; `category` adds a label per category (at most 25),
+  each found or created, a system label's name refused as `EnsureFolder` refuses it. A 404
+  is `ErrMailItemGone`.
 
 ### Refusals of a channel's calls
 
 | Gmail answers | The contract | At Communications |
 | --- | --- | --- |
-| the mailbox refused as the token's subject (deleted, suspended, unknown), a 400 `failedPrecondition` (no Gmail: no licence), a 404 on the mailbox itself (U17) | `ErrMailboxGone` | `mailbox_gone`: a send fails at once; the sync fails and is tried hourly |
+| the mailbox refused as the token's subject (deleted, suspended, unknown), a 400 `failedPrecondition` (no Gmail: no licence), a 404 on the mailbox itself (U17); the mailbox a person's own since, or renamed, suspended or archived when resolved again (no Gmail call) | `ErrMailboxGone` | `mailbox_gone`: a send fails at once; the sync fails and is tried hourly |
 | a Gmail scope not delegated | `ErrMailboxUnavailable` (`not_delegated`) | held, as while the switch is off |
 | no key, every key refused | `ErrMailboxUnavailable` | held |
 | any other 403 (a usage limit already waited on is a throttle) | `ErrMailboxDenied` | `mailbox_denied` |

@@ -163,8 +163,13 @@ use, so the channels page reads Communications' own API and never a provider's:
 The page's provider select lists SMTP, then every listed provider by its `displayName`
 — one not available disabled, with its `reason` — and then *Vantigo hosted mail*,
 greyed. An SMTP channel's row has a **Switch to {provider}** for each listed provider
-that is available. The page shows the `tenant_wide` warning above the table while any
-entry says so.
+that is available. The page shows a `tenant_wide` warning above the table for each entry
+that says so, in that provider's words: Microsoft 365's names RBAC for Applications and
+the tenant-wide consent, Google Workspace's the domain-wide delegation. The note under
+the address, and the page's words for `personal_mailbox`, `mailbox_denied` and a sync
+failed `mailbox_denied`, are the provider's own too; `mailbox_denied`'s help link goes to
+the provider's mail channels section of the administration guide
+(`/admin/entra/#mail-channels`, `/admin/google-workspace/#mail-channels`).
 
 ### SMTP
 
@@ -281,9 +286,9 @@ transaction, the named provider's `Status`, then `Check(address)` (and `EnsureFo
 | --- | --- |
 | its `Status` not available | 409 `mail_channels_off` |
 | a shared mailbox it reaches | 201, the channel **active**; its address is the mailbox's primary SMTP address as `Check` read it, in lower case, so an alias typed becomes the mailbox's own (Google's too: an alias resolves to its user) |
-| a mailbox it reaches, not shared | 422 `personal_mailbox` (*The address is a person's own mailbox. Only a shared mailbox can be a channel.*) — `Check` does not record a personal mailbox, so the provider would refuse to send from it anyway |
+| a mailbox it reaches, not shared | 422 `personal_mailbox` (*The address is a person's own mailbox in {provider}. Only a mailbox that is no person's own can be a channel.*) — `Check` does not record a personal mailbox, so the provider would refuse to send from it anyway |
 | `ErrMailboxGroup` | 422 `group_address` (*The address is a group. A group has no mailbox Vantigo can read; use a licensed mailbox.*) — a provider whose groups have addresses of their own answers it: Google for a Google Group's address, a Collaborative Inbox included; Entra never does |
-| `ErrMailboxDenied` | 422 `mailbox_denied` — outside the application's RBAC scope, or a role missing; for Google, a 403 on the mailbox that is not the delegation |
+| `ErrMailboxDenied` | 422 `mailbox_denied` (*{provider} does not let Vantigo use this mailbox. An administrator gives the access as the mail channels section of the {provider} administration guide describes.*) — outside the application's RBAC scope, or a role missing; for Google, a 403 on the mailbox that is not the delegation |
 | `ErrMailboxUnknown`, `ErrMailboxGone` | 422 `mailbox_unknown` — no such mailbox, or an address that is not a bare address (a display name, white space, one of `/ \ ? # %`, over 320 bytes) |
 | `ErrMailboxUnavailable` | 409 `mail_channels_off` |
 | anything else — throttled, the provider not answering, the status unreadable | 503 `provider_unreachable` (*{provider} did not answer. Try again.*), logged |
@@ -444,7 +449,11 @@ the deliveries, and the attachments — and branches on the channel's provider, 
   channel is **never sent through another provider**. The same `Outbound` is rendered as MIME
   by [`mail.RenderMIME`](/en/contributing/platform-packages/#the-mail-package) from the
   channel's address — with a `Bcc:` header only when there are blind copies — and handed
-  to `Send` with the blind copies beside it, under the SMTP send's own 30-second budget.
+  to `Send` with the blind copies beside it, under a timeout scaled to the provider's
+  `MaxMessage`: the SMTP send's 30 seconds and 2 more for each megabyte, at most three
+  minutes — 36 seconds for Entra's 3 MB, 80 for Gmail's 25 MB. Before such a send the
+  job's lease is moved on to twice the timeout (`ExtendOutboxJobLease`, guarded by the
+  lease id like the stamp), so the send never outlives the lease protecting it.
   Entra posts it to Graph's `sendMail` as base64 MIME, or, with blind copies, creates it
   as a MIME draft in the shared mailbox, checks the draft kept every blind copy, and sends
   the draft ([Entra's Send](/en/reference/entra/#send)). Google uploads the MIME whole to

@@ -1014,7 +1014,7 @@ the *own* calendar's scope, verifying, change notifications, a leaver's copies),
 
 ### G33 — The switch and the scopes (Q6, Q7)
 
-`google.connection.mail_channels boolean` (00116). Turning it on adds `gmail.modify`
+`google.connection.mail_channels boolean` (00118). Turning it on adds `gmail.modify`
 and `gmail.send` to the scopes the page lists to delegate, and *Test connection* checks
 them by a token for a channel mailbox when one exists, else for `admin_subject`. While
 it is off, a Gmail scope still granted is **unexpected** (G15). The guide states the
@@ -1029,17 +1029,26 @@ Workspace"`, every call impersonating the channel's mailbox through DWD.
 
 - **`Status`**: the switch and the connection; when available, `Reason =
   MailboxTenantWide` always — the channels page's existing warning.
-- **`Check(address)`**: `groups.get(address)` found → **`group_address`** refusal (Q6;
-  Communications answers it, G4); `users.get(address)` (as `admin_subject`) not found →
-  `ErrMailboxUnknown`; suspended → `ErrMailboxGone`; then `gmail users.getProfile` as
-  the mailbox — refused (`failedPrecondition`, no Gmail licence) → `ErrMailboxGone`.
-  `Shared` is true unless the user is an account Staff manages for a person
-  (`google.accounts`), which makes it a person's own mailbox (`personal_mailbox`). An
-  alias resolves to its user; `Mailbox` is the Directory id. Recorded in
-  `google.channel_mailboxes(google_user_id, address, history_id, checked_at)`.
+- **`Check(address)`**: an address outside the Workspace's verified domains →
+  `ErrMailboxUnknown` before any call; `groups.get(address)` found → **`group_address`**
+  refusal (Q6; Communications answers it, G4); `users.get(address)` (as `admin_subject`)
+  not found → `ErrMailboxUnknown`; suspended or archived → `ErrMailboxGone`; then `gmail
+  users.getProfile` as the mailbox — refused (`failedPrecondition`, no Gmail licence) →
+  `ErrMailboxGone`. `Shared` is true unless the mailbox is a person's own
+  (`personal_mailbox`): an account Staff manages for a person (`google.accounts`, by id
+  or by primary address) or a person's own connection (`google.connections`); its row,
+  if any, is then deleted. An alias resolves to its user; `Mailbox` is the Directory id.
+  Recorded in `google.channel_mailboxes(google_user_id, address, checked_at)` — no
+  history id column: the history id travels in the delta link.
+- **Every other call** answers only for a recorded mailbox (`ErrMailboxUnknown`), and
+  refuses one that has since become a person's own (`ErrMailboxGone`, no call). Before a
+  fresh `Delta`, and once a day otherwise (`checked_at`), the mailbox is resolved again
+  as `admin_subject` (`users.get(<id>)`): a primary address other than the one recorded,
+  or the user suspended or archived → `ErrMailboxGone`.
 - **`MaxMessage`** is 25,000,000 bytes of MIME (Gmail's message size limit, U10).
 - **`Send`** posts the MIME to `/upload/gmail/v1/users/{id}/messages/send?uploadType=media`
-  (`message/rfc822`, which takes up to 35 MB) and answers `SentMessage{ThreadID,
+  (`message/rfc822`, which takes up to 35 MB) under a budget of 30 s and 1 s a megabyte,
+  and answers `SentMessage{ThreadID,
   MessageID}` — the Message-ID read back by `messages.get(format=metadata,
   metadataHeaders=Message-ID)` (G5, U6). A 413 or a size refusal → `ErrMailTooLarge`.
   Blind copies: the MIME is rendered with `Bcc` (Gmail delivers the header's blind copies
@@ -1051,20 +1060,24 @@ Workspace"`, every call impersonating the channel's mailbox through DWD.
   INBOX label is an item; a removed one or a deletion is `Removed`. Each new item is
   completed by `messages.get(format=metadata, metadataHeaders=Message-ID)` for
   `MessageID` and `internalDate` (`ReceivedAt`); `ConversationID` is the `threadId`.
-  At most `MailDeltaPageMax` items a page. The link is `g1.<base64url(json{m, h, p})>`.
-  A 404 (or 400 on `startHistoryId`) → `ErrMailboxDeltaExpired` (U15).
+  At most `MailDeltaPageMax` items a page. The link is `g1.<base64url(json{m, h, p})>`,
+  carrying the history id (`h`). A 404 (or 400 on `startHistoryId`), or a link that would
+  exceed 64 KiB → `ErrMailboxDeltaExpired` (U15).
 - **`Raw`** is `messages.get(format=raw)`, decoded, capped at `max`.
 - **`Mark`**: read → `messages.modify(removeLabelIds=[UNREAD])`; category → the labels
-  named by the categories (created as needed); move → add the label `EnsureFolder`
-  answered and remove `INBOX`.
+  named by the categories (created as needed); move → add the user label (`Label_…`)
+  `EnsureFolder` answered and remove `INBOX`. A system label's name (INBOX, SENT, TRASH,
+  SPAM, DRAFT, STARRED, IMPORTANT, UNREAD, CHAT, in any case or display form) is refused
+  as a folder or a category, `ErrMailboxDenied`.
 - **`EnsureFolder(name)`** finds or creates a user label of that name (`labels.list`,
   `labels.create`); a race re-reads.
-- **`Watch`, `Unwatch`** answer nil and **`Notified`** nothing: v1 polls (Q7). The
-  existing `communications-mailbox-sync` worker's poll is the cadence.
+- **`Watch`** answers `contracts.ErrWatchUnsupported`, **`Unwatch`** nil and
+  **`Notified`** nothing: v1 polls (Q7). The existing `communications-mailbox-sync`
+  worker's poll is the cadence.
 - Gmail's quota is charged to the impersonated mailbox (`quotaUser` set too); a
   `messages.send` costs 100 units, so a channel sends at most ~60 a minute.
 
-The migration is `00116_google_mail_channels.sql` (the switch,
+The migration is `00118_google_mail_channels.sql` (the switch,
 `google.channel_mailboxes`). **F's operations:** `PUT /google/connection/mail-channels`.
 **F's pages:** `U/communications.md` (adding a Google Workspace channel, a licensed
 mailbox, why a group is refused, the 25 MB budget, marks as labels),

@@ -372,6 +372,8 @@ stoppet, senest sju dager. Når en person slutter, lukkes tilkoblingen med token
 ved suspenderingen, så ingenting kan fjerne kopiene: **de blir liggende i den suspenderte
 kontoen**, slik alt annet i den gjør.
 
+<a id="mail-channels"></a>
+
 ## E-postkanaler
 
 **E-postkanaler** lar Kommunikasjon sende et teams e-post fra en Gmail-postboks i
@@ -404,7 +406,9 @@ ingen kanal trenger dem.
 - Postboksen er en **lisensiert Google Workspace-bruker** i organisasjonen, som `post@` —
   en bruker med Gmail, laget i administrasjonskonsollen for formålet. Google Workspace har
   ingen gratis delt postboks slik Exchange har, så hver kanalpostboks tar en lisens. Ikke
-  en person Ansatte holder en konto for: en persons egen postboks avvises.
+  en person Ansatte holder en konto for, og heller ikke en som har koblet sin egen
+  Google-konto til Vantigo: en persons egen postboks avvises. Adressen er i et av
+  organisasjonens **bekreftede domener**, slik den siste testen leste dem.
 - Ikke en **Google-gruppe** eller en **Collaborative Inbox**: en gruppe har ingen postboks
   Vantigo kan lese, og adressen dens avvises.
 - **En eier** i Vantigo slår bryteren på; en superadministrator i administrasjonskonsollen
@@ -474,23 +478,31 @@ er delegert, under *Tilgangsområder Vantigo ikke bruker*.
   Google-gruppes, også en Collaborative Inbox. Grupper støttes ikke: lag en lisensiert
   bruker for postboksen, og send gruppens e-post videre til den om nødvendig.
 - **Å legge til en kanal sier at det er en persons egen postboks** (`personal_mailbox`).
-  Ansatte holder en Google-konto for personen med adressen. Bare en postboks som ikke er
-  en persons, kan være en kanal.
+  Ansatte holder en Google-konto for personen med adressen, eller personen har koblet sin
+  egen Google-konto til Vantigo. Bare en postboks som ikke er en persons, kan være en
+  kanal.
 - **Å legge til en kanal sier at Google Workspace ikke har noen postboks med adressen**
   (`mailbox_unknown`). Ingen bruker har adressen, eller et alias av den; eller brukeren er
-  suspendert eller arkivert, eller har ikke Gmail fordi den ikke har lisens. Et alias tas
-  som brukeren sin.
+  suspendert eller arkivert, eller har ikke Gmail fordi den ikke har lisens; eller adressen
+  er ikke i et av organisasjonens bekreftede domener (test tilkoblingen etter at du har
+  lagt til et domene). Et alias tas som brukeren sin.
 - **Google Workspace tilbys ikke, eller å legge til sier *E-postkanaler gjennom Google
   Workspace er ikke tilgjengelige …*** (`mail_channels_off`). Bryteren er av, kortet sier
   ikke **Klar**, eller modulen Google Workspace er ikke slått på.
 - **En kanal feiler senere med *Postboksen finnes ikke lenger i Google Workspace.***
-  (`mailbox_gone`). Brukeren er suspendert, slettet eller har mistet Gmail-lisensen siden.
-  E-posten dens gis opp etter ett forsøk, og synkroniseringen prøver igjen hver time.
+  (`mailbox_gone`). Brukeren er suspendert, arkivert, slettet eller har mistet
+  Gmail-lisensen siden; eller den er blitt en persons egen — Ansatte holder nå en konto for
+  den eller for adressen dens, eller brukeren har koblet sin egen Google-konto; eller den
+  primære adressen er endret eller gitt til en annen bruker. Vantigo sjekker postboksen
+  igjen i katalogen før den leses på nytt fra start, og minst én gang i døgnet. E-posten
+  dens gis opp etter ett forsøk, og synkroniseringen prøver igjen hver time.
   Gjenopprett brukeren i administrasjonskonsollen, eller legg til en annen postboks som
   kanal.
 - **En kanal feiler med `mailbox_denied`.** Google avviste postboksen (403) av en annen
   grunn enn delegeringen — en regel på brukeren. Sjekk brukeren i
-  administrasjonskonsollen.
+  administrasjonskonsollen. En kanal der **Mappe i postboksen** har navnet til en
+  systemetikett i Gmail (*Inbox*, *Sent*, *Trash*, *Spam*, *Drafts*, *Starred*,
+  *Important*, *Unread*, *Chat*), feiler markeringene sine slik også: velg et annet navn.
 - **En melding ble gitt opp som `too_large`.** Gmail tar høyst 25 MB per melding;
   skrivevinduet holder en kanals vedlegg under det.
 - **Sendingen går tregere.** Gmail belaster hver postboks' sending mot dens egen kvote: en

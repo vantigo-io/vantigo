@@ -277,10 +277,14 @@ nedtonet, med *Ikke tilgjengelig nå* og årsaken ved siden av:
   først når en eier har slått på **E-postkanaler** på siden Google Workspace og en
   superadministrator i Google har delegert Gmail-tilgangsområdene
   ([administrasjonsveiledningen](/nb/admin/google-workspace/#e-postkanaler)). Google kan
-  ikke begrense Vantigos tilgang til noen postbokser, så det oransje varselet
+  ikke begrense Vantigos tilgang til noen postbokser, så et oransje varsel
   *E-posttilgangen gjelder alle postbokser* vises over tabellen så lenge Google Workspace
-  kan brukes; teksten er skrevet for Microsoft 365, men gjelder for Google også: Vantigo
-  bruker bare postboksene som er kanaler, og avviser en persons egen.
+  kan brukes: *E-posttilgangen gjennom Google Workspace gjelder alle postboksene i domenet:
+  delegering på domenenivå kan ikke begrenses til noen postbokser. Så lenge denne
+  advarselen vises, kan alle som administrerer kanaler i Kommunikasjon, sende som hvilken
+  som helst postboks i domenet som ikke er en persons egen.* Vantigo bruker bare
+  postboksene som er kanaler, og avviser en persons egen. Når begge tjenestene når alle
+  postbokser, har hver sitt varsel.
 
 Leverandørlisten i dialogen **Legg til e-postkanal** slutter med **Vantigo-driftet
 e-post**, nedtonet og med *Ikke tilgjengelig ennå*: den tilbys ikke ennå og kan ikke
@@ -345,11 +349,11 @@ Hver melding navngir leverandøren du valgte. Å legge til, bytte og bekrefte ka
 
 Klikk **Legg til kanal**, og velg **Google Workspace** som **Leverandør**. Dialogen spør
 etter det samme som for Microsoft 365: **E-postadresse** til postboksen, et
-**Visningsnavn**, **Importer historikk** og **Når en samtale lukkes**. Merknaden
-*Postboksen må være en delt postboks som applikasjonen har tilgang til.* er skrevet for
-Microsoft 365; for Google Workspace er postboksen en **lisensiert bruker** i
-organisasjonen, laget for formålet, som `post@` — Google Workspace har ingen egen delt
-postboks, så den tar en lisens.
+**Visningsnavn**, **Importer historikk** og **Når en samtale lukkes**. Merknaden sier
+*Postboksen må være en lisensiert bruker i organisasjonen i Google Workspace som ikke er
+noen persons egen, for eksempel post@. En gruppe kan ikke være en kanal.*: Google
+Workspace har ingen egen delt postboks, så postboksen er en bruker laget for formålet, og
+den tar en lisens.
 
 **Opprett kanal** sjekker adressen med Google Workspace først. Et alias tas som
 postboksen sin, og kanalen opprettes aktiv med postboksens primære adresse. Sjekken
@@ -359,12 +363,18 @@ avviser, med meldingene i tabellen ovenfor:
   lese; bruk en lisensiert postboks.* En Google-gruppe, også en Collaborative Inbox, tar
   imot e-post for medlemmene sine, men har ingen egen postboks. Bruk adressen til en
   lisensiert bruker, og la gruppen sende videre til den hvis du trenger begge.
-- **En persons egen postboks** — *Dette er en persons egen postboks. Bare en delt postboks
-  kan være en kanal.* når adressen hører til en som Vantigo holder en Google-konto for
-  gjennom Ansatte. En kanal skal aldri lese eller sende fra en kollegas egen e-post.
+- **En persons egen postboks** — *Dette er en persons egen postboks i Google Workspace.
+  Bare en postboks som ikke er noen persons egen, for eksempel post@, kan være en kanal.*
+  når adressen hører til en som Vantigo holder en Google-konto for gjennom Ansatte, eller
+  som har koblet sin egen Google-konto til Vantigo. En kanal skal aldri lese eller sende
+  fra en kollegas egen e-post.
 - **En adresse Google Workspace ikke kjenner** — *Google Workspace har ingen postboks med
-  denne adressen.*: ingen bruker har den, eller brukeren er suspendert, arkivert eller har
-  ingen Gmail-lisens.
+  denne adressen.*: ingen bruker har den, brukeren er suspendert, arkivert eller har ingen
+  Gmail-lisens, eller adressen er ikke i et av organisasjonens bekreftede domener.
+- **En postboks Google avviser** — *Google Workspace avviste postboksen av en annen grunn
+  enn delegeringen, for eksempel en regel for brukeren. Sjekk brukeren i Google
+  Admin-konsollen.*, med en lenke, **E-postkanaler i Google Workspace**, til
+  [administrasjonsveiledningen](/nb/admin/google-workspace/#e-postkanaler).
 - *E-postkanaler gjennom Google Workspace er ikke tilgjengelige …* mens **E-postkanaler**
   er av på siden Google Workspace, eller Gmail-tilgangsområdene ikke er delegert ennå.
 
@@ -383,6 +393,15 @@ Hva som er annerledes enn for Microsoft 365, når kanalen virker:
   det), opprettet hvis den ikke finnes, og tar den ut av **innboksen**.
 - **Å arkivere eller slette** en melding i Gmail etter at Vantigo har lest den, endrer
   ingenting i Vantigo; e-post et Gmail-filter holder unna innboksen, leses aldri.
+- **En postboks som blir en persons egen** stopper: holder Ansatte senere en Google-konto
+  for brukeren til postboksen, kobler brukeren sin egen Google-konto til Vantigo, eller
+  får postboksens adresse nytt navn eller gis til en annen, feiler kanalen med *Postboksen
+  finnes ikke lenger i Google Workspace.* og sender og leser ikke mer. En avvist postboks
+  viser *Feilet: Google Workspace avviser postboksen. Sjekk brukeren i Google
+  Admin-konsollen.*
+- **En mappe eller kategori med navnet til en systemetikett i Gmail** — *Inbox*, *Sent*,
+  *Trash*, *Spam*, *Drafts*, *Starred*, *Important*, *Unread*, *Chat* — avvises: velg et
+  annet navn i **Mappe i postboksen**.
 
 ### Bytt en SMTP-kanal til en postbokstjeneste
 
