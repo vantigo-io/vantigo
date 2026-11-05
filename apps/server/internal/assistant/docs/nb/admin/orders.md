@@ -138,9 +138,14 @@ kunde eller et produkt, med nivå, tekst og hvem som endret dem sist.
 også settes fra et tilbud eller en ordre (**Legg til kundeadvarsel**).
 
 Bare den som har **Håndtere innstillinger for Ordre**, kan overstyre en sperre, og må oppgi
-en begrunnelse, som lagres i ordrens endringslogg eller i tilbudets interne notat. En
+en begrunnelse, som lagres i ordrens endringslogg eller øverst i tilbudets interne notat. En
 advarsel følger kunden når kunder slås sammen — den gjenværende kundens egen advarsel vinner
-hvis begge har en — og slettes når kunden slettes.
+hvis begge har en, bortsett fra at en sperre på kunden som slås inn gjør den gjenværende
+kundens informasjonsadvarsel til en sperre med begge tekstene — og slettes når kunden
+slettes. En flyttet advarsel vises med kundenummeret til den lagres igjen.
+
+En produktadvarsel overlever et slettet produkt: listen merker den **Produktet er slettet**,
+og **Fjern** er alt den tilbyr.
 
 ## Kontroller
 

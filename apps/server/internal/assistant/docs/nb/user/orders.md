@@ -84,7 +84,10 @@ Et produkt som selges i forpakninger — en eske à 15, en pall med 40 esker —
 forpakningsvelger under antallet på linjen når du har valgt det. Velg forpakningen og skriv
 hvor mange: **3** av **Eske à 15** lagres som 45 av produktets enhet, og linjen viser
 «= 45 stk» mens du skriver. PDF-en skriver det som «3 × Eske à 15 (45 stk)». Velg enheten
-igjen for å skrive antallet i produktets egen enhet.
+igjen for å skrive antallet i produktets egen enhet. Et antall forpakninger som gir et
+antall med mer enn tre desimaler, avvises; skriv antallet i enheten i stedet. En lagret
+linje beholder forpakningen den ble lagt inn i selv om produktet ikke lenger har den, og
+tilbyr produktets nåværende forpakninger ved siden av.
 
 ### Legg til fra rutenett
 
@@ -131,8 +134,10 @@ Den som håndterer innstillingene for Ordre, ser **Overstyr advarselen** under e
 Skriv en **Begrunnelse** og velg **Overstyr advarselen**: banneret viser **Advarsel
 overstyrt** med begrunnelsen din, og neste sending, markering som sendt, bekreftelse eller
 aksept går gjennom. Begrunnelsen lagres — i ordrens **Endringslogg** som **Advarsel
-overstyrt**, eller nederst i tilbudets **Internt notat**. **Angre** fjerner overstyringen
-før du bruker den.
+overstyrt**, eller øverst i tilbudets **Internt notat**. **Angre** fjerner overstyringen
+før du bruker den; når den er brukt, er den borte, og neste sending eller bekreftelse
+trenger en ny. Et tilbud som er sendt på e-post, forblir sendt selv om en sperre ble satt
+mens det ble sendt.
 
 De ser også **Legg til kundeadvarsel** (eller **Endre kundeadvarsel**) der, for å sette
 kundens advarsel uten å forlate dokumentet. Alle advarslene ligger under
