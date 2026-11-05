@@ -72,7 +72,8 @@ type Failure struct {
 	Body   string
 	// Stall, on OpBook, books as usual and then waits this long before
 	// answering: a client with a shorter deadline sees a timeout after Bring
-	// booked.
+	// booked. On any other operation it waits this long, then answers as
+	// usual.
 	Stall time.Duration
 	// AfterBook, on OpBook, books as usual and then answers Status and Body:
 	// an answer the client cannot read after Bring booked.
@@ -250,6 +251,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(f.Status)
 		_, _ = io.WriteString(w, f.Body)
 		return
+	}
+	if f != nil && f.Stall > 0 && op != OpBook {
+		select {
+		case <-time.After(f.Stall):
+		case <-r.Context().Done():
+			return
+		}
 	}
 	switch op {
 	case OpGuide:

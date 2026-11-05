@@ -41,7 +41,10 @@ type Carrier interface {
 	Label(ctx context.Context, b Booking, kind DocumentKind, format Format) (Document, error)
 	// Track answers the tracking of each reference — a consignment number, a
 	// package number or the booking's reference — the carrier knows; a
-	// reference it does not know is left out, never an error.
+	// reference it does not know, or that did not answer in time, is left
+	// out, never an error. When ctx ends before every reference was asked it
+	// answers what it has and ctx's error: a reference left out may then
+	// never have been asked.
 	Track(ctx context.Context, refs []string) ([]TrackingStatus, error)
 	// ParseWebhook authenticates a tracking callback against the configured
 	// secret and answers what it reports. Only for a carrier whose
@@ -162,6 +165,11 @@ type BookRequest struct {
 	// outcome is unknown. The adapter answers the existing booking when it
 	// finds one, and books only when it finds none.
 	Retry bool
+	// FindOnly, with Retry, only looks: when the carrier holds no booking
+	// under the key the adapter answers ErrNotFound and books nothing. A
+	// caller sets it while the earlier call is recent enough that the carrier
+	// may not show its booking yet.
+	FindOnly bool
 	// ShippingDate is the day the parcel is handed in; zero is now.
 	ShippingDate time.Time
 }
@@ -218,7 +226,8 @@ type Booking struct {
 	// Documents are the booking's documents to fetch with Label.
 	Documents []DocumentRef
 	// Recovered says the booking was found by its reference after an
-	// earlier call's outcome was unknown: its documents may be missing.
+	// earlier call's outcome was unknown: its documents may be missing, and
+	// then the label is printed from the carrier's own portal.
 	Recovered bool
 }
 

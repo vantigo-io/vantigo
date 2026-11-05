@@ -47,7 +47,9 @@ func (e *CarrierRefusal) Error() string {
 // IsDefinitiveRefusal reports whether a Book's error means nothing was
 // booked and nothing ever will be under the request: a carrier's refusal,
 // refused keys, or a request refused before it was sent. Anything else leaves
-// the booking's outcome unknown.
+// the booking's outcome unknown. On a Retry an adapter answers a definitive
+// refusal only once its lookup found no earlier booking under the key; a
+// lookup that fails is an unknown outcome.
 func IsDefinitiveRefusal(err error) bool {
 	if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrInvalidRequest) {
 		return true

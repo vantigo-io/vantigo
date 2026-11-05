@@ -290,6 +290,13 @@ func TestBook_RetryAfterTimeoutFindsTheBooking(t *testing.T) {
 	if n := len(srv.Consignments()); n != 1 {
 		t.Errorf("bookings after the retry = %d, want still 1", n)
 	}
+	// A retry that only looks, and finds nothing, books nothing.
+	if _, err := book(t, c, "never-booked-key", func(r *shipping.BookRequest) { r.Retry, r.FindOnly = true, true }); !errors.Is(err, shipping.ErrNotFound) {
+		t.Errorf("find only = %v, want ErrNotFound", err)
+	}
+	if n := len(srv.Consignments()); n != 1 {
+		t.Errorf("bookings after a find-only retry = %d, want still 1", n)
+	}
 	// A retry that finds nothing books.
 	if _, err := book(t, c, "never-booked-key", func(r *shipping.BookRequest) { r.Retry = true }); err != nil {
 		t.Fatal(err)
@@ -332,6 +339,28 @@ func TestTrack_Folds(t *testing.T) {
 	srv.SetEvents(b.ConsignmentNumber, bringtest.Event{Status: "DEVIATION", At: day.Add(41 * time.Hour)})
 	if got, _ := c.Track(context.Background(), []string{"track-key"}); len(got) != 1 || got[0].State != shipping.StateException {
 		t.Errorf("by reference = %+v, want an exception", got)
+	}
+}
+
+// A reference whose tracking fails is left out and the next is asked; a
+// caller's ctx that has ended stops the poll with its error.
+func TestTrack_OneFailedReferenceDoesNotStopThePoll(t *testing.T) {
+	t.Parallel()
+	srv := bringtest.New(t)
+	c := client(t, srv)
+	b, err := book(t, c, "track-key-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.Fail(bringtest.OpTracking, bringtest.Failure{Status: 502, Body: "bad gateway", Times: 1})
+	got, err := c.Track(context.Background(), []string{"first-fails", b.ConsignmentNumber})
+	if err != nil || len(got) != 1 || got[0].ConsignmentNumber != b.ConsignmentNumber {
+		t.Errorf("Track = %+v, %v; want the second reference answered", got, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got, err := c.Track(ctx, []string{b.ConsignmentNumber}); !errors.Is(err, context.Canceled) || len(got) != 0 {
+		t.Errorf("Track on an ended ctx = %+v, %v", got, err)
 	}
 }
 

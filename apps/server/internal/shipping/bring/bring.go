@@ -38,6 +38,9 @@ const (
 	DefaultBaseURL = "https://api.bring.com"
 	// callTimeout bounds one method call, every request it makes included.
 	callTimeout = 30 * time.Second
+	// trackTimeout bounds one reference's tracking, so one that hangs does
+	// not hold up the rest of a poll.
+	trackTimeout = 10 * time.Second
 	// maxAnswerBytes bounds any answer read, a label's included.
 	maxAnswerBytes = 8 << 20
 	// maxRedirects bounds the label's redirects.
@@ -186,7 +189,11 @@ func (c *Client) checkRedirect(req *http.Request, via []*http.Request) error {
 // Capabilities: Bring answers prices and pickup points, issues PDF labels
 // only, has no cancel call and, in this phase, no webhook (Event Cast is
 // unsigned; it is polled instead).
-func (c *Client) Capabilities() shipping.Capabilities {
+func (c *Client) Capabilities() shipping.Capabilities { return Capabilities() }
+
+// Capabilities are Bring's, which need no account to read: a caller voids a
+// booking (Bring has no cancel) without opening the account's keys.
+func Capabilities() shipping.Capabilities {
 	return shipping.Capabilities{Rates: true, PickupPoints: true, LabelFormats: []shipping.Format{shipping.FormatPDF}}
 }
 

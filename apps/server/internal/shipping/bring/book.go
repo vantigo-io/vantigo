@@ -145,8 +145,10 @@ func checkBook(r shipping.BookRequest) error {
 
 // Book books one consignment. With Retry it first looks the key up as a
 // reference through tracking, and answers the booking an earlier call made
-// when it finds one (Recovered: Bring's tracking does not give the label's
-// link again); it books only when it finds none.
+// when it finds one (Recovered, with no documents: Bring's tracking does not
+// give the label's link again, and Bring documents no label link by
+// consignment number, so the label is printed in Mybring); it books only when
+// it finds none, and with FindOnly answers ErrNotFound instead.
 func (c *Client) Book(ctx context.Context, r shipping.BookRequest) (shipping.Booking, error) {
 	if err := checkBook(r); err != nil {
 		return shipping.Booking{}, err
@@ -156,13 +158,18 @@ func (c *Client) Book(ctx context.Context, r shipping.BookRequest) (shipping.Boo
 	if r.Retry {
 		found, err := c.track(ctx, r.IdempotencyKey)
 		if err != nil {
-			return shipping.Booking{}, err
+			// Not wrapped: whatever the lookup met, the earlier call's
+			// outcome is still unknown, never a definitive refusal.
+			return shipping.Booking{}, fmt.Errorf("bring: the lookup of an earlier booking failed, so its outcome is still unknown: %s", err.Error())
 		}
 		if found != nil && found.ConsignmentNumber != "" {
 			return shipping.Booking{
 				ConsignmentNumber: found.ConsignmentNumber, PackageNumbers: found.PackageNumbers, Service: r.Service,
 				TrackingURL: cmpOr(found.TrackingURL, trackingPage+found.ConsignmentNumber), Recovered: true,
 			}, nil
+		}
+		if r.FindOnly {
+			return shipping.Booking{}, fmt.Errorf("%w: Bring shows no booking under the key yet", shipping.ErrNotFound)
 		}
 	}
 	day := r.ShippingDate
