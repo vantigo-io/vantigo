@@ -23,6 +23,7 @@ export type InvoiceStatus = Order["invoiceStatus"];
 export type Change = Schemas["OrdersChange"];
 export type ChangeAction = Schemas["OrdersChangeAction"];
 export type DeliveredLine = Schemas["OrdersDeliveredLine"];
+export type OrderInvoice = Schemas["OrdersOrderInvoice"];
 
 export type Line = Schemas["OrdersLine"];
 export type LineInput = Schemas["OrdersLineInput"];

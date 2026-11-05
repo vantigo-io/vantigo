@@ -44,6 +44,8 @@ export const fullAccess: OrdersAccess = {
   canViewContacts: true,
   canReadVatCodes: true,
   canViewProjects: true,
+  canCreateInvoices: true,
+  canViewInvoices: true,
   userId: "00000000-0000-4000-8000-000000000001",
   userDisplayName: "Kari Selger",
 };
@@ -97,6 +99,9 @@ const routeTree = (access: OrdersAccess, extra?: ReactNode) => {
     route(SETTINGS_ROUTE_PATH, () => <SettingsPage access={access} />),
     route(ANALYSIS_ROUTE_PATH, () => <AnalysisPage access={access} />),
     route("/here", () => extra),
+    // Invoices' routes an order links to, owned by the Invoices app.
+    route("/invoices/new/from-orders", () => <p>From orders wizard</p>),
+    route("/invoices/$invoiceId", () => <p>An invoice</p>),
   ]);
 };
 

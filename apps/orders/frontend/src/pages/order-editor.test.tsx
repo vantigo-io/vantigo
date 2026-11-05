@@ -289,6 +289,126 @@ describe("the order editor", () => {
   });
 });
 
+describe("invoicing an order", () => {
+  it("opens Invoices' From orders wizard with the order chosen", async () => {
+    server(confirmed({ lines: [line({ quantity: 5, qtyInvoiced: 1, qtyDraftAllocated: 2 })] }));
+    const { router } = renderRoute("/orders/orders/2001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Invoice" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/invoices/new/from-orders"));
+    expect(router.state.location.search).toEqual({ orderId: 2001 });
+  });
+
+  it("offers Invoice only with invoices:create, and not when nothing is left or the order is on hold", async () => {
+    server(confirmed());
+    renderRoute("/orders/orders/2001", { canCreateInvoices: false });
+    await screen.findByRole("heading", { name: /Order 5001/ });
+    expect(screen.queryByRole("button", { name: "Invoice" })).not.toBeInTheDocument();
+  });
+
+  it("holds Invoice back when everything is invoiced or on draft invoices", async () => {
+    server(confirmed({ lines: [line({ quantity: 5, qtyInvoiced: 3, qtyDraftAllocated: 2 })] }));
+    renderRoute("/orders/orders/2001");
+    expect(await screen.findByRole("button", { name: "Invoice" })).toBeDisabled();
+  });
+
+  it("shows what draft invoices hold, and keeps that line's price and the line itself", async () => {
+    server(confirmed({ lines: [line({ quantity: 5, qtyDraftAllocated: 2 })] }));
+    renderRoute("/orders/orders/2001");
+
+    expect(await screen.findByTestId("line-progress")).toHaveTextContent("2 on draft invoices");
+    expect(screen.getByRole("button", { name: "Remove line 1" })).toBeDisabled();
+    expect(screen.getByLabelText("Unit price of line 1")).toBeDisabled();
+  });
+
+  it("lists the invoices issued from the order, linking to Invoices", async () => {
+    server(
+      confirmed({
+        invoiceStatus: "partial",
+        invoices: [
+          {
+            invoiceId: 77,
+            invoiceNumber: 10042,
+            issueDate: "2026-11-04",
+            amount: 1250,
+            currency: "NOK",
+            state: "invoiced",
+          },
+          {
+            invoiceId: 78,
+            invoiceNumber: 10043,
+            issueDate: "2026-11-05",
+            amount: 300,
+            currency: "NOK",
+            state: "released",
+          },
+        ],
+      }),
+    );
+    renderRoute("/orders/orders/2001");
+
+    const card = await screen.findByTestId("invoices-card");
+    expect(within(card).getByRole("link", { name: "10042" })).toHaveAttribute("href", "/invoices/77");
+    expect(card).toHaveTextContent("Credited");
+  });
+
+  it("names an invoice without a link for a caller who cannot open Invoices", async () => {
+    server(
+      confirmed({
+        invoices: [
+          {
+            invoiceId: 77,
+            invoiceNumber: 10042,
+            issueDate: "2026-11-04",
+            amount: 1250,
+            currency: "NOK",
+            state: "invoiced",
+          },
+        ],
+      }),
+    );
+    renderRoute("/orders/orders/2001", { canViewInvoices: false });
+
+    const card = await screen.findByTestId("invoices-card");
+    expect(within(card).getByText("10042")).toBeInTheDocument();
+    expect(within(card).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("releases the draft allocations after a warning", async () => {
+    const fake = server(confirmed({ lines: [line({ quantity: 5, qtyDraftAllocated: 2 })] }), (call) =>
+      call.url === `${url}/release-draft-allocations`
+        ? jsonResponse(200, confirmed({ lines: [line({ quantity: 5 })], updatedAt: "2026-11-05T09:00:00Z" }))
+        : undefined,
+    );
+    renderRoute("/orders/orders/2001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "More actions" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Release draft allocations" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("will refuse to issue");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Release draft allocations" }));
+    await waitFor(() =>
+      expect(fake.sent("POST", `${url}/release-draft-allocations`)?.body).toEqual({
+        version: 3,
+        expectedUpdatedAt: "2026-11-01T08:00:00Z",
+      }),
+    );
+    expect(await screen.findByText("Released from the draft invoices")).toBeInTheDocument();
+  });
+
+  it("says why a cancel was refused while a draft invoice holds the order", async () => {
+    server(confirmed({ lines: [line({ quantity: 5, qtyDraftAllocated: 2 })] }), (call) =>
+      call.url === `${url}/cancel` ? refusal(409, "order_in_draft_invoice") : undefined,
+    );
+    renderRoute("/orders/orders/2001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "More actions" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Cancel the order" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Cancel the order" }));
+    expect(await screen.findByText(/Part of the order is on a draft invoice/)).toBeInTheDocument();
+  });
+});
+
 describe("the new order", () => {
   it("creates the draft for the picked customer and opens it", async () => {
     const fake = fakeServer((call) => {

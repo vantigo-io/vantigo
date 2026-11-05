@@ -12,9 +12,11 @@ import { enabledModuleKeys } from "./enabled-modules";
  * pickers read other modules over HTTP, so each needs that module mounted and
  * its own key: the customer picker `customers:view`, a customer's contacts
  * `customers:contacts-view` and `customers:associations-view`, the variant
- * search `products:products-view`, the free-text line's VAT codes
- * `invoices:access`, the project picker `projects:access`, and the send
- * channel's choices `communications:channels-manage`.
+ * search `products:products-view`, the free-text line's VAT codes and the
+ * links to an order's invoices `invoices:access`, the order's *Invoice*
+ * `invoices:access` and `invoices:create`, the project picker
+ * `projects:access`, and the send channel's choices
+ * `communications:channels-manage`.
  */
 export const ordersAccessOf = (
   permissions: string[] | undefined,
@@ -34,6 +36,9 @@ export const ordersAccessOf = (
     canViewContacts: mounted("customers", ["customers:contacts-view", "customers:associations-view"]),
     canReadVatCodes: mounted("invoices", ["invoices:access"]),
     canViewProjects: mounted("projects", ["projects:access"]),
+    // Invoices' own judgement (useInvoiceAccess): the wizard asks both keys.
+    canCreateInvoices: mounted("invoices", ["invoices:access", "invoices:create"]),
+    canViewInvoices: mounted("invoices", ["invoices:access"]),
     userId: user?.id,
     userDisplayName: user?.displayName,
   };

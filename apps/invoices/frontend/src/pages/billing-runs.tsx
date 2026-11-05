@@ -14,6 +14,11 @@ import { useInvoiceFormat } from "../lib/format";
 import { billingRunHref, billingRunLinkOptions } from "../lib/routes";
 import { NewBillingRunModal } from "./-new-billing-run-modal";
 
+export interface BillingRunsPageProps {
+  /** Whether the Orders module is on, so a new run may invoice orders (orders design O40). The host reads it. */
+  ordersEnabled?: boolean;
+}
+
 /**
  * Billing runs (energy consumption billing design D10, D11; plan reading 11):
  * the runs, newest first, a page at a time — through, issue or draft only,
@@ -21,7 +26,7 @@ import { NewBillingRunModal } from "./-new-billing-run-modal";
  * caller who may create (meta's `canCreate`). The list is read again every
  * few seconds while a run on it is still at work.
  */
-export const BillingRunsPage = () => {
+export const BillingRunsPage = ({ ordersEnabled = false }: BillingRunsPageProps = {}) => {
   const { t, date, dateTime } = useInvoiceFormat();
   const meta = useQuery(invoicesMetaQueryOptions());
   const [page, setPage] = useState(1);
@@ -106,6 +111,7 @@ export const BillingRunsPage = () => {
         <NewBillingRunModal
           today={meta.data.today}
           canIssue={meta.data.capabilities.canIssue}
+          ordersEnabled={ordersEnabled}
           onClose={() => setCreating(false)}
         />
       )}

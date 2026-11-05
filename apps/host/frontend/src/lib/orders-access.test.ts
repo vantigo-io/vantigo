@@ -31,6 +31,17 @@ describe("what the Orders pages may offer", () => {
     });
   });
 
+  it("offers Invoice with both invoice keys and its invoices' links with invoices:access", () => {
+    const viewer = ordersAccessOf(["orders:access", "invoices:access"], every);
+    expect(viewer).toMatchObject({ canCreateInvoices: false, canViewInvoices: true });
+    const invoicer = ordersAccessOf(["orders:access", "invoices:access", "invoices:create"], every);
+    expect(invoicer).toMatchObject({ canCreateInvoices: true, canViewInvoices: true });
+    expect(ordersAccessOf(["invoices:access", "invoices:create"], ["orders"])).toMatchObject({
+      canCreateInvoices: false,
+      canViewInvoices: false,
+    });
+  });
+
   it("gives an owner's * everything, and names the signed-in user", () => {
     const access = ordersAccessOf(["*"], every, { id: "u-1", displayName: "Kari" });
     expect(Object.values(access).filter((value) => value === false)).toEqual([]);

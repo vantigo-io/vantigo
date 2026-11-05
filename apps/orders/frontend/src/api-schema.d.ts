@@ -394,6 +394,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/orders/{id}/release-draft-allocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release an order's draft invoice allocations
+         * @description Releases every draft invoice allocation of the order at once (O36), so its quantity is offered to invoice again. A draft invoice still holding one is refused at issue. Logged as draft_allocations_released; an order with none is answered as it is.
+         */
+        post: operations["releaseSalesOrderDraftAllocations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/orders/{id}/send": {
         parameters: {
             query?: never;
@@ -1018,7 +1038,7 @@ export interface components {
             /** Format: int32 */
             version: number;
         };
-        /** @description One typed action (O26, O32): line_added, line_removed, quantity_changed, price_changed, discount_changed, text_changed, delivery_changed, contact_changed, reference_changed, cancelled_remaining, held, released, locked, unlocked, delivered_marked, delivered_undone, warning_overridden (a block warning overridden at confirm: from is the warning, to the reason). lineId names the line when the action is about one; from and to are the values before and after as text. */
+        /** @description One typed action (O26, O32): line_added, line_removed, quantity_changed, price_changed, discount_changed, text_changed, delivery_changed, contact_changed, reference_changed, cancelled_remaining, held, released, locked, unlocked, delivered_marked, delivered_undone, warning_overridden (a block warning overridden at confirm: from is the warning, to the reason), draft_allocations_released (the order's draft invoice allocations released by hand, O36: to is how many). lineId names the line when the action is about one; from and to are the values before and after as text. */
         OrdersChangeAction: {
             from?: string | null;
             kind: string;
@@ -1285,6 +1305,11 @@ export interface components {
             qtyCancelled: number;
             /** Format: double */
             qtyDelivered: number;
+            /**
+             * Format: double
+             * @description What draft invoices hold of the line (O36): its draft allocations' quantity, not yet invoiced and not offered to invoice again. 0 on a quote.
+             */
+            qtyDraftAllocated: number;
             /** Format: double */
             qtyInvoiced: number;
             /**
@@ -1443,6 +1468,8 @@ export interface components {
             introText: string;
             /** @enum {string} */
             invoiceStatus: "none" | "partial" | "invoiced";
+            /** @description The invoices issued from the order (O41), from its own invoice allocations, in the order they were issued: each invoice's number, date and the amount of the order it bills, net of VAT in the order's currency; released when a credit note gave every allocation of it back. */
+            invoices: components["schemas"]["OrdersOrderInvoice"][];
             /** @enum {string} */
             language: "nb" | "en";
             lines: components["schemas"]["OrdersLine"][];
@@ -1504,6 +1531,20 @@ export interface components {
             /** Format: uuid */
             salespersonId?: string | null;
             yourReference?: string;
+        };
+        /** @description An invoice issued from an order (O41): its id and number in Invoices, its issue date, the net amount of the order it bills and its state — invoiced, or released when a credit note gave all of it back. */
+        OrdersOrderInvoice: {
+            /** Format: double */
+            amount: number;
+            currency: string;
+            /** Format: int64 */
+            invoiceId: number;
+            /** Format: int64 */
+            invoiceNumber: number;
+            /** Format: date */
+            issueDate: string;
+            /** @enum {string} */
+            state: "invoiced" | "released";
         };
         /** @description One page of orders, newest first; total counts every match. */
         OrdersOrderPage: {
@@ -1593,7 +1634,7 @@ export interface components {
             /** Format: uuid */
             userId?: string | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice, client_request_reused, template_name_taken, blocked_by_warning (a block warning refuses send, mark as sent, confirm and accept into a confirmed order; detail holds its text, O33). 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, order_in_draft_invoice (a cancel while a draft invoice holds part of the order, O36), line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice (a price or discount change on a line a draft invoice holds part of, O26), client_request_reused, template_name_taken, blocked_by_warning (a block warning refuses send, mark as sent, confirm and accept into a confirmed order; detail holds its text, O33). 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         OrdersProblem: {
             code?: string | null;
             detail?: string | null;
@@ -2743,7 +2784,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, order_locked, order_has_progress. */
+            /** @description Conflict — version_conflict, order_locked, order_has_progress, order_in_draft_invoice. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2803,7 +2844,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, order_not_confirmed, order_locked. */
+            /** @description Conflict — version_conflict, order_not_confirmed, order_locked, order_in_draft_invoice. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3320,6 +3361,66 @@ export interface operations {
         };
     };
     releaseSalesOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersVersionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersOrder"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — version_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    releaseSalesOrderDraftAllocations: {
         parameters: {
             query?: never;
             header?: never;
