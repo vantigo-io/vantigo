@@ -1,6 +1,6 @@
 ---
 title: Lager
-description: Hva som ligger hvor — Lager-appen og sidemenyen, å finne en lokasjon eller en vare ved å skrive eller skanne koden, å opprette et lagersted, å legge til lokasjoner én og én og mange om gangen, å endre, flytte, arkivere og slette dem, å skrive ut lokasjonsetiketter, varemottak, justering og flytting av beholdning med linjeredigeringen, å registrere antall i pakninger, varetelling, import av inngående beholdning, hva som ligger på en lokasjon, en vares beholdning og bevegelser, listen Bevegelser og siden for en bevegelse, Beholdning-kortet på produktsiden, kortet på dashbordet, oppfølgingspunktet og hurtighandlingene, og hvem som ser hva.
+description: Hva som ligger hvor — Lager-appen og sidemenyen, å finne en lokasjon eller en vare ved å skrive eller skanne koden, å opprette et lagersted, å legge til lokasjoner én og én og mange om gangen, å endre, flytte, arkivere og slette dem, å skrive ut lokasjonsetiketter, varemottak, justering og flytting av beholdning med linjeredigeringen, å registrere antall i pakninger, varetelling, import av inngående beholdning, hva som ligger på en lokasjon, en vares beholdning og bevegelser, listen Bevegelser og siden for en bevegelse, Beholdning-kortet på produktsiden, det ordrene har reservert og det som er disponibelt, hvilke lagersteder som leverer ordrer, kortet på dashbordet, oppfølgingspunktet og hurtighandlingene, og hvem som ser hva.
 sidebar:
   order: 65
 sources:
@@ -75,12 +75,20 @@ Trykk **Nytt lagersted** i **Oversikt** (det krever **Administrere lagersteder**
 - et **Navn**;
 - en **Type**: **Lager** eller **Butikk**. Den endrer ordene i skjermbildet, ikke
   reglene;
+- **Leverer ordrer** — om ordrer reserverer og leverer varer fra lagerstedet. Den er på
+  for et lager og av for en butikk til du endrer den;
 - en adresse om du vil: **Adresse**, **Adresselinje 2**, **Postnummer**, **Poststed**
   og **Land** (to bokstaver, som NO).
 
 Det nye lagerstedet åpnes på sin egen side. Et lagersted er også en lokasjon:
 beholdning kan ligge på selve lagerstedet, som passer for en liten butikk uten hyller,
 og flyttes ned senere når du legger til hyller.
+
+For å endre om et eksisterende lagersted leverer ordrer, åpner du lagerstedet, trykker
+på menyen (**…**) og **Rediger lagersted**, og slår **Leverer ordrer** av eller på. Et
+lagersted som gjør det, viser *Leverer ordrer* ved siden av typen. Slår du den av,
+stanser nye reservasjoner og leveranser der; det ordrene allerede har reservert, forblir
+reservert.
 
 I **Oversikt** vises hvert lagersted som et kort med typen, poststedet og antallet
 lokasjoner; med **Se beholdning** også beholdningslinjene og *Siste varemottak …*.
@@ -391,15 +399,18 @@ filtrert på den.
 
 Beholdningssiden for en vare — fra oppslaget, Beholdning-kortet på produktsiden eller
 en bevegelse — viser varenummeret og produktet, samlet beholdning, hvert lagersted med
-lokasjonene der varen ligger, og varens bevegelser, nyeste først. **Motta** og
+lokasjonene der varen ligger, det ordrene har [reservert](#reservert-og-disponibelt) der
+og det som er disponibelt, og varens bevegelser, nyeste først. **Motta** og
 **Juster** tilbys etter rettighetene dine. En vare som er slettet fra katalogen, viser
 fortsatt historikken sin, merket *Slettet fra katalogen*.
 
 ## Bevegelser
 
-**Bevegelser** lister alle justeringer, flyttinger, varemottak og varetellinger, nyeste
-først. Filtrer på **Lagersted**, **Lokasjon** (som tar med alt under den), **Vare**,
-**Type** (**Justering**, **Flytting**, **Varemottak**, **Varetelling**) og **Bokført mellom**, to dager i
+**Bevegelser** lister alle justeringer, flyttinger, varemottak, varetellinger og uttak,
+nyeste først. Et **Uttak** er varer tatt ut til en ordres leveranse; det viser ordrens
+dokument som kilde og bokføres fra Ordrer, aldri her. Filtrer på **Lagersted**,
+**Lokasjon** (som tar med alt under den), **Vare**,
+**Type** (**Justering**, **Flytting**, **Varemottak**, **Varetelling**, **Uttak**) og **Bokført mellom**, to dager i
 organisasjonens tidssone. **Last flere** henter neste side. **Varemottak** i sidemenyen
 er den samme listen med bare varemottak.
 
@@ -421,7 +432,30 @@ har ikke noe Beholdning-kort. Se [produktsiden](/nb/user/products/#produktsiden)
 
 En variant som fortsatt har beholdning, kan ikke slettes i Produkter, og et produkt med
 beholdning kan ikke gjøres om til en tjeneste: flytt beholdningen eller juster den til
-null her først.
+null her først. Det samme gjelder en variant som ordrer har reservert: lever eller
+kanseller de ordrene først.
+
+## Reservert og disponibelt
+
+Når en ordre bekreftes i Ordrer, blir varene på den **reservert** på ordrens lagersted,
+så to ordrer ikke kan love bort den samme siste varen. Under hvert lagersteds antall på
+Beholdning-kortet og på en vares beholdningsside ser du da *Reservert … · disponibelt …*:
+
+- **Reservert** er det åpne ordrer holder av på lagerstedet;
+- **Disponibelt** er beholdningen på lagerstedet, summert over alle lokasjonene, minus
+  det som er reservert. Det er det en ny ordre fortsatt kan reservere.
+
+En ordres leveranse tar varene ut fra hyllene de plukkes fra og bruker opp
+reservasjonen. Kanselleres ordren, eller reduseres en linje, gis reservasjonen tilbake.
+
+Dine egne justeringer, flyttinger og varetellinger bokføres alltid, også når de tar
+beholdningen under det som er reservert: de retter opp det som faktisk ligger der.
+Disponibelt blir da negativt og vises i rødt, med varselet *Mer er reservert enn det som
+ligger her*. Motta mer, eller be den som håndterer ordrene om å redusere eller kansellere
+dem.
+
+Bare lagersteder som **leverer ordrer**, tar imot reservasjoner
+([opprett et lagersted](#opprett-et-lagersted)).
 
 ## Dashbordet
 

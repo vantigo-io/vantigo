@@ -1,6 +1,6 @@
 ---
 title: Inventory
-description: What lies where — the Inventory app and its sidebar, finding a location or an item by typing or scanning its code, setting up a site, adding locations one at a time and in bulk, changing, moving, archiving and deleting them, printing location labels, receiving goods, adjusting and moving stock with the line editor, entering quantities in packagings, counting stock, importing opening balances, what lies on a location, an item's stock and movements, the Movements list and a movement's page, the Stock card on the product page, the dashboard card, its attention item and the quick actions, and who sees what.
+description: What lies where — the Inventory app and its sidebar, finding a location or an item by typing or scanning its code, setting up a site, adding locations one at a time and in bulk, changing, moving, archiving and deleting them, printing location labels, receiving goods, adjusting and moving stock with the line editor, entering quantities in packagings, counting stock, importing opening balances, what lies on a location, an item's stock and movements, the Movements list and a movement's page, the Stock card on the product page, what orders have reserved and what is available, which sites fulfil orders, the dashboard card, its attention item and the quick actions, and who sees what.
 sidebar:
   order: 65
 sources:
@@ -73,12 +73,19 @@ On **Overview**, press **New site** (it needs **Manage locations**,
   every location in the site, and no other site may have it;
 - a **Name**;
 - a **Kind**: **Warehouse** or **Store**. It changes the words on screen, not the rules;
+- **Fulfils orders** — whether orders reserve and deliver stock from the site. It is on
+  for a warehouse and off for a store until you change it;
 - an address if you want one: **Address**, **Address line 2**, **Postal code**,
   **City** and **Country** (two letters, such as NO).
 
 The new site opens with its page. A site is a location too: stock can lie on the site
 itself, which suits a small shop with no shelves, and moves down later when you add
 some.
+
+To change whether an existing site fulfils orders, open the site, press the site's menu
+(**…**) and **Edit site**, and switch **Fulfils orders**. A site that does shows
+*Fulfils orders* beside its kind. Turning it off stops new reservations and deliveries
+there; what orders have already reserved stays reserved.
 
 On **Overview** each site shows as a card with its kind, its city and its number of
 locations; with **View stock** also its stock lines and *Last receipt …*. The cards
@@ -378,15 +385,18 @@ it.
 
 An item's stock page — from the lookup, the product page's Stock card or a movement —
 shows the SKU and the product, the total on hand, each site with the locations where the
-item lies, and the item's movements, newest first. **Receive** and **Adjust** are
+item lies, what orders have [reserved](#reserved-and-available) there and what is
+available, and the item's movements, newest first. **Receive** and **Adjust** are
 offered as your permissions allow. An item deleted from the catalog still shows its
 history, marked *Deleted from the catalog*.
 
 ## Movements
 
-**Movements** lists every adjustment, move, receipt and count, newest first. Filter by
+**Movements** lists every adjustment, move, receipt, count and issue, newest first.
+An **Issue** is stock taken out for an order's delivery; it shows the order's document
+as its source and is posted from Orders, never here. Filter by
 **Site**, **Location** (which includes everything below it), **Item**, **Kind**
-(**Adjustment**, **Move**, **Receipt**, **Count**) and **Posted between**, two days in your
+(**Adjustment**, **Move**, **Receipt**, **Count**, **Issue**) and **Posted between**, two days in your
 organisation's time zone. **Load more** fetches the next page. **Receipts** in the
 sidebar is the same list showing receipts only.
 
@@ -406,7 +416,28 @@ to its stock page. With nothing in stock it says **No stock** and offers **Recei
 [the product page](/en/user/products/#the-product-page).
 
 A variant that still lies in stock cannot be deleted in Products, and a product with
-stock cannot be made a service: move the stock or adjust it to zero here first.
+stock cannot be made a service: move the stock or adjust it to zero here first. The same
+goes for a variant orders have reserved: deliver or cancel those orders first.
+
+## Reserved and available
+
+When an order is confirmed in Orders, the goods on it are **reserved** at the order's
+site, so two orders cannot promise the same last item. Under each site's quantity on the
+Stock card and on an item's stock page you then see *Reserved … · available …*:
+
+- **Reserved** is what open orders hold at the site;
+- **Available** is the quantity on hand at the site, summed over all its locations,
+  less what is reserved. It is what a new order can still reserve.
+
+An order's delivery takes the stock off the shelves it is picked from and uses up the
+reservation. Cancelling the order, or reducing a line, gives the reservation back.
+
+Your own adjustments, moves and counts always post, even when they take on hand below
+what is reserved: they correct what is really there. Available then turns negative and
+shows in red, with the warning *More is reserved than lies here*. Receive more, or ask
+whoever handles the orders to reduce or cancel them.
+
+Only sites that **fulfil orders** take reservations ([set up a site](#set-up-a-site)).
 
 ## The dashboard
 
