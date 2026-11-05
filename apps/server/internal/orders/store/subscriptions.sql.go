@@ -183,7 +183,7 @@ func (q *Queries) AnonymiseCustomerSubscriptions(ctx context.Context, arg Anonym
 }
 
 const billableSubscriptions = `-- name: BillableSubscriptions :many
-SELECT id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.subscriptions s
+SELECT id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, final_period, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.subscriptions s
 WHERE s.status IN ('active', 'paused', 'ended')
   AND ($1::boolean
        OR s.customer_id = ANY($2::integer[])
@@ -220,6 +220,7 @@ func (q *Queries) BillableSubscriptions(ctx context.Context, arg BillableSubscri
 			&i.EndDate,
 			&i.NoticeMonths,
 			&i.InvoiceDay,
+			&i.FinalPeriod,
 			&i.PausedFrom,
 			&i.BilledThrough,
 			&i.Version,
@@ -332,7 +333,7 @@ func (q *Queries) CountSubscriptions(ctx context.Context, arg CountSubscriptions
 }
 
 const customerSubscriptions = `-- name: CustomerSubscriptions :many
-SELECT id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.subscriptions WHERE customer_id = $1 ORDER BY id
+SELECT id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, final_period, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.subscriptions WHERE customer_id = $1 ORDER BY id
 `
 
 // CustomerSubscriptions is every subscription of a customer, for the export.
@@ -355,6 +356,7 @@ func (q *Queries) CustomerSubscriptions(ctx context.Context, customerID int32) (
 			&i.EndDate,
 			&i.NoticeMonths,
 			&i.InvoiceDay,
+			&i.FinalPeriod,
 			&i.PausedFrom,
 			&i.BilledThrough,
 			&i.Version,
@@ -513,7 +515,7 @@ func (q *Queries) InsertPeriodAllocation(ctx context.Context, arg InsertPeriodAl
 
 const insertSubscription = `-- name: InsertSubscription :one
 INSERT INTO orders.subscriptions (
-    number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day,
+    number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, final_period,
     customer_id, customer_number, customer_name, customer_type, customer_organisation_number,
     customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2,
     invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name,
@@ -526,23 +528,23 @@ INSERT INTO orders.subscriptions (
     created_by_user_id, created_by_display, created_at, updated_at
 ) VALUES (
     $1, 'draft', $2, $3, $4,
-    $5, $6, $7,
-    $8, $9, $10, $11,
-    $12, $13, $14,
-    $15, $16, $17,
-    $18, $19, $20, $21,
-    $22, $23, $24,
-    $25, $26, $27, $28,
-    $29, $30, $31, $32,
-    $33, $34, $35, $36,
-    $37, $38, $39, $40,
-    $41, $42, $43,
-    $44, $45, $46,
-    $47, $48, $49, $50,
-    $51, $52, $53,
-    $54, $55, $56, $56
+    $5, $6, $7, $8,
+    $9, $10, $11, $12,
+    $13, $14, $15,
+    $16, $17, $18,
+    $19, $20, $21, $22,
+    $23, $24, $25,
+    $26, $27, $28, $29,
+    $30, $31, $32, $33,
+    $34, $35, $36, $37,
+    $38, $39, $40, $41,
+    $42, $43, $44,
+    $45, $46, $47,
+    $48, $49, $50, $51,
+    $52, $53, $54,
+    $55, $56, $57, $57
 )
-RETURNING id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
+RETURNING id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, final_period, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
 `
 
 type InsertSubscriptionParams struct {
@@ -553,6 +555,7 @@ type InsertSubscriptionParams struct {
 	EndDate                    pgtype.Date
 	NoticeMonths               int16
 	InvoiceDay                 *int16
+	FinalPeriod                string
 	CustomerID                 int32
 	CustomerNumber             *int64
 	CustomerName               string
@@ -615,6 +618,7 @@ func (q *Queries) InsertSubscription(ctx context.Context, arg InsertSubscription
 		arg.EndDate,
 		arg.NoticeMonths,
 		arg.InvoiceDay,
+		arg.FinalPeriod,
 		arg.CustomerID,
 		arg.CustomerNumber,
 		arg.CustomerName,
@@ -676,6 +680,7 @@ func (q *Queries) InsertSubscription(ctx context.Context, arg InsertSubscription
 		&i.EndDate,
 		&i.NoticeMonths,
 		&i.InvoiceDay,
+		&i.FinalPeriod,
 		&i.PausedFrom,
 		&i.BilledThrough,
 		&i.Version,
@@ -844,7 +849,7 @@ func (q *Queries) LineHasAllocations(ctx context.Context, lineID int64) (bool, e
 }
 
 const listSubscriptions = `-- name: ListSubscriptions :many
-SELECT id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.subscriptions s
+SELECT id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, final_period, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.subscriptions s
 WHERE ($1::integer IS NULL OR s.customer_id = $1)
   AND (cardinality($2::text[]) = 0 OR s.status = ANY($2::text[]))
   AND ($3::text = '' OR s.number::text = $3::text
@@ -889,6 +894,7 @@ func (q *Queries) ListSubscriptions(ctx context.Context, arg ListSubscriptionsPa
 			&i.EndDate,
 			&i.NoticeMonths,
 			&i.InvoiceDay,
+			&i.FinalPeriod,
 			&i.PausedFrom,
 			&i.BilledThrough,
 			&i.Version,
@@ -1089,7 +1095,7 @@ func (q *Queries) LockLinesByIDs(ctx context.Context, ids []int64) ([]OrdersLine
 }
 
 const lockSubscription = `-- name: LockSubscription :one
-SELECT id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.subscriptions WHERE id = $1 FOR UPDATE
+SELECT id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, final_period, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.subscriptions WHERE id = $1 FOR UPDATE
 `
 
 // LockSubscription reads a subscription under its row lock: every write of a
@@ -1108,6 +1114,7 @@ func (q *Queries) LockSubscription(ctx context.Context, id int64) (OrdersSubscri
 		&i.EndDate,
 		&i.NoticeMonths,
 		&i.InvoiceDay,
+		&i.FinalPeriod,
 		&i.PausedFrom,
 		&i.BilledThrough,
 		&i.Version,
@@ -1174,7 +1181,7 @@ func (q *Queries) LockSubscription(ctx context.Context, id int64) (OrdersSubscri
 }
 
 const lockSubscriptionsByIDs = `-- name: LockSubscriptionsByIDs :many
-SELECT id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.subscriptions WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
+SELECT id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, final_period, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.subscriptions WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
 `
 
 // LockSubscriptionsByIDs takes subscriptions FOR UPDATE in id order: after
@@ -1198,6 +1205,7 @@ func (q *Queries) LockSubscriptionsByIDs(ctx context.Context, ids []int64) ([]Or
 			&i.EndDate,
 			&i.NoticeMonths,
 			&i.InvoiceDay,
+			&i.FinalPeriod,
 			&i.PausedFrom,
 			&i.BilledThrough,
 			&i.Version,
@@ -1295,7 +1303,7 @@ func (q *Queries) RepointCustomerSubscriptions(ctx context.Context, arg RepointC
 const setSubscriptionBilledThrough = `-- name: SetSubscriptionBilledThrough :one
 UPDATE orders.subscriptions SET billed_through = $1, updated_at = $2
 WHERE id = $3
-RETURNING id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
+RETURNING id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, final_period, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
 `
 
 type SetSubscriptionBilledThroughParams struct {
@@ -1320,6 +1328,7 @@ func (q *Queries) SetSubscriptionBilledThrough(ctx context.Context, arg SetSubsc
 		&i.EndDate,
 		&i.NoticeMonths,
 		&i.InvoiceDay,
+		&i.FinalPeriod,
 		&i.PausedFrom,
 		&i.BilledThrough,
 		&i.Version,
@@ -1405,17 +1414,19 @@ func (q *Queries) SetSubscriptionLinePosition(ctx context.Context, arg SetSubscr
 const setSubscriptionState = `-- name: SetSubscriptionState :one
 UPDATE orders.subscriptions SET
     status = $1, paused_from = $2, end_date = $3,
-    activated_at = $4, activated_by_user_id = $5,
-    activated_by_display = $6, ended_at = $7,
-    cancelled_at = $8, version = $9, updated_at = $10
-WHERE id = $11
-RETURNING id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
+    final_period = $4,
+    activated_at = $5, activated_by_user_id = $6,
+    activated_by_display = $7, ended_at = $8,
+    cancelled_at = $9, version = $10, updated_at = $11
+WHERE id = $12
+RETURNING id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, final_period, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
 `
 
 type SetSubscriptionStateParams struct {
 	Status             string
 	PausedFrom         pgtype.Date
 	EndDate            pgtype.Date
+	FinalPeriod        string
 	ActivatedAt        *time.Time
 	ActivatedByUserID  *uuid.UUID
 	ActivatedByDisplay *string
@@ -1427,14 +1438,16 @@ type SetSubscriptionStateParams struct {
 }
 
 // SetSubscriptionState writes a subscription's lifecycle (O42, O44): its
-// status, the period a pause stops billing from, its end, who activated it
-// and when, when it ended or was cancelled, and its version. The caller holds
-// the row and passes every column as it is to stay.
+// status, the period a pause stops billing from, its end and how its final
+// period is billed, who activated it and when, when it ended or was
+// cancelled, and its version. The caller holds the row and passes every
+// column as it is to stay.
 func (q *Queries) SetSubscriptionState(ctx context.Context, arg SetSubscriptionStateParams) (OrdersSubscription, error) {
 	row := q.db.QueryRow(ctx, setSubscriptionState,
 		arg.Status,
 		arg.PausedFrom,
 		arg.EndDate,
+		arg.FinalPeriod,
 		arg.ActivatedAt,
 		arg.ActivatedByUserID,
 		arg.ActivatedByDisplay,
@@ -1455,6 +1468,7 @@ func (q *Queries) SetSubscriptionState(ctx context.Context, arg SetSubscriptionS
 		&i.EndDate,
 		&i.NoticeMonths,
 		&i.InvoiceDay,
+		&i.FinalPeriod,
 		&i.PausedFrom,
 		&i.BilledThrough,
 		&i.Version,
@@ -1601,7 +1615,7 @@ func (q *Queries) SubscriptionAllocations(ctx context.Context, subscriptionID *i
 }
 
 const subscriptionByClientRequest = `-- name: SubscriptionByClientRequest :one
-SELECT id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.subscriptions WHERE client_request_id = $1
+SELECT id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, final_period, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.subscriptions WHERE client_request_id = $1
 `
 
 // SubscriptionByClientRequest is the subscription an earlier create with
@@ -1619,6 +1633,7 @@ func (q *Queries) SubscriptionByClientRequest(ctx context.Context, clientRequest
 		&i.EndDate,
 		&i.NoticeMonths,
 		&i.InvoiceDay,
+		&i.FinalPeriod,
 		&i.PausedFrom,
 		&i.BilledThrough,
 		&i.Version,
@@ -1685,7 +1700,7 @@ func (q *Queries) SubscriptionByClientRequest(ctx context.Context, clientRequest
 }
 
 const subscriptionByID = `-- name: SubscriptionByID :one
-SELECT id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.subscriptions WHERE id = $1
+SELECT id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, final_period, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.subscriptions WHERE id = $1
 `
 
 // SubscriptionByID reads one subscription. No row is pgx.ErrNoRows.
@@ -1702,6 +1717,7 @@ func (q *Queries) SubscriptionByID(ctx context.Context, id int64) (OrdersSubscri
 		&i.EndDate,
 		&i.NoticeMonths,
 		&i.InvoiceDay,
+		&i.FinalPeriod,
 		&i.PausedFrom,
 		&i.BilledThrough,
 		&i.Version,
@@ -1900,29 +1916,29 @@ const updateSubscriptionHeader = `-- name: UpdateSubscriptionHeader :one
 UPDATE orders.subscriptions SET
     billing_interval = $1, billing = $2, start_date = $3,
     end_date = $4, notice_months = $5, invoice_day = $6,
-    customer_id = $7, customer_number = $8,
-    customer_name = $9, customer_type = $10,
-    customer_organisation_number = $11,
-    customer_foreign_id = $12, customer_country = $13,
-    invoice_address_line1 = $14, invoice_address_line2 = $15,
-    invoice_postal_code = $16, invoice_city = $17,
-    invoice_country = $18, delivery_address_id = $19,
-    delivery_name = $20, delivery_address_line1 = $21,
-    delivery_address_line2 = $22, delivery_postal_code = $23,
-    delivery_city = $24, delivery_country = $25,
-    contact_id = $26, contact_name = $27,
-    contact_email = $28, contact_phone = $29,
-    customer_invoice_email = $30,
-    your_reference = $31, salesperson_id = $32,
-    salesperson_display = $33, project_id = $34,
-    currency = $35, prices_include_vat = $36,
-    payment_terms_days = $37, discount_visible = $38,
-    language = $39, intro_text = $40, closing_text = $41,
-    internal_note = $42,
-    net_total = $43, vat_total = $44, gross_total = $45,
-    version = $46, updated_at = $47
-WHERE id = $48
-RETURNING id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
+    final_period = $7, customer_id = $8, customer_number = $9,
+    customer_name = $10, customer_type = $11,
+    customer_organisation_number = $12,
+    customer_foreign_id = $13, customer_country = $14,
+    invoice_address_line1 = $15, invoice_address_line2 = $16,
+    invoice_postal_code = $17, invoice_city = $18,
+    invoice_country = $19, delivery_address_id = $20,
+    delivery_name = $21, delivery_address_line1 = $22,
+    delivery_address_line2 = $23, delivery_postal_code = $24,
+    delivery_city = $25, delivery_country = $26,
+    contact_id = $27, contact_name = $28,
+    contact_email = $29, contact_phone = $30,
+    customer_invoice_email = $31,
+    your_reference = $32, salesperson_id = $33,
+    salesperson_display = $34, project_id = $35,
+    currency = $36, prices_include_vat = $37,
+    payment_terms_days = $38, discount_visible = $39,
+    language = $40, intro_text = $41, closing_text = $42,
+    internal_note = $43,
+    net_total = $44, vat_total = $45, gross_total = $46,
+    version = $47, updated_at = $48
+WHERE id = $49
+RETURNING id, number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, final_period, paused_from, billed_through, version, activated_at, activated_by_user_id, activated_by_display, ended_at, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
 `
 
 type UpdateSubscriptionHeaderParams struct {
@@ -1932,6 +1948,7 @@ type UpdateSubscriptionHeaderParams struct {
 	EndDate                    pgtype.Date
 	NoticeMonths               int16
 	InvoiceDay                 *int16
+	FinalPeriod                string
 	CustomerID                 int32
 	CustomerNumber             *int64
 	CustomerName               string
@@ -1988,6 +2005,7 @@ func (q *Queries) UpdateSubscriptionHeader(ctx context.Context, arg UpdateSubscr
 		arg.EndDate,
 		arg.NoticeMonths,
 		arg.InvoiceDay,
+		arg.FinalPeriod,
 		arg.CustomerID,
 		arg.CustomerNumber,
 		arg.CustomerName,
@@ -2042,6 +2060,7 @@ func (q *Queries) UpdateSubscriptionHeader(ctx context.Context, arg UpdateSubscr
 		&i.EndDate,
 		&i.NoticeMonths,
 		&i.InvoiceDay,
+		&i.FinalPeriod,
 		&i.PausedFrom,
 		&i.BilledThrough,
 		&i.Version,

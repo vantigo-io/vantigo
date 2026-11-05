@@ -64,6 +64,7 @@ type schedule struct {
 // skipped period starts.
 func newSchedule(sub store.OrdersSubscription, lines []store.OrdersLine, allocations []store.OrdersInvoiceAllocation, skips []pgtype.Date) schedule {
 	cal, _ := newCalendar(sub.BillingInterval, sub.StartDate.Time, datePtr(sub.EndDate))
+	cal.prorateEnd = sub.FinalPeriod == finalPeriodProrated
 	s := schedule{sub: sub, cal: cal, lines: lines, live: map[liveKey]store.OrdersInvoiceAllocation{}, skips: map[time.Time]bool{}}
 	for _, a := range allocations {
 		if a.State != contracts.AllocationDraft && a.State != contracts.AllocationInvoiced || !a.PeriodStart.Valid {
@@ -215,6 +216,17 @@ func (s schedule) lastLivePeriod() (period, bool) {
 		return period{}, false
 	}
 	return s.cal.periodOn(s.maxLive)
+}
+
+// livePeriod reports whether any line has a live allocation for the period
+// starting on start.
+func (s schedule) livePeriod(start time.Time) bool {
+	for k := range s.live {
+		if k.start.Equal(start) {
+			return true
+		}
+	}
+	return false
 }
 
 // firstOpenStart is the first period start a change may take effect from

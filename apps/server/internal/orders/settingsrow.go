@@ -12,7 +12,8 @@ import (
 
 // ordersSettings is the one settings row as the module reads it (§9), the
 // defaults when it was never saved: series starting at 1, a quote valid for
-// 30 days, 14 days to pay, no channel to send from.
+// 30 days, 14 days to pay, no channel to send from, a subscription's final
+// period billed in full.
 type ordersSettings struct {
 	quoteSeriesStart, orderSeriesStart int64
 	quoteValidityDays                  int32
@@ -21,7 +22,10 @@ type ordersSettings struct {
 	confirmationOnConfirm              bool
 	combineByDefault                   bool
 	mailTexts                          []mailTextOverride
-	revision                           int32 // 0 while never saved
+	// subscriptionFinalPeriodDefault is the final period a new subscription
+	// takes (owner, 2026-11-06): full or prorated.
+	subscriptionFinalPeriodDefault string
+	revision                       int32 // 0 while never saved
 }
 
 // mailTextOverride is one document kind's subject and body in one language,
@@ -35,7 +39,8 @@ type mailTextOverride struct {
 
 // defaultSettings are the settings before the first save.
 func defaultSettings() ordersSettings {
-	return ordersSettings{quoteSeriesStart: 1, orderSeriesStart: 1, quoteValidityDays: 30, defaultPaymentTermsDays: 14}
+	return ordersSettings{quoteSeriesStart: 1, orderSeriesStart: 1, quoteValidityDays: 30, defaultPaymentTermsDays: 14,
+		subscriptionFinalPeriodDefault: finalPeriodFull}
 }
 
 // settingsOf is a stored row as the module reads it.
@@ -44,7 +49,8 @@ func settingsOf(row store.OrdersSetting) (ordersSettings, error) {
 		quoteSeriesStart: row.QuoteSeriesStart, orderSeriesStart: row.OrderSeriesStart,
 		quoteValidityDays: row.QuoteValidityDays, defaultPaymentTermsDays: row.DefaultPaymentTermsDays,
 		sendChannel: row.SendChannel, confirmationOnConfirm: row.ConfirmationOnConfirm,
-		combineByDefault: row.CombineByDefault, revision: row.Revision,
+		combineByDefault: row.CombineByDefault, subscriptionFinalPeriodDefault: row.SubscriptionFinalPeriodDefault,
+		revision: row.Revision,
 	}
 	if len(row.MailTexts) > 0 {
 		var texts []mailTextOverride

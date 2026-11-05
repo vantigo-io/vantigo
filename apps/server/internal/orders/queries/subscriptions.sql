@@ -2,7 +2,7 @@
 -- InsertSubscription writes a new draft subscription (O42, O27): by hand, or
 -- by accepting a quote as one (O20). Its lines are written after it.
 INSERT INTO orders.subscriptions (
-    number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day,
+    number, status, billing_interval, billing, start_date, end_date, notice_months, invoice_day, final_period,
     customer_id, customer_number, customer_name, customer_type, customer_organisation_number,
     customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2,
     invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name,
@@ -15,7 +15,7 @@ INSERT INTO orders.subscriptions (
     created_by_user_id, created_by_display, created_at, updated_at
 ) VALUES (
     sqlc.arg(number), 'draft', sqlc.arg(billing_interval), sqlc.arg(billing), sqlc.arg(start_date),
-    sqlc.narg(end_date), sqlc.arg(notice_months), sqlc.narg(invoice_day),
+    sqlc.narg(end_date), sqlc.arg(notice_months), sqlc.narg(invoice_day), sqlc.arg(final_period),
     sqlc.arg(customer_id), sqlc.narg(customer_number), sqlc.arg(customer_name), sqlc.narg(customer_type),
     sqlc.narg(customer_organisation_number), sqlc.narg(customer_foreign_id), sqlc.narg(customer_country),
     sqlc.narg(invoice_address_line1), sqlc.narg(invoice_address_line2), sqlc.narg(invoice_postal_code),
@@ -56,7 +56,7 @@ SELECT * FROM orders.subscriptions WHERE client_request_id = sqlc.arg(client_req
 UPDATE orders.subscriptions SET
     billing_interval = sqlc.arg(billing_interval), billing = sqlc.arg(billing), start_date = sqlc.arg(start_date),
     end_date = sqlc.narg(end_date), notice_months = sqlc.arg(notice_months), invoice_day = sqlc.narg(invoice_day),
-    customer_id = sqlc.arg(customer_id), customer_number = sqlc.narg(customer_number),
+    final_period = sqlc.arg(final_period), customer_id = sqlc.arg(customer_id), customer_number = sqlc.narg(customer_number),
     customer_name = sqlc.arg(customer_name), customer_type = sqlc.narg(customer_type),
     customer_organisation_number = sqlc.narg(customer_organisation_number),
     customer_foreign_id = sqlc.narg(customer_foreign_id), customer_country = sqlc.narg(customer_country),
@@ -82,11 +82,13 @@ RETURNING *;
 
 -- name: SetSubscriptionState :one
 -- SetSubscriptionState writes a subscription's lifecycle (O42, O44): its
--- status, the period a pause stops billing from, its end, who activated it
--- and when, when it ended or was cancelled, and its version. The caller holds
--- the row and passes every column as it is to stay.
+-- status, the period a pause stops billing from, its end and how its final
+-- period is billed, who activated it and when, when it ended or was
+-- cancelled, and its version. The caller holds the row and passes every
+-- column as it is to stay.
 UPDATE orders.subscriptions SET
     status = sqlc.arg(status), paused_from = sqlc.narg(paused_from), end_date = sqlc.narg(end_date),
+    final_period = sqlc.arg(final_period),
     activated_at = sqlc.narg(activated_at), activated_by_user_id = sqlc.narg(activated_by_user_id),
     activated_by_display = sqlc.narg(activated_by_display), ended_at = sqlc.narg(ended_at),
     cancelled_at = sqlc.narg(cancelled_at), version = sqlc.arg(version), updated_at = sqlc.arg(now)

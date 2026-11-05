@@ -171,3 +171,46 @@ func modtestInvoiceIDs(t *testing.T, o ordersInstallation) []int64 {
 	}
 	return out
 }
+
+// A subscription ended mid-period with its final period prorated is billed
+// to the end (owner, 2026-11-06): the billing run drafts the last period at
+// its days over the month's, to øre, and the header's delivery period ends
+// on the end.
+func TestSubscriptionsInvoicing_AProratedFinalPeriod(t *testing.T) {
+	o := newOrdersInstallation(t)
+	standard := taxCategory(t, o.c, "Tjenester", 0.25, 1)
+	support := pricedVariantOf(t, o.c, "Service", standard, "Support", "SUP-1", 310)
+	sub := o.activeSubscription(t, support, time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC))
+	prorated := ordgen.Prorated
+	var ended ordgen.OrdersSubscription
+	okJSON(t, o.c, http.MethodPost, fmt.Sprintf("%s/%d/end", subscriptionsAPIPath, sub.Id), ordgen.OrdersEndInput{
+		ExpectedUpdatedAt: sub.UpdatedAt, Version: sub.Version, EndDate: openapi_types.Date{Time: time.Date(2026, time.August, 15, 0, 0, 0, 0, time.UTC)},
+		FinalPeriod: &prorated,
+	}, &ended)
+	if ended.Status != ordgen.OrdersSubscriptionStatusEnded || ended.FinalPeriod != ordgen.Prorated {
+		t.Fatalf("ended %+v; want ended with its final period prorated", ended)
+	}
+
+	res := o.c.Do(http.MethodPost, invoicesBase+"/billing-runs", map[string]any{"issue": false, "source": "orders", "through": "2026-08-31"})
+	if res.Status != http.StatusCreated {
+		t.Fatalf("POST billing-runs = %d %s", res.Status, res.Body)
+	}
+	for _, w := range o.h.Workers(o.h.Deps()) {
+		if b, ok := w.(*invoices.BillingWorker); ok {
+			if err := b.RunCycle(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	ids := modtestInvoiceIDs(t, o)
+	if len(ids) != 1 {
+		t.Fatalf("the run made %d drafts, want one", len(ids))
+	}
+	draft := o.doc(t, ids[0])
+	if len(draft.Lines) != 2 || draft.Lines[0].UnitPrice != 310 || draft.Lines[1].UnitPrice != 150 || draft.Lines[1].Quantity != 1 {
+		t.Fatalf("the run's draft lines = %+v, want July at 310.00 and 1 to 15 August at 15/31 of it, 150.00", draft.Lines)
+	}
+	if draft.DeliveryTo == nil || draft.DeliveryTo.Format(time.DateOnly) != "2026-08-15" {
+		t.Errorf("the draft's delivery ends %v; want 15 August", draft.DeliveryTo)
+	}
+}

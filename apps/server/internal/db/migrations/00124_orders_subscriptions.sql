@@ -13,6 +13,12 @@
 -- (O44). Its periods are computed, never stored; what is stored is each
 -- period's allocation (the truth, O43) and the periods a pause skipped.
 --
+-- final_period says how the period an end falls in is billed when the end is
+-- not its last day (owner, 2026-11-06): full, the whole period, or prorated,
+-- by its days to the end over the full period's. A new subscription takes it
+-- from the settings' subscription_final_period_default; End may choose again
+-- and stores the choice.
+--
 -- billed_through is derived — the last day of the unbroken run, from the
 -- start, of periods invoiced or skipped — and stored for lists, recomputed by
 -- the invoices holder and on every release. paused_from is the first period
@@ -28,6 +34,7 @@ CREATE TABLE orders.subscriptions (
     end_date           date,
     notice_months      smallint      NOT NULL DEFAULT 0,
     invoice_day        smallint,
+    final_period       varchar(10)   NOT NULL DEFAULT 'full',
     paused_from        date,
     billed_through     date,
     version            integer       NOT NULL DEFAULT 1,
@@ -101,6 +108,7 @@ CREATE TABLE orders.subscriptions (
     CONSTRAINT ck_subscriptions_end CHECK (end_date IS NULL OR end_date >= start_date),
     CONSTRAINT ck_subscriptions_notice CHECK (notice_months BETWEEN 0 AND 12),
     CONSTRAINT ck_subscriptions_invoice_day CHECK (invoice_day IS NULL OR invoice_day BETWEEN 1 AND 28),
+    CONSTRAINT ck_subscriptions_final_period CHECK (final_period IN ('full', 'prorated')),
     CONSTRAINT ck_subscriptions_paused CHECK ((status = 'paused') = (paused_from IS NOT NULL)),
     CONSTRAINT ck_subscriptions_version CHECK (version >= 1),
     CONSTRAINT ck_subscriptions_customer_type CHECK (customer_type IS NULL OR customer_type IN ('business', 'person')),
@@ -112,6 +120,11 @@ CREATE INDEX ix_subscriptions_status ON orders.subscriptions (status);
 CREATE INDEX ix_subscriptions_customer ON orders.subscriptions (customer_id);
 CREATE UNIQUE INDEX ux_subscriptions_external ON orders.subscriptions (channel, external_id) WHERE external_id IS NOT NULL;
 CREATE UNIQUE INDEX ux_subscriptions_client_request ON orders.subscriptions (client_request_id);
+
+-- The final period a new subscription takes (owner, 2026-11-06).
+ALTER TABLE orders.settings
+    ADD COLUMN subscription_final_period_default varchar(10) NOT NULL DEFAULT 'full',
+    ADD CONSTRAINT ck_settings_subscription_final_period CHECK (subscription_final_period_default IN ('full', 'prorated'));
 
 -- The periods a pause skipped (O44): written by resume for every period start
 -- from the pause to the period it resumes from, never billed, and counted as
@@ -190,4 +203,6 @@ ALTER TABLE orders.lines DROP COLUMN chain_id, DROP COLUMN valid_to, DROP COLUMN
 ALTER TABLE orders.lines DROP CONSTRAINT ck_lines_owner_kind;
 ALTER TABLE orders.lines ADD CONSTRAINT ck_lines_owner_kind CHECK (owner_kind IN ('quote', 'order', 'template'));
 DROP TABLE orders.subscription_skips;
+ALTER TABLE orders.settings DROP CONSTRAINT ck_settings_subscription_final_period;
+ALTER TABLE orders.settings DROP COLUMN subscription_final_period_default;
 DROP TABLE orders.subscriptions;

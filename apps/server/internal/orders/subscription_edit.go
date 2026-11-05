@@ -4,8 +4,8 @@ package orders
 // draft's: the header resolved again over the customer's billing profile, the
 // plan and the lines replaced whole. An activated subscription — active,
 // paused or ended — takes its header's texts, references, contact, address,
-// our side, payment terms and notice, and its lines as they are to be from a
-// period start on (effective from): a line changed or removed ends the day
+// our side, payment terms, notice and final period, and its lines as they
+// are to be from a period start on (effective from): a line changed or removed ends the day
 // before, a line changed or added starts on it, and a line unchanged is kept
 // as it is. The period must have no live allocation, and nor may any after
 // it (change_in_billed_period): changes take effect from the next unbilled
@@ -47,7 +47,7 @@ func updateSubscriptionParams(id int64, h header, p plan, t docTotals, version i
 	return store.UpdateSubscriptionHeaderParams{
 		ID: id, Version: version, Now: now,
 		BillingInterval: p.interval, Billing: p.billing, StartDate: pgDate(&p.start), EndDate: pgDate(p.end),
-		NoticeMonths: p.notice, InvoiceDay: p.invoiceDay,
+		NoticeMonths: p.notice, InvoiceDay: p.invoiceDay, FinalPeriod: p.finalPeriod,
 		CustomerID: hp.CustomerID, CustomerNumber: hp.CustomerNumber, CustomerName: hp.CustomerName, CustomerType: hp.CustomerType,
 		CustomerOrganisationNumber: hp.CustomerOrganisationNumber, CustomerForeignID: hp.CustomerForeignID,
 		CustomerCountry: hp.CustomerCountry, InvoiceAddressLine1: hp.InvoiceAddressLine1, InvoiceAddressLine2: hp.InvoiceAddressLine2,
@@ -119,7 +119,7 @@ func (s *server) UpdateSubscription(ctx context.Context, req gen.UpdateSubscript
 }
 
 // planOfUpdate is a save's plan over the subscription's: each field the body
-// leaves out keeps the subscription's.
+// leaves out keeps the subscription's, its final period too.
 func planOfUpdate(f *fieldErrors, cur store.OrdersSubscription, b gen.OrdersSubscriptionUpdate) plan {
 	interval, billing, start := cur.BillingInterval, cur.Billing, cur.StartDate.Time
 	if b.Interval != nil {
@@ -144,7 +144,12 @@ func planOfUpdate(f *fieldErrors, cur store.OrdersSubscription, b gen.OrdersSubs
 		d := int32(*cur.InvoiceDay)
 		day = &d
 	}
-	return readPlan(f, interval, billing, start, end, notice, day)
+	final := b.FinalPeriod
+	if final == nil {
+		fp := gen.OrdersFinalPeriod(cur.FinalPeriod)
+		final = &fp
+	}
+	return readPlan(f, interval, billing, start, end, notice, day, final)
 }
 
 // saveDraftSubscription is a draft's save: every read before the
@@ -317,6 +322,14 @@ func (s *server) changeSubscription(ctx context.Context, sch schedule, body gen.
 		if p.notice != cur.NoticeMonths {
 			actions = append(actions, changeAction{Kind: actionNoticeChanged, From: ptr(fmt.Sprint(cur.NoticeMonths)), To: ptr(fmt.Sprint(p.notice))})
 		}
+		if p.finalPeriod != sub.FinalPeriod {
+			if sub.EndDate.Valid {
+				if err := judgeFinalPeriod(locked, civil(sub.EndDate.Time), p.finalPeriod); err != nil {
+					return err
+				}
+			}
+			actions = append(actions, changeAction{Kind: actionFinalPeriod, From: ptr(sub.FinalPeriod), To: ptr(p.finalPeriod)})
+		}
 		if len(lineActions) > 0 {
 			actions = append(append(actions, changeAction{Kind: actionEffectiveFrom, To: ptr(from.Format(time.DateOnly))}), lineActions...)
 		}
@@ -347,7 +360,8 @@ func (s *server) changeSubscription(ctx context.Context, sch schedule, body gen.
 // applyLineChanges writes an activated subscription's lines from from on, on
 // the caller's transaction, which holds the subscription (O44), and answers
 // the change log's actions. from is judged against the schedule as it stands
-// under the lock. A kept line unchanged keeps its row and takes its new
+// under the lock, once a line is to change: a save that changes no line —
+// an ended subscription's texts, say — has no period to judge. A kept line unchanged keeps its row and takes its new
 // place; a line changed ends the day before from and a new row of its chain
 // starts on it in its place, with what it was valid to; a line removed ends;
 // a line added starts on from. A changed or removed line's other versions
@@ -356,14 +370,22 @@ func (s *server) changeSubscription(ctx context.Context, sch schedule, body gen.
 // a date before one already scheduled replaces it, and at any date exactly
 // one version of a line is in force.
 func applyLineChanges(ctx context.Context, txq *store.Queries, sch schedule, priced []pricedLine, from time.Time) ([]changeAction, error) {
-	if err := judgeEffectiveFrom(sch, from); err != nil {
-		return nil, err
+	judged := false
+	judge := func() error {
+		if judged {
+			return nil
+		}
+		judged = true
+		return judgeEffectiveFrom(sch, from)
 	}
 	current := currentLines(sch.lines)
 	old := byID(current)
 	kept := map[int64]bool{}
 	var actions []changeAction
 	end := func(o store.OrdersLine) error {
+		if err := judge(); err != nil {
+			return err
+		}
 		if err := endLine(ctx, txq, o, from); err != nil {
 			return err
 		}
@@ -377,6 +399,9 @@ func applyLineChanges(ctx context.Context, txq *store.Queries, sch schedule, pri
 		return nil
 	}
 	insert := func(p pricedLine, position int32, validTo pgtype.Date, chain *int64) error {
+		if err := judge(); err != nil {
+			return err
+		}
 		p.id = nil
 		p.validFrom, p.validTo, p.chainID = pgDate(&from), validTo, chain
 		if _, err := insertLine(ctx, txq, ownerSubscription, sch.sub.ID, position, p); err != nil {

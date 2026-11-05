@@ -31,7 +31,7 @@ func lifecycleAnswers[R any](bad func(gen.OrdersProblem) R, nf func() R, conf fu
 // writes them, from the row as it is.
 func stepState(sub store.OrdersSubscription, now time.Time) store.SetSubscriptionStateParams {
 	return store.SetSubscriptionStateParams{
-		ID: sub.ID, Status: sub.Status, PausedFrom: sub.PausedFrom, EndDate: sub.EndDate, ActivatedAt: sub.ActivatedAt,
+		ID: sub.ID, Status: sub.Status, PausedFrom: sub.PausedFrom, EndDate: sub.EndDate, FinalPeriod: sub.FinalPeriod, ActivatedAt: sub.ActivatedAt,
 		ActivatedByUserID: sub.ActivatedByUserID, ActivatedByDisplay: sub.ActivatedByDisplay, EndedAt: sub.EndedAt,
 		CancelledAt: sub.CancelledAt, Version: sub.Version + 1, Now: now,
 	}
@@ -334,9 +334,12 @@ func (s *server) ResumeSubscription(ctx context.Context, req gen.ResumeSubscript
 // EndSubscription End a subscription
 // (POST /api/v1/orders/subscriptions/{id}/end)
 //
-// The end date is set (O44): the period it falls in is the last one billed.
-// It must be on or after the last day of the last period with a live
-// allocation (end_before_billed) — the user credits first. A paused
+// The end date is set (O44): the period it falls in is the last one billed,
+// in full or pro-rated to the end as the final period asked — the
+// subscription's own when none is — says (owner, 2026-11-06), and the choice
+// is stored and logged. No period with a live allocation may start after the
+// end (end_before_billed), and a final period with a live allocation is not
+// pro-rated (final_period_billed): the user credits first. A paused
 // subscription ends with its paused periods up to the end skipped.
 func (s *server) EndSubscription(ctx context.Context, req gen.EndSubscriptionRequestObject) (gen.EndSubscriptionResponseObject, error) {
 	resp := lifecycleAnswers(
@@ -364,9 +367,19 @@ func (s *server) EndSubscription(ctx context.Context, req gen.EndSubscriptionReq
 			if end.Before(civil(sub.StartDate.Time)) {
 				return sub, nil, refuseField(invalidSubscriptionTitle, "endDate", "", "The end is on or after the start")
 			}
-			if p, ok := sch.lastLivePeriod(); ok && end.Before(p.end) {
+			final := sub.FinalPeriod
+			if body.FinalPeriod != nil {
+				if !body.FinalPeriod.Valid() {
+					return sub, nil, refuseField(invalidSubscriptionTitle, "finalPeriod", "", "The final period is full or prorated")
+				}
+				final = string(*body.FinalPeriod)
+			}
+			if sch.hasLive && sch.maxLive.After(end) {
 				return sub, nil, conflict(codeEndBeforeBilled, "The subscription is billed past the end",
-					fmt.Sprintf("The period to %s is on an invoice or a draft invoice; end on or after it, or credit it first.", p.end.Format(time.DateOnly)))
+					fmt.Sprintf("The period from %s is on an invoice or a draft invoice; end on or after its first day, or credit it first.", sch.maxLive.Format(time.DateOnly)))
+			}
+			if err := judgeFinalPeriod(sch, end, final); err != nil {
+				return sub, nil, err
 			}
 			if sub.Status == subscriptionPaused && sub.PausedFrom.Valid {
 				until := end.AddDate(0, 0, 1)
@@ -384,7 +397,7 @@ func (s *server) EndSubscription(ctx context.Context, req gen.EndSubscriptionReq
 				}
 			}
 			st := stepState(sub, now)
-			st.Status, st.PausedFrom, st.EndDate, st.EndedAt = subscriptionEnded, pgDate(nil), pgDate(&end), &now
+			st.Status, st.PausedFrom, st.EndDate, st.EndedAt, st.FinalPeriod = subscriptionEnded, pgDate(nil), pgDate(&end), &now, final
 			row, err := txq.SetSubscriptionState(ctx, st)
 			if err != nil {
 				return sub, nil, fmt.Errorf("orders: end subscription %d: %w", sub.ID, err)
@@ -404,12 +417,35 @@ func (s *server) EndSubscription(ctx context.Context, req gen.EndSubscriptionReq
 			}, now); err != nil {
 				return sub, nil, err
 			}
-			return row, []changeAction{{Kind: actionEnded, From: dateText(sub.EndDate), To: ptr(end.Format(time.DateOnly))}}, nil
+			return row, []changeAction{
+				{Kind: actionEnded, From: dateText(sub.EndDate), To: ptr(end.Format(time.DateOnly))},
+				{Kind: actionFinalPeriod, From: ptr(sub.FinalPeriod), To: ptr(final)},
+			}, nil
 		})
 	if err != nil {
 		return answer(err, resp)
 	}
 	return gen.EndSubscription200JSONResponse(out), nil
+}
+
+// judgeFinalPeriod refuses to pro-rate a final period that is billed
+// (final_period_billed, owner 2026-11-06): with the subscription ending on
+// end, the period end falls in, when end is not its last day, may not have a
+// live allocation while final is prorated — the user credits it first. A
+// full final period is always allowed.
+func judgeFinalPeriod(sch schedule, end time.Time, final string) error {
+	if final != finalPeriodProrated {
+		return nil
+	}
+	cal := sch.cal
+	cal.end, cal.prorateEnd = &end, true
+	p, ok := cal.periodOn(end)
+	if !ok || p.end.Equal(p.fullEnd) || !sch.livePeriod(p.start) {
+		return nil
+	}
+	return conflict(codeFinalPeriodBilled, "The final period is billed",
+		fmt.Sprintf("The period from %s is on an invoice or a draft invoice and cannot be pro-rated to %s; bill it in full, or credit it first.",
+			p.start.Format(time.DateOnly), end.Format(time.DateOnly)))
 }
 
 // dateText is a date column as a change log value, "" for NULL.

@@ -45,7 +45,7 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 			f.add("plan", "A subscription needs its plan: interval, billing and start date")
 		} else {
 			pl = readPlan(&f, string(body.Plan.Interval), string(body.Plan.Billing), body.Plan.StartDate.Time, body.Plan.EndDate,
-				body.Plan.NoticeMonths, body.Plan.InvoiceDay)
+				body.Plan.NoticeMonths, body.Plan.InvoiceDay, body.Plan.FinalPeriod)
 		}
 	} else if body.Plan != nil {
 		f.add("plan", "A plan is for an accept into a subscription")
