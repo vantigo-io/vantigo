@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/communications"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -599,5 +600,65 @@ func TestOutboxWorker_AHoldBeginsAgainAfterASendAttempt(t *testing.T) {
 	try(contracts.ErrMailboxUnavailable)
 	if n := retrying(); n != 6 {
 		t.Errorf("after a new hold %d retrying events, want 6", n)
+	}
+}
+
+// slowMailbox is the fake recording, inside Send, the deadline the outbox
+// gave it and the job's lease as the database holds it then: a provider
+// whose upload of its largest message takes time.
+type slowMailbox struct {
+	*modtest.FakeChannelMailbox
+	pool interface {
+		QueryRow(context.Context, string, ...any) pgx.Row
+	}
+	deadline   time.Time
+	leaseUntil time.Time
+}
+
+func (m *slowMailbox) Send(ctx context.Context, mailbox string, mime []byte, bcc []string) (contracts.SentMessage, error) {
+	m.deadline, _ = ctx.Deadline()
+	if err := m.pool.QueryRow(context.Background(),
+		`SELECT lease_until FROM communications.outbox_jobs WHERE status = 'processing'`).Scan(&m.leaseUntil); err != nil {
+		return contracts.SentMessage{}, err
+	}
+	return m.FakeChannelMailbox.Send(ctx, mailbox, mime, bcc)
+}
+
+// TestOutboxWorker_AMailboxSendsTimeoutScalesWithTheProvidersLargestMessage:
+// a provider taking 25 MB is given 30 s and 2 s a megabyte to send, Entra's
+// 3 MB 36 s, and the job's lease is moved on past the timeout first, so a
+// slow upload never outlives the lease protecting it.
+func TestOutboxWorker_AMailboxSendsTimeoutScalesWithTheProvidersLargestMessage(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name    string
+		max     int64
+		timeout time.Duration
+	}{
+		{"Gmail's 25 MB", 25_000_000, 80 * time.Second},
+		{"Entra's 3 MB", 3_000_000, 36 * time.Second},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			fake := modtest.NewFakeChannelMailbox()
+			fake.SetMaxMessage(c.max)
+			slow := &slowMailbox{FakeChannelMailbox: fake}
+			h := newHarness(t, modtest.WithChannelMailbox(slow))
+			slow.pool = h.Pool()
+			fx := seedMailboxJob(t, h, fake)
+			start := time.Now()
+			if processed, err := communications.NewOutboxWorker(h.Deps()).ProcessOne(context.Background()); err != nil || !processed {
+				t.Fatalf("ProcessOne = %v, %v", processed, err)
+			}
+			if got := slow.deadline.Sub(start); got < c.timeout-5*time.Second || got > c.timeout+time.Second {
+				t.Errorf("the send's deadline is %v away, want about %v", got, c.timeout)
+			}
+			if got := slow.leaseUntil.Sub(h.Now()); got < 2*c.timeout-time.Second {
+				t.Errorf("the lease runs %v past the send's start, want at least %v", got, 2*c.timeout)
+			}
+			if len(fake.Sent()) != 1 || fx.messageID == uuid.Nil {
+				t.Errorf("sent %d", len(fake.Sent()))
+			}
+		})
 	}
 }
