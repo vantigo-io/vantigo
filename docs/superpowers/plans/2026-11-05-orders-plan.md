@@ -30,9 +30,9 @@ The owner asked on 2026-11-05 for **stacked PRs, so the work never waits for a m
 | 3 | `claude/orders-a-quotes-orders` | A: the module, quotes, orders, PDFs, mail, holders, timeline, customer tab | `00119_orders_baseline` |
 | 4 | `claude/orders-a2-selling` | A2: warnings, variant grid, packagings on lines, analysis | `00120_orders_warnings` |
 | 5 | `claude/orders-b-invoicing` | B: allocations, `BillableOrders`, the holder, the wizard, the billing run | `00121_orders_allocations` |
-| 6 | `claude/orders-s-subscriptions` | S: subscriptions | `00122_orders_subscriptions` |
-| 7 | `claude/orders-c-deliveries` | C: `Stock`, `StockLedger`, reservations, deliveries | `00123_inventory_reservations`, `00124_orders_deliveries` |
-| 8 | `claude/orders-d-shipping` | D: `srv/shipping`, Bring, shipments, the shipping line | `00125_orders_shipping` |
+| 6 | `claude/orders-s-subscriptions` | S: subscriptions | `00124_orders_subscriptions` |
+| 7 | `claude/orders-c-deliveries` | C: `Stock`, `StockLedger`, reservations, deliveries | `00125_inventory_reservations`, `00126_orders_deliveries` |
+| 8 | `claude/orders-d-shipping` | D: `srv/shipping`, Bring, shipments, the shipping line | `00127_orders_shipping` |
 
 **Migration numbers.** If `main` takes a claimed number first, the stack renumbers it
 inside the owning layer's history and then `gh stack rebase` runs (R:
@@ -217,7 +217,7 @@ Orders module`. Then `gh stack init` adopts this branch as the bottom.
 
 ## Layer 5 — delivery B
 
-- `mig/00121_orders_allocations.sql`, plus Invoices' source kind constant in Go.
+- `mig/00121_orders_allocations.sql`, `mig/00122_invoices_order_sources.sql` (line sources for allocations, billing runs' source) and `mig/00123_invoices_order_allocation_ledger.sql` (Invoices' ledger of allocations taken), plus Invoices' source kind constant in Go.
 - **Contracts:**
   - `contracts/billable_orders.go` (O37);
   - `WorkSourceOrderAllocation`, appended to `InvoicedWorkOrder` (O38).
@@ -239,7 +239,7 @@ Orders module`. Then `gh stack init` adopts this branch as the bottom.
 
 ## Layer 6 — delivery S
 
-- `mig/00122_orders_subscriptions.sql`: `subscriptions`, `subscription_skips`, dated
+- `mig/00124_orders_subscriptions.sql`: `subscriptions`, `subscription_skips`, dated
   lines, and the unique live period index.
 - **Server:**
   - the period calendar;
@@ -254,9 +254,9 @@ Orders module`. Then `gh stack init` adopts this branch as the bottom.
 
 ## Layer 7 — delivery C
 
-- `mig/00123_inventory_reservations.sql`: `reservations`, the `issue` kind, and
+- `mig/00125_inventory_reservations.sql`: `reservations`, the `issue` kind, and
   `sites.fulfils_orders`.
-- `mig/00124_orders_deliveries.sql`: deliveries, delivery lines, and `site_id` on
+- `mig/00126_orders_deliveries.sql`: deliveries, delivery lines, and `site_id` on
   orders.
 - **Contracts:** `contracts/stock.go`, with `Stock`, `StockLedger` and `StockRefusal`
   (O45). MB rule 24.
@@ -277,7 +277,7 @@ Orders module`. Then `gh stack init` adopts this branch as the bottom.
 D waits for R §2.9, the carrier research. The research is running. Its findings revise
 O49–O53 before D's seam is cut.
 
-- `mig/00125_orders_shipping.sql`: carrier accounts, shipments, packages, documents
+- `mig/00127_orders_shipping.sql`: carrier accounts, shipments, packages, documents
   and events.
 - **`srv/shipping`:** the port, `shipping/bring` (from Bring's documented API), and
   `shipping/bring/bringtest`.
