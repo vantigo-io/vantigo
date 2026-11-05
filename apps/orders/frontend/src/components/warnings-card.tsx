@@ -1,9 +1,11 @@
 import { Badge, Button, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
-import { IconPencil } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
+import { notifications } from "@mantine/notifications";
+import { IconPencil, IconTrash } from "@tabler/icons-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { ORDERS_QUERY_KEY } from "../api/request";
 import type { Warning, WarningScope } from "../api/types";
-import { warningsQueryOptions } from "../api/warnings";
+import { deleteWarning, warningsQueryOptions } from "../api/warnings";
 import type { OrdersAccess } from "../lib/access";
 import { refusalMessage } from "../lib/errors";
 import { useOrdersFormat } from "../lib/format";
@@ -22,7 +24,9 @@ interface Editing {
  * The sales warnings (O33) as Orders' settings list them: every customer's
  * and product's, each with its level and text, edited or removed in place;
  * a new one is set on a customer found with the customer picker or a product
- * found through one of its variants. `orders:settings` is the page's key.
+ * found through one of its variants. A product warning whose product is
+ * deleted is marked so and can only be removed. `orders:settings` is the
+ * page's key.
  */
 export const WarningsCard = ({ access, currency }: { access: OrdersAccess; currency: string }) => {
   const { t, dateTime } = useOrdersFormat();
@@ -30,6 +34,15 @@ export const WarningsCard = ({ access, currency }: { access: OrdersAccess; curre
   const [editing, setEditing] = useState<Editing | null>(null);
   const [adding, setAdding] = useState<WarningScope | null>(null);
   const [customerId, setCustomerId] = useState<number | null>(null);
+  const queryClient = useQueryClient();
+  const removeOrphan = useMutation({
+    mutationFn: (id: number) => deleteWarning("product", id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [ORDERS_QUERY_KEY] });
+      notifications.show({ color: "green", message: t("warningRemoved") });
+    },
+    onError: (e) => notifications.show({ color: "red", message: refusalMessage(e, t) }),
+  });
   return (
     <Card withBorder padding="lg" data-assist="orders.settings.warnings">
       <Stack gap="md">
@@ -64,6 +77,11 @@ export const WarningsCard = ({ access, currency }: { access: OrdersAccess; curre
                       {t(w.scope === "customer" ? "customerWarning" : "productWarning")}
                     </Text>
                     <Text size="sm">{w.name || `#${w.id}`}</Text>
+                    {w.orphaned && (
+                      <Badge color="gray" variant="light" size="sm">
+                        {t("productDeleted")}
+                      </Badge>
+                    )}
                   </Table.Td>
                   <Table.Td>
                     <Badge color={w.level === "block" ? "red" : "yellow"} variant="light">
@@ -82,14 +100,27 @@ export const WarningsCard = ({ access, currency }: { access: OrdersAccess; curre
                     </Text>
                   </Table.Td>
                   <Table.Td>
-                    <Button
-                      size="xs"
-                      variant="subtle"
-                      leftSection={<IconPencil size={14} />}
-                      onClick={() => setEditing({ scope: w.scope, id: w.id, subject: w.name, current: w })}
-                    >
-                      {t("editWarning")}
-                    </Button>
+                    {w.orphaned ? (
+                      <Button
+                        size="xs"
+                        variant="subtle"
+                        color="red"
+                        leftSection={<IconTrash size={14} />}
+                        loading={removeOrphan.isPending && removeOrphan.variables === w.id}
+                        onClick={() => removeOrphan.mutate(w.id)}
+                      >
+                        {t("removeOrphanWarning")}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="xs"
+                        variant="subtle"
+                        leftSection={<IconPencil size={14} />}
+                        onClick={() => setEditing({ scope: w.scope, id: w.id, subject: w.name, current: w })}
+                      >
+                        {t("editWarning")}
+                      </Button>
+                    )}
                   </Table.Td>
                 </Table.Tr>
               ))}

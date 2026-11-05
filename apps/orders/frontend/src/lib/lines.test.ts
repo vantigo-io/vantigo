@@ -9,6 +9,7 @@ import {
   newLine,
   remainingToDeliver,
   toLineInput,
+  withCurrentPackagings,
 } from "./lines";
 
 describe("a line as the save sends it", () => {
@@ -82,6 +83,20 @@ describe("packagings and the grid (O15, O34)", () => {
     const input = toLineInput(packed, { quote: false });
     expect(input).toMatchObject({ packagingId: 7, packagingQuantity: 3 });
     expect(input).not.toHaveProperty("quantity");
+  });
+
+  it("offers a saved line its variant's current packagings, and the saved one when it is gone", () => {
+    const saved = line({ quantity: 45, packagingId: 7, packagingQuantity: 3, packagingName: "Eske" });
+    const pall = { id: 8, name: "Pall", quantity: 600 };
+    expect(fromLine(saved, [pall]).packagings).toEqual([pall, { id: 7, name: "Eske", quantity: 15 }]);
+    const eske = { id: 7, name: "Eske", quantity: 15 };
+    expect(fromLine(saved, [eske, pall]).packagings).toEqual([eske, pall]);
+    expect(withCurrentPackagings(fromLine(saved), [pall]).packagings).toEqual([
+      pall,
+      { id: 7, name: "Eske", quantity: 15 },
+    ]);
+    const repicked = editLine(fromLine(saved), { variantId: 302, packagings: [], packagingId: null });
+    expect(withCurrentPackagings(repicked, [pall]).packagings).toEqual([]);
   });
 
   it("updates a variant's line from the grid and adds the others", () => {
