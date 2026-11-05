@@ -19,6 +19,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
+import { metaQueryOptions } from "../api/meta";
 import {
   deleteOrder,
   holdOrder,
@@ -36,7 +37,6 @@ import {
   updateOrder,
 } from "../api/orders";
 import { isVersionConflict, NotFoundError, ORDERS_QUERY_KEY } from "../api/request";
-import { settingsQueryOptions } from "../api/settings";
 import type { DeliveredLine, Order } from "../api/types";
 import { ChangeLog } from "../components/change-log";
 import { ConfirmDialog } from "../components/confirm-dialog";
@@ -149,8 +149,9 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
   const changes = useQuery(orderChangesQueryOptions(order.id));
   const documents = useQuery(orderDocumentsQueryOptions(order.id));
   const mailings = useQuery(orderMailingsQueryOptions(order.id));
-  const settings = useQuery({ ...settingsQueryOptions(), enabled: access.canManageSettings });
-  const sendingOff = settings.data?.sendingAvailable === false;
+  // Whether Send works now (O25), read under orders:access alone.
+  const meta = useQuery(metaQueryOptions());
+  const sendingOff = meta.data?.sendingAvailable === false;
 
   const manage = access.canManageOrders;
   const confirmAllowed = access.canConfirmOrders;
@@ -268,11 +269,8 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
       </Tooltip>
     );
   };
-  // An accepted quote's order names it as "id@revision" (O20).
-  const sourceQuoteId =
-    order.origin.channel === "quote"
-      ? Number(/^(\d+)/.exec(order.origin.sourceId ?? "")?.[1] ?? Number.NaN)
-      : Number.NaN;
+  // The quote an accepted order came from (O20).
+  const sourceQuoteId = order.sourceQuoteId;
 
   return (
     <Stack gap="lg">
@@ -421,7 +419,7 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
           {t("lockedHint")}
         </Alert>
       )}
-      {Number.isSafeInteger(sourceQuoteId) && sourceQuoteId > 0 && (
+      {sourceQuoteId != null && (
         <Text size="sm" c="dimmed">
           {t("fromQuote")}{" "}
           <Anchor size="sm" renderRoot={(props) => <Link {...quoteLinkOptions(sourceQuoteId)} {...props} />}>
@@ -522,7 +520,7 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
       {dialog === "send" && (
         <SendDialog
           kind="order"
-          defaultRecipient={order.customer.contact.email}
+          defaultRecipient={order.defaultRecipient}
           loading={send.isPending}
           error={dialogError}
           onSend={(input) => send.mutate(input)}

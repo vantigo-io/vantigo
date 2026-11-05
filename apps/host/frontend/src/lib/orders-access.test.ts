@@ -14,18 +14,15 @@ describe("what the Orders pages may offer", () => {
   });
 
   it("offers a picker only with its module mounted and its own key", () => {
-    const keys = ["orders:access", "customers:view", "products:products-view", "invoices:access", "projects:access"];
+    const keys = ["orders:access", "customers:view", "invoices:access", "projects:access"];
     expect(ordersAccessOf(keys, every)).toMatchObject({
       canViewCustomers: true,
       canViewContacts: false,
-      canSearchProducts: true,
       canReadVatCodes: true,
       canViewProjects: true,
-      canListChannels: false,
     });
     expect(ordersAccessOf(keys, ["orders", "customers"])).toMatchObject({
       canViewCustomers: true,
-      canSearchProducts: false,
       canReadVatCodes: false,
       canViewProjects: false,
     });

@@ -8,6 +8,12 @@ export interface ListFilters {
   pageSize?: number;
   /** Orders only: the ones not done and not cancelled. */
   open?: boolean;
+  /** Orders only: any of these delivery statuses. */
+  deliveryStatus?: readonly string[];
+  /** Orders only: any of these invoice statuses. */
+  invoiceStatus?: readonly string[];
+  /** Orders only: true the done ones (confirmed, delivered and invoiced), false those not done. */
+  done?: boolean;
 }
 
 /** The list's query string; a status filter is repeated, one parameter per status. */
@@ -18,6 +24,9 @@ export const listQuery = (filters: ListFilters): string => {
   if (filters.salespersonId) search.set("salespersonId", filters.salespersonId);
   if (filters.q?.trim()) search.set("q", filters.q.trim());
   if (filters.open !== undefined) search.set("open", String(filters.open));
+  for (const status of filters.deliveryStatus ?? []) search.append("deliveryStatus", status);
+  for (const status of filters.invoiceStatus ?? []) search.append("invoiceStatus", status);
+  if (filters.done !== undefined) search.set("done", String(filters.done));
   if (filters.page !== undefined && filters.page > 1) search.set("page", String(filters.page));
   if (filters.pageSize !== undefined) search.set("pageSize", String(filters.pageSize));
   const text = search.toString();

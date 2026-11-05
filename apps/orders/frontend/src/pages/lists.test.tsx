@@ -139,6 +139,27 @@ describe("the orders list", () => {
     );
   });
 
+  it("filters the orders by done, delivery status and salesperson", async () => {
+    const fake = fakeServer((call) =>
+      call.url.startsWith("/api/v1/orders/orders")
+        ? jsonResponse(200, { items: [orderRow()], total: 1 })
+        : commonAnswers(call),
+    );
+    renderRoute("/orders/orders");
+    await screen.findByTestId("order-table");
+    const last = () => fake.calls.filter((c) => c.url.startsWith("/api/v1/orders/orders")).at(-1)?.url ?? "";
+
+    await userEvent.click(screen.getByRole("radio", { name: "Done" }));
+    await waitFor(() => expect(last()).toContain("done=true"));
+    expect(last()).not.toContain("open=");
+    await userEvent.click(screen.getByRole("combobox", { name: "Delivery" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Partly delivered" }));
+    await waitFor(() => expect(last()).toContain("deliveryStatus=partial"));
+    await userEvent.click(screen.getByRole("combobox", { name: "Salesperson" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Per Selger" }));
+    await waitFor(() => expect(last()).toContain("salespersonId=00000000-0000-4000-8000-000000000002"));
+  });
+
   it("offers New order with orders:sales-manage", async () => {
     fakeServer((call) =>
       call.url.startsWith("/api/v1/orders/orders") ? jsonResponse(200, { items: [], total: 0 }) : commonAnswers(call),

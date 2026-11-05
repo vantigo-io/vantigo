@@ -7,7 +7,7 @@ import { useOrdersFormat } from "../lib/format";
 
 export interface SendDialogProps {
   kind: "quote" | "order";
-  /** The contact's e-mail, the default recipient (O25). */
+  /** The document's default recipient: the contact's e-mail, else the customer's invoice e-mail (O25). */
   defaultRecipient?: string | null;
   /** A quote's valid-until, required on send (O20); the page offers its default. */
   validUntil?: string | null;
@@ -21,7 +21,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * The send dialog (O25): the recipient, which defaults to the contact's
- * e-mail, up to ten CC addresses and a message; for a quote, the date it is
+ * e-mail, else the customer's invoice e-mail, up to ten CC addresses and a message; for a quote, the date it is
  * valid until, which the send requires (O20).
  */
 export const SendDialog = ({

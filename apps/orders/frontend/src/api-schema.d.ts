@@ -22,6 +22,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get what the Orders screens need
+         * @description What a salesperson's screens need of the settings without orders:settings: whether a document can be sent by e-mail now (Communications on and the chosen channel able to send, O25), the default validity of a quote and the default payment terms, and the deployment's base currency.
+         */
+        get: operations["getOrdersMeta"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/orders": {
         parameters: {
             query?: never;
@@ -31,7 +51,7 @@ export interface paths {
         };
         /**
          * List orders
-         * @description Orders, newest first, filtered by customer, status, salesperson and a search (O31a).
+         * @description Orders, newest first, filtered by customer, status, delivery and invoice status, done, salesperson and a search (O31a).
          */
         get: operations["listSalesOrders"];
         put?: never;
@@ -666,6 +686,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/salespeople": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the salespeople
+         * @description The active users who may sell — who hold orders:quotes-manage or orders:sales-manage — by display name, for the salesperson picker and the lists' filter; q narrows by display name.
+         */
+        get: operations["listOrdersSalespeople"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/settings": {
         parameters: {
             query?: never;
@@ -737,6 +777,26 @@ export interface paths {
          * @description Deletes a template; quotes made from it keep their lines (O23).
          */
         delete: operations["deleteQuoteTemplate"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/variants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search the catalog for a line
+         * @description Search the catalog for a line (O16): the variants of active products, goods and services, whose SKU, name or barcode contains q, each with its list price in currency today and its VAT code as the line would take it. Read through contracts.ProductCatalog and contracts.SalesTax, so a salesperson needs no Products key.
+         */
+        get: operations["searchOrdersVariants"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -829,6 +889,8 @@ export interface components {
             deliveryAddressId?: number | null;
             foreignId?: string | null;
             invoiceAddress: components["schemas"]["OrdersAddress"];
+            /** @description The customer's invoice e-mail as the billing profile resolves it, snapshotted with the rest; a send's default recipient when the document names no contact (O25). */
+            invoiceEmail?: string | null;
             name: string;
             organisationNumber?: string | null;
             /** @enum {string|null} */
@@ -956,6 +1018,7 @@ export interface components {
         };
         /** @description A line as the editor saves it; the document's lines are replaced whole on save, a line naming its id kept as that line (O15). A product line with a variantId is priced from the catalog unless unitPrice is given, which makes the price manual (O16); entered including VAT when the document's prices include VAT (O19). */
         OrdersLineInput: {
+            /** @description A product line's description; the text of a section or a note line, which the PDF prints under its name. */
             description?: string;
             /**
              * Format: double
@@ -972,7 +1035,7 @@ export interface components {
              * @enum {string}
              */
             kind: "product" | "section" | "note";
-            /** @description A free-text line's name. */
+            /** @description A free-text product line's name, or a section's heading or a note's title; a section or a note keeps its text in description. */
             name?: string;
             /** @description Quotes only (O21). */
             optional?: boolean;
@@ -1037,7 +1100,18 @@ export interface components {
             /** Format: date */
             validUntil?: string | null;
         };
-        /** @description A sales order (O13, O18). version is bumped by every save and every change after confirmation (O26); done is derived: confirmed, delivered and invoiced. */
+        /** @description What the Orders screens need of the settings, under orders:access. */
+        OrdersMeta: {
+            /** @description The deployment's currency, a document's when its customer names none (O13). */
+            baseCurrency: string;
+            /** Format: int32 */
+            defaultPaymentTermsDays: number;
+            /** Format: int32 */
+            quoteValidityDays: number;
+            /** @description Whether Send works now: Communications is on and the channel the settings choose can send (O25). False leaves Download and Mark as sent. */
+            sendingAvailable: boolean;
+        };
+        /** @description A sales order (O13, O18). version is the order's optimistic-concurrency token and the version its confirmation prints: a draft stays at 1 through its saves, and after confirmation every edit that changes it and every cancel-remaining bumps it, so a confirmation sent at version 2 or later prints as revised (O26). Hold, release, lock, unlock and delivery marking are logged at the version they found. done is derived: confirmed, delivered and invoiced. */
         OrdersOrder: {
             /** Format: date-time */
             cancelledAt?: string | null;
@@ -1049,6 +1123,8 @@ export interface components {
             createdAt: string;
             currency: string;
             customer: components["schemas"]["OrdersCustomerSnapshot"];
+            /** @description Who a send goes to unless the dialog says otherwise (O25): the contact's e-mail, else the customer's invoice e-mail; null when there is neither. */
+            defaultRecipient?: string | null;
             /** Format: date */
             deliveryDate?: string | null;
             /** @enum {string} */
@@ -1077,6 +1153,11 @@ export interface components {
             /** Format: int32 */
             projectId?: number | null;
             salesperson?: components["schemas"]["OrdersPerson"];
+            /**
+             * Format: int64
+             * @description The quote the order was accepted from, when its origin is one (channel quote); the same quote origin.sourceId names with its revision.
+             */
+            sourceQuoteId?: number | null;
             /** @enum {string} */
             status: "draft" | "confirmed" | "cancelled";
             totals: components["schemas"]["OrdersTotals"];
@@ -1187,6 +1268,7 @@ export interface components {
             paymentReference?: string | null;
             /** Format: double */
             prepaidAmount?: number | null;
+            /** @description The source's own id. A quote is named "<quoteId>@<revision>" ("1042@2": quote 1042 at its revision 2), for an order accepted from it (channel quote) and a quote copied from it (channel copy). */
             sourceId?: string | null;
             sourceKind?: string | null;
             sourceModule?: string | null;
@@ -1197,7 +1279,7 @@ export interface components {
             /** Format: uuid */
             userId?: string | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, order_empty, customer_disabled, project_customer_mismatch, quantity_below_progress, over_delivery, and a line's codes in lines. 409: version_conflict (a stale version or revision), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_has_progress, line_invoiced, line_has_progress, line_in_draft_invoice, client_request_reused. 503: dependency_unavailable (a module Orders reads is not composed) and sending_disabled (Communications is off or no send channel is chosen). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version or revision), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_has_progress, line_invoiced, line_has_progress, line_in_draft_invoice, client_request_reused, template_name_taken. 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         OrdersProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1236,6 +1318,8 @@ export interface components {
             createdAt: string;
             currency: string;
             customer: components["schemas"]["OrdersCustomerSnapshot"];
+            /** @description Who a send goes to unless the dialog says otherwise (O25): the contact's e-mail, else the customer's invoice e-mail; null when there is neither. */
+            defaultRecipient?: string | null;
             declineReason?: string | null;
             /** Format: date-time */
             declinedAt?: string | null;
@@ -1370,6 +1454,30 @@ export interface components {
             /** Format: int32 */
             revision: number;
         };
+        /** @description A user who may sell. */
+        OrdersSalesperson: {
+            displayName: string;
+            /** Format: uuid */
+            id: string;
+        };
+        /** @description The salespeople, by display name. */
+        OrdersSalespersonList: {
+            items: components["schemas"]["OrdersSalesperson"][];
+        };
+        /** @description One channel Orders may send from, as Communications answers it through contracts.OutboundMail (MB rule 17). */
+        OrdersSendChannel: {
+            address: string;
+            /** @description Whether the channel can send now: its provider is offered and, for SMTP, its credentials are stored. */
+            available: boolean;
+            /** @description The channel's display name; empty when it has none. */
+            displayName: string;
+            /** Format: uuid */
+            id: string;
+            /** @description The provider's key: smtp or entra. */
+            provider: string;
+            /** @description The provider as an admin reads it: SMTP, Microsoft 365. */
+            providerDisplayName: string;
+        };
         /** @description A send from the dialog (O25): the recipient defaults to the contact's e-mail, else the customer's invoice e-mail. revision for a quote, version for an order. */
         OrdersSendInput: {
             cc?: string[];
@@ -1405,6 +1513,13 @@ export interface components {
             revision: number;
             /** Format: uuid */
             sendChannelId?: string | null;
+            /**
+             * @description What the stored sendChannelId is now: disabled (none chosen), ready (the channel can send), unavailable (it exists but cannot send now — its provider is off or an SMTP channel has no credentials) or gone (no active channel has the id, or Communications is off). Anything but ready sends nothing, and GET /meta answers sendingAvailable false.
+             * @enum {string}
+             */
+            sendChannelState: "disabled" | "ready" | "unavailable" | "gone";
+            /** @description The channels sendChannelId may name: the active mail channels as Communications answers them (contracts.OutboundMail), with whether each can send now. Empty when Communications is off. */
+            sendChannels: components["schemas"]["OrdersSendChannel"][];
             sendingAvailable: boolean;
         };
         /** @description Orders' settings, replaced whole. revision is the one the client read. */
@@ -1556,6 +1671,46 @@ export interface components {
             vat: number;
             vatSummaries: components["schemas"]["OrdersVatSummary"][];
         };
+        /** @description A catalog variant as a line takes it (O16): its snapshot, its list price in the asked currency today (null when it has none, which leaves the line unpriced) and the VAT code its tax category maps to (null when it maps to none). */
+        OrdersVariant: {
+            currency: string;
+            description: string;
+            /** Format: int32 */
+            id: number;
+            name: string;
+            packagings: components["schemas"]["OrdersVariantPackaging"][];
+            /**
+             * Format: double
+             * @description The list price, net of VAT.
+             */
+            price?: number | null;
+            /** Format: int32 */
+            productId: number;
+            /** @enum {string} */
+            productType: "Goods" | "Service";
+            sku: string;
+            unit: string;
+            vatCode?: string | null;
+            /** Format: int32 */
+            vatCodeId?: number | null;
+            /** Format: double */
+            vatRatePercent?: number | null;
+        };
+        /** @description Variants matching a search, by SKU. */
+        OrdersVariantList: {
+            items: components["schemas"]["OrdersVariant"][];
+        };
+        /** @description A packaging a line may be entered in (O15). */
+        OrdersVariantPackaging: {
+            /** Format: int32 */
+            id: number;
+            name: string;
+            /**
+             * Format: double
+             * @description Its content in the variant's unit.
+             */
+            quantity: number;
+        };
         /** @description VAT per (category, rate) on the sum of the nets (O17). */
         OrdersVatSummary: {
             category: string;
@@ -1629,6 +1784,44 @@ export interface operations {
             };
         };
     };
+    getOrdersMeta: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersMeta"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     listSalesOrders: {
         parameters: {
             query?: {
@@ -1642,6 +1835,12 @@ export interface operations {
                 pageSize?: number;
                 /** @description Only orders not done and not cancelled. */
                 open?: boolean;
+                /** @description Any of the delivery statuses; none means all. */
+                deliveryStatus?: ("none" | "partial" | "delivered")[];
+                /** @description Any of the invoice statuses; none means all. */
+                invoiceStatus?: ("none" | "partial" | "invoiced")[];
+                /** @description true keeps only the done orders (confirmed, delivered and invoiced), false only those not done; absent keeps both. */
+                done?: boolean;
             };
             header?: never;
             path?: never;
@@ -3870,6 +4069,47 @@ export interface operations {
             };
         };
     };
+    listOrdersSalespeople: {
+        parameters: {
+            query?: {
+                /** @description Part of the display name, ignoring case. */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersSalespersonList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     getOrdersSettings: {
         parameters: {
             query?: never;
@@ -4226,6 +4466,67 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    searchOrdersVariants: {
+        parameters: {
+            query?: {
+                q?: string;
+                /** @description The document's currency, for the list price; the base currency when absent. */
+                currency?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersVariantList"];
+                };
+            };
+            /** @description Bad Request — the currency is not three letters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
             };
         };
     };

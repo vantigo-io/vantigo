@@ -57,9 +57,21 @@ export const listedCustomers = [
  * test says otherwise: the stored PDFs, the sends, the change log, the
  * settings, the templates, and the other modules' lists the pickers read.
  */
-export const commonAnswers = (call: Call, settings?: unknown): Response | undefined => {
+export const commonAnswers = (call: Call, settings?: unknown, meta?: unknown): Response | undefined => {
   if (call.method !== "GET") return undefined;
   const url = call.url;
+  if (url === "/api/v1/orders/meta")
+    return jsonResponse(
+      200,
+      meta ?? { sendingAvailable: true, quoteValidityDays: 30, defaultPaymentTermsDays: 14, baseCurrency: "NOK" },
+    );
+  if (url === "/api/v1/orders/salespeople")
+    return jsonResponse(200, {
+      items: [
+        { id: "00000000-0000-4000-8000-000000000001", displayName: "Kari Selger" },
+        { id: "00000000-0000-4000-8000-000000000002", displayName: "Per Selger" },
+      ],
+    });
   if (/\/(documents|mailings|changes)$/.test(url)) return jsonResponse(200, { items: [] });
   if (url === "/api/v1/orders/settings" && settings) return jsonResponse(200, settings);
   if (url.startsWith("/api/v1/orders/templates")) return jsonResponse(200, { items: [] });
@@ -102,13 +114,23 @@ export const commonAnswers = (call: Call, settings?: unknown): Response | undefi
     return jsonResponse(200, { data: listedCustomers.filter((c) => !search || c.name.toLowerCase().includes(search)) });
   }
   if (url.startsWith("/api/v1/projects?")) return jsonResponse(200, { data: [] });
-  if (url.startsWith("/api/v1/products?"))
+  if (url.startsWith("/api/v1/orders/variants?"))
     return jsonResponse(200, {
-      data: [
+      items: [
         {
-          id: 30,
-          name: "Kabel",
-          variants: [{ id: 302, sku: "KAB-20", unit: "stk", optionValues: { lengde: "20 m" } }],
+          id: 302,
+          productId: 30,
+          sku: "KAB-20",
+          name: "Kabel – 20 m",
+          unit: "stk",
+          productType: "Goods",
+          description: "",
+          currency: "NOK",
+          price: 199,
+          vatCodeId: 3,
+          vatCode: "3",
+          vatRatePercent: 25,
+          packagings: [],
         },
       ],
     });

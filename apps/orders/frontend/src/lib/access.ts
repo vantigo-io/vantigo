@@ -17,14 +17,10 @@ export interface OrdersAccess {
   canViewCustomers: boolean;
   /** `customers:contacts-view` and `customers:associations-view`: a customer's contacts. */
   canViewContacts: boolean;
-  /** The products module mounted and `products:products-view`: the line editor's variant search. */
-  canSearchProducts: boolean;
   /** The invoices module mounted and `invoices:access`: the VAT codes a free-text line picks among. */
   canReadVatCodes: boolean;
   /** The projects module mounted and `projects:access`: the project picker. */
   canViewProjects: boolean;
-  /** Communications mounted and `communications:channels-manage`: the send channel's choices. */
-  canListChannels: boolean;
   /** The signed-in user, who may make themself a document's salesperson. */
   userId?: string;
   userDisplayName?: string;
@@ -38,8 +34,6 @@ export const noOrdersAccess: OrdersAccess = {
   canManageSettings: false,
   canViewCustomers: false,
   canViewContacts: false,
-  canSearchProducts: false,
   canReadVatCodes: false,
   canViewProjects: false,
-  canListChannels: false,
 };

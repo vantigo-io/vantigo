@@ -21,6 +21,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { customerAddressesQueryOptions, customerContactsQueryOptions } from "../api/customers";
 import { customerProjectsQueryOptions } from "../api/projects";
+import { salespeopleQueryOptions } from "../api/salespeople";
 import type { CustomerSnapshot, Person } from "../api/types";
 import type { OrdersAccess } from "../lib/access";
 import { useOrdersFormat } from "../lib/format";
@@ -123,6 +124,14 @@ export const HeaderCard = ({
     ? [...CURRENCIES]
     : [header.currency, ...CURRENCIES];
   const isMe = access.userId !== undefined && header.salespersonId === access.userId;
+  // The salespeople a draft may name: who holds a selling key (orders:access reads them).
+  const salespeople = useQuery({ ...salespeopleQueryOptions(), enabled: editable.draft });
+  const salespersonOptions = (salespeople.data ?? []).map((p) => ({ value: p.id, label: p.displayName }));
+  if (header.salespersonId && !salespersonOptions.some((o) => o.value === header.salespersonId))
+    salespersonOptions.unshift({
+      value: header.salespersonId,
+      label: header.salespersonChanged ? (access.userDisplayName ?? "—") : (salesperson?.displayName ?? "—"),
+    });
 
   return (
     <Card withBorder padding="lg" data-testid="header-card">
@@ -189,26 +198,31 @@ export const HeaderCard = ({
           ) : (
             <Field label={t("yourReference")}>{header.yourReference}</Field>
           )}
-          <Stack gap={2}>
-            <Text size="xs" c="dimmed" tt="uppercase" fw={600} style={{ letterSpacing: "0.04em" }}>
-              {t("salesperson")}
-            </Text>
-            <Group gap="xs" wrap="nowrap">
-              <Text size="sm">
-                {header.salespersonChanged ? access.userDisplayName : (salesperson?.displayName ?? "—")}
-              </Text>
-              {editable.draft && access.userId && !isMe && (
+          {editable.draft ? (
+            <Stack gap={4}>
+              <Select
+                label={t("salesperson")}
+                data={salespersonOptions}
+                searchable
+                value={header.salespersonId}
+                onChange={(value) => value && onChange({ salespersonId: value, salespersonChanged: true })}
+                error={errors.salespersonId}
+              />
+              {access.userId && !isMe && (
                 <Button
                   size="compact-xs"
                   variant="subtle"
                   leftSection={<IconUserCheck size={12} />}
+                  style={{ alignSelf: "flex-start" }}
                   onClick={() => onChange({ salespersonId: access.userId ?? null, salespersonChanged: true })}
                 >
                   {t("makeMeSalesperson")}
                 </Button>
               )}
-            </Group>
-          </Stack>
+            </Stack>
+          ) : (
+            <Field label={t("salesperson")}>{salesperson?.displayName ?? "—"}</Field>
+          )}
           {editable.draft && access.canViewProjects ? (
             <Select
               label={t("project")}

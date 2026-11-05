@@ -32,6 +32,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
+import { metaQueryOptions } from "../api/meta";
 import {
   acceptQuote,
   applyTemplate,
@@ -50,7 +51,6 @@ import {
   updateQuote,
 } from "../api/quotes";
 import { isVersionConflict, NotFoundError, ORDERS_QUERY_KEY } from "../api/request";
-import { settingsQueryOptions } from "../api/settings";
 import { templateListQueryOptions } from "../api/templates";
 import type { Quote } from "../api/types";
 import { ConfirmDialog } from "../components/confirm-dialog";
@@ -146,10 +146,10 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
   const detailKey = quoteQueryOptions(quote.id).queryKey;
   const documents = useQuery(quoteDocumentsQueryOptions(quote.id));
   const mailings = useQuery(quoteMailingsQueryOptions(quote.id));
-  // Whether Communications can send is a setting (O25), which only
-  // orders:settings reads; anyone else learns it from a refused send.
-  const settings = useQuery({ ...settingsQueryOptions(), enabled: access.canManageSettings });
-  const sendingOff = settings.data?.sendingAvailable === false;
+  // Whether Send works now (O25) and the default validity (O20), read under
+  // orders:access alone.
+  const meta = useQuery(metaQueryOptions());
+  const sendingOff = meta.data?.sendingAvailable === false;
   const manage = access.canManageQuotes;
   const draft = quote.status === "draft";
   const editable = draft && manage;
@@ -158,7 +158,7 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
     setSendError(undefined);
   };
   // A quote is sent valid until its own date, else the setting's validity from today (O20).
-  const validUntilDefault = editor.header.validUntil ?? addDays(today(), settings.data?.quoteValidityDays ?? 30);
+  const validUntilDefault = editor.header.validUntil ?? addDays(today(), meta.data?.quoteValidityDays ?? 30);
   const common = { detailKey, showRefusal: editor.showRefusal, onDone: close };
 
   const save = useDocumentWrite({
@@ -490,7 +490,7 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
       {dialog === "send" && (
         <SendDialog
           kind="quote"
-          defaultRecipient={quote.customer.contact.email}
+          defaultRecipient={quote.defaultRecipient}
           validUntil={validUntilDefault}
           loading={send.isPending}
           error={sendError}

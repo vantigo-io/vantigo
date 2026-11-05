@@ -31,10 +31,8 @@ export const ordersAccessOf = (
     canManageSettings: orders("orders:settings"),
     canViewCustomers: mounted("customers", ["customers:view"]),
     canViewContacts: mounted("customers", ["customers:contacts-view", "customers:associations-view"]),
-    canSearchProducts: mounted("products", ["products:products-view"]),
     canReadVatCodes: mounted("invoices", ["invoices:access"]),
     canViewProjects: mounted("projects", ["projects:access"]),
-    canListChannels: mounted("communications", ["communications:channels-manage"]),
     userId: user?.id,
     userDisplayName: user?.displayName,
   };

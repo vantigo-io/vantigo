@@ -10,17 +10,6 @@ const url = "/api/v1/orders/settings";
 const server = (writes: (call: { method: string }) => Response | undefined = () => undefined, current = settings()) =>
   fakeServer((call) => {
     if (call.method === "GET" && call.url === url) return jsonResponse(200, current);
-    if (call.method === "GET" && call.url === "/api/v1/communications/channels")
-      return jsonResponse(200, [
-        {
-          id: "11111111-1111-4111-8111-111111111111",
-          address: "salg@firma.no",
-          displayName: "Salg",
-          isActive: true,
-          available: true,
-          provider: "smtp",
-        },
-      ]);
     if (call.method !== "GET") return writes(call);
     return commonAnswers(call);
   });
