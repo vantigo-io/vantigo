@@ -69,7 +69,7 @@ RETURNING *;
 
 -- name: CancelDraftDeliveriesOfOrder :many
 -- CancelDraftDeliveriesOfOrder cancels every draft delivery of an order: the
--- order's cancel and cancel remaining leave nothing for them to deliver.
+-- order's cancel leaves nothing for them to deliver.
 UPDATE orders.deliveries
 SET status = 'cancelled', cancelled_at = sqlc.arg(now), version = version + 1, updated_at = sqlc.arg(now)
 WHERE order_id = sqlc.arg(order_id) AND status = 'draft'
@@ -124,3 +124,22 @@ SELECT * FROM orders.deliveries WHERE order_id = ANY(sqlc.arg(order_ids)::bigint
 
 -- name: DeliveryLinesOfDeliveries :many
 SELECT * FROM orders.delivery_lines WHERE delivery_id = ANY(sqlc.arg(delivery_ids)::bigint[]) ORDER BY delivery_id, position;
+
+-- name: DeleteDraftDeliveryLinesOf :many
+-- DeleteDraftDeliveryLinesOf removes the lines of the order's draft
+-- deliveries that name the order lines: a cancel of what remains leaves
+-- nothing of them to deliver. It answers the drafts that lost a line.
+DELETE FROM orders.delivery_lines dl
+USING orders.deliveries d
+WHERE d.id = dl.delivery_id AND d.order_id = sqlc.arg(order_id) AND d.status = 'draft'
+  AND dl.order_line_id = ANY(sqlc.arg(order_line_ids)::bigint[])
+RETURNING dl.delivery_id;
+
+-- name: CancelEmptyDraftDeliveries :exec
+-- CancelEmptyDraftDeliveries cancels the drafts among ids left without a
+-- line, and bumps the others' version: their lines changed.
+UPDATE orders.deliveries d
+SET status = CASE WHEN EXISTS (SELECT 1 FROM orders.delivery_lines dl WHERE dl.delivery_id = d.id) THEN 'draft' ELSE 'cancelled' END,
+    cancelled_at = CASE WHEN EXISTS (SELECT 1 FROM orders.delivery_lines dl WHERE dl.delivery_id = d.id) THEN NULL ELSE sqlc.arg(now)::timestamptz END,
+    version = version + 1, updated_at = sqlc.arg(now)
+WHERE d.id = ANY(sqlc.arg(ids)::bigint[]) AND d.status = 'draft';

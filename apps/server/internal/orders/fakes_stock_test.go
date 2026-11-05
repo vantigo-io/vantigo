@@ -18,8 +18,8 @@ import (
 // package, in memory: sites, what each location holds of a variant, and the
 // reservations each document line holds. It keeps the contract's rules a
 // caller relies on — a reserve refused beyond what is available at the site
-// writes nothing, an issue consumes the line's reservation and is idempotent
-// by its document — but not a transaction's rollback: a test reads what a
+// writes nothing, a line holds one variant, an issue consumes the line's
+// reservation of the variant issued and is idempotent by its document — but not a transaction's rollback: a test reads what a
 // refused write left, never what a rolled-back one did.
 type fakeStock struct {
 	mu        sync.Mutex
@@ -237,6 +237,13 @@ func (f *fakeStock) Reserve(ctx context.Context, _ pgx.Tx, src contracts.StockSo
 		r := refused[0]
 		return &contracts.StockRefusal{Code: r.Code, VariantID: r.VariantID, LineID: r.LineID, Detail: r.Detail, Lines: refused}
 	}
+	// A line holds one variant at a site, as Inventory's AddReservations.
+	for _, l := range lines {
+		k := stockLineKey{src, l.LineID, site}
+		if v, ok := f.variants[k]; ok && f.reserved[k] != nil && v != l.VariantID {
+			return fmt.Errorf("fake stock: line %d already holds variant %d", l.LineID, v)
+		}
+	}
 	for _, l := range lines {
 		k := stockLineKey{src, l.LineID, site}
 		f.reserved[k] = new(big.Rat).Add(orZeroRat(f.reserved[k]), rat(l.Quantity))
@@ -306,7 +313,7 @@ func (f *fakeStock) Issue(ctx context.Context, _ pgx.Tx, src contracts.StockSour
 		spot := stockSpot{l.VariantID, l.FromLocationID}
 		f.onHand[spot] = new(big.Rat).Sub(f.onHand[spot], rat(l.Quantity))
 		k := stockLineKey{src, l.LineID, issue.SiteID}
-		if q := f.reserved[k]; q != nil {
+		if q := f.reserved[k]; q != nil && f.variants[k] == l.VariantID {
 			left := new(big.Rat).Sub(q, rat(l.Quantity))
 			if left.Sign() <= 0 {
 				delete(f.reserved, k)
@@ -334,4 +341,17 @@ func (f *fakeStock) ReservationsFor(ctx context.Context, _ pgx.Tx, src contracts
 		return cmp.Or(cmp.Compare(a.LineID, b.LineID), cmp.Compare(a.SiteID, b.SiteID))
 	})
 	return out, nil
+}
+
+// variantHeld is the variant the document's line holds reserved, 0 when it
+// holds none.
+func (f *fakeStock) variantHeld(src contracts.StockSource, line int64) int32 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for k, q := range f.reserved {
+		if k.src == src && k.line == line && q.Sign() > 0 {
+			return f.variants[k]
+		}
+	}
+	return 0
 }

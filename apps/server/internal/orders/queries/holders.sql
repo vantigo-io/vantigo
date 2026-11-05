@@ -125,15 +125,18 @@ LIMIT sqlc.arg(batch_size)::integer;
 
 -- name: CompleteErasure :execrows
 -- CompleteErasure marks an erasure done once none of the customer's orders
--- and subscriptions holds the person any more and no stored PDF of theirs is
--- left.
+-- and subscriptions holds the person any more and no stored PDF of theirs —
+-- a quote's, an order's or a delivery's packing slip — is left.
 UPDATE orders.erasures SET completed_at = sqlc.arg(now)
 WHERE orders.erasures.customer_id = sqlc.arg(customer_id) AND completed_at IS NULL
   AND NOT EXISTS (SELECT 1 FROM orders.orders o WHERE o.customer_id = orders.erasures.customer_id AND o.anonymised_at IS NULL)
   AND NOT EXISTS (SELECT 1 FROM orders.subscriptions s WHERE s.customer_id = orders.erasures.customer_id AND s.anonymised_at IS NULL)
   AND NOT EXISTS (SELECT 1 FROM orders.documents d
                   WHERE (d.owner_kind = 'quote' AND d.owner_id IN (SELECT q.id FROM orders.quotes q WHERE q.customer_id = orders.erasures.customer_id))
-                     OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = orders.erasures.customer_id)));
+                     OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = orders.erasures.customer_id))
+                     OR (d.owner_kind = 'delivery' AND d.owner_id IN (SELECT dv.id FROM orders.deliveries dv
+                                                                      JOIN orders.orders o ON o.id = dv.order_id
+                                                                      WHERE o.customer_id = orders.erasures.customer_id)));
 
 -- name: CustomerHasDocuments :one
 -- CustomerHasDocuments reports whether any quote or order of a customer has a
