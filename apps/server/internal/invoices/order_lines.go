@@ -33,6 +33,7 @@ const (
 	separatedByYourReference = "your_reference"
 	separatedByProject       = "project"
 	separatedByPaymentTerms  = "payment_terms"
+	separatedByAddress       = "delivery_address"
 )
 
 // maxUnit is a line unit's column bound.
@@ -140,15 +141,17 @@ func clipUnit(s string) string {
 }
 
 // orderGroupKey is what a combined draft's orders share (O39): currency, the
-// buyer's reference, the project (0 for none) and the payment terms (-1 for
-// none, the customer's own).
+// buyer's reference, the project (0 for none), the payment terms (-1 for
+// none, the customer's own) and the delivery address, normalised ("" for
+// none) — a draft states one place of delivery, so orders delivered to two
+// places are two drafts.
 type orderGroupKey struct {
-	currency, yourReference string
-	project, terms          int32
+	currency, yourReference, address string
+	project, terms                   int32
 }
 
 func groupKeyOf(o contracts.DueOrder) orderGroupKey {
-	k := orderGroupKey{currency: o.Currency, yourReference: strings.TrimSpace(o.YourReference), terms: -1}
+	k := orderGroupKey{currency: o.Currency, yourReference: strings.TrimSpace(o.YourReference), address: addressKey(o.DeliveryAddress), terms: -1}
 	if o.ProjectID != nil {
 		k.project = *o.ProjectID
 	}
@@ -156,6 +159,17 @@ func groupKeyOf(o contracts.DueOrder) orderGroupKey {
 		k.terms = *o.PaymentTermsDays
 	}
 	return k
+}
+
+// addressKey is a delivery address as the grouping compares it: each part
+// trimmed, its inner spaces collapsed and case folded, the country upper
+// case; "" for none. The delivery name is not part of it.
+func addressKey(a *contracts.CustomerAddressEntry) string {
+	if a == nil {
+		return ""
+	}
+	norm := func(s string) string { return strings.ToLower(strings.Join(strings.Fields(s), " ")) }
+	return strings.Join([]string{norm(a.Line1), norm(a.Line2), norm(a.PostalCode), norm(a.City), strings.ToUpper(strings.TrimSpace(a.Country))}, "\x1f")
 }
 
 // orderGroup is one draft to make: a customer's orders, in order number
@@ -169,9 +183,9 @@ type orderGroup struct {
 
 // groupOrders is O39's grouping of orders into drafts, by customer and then
 // by each order's first appearance: one per order, or with combine the orders
-// of a customer that share currency, your reference, project and payment
-// terms. With combine, a customer's drafts each say which of the four set
-// them apart from the customer's others.
+// of a customer that share currency, your reference, project, payment terms
+// and delivery address. With combine, a customer's drafts each say which of
+// the five set them apart from the customer's others.
 func groupOrders(orders []contracts.DueOrder, combine bool) []orderGroup {
 	sorted := slices.Clone(orders)
 	slices.SortStableFunc(sorted, func(a, b contracts.DueOrder) int {
@@ -207,6 +221,7 @@ func groupOrders(orders []contracts.DueOrder, combine bool) []orderGroup {
 				{separatedByYourReference, g.key.yourReference != other.key.yourReference},
 				{separatedByProject, g.key.project != other.key.project},
 				{separatedByPaymentTerms, g.key.terms != other.key.terms},
+				{separatedByAddress, g.key.address != other.key.address},
 			} {
 				if f.differs && !slices.Contains(g.separatedBy, f.name) {
 					g.separatedBy = append(g.separatedBy, f.name)

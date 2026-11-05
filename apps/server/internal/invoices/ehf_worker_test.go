@@ -864,15 +864,16 @@ func TestEhfWorker_RegisteredOnlyWhenEnabled(t *testing.T) {
 	}
 	// INVOICES_VIPPS_ENABLED stays at its default, on: the payments worker
 	// is there beside them (TestWorkers_PerSwitch).
-	want := []string{"invoices-billing@5s", "invoices-ehf-events@30s", "invoices-ehf@5s", "invoices-payments@1s", "invoices-reminders@5s"}
+	want := []string{"invoices-billing@5s", "invoices-ehf-events@30s", "invoices-ehf@5s", "invoices-payments@1s", "invoices-reminders@5s",
+		"invoices.allocation_reconcile@10m0s"}
 	if got := names(newHarness(t)); !slices.Equal(got, want) {
 		t.Errorf("enabled: %v, want %v", got, want)
 	}
 	if got := names(newHarness(t, modtest.WithEnv("PEPPOL_LOOKUP_ENABLED", "0"))); !slices.Equal(got, want) {
 		t.Errorf("lookup disabled: %v, want %v", got, want)
 	}
-	if got := names(newHarness(t, modtest.WithEnv("INVOICES_EHF_ENABLED", "0"))); !slices.Equal(got, []string{"invoices-billing@5s", "invoices-payments@1s", "invoices-reminders@5s"}) {
-		t.Errorf("switched off: %v, want the billing, reminder and payments workers alone", got)
+	if got := names(newHarness(t, modtest.WithEnv("INVOICES_EHF_ENABLED", "0"))); !slices.Equal(got, []string{"invoices-billing@5s", "invoices-payments@1s", "invoices-reminders@5s", "invoices.allocation_reconcile@10m0s"}) {
+		t.Errorf("switched off: %v, want the billing, reminder, payments and reconcile workers alone", got)
 	}
 }
 

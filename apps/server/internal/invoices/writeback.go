@@ -346,8 +346,12 @@ func (w issueWork) notSelectable() *gen.InvoicesConflictProblem {
 // lock, after every check and the number (D1): the draft's work read again —
 // any difference from what was read before the transaction is a save slipped
 // in between, invoice_changed; the projects' billing types judged
-// (source_not_selectable); the holders called with ref; the rows moved from
-// held to invoiced. A draft holding no work, then or now, writes nothing.
+// (source_not_selectable); each line billing an order allocation judged
+// against its held row (source_changed, allocationLinesDrift); the holders
+// called with ref; the rows moved from held to invoiced, and the order
+// allocations' rows deleted from the ledger of those taken — Orders holds
+// them now (orders design O36). A draft holding no work, then or now, writes
+// nothing.
 func (s *server) markIssueWork(ctx context.Context, tx pgx.Tx, txq *store.Queries, work issueWork, ref contracts.InvoiceRef) (*gen.InvoicesConflictProblem, error) {
 	rows, err := sourcesOf(ctx, txq, ref.ID)
 	if err != nil {
@@ -362,6 +366,21 @@ func (s *server) markIssueWork(ctx context.Context, tx pgx.Tx, txq *store.Querie
 	if refusal := work.notSelectable(); refusal != nil {
 		return refusal, nil
 	}
+	var allocations []int64
+	for _, r := range rows {
+		if r.kind == contracts.WorkSourceOrderAllocation {
+			allocations = append(allocations, r.id)
+		}
+	}
+	if len(allocations) > 0 {
+		lines, err := txq.Lines(ctx, ref.ID)
+		if err != nil {
+			return nil, fmt.Errorf("invoices: read document %d's lines: %w", ref.ID, err)
+		}
+		if refusal, err := allocationLinesDrift(rows, lines); refusal != nil || err != nil {
+			return refusal, err
+		}
+	}
 	if refusal, err := s.markWork(ctx, tx, work.holders, ref, rows); refusal != nil || err != nil {
 		return refusal, err
 	}
@@ -371,6 +390,46 @@ func (s *server) markIssueWork(ctx context.Context, tx pgx.Tx, txq *store.Querie
 	}
 	if n != int64(len(rows)) {
 		return nil, fmt.Errorf("invoices: document %d held %d sources and %d moved to invoiced", ref.ID, len(rows), n)
+	}
+	if len(allocations) > 0 {
+		if err := txq.ForgetAllocationsInvoiced(ctx, allocations); err != nil {
+			return nil, fmt.Errorf("invoices: forget document %d's order allocations taken: %w", ref.ID, err)
+		}
+	}
+	return nil, nil
+}
+
+// allocationLinesDrift is the issue's defence of an order allocation's line
+// (orders design O39): a save refuses to change such a line
+// (line_holds_order_allocation), and the issue refuses source_changed should
+// one still differ from the row it holds — its quantity, or its net from the
+// allocation's amount — naming the line and the allocation.
+func allocationLinesDrift(rows []heldSource, lines []store.InvoicesLine) (*gen.InvoicesConflictProblem, error) {
+	byPosition := make(map[int32]store.InvoicesLine, len(lines))
+	for _, l := range lines {
+		byPosition[l.Position] = l
+	}
+	for _, r := range rows {
+		if r.kind != contracts.WorkSourceOrderAllocation {
+			continue
+		}
+		l, ok := byPosition[r.linePosition]
+		if !ok {
+			return sourceRefusal(codeSourceChanged, fmt.Sprintf("Line %d, which bills allocation %d, is gone.", r.linePosition, r.id), r), nil
+		}
+		quantity, err := ratFromNumeric(l.Quantity)
+		if err != nil {
+			return nil, err
+		}
+		net, err := ratFromNumeric(l.LineNet)
+		if err != nil {
+			return nil, err
+		}
+		if quantity.Cmp(r.quantity) != 0 || net.Cmp(r.amount) != 0 {
+			return sourceRefusal(codeSourceChanged, fmt.Sprintf(
+				"Line %d bills %s at %s, and allocation %d is %s at %s: remove the line and invoice the order again.",
+				r.linePosition, quantity.FloatString(3), net.FloatString(2), r.id, r.quantity.FloatString(3), r.amount.FloatString(2)), r), nil
+		}
 	}
 	return nil, nil
 }

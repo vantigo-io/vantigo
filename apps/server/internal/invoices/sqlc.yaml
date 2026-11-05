@@ -17,6 +17,7 @@ sql:
       - ../db/migrations/00096_invoices_send_channel.sql
       - ../db/migrations/00118_invoices_tax_category_vat_codes.sql
       - ../db/migrations/00122_invoices_order_sources.sql
+      - ../db/migrations/00123_invoices_order_allocation_ledger.sql
     queries: queries
     gen:
       go:
