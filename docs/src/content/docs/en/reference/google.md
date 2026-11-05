@@ -11,7 +11,7 @@ sources:
   - apps/server/internal/db/migrations/00114_google_baseline.sql
   - apps/server/internal/db/migrations/00115_google_accounts.sql
   - apps/server/internal/db/migrations/00116_google_connections.sql
-  - apps/server/internal/db/migrations/00117_google_calendar.sql
+  - apps/server/internal/db/migrations/00128_google_calendar.sql
   - apps/server/internal/directoryaddress
 ---
 The Google Workspace module connects one installation to one Google Workspace
@@ -761,7 +761,7 @@ never on the service account: no calendar scope is delegated (Q3).
 
 ### The tables
 
-`00117_google_calendar.sql` creates **`calendars`** — `(google_user_id, calendar_id)`,
+`00128_google_calendar.sql` creates **`calendars`** — `(google_user_id, calendar_id)`,
 the secondary calendars the module made, with `created_at` — and **`calendar_channels`**
 — `google_user_id` (the primary key: one channel a person), `channel_id` (a UUID,
 unique), `resource_id`, `token_hash` (32 bytes, `CHECK`ed), `address`, `expires_at`,

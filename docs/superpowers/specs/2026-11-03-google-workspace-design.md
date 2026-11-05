@@ -999,7 +999,7 @@ id `""` is `primary`.
 - **`Notified`** answers rows with `notified_at` after `since`.
 - Notifications are not 100 % reliable; the calendar's poll stands.
 
-The migration is `00117_google_calendar.sql` (`google.calendars`,
+The migration is `00128_google_calendar.sql` (`google.calendars`,
 `google.calendar_channels`, `connection.marker`). **E's operations:** the notifications endpoint.
 **E's pages:** `U/calendar.md` (Sync with Google Calendar under the neutral section,
 Google's busy kinds), `A/calendar.md` (Google as a provider, notifications need
