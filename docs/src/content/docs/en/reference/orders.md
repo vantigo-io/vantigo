@@ -1,6 +1,6 @@
 ---
 title: "Orders module"
-description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, PDFs, sending and the cover mail, the events, the handler and the four workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, the refusal codes, the assist targets and every endpoint with its permission and status codes."
+description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, subscriptions — the plan, the period calendar, proration, the due rule and the twelve-month limit, the per-period allocations, billed through, dated lines and changes, pause, resume, end and cancel —, PDFs, sending and the cover mail, the events, the handler and the four workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, the refusal codes, the assist targets and every endpoint with its permission and status codes."
 sources:
   - apps/server/internal/orders
   - apps/orders/frontend
@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/db/migrations/00119_orders_baseline.sql
   - apps/server/internal/db/migrations/00120_orders_warnings.sql
   - apps/server/internal/db/migrations/00121_orders_allocations.sql
+  - apps/server/internal/db/migrations/00124_orders_subscriptions.sql
   - apps/server/internal/contracts/billable_orders.go
   - apps/server/internal/contracts/events_orders.go
   - apps/host/frontend/src/routes/orders
@@ -22,9 +23,9 @@ an order's life from draft to confirmed, delivered and cancelled. In Norwegian t
 [`2026-11-05-orders-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-05-orders-design.md)
 (decisions O1–O54); this page describes delivery A, quotes and orders, delivery A2,
 selling comfort — sales warnings, packagings and the variant grid, and the analysis
-views — and delivery B, invoicing from orders ([Invoicing from orders](#invoicing-from-orders)).
-Subscriptions (S), deliveries from stock (C) and shipping (D) come later and are
-described as they land.
+views — delivery B, invoicing from orders ([Invoicing from orders](#invoicing-from-orders)),
+and delivery S, subscriptions ([Subscriptions](#subscriptions)). Deliveries from stock (C)
+and shipping (D) come later and are described as they land.
 
 ## The module
 
@@ -48,7 +49,10 @@ their retention to run) — migration `00119` — and `customer_warnings` and
 `product_warnings` (one sales warning per customer and per product, migration `00120`,
 which also gives every line its `product_id` and `packaging_name` snapshots) — and
 `invoice_allocations`, what invoices hold of each order line (migration `00121`,
-[Invoicing from orders](#invoicing-from-orders)).
+[Invoicing from orders](#invoicing-from-orders)) — and `subscriptions` and
+`subscription_skips` (migration `00124`, [Subscriptions](#subscriptions)), which also lets
+`lines` belong to a subscription, dated by `valid_from` and `valid_to`, the change log
+hold a subscription's, and an allocation bill a subscription's period.
 
 ## Permissions
 
@@ -59,15 +63,14 @@ which also gives every line its `product_id` and `packaging_name` snapshots) —
 | `orders:sales-manage` | Manage orders | Create and edit orders, hold and release, cancel and cancel what remains, register and undo delivered, send the confirmation, release the draft allocations, delete a draft | no | yes |
 | `orders:sales-confirm` | Confirm orders | Confirm, lock and unlock; accept a quote into a confirmed order | no | yes |
 | `orders:settings` | Manage Orders settings | The settings, the number series, the quote templates and the sales warnings; overriding a block warning | no | no |
-| `orders:subscriptions-manage` | Manage subscriptions | Subscriptions — first asked for by delivery S | no | yes |
+| `orders:subscriptions-manage` | Manage subscriptions | Create, save, activate, pause, resume, end and cancel subscriptions; accept a quote into a subscription | no | yes |
 | `orders:deliveries-manage` | Manage deliveries | Deliveries (delivery C) and shipments (delivery D) | no | yes |
 | `orders:carriers-manage` | Manage carriers | Carrier accounts and their keys under Integrations — delivery D | yes | no |
 | `orders:analysis-view` | View sales analysis | The analysis views and their CSV files | no | yes |
 
 Every operation asks for `orders:access` **and** its own key, so a role that gives
-`orders:quotes-manage` without `orders:access` gives nothing. The subscriptions,
-deliveries and carriers keys are declared now so a role can be built once; no operation
-asks for them yet.
+`orders:quotes-manage` without `orders:access` gives nothing. The deliveries and carriers
+keys are declared now so a role can be built once; no operation asks for them yet.
 
 The screens read other modules over HTTP and need their keys too: the customer picker
 `customers:view`, a customer's contacts `customers:contacts-view` with
@@ -388,8 +391,9 @@ module is asked: the wizard needs `invoices:access` and `invoices:create`.
 an order line an invoice bills (O36). An invoice line holds one live source, and a line
 may be invoiced in several parts, so the source an invoice line names is an allocation —
 kind `orders.allocation` (`contracts.WorkSourceOrderAllocation`) — never the line. A row
-carries its line and order, its `kind` (`order_line` in B; `subscription_period`, with
-its period, is delivery S's), its `quantity` (three decimals), the line's `unit_price`
+carries its line and its order — or, for a subscription period, its subscription
+([Subscriptions](#subscriptions)) — its `kind` (`order_line`, or `subscription_period` with
+its `period_start` and `period_end`), its `quantity` (three decimals), the line's `unit_price`
 (eight decimals) and `discount_percent` and `vat_code_id` when it was made, its `amount` —
 docmath's line net of those three numbers (O37), so the invoice line built from them
 always nets the same —, its `state` and `revision` (1: a row is never rewritten), and an
@@ -406,8 +410,8 @@ What a line has **to invoice** is, for a line invoiced on order (`invoice_policy
 below 0; on delivery (`delivery`) it will be delivered − invoiced − draft-allocated,
 delivery C's. The order answers each line's `qtyDraftAllocated`.
 
-**The lock order.** Every writer of an allocation takes the order's row first, then its
-lines, then the allocations, each `FOR UPDATE` in id order: `Allocate` (orders, lines),
+**The lock order.** Every writer of an allocation takes the order's row first, then the
+subscription's, then the lines, then the allocations, each `FOR UPDATE` in id order: `Allocate` (orders, lines),
 `ReleaseAllocations`, the holder's `MarkInvoiced` and `ReleaseInvoiced`, and the order
 page's release (the order, its lines, its draft allocations) — so no two of them cross.
 A save of the order takes the order first and writes no allocation but the released ones
@@ -422,14 +426,20 @@ the drafts alone (`ix_invoice_allocations_draft`).
 the enabled modules — nil when Orders is off. It reads and writes on the pool and the
 clock and never reads a directory; its caller never calls it under a lock of its own.
 
-- **`DueOrders`** — the orders a request names (`CustomerIDs`, `OrderIDs` or `Every`,
-  exactly one), each with its lines left to invoice: number, customer, currency, project,
+- **`DueOrders`** — the documents a request names (`CustomerIDs`, the documents —
+  `OrderIDs` and `SubscriptionIDs` — or `Every`, exactly one), each with its lines left to
+  invoice; a `DueOrder`'s `Kind` is `order` or `subscription`, and an order and a
+  subscription are numbered apart, so a caller keys a document by its kind and id. An
+  order answers number, customer, currency, project,
   your reference, delivery date, delivery name and address, payment terms and, per line,
   its position, text, unit, `ToInvoice`, unit price, discount, VAT code, invoice policy and
   amount. `Until` bounds the orders by their delivery date, on or before; an order with
   none is always due. A draft order and one on hold are answered with `Blocked` (`draft`,
-  `on_hold`), so the caller can say why. At most 5 000 lines (`MaxBillableRows`), `More`
-  set when there were more. It writes nothing.
+  `on_hold`), so the caller can say why. A subscription answers its due periods' lines
+  ([Billing a period](#billing-a-period)), each with its `PeriodStart` and `PeriodEnd` —
+  `Until` is then the date the periods are due through, the provider's today when zero.
+  At most 5 000 lines (`MaxBillableRows`), `More` set when there were more. It writes
+  nothing.
 - **`Allocate`** — a provider command (module boundaries rule 5): a new draft allocation
   per line named, on one transaction of its own. It reads the lines' orders, then locks
   the orders `FOR UPDATE` in id order, then the lines, so two Allocates serialise on the
@@ -439,7 +449,9 @@ clock and never reads a directory; its caller never calls it under a lock of its
   a code: **`line_not_invoiceable`** for a line that is not a priced product line with a
   VAT code invoiced on order, or whose order is a draft, on hold or cancelled;
   **`allocation_exceeds_open`** for a quantity above what the line has to invoice. The
-  allocation names its order's project only while Projects is composed.
+  allocation names its order's project only while Projects is composed. A request may
+  name `Subscriptions` too, each with a `Through` date: [Billing a
+  period](#billing-a-period).
 - **`Allocations`** — the allocations named, as they stand; a missing id is absent.
 - **`ReleaseAllocations`** — a provider command: the named drafts released on one
   transaction of its own, after it has locked their orders, their lines and the
@@ -459,18 +471,23 @@ is composed whatever `MODULES` says.
   missing, released, its order no longer confirmed or on hold, its line no longer
   invoiceable, or its quantity beyond what the line has open (ordered − cancelled −
   invoiced, the allocations before it in this issue counted); then **`source_changed`** —
-  a revision, currency or exact amount other than the source's. The first refusal rolls
-  the issue back. Otherwise every allocation is stamped with the `InvoiceRef`, its
+  a revision, currency or exact amount other than the source's. A subscription period's
+  allocation is judged by its subscription instead — `source_not_invoiceable` when it is
+  a draft or cancelled — and has no line progress. The first refusal rolls the issue
+  back. Otherwise every allocation is stamped with the `InvoiceRef`, its
   quantity added to its line's `qty_invoiced`, each order's invoice status recomputed and
   its `updated_at` moved to `IssuedAt` — its version is not bumped and nothing is logged,
   as for a delivery marking — and **`orders.sales_order.invoiced`** published once per
   order ([Events](#events)): the one holder that publishes (module boundaries rule 10).
+  A subscription's `billed_through` is derived again ([Billed
+  through](#billed-through)) and stored, with its `updated_at` at `IssuedAt`.
 - **`ReleaseInvoiced`**, on the credit note that returns an allocation's invoice line in
   full — the last of several partial credits included — locks the same way and moves each
   allocation carrying that invoice's stamp to `released`, the stamp kept; its quantity is
   taken off the line's invoiced, so it is to invoice again, and the invoice status
   recomputed. One without the stamp is left as it is, with a warning logged: a credit
-  note is never blocked. Nothing is published.
+  note is never blocked. Nothing is published. A subscription period released so is due
+  again, alone, and the subscription's `billed_through` is derived again.
 
 ### Release draft allocations
 
@@ -508,6 +525,154 @@ allocations `released` since), `currency` and `state`, `invoiced`, or `released`
 every allocation of it was given back by a credit note, its `amount` then 0. The page shows it as the **Invoices** card, and **Invoice** — needing
 `invoices:access` and `invoices:create`, disabled on hold, with nothing left to invoice or
 with unsaved changes — opens Invoices' wizard at `/invoices/new/from-orders?orderId=`.
+
+## Subscriptions
+
+Delivery S (O42–O44). A **subscription** (*abonnement*) is its own aggregate, in
+`orders.subscriptions` (migration `00124_orders_subscriptions.sql`): services billed per
+period, through the same allocations, billable read and holder as an order's lines
+([Invoicing from orders](#invoicing-from-orders)). This phase sells services only.
+
+### The model
+
+A subscription has the [document header](#the-document-header) of a quote and an order
+— the customer and its snapshot, your reference, salesperson, project, currency, VAT
+mode, payment terms, discount visibility, language and texts — without a delivery date;
+a delivery address is taken as an order's but is never required. Its **number** comes
+from the `subscription` series, which has no setting of its own and starts at 1. Its
+origin is O27's: `manual` by hand, `quote` when a quote was accepted into it.
+
+**The plan**:
+
+| Field | Values | Rule |
+| --- | --- | --- |
+| `interval` | `monthly`, `quarterly`, `half_yearly`, `yearly` | Fixed once active |
+| `billing` | `in_advance`, `in_arrears` | Fixed once active |
+| `startDate` | a day | Fixed once active |
+| `endDate` | a day or none | Set by [End](#pause-resume-end-and-cancel) once active; on or after the start |
+| `noticeMonths` | 0–12 | Informational, printed |
+| `invoiceDay` | 1–28 or none (the period's first day) | Informational, printed: it does not change what is due |
+
+**The states:** `draft`, `active`, `paused` (with `pausedFrom`), `ended` (with an
+`endDate`; its periods up to the end are still billed) and `cancelled`. `version` is the
+concurrency token's version: a draft's saves leave it, every lifecycle step and every
+change of an activated subscription bumps it; every write sends it with
+`expectedUpdatedAt` ([Concurrency](#concurrency)).
+
+**The lines** are `orders.lines` with `owner_kind` `subscription`: product lines whose
+variant must be a **Service** product (`subscription_goods_not_allowed`), free-text
+lines, sections and notes; no optional lines (`optional_not_allowed`). They are **dated**:
+`valid_from` and `valid_to`, both inclusive and NULL open, and a line bills a period when
+it is in force on the period's first day. A draft's lines are undated. A subscription's
+lines share positions across their dated versions, so `ux_lines_owner_position` holds
+for the other owners only. The answer's `lines` are those in force from the latest change
+on (`valid_to` NULL), its `totals` a full period's at them, and `earlierLines` the ones a
+change ended.
+
+### The period calendar
+
+The periods run from the **first of the start's month** by the interval: period *k*
+covers [anchor + *k*·*n* months, anchor + (*k*+1)·*n* months − 1 day], so a month ends on
+its last day, February on the 28th or, in a leap year, the 29th. The first period begins
+on the start date itself. A period starting after the end date is not one of the
+subscription's; the period the end falls in is billed in full.
+
+**Proration.** When the start is not the first of a month, the first period is
+**partial**, and each line bills docmath's net of the full period times the period's days
+over the full period's days, rounded to øre — the only pro-rating of this phase. It is
+billed as the line's quantity at a unit price of that amount ÷ the quantity at eight
+decimals and no discount, so docmath, which Invoices builds its line by, reproduces the
+amount exactly (O37); where eight decimals cannot carry it, as a quantity of 1 at the
+amount. A monthly subscription started on 31 January bills 1/31 of the month for the
+period 31 January–31 January, then whole months.
+
+### Billing a period
+
+A period is **due through** a date when its first day is on or before it (`in_advance`)
+or its last day is (`in_arrears`); and never when it starts more than **twelve months**
+after today (bokføringsforskriften § 5-2-6), however far ahead the date asked. A
+subscription bills its periods while it is `active` or `ended`, and while `paused` its
+periods before `pausedFrom`; a period recorded in `orders.subscription_skips` is never
+billed.
+
+**The per-period allocation is the truth** (O43). `Allocate` with `{SubscriptionID,
+Through}` locks the subscription (after the orders, before any line) and writes one draft
+allocation per period due through the date and per line in force on its first day that
+has no live allocation — `kind` `subscription_period`, `period_start`, `period_end`, the
+period's quantity, unit price, discount and amount. A subscription gone, a draft or
+cancelled is refused `subscription_not_invoiceable`; one with no such period
+`nothing_due` (`AllocationRefusal` with `SubscriptionID`). The unique index
+`ux_invoice_allocations_live_period` on `(line_id, period_start) WHERE kind =
+'subscription_period' AND state IN ('draft', 'invoiced')` makes billing one line's period
+twice impossible, whatever writes it. A period is due only while a line in force has no
+live allocation for it, so a credit note that returns January in full makes January due
+again — and nothing else: February stays invoiced.
+
+`OrderAllocation.Kind` is `subscription_period` for one, its `OrderID` and `OrderNumber`
+the subscription's, and its text the line's description; Invoices adds the period to the
+line ([Invoicing orders](/en/reference/invoices/#invoicing-orders)).
+
+### Billed through
+
+`billed_through` is derived, never written by hand: the last day of the unbroken run,
+from the first period, of periods **invoiced** — every line in force on the period's
+first day has an invoiced allocation for it — or **skipped**; NULL when the first is
+neither. It is stored for the lists and derived again by the holder at every issue and
+credit, and at a resume.
+
+The subscription's page answers `periods`: from the first through the later of today and
+the last period billed or skipped, and three more, bounded by the end (at most 120, the
+latest kept) — each with its days, whether it is `partial`, its `amount` (the live
+allocations', else what it would bill) and its `state`: `invoiced`, `draft` (a draft
+allocation), `skipped`, `paused` (from `pausedFrom` on), `due` (today) or `upcoming`, and
+the numbers of the invoices that billed it.
+
+### Changes
+
+A draft's `PUT` replaces its header, plan and lines whole. An activated subscription's
+(`active`, `paused` or `ended`) takes the header's texts, references, contact, delivery
+address, salesperson, project, payment terms, language and discount visibility, and
+`noticeMonths` and `invoiceDay`; the customer, the currency, the VAT mode
+(`subscription_not_editable`, 400) and the plan's interval, billing, start and end are
+fixed. Its lines are as they are to be from **`effectiveFrom`** on — a period start
+(`not_a_period_start`, 400) no earlier than `nextChangeFrom`, the period after the last
+with a live allocation (`change_in_billed_period`, 409), which is the default:
+
+- a kept line unchanged keeps its row, and takes its new position;
+- a line changed — its item, quantity, price, discount, text, unit or VAT code — ends the
+  day before (`valid_to`) and a new row starts on `effectiveFrom` in its place, with what
+  the old one was valid to;
+- a line removed ends the day before;
+- a line added starts on `effectiveFrom`.
+
+A line that would end before it started — changed again from its own first period — is
+deleted, or, when an allocation once named it, kept with `valid_to` the day before its
+`valid_from`. Kept lines are priced from their own rows, as a confirmed order's are. A
+change is never pro-rated. It is logged with `effective_from` and the lines' actions,
+bumps the version and publishes `orders.subscription.changed`.
+
+### Pause, resume, end and cancel
+
+| Step | From | Does |
+| --- | --- | --- |
+| `activate` | `draft` (`subscription_not_draft`) | Judges the customer (`customer_disabled`), a product line (`subscription_empty`), every product line priced (`line_unpriced`) with a VAT code (`vat_code_unmapped`) and still a service (`subscription_goods_not_allowed`); records who and when; publishes `orders.subscription.started` |
+| `pause` | `active` (`subscription_not_active`) | Billing stops from `from` — a period start with no live allocation in it or after it — else the first period starting after today, or the first without a live allocation when later; publishes `orders.subscription.changed` |
+| `resume` | `paused` (`subscription_not_paused`) | Billing restarts from `from`, a period start on or after the pause; every period between is written to `orders.subscription_skips`; publishes `orders.subscription.changed` |
+| `end` | `active`, `paused` or `ended` (`subscription_not_active`) | Sets `endDate`, on or after the last day of the last period with a live allocation (`end_before_billed`); a paused one's periods from the pause to the end are skipped; status `ended`; publishes `orders.subscription.ended` |
+| `cancel` | `draft`; `active` or `paused` with no live allocation (`subscription_billed`) | Status `cancelled`; an activated one publishes `orders.subscription.ended` with `status` `cancelled` (`subscription_not_cancellable` otherwise) |
+
+Each is logged on the change log (`activated`, `paused`, `resumed`, `ended`,
+`cancelled`).
+
+### Accept a quote as a subscription
+
+`POST /quotes/{id}/accept` with `into` `subscription` (O20) also needs
+`orders:subscriptions-manage` (403) and a `plan` (400 without one, or with one for
+another `into`). The quote's chosen lines must be services or free text
+(`subscription_goods_not_allowed`, judged against the catalog before the transaction);
+they become a draft subscription's lines with their frozen prices, its origin `quote` and
+`quoteId@revision`. The quote records `accepted_into_kind` `subscription`, and
+`orders.quote.accepted` names it. The answer carries `subscription` instead of `order`.
 
 ## PDFs
 
@@ -577,11 +742,14 @@ each on the transaction that makes the change and while it holds the document's 
 | Event (v1) | When | Payload |
 | --- | --- | --- |
 | `orders.quote.sent` | A quote is sent or marked as sent | `quoteId`, `number`, `revision`, `customerId`, `currency`, `netTotal`, `sentAt` |
-| `orders.quote.accepted` | A quote is accepted | `quoteId`, `number`, `revision`, `customerId`, `acceptedIntoKind` (`order`), `acceptedIntoId`, `acceptedAt` |
+| `orders.quote.accepted` | A quote is accepted | `quoteId`, `number`, `revision`, `customerId`, `acceptedIntoKind` (`order` or `subscription`), `acceptedIntoId`, `acceptedAt` |
 | `orders.sales_order.confirmed` | An order is confirmed | `orderId`, `number`, `version`, `customerId`, `currency`, `netTotal`, `confirmedAt` |
 | `orders.sales_order.cancelled` | A confirmed order is cancelled | `orderId`, `number`, `customerId`, `cancelledAt` |
 | `orders.sales_order.changed` | A confirmed order is edited, or the rest cancelled, at a new version | `orderId`, `number`, `version`, `customerId`, `changedAt` |
 | `orders.sales_order.invoiced` | An invoice's issue stamped allocations of the order — once per order the invoice bills, by the [holder](#the-invoiced-work-holder) on the issue's transaction | `orderId`, `number`, `customerId`, `invoiceId`, `invoiceNumber`, `invoicedAt` (the issue's time) |
+| `orders.subscription.started` | A subscription is activated | `subscriptionId`, `number`, `version`, `customerId`, `currency`, `interval`, `startDate`, `startedAt` |
+| `orders.subscription.changed` | An activated subscription's lines are changed from a period on, or it is paused or resumed | `subscriptionId`, `number`, `version`, `customerId`, `status`, `changedAt` |
+| `orders.subscription.ended` | A subscription is given its end, or an activated one is cancelled | `subscriptionId`, `number`, `version`, `customerId`, `status` (`ended` or `cancelled`), `endDate`, `endedAt` |
 
 Customers writes the first four on the customer's timeline
 ([the timeline](/en/reference/customers/#the-timeline)).
@@ -621,11 +789,12 @@ one, and is composed whether or not `orders` is enabled.
   (the settings show the customer's number until the warning is next set); when both have
   one the survivor's is kept and the other deleted — except that a merged-away `block`
   over the survivor's `info` makes the survivor's a `block`, its text the survivor's then
-  the merged-away one's on a new line, so a merge never lifts a block. Reported as `orders.quotes`, `orders.orders`
-  and `orders.warnings`.
-- **Customer export**: every quote and order of the customer, each with its snapshot,
-  status, revision or version, totals, texts, lines and sends, and the customer's sales
-  warning, in one read-only snapshot; nothing for a customer with none of them.
+  the merged-away one's on a new line, so a merge never lifts a block. The subscriptions
+  are re-pointed as the orders are. Reported as `orders.quotes`, `orders.orders`,
+  `orders.warnings` and `orders.subscriptions`.
+- **Customer export**: every quote, order and subscription of the customer, each with its
+  snapshot, status, revision or version, totals, texts, lines — a subscription's with their
+  validity, and its plan — and sends, and the customer's sales warning, in one read-only snapshot; nothing for a customer with none of them.
 - **Customer erase** (O29, O54), inside Customers' anonymisation: blanks the name, the
   legal ids, the addresses, the contact, the invoice e-mail, your reference and the
   internal note **at once** on every quote — a quote is offer text, no bookkeeping record
@@ -637,15 +806,18 @@ one, and is composed whether or not `orders` is enabled.
   transaction may not make, so the erasure is recorded in `orders.erasures` whenever a
   confirmed order is kept **or** a stored PDF of the customer's exists, and the retention
   worker deletes them ([Retention](#retention)). Reported as
-  `orders.quotes`, `orders.draftOrders`, `orders.orders` (always 0), `orders.mailings` and
-  `orders.warnings` — the customer's sales warning is deleted; run again, it reports
-  zeros.
+  `orders.quotes`, `orders.draftOrders`, `orders.orders` (always 0), `orders.mailings`,
+  `orders.warnings` — the customer's sales warning is deleted — and
+  `orders.subscriptions`: a subscription never activated is anonymised at once, an
+  activated one is kept as bookkeeping material and recorded as a confirmed order is;
+  run again, it reports zeros.
 - **Invoiced work** (O38): [the invoiced-work holder](#the-invoiced-work-holder) stamps
   and releases the allocations inside an invoice's issue and a credit note's.
 - **Variant delete** (O30): Products' delete of a variant is refused while an open
-  document names it — a draft or sent quote, or an order not cancelled with a line of it
-  that is not delivered or not invoiced in full — as an `open_documents` hold with the
-  count. A change of a product to a service is never held. A template is no document: a
+  document names it — a draft or sent quote, an order not cancelled with a line of it
+  that is not delivered or not invoiced in full, or a draft, active or paused subscription
+  whose lines in force from its latest change on name it — as an `open_documents` hold
+  with the count. A change of a product to a service is never held. A template is no document: a
   variant gone from it is skipped when it is applied.
 
 A **user's erasure** (MB rule 19) leaves Orders as it is: the salesperson and every actor
@@ -663,8 +835,11 @@ anonymises every such order whose year has run. It then deletes the stored PDFs 
 customer's anonymised quotes and orders — the quotes' on the first cycle after the erase,
 so within about a day, and an order's once it has been anonymised after its retention —
 each object from the store first, then its row; the send rows stay, blanked, with their
-link to the PDF removed. An erasure is marked complete only when no order of the customer
-is left unanonymised and no stored PDF of theirs remains.
+link to the PDF removed. An activated subscription is kept the same way until 3 years and
+6 months after the end of the financial year it ended in — its end date, or the day it was
+cancelled — and then anonymised by the same worker; an active one is kept. An erasure is
+marked complete only when no order or subscription of the customer is left unanonymised
+and no stored PDF of theirs remains.
 
 ## The customer summary
 
@@ -674,9 +849,13 @@ is left unanonymised and no stored PDF of theirs remains.
 - **Ordered, not delivered** — the confirmed orders with something left to deliver,
   counted, each line's open quantity valued at its net amount over its quantity;
 - **Delivered, not invoiced** — delivered less what issued invoices stamped invoiced,
-  valued the same way.
+  valued the same way;
+- **Active subscriptions** (`activeSubscriptions`) — the active and paused subscriptions,
+  counted, at their value per year: a full period's net at the lines in force from the
+  latest change on, times the periods in a year.
 
-The customer page's **Orders** tab shows it above the customer's open quotes and orders.
+The customer page's **Orders** tab shows it above the customer's open quotes, orders and
+subscriptions.
 The tab needs the `orders` module and `orders:access`; **New quote** needs
 `orders:quotes-manage` and **New order** `orders:sales-manage`, each only on a customer
 that is neither merged away nor anonymised.
@@ -825,6 +1004,17 @@ a bare 400.
 | `client_request_reused` | 409 | The `clientRequestId` made a document for another customer |
 | `template_name_taken` | 409 | Another template has the name |
 | `blocked_by_warning` | 409 | A block warning on the customer or a product refuses send, mark as sent, confirm or accept into a confirmed order; the detail names it ([Sales warnings](#sales-warnings)) |
+| `subscription_goods_not_allowed` | 400 | A subscription's catalog line is goods, not a service |
+| `subscription_not_editable` | 400 | An activated subscription given another customer, currency, VAT mode, interval, billing, start or end |
+| `not_a_period_start` | 400 | `effectiveFrom`, or a pause's or a resume's `from`, is not the first day of one of the subscription's periods |
+| `subscription_not_draft` | 409 | Only a draft subscription is activated |
+| `subscription_not_active` | 409 | Pause needs an active subscription; end an active, paused or ended one |
+| `subscription_not_paused` | 409 | Only a paused subscription is resumed |
+| `subscription_not_cancellable` | 409 | An ended or cancelled subscription is not cancelled |
+| `subscription_billed` | 409 | Cancelling a subscription with a live allocation: end it instead |
+| `subscription_empty` | 409 | Activating a subscription with no product line |
+| `change_in_billed_period` | 409 | A change or a pause from a period that, or a later one, has a live allocation |
+| `end_before_billed` | 409 | An end before the last day of the last period with a live allocation: credit it first |
 | `dependency_unavailable` | 503 | Customers, Products or Invoices is not composed |
 | `sending_disabled` | 503 | Communications is off, or no channel that can send is chosen |
 | `mail_failed` | 503 | The mail provider did not take the e-mail; nothing changed, the failed send is listed |
@@ -874,6 +1064,15 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `orders.settings.warnings` | `/orders/settings` | The sales warnings in the settings |
 | `orders.analysis.views` | `/orders/analysis` | The analysis's three views |
 | `orders.analysis.csv` | `/orders/analysis` | Download CSV of the open view |
+| `orders.subscriptions.new` | `/orders/subscriptions` | New subscription |
+| `orders.new-subscription.customer` | `/orders/subscriptions/new` | The customer picker |
+| `orders.new-subscription.create` | `/orders/subscriptions/new` | Create the subscription |
+| `orders.subscription.save` | `/orders/subscriptions/{subscriptionId}` | Save |
+| `orders.subscription.activate` | `/orders/subscriptions/{subscriptionId}` | Activate |
+| `orders.subscription.pause` | `/orders/subscriptions/{subscriptionId}` | Pause |
+| `orders.subscription.resume` | `/orders/subscriptions/{subscriptionId}` | Resume |
+| `orders.subscription.end` | `/orders/subscriptions/{subscriptionId}` | End |
+| `orders.subscription.effective-from` | `/orders/subscriptions/{subscriptionId}` | Changes take effect from |
 
 ## Enabling and disabling
 
@@ -913,7 +1112,7 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `POST /quotes/{id}/send` | quotes-manage (+ settings to override) | 200; 400 fields, `line_unpriced`, `vat_code_unmapped`; 404; 409 `blocked_by_warning`; 503 `sending_disabled`, `mail_failed` |
 | `POST /quotes/{id}/mark-sent` | quotes-manage (+ settings to override) | 200; 400; 404; 409 `blocked_by_warning` |
 | `POST /quotes/{id}/revise` | quotes-manage | 200; 404; 409 `version_conflict`, `quote_not_sent` |
-| `POST /quotes/{id}/accept` | quotes-manage (+ sales-confirm for a confirmed order, + settings to override) | 200 the quote and the order; 400 fields and confirm's codes; 403; 404; 409 `quote_not_sent`, `quote_already_accepted`, `blocked_by_warning` |
+| `POST /quotes/{id}/accept` | quotes-manage (+ sales-confirm for a confirmed order, + subscriptions-manage for a subscription, + settings to override) | 200 the quote and the order or the subscription; 400 fields, `plan`, `subscription_goods_not_allowed` and confirm's codes; 403; 404; 409 `quote_not_sent`, `quote_already_accepted`, `blocked_by_warning` |
 | `POST /quotes/{id}/decline` | quotes-manage | 200; 400; 404; 409 |
 | `POST /quotes/{id}/cancel` | quotes-manage | 200; 404; 409 |
 | `POST /quotes/{id}/copy` | quotes-manage | 201; 404; 503 |
@@ -942,6 +1141,16 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `GET /orders/{id}/documents` | access | 200 the stored confirmations; 404 |
 | `GET /orders/{id}/mailings` | access | 200 every send, with the version that went out; 404 |
 | `GET /orders/{id}/changes` | access | 200 the change log; 404 |
+| `GET /subscriptions` | access | 200 — newest first, by customer, status and a search; 400 paging |
+| `POST /subscriptions` | subscriptions-manage | 201; 200 a repeat; 400 fields, plan, lines, `subscription_goods_not_allowed`, `customer_disabled`; 409 `client_request_reused`; 503 |
+| `GET /subscriptions/{id}` | access | 200 with lines, earlier lines, periods and billed through; 404 |
+| `PUT /subscriptions/{id}` | subscriptions-manage | 200; 400 incl. `subscription_not_editable`, `not_a_period_start`; 404; 409 `version_conflict`, `change_in_billed_period`, `subscription_not_editable` (cancelled), `line_kind_changed`; 503 |
+| `POST /subscriptions/{id}/activate` | subscriptions-manage | 200; 400 `customer_disabled`, `line_unpriced`, `vat_code_unmapped`, `subscription_goods_not_allowed`; 404; 409 `subscription_not_draft`, `subscription_empty` |
+| `POST /subscriptions/{id}/pause` | subscriptions-manage | 200; 400 `not_a_period_start`; 404; 409 `subscription_not_active`, `change_in_billed_period` |
+| `POST /subscriptions/{id}/resume` | subscriptions-manage | 200; 400 `not_a_period_start`, before the pause; 404; 409 `subscription_not_paused` |
+| `POST /subscriptions/{id}/end` | subscriptions-manage | 200; 400 before the start; 404; 409 `subscription_not_active`, `end_before_billed` |
+| `POST /subscriptions/{id}/cancel` | subscriptions-manage | 200; 404; 409 `subscription_billed`, `subscription_not_cancellable` |
+| `GET /subscriptions/{id}/changes` | access | 200 the change log; 404 |
 | `GET /templates` | access | 200 by name; `includeArchived` |
 | `POST /templates` | settings | 201; 400; 409 `template_name_taken` |
 | `GET /templates/{id}` | access | 200; 404 |

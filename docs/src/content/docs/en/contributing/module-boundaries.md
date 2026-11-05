@@ -127,8 +127,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    (`contracts.ConsumptionProvider`, energy — the settlements a customer owes for its
    metering points, what a consumption invoice is built from; optional for its
    consumer, nil when Energy is off; its `Settle` is a provider command, below),
-   `BillableOrders` (`contracts.BillableOrders`, orders — the order lines due to be
-   invoiced and the allocations an invoice line is built from; optional for its
+   `BillableOrders` (`contracts.BillableOrders`, orders — the order lines and the
+   subscription periods due to be invoiced, a subscription a `DueOrder` of kind
+   `subscription` keyed with its kind beside its id, and the allocations an invoice line
+   is built from; optional for its
    consumer, nil when Orders is off; its `Allocate` and `ReleaseAllocations` are
    provider commands, below), and `Workforce`
    (`contracts.Workforce`, staff — the competence catalogue, who holds which competence
@@ -151,8 +153,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    caller makes it on the provider's pool before it opens a transaction of its own, as
    any contract call (rule 21), and nothing of the caller's is written by it. Energy's
    `ConsumptionProvider.Settle` is the first; Orders' `BillableOrders.Allocate` (a
-   new draft allocation per order line, under the orders' and lines' locks on Orders'
-   own transaction) and `ReleaseAllocations` (the named drafts released under their
+   new draft allocation per order line, and per due period and line of a subscription,
+   under the orders', subscriptions' and lines' locks on Orders' own transaction) and `ReleaseAllocations` (the named drafts released under their
    orders', lines' and own locks, in that order, a repeat harmless) are the second and
    third. The caller owns the cleanup of what a command of this kind made for it: Invoices
    records every allocation `Allocate` answers in a ledger of its own at once, and its

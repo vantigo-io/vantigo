@@ -1,6 +1,6 @@
 ---
 title: Orders
-description: The Orders app — make a quote, from the app, a customer's page or a template; add product, free-text, section and note lines, optional lines and discounts; send it or mark it as sent, revise, accept, decline, cancel and copy it; make an order, confirm it, change it after confirming, put it on hold, lock it, cancel it or its rest, register what is delivered, send the order confirmation and print a pro forma; invoice it, see its invoices and release what draft invoices hold; the change log; lines in packagings and from the variant grid; customer and product warnings and overriding a block; the sales analysis; the customer's Orders tab; and what a refusal means.
+description: The Orders app — make a quote, from the app, a customer's page or a template; add product, free-text, section and note lines, optional lines and discounts; send it or mark it as sent, revise, accept, decline, cancel and copy it; make an order, confirm it, change it after confirming, put it on hold, lock it, cancel it or its rest, register what is delivered, send the order confirmation and print a pro forma; invoice it, see its invoices and release what draft invoices hold; make a subscription, activate, change, pause, resume, end and cancel it, accept a quote as one and see its periods; the change log; lines in packagings and from the variant grid; customer and product warnings and overriding a block; the sales analysis; the customer's Orders tab; and what a refusal means.
 sidebar:
   order: 55
 sources:
@@ -15,7 +15,7 @@ Norwegian the app is **Ordre**. A **quote** is an offer the customer can accept;
 
 ## The app and its sidebar
 
-The sidebar has **Quotes** and **Sales orders** for everyone with access to the app,
+The sidebar has **Quotes**, **Sales orders** and **Subscriptions** for everyone with access to the app,
 **Analysis** for those who may view the sales analysis, and **Quote templates** and
 **Orders settings** for those who manage the Orders settings.
 What you can do in each depends on your permissions: making and changing quotes, making
@@ -167,8 +167,11 @@ On a sent or expired quote:
 - **Accept** opens **Accept the quote**. Tick the **Optional lines the customer took**;
   the ones not ticked are left out. Under **Make**, choose **A draft order**, to check
   before it is confirmed, or **A confirmed order**, confirmed at once with the quote's
-  prices — which needs the permission to confirm orders. The order opens; the quote shows
-  **Accepted into** with a link to it. A quote is accepted once.
+  prices — which needs the permission to confirm orders — or **A subscription**, a draft
+  subscription on the plan you give, which needs the permission to manage subscriptions
+  and a quote of services only ([Subscriptions](#subscriptions)). The order or the
+  subscription opens; the quote shows **Accepted into** with a link to it. A quote is
+  accepted once.
 - **Decline** records that the customer said no, with a **Reason** if you like.
 - **Revise** makes the quote a draft again, as a new revision, to change and send again.
   The PDFs of earlier revisions are kept.
@@ -319,6 +322,82 @@ order, with what credit notes gave back of it beneath, *NOK 250.00 credited* —
 **Use Invoices** the number links to the invoice. Until something is invoiced the card says
 "Nothing is invoiced yet."
 
+## Subscriptions
+
+A **subscription** (*abonnement*) bills services per period — support, hosting, a
+licence — month after month until it ends. Subscriptions sell services only: a product
+line must be a service in the catalog, and free-text lines, sections and notes are
+allowed.
+
+**Subscriptions** in the sidebar lists them newest first, with their state, plan, start
+and end, **Billed through** and what a full period is worth net of VAT. Narrow it by
+state, customer and the search (number, customer or reference). Everyone with access to
+the app sees them; making and changing them needs the permission to manage
+subscriptions.
+
+### Make a subscription
+
+1. Choose **New subscription**.
+2. Pick the **Customer**, and the plan: the **Interval** (**Monthly**, **Quarterly**,
+   **Half-yearly** or **Yearly**), **Billing** — **In advance**, a period billed from its
+   first day, or **In arrears**, from its last — the **Start**, an **End** if it has one,
+   the **Notice (months)** and the **Invoice day**. The notice and the invoice day are
+   printed for the customer; they do not change what is billed when.
+3. Choose **Create subscription**. The draft opens; add its lines as on a quote, and
+   **Save**.
+4. Choose **Activate**. The subscription is checked as an order is at confirm — every
+   line priced and with a VAT code, the customer active — and from now on its periods are
+   billed.
+
+A quote can become a subscription too: in **Accept the quote**, choose **A subscription**
+under **Make** and give the plan ([Answer a quote](#answer-a-quote)).
+
+The periods run from the first of the start's month: a monthly subscription's periods are
+the calendar months, a quarterly one's three months at a time from the start's month.
+When the start is not the first of a month, the first period runs from the start to the
+period's end and is **pro-rated** by its days — a monthly subscription started on 31
+January bills 1/31 of January's price for 31 January, then whole months from February.
+
+### Its periods
+
+The subscription's page lists its **Periods**, each with its amount and its state:
+
+- **Invoiced** — on an issued invoice, whose number is shown;
+- **On a draft invoice** — taken by a draft in Invoices, not yet issued;
+- **Due** — billable today, not yet invoiced;
+- **Upcoming** — not due yet;
+- **Paused** and **Skipped** — see below.
+
+**Billed through** is the last day of the periods invoiced without a gap from the start.
+Periods are invoiced in Invoices, by **Invoice from orders** or a billing run of orders
+([Invoicing orders](/en/user/invoices/#invoicing-orders)), and never more than twelve
+months ahead. When a credit note gives an invoiced period back in full, that period is due
+again — and only that one.
+
+### Change an active subscription
+
+Change the lines — the quantity, the price, a line added or removed — and choose
+**Save**. A change never touches a period already on an invoice or a draft invoice: it
+takes effect from **Changes take effect from**, the first period not yet billed, or a
+later period start you choose. A changed or removed line ends the day before; its new
+version starts that day. The lines a change ended are listed under **Earlier lines**. A
+change is never pro-rated, and the **Change log** records it with the period it takes
+effect from.
+
+The customer, the currency and the plan's interval, billing and start are fixed once the
+subscription is active.
+
+### Pause, resume, end and cancel
+
+- **Pause** stops billing from a period start — the next one not billed, unless you pick
+  a later one. The periods before it are still billed.
+- **Resume** restarts billing from a period start you choose. The periods between the
+  pause and it are **Skipped**, and never billed.
+- **End** sets the end date: the period it falls in is the last one billed. It cannot be
+  before a period already on an invoice or a draft invoice — credit that first.
+- **Cancel subscription** cancels a draft, or an active subscription nothing of which is
+  billed yet. One with invoiced periods is ended instead.
+
 ## Sales analysis
 
 **Analysis** (permission to view the sales analysis) has three views, each with a chart,
@@ -341,9 +420,11 @@ more than one you pick it above the chart.
 
 ## The customer's Orders tab
 
-On a customer's page, the **Orders** tab shows three figures per currency, net of VAT —
-**Open quotes**, **Ordered, not delivered** and **Delivered, not invoiced** — and below
-them the customer's open quotes and their orders, **Open** or **All**. **New quote** and
+On a customer's page, the **Orders** tab shows four figures per currency, net of VAT —
+**Open quotes**, **Ordered, not delivered**, **Delivered, not invoiced** and
+**Subscriptions, per year**, the active and paused subscriptions' value over a year — and
+below them the customer's open quotes, their orders, **Open** or **All**, and their
+subscriptions with each one's value per period. **New quote** and
 **New order** start one for this customer. The tab needs access to the Orders app; the
 buttons need the permission to make quotes or orders, and are not shown on a merged or
 anonymised customer.
