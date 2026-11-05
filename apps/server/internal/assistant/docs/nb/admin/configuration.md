@@ -109,7 +109,9 @@ Se [Objektlagring](/nb/admin/object-storage/).
 ### Arbeidere
 
 Hver bakgrunnsarbeider har en av/på-bryter og, der den ser etter på en tidsplan, en poll.
-Alle er på som standard unntatt arbeideren for spotpriser.
+Alle er på som standard unntatt arbeideren for spotpriser. Plattformens
+hendelsesutsender, `events.dispatch`, har ingen av delene: den kjører der arbeiderne
+kjører, hvert 5. sekund ([Bakgrunnsjobber og skalering](/nb/admin/installation/#bakgrunnsjobber-og-skalering)).
 
 | Innstilling | Standard | Betydning |
 | --- | --- | --- |

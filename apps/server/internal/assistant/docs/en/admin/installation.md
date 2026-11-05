@@ -292,7 +292,8 @@ Microsoft Entra ID module's `entra-outlook-sweep`, always, which tidies the peop
 Outlook connections every hour, the Google Workspace module's `google-sweep`, always,
 which does the same for the people's Google connections, and the Assistant's `assistant-runs`, always, which fails a run
 a restart left running, and `assistant-retention`, always, which deletes conversations past
-their retention once a day) inside the
+their retention once a day — and the platform's events dispatcher `events.dispatch`,
+always, whatever `MODULES` says) inside the
 API process: `WORKERS_IN_PROCESS=1`, the default. Deployments that scale the API
 horizontally should move them to one dedicated worker container, so that every extra
 HTTP replica does not multiply the pollers:
@@ -320,7 +321,7 @@ instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever 
 you use, retention cleanup, the registry workers, the EHF events worker, the
 calendar cancellations worker, `entra-outlook-sweep` and `assistant-retention` take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
 the `invoices-ehf` worker, the `invoices-reminders` worker, the `invoices-billing` worker,
-the `invoices-payments` worker, `communications-mailbox-sync` and the calendar subscriptions and mailbox sync workers instead take one row at a time under a time-limited lease, so any number of
+the `invoices-payments` worker, `communications-mailbox-sync`, the calendar subscriptions and mailbox sync workers and `events.dispatch` instead take one row at a time under a time-limited lease, so any number of
 instances share the work without sending anything twice. `google-sweep` takes neither:
 each of its steps claims its rows in one statement, so two instances never handle the
 same connection. The reminder worker sends one letter at a time, at most one a
@@ -334,6 +335,12 @@ The billing worker has no settings: it carries the billing runs people make unde
 asks, issuing — one customer's invoices at a time, at most five customers a cycle, each
 under a 10-minute lease; it sends nothing
 ([Billing runs](/en/reference/invoices/#billing-runs)).
+The events dispatcher has no settings either and needs no `MODULES` entry: every
+5 seconds it hands the events modules publish to the modules that take them, at most
+100 at a time, each under a 2-minute lease, retrying a failure with backoff and leaving
+a delivery that failed eight times dead for the operator to retry or skip on the
+[management listener](/en/admin/management-listener/#the-events-outbox), where its log
+lines are listed too.
 
 The customers import worker checks and runs the customer files people upload. It
 polls every `CUSTOMERS_IMPORT_POLL` (5 seconds by default), and in the single-container
