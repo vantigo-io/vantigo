@@ -363,3 +363,13 @@ func (s *fakeObjectStore) keys() []string {
 	slices.Sort(out)
 	return out
 }
+
+// ProductImages and OpenProductImage are the catalog's image calls (messenger
+// design N15), which this test never asks.
+func (c *fakeCatalog) ProductImages(context.Context, int32, string) ([]contracts.ProductImage, error) {
+	return nil, nil
+}
+
+func (c *fakeCatalog) OpenProductImage(context.Context, int32) (io.ReadCloser, contracts.ProductImage, error) {
+	return nil, contracts.ProductImage{}, nil
+}

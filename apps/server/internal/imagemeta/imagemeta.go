@@ -127,3 +127,138 @@ func stripPNG(data []byte) ([]byte, error) {
 		}
 	}
 }
+
+// Orientation is the EXIF orientation of data, a JPEG or a PNG, from 1 (as
+// the sensor saw it) to 8 — 6 and 8 are a phone held upright, turned a
+// quarter one way or the other — and 1 when the picture carries none or a
+// value outside that range (messenger design N13: upload turns a picture
+// upright before it re-encodes it). As Strip does, it walks the JPEG's
+// segments to its first APP1 Exif, or the PNG's chunks to its eXIf, and
+// reads the one tag from the TIFF structure inside; the pixels are never
+// decoded. ErrStructure when the segments or chunks cannot be walked, or for
+// any other type.
+func Orientation(data []byte) (int, error) {
+	var tiff []byte
+	var err error
+	switch {
+	case len(data) >= 2 && data[0] == 0xFF && data[1] == 0xD8:
+		tiff, err = jpegExif(data)
+	case bytes.HasPrefix(data, pngSignature):
+		tiff, err = pngExif(data)
+	default:
+		return 1, ErrStructure
+	}
+	if err != nil {
+		return 1, err
+	}
+	return tiffOrientation(tiff), nil
+}
+
+// jpegExif is the TIFF structure inside data's first APP1 Exif segment, nil
+// when there is none before the first SOS.
+func jpegExif(data []byte) ([]byte, error) {
+	i := 2
+	for {
+		if i >= len(data) || data[i] != 0xFF {
+			return nil, ErrStructure
+		}
+		for i < len(data) && data[i] == 0xFF {
+			i++
+		}
+		if i >= len(data) {
+			return nil, ErrStructure
+		}
+		marker := data[i]
+		i++
+		switch {
+		case marker == 0xDA || marker == 0xD9:
+			return nil, nil
+		case marker == 0x00 || marker == 0xD8:
+			return nil, ErrStructure
+		case marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7):
+			continue
+		}
+		if i+2 > len(data) {
+			return nil, ErrStructure
+		}
+		length := int(binary.BigEndian.Uint16(data[i:]))
+		if length < 2 || i+length > len(data) {
+			return nil, ErrStructure
+		}
+		if marker == 0xE1 && length >= 8 && bytes.HasPrefix(data[i+2:i+length], []byte("Exif\x00\x00")) {
+			return data[i+8 : i+length], nil
+		}
+		i += length
+	}
+}
+
+// pngExif is the TIFF structure in data's eXIf chunk, nil when there is none
+// before IEND.
+func pngExif(data []byte) ([]byte, error) {
+	i := len(pngSignature)
+	for {
+		if i+8 > len(data) {
+			return nil, ErrStructure
+		}
+		length := binary.BigEndian.Uint32(data[i:])
+		if length > uint32(len(data)) {
+			return nil, ErrStructure
+		}
+		end := i + 8 + int(length) + 4
+		if end > len(data) {
+			return nil, ErrStructure
+		}
+		switch string(data[i+4 : i+8]) {
+		case "eXIf":
+			return data[i+8 : i+8+int(length)], nil
+		case "IEND":
+			return nil, nil
+		}
+		i = end
+	}
+}
+
+// tiffOrientation is the Orientation tag (0x0112) of tiff's first image
+// directory, 1 when there is none or it is not a value from 1 to 8 — a
+// structure that does not hold together reads as no orientation, never as a
+// failure: the picture is still a picture.
+func tiffOrientation(tiff []byte) int {
+	if len(tiff) < 8 {
+		return 1
+	}
+	var order binary.ByteOrder
+	switch string(tiff[:2]) {
+	case "II":
+		order = binary.LittleEndian
+	case "MM":
+		order = binary.BigEndian
+	default:
+		return 1
+	}
+	if order.Uint16(tiff[2:]) != 42 {
+		return 1
+	}
+	ifd := int64(order.Uint32(tiff[4:]))
+	if ifd < 8 || ifd+2 > int64(len(tiff)) {
+		return 1
+	}
+	count := int64(order.Uint16(tiff[ifd:]))
+	for n := range count {
+		entry := ifd + 2 + n*12
+		if entry+12 > int64(len(tiff)) {
+			return 1
+		}
+		if order.Uint16(tiff[entry:]) != 0x0112 {
+			continue
+		}
+		// A SHORT, one value, held in the entry's own four bytes.
+		if order.Uint16(tiff[entry+2:]) != 3 || order.Uint32(tiff[entry+4:]) != 1 {
+			return 1
+		}
+		if v := int(order.Uint16(tiff[entry+8:])); v >= 1 && v <= 8 {
+			return v
+		}
+		return 1
+	}
+	return 1
+}

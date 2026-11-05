@@ -711,6 +711,7 @@ func TestProductsBaseline_AppliesAndIsIdempotent(t *testing.T) {
 
 	wantTables := []string{
 		"product_categories",
+		"product_images", // 00131_products_images.sql, Messenger delivery P
 		"product_prices",
 		"product_variants",
 		"products",

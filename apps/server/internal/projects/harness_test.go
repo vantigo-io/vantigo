@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v5"
+	"io"
 	"maps"
 	"math"
 	"math/big"
@@ -1728,4 +1729,14 @@ func getProjectTemplate(t *testing.T, c *modtest.Client, id int32) templateJSON 
 	var out templateJSON
 	res.JSON(&out)
 	return out
+}
+
+// ProductImages and OpenProductImage are the catalog's image calls (messenger
+// design N15), which this test never asks.
+func (*fakeCatalog) ProductImages(context.Context, int32, string) ([]contracts.ProductImage, error) {
+	return nil, nil
+}
+
+func (*fakeCatalog) OpenProductImage(context.Context, int32) (io.ReadCloser, contracts.ProductImage, error) {
+	return nil, contracts.ProductImage{}, nil
 }

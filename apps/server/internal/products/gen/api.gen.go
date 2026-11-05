@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"time"
 
@@ -18,6 +20,57 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
+
+// Defines values for ProductImageResponseUses.
+const (
+	ProductImageResponseUsesCommunications ProductImageResponseUses = "communications"
+	ProductImageResponseUsesMarketing      ProductImageResponseUses = "marketing"
+)
+
+// Valid indicates whether the value is a known member of the ProductImageResponseUses enum.
+func (e ProductImageResponseUses) Valid() bool {
+	switch e {
+	case ProductImageResponseUsesCommunications:
+		return true
+	case ProductImageResponseUsesMarketing:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProductImageUpdateRequestUses.
+const (
+	ProductImageUpdateRequestUsesCommunications ProductImageUpdateRequestUses = "communications"
+	ProductImageUpdateRequestUsesMarketing      ProductImageUpdateRequestUses = "marketing"
+)
+
+// Valid indicates whether the value is a known member of the ProductImageUpdateRequestUses enum.
+func (e ProductImageUpdateRequestUses) Valid() bool {
+	switch e {
+	case ProductImageUpdateRequestUsesCommunications:
+		return true
+	case ProductImageUpdateRequestUsesMarketing:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetProductsByIdImagesByImageIdContentParamsSize.
+const (
+	Thumb GetProductsByIdImagesByImageIdContentParamsSize = "thumb"
+)
+
+// Valid indicates whether the value is a known member of the GetProductsByIdImagesByImageIdContentParamsSize enum.
+func (e GetProductsByIdImagesByImageIdContentParamsSize) Valid() bool {
+	switch e {
+	case Thumb:
+		return true
+	default:
+		return false
+	}
+}
 
 // CategoryRequest defines model for CategoryRequest.
 type CategoryRequest struct {
@@ -44,6 +97,67 @@ type ProductCategoryResponse struct {
 	Id   int32  `json:"id"`
 	Name string `json:"name"`
 }
+
+// ProductImageProblem An RFC 9457 problem with this module's image refusal code, the one place Products' problems carry a code (messenger design N13): image_type_unsupported (422: not a JPEG or PNG, WebP and HEIC among them), image_too_large (422: more than 10 MiB, or more than 40 megapixels), image_too_small (422: a side under 200 pixels), image_invalid (422: the bytes are no picture, or cannot be decoded) and storage_unavailable (503: the object store could not be reached).
+type ProductImageProblem struct {
+	Code     *string `json:"code,omitempty"`
+	Detail   *string `json:"detail,omitempty"`
+	Instance *string `json:"instance,omitempty"`
+	Status   *int32  `json:"status,omitempty"`
+	Title    *string `json:"title,omitempty"`
+	Type     *string `json:"type,omitempty"`
+}
+
+// ProductImageResponse An image of a product (messenger design N13). The bytes are the normalised file, upright, at most 2048 pixels on the longer side and without metadata, streamed by GET .../content; the thumbnail, 320 pixels on the longer side, by the same with size=thumb.
+type ProductImageResponse struct {
+	// AltText What the picture shows, for a customer who cannot see it. Absent when not set.
+	AltText *string `json:"altText,omitempty"`
+
+	// ByteSize The normalised file's size in bytes.
+	ByteSize int32 `json:"byteSize"`
+
+	// ContentType image/jpeg or image/png.
+	ContentType string    `json:"contentType"`
+	CreatedAt   time.Time `json:"createdAt"`
+
+	// Height The normalised file's height in pixels.
+	Height int32 `json:"height"`
+	Id     int32 `json:"id"`
+
+	// IsPrimary Whether this is the product's primary image. Exactly one image of a product is, once it has any.
+	IsPrimary bool  `json:"isPrimary"`
+	ProductId int32 `json:"productId"`
+
+	// SortOrder The image's place among the product's images, from 0, with no gaps.
+	SortOrder int32 `json:"sortOrder"`
+
+	// Uses Where the image may be shown: communications, to a customer in a message; marketing, for marketing use such as ads — nothing reads it yet.
+	Uses []ProductImageResponseUses `json:"uses"`
+
+	// Width The normalised file's width in pixels.
+	Width int32 `json:"width"`
+}
+
+// ProductImageResponseUses defines model for ProductImageResponse.Uses.
+type ProductImageResponseUses string
+
+// ProductImageUpdateRequest A change to an image. Every field is optional, and a field left out is left as it is.
+type ProductImageUpdateRequest struct {
+	// AltText What the picture shows, at most 250 characters. An empty text clears it.
+	AltText *string `json:"altText,omitempty"`
+
+	// IsPrimary true makes this the product's primary image, and the one that was primary stops being it. false is refused for the primary image, since another image's true is what replaces it.
+	IsPrimary *bool `json:"isPrimary,omitempty"`
+
+	// SortOrder The place, from 0, to move the image to among the product's images; the others close the gap, and a place past the last is the last.
+	SortOrder *int32 `json:"sortOrder,omitempty"`
+
+	// Uses Where the image may be shown, replacing the earlier list; at most one of each, and none is allowed.
+	Uses *[]ProductImageUpdateRequestUses `json:"uses,omitempty"`
+}
+
+// ProductImageUpdateRequestUses defines model for ProductImageUpdateRequest.Uses.
+type ProductImageUpdateRequestUses string
 
 // ProductPackagingRequest A packaging's fields, on create and on a whole replace. Give either quantity, or containsPackagingId with containsCount — not both. A variant has at most 10 packagings. Changing what a packaging holds recomputes every packaging built from it; stock is never touched, it is always in the variant's unit.
 type ProductPackagingRequest struct {
@@ -252,6 +366,20 @@ type GetProductsStatsTimeseriesParams struct {
 	To     *time.Time `form:"to,omitempty" json:"to,omitempty"`
 }
 
+// PostProductsByIdImagesMultipartBody defines parameters for PostProductsByIdImages.
+type PostProductsByIdImagesMultipartBody struct {
+	File openapi_types.File `json:"file"`
+}
+
+// GetProductsByIdImagesByImageIdContentParams defines parameters for GetProductsByIdImagesByImageIdContent.
+type GetProductsByIdImagesByImageIdContentParams struct {
+	// Size thumb for the thumbnail; the image itself when left out.
+	Size *GetProductsByIdImagesByImageIdContentParamsSize `form:"size,omitempty" json:"size,omitempty"`
+}
+
+// GetProductsByIdImagesByImageIdContentParamsSize defines parameters for GetProductsByIdImagesByImageIdContent.
+type GetProductsByIdImagesByImageIdContentParamsSize string
+
 // PostProductsJSONRequestBody defines body for PostProducts for application/json ContentType.
 type PostProductsJSONRequestBody = ProductRequest
 
@@ -269,6 +397,12 @@ type PutProductsTaxCategoriesByIdJSONRequestBody = TaxCategoryRequest
 
 // PutProductsByIdJSONRequestBody defines body for PutProductsById for application/json ContentType.
 type PutProductsByIdJSONRequestBody = ProductRequest
+
+// PostProductsByIdImagesMultipartRequestBody defines body for PostProductsByIdImages for multipart/form-data ContentType.
+type PostProductsByIdImagesMultipartRequestBody PostProductsByIdImagesMultipartBody
+
+// PatchProductsByIdImagesByImageIdJSONRequestBody defines body for PatchProductsByIdImagesByImageId for application/json ContentType.
+type PatchProductsByIdImagesByImageIdJSONRequestBody = ProductImageUpdateRequest
 
 // PostProductsByIdVariantsJSONRequestBody defines body for PostProductsByIdVariants for application/json ContentType.
 type PostProductsByIdVariantsJSONRequestBody = VariantRequest
@@ -344,6 +478,21 @@ type ServerInterface interface {
 	// PutProductsById Update a product
 	// (PUT /api/v1/products/{id})
 	PutProductsById(w http.ResponseWriter, r *http.Request, id int32)
+	// GetProductsByIdImages List a product's images
+	// (GET /api/v1/products/{id}/images)
+	GetProductsByIdImages(w http.ResponseWriter, r *http.Request, id int32)
+	// PostProductsByIdImages Upload an image of a product
+	// (POST /api/v1/products/{id}/images)
+	PostProductsByIdImages(w http.ResponseWriter, r *http.Request, id int32)
+	// DeleteProductsByIdImagesByImageId Delete an image of a product
+	// (DELETE /api/v1/products/{id}/images/{imageId})
+	DeleteProductsByIdImagesByImageId(w http.ResponseWriter, r *http.Request, id int32, imageId int32)
+	// PatchProductsByIdImagesByImageId Change an image of a product
+	// (PATCH /api/v1/products/{id}/images/{imageId})
+	PatchProductsByIdImagesByImageId(w http.ResponseWriter, r *http.Request, id int32, imageId int32)
+	// GetProductsByIdImagesByImageIdContent Stream an image of a product
+	// (GET /api/v1/products/{id}/images/{imageId}/content)
+	GetProductsByIdImagesByImageIdContent(w http.ResponseWriter, r *http.Request, id int32, imageId int32, params GetProductsByIdImagesByImageIdContentParams)
 	// GetProductsByIdVariants List variants of a product
 	// (GET /api/v1/products/{id}/variants)
 	GetProductsByIdVariants(w http.ResponseWriter, r *http.Request, id int32)
@@ -938,6 +1087,179 @@ func (siw *ServerInterfaceWrapper) PutProductsById(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetProductsByIdImages operation middleware
+func (siw *ServerInterfaceWrapper) GetProductsByIdImages(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProductsByIdImages(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostProductsByIdImages operation middleware
+func (siw *ServerInterfaceWrapper) PostProductsByIdImages(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostProductsByIdImages(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProductsByIdImagesByImageId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProductsByIdImagesByImageId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "imageId" -------------
+	var imageId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "imageId", r.PathValue("imageId"), &imageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "imageId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProductsByIdImagesByImageId(w, r, id, imageId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PatchProductsByIdImagesByImageId operation middleware
+func (siw *ServerInterfaceWrapper) PatchProductsByIdImagesByImageId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "imageId" -------------
+	var imageId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "imageId", r.PathValue("imageId"), &imageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "imageId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchProductsByIdImagesByImageId(w, r, id, imageId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProductsByIdImagesByImageIdContent operation middleware
+func (siw *ServerInterfaceWrapper) GetProductsByIdImagesByImageIdContent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "imageId" -------------
+	var imageId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "imageId", r.PathValue("imageId"), &imageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "imageId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProductsByIdImagesByImageIdContentParams
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "size", r.URL.Query(), &params.Size, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProductsByIdImagesByImageIdContent(w, r, id, imageId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProductsByIdVariants operation middleware
 func (siw *ServerInterfaceWrapper) GetProductsByIdVariants(w http.ResponseWriter, r *http.Request) {
 
@@ -1501,6 +1823,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/products/{id}", wrapper.DeleteProductsById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/products/{id}", wrapper.GetProduct)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/products/{id}", wrapper.PutProductsById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/products/{id}/images", wrapper.GetProductsByIdImages)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/products/{id}/images", wrapper.PostProductsByIdImages)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/products/{id}/images/{imageId}", wrapper.DeleteProductsByIdImagesByImageId)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/products/{id}/images/{imageId}", wrapper.PatchProductsByIdImagesByImageId)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/products/{id}/images/{imageId}/content", wrapper.GetProductsByIdImagesByImageIdContent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/products/{id}/variants", wrapper.GetProductsByIdVariants)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/products/{id}/variants", wrapper.PostProductsByIdVariants)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/products/{id}/variants/{variantId}", wrapper.DeleteProductsByIdVariantsByVariantId)
@@ -2752,6 +3079,406 @@ func (response PutProductsById409ApplicationProblemPlusJSONResponse) VisitPutPro
 	return err
 }
 
+type GetProductsByIdImagesRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetProductsByIdImagesResponseObject interface {
+	VisitGetProductsByIdImagesResponse(w http.ResponseWriter) error
+}
+
+type GetProductsByIdImages200JSONResponse []ProductImageResponse
+
+func (response GetProductsByIdImages200JSONResponse) VisitGetProductsByIdImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductsByIdImages401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProductsByIdImages401JSONResponse) VisitGetProductsByIdImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductsByIdImages403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProductsByIdImages403JSONResponse) VisitGetProductsByIdImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductsByIdImages404Response struct {
+}
+
+func (response GetProductsByIdImages404Response) VisitGetProductsByIdImagesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostProductsByIdImagesRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *multipart.Reader
+}
+
+type PostProductsByIdImagesResponseObject interface {
+	VisitPostProductsByIdImagesResponse(w http.ResponseWriter) error
+}
+
+type PostProductsByIdImages201JSONResponse ProductImageResponse
+
+func (response PostProductsByIdImages201JSONResponse) VisitPostProductsByIdImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProductsByIdImages400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostProductsByIdImages400ApplicationProblemPlusJSONResponse) VisitPostProductsByIdImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProductsByIdImages401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProductsByIdImages401JSONResponse) VisitPostProductsByIdImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProductsByIdImages403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProductsByIdImages403JSONResponse) VisitPostProductsByIdImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProductsByIdImages404Response struct {
+}
+
+func (response PostProductsByIdImages404Response) VisitPostProductsByIdImagesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostProductsByIdImages422ApplicationProblemPlusJSONResponse ProductImageProblem
+
+func (response PostProductsByIdImages422ApplicationProblemPlusJSONResponse) VisitPostProductsByIdImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProductsByIdImages503ApplicationProblemPlusJSONResponse ProductImageProblem
+
+func (response PostProductsByIdImages503ApplicationProblemPlusJSONResponse) VisitPostProductsByIdImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProductsByIdImagesByImageIdRequestObject struct {
+	Id      int32 `json:"id"`
+	ImageId int32 `json:"imageId"`
+}
+
+type DeleteProductsByIdImagesByImageIdResponseObject interface {
+	VisitDeleteProductsByIdImagesByImageIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteProductsByIdImagesByImageId204Response struct {
+}
+
+func (response DeleteProductsByIdImagesByImageId204Response) VisitDeleteProductsByIdImagesByImageIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProductsByIdImagesByImageId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteProductsByIdImagesByImageId401JSONResponse) VisitDeleteProductsByIdImagesByImageIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProductsByIdImagesByImageId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteProductsByIdImagesByImageId403JSONResponse) VisitDeleteProductsByIdImagesByImageIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProductsByIdImagesByImageId404Response struct {
+}
+
+func (response DeleteProductsByIdImagesByImageId404Response) VisitDeleteProductsByIdImagesByImageIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PatchProductsByIdImagesByImageIdRequestObject struct {
+	Id      int32 `json:"id"`
+	ImageId int32 `json:"imageId"`
+	Body    *PatchProductsByIdImagesByImageIdJSONRequestBody
+}
+
+type PatchProductsByIdImagesByImageIdResponseObject interface {
+	VisitPatchProductsByIdImagesByImageIdResponse(w http.ResponseWriter) error
+}
+
+type PatchProductsByIdImagesByImageId200JSONResponse ProductImageResponse
+
+func (response PatchProductsByIdImagesByImageId200JSONResponse) VisitPatchProductsByIdImagesByImageIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchProductsByIdImagesByImageId400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PatchProductsByIdImagesByImageId400ApplicationProblemPlusJSONResponse) VisitPatchProductsByIdImagesByImageIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchProductsByIdImagesByImageId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PatchProductsByIdImagesByImageId401JSONResponse) VisitPatchProductsByIdImagesByImageIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchProductsByIdImagesByImageId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PatchProductsByIdImagesByImageId403JSONResponse) VisitPatchProductsByIdImagesByImageIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchProductsByIdImagesByImageId404Response struct {
+}
+
+func (response PatchProductsByIdImagesByImageId404Response) VisitPatchProductsByIdImagesByImageIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetProductsByIdImagesByImageIdContentRequestObject struct {
+	Id      int32 `json:"id"`
+	ImageId int32 `json:"imageId"`
+	Params  GetProductsByIdImagesByImageIdContentParams
+}
+
+type GetProductsByIdImagesByImageIdContentResponseObject interface {
+	VisitGetProductsByIdImagesByImageIdContentResponse(w http.ResponseWriter) error
+}
+
+type GetProductsByIdImagesByImageIdContent200ImagejpegResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetProductsByIdImagesByImageIdContent200ImagejpegResponse) VisitGetProductsByIdImagesByImageIdContentResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "image/jpeg")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetProductsByIdImagesByImageIdContent200ImagepngResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetProductsByIdImagesByImageIdContent200ImagepngResponse) VisitGetProductsByIdImagesByImageIdContentResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "image/png")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetProductsByIdImagesByImageIdContent400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response GetProductsByIdImagesByImageIdContent400ApplicationProblemPlusJSONResponse) VisitGetProductsByIdImagesByImageIdContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductsByIdImagesByImageIdContent401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProductsByIdImagesByImageIdContent401JSONResponse) VisitGetProductsByIdImagesByImageIdContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductsByIdImagesByImageIdContent403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProductsByIdImagesByImageIdContent403JSONResponse) VisitGetProductsByIdImagesByImageIdContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductsByIdImagesByImageIdContent404Response struct {
+}
+
+func (response GetProductsByIdImagesByImageIdContent404Response) VisitGetProductsByIdImagesByImageIdContentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetProductsByIdImagesByImageIdContent503ApplicationProblemPlusJSONResponse ProductImageProblem
+
+func (response GetProductsByIdImagesByImageIdContent503ApplicationProblemPlusJSONResponse) VisitGetProductsByIdImagesByImageIdContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetProductsByIdVariantsRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -3722,6 +4449,21 @@ type StrictServerInterface interface {
 	// PutProductsById Update a product
 	// (PUT /api/v1/products/{id})
 	PutProductsById(ctx context.Context, request PutProductsByIdRequestObject) (PutProductsByIdResponseObject, error)
+	// GetProductsByIdImages List a product's images
+	// (GET /api/v1/products/{id}/images)
+	GetProductsByIdImages(ctx context.Context, request GetProductsByIdImagesRequestObject) (GetProductsByIdImagesResponseObject, error)
+	// PostProductsByIdImages Upload an image of a product
+	// (POST /api/v1/products/{id}/images)
+	PostProductsByIdImages(ctx context.Context, request PostProductsByIdImagesRequestObject) (PostProductsByIdImagesResponseObject, error)
+	// DeleteProductsByIdImagesByImageId Delete an image of a product
+	// (DELETE /api/v1/products/{id}/images/{imageId})
+	DeleteProductsByIdImagesByImageId(ctx context.Context, request DeleteProductsByIdImagesByImageIdRequestObject) (DeleteProductsByIdImagesByImageIdResponseObject, error)
+	// PatchProductsByIdImagesByImageId Change an image of a product
+	// (PATCH /api/v1/products/{id}/images/{imageId})
+	PatchProductsByIdImagesByImageId(ctx context.Context, request PatchProductsByIdImagesByImageIdRequestObject) (PatchProductsByIdImagesByImageIdResponseObject, error)
+	// GetProductsByIdImagesByImageIdContent Stream an image of a product
+	// (GET /api/v1/products/{id}/images/{imageId}/content)
+	GetProductsByIdImagesByImageIdContent(ctx context.Context, request GetProductsByIdImagesByImageIdContentRequestObject) (GetProductsByIdImagesByImageIdContentResponseObject, error)
 	// GetProductsByIdVariants List variants of a product
 	// (GET /api/v1/products/{id}/variants)
 	GetProductsByIdVariants(ctx context.Context, request GetProductsByIdVariantsRequestObject) (GetProductsByIdVariantsResponseObject, error)
@@ -4290,6 +5032,154 @@ func (sh *strictHandler) PutProductsById(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutProductsByIdResponseObject); ok {
 		if err := validResponse.VisitPutProductsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProductsByIdImages operation middleware
+func (sh *strictHandler) GetProductsByIdImages(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetProductsByIdImagesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProductsByIdImages(ctx, request.(GetProductsByIdImagesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProductsByIdImages")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProductsByIdImagesResponseObject); ok {
+		if err := validResponse.VisitGetProductsByIdImagesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostProductsByIdImages operation middleware
+func (sh *strictHandler) PostProductsByIdImages(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PostProductsByIdImagesRequestObject
+
+	request.Id = id
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostProductsByIdImages(ctx, request.(PostProductsByIdImagesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostProductsByIdImages")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostProductsByIdImagesResponseObject); ok {
+		if err := validResponse.VisitPostProductsByIdImagesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteProductsByIdImagesByImageId operation middleware
+func (sh *strictHandler) DeleteProductsByIdImagesByImageId(w http.ResponseWriter, r *http.Request, id int32, imageId int32) {
+	var request DeleteProductsByIdImagesByImageIdRequestObject
+
+	request.Id = id
+	request.ImageId = imageId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProductsByIdImagesByImageId(ctx, request.(DeleteProductsByIdImagesByImageIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProductsByIdImagesByImageId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProductsByIdImagesByImageIdResponseObject); ok {
+		if err := validResponse.VisitDeleteProductsByIdImagesByImageIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PatchProductsByIdImagesByImageId operation middleware
+func (sh *strictHandler) PatchProductsByIdImagesByImageId(w http.ResponseWriter, r *http.Request, id int32, imageId int32) {
+	var request PatchProductsByIdImagesByImageIdRequestObject
+
+	request.Id = id
+	request.ImageId = imageId
+
+	var body PatchProductsByIdImagesByImageIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PatchProductsByIdImagesByImageId(ctx, request.(PatchProductsByIdImagesByImageIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PatchProductsByIdImagesByImageId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PatchProductsByIdImagesByImageIdResponseObject); ok {
+		if err := validResponse.VisitPatchProductsByIdImagesByImageIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProductsByIdImagesByImageIdContent operation middleware
+func (sh *strictHandler) GetProductsByIdImagesByImageIdContent(w http.ResponseWriter, r *http.Request, id int32, imageId int32, params GetProductsByIdImagesByImageIdContentParams) {
+	var request GetProductsByIdImagesByImageIdContentRequestObject
+
+	request.Id = id
+	request.ImageId = imageId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProductsByIdImagesByImageIdContent(ctx, request.(GetProductsByIdImagesByImageIdContentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProductsByIdImagesByImageIdContent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProductsByIdImagesByImageIdContentResponseObject); ok {
+		if err := validResponse.VisitGetProductsByIdImagesByImageIdContentResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

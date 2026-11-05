@@ -53,6 +53,108 @@ components:
                 - id
                 - name
             type: object
+        ProductImageProblem:
+            description: 'An RFC 9457 problem with this module''s image refusal code, the one place Products'' problems carry a code (messenger design N13): image_type_unsupported (422: not a JPEG or PNG, WebP and HEIC among them), image_too_large (422: more than 10 MiB, or more than 40 megapixels), image_too_small (422: a side under 200 pixels), image_invalid (422: the bytes are no picture, or cannot be decoded) and storage_unavailable (503: the object store could not be reached).'
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                detail:
+                    nullable: true
+                    type: string
+                instance:
+                    nullable: true
+                    type: string
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
+        ProductImageResponse:
+            description: An image of a product (messenger design N13). The bytes are the normalised file, upright, at most 2048 pixels on the longer side and without metadata, streamed by GET .../content; the thumbnail, 320 pixels on the longer side, by the same with size=thumb.
+            properties:
+                altText:
+                    description: What the picture shows, for a customer who cannot see it. Absent when not set.
+                    type: string
+                byteSize:
+                    description: The normalised file's size in bytes.
+                    format: int32
+                    type: integer
+                contentType:
+                    description: image/jpeg or image/png.
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                height:
+                    description: The normalised file's height in pixels.
+                    format: int32
+                    type: integer
+                id:
+                    format: int32
+                    type: integer
+                isPrimary:
+                    description: Whether this is the product's primary image. Exactly one image of a product is, once it has any.
+                    type: boolean
+                productId:
+                    format: int32
+                    type: integer
+                sortOrder:
+                    description: The image's place among the product's images, from 0, with no gaps.
+                    format: int32
+                    type: integer
+                uses:
+                    description: 'Where the image may be shown: communications, to a customer in a message; marketing, for marketing use such as ads — nothing reads it yet.'
+                    items:
+                        enum:
+                            - communications
+                            - marketing
+                        type: string
+                    type: array
+                width:
+                    description: The normalised file's width in pixels.
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - productId
+                - contentType
+                - byteSize
+                - width
+                - height
+                - sortOrder
+                - isPrimary
+                - uses
+                - createdAt
+            type: object
+        ProductImageUpdateRequest:
+            description: A change to an image. Every field is optional, and a field left out is left as it is.
+            properties:
+                altText:
+                    description: What the picture shows, at most 250 characters. An empty text clears it.
+                    type: string
+                isPrimary:
+                    description: true makes this the product's primary image, and the one that was primary stops being it. false is refused for the primary image, since another image's true is what replaces it.
+                    type: boolean
+                sortOrder:
+                    description: The place, from 0, to move the image to among the product's images; the others close the gap, and a place past the last is the last.
+                    format: int32
+                    type: integer
+                uses:
+                    description: Where the image may be shown, replacing the earlier list; at most one of each, and none is allowed.
+                    items:
+                        enum:
+                            - communications
+                            - marketing
+                        type: string
+                    type: array
+            type: object
         ProductPackagingRequest:
             description: A packaging's fields, on create and on a whole replace. Give either quantity, or containsPackagingId with containsCount — not both. A variant has at most 10 packagings. Changing what a packaging holds recomputes every packaging built from it; stock is never touched, it is always in the variant's unit.
             properties:
@@ -773,6 +875,266 @@ paths:
             tags:
                 - Products
             x-vantigo-access: permission:products:categories-view+products:pricing-view+products:products-manage+products:tax-categories-view+products:variants-view
+    /api/v1/products/{id}/images:
+        get:
+            description: The product's images in their order, empty when it has none.
+            operationId: getProductsByIdImages
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ProductImageResponse'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: List a product's images
+            tags:
+                - Products
+            x-vantigo-access: permission:products:products-view
+        post:
+            description: 'Uploads an image of the product (messenger design N13): a JPEG or PNG of at most 10 MiB and at least 200 by 200 pixels, in the multipart field file, whose own bytes decide its type. More than 40 megapixels is refused before anything is decoded. The picture is turned upright by its EXIF orientation, scaled down so its longer side is at most 2048 pixels, and encoded again — JPEG at quality 90, or PNG — which drops all its metadata, camera location included; only that file is kept, and a 320 pixel thumbnail beside it. The first image of a product becomes its primary one, and a new image is last in the order, shown in Communications. Products'' problems carry no code, but an image''s refusals do.'
+            operationId: postProductsByIdImages
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    multipart/form-data:
+                        schema:
+                            properties:
+                                file:
+                                    format: binary
+                                    type: string
+                            required:
+                                - file
+                            type: object
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProductImageResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — the file is missing, empty or sent more than once, or the body cannot be read as a multipart form.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "422":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ProductImageProblem'
+                    description: Unprocessable Entity — image_type_unsupported, image_too_large, image_too_small or image_invalid.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ProductImageProblem'
+                    description: Service Unavailable — storage_unavailable, the object store could not be written; nothing was recorded.
+            summary: Upload an image of a product
+            tags:
+                - Products
+            x-vantigo-access: permission:products:products-manage
+    /api/v1/products/{id}/images/{imageId}:
+        delete:
+            description: Deletes the image and, once that has committed, its two files. Deleting the primary image promotes the next one by its place in the order.
+            operationId: deleteProductsByIdImagesByImageId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: imageId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Delete an image of a product
+            tags:
+                - Products
+            x-vantigo-access: permission:products:products-manage
+        patch:
+            description: Changes an image's alt text, its place in the order, whether it is the primary image and where it may be shown. Moving an image renumbers the product's images from 0 without gaps.
+            operationId: patchProductsByIdImagesByImageId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: imageId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProductImageUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProductImageResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Change an image of a product
+            tags:
+                - Products
+            x-vantigo-access: permission:products:products-manage
+    /api/v1/products/{id}/images/{imageId}/content:
+        get:
+            description: Streams the normalised image with its type, Cache-Control private, max-age=300, never sniffed and with no Content-Disposition; size=thumb streams the 320 pixel thumbnail instead.
+            operationId: getProductsByIdImagesByImageIdContent
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: imageId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - description: thumb for the thumbnail; the image itself when left out.
+                  in: query
+                  name: size
+                  schema:
+                    enum:
+                        - thumb
+                    type: string
+            responses:
+                "200":
+                    content:
+                        image/jpeg:
+                            schema:
+                                format: binary
+                                type: string
+                        image/png:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — size is neither thumb nor empty.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such product or image, or the object is gone from the store. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ProductImageProblem'
+                    description: Service Unavailable — storage_unavailable, the object store could not be read.
+            summary: Stream an image of a product
+            tags:
+                - Products
+            x-vantigo-access: permission:products:products-view
     /api/v1/products/{id}/variants:
         get:
             operationId: getProductsByIdVariants

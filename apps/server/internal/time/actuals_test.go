@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v5"
+	"io"
 	"math"
 	"slices"
 	"strings"
@@ -1000,4 +1001,16 @@ func TestActualsReportsEveryWorkTypeInTheProjectsCurrency(t *testing.T) {
 // ProjectsByStatus answers nothing: no test here lists projects by status.
 func (*forbiddenProjects) ProjectsByStatus(context.Context, []string) ([]contracts.ProjectEntry, error) {
 	return nil, nil
+}
+
+// ProductImages and OpenProductImage are the catalog's image calls (messenger
+// design N15), which this test never asks.
+func (f *forbiddenCatalog) ProductImages(context.Context, int32, string) ([]contracts.ProductImage, error) {
+	f.deny("ProductImages")
+	return nil, nil
+}
+
+func (f *forbiddenCatalog) OpenProductImage(context.Context, int32) (io.ReadCloser, contracts.ProductImage, error) {
+	f.deny("OpenProductImage")
+	return nil, contracts.ProductImage{}, nil
 }

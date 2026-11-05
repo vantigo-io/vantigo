@@ -3,6 +3,7 @@ package inventory_test
 import (
 	"cmp"
 	"context"
+	"io"
 	"slices"
 	"strings"
 	"sync"
@@ -231,4 +232,14 @@ func (c *fakeCatalog) LockVariants(ctx context.Context, tx pgx.Tx, ids []int32) 
 // goods is a seeded goods variant of product productID, active.
 func goods(id, productID int32, sku, name, unit string) contracts.VariantEntry {
 	return contracts.VariantEntry{ID: id, ProductID: productID, SKU: sku, ProductName: name, Unit: unit, ProductType: "Goods", ProductStatus: "Active"}
+}
+
+// ProductImages and OpenProductImage are the catalog's image calls (messenger
+// design N15), which this test never asks.
+func (c *fakeCatalog) ProductImages(context.Context, int32, string) ([]contracts.ProductImage, error) {
+	return nil, nil
+}
+
+func (c *fakeCatalog) OpenProductImage(context.Context, int32) (io.ReadCloser, contracts.ProductImage, error) {
+	return nil, contracts.ProductImage{}, nil
 }
