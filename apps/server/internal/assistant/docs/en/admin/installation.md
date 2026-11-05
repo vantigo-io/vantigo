@@ -332,7 +332,7 @@ The payments worker polls every second and handles every Vipps payment that is d
 each cycle
 ([The payments worker](/en/admin/payments/#the-payments-worker)).
 The billing worker has no settings: it carries the billing runs people make under
-**Invoices → Billing runs**, polling every 5 seconds and drafting — and, when the run
+**Invoices → Billing runs** — of consumption, or of orders while Orders is on —, polling every 5 seconds and drafting — and, when the run
 asks, issuing — one customer's invoices at a time, at most five customers a cycle, each
 under a 10-minute lease; it sends nothing
 ([Billing runs](/en/reference/invoices/#billing-runs)).
@@ -876,6 +876,19 @@ granted ([Database roles](#database-roles)). It starts three workers — `orders
 Before people quote, map Products' tax categories to VAT codes in Invoices and choose a
 send channel ([Orders](/en/admin/orders/)). Rolling the migration back drops the schema
 with every quote, order and template; the stored PDFs stay in the object store.
+
+**The release with invoicing from orders.** It brings `00121_orders_allocations.sql`, the
+table of what draft and issued invoices hold of each order line, empty, and
+`00122_invoices_order_sources.sql`, which lets an invoice line name an order line's
+allocation and gives a billing run its source — every run made before it invoices
+consumption. No permission and no setting is new: the **Invoice** button on an order and
+Invoices' **From orders** wizard ask Invoices' `invoices:access` and `invoices:create`. With
+Orders on it starts one more worker, `orders.allocation_sweep`: once a day, under a
+PostgreSQL advisory lock so one instance runs it, it releases the order quantities draft
+invoices have held for 30 days — the backstop for a draft deleted while Orders could not
+be told, and the reason a draft invoice of an order should be issued within 30 days. It needs nothing of its own and sends nothing.
+Rolling `00122` back is refused while an invoice line names an order line or a billing run
+invoices orders; rolling `00121` back drops what the invoices held.
 
 **The release with Staff competence.** It brings `00066_staff_competence.sql`: the
 competence catalogue — five categories and fifteen Norwegian certificates seeded — and

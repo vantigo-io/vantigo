@@ -1,6 +1,6 @@
 ---
 title: Fakturaer
-description: Fakturering av arbeid og forbruk, fakturakjøringer, utkast, utstedelse og sending av fakturaer, kreditnotaer, betalinger, journalen og eksporten.
+description: Fakturering av arbeid, forbruk og ordre, fakturakjøringer, utkast, utstedelse og sending av fakturaer, kreditnotaer, betalinger, journalen og eksporten.
 sidebar:
   order: 50
 sources:
@@ -210,8 +210,8 @@ hver avgiftskategori i Produkter faktureres med. Det lister hver kategori med en
   **Lagre** å klikke på. Listen tilbyr kodene som tilbys på nye linjer, og kategoriens
   egen kode når den siden er tatt ut av listen, merket *(tilbys ikke lenger)*.
 - Tøm listen (**Fjern mva-koden for …**), så har kategorien ingen mva-kode igjen.
-- En kategori uten mva-kode har ingen: *det finnes ingen standard*. Ordre, når den
-  kommer, vil ikke bekrefte en ordrelinje i en slik kategori før den har fått en.
+- En kategori uten mva-kode har ingen: *det finnes ingen standard*. Ordre bekrefter ikke
+  en ordrelinje i en slik kategori før den har fått en.
 - Å ta en kode ut av listen (boksen **Tilbys på nye linjer** over) avvises ikke selv om
   en kategori bruker den, men kategorien regnes da som uten mva-kode til du velger en
   annen.
@@ -310,7 +310,8 @@ kjøres igjen ved hver lagring og ved utstedelse
 ([kundekontrollene](/en/reference/invoices/#drafts)).
 
 Skal du fakturere timer, utlegg eller milepæler, start heller fra arbeidet: utkastet lages
-med linjene sine ([Fakturere arbeid](#fakturere-arbeid)).
+med linjene sine ([Fakturere arbeid](#fakturere-arbeid)). Skal du fakturere en ordre, start
+fra ordren ([Fakturere ordre](#fakturere-ordre)).
 
 ## Fakturere arbeid
 
@@ -579,6 +580,8 @@ kunde, akkurat slik **Fra forbruk** ville gjort, og utsteder den hvis du ber om 
 og `invoices:issue` for å utstede fakturaene. Bare én kjøring går om gangen.
 
 1. Åpne **Fakturakjøringer** i sidemenyen og klikk **Ny fakturakjøring**.
+   Med Ordre-modulen slått på velger du under **Hva som faktureres**: **Forbruk**, slik det
+   er beskrevet her, eller **Ordre** ([En fakturakjøring av ordre](#en-fakturakjøring-av-ordre)).
 2. **Avregningsperioder som slutter på eller før** — i dag med mindre du endrer det.
 3. Kryss av for **Utsted fakturaene** for å få hver faktura utstedt så snart den er
    laget, eller la være for å få bare utkast, som du ser over og utsteder selv. Valget
@@ -620,6 +623,106 @@ blir stående.
 **Sending er ikke en del av kjøringen.** Send de utstedte fakturaene etterpå fra hvert
 dokument, på e-post eller som EHF ([Sende et dokument på e-post](#sende-et-dokument-på-e-post),
 [Sende som EHF](#sende-som-ehf)).
+
+## Fakturere ordre
+
+Når Ordre-modulen er slått på, blir en bekreftet ordre fakturalinjer her: du velger
+ordrene, hvor mye av hver linje som skal faktureres, og om en kundes ordre skal samles på
+én faktura. Utkastet **holder** antallene det fakturerer, så de ikke tilbys to ganger;
+utstedelsen merker dem som fakturert på ordren, og en kreditnota gir dem tilbake
+([slik virker det](/en/reference/invoices/#invoicing-orders)). Det krever
+`invoices:access` og `invoices:create`; rettighetene i Ordre kreves ikke.
+
+### Fakturer fra ordre
+
+Åpne veiviseren fra ordren — **Fakturer** på en bekreftet ordre i Ordre
+([Fakturer en ordre](/nb/user/orders/#fakturer-en-ordre)) — eller med **Fra ordre** ved
+siden av **Ny faktura** øverst i fakturalisten, som vises når Ordre-modulen er slått på.
+**Fakturer fra ordre** har tre steg:
+
+1. **Ordre.** Fra en ordre er den allerede valgt. Ellers velger du **Legg til en kunde** —
+   én eller flere — og hver ordre deres med linjer som gjenstår å fakturere, vises med
+   nummer, **Deres ref.** og **Levering**-dato, avkrysset. Fjern krysset for dem som skal
+   vente. En ordre som ikke kan faktureres nå, sier hvorfor: *Ordren er et utkast: bekreft
+   den før den faktureres.* eller *Ordren er satt på vent.*
+2. **Linjer.** Linjene til hver valgte ordre, med **Gjenstår å fakturere**, **Faktureres
+   nå**, **Gjenstår etter**, enhetsprisen og **Beløp**. **Faktureres nå** starter med alt
+   som gjenstår. Sett det ned for å fakturere deler av en linje — **delfakturering**: det
+   som gjenstår, blir stående på ordren til senere. Sett det til 0 for å la linjen være.
+   Nederst summeres linjene som er valgt.
+3. **Fakturaer.** **Én faktura per ordre** eller **Samlefaktura per kunde**: en kundes
+   ordre samles på én faktura når de har samme valuta, deres referanse, prosjekt og
+   betalingsbetingelser. Steget viser fakturaene som lages, og sier hva som holdt to av en
+   kundes ordre atskilt — *Holdes atskilt fra kundens andre faktura på grunn av deres
+   referanse.*
+
+Velg **Lag utkastene**. Ett utkast åpnes med en gang; flere listes opp — *Utkast 1042:
+ordre 2210* — så du kan åpne og sjekke dem ett for ett. Ingenting er utstedt ennå.
+
+### Slik ser utkastet ut
+
+- **Én linje per ordrelinje** du valgte, med ordrelinjens tekst, antallet du fakturerte,
+  enheten, prisen — med opptil åtte desimaler, nøyaktig ordrens — rabatten og mva-koden.
+  Under linjen viser redigeringen hvilken ordrelinje den fakturerer. En ordre som
+  faktureres fullt ut på én faktura, får samme sum som ordren, på øret.
+- **På en samlefaktura** innledes linjene til hver ordre med en tekstlinje, *Ordre 2210,
+  Deres ref. PO-1* — *Order 2210, your ref. PO-1* for en kunde som faktureres på engelsk —
+  1 × 0,00.
+- **Hodet** får ordrenes **Deres referanse** (ellers kundens kjøperreferanse),
+  betalingsbetingelsene deres, ordrenummeret som **Ordrereferanse** når fakturaen har én
+  ordre, den seneste leveringsdatoen blant ordrene (i dag når ingen har en),
+  leveringsadressen når alle ordrene har den samme fullstendige, og ordrenes prosjekt.
+
+### Redigere, slette, utstede og kreditere det
+
+- **Rediger det** som et hvilket som helst utkast. Fjerner du en linje, gis antallet
+  tilbake til ordren ved **Lagre**, og ordren tilbyr det til fakturering igjen.
+- **Slett utkastet**, så går alle antallene det holdt, tilbake til ordrene med en gang.
+- **Utsted det** som en hvilken som helst faktura. Utstedelsen merker linjene som
+  fakturert på ordrene: kortet **Fakturaer** på hver ordre viser fakturaen. Den avvises,
+  med linjen nevnt, når ordrelinjen er endret siden utkastet ble laget — noen har frigjort
+  det fakturautkastet holder i Ordre, for eksempel, eller ordren er satt på vent. Slett
+  utkastet og fakturer ordren på nytt.
+- **Krediter det** som en hvilken som helst faktura. Hver linje en kreditnota returnerer
+  fullt ut — alene eller sammen med kreditnotaene før den — gir antallet tilbake til
+  ordren, så det kan faktureres igjen.
+
+Prosjekter-modulen trenger ikke være slått på for en faktura av ordre, selv når ordren har
+et prosjekt.
+
+### En fakturakjøring av ordre
+
+En fakturakjøring kan fakturere **ordre** i stedet for forbruk: hver ordrelinje som
+gjenstår å fakturere, for alle kunder — eller kundene du nevner — i én omgang.
+
+1. **Fakturakjøringer** → **Ny fakturakjøring**, og velg **Ordre** under **Hva som
+   faktureres**.
+2. **Ordre levert på eller før** — i dag med mindre du endrer det. *Hver ordrelinje som
+   gjenstår å fakturere på en ordre levert innen denne dagen, eller uten leveringsdato,
+   faktureres i sin helhet.*
+3. **Samle kundens ordre (samlefaktura)** — med kryss samles en kundes ordre på én faktura
+   der de har samme valuta, deres referanse, prosjekt og betalingsbetingelser; uten kryss
+   får hver ordre sin egen.
+4. **Utsted fakturaene** og **Kunde-ID-er** som for forbruk, og så **Start kjøringen**.
+
+En ordre på vent eller som fortsatt er et utkast, tas ikke med. Kjøringen avvises når
+Ordre-modulen er slått av, eller når *Ingen kunde har ordrelinjer som gjenstår å
+fakturere til og med den dagen.* En kundes rad blir **Hoppet over**, med grunnen i ord, når
+ingenting gjenstår for kunden, eller en ordre eller en linje ikke kan faktureres.
+
+### Når veiviseren for ordre avviser
+
+Ingenting lages, og siden sier *Kunne ikke fakturere ordrene* og hvorfor, med ordren og
+linjen når det gjelder én — *Ordre 2210, linje 3: …*:
+
+- *Ordre-modulen er slått av, så ingen ordre kan faktureres.*
+- *Ordren er et utkast eller satt på vent, og kan ikke faktureres nå.*
+- *Det er mer enn det som gjenstår å fakturere på linjen. Sett ned antallet.* — noen har
+  fakturert deler av den i mellomtiden.
+- *Linjen kan ikke lenger faktureres: den er allerede fakturert, eller ordren er endret.*
+- ordren er ikke i NOK, mva-koden på linjen tilbys ikke lenger, en faktura ville fått mer
+  enn 500 linjer (velg færre linjer, eller én faktura per ordre), eller kunden kan ikke
+  faktureres, som for **Ny faktura**.
 
 ## Redigere og slette et utkast
 
@@ -1947,8 +2050,8 @@ Ingen innebygd rolle har disse; en eier har alt
 | --- | --- |
 | Åpne appen, lese hvert dokument, laste ned PDF-er og EHF-filer, se betalinger, sendinger og EHF-tilstander, lese journalen, eksportere CSV-filen, se kortet på dashbordet, lese forfallslisten, se en fakturas purringer, purrekrav, leveringer, vent og overlevering og laste ned PDF-en til et brev, lese en kundes purreregel, inkassosatsene og purreinnstillingene, se dashbordets varsler om forfalte fakturaer og penger som skal tilbake, se en fakturas betalingslenke og Vipps-betalinger, liste dagens Vipps-betalinger og laste dem ned som CSV | `invoices:access` |
 | Lage, redigere, forhåndsvise og slette utkast | `invoices:create`, og `customers:view` for å velge kjøperen |
-| Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer; se en kundes forbruk som skal faktureres, og lage et utkast av det eller legge det til i et; lage, følge og avbryte fakturakjøringer | `invoices:create` (og `invoices:issue` for en kjøring som utsteder fakturaene) |
-| Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, og forbruket i Energi, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending, registrere en levering manuelt eller fjerne en, lage eller trekke tilbake en betalingslenke og se adressen og QR-koden mens betaling på stedet tilbys, ta imot en Vipps-betaling på stedet | `invoices:issue` |
+| Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer; se en kundes forbruk som skal faktureres, og lage et utkast av det eller legge det til i et; fakturere ordre med **Fra ordre**; lage, følge og avbryte fakturakjøringer | `invoices:create` (og `invoices:issue` for en kjøring som utsteder fakturaene) |
+| Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, forbruket i Energi og ordrelinjene i Ordre, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending, registrere en levering manuelt eller fjerne en, lage eller trekke tilbake en betalingslenke og se adressen og QR-koden mens betaling på stedet tilbys, ta imot en Vipps-betaling på stedet | `invoices:issue` |
 | Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer, skrive ut papirbrev, bekrefte en bunke postlagt eller skrive den ut på nytt; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen; registrere en dags Vipps-betalinger som avstemt; se dashbordets varsler om banklinjer, brev, utskriftsbunker og Vipps-betalinger | `invoices:payments` |
 | Lage en hurtigfaktura — laget og utstedt i ett steg, registrert som overlevert — og ta betalt for den med Vipps på stedet | `invoices:create` og `invoices:issue` |
 | Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortene **Arbeid til fakturering** og **Forbruk til fakturering**, inkassosatsene og purreinnstillingene, gjennomgangen av regelverket blant dem; endre en bankkontos filformat under **Innbetalinger**, som også krever `invoices:payments` for å åpnes; sette opp Vipps og betalingsinnstillingene, bekrefte kontantsalg, forlate en Vipps-betaling som står fast | `invoices:manage` |
