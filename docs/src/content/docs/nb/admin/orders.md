@@ -1,6 +1,6 @@
 ---
 title: Ordre
-description: Slå på Ordre — modulene den krever, koblingen av avgiftskategoriene i Produkter til mva-koder, de ni rettighetene og rollene du bygger av dem — og hold innstillingene — nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen, ordrebekreftelse ved bekreftelse og e-posttekstene — og tilbudsmalene; hvordan du kontrollerer det, og hva som kan gå galt.
+description: Slå på Ordre — modulene den krever, koblingen av avgiftskategoriene i Produkter til mva-koder, de ni rettighetene og rollene du bygger av dem — og hold innstillingene — nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen, ordrebekreftelse ved bekreftelse og e-posttekstene — tilbudsmalene og salgsadvarslene, og hvem som ser salgsanalysen; hvordan du kontrollerer det, og hva som kan gå galt.
 sidebar:
   order: 48
 sources:
@@ -10,6 +10,8 @@ sources:
   - apps/server/internal/orders/mailtext.go
   - apps/orders/frontend/src/pages/settings.tsx
   - apps/orders/frontend/src/pages/templates.tsx
+  - apps/orders/frontend/src/components/warnings-card.tsx
+  - apps/orders/frontend/src/pages/analysis.tsx
 ---
 
 Ordre-modulen (**Orders** på engelsk) er der virksomheten lager tilbud til kundene sine og
@@ -64,11 +66,15 @@ Ingen andre enn eieren kan bruke appen før en rolle gir rettighetene, under
 | Håndtere tilbud | `orders:quotes-manage` | Lage, sende, besvare og kopiere tilbud |
 | Håndtere ordrer | `orders:sales-manage` | Lage og endre ordrer, sette på vent, kansellere, registrere levert, sende ordrebekreftelsen |
 | Bekrefte ordrer | `orders:sales-confirm` | Bekrefte, låse og låse opp; akseptere et tilbud rett til en bekreftet ordre |
-| Håndtere innstillinger for Ordre | `orders:settings` | Innstillingene og tilbudsmalene; kan ikke delegeres |
+| Se salgsanalyse | `orders:analysis-view` | **Analyse**: treffprosenten på tilbud, ordreinngangen og ordrereserven, med CSV-filene |
+| Håndtere innstillinger for Ordre | `orders:settings` | Innstillingene, tilbudsmalene og salgsadvarslene, og overstyring av en sperre; kan ikke delegeres |
 
-**Håndtere abonnementer**, **Håndtere leveranser**, **Håndtere fraktselskaper** (sensitiv,
-kan ikke delegeres) og **Se salgsanalyse** er allerede listet og gjør ingenting ennå: de
-hører til leveransene som bringer abonnementer, leveranser og frakt, og analysen.
+**Håndtere abonnementer**, **Håndtere leveranser** og **Håndtere fraktselskaper** (sensitiv,
+kan ikke delegeres) er allerede listet og gjør ingenting ennå: de hører til leveransene som
+bringer abonnementer, leveranser og frakt.
+
+**Se salgsanalyse** viser tallene til alle selgere og ordreinngangen fra alle kunder, så gi
+den til salgsledelsen heller enn til hver selger.
 
 Et vanlig oppsett: selgere får Bruke Ordre, Håndtere tilbud og Håndtere ordrer; den som
 godkjenner ordrer, får i tillegg Bekrefte ordrer; den som driver salgsadministrasjonen, får
@@ -116,6 +122,26 @@ arkiverte** viser dem) eller slettes; tilbud som allerede er laget fra den, beho
 linjene sine. En mallinje der produktet senere er utgått eller slettet, utelates når malen
 brukes, og personen får vite hvilke.
 
+## Hold salgsadvarslene ved like
+
+**Ordreinnstillinger** → **Salgsadvarsler** (`orders:settings`) viser alle advarsler på en
+kunde eller et produkt, med nivå, tekst og hvem som endret dem sist.
+
+1. Velg **Legg til kundeadvarsel** og velg kunden, eller **Legg til produktadvarsel** og
+   søk opp produktet med en av variantene. Å velge en kunde krever **Se kunder**.
+2. Velg nivå: **Informasjon** vises bare på kundens eller produktets tilbud og ordrer;
+   **Sperre** stopper også sending, markering som sendt, bekreftelse og aksept av et tilbud
+   til en bekreftet ordre.
+3. Skriv **Tekst** (høyst 500 tegn) og velg **Lagre advarselen**.
+
+**Endre** endrer en advarsel eller, med **Fjern advarselen**, fjerner den. En advarsel kan
+også settes fra et tilbud eller en ordre (**Legg til kundeadvarsel**).
+
+Bare den som har **Håndtere innstillinger for Ordre**, kan overstyre en sperre, og må oppgi
+en begrunnelse, som lagres i ordrens endringslogg eller i tilbudets interne notat. En
+advarsel følger kunden når kunder slås sammen — den gjenværende kundens egen advarsel vinner
+hvis begge har en — og slettes når kunden slettes.
+
 ## Kontroller
 
 1. Som selger åpner du **Ordre** → **Tilbud** → **Nytt tilbud**, velger en kunde, legger til
@@ -125,6 +151,12 @@ brukes, og personen får vite hvilke.
    tilbudet er **Sendt**. Uten kanal fungerer **Marker som sendt** i stedet.
 4. **Aksepter** det til en ordre og **Bekreft** ordren: den er **Bekreftet**, og kundens
    **Tidslinje** viser tilbudet sendt og akseptert og ordren bekreftet.
+5. Sett en **Sperre** på kunden og åpne et nytt ordreutkast for den: det røde banneret
+   vises, og **Bekreft** avvises med «En advarsel sperrer dette». Som den som har
+   innstillingene, velger du **Overstyr advarselen** med en begrunnelse og bekrefter;
+   **Endringslogg** viser **Advarsel overstyrt**.
+6. Med **Se salgsanalyse** viser **Analyse** tilbudet under **Treffprosent på tilbud** og
+   ordren under **Ordreinngang**.
 
 ## Hva som kan gå galt
 
@@ -139,3 +171,5 @@ brukes, og personen får vite hvilke.
 | En automatisk ordrebekreftelse ble aldri sendt | Ordren har ingen kontakt-e-post og kunden ingen faktura-e-post | Fyll inn en og send ordrebekreftelsen fra ordren |
 | «En serie kan bare starte over det høyeste nummeret som er brukt» | Den nye starten er under neste nummer | Velg en start på eller over neste nummer som vises |
 | Tilbudsmaler og Ordreinnstillinger mangler i sidemenyen | Personen mangler Håndtere innstillinger for Ordre | Gi rettigheten |
+| Analyse mangler i sidemenyen | Personen mangler Se salgsanalyse | Gi den sammen med Bruke Ordre |
+| «En advarsel sperrer dette», og ingen **Overstyr advarselen** | En sperre gjelder, og personen mangler Håndtere innstillinger for Ordre | Be noen med innstillingene overstyre den, eller endre advarselen |

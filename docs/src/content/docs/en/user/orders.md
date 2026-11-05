@@ -1,6 +1,6 @@
 ---
 title: Orders
-description: The Orders app — make a quote, from the app, a customer's page or a template; add product, free-text, section and note lines, optional lines and discounts; send it or mark it as sent, revise, accept, decline, cancel and copy it; make an order, confirm it, change it after confirming, put it on hold, lock it, cancel it or its rest, register what is delivered, send the order confirmation and print a pro forma; the change log; the customer's Orders tab; and what a refusal means.
+description: The Orders app — make a quote, from the app, a customer's page or a template; add product, free-text, section and note lines, optional lines and discounts; send it or mark it as sent, revise, accept, decline, cancel and copy it; make an order, confirm it, change it after confirming, put it on hold, lock it, cancel it or its rest, register what is delivered, send the order confirmation and print a pro forma; the change log; lines in packagings and from the variant grid; customer and product warnings and overriding a block; the sales analysis; the customer's Orders tab; and what a refusal means.
 sidebar:
   order: 55
 sources:
@@ -16,8 +16,9 @@ from orders arrives — invoice.
 
 ## The app and its sidebar
 
-The sidebar has **Quotes** and **Sales orders** for everyone with access to the app, and
-**Quote templates** and **Orders settings** for those who manage the Orders settings.
+The sidebar has **Quotes** and **Sales orders** for everyone with access to the app,
+**Analysis** for those who may view the sales analysis, and **Quote templates** and
+**Orders settings** for those who manage the Orders settings.
 What you can do in each depends on your permissions: making and changing quotes, making
 and changing orders, and confirming orders are three separate permissions, so a
 colleague may see buttons you do not.
@@ -79,6 +80,30 @@ stored without it. Choose **Save**: the server prices the lines and computes the
 A saved line keeps its kind: to turn a note into a product line, say, remove it and add a
 new line.
 
+### Sell in packagings
+
+A product sold in packagings — a box of 15, a pallet of 40 boxes — shows a packaging
+selector under the line's quantity once you have picked it. Choose the packaging and type
+how many: **3** of **Box of 15** is stored as 45 of the product's unit, and the line
+shows "= 45 pcs" as you type. The PDF prints it as "3 × Box of 15 (45 pcs)" — in Norwegian "3 × Eske à 15 (45 stk)". Choose the
+unit again to enter the quantity in the product's own unit.
+
+### Add from grid
+
+For a product with variants — sizes and colours, say — **Add from grid** saves typing a
+line per variant:
+
+1. Choose **Add from grid** under the lines, and search for the product by one of its
+   variants under **Product (search a variant)**.
+2. The variants are laid out as a grid, one option down and the other across. Type a
+   quantity in each cell you want; a cell with a dash is a combination the product does
+   not have.
+3. Choose **Add the lines**. Each quantity adds that variant's line, or changes the
+   quantity of the line it already has.
+
+A product with more than two options, an option with more than 30 values, or a variant
+without a value on one of them is shown as a list instead, with a quantity per variant.
+
 ### When someone else changed it
 
 Every change you make — saving, sending, accepting, confirming, holding, locking,
@@ -95,6 +120,26 @@ On a draft, **More actions** → **Apply a template** adds a template's lines af
 quote's own, or with **Replace the quote's lines** instead of them, and fills in empty
 texts. A template line whose product is discontinued or deleted is left out, and the app
 names it.
+
+## Warnings on a customer or a product
+
+A customer or a product may carry a **warning**, which every quote and order with it
+shows above the header:
+
+- an **Information** warning, in yellow — "Call before delivery", say — is only shown;
+- a **Block**, in red — "Does not pay", "Recalled" — also stops **Send**, **Mark as
+  sent**, **Confirm** and accepting a quote into a confirmed order: the app says "A warning
+  blocks this".
+
+Someone who manages the Orders settings sees **Override the warning** under a block. Give
+a **Reason** and choose **Override the warning**: the banner shows **Warning overridden**
+with your reason, and your next send, mark as sent, confirm or accept goes through. The
+reason is kept — in the order's **Change log** as **Warning overridden**, or at the end of
+the quote's **Internal note**. **Undo** drops the override before you use it.
+
+They also see **Add customer warning** (or **Edit customer warning**) there, to set the
+customer's warning without leaving the document. All warnings are kept under
+**Orders settings** → **Sales warnings** ([administration](/en/admin/orders/#keep-the-sales-warnings)).
 
 ## Send a quote
 
@@ -148,6 +193,8 @@ confirmation and makes it **Confirmed**. It needs the permission to confirm orde
 refused when the customer is disabled, the order has no product lines, a line has no
 price in the order's currency, or a product's tax category has no VAT code — map it in
 Invoices first ([Products' tax categories](/en/user/invoices/#products-tax-categories)).
+A block warning on the customer or a product stops it too, until someone who manages the
+Orders settings overrides it ([Warnings](#warnings-on-a-customer-or-a-product)).
 
 When the Orders settings say so, the order confirmation is e-mailed by itself to the
 contact person, else the customer's invoice e-mail. To send it yourself, choose **Send the
@@ -205,6 +252,26 @@ line left at 0 is not changed, and you cannot deliver more than is left. **More 
 "3 of 5 delivered" — and the order its delivery status: **Not delivered**, **Partly
 delivered** or **Delivered**.
 
+## Sales analysis
+
+**Analysis** (permission to view the sales analysis) has three views, each with a chart,
+a table and **Download CSV**, which saves the table as a file a spreadsheet opens. Amounts
+are net of VAT and never added across currencies: each chart shows one currency, and with
+more than one you pick it above the chart.
+
+- **Quote hit rate** — the quotes sent between **From** and **To**, and how many of them
+  are **Accepted**, **Declined**, **Expired**, **Cancelled** or still **Open**, counted and
+  summed per salesperson; the **Hit rate** is accepted of sent. Narrow it to one
+  **Salesperson**. A quote sent again after a revision counts once, on the day it was last
+  sent.
+- **Order intake** — the orders confirmed in the period and not cancelled, grouped by
+  **Month**, **Salesperson**, **Customer**, **Product** or **Category** under **Group
+  by**. Free-text lines are one group, and so are products with no category.
+- **Backlog** — today: what confirmed orders have **Ordered, not delivered**, and what
+  they have **Delivered, not invoiced**, aged 0–7 days, 8–30 days and over 30 days since
+  the delivery was registered. An invoice is due within a month of delivery, so anything
+  over 30 days is shown in red.
+
 ## The customer's Orders tab
 
 On a customer's page, the **Orders** tab shows three figures per currency, net of VAT —
@@ -238,3 +305,5 @@ confirmed or cancelled ([the timeline](/en/user/customers/#the-timeline)).
 | Sending is off | Download the PDF and **Mark as sent**, or ask an administrator to choose a send channel. |
 | The e-mail could not be sent. Nothing was changed; try again, or download the PDF and mark it as sent. | The mail provider did not take the e-mail: **Documents and mailings** lists the send as **Failed**. Try again, or download the PDF and mark as sent. |
 | A document takes at most 500 lines | Split it in two. |
+| A warning blocks this | A customer or product on the document has a block warning. Someone who manages the Orders settings can **Override the warning** with a reason, or change the warning. |
+| The packaging is not one of the product's | Pick the product again and choose one of its packagings, or enter the quantity in the unit. |

@@ -1,12 +1,13 @@
 ---
 title: "Orders module"
-description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, PDFs, sending and the cover mail, the events, the handler and the three workers, the holders, retention, the customer summary, the refusal codes, the assist targets and every endpoint with its permission and status codes."
+description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, PDFs, sending and the cover mail, the events, the handler and the three workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, the refusal codes, the assist targets and every endpoint with its permission and status codes."
 sources:
   - apps/server/internal/orders
   - apps/orders/frontend
   - openapi/orders.yaml
   - apps/server/internal/openapi/specs/orders.yaml
   - apps/server/internal/db/migrations/00119_orders_baseline.sql
+  - apps/server/internal/db/migrations/00120_orders_warnings.sql
   - apps/server/internal/contracts/events_orders.go
   - apps/host/frontend/src/routes/orders
   - apps/host/frontend/src/routes/customers/-customer-orders-tab.tsx
@@ -17,7 +18,9 @@ customers: their header and lines, their prices and totals, their PDFs, their se
 an order's life from draft to confirmed, delivered and cancelled. In Norwegian the app is
 **Ordre**. The design is
 [`2026-11-05-orders-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-05-orders-design.md)
-(decisions O1–O54); this page describes delivery A, quotes and orders. Invoicing from
+(decisions O1–O54); this page describes delivery A, quotes and orders, and delivery A2,
+selling comfort — sales warnings, packagings and the variant grid, and the analysis
+views. Invoicing from
 orders (B), subscriptions (S), deliveries from stock (C) and shipping (D) come later and
 are described as they land.
 
@@ -39,7 +42,9 @@ The schema holds `settings` (one row), `counters` (one per number series), `quot
 `orders`, `templates`, `lines` (every document's and template's lines, by `owner_kind`
 `quote`, `order` or `template`), `order_changes` (the change log), `documents` (the stored
 PDFs), `mailings` (every send) and `erasures` (the customers whose confirmed orders wait for
-their retention to run).
+their retention to run) — migration `00119` — and `customer_warnings` and
+`product_warnings` (one sales warning per customer and per product, migration `00120`,
+which also gives every line its `product_id` and `packaging_name` snapshots).
 
 ## Permissions
 
@@ -49,15 +54,16 @@ their retention to run).
 | `orders:quotes-manage` | Manage quotes | Create, edit, send, mark as sent, revise, accept, decline, cancel, copy and delete quotes; apply a template | no | yes |
 | `orders:sales-manage` | Manage orders | Create and edit orders, hold and release, cancel and cancel what remains, register and undo delivered, send the confirmation, delete a draft | no | yes |
 | `orders:sales-confirm` | Confirm orders | Confirm, lock and unlock; accept a quote into a confirmed order | no | yes |
-| `orders:settings` | Manage Orders settings | The settings, the number series and the quote templates | no | no |
+| `orders:settings` | Manage Orders settings | The settings, the number series, the quote templates and the sales warnings; overriding a block warning | no | no |
 | `orders:subscriptions-manage` | Manage subscriptions | Subscriptions — first asked for by delivery S | no | yes |
 | `orders:deliveries-manage` | Manage deliveries | Deliveries (delivery C) and shipments (delivery D) | no | yes |
 | `orders:carriers-manage` | Manage carriers | Carrier accounts and their keys under Integrations — delivery D | yes | no |
-| `orders:analysis-view` | View sales analysis | The analysis of quotes and orders — delivery A2 | no | yes |
+| `orders:analysis-view` | View sales analysis | The analysis views and their CSV files | no | yes |
 
 Every operation asks for `orders:access` **and** its own key, so a role that gives
-`orders:quotes-manage` without `orders:access` gives nothing. The last four keys are
-declared now so a role can be built once; no operation of delivery A asks for them.
+`orders:quotes-manage` without `orders:access` gives nothing. The subscriptions,
+deliveries and carriers keys are declared now so a role can be built once; no operation
+asks for them yet.
 
 The screens read other modules over HTTP and need their keys too: the customer picker
 `customers:view`, a customer's contacts `customers:contacts-view` with
@@ -119,6 +125,23 @@ until one is typed: it may be saved, and is refused at send and at confirm
 (`line_unpriced`). A line whose tax category maps to no VAT code in Invoices is refused at
 the same points (`vat_code_unmapped`) — the mapping is kept on Invoices' VAT settings
 ([Products' tax categories](/en/user/invoices/#products-tax-categories)).
+
+A catalog line also keeps the **product** its variant belongs to (`productId`), as it was
+when the line was written: the warnings a document carries and the intake by product are
+read from it.
+
+### Packagings
+
+A catalog line may be entered in one of the variant's **packagings** (O15), from
+`VariantEntry.Packagings`: the line names `packagingId` and `packagingQuantity` — how many
+of it — and the server stores the quantity in the variant's unit, exactly:
+`packagingQuantity` × the packaging's quantity, so 3 of a box of 15 is 45. The line keeps
+the packaging's id, the count and its **name** (`packagingName`), as it was then. A
+packaging that is not the variant's, or one named on a free-text line, is
+`packaging_not_found` (400); a count that is not more than 0 with at most three decimals is
+`quantity_invalid`. A confirmed order's kept line in the same packaging takes a new count
+at the size it was confirmed with. The PDF prints the line's packaging after its
+description: "3 × Eske à 15 (45 stk)" in Norwegian, "3 × Box of 15 (45 pcs)" in English.
 
 Prices are **stored net** of VAT. "Prices include VAT" is how they are entered and shown
 (O19): a price typed on such a document is divided by its VAT rate before it is stored.
@@ -254,7 +277,7 @@ two derived statuses:
 
 | Operation | Takes | Refused with |
 | --- | --- | --- |
-| Confirm | a draft | `order_not_draft` (409); `customer_disabled`, `order_empty` (no product line), `line_unpriced`, `vat_code_unmapped` (400) |
+| Confirm | a draft | `order_not_draft` (409); `customer_disabled`, `order_empty` (no product line), `line_unpriced`, `vat_code_unmapped` (400); `blocked_by_warning` (409, [Sales warnings](#sales-warnings)) |
 | Hold, release | a confirmed order | `order_not_confirmed` (409). Release of an order not on hold answers it unchanged |
 | Lock, unlock | a confirmed order | `order_not_confirmed` (409) |
 | Cancel | a draft, or a confirmed, unlocked order with nothing delivered or invoiced | `order_locked` (409) for a locked one — unlock it first; `order_has_progress` (409) once anything is delivered or invoiced; `order_not_confirmed` (409) for one already cancelled |
@@ -319,7 +342,8 @@ list of typed actions, each with the line it is about where it is about one and 
 before and after as text: `line_added`, `line_removed`, `quantity_changed`,
 `price_changed`, `discount_changed`, `text_changed`, `delivery_changed`,
 `contact_changed`, `reference_changed`, `cancelled_remaining`, `held`, `released`,
-`locked`, `unlocked`, `delivered_marked` and `delivered_undone`.
+`locked`, `unlocked`, `delivered_marked`, `delivered_undone` and `warning_overridden` (a
+block warning overridden at confirm: from is the warning, to the reason).
 
 ### Delivered by hand
 
@@ -440,11 +464,13 @@ one, and is composed whether or not `orders` is enabled.
   re-pointed to the survivor; the snapshot is not touched, so a frozen document keeps the
   customer as it was. A quote's and a draft order's `updatedAt` moves, so an editor
   holding one from before the merge is stale; a confirmed or cancelled order's does not,
-  since it is the moment a done order's retention runs from. Reported as `orders.quotes`
-  and `orders.orders`.
+  since it is the moment a done order's retention runs from. The merged-away customer's
+  sales warning moves to the survivor when the survivor has none; when both have one the
+  survivor's is kept and the other deleted. Reported as `orders.quotes`, `orders.orders`
+  and `orders.warnings`.
 - **Customer export**: every quote and order of the customer, each with its snapshot,
-  status, revision or version, totals, texts, lines and sends, in one read-only snapshot;
-  nothing for a customer with neither.
+  status, revision or version, totals, texts, lines and sends, and the customer's sales
+  warning, in one read-only snapshot; nothing for a customer with none of them.
 - **Customer erase** (O29, O54), inside Customers' anonymisation: blanks the name, the
   legal ids, the addresses, the contact, the invoice e-mail, your reference and the
   internal note **at once** on every quote — a quote is offer text, no bookkeeping record
@@ -456,8 +482,9 @@ one, and is composed whether or not `orders` is enabled.
   transaction may not make, so the erasure is recorded in `orders.erasures` whenever a
   confirmed order is kept **or** a stored PDF of the customer's exists, and the retention
   worker deletes them ([Retention](#retention)). Reported as
-  `orders.quotes`, `orders.draftOrders`, `orders.orders` (always 0) and `orders.mailings`;
-  run again, it reports zeros.
+  `orders.quotes`, `orders.draftOrders`, `orders.orders` (always 0), `orders.mailings` and
+  `orders.warnings` — the customer's sales warning is deleted; run again, it reports
+  zeros.
 - **Variant delete** (O30): Products' delete of a variant is refused while an open
   document names it — a draft or sent quote, or an order not cancelled with a line of it
   that is not delivered or not invoiced in full — as an `open_documents` hold with the
@@ -496,6 +523,93 @@ The customer page's **Orders** tab shows it above the customer's open quotes and
 The tab needs the `orders` module and `orders:access`; **New quote** needs
 `orders:quotes-manage` and **New order** `orders:sales-manage`, each only on a customer
 that is neither merged away nor anonymised.
+
+## Sales warnings
+
+A **sales warning** (O33) is kept on a customer, in `orders.customer_warnings` keyed by the
+customer id, or on a product, in `orders.product_warnings` keyed by the product id —
+Orders' own tables, since a warning is a selling rule neither Customers nor Products needs.
+A warning has a **level**, `info` or `block`, a **text** of 1–500 characters, the name of
+its customer or product as it was when it was written (read through the directory or the
+catalog, so the settings list it without either), who wrote it last and when. A customer
+or product has at most one; a `PUT` replaces it. They are written under `orders:settings`
+and read under `orders:access`.
+
+Every quote and order the API answers carries its **`warnings`**: its customer's, then
+those of the products on its product lines, by product id — read from the lines' product
+snapshots, so a line written before the warning existed counts as well.
+
+- An `info` warning is shown and never refuses anything.
+- A `block` warning refuses **send** and **mark as sent** of a quote, **confirm**, and
+  **accept** into a confirmed order with `blocked_by_warning` (409), whose detail names each
+  blocking warning and its text. A quote's send is judged before its PDF is printed or its
+  mail sent, and again under the quote's lock; a confirm under the order's lock. Saving a
+  draft, accepting into a draft order and sending a confirmed order's confirmation are
+  never refused.
+- The request **overrides** the blocks with `overrideWarnings: true` and an
+  `overrideReason` (required, at most 500 characters; 400 without it). Only a caller who
+  holds `orders:settings` overrides; anyone else is refused with `blocked_by_warning` as
+  if no override were asked. An override at confirm — accept into a confirmed order
+  included — is logged on the order's change log at the confirmed version, one
+  `warning_overridden` action per block, from the warning to the reason; an override at
+  send or mark as sent is appended to the quote's internal note, which has no change log:
+  "Advarsel overstyrt <day> av <name> (<warnings>): <reason>", in the quote's language, cut
+  to the note's 4000 characters.
+
+A product warning is not removed when the product is: it is harmless, and an operator
+removes it in the settings. [The holders](#the-holders) re-point a customer's warning on a
+merge and delete it on an erase.
+
+## The variant grid
+
+`GET /products/{productId}/grid` (O34) answers a product's variants for *Add from grid*,
+read through `ProductCatalog.VariantsOfProduct`, each with its SKU, unit, option values and
+list price in `currency` (the base currency when absent) today. The options are the option
+names the variants' `OptionValues` use, by name; each option's values are in the order the
+variants, by id, first name them.
+
+- **`mode: grid`** — one or two options, every variant valued on each, and at most 30
+  values an option: `options` names them with their values and `cells` holds the variants.
+  A combination no variant has is simply absent.
+- **`mode: list`** — more than two options, an option with more than 30 values, a
+  variant without a value on one of them, or none at all: `variants` holds them.
+
+A product with no variants, or none that exists, is 404. The editor adds a line per
+quantity typed, or sets the quantity of the variant's line in its unit when there is one;
+the server prices it on the next save as any catalog line.
+
+## Analysis
+
+The three views (O35) need `orders:analysis-view`, read Orders' own tables — no
+warehouse — and sum exactly, **per currency and net of VAT**: amounts in two currencies are
+never added. A period is `from` and `to`, both included, days in the business time zone, at
+most 3660 days long (400 otherwise). Each answers JSON, or with `format=csv` the same table
+as a file: semicolon-separated, UTF-8 with a byte order mark, CRLF, the decimal comma,
+cells guarded against formulas, the headers the API's own names, and named
+`orders-hit-rate-<from>-<to>.csv`, `orders-intake-<groupBy>-<from>-<to>.csv` or
+`orders-backlog-<day>.csv`.
+
+- **Hit rate** (`GET /analysis/hit-rate`) — every quote whose `sent_at` (its last send) is
+  in the period, optionally of one `salespersonId`, counted and summed at its net total
+  by where it stands now: `accepted`, `declined`, `expired`, `cancelled`, or `open` — sent,
+  or revised back to a draft. `rows` are per salesperson and currency, by name; `totals`
+  per currency.
+- **Intake** (`GET /analysis/intake`) — every order confirmed in the period and not
+  cancelled since, by `groupBy`: `month` (`YYYY-MM` in the business time zone),
+  `salesperson`, `customer` (the snapshot's name) at the orders' net totals, or `product`
+  and `category` at the product lines' net amounts. The category is read through
+  `ProductCatalog.Variants` for the period's variants (`CategoryID`, `CategoryName`); a
+  free-text line, a variant gone from the catalog and a product with no category each
+  group under an empty key. `count` is the orders in the group; `totals` per currency.
+- **Backlog** (`GET /analysis/backlog`) — as of today, over every confirmed order's
+  product lines, each line's quantity valued at its net amount over its quantity, rounded
+  to øre, as [the customer summary](#the-customer-summary) does:
+  - `orderedNotDelivered` — ordered less cancelled less delivered, and the orders with
+    some;
+  - `deliveredNotInvoiced` — delivered less invoiced, and the orders with some, aged from
+    the latest `delivered_marked` of the line in the change log (the confirmation when
+    there is none) into `days0To7`, `days8To30` and `over30Days`, since
+    bokføringsforskriften § 5-2-2 asks an invoice within a month of delivery.
 
 ## Refusals
 
@@ -544,6 +658,7 @@ a bare 400.
 | `line_in_draft_invoice` | 409 | Declared for delivery B; not raised yet |
 | `client_request_reused` | 409 | The `clientRequestId` made a document for another customer |
 | `template_name_taken` | 409 | Another template has the name |
+| `blocked_by_warning` | 409 | A block warning on the customer or a product refuses send, mark as sent, confirm or accept into a confirmed order; the detail names it ([Sales warnings](#sales-warnings)) |
 | `dependency_unavailable` | 503 | Customers, Products or Invoices is not composed |
 | `sending_disabled` | 503 | Communications is off, or no channel that can send is chosen |
 | `mail_failed` | 503 | The mail provider did not take the e-mail; nothing changed, the failed send is listed |
@@ -588,6 +703,11 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `orders.settings.save` | `/orders/settings` | Save the settings |
 | `orders.customer.new-quote` | `/customers/{customerId}/orders` | New quote on the customer's Orders tab |
 | `orders.customer.new-order` | `/customers/{customerId}/orders` | New order on the customer's Orders tab |
+| `orders.lines.add-from-grid` | `/orders/quotes/{quoteId}` | Add from grid, under a quote's or an order's lines |
+| `orders.document.warnings` | `/orders/quotes/{quoteId}` | The warnings' override and the customer's warning, on a quote or an order |
+| `orders.settings.warnings` | `/orders/settings` | The sales warnings in the settings |
+| `orders.analysis.views` | `/orders/analysis` | The analysis's three views |
+| `orders.analysis.csv` | `/orders/analysis` | Download CSV of the open view |
 
 ## Enabling and disabling
 
@@ -621,10 +741,10 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `PUT /quotes/{id}` | quotes-manage | 200; 400; 404; 409 `version_conflict`, `quote_not_draft`, `line_kind_changed`; 503 |
 | `DELETE /quotes/{id}` | quotes-manage | 204; 404; 409 `quote_not_draft`, `version_conflict` (`expectedUpdatedAt` in the query) |
 | `POST /quotes/{id}/apply-template` | quotes-manage | 200 with the skipped lines; 400; 404 quote or template; 409 |
-| `POST /quotes/{id}/send` | quotes-manage | 200; 400 fields, `line_unpriced`, `vat_code_unmapped`; 404; 409; 503 `sending_disabled`, `mail_failed` |
-| `POST /quotes/{id}/mark-sent` | quotes-manage | 200; 400; 404; 409 |
+| `POST /quotes/{id}/send` | quotes-manage (+ settings to override) | 200; 400 fields, `line_unpriced`, `vat_code_unmapped`; 404; 409 `blocked_by_warning`; 503 `sending_disabled`, `mail_failed` |
+| `POST /quotes/{id}/mark-sent` | quotes-manage (+ settings to override) | 200; 400; 404; 409 `blocked_by_warning` |
 | `POST /quotes/{id}/revise` | quotes-manage | 200; 404; 409 `version_conflict`, `quote_not_sent` |
-| `POST /quotes/{id}/accept` | quotes-manage (+ sales-confirm for a confirmed order) | 200 the quote and the order; 400 fields and confirm's codes; 403; 404; 409 `quote_not_sent`, `quote_already_accepted` |
+| `POST /quotes/{id}/accept` | quotes-manage (+ sales-confirm for a confirmed order, + settings to override) | 200 the quote and the order; 400 fields and confirm's codes; 403; 404; 409 `quote_not_sent`, `quote_already_accepted`, `blocked_by_warning` |
 | `POST /quotes/{id}/decline` | quotes-manage | 200; 400; 404; 409 |
 | `POST /quotes/{id}/cancel` | quotes-manage | 200; 404; 409 |
 | `POST /quotes/{id}/copy` | quotes-manage | 201; 404; 503 |
@@ -637,7 +757,7 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `GET /orders/{id}` | access | 200 with lines, buckets and totals; 404 |
 | `PUT /orders/{id}` | sales-manage | 200; 400 incl. `quantity_below_progress`, `line_invalid`; 404; 409 `version_conflict`, `order_locked`, `line_invoiced`, `line_has_progress`, `line_kind_changed`; 503 |
 | `DELETE /orders/{id}` | sales-manage | 204 — a draft accepted from a quote puts the quote back to `sent`; 404; 409 `order_not_draft`, `version_conflict` (`expectedUpdatedAt` in the query) |
-| `POST /orders/{id}/confirm` | sales-confirm | 200; 400 `customer_disabled`, `order_empty`, `line_unpriced`, `vat_code_unmapped`; 404; 409 `order_not_draft` |
+| `POST /orders/{id}/confirm` | sales-confirm (+ settings to override) | 200; 400 `customer_disabled`, `order_empty`, `line_unpriced`, `vat_code_unmapped`, `overrideReason`; 404; 409 `order_not_draft`, `blocked_by_warning` |
 | `POST /orders/{id}/hold` | sales-manage | 200; 400 reason; 404; 409 `order_not_confirmed` |
 | `POST /orders/{id}/release` | sales-manage | 200; 404; 409 |
 | `POST /orders/{id}/lock` | sales-confirm | 200; 404; 409 `order_not_confirmed` |
@@ -659,5 +779,16 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `DELETE /templates/{id}` | settings | 204; 404 |
 | `GET /settings` | settings | 200 |
 | `PUT /settings` | settings | 200; 400 `series_start_too_low`, `send_channel_unknown`; 409 `version_conflict` |
+| `GET /warnings` | access | 200 — every warning, customers' first, each by name; `scope` narrows |
+| `GET /warnings/customers/{customerId}` | access | 200; 404 none |
+| `PUT /warnings/customers/{customerId}` | settings | 200; 400 level or text; 404 no such customer; 503 |
+| `DELETE /warnings/customers/{customerId}` | settings | 204; 404 none |
+| `GET /warnings/products/{productId}` | access | 200; 404 none |
+| `PUT /warnings/products/{productId}` | settings | 200; 400; 404 no such product; 503 |
+| `DELETE /warnings/products/{productId}` | settings | 204; 404 none |
+| `GET /products/{productId}/grid` | access | 200 [the grid](#the-variant-grid); 400 currency; 404; 503 |
+| `GET /analysis/hit-rate` | analysis-view | 200 JSON or CSV; 400 the period |
+| `GET /analysis/intake` | analysis-view | 200 JSON or CSV; 400 the period or `groupBy`; 503 by category without the catalog |
+| `GET /analysis/backlog` | analysis-view | 200 JSON or CSV |
 
 The full contract, with every schema, is `openapi/orders.yaml`, published in the API reference.

@@ -1,6 +1,6 @@
 ---
 title: Orders
-description: Turning Orders on — the modules it requires, mapping Products' tax categories to VAT codes, the nine permissions and the roles to build from them — and keeping its settings — the number series, quote validity, payment terms, the send channel, the confirmation on confirm and the mail texts — and its quote templates; how to verify it, and what can go wrong.
+description: Turning Orders on — the modules it requires, mapping Products' tax categories to VAT codes, the nine permissions and the roles to build from them — and keeping its settings — the number series, quote validity, payment terms, the send channel, the confirmation on confirm and the mail texts — its quote templates and its sales warnings, and who sees the sales analysis; how to verify it, and what can go wrong.
 sidebar:
   order: 48
 sources:
@@ -10,6 +10,8 @@ sources:
   - apps/server/internal/orders/mailtext.go
   - apps/orders/frontend/src/pages/settings.tsx
   - apps/orders/frontend/src/pages/templates.tsx
+  - apps/orders/frontend/src/components/warnings-card.tsx
+  - apps/orders/frontend/src/pages/analysis.tsx
 ---
 
 The Orders module (**Ordre** in Norwegian) is where the business makes quotes for its
@@ -63,11 +65,15 @@ Every Orders permission needs **Use Orders** (`orders:access`) beside it.
 | Manage quotes | `orders:quotes-manage` | Making, sending, answering and copying quotes |
 | Manage orders | `orders:sales-manage` | Making and changing orders, hold, cancel, register delivered, send the confirmation |
 | Confirm orders | `orders:sales-confirm` | Confirm, lock and unlock; accept a quote straight into a confirmed order |
-| Manage Orders settings | `orders:settings` | The settings and the quote templates; cannot be delegated |
+| View sales analysis | `orders:analysis-view` | **Analysis**: the quote hit rate, the order intake and the backlog, with their CSV files |
+| Manage Orders settings | `orders:settings` | The settings, the quote templates and the sales warnings, and overriding a block warning; cannot be delegated |
 
-**Manage subscriptions**, **Manage deliveries**, **Manage carriers** (sensitive, not
-delegable) and **View sales analysis** are listed already and do nothing yet: they belong
-to the deliveries that bring subscriptions, deliveries and shipping, and the analysis.
+**Manage subscriptions**, **Manage deliveries** and **Manage carriers** (sensitive, not
+delegable) are listed already and do nothing yet: they belong to the deliveries that bring
+subscriptions, deliveries and shipping.
+
+**View sales analysis** shows every salesperson's figures and every customer's intake, so
+give it to sales management rather than to every salesperson.
 
 A typical set: salespeople get Use Orders, Manage quotes and Manage orders; whoever
 approves orders adds Confirm orders; the person who runs sales administration adds Manage
@@ -114,6 +120,27 @@ archived (**Show archived** lists them) or deleted; quotes already made from it 
 lines. A template line whose product is later discontinued or deleted is left out when the
 template is used, and the person is told which.
 
+## Keep the sales warnings
+
+**Orders settings** → **Sales warnings** (`orders:settings`) lists every warning on a
+customer or a product, with its level, text and who changed it last.
+
+1. Choose **Add customer warning** and pick the customer, or **Add product warning** and
+   search for the product by one of its variants. Picking a customer needs **View
+   customers**.
+2. Choose the level: **Information** is only shown on the customer's or product's quotes
+   and orders; **Block** also stops sending, marking as sent, confirming and accepting a
+   quote into a confirmed order.
+3. Write the **Text** (at most 500 characters) and choose **Save the warning**.
+
+**Edit** changes a warning or, with **Remove the warning**, takes it away. A warning can
+also be set from a quote or an order (**Add customer warning**).
+
+Only a holder of **Manage Orders settings** can override a block, and must give a reason,
+which is kept on the order's change log or in the quote's internal note. A warning stays
+with the customer when customers are merged — the surviving customer's own warning wins if
+both have one — and is deleted when the customer is erased.
+
 ## Verify
 
 1. As a salesperson, open **Orders** → **Quotes** → **New quote**, pick a customer, add a
@@ -123,6 +150,12 @@ template is used, and the person is told which.
    **Sent**. Without one, **Mark as sent** works instead.
 4. **Accept** it into an order and **Confirm** the order: it is **Confirmed**, and the
    customer's **Timeline** shows the quote sent, accepted and the order confirmed.
+5. Set a **Block** warning on the customer and open a new draft order for it: the red
+   banner shows, and **Confirm** is refused with "A warning blocks this". As a settings
+   holder, **Override the warning** with a reason and confirm; the **Change log** shows
+   **Warning overridden**.
+6. With **View sales analysis**, **Analysis** shows the quote under **Quote hit rate** and
+   the order under **Order intake**.
 
 ## What can go wrong
 
@@ -137,3 +170,5 @@ template is used, and the person is told which.
 | An automatic confirmation never sent | The order has no contact e-mail and the customer no invoice e-mail | Fill one in and send the confirmation from the order |
 | "A series can only start above the highest number already used" | The new start is below the next number | Choose a start at or above the next number shown |
 | The Templates and Settings entries are missing | The person lacks Manage Orders settings | Grant it |
+| The Analysis entry is missing | The person lacks View sales analysis | Grant it beside Use Orders |
+| "A warning blocks this", and no **Override the warning** | A block warning applies, and the person lacks Manage Orders settings | Ask a settings holder to override it, or change the warning |
