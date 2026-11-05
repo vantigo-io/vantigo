@@ -1,6 +1,6 @@
 ---
 title: Invoices
-description: Invoicing work and consumption, billing runs, drafting, issuing and sending invoices, credit notes, payments, the journal and the export.
+description: Invoicing work, consumption and orders, billing runs, drafting, issuing and sending invoices, credit notes, payments, the journal and the export.
 sidebar:
   order: 50
 sources:
@@ -208,8 +208,8 @@ beside it.
   click. The list offers the codes offered for new lines, and a category's own code
   when it has since been taken out of the list, marked *(no longer offered)*.
 - Clear the list (**Remove the VAT code of …**) and the category has no VAT code again.
-- A category with no VAT code has none: *there is no default*. Orders, when it comes,
-  will not confirm an order line in such a category until it has one.
+- A category with no VAT code has none: *there is no default*. Orders will not confirm
+  an order line in such a category until it has one.
 - Taking a code out of the list (the box **Offered for new lines** above) is not
   refused while a category uses it, but the category then counts as having no VAT code
   until you choose another one for it.
@@ -310,7 +310,8 @@ instead*), is archived, is blocked for invoicing, or no longer exists — the sa
 run again on every save and at issue ([the customer gates](/en/reference/invoices/#drafts)).
 
 To invoice hours, expenses or milestones, start from the work instead: the draft is made
-with its lines ([Invoicing work](#invoicing-work)).
+with its lines ([Invoicing work](#invoicing-work)). To invoice an order, start from the
+order ([Invoicing orders](#invoicing-orders)).
 
 ## Invoicing work
 
@@ -573,6 +574,8 @@ the customers you name — in one go: Vantigo makes one invoice per customer, ex
 `invoices:issue` to issue the invoices. Only one run goes at a time.
 
 1. Open **Billing runs** in the sidebar and click **New billing run**.
+   With the Orders module on, choose under **What to invoice**: **Consumption**, as
+   described here, or **Orders** ([A billing run of orders](#a-billing-run-of-orders)).
 2. **Billing periods ending on or before** — today unless you change it.
 3. Tick **Issue the invoices** to have each invoice issued as soon as it is made, or
    leave it to get drafts only, to look over and issue yourself. The choice is offered
@@ -613,6 +616,106 @@ other.
 **Sending is not part of a run.** Send the issued invoices afterwards from each
 document, by e-mail or as EHF ([Sending a document by e-mail](#sending-a-document-by-e-mail),
 [Sending as EHF](#sending-as-ehf)).
+
+## Invoicing orders
+
+When the Orders module is on, a confirmed order becomes invoice lines here: you choose
+the orders, how much of each line to invoice, and whether a customer's orders share one
+invoice. The draft **holds** the quantities it bills, so they are not offered twice; the
+issue marks them invoiced on the order, and a credit note gives them back
+([how it works](/en/reference/invoices/#invoicing-orders)). It needs `invoices:access`
+and `invoices:create`; Orders' own permissions are not asked.
+
+### Invoice from orders
+
+Open the wizard from the order — **Invoice** on a confirmed order in Orders
+([Invoice an order](/en/user/orders/#invoice-an-order)) — or with **From orders** beside
+**New invoice** at the top of the invoice list, offered while the Orders module is on.
+**Invoice from orders** has three steps:
+
+1. **Orders.** From an order, it is chosen already. Otherwise **Add a customer** — one or
+   more — and every order of theirs with lines left to invoice is listed with its number,
+   **Your ref.** and **Delivery** date, ticked. Untick the ones to leave for later. An
+   order that cannot be invoiced now says why: *A draft order: confirm it before invoicing
+   it.* or *The order is on hold.*
+2. **Lines.** Each chosen order's lines, with **Left to invoice**, **To invoice**,
+   **Remaining after**, the unit price and the **Amount**. **To invoice** starts at all
+   that is left. Lower it to invoice part of a line — **part invoicing**: what remains
+   stays on the order, to invoice later. Set it to 0 to leave the line out. The foot sums
+   the lines chosen.
+3. **Invoices.** **One invoice per order**, or **Combined per customer** — a combined
+   invoice (*samlefaktura*): a customer's orders share one invoice when they agree on
+   currency, your reference, project and payment terms. The step previews the invoices
+   it will make, and says what kept two of a customer's orders apart — *Kept apart from
+   the customer's other invoice by its your reference.*
+
+Choose **Create the drafts**. One draft opens at once; several are listed — *Draft 1042:
+order 2210* — to open and check one by one. Nothing is issued yet.
+
+### What the draft looks like
+
+- **A line per order line** you chose, with the order line's text, the quantity you
+  invoiced, its unit, its price — up to eight decimals, exactly the order's — its
+  discount and its VAT code. Under the line the editor shows the order line it bills.
+  An order invoiced in full on one invoice totals what the order does, to the øre.
+- **On a combined invoice** each order's lines open with a text line, *Ordre 2210, Deres
+  ref. PO-1* — *Order 2210, your ref. PO-1* for a customer invoiced in English — 1 × 0.00.
+- **The header** takes the orders' **Your reference** (else the customer's buyer
+  reference), their payment terms, the order number as **Order reference** when the
+  invoice holds one order, the latest delivery date of the orders (today when none has
+  one), the delivery address when every order has the same complete one, and the
+  orders' project.
+
+### Editing, deleting, issuing and crediting it
+
+- **Edit it** as any draft. Removing a line gives its quantity back to the order at
+  **Save**, and the order offers it to invoice again.
+- **Delete the draft** and every quantity it held goes back to the orders at once.
+- **Issue it** as any invoice. The issue marks the lines invoiced on the orders: each
+  order's **Invoices** card lists the invoice. It is refused, naming the line, when the
+  order line changed since the draft was made — someone released its draft allocations in
+  Orders, say, or the order was put on hold. Delete the draft and invoice the order
+  again.
+- **Credit it** as any invoice. Each line a credit note returns in full — by itself or
+  with the credit notes before it — gives its quantity back to the order, to invoice
+  again.
+
+The Projects module does not need to be on for an invoice of orders, even when the order
+names a project.
+
+### A billing run of orders
+
+A billing run can invoice **orders** instead of consumption: every order line left to
+invoice of every customer — or of the customers you name — in one go.
+
+1. **Billing runs** → **New billing run**, and under **What to invoice** choose
+   **Orders**.
+2. **Orders delivered on or before** — today unless you change it. *Every order line left
+   to invoice of an order delivered by this day, or with no delivery date, is invoiced in
+   full.*
+3. **Combine a customer's orders (combined invoice)** — ticked, a customer's orders share
+   one invoice where they agree on currency, your reference, project and payment terms;
+   unticked, each order gets its own.
+4. **Issue the invoices** and **Customer ids** as for consumption, then **Start the run**.
+
+An order on hold or still a draft is left out. The run is refused when the Orders module
+is off, or when *No customer has order lines left to invoice through that day.* A
+customer's row is **Skipped** with the reason in words when nothing of theirs is left, or
+an order or a line cannot be invoiced.
+
+### When the orders wizard refuses
+
+Nothing is made, and the page says *Could not invoice the orders* and why, naming the
+order and line when it is about one — *Order 2210, line 3: …*:
+
+- *The Orders module is switched off, so no orders can be invoiced.*
+- *The order is a draft or on hold, and cannot be invoiced now.*
+- *That is more than is left to invoice of the line. Lower the quantity.* — someone
+  invoiced part of it meanwhile.
+- *The line can no longer be invoiced: it is invoiced already, or its order changed.*
+- the order is not in NOK, the line's VAT code is no longer offered, an invoice would have
+  more than 500 lines (choose fewer lines, or one invoice per order), or the customer
+  cannot be invoiced, as for **New invoice**.
 
 ## Editing and deleting a draft
 
@@ -1927,8 +2030,8 @@ No built-in role holds these; an Owner holds everything
 | --- | --- |
 | Open the app, read every document, download PDFs and EHF files, see payments, sends and EHF states, read the journal, export the CSV, see the dashboard card, read the overdue list, see an invoice's reminders, charges, deliveries, hold and hand-off and download a letter's PDF, read a customer's reminder policy, the collection rates and the reminder settings, see the dashboard's notices about overdue invoices and money owed back, see an invoice's pay link and Vipps payments, list the day's Vipps payments and download them as CSV | `invoices:access` |
 | Create, edit, preview and delete drafts | `invoices:create`, and `customers:view` to pick the buyer |
-| See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices; see a customer's consumption due and make a draft of it, or add it to one; make, follow and cancel billing runs | `invoices:create` (and `invoices:issue` for a run that issues the invoices) |
-| Issue a draft — which marks its work invoiced in Time, Expenses and Projects, and its consumption in Energy, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission, record a delivery by hand or remove one, make or revoke a pay link and see its address and QR code while payment on site is offered, take a Vipps payment on site | `invoices:issue` |
+| See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices; see a customer's consumption due and make a draft of it, or add it to one; invoice orders with **From orders**; make, follow and cancel billing runs | `invoices:create` (and `invoices:issue` for a run that issues the invoices) |
+| Issue a draft — which marks its work invoiced in Time, Expenses and Projects, its consumption in Energy and its order lines in Orders, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission, record a delivery by hand or remove one, make or revoke a pay link and see its address and QR code while payment on site is offered, take a Vipps payment on site | `invoices:issue` |
 | Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs, print paper letters, confirm a batch posted or reprint it; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file; mark a day's Vipps payments reconciled; see the dashboard's notices about bank lines, letters, print batches and Vipps payments | `invoices:payments` |
 | Make a quick invoice — created and issued in one step, recorded as handed over — and take payment for it with Vipps on the spot | `invoices:create` and `invoices:issue` |
 | Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the cards **Work to invoice** and **Consumption to invoice**, the collection rates and the reminder settings, the regime's review among them; change a bank account's file format under **Payments**, which also needs `invoices:payments` to open; set up Vipps and the payment settings, acknowledge kontantsalg, abandon a stuck Vipps payment | `invoices:manage` |

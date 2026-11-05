@@ -95,7 +95,9 @@ Noen få skjermbilder hører til et område uten å ha en egen oppføring i side
 fra **Importer** i kundelisten ([Eksport og
 import](/nb/user/customers/#eksport-og-import)), og **Importer målepunkter** fra
 **Importer** i målepunktlisten ([Importer
-målepunkter](/nb/user/energy/#importer-målepunkter)).
+målepunkter](/nb/user/energy/#importer-målepunkter)), og **Fakturer fra ordre** fra **Fra
+ordre** i fakturalisten eller **Fakturer** på en bekreftet ordre ([Fakturere
+ordre](/nb/user/invoices/#fakturere-ordre)).
 
 ## Søk
 
