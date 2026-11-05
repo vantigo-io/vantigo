@@ -42,6 +42,11 @@ application.
   access to it with its five permissions, and sets the employee number sequence. The
   business time zone every module judges a day in is the workspace's, set under
   [Workspace administration](/en/user/workspace-administration/#workspace-settings).
+- **Orders.** [Orders](/en/admin/orders/) is on when `orders` is in `MODULES` beside
+  `products`, `customers` and `invoices`, which it requires; its nine permissions, the
+  number series, quote validity, payment terms, the send channel, the mail texts and the
+  quote templates. Map Products' tax categories to VAT codes in Invoices before people
+  quote.
 - **Calendar.** [Calendar](/en/admin/calendar/) is on when `calendar` is in `MODULES`
   (or `MODULES` is unset), with three permissions — `calendar:access` to use it,
   `calendar:view-colleagues` to see colleagues' busy and free times, and `calendar:manage` to

@@ -84,10 +84,10 @@ job, and then starts Vantigo:
 - **API contract** — `GET http://localhost:8080/api/openapi.json` (requires a session)
 
 The Customers, Products, Energy, Communications, Projects, Time, Expenses, Invoices,
-Staff, Planning, Inventory, Calendar, Microsoft Entra ID, Google Workspace and Assistant modules are enabled by default
+Staff, Planning, Inventory, Orders, Calendar, Microsoft Entra ID, Google Workspace and Assistant modules are enabled by default
 (`MODULES` in `vantigo.env`). They share one PostgreSQL database named `vantigo`, with
 independent `identity`, `customers`, `products`, `energy`, `communications`,
-`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `calendar`, `entra`, `google` and `assistant`
+`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `orders`, `calendar`, `entra`, `google` and `assistant`
 schemas and migration histories.
 
 ## What the stack contains
@@ -189,9 +189,10 @@ and the recovery.
   deployment enables. `identity` is always mounted and never listed. Unset enables
   every module the binary can mount: `customers`, `products`, `energy`,
   `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`,
-  `inventory`, `calendar`, `entra`, `google` and `assistant`. `energy`, `communications`, `projects` and `invoices` each
+  `inventory`, `orders`, `calendar`, `entra`, `google` and `assistant`. `energy`, `communications`, `projects` and `invoices` each
   require `customers`, `time` requires `projects`, `planning` requires both `projects`
-  and `staff`, `inventory` requires `products`, and `entra` and `google` each require `staff`; `projects` also
+  and `staff`, `inventory` requires `products`, `orders` requires `products`, `customers`
+  and `invoices`, and `entra` and `google` each require `staff`; `projects` also
   uses `products` when it is enabled and answers 409 on its billing-line endpoints when
   it is not; `expenses` requires nothing and reads `projects` only when it happens to be
   enabled; `staff`, `calendar` and `assistant` require nothing (the assistant is of
@@ -268,9 +269,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Default privileges only cover objects created afterwards; grant on the
 -- schemas the enabled modules already created (add/remove schemas to match
 -- the MODULES enabled in your installation).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, google, assistant TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, google, assistant TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, google, assistant TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, calendar, entra, google, assistant TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, calendar, entra, google, assistant TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, calendar, entra, google, assistant TO "vantigo_app";
 ```
 
 ## Background workers and scaling
@@ -504,7 +505,7 @@ must be registered on the Internal web client
 prefixes remain `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
 `/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
-`/api/v1/inventory`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and `/api/v1/assistant`.
+`/api/v1/inventory`, `/api/v1/orders`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and `/api/v1/assistant`.
 
 For example, with nginx:
 
@@ -861,6 +862,20 @@ an Owner turns the switch on and people connect. Before turning it on, register
 client. Rolling the migration back drops every person's connection with its sealed
 token, unrevoked: Google lets an unused token lapse, and a person can remove Vantigo in
 their Google account. See [Google Workspace](/en/admin/google-workspace/#connection-for-people).
+
+**The release with Orders.** It brings `00119_orders_baseline.sql`, the `orders` schema
+with no quotes, no orders and default settings. An installation that leaves `MODULES` unset
+gets the module, its **Orders** tile for everyone given `orders:access` and an **Orders**
+tab on the customer page, on upgrade; one that lists `MODULES` gets it once `orders` is
+added beside `products`, `customers` and `invoices`, which it requires — `orders` without
+one of them refuses to start, naming it. The nine permissions are new and held by no
+custom role until an Owner adds them. A least-privilege role needs the `orders` schema
+granted ([Database roles](#database-roles)). It starts three workers — `orders.mail`,
+`orders.retention` and `orders.quote_expiry` — and one event handler,
+`orders.queue_confirmation`, and keeps its PDFs in the object store under `orders/`.
+Before people quote, map Products' tax categories to VAT codes in Invoices and choose a
+send channel ([Orders](/en/admin/orders/)). Rolling the migration back drops the schema
+with every quote, order and template; the stored PDFs stay in the object store.
 
 **The release with Staff competence.** It brings `00066_staff_competence.sql`: the
 competence catalogue — five categories and fifteen Norwegian certificates seeded — and

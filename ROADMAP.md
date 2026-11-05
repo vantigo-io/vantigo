@@ -1480,10 +1480,17 @@ Customers and Invoices; Inventory and Communications stay optional.
   `contracts.SalesTax` (VAT codes on a day, the mapping, the seller); `internal/docmath`,
   Invoices' arithmetic moved verbatim so both modules compute alike; and the customer
   directory's delivery addresses and contacts on request.
-- **A — Quotes and orders.** The module, quotes and sales orders with their life,
+- **A — Quotes and orders (done).** The module, quotes and sales orders with their life,
   PDFs and mail, the holders, the customer timeline through the outbox, and the
   customer page's Orders tab; an order line in a tax category with no VAT code is
-  refused at confirm.
+  refused at confirm. Quotes with revisions, optional lines, accept into a draft or a
+  confirmed order, copy and templates; orders confirmed, edited after confirming at a
+  new version with a change log, held, locked, cancelled or cancelled in the rest, and
+  delivered by hand; quote, confirmation and pro forma PDFs stored per revision and
+  version; sending through Communications and the `orders.mail`, `orders.retention` and
+  `orders.quote_expiry` workers. Documented in [Orders](docs/src/content/docs/en/user/orders.md),
+  [administration](docs/src/content/docs/en/admin/orders.md) and the
+  [reference](docs/src/content/docs/en/reference/orders.md).
 - **A2 — Selling comfort.** Warnings with block and override, the variant grid,
   packagings on lines, and the analysis.
 - **B — Invoicing from orders.** Allocations, `contracts.BillableOrders`, the

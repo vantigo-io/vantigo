@@ -1,18 +1,141 @@
 ---
 title: Ordre
-description: Slå på Ordre — modulene den krever og de ni rettighetene — og, etter hvert som de kommer, innstillingene, nummerseriene, avsenderkanalen og tilbudsmalene.
+description: Slå på Ordre — modulene den krever, koblingen av avgiftskategoriene i Produkter til mva-koder, de ni rettighetene og rollene du bygger av dem — og hold innstillingene — nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen, ordrebekreftelse ved bekreftelse og e-posttekstene — og tilbudsmalene; hvordan du kontrollerer det, og hva som kan gå galt.
 sidebar:
   order: 48
 sources:
   - apps/server/internal/orders/module.go
   - apps/server/internal/orders/settings.go
+  - apps/server/internal/orders/settingsrow.go
+  - apps/server/internal/orders/mailtext.go
+  - apps/orders/frontend/src/pages/settings.tsx
+  - apps/orders/frontend/src/pages/templates.tsx
 ---
 
-Ordre krever modulene Produkter, Kunder og Fakturaer: når `MODULES` er satt, list
-`orders` ved siden av `products`, `customers` og `invoices`, ellers nekter serveren å
-starte og navngir den som mangler. Ingen andre enn eieren kan bruke appen før en rolle
-gir rettighetene; `orders:access` åpner den.
+Ordre-modulen (**Orders** på engelsk) er der virksomheten lager tilbud til kundene sine og
+tar imot ordrene deres. Denne siden handler om å slå den på og holde innstillingene; hvordan
+den brukes, står i [Ordre](/nb/user/orders/), og hver regel i
+[referansen](/en/reference/orders/).
 
-Innstillingene — nummerseriene, hvor lenge et tilbud gjelder, betalingsfristen,
-avsenderkanalen og e-posttekstene — er under arbeid, og denne siden beskriver dem etter
-hvert som de kommer.
+## Før du starter
+
+- **Produkter, Kunder og Fakturaer** må være slått på: linjene på en ordre er katalogens
+  produkter, dokumentene tilhører en kunde, og mva-kodene og selgeren som skrives på hver
+  PDF, er Fakturaers.
+- **Selgeropplysningene i Fakturaer** — firmanavn, organisasjonsnummer og adresse —
+  skrives på hvert tilbud og hver ordrebekreftelse. Fyll dem ut i **Fakturainnstillinger**
+  først.
+- **Kommunikasjon** er valgfri. Uten den, eller uten en kanal å sende fra, lastes tilbud og
+  ordrebekreftelser ned og leveres på annen måte.
+
+## Slå på modulen
+
+1. Når `MODULES` ikke er satt, er alle moduler på, også Ordre. Når `MODULES` er satt, list
+   `orders` ved siden av `products`, `customers` og `invoices`, for eksempel
+   `MODULES=customers,products,invoices,orders` ([Konfigurasjon](/nb/admin/configuration/)).
+   Mangler én av de tre, nekter serveren å starte og navngir den — `orders requires
+   invoices`.
+2. Start serveren på nytt. Skjemaet `orders` migreres uansett hva `MODULES` sier, så å slå
+   den på senere krever ingen migrering; en databaserolle må ha tilgang til skjemaet
+   ([Databaseroller](/nb/admin/installation/#databaseroller)).
+3. Flisen **Ordre** vises for alle med `orders:access`, og kundesiden får fanen **Ordre**.
+
+## Koble avgiftskategoriene i Produkter til mva-koder
+
+Hver produktlinje får mva-koden produktets avgiftskategori er koblet til i Fakturaer. Et
+tilbud med en linje der kategorien ikke er koblet, kan ikke sendes, og en ordre med en slik
+linje kan ikke bekreftes («Et produkts avgiftskategori har ingen mva-kode»). Koble hver
+avgiftskategori dere selger i, under Fakturainnstillinger → **Mva-koder** →
+**Avgiftskategoriene i Produkter**
+([Avgiftskategoriene i Produkter](/nb/user/invoices/#avgiftskategoriene-i-produkter)) før
+noen begynner å lage tilbud. En fritekstlinje får standard mva-kode med høyest sats, med
+mindre personen velger en annen.
+
+## Gi folk tilgang
+
+Ingen andre enn eieren kan bruke appen før en rolle gir rettighetene, under
+**Administrasjon av arbeidsområdet** → **Roller og tilgang**
+([Roller](/nb/user/workspace-administration/#roller)). Hver rettighet i Ordre krever
+**Bruke Ordre** (`orders:access`) i tillegg.
+
+| Rettighet | Nøkkel | Gir |
+| --- | --- | --- |
+| Bruke Ordre | `orders:access` | Appen, og å lese tilbud, ordrer og maler |
+| Håndtere tilbud | `orders:quotes-manage` | Lage, sende, besvare og kopiere tilbud |
+| Håndtere ordrer | `orders:sales-manage` | Lage og endre ordrer, sette på vent, kansellere, registrere levert, sende ordrebekreftelsen |
+| Bekrefte ordrer | `orders:sales-confirm` | Bekrefte, låse og låse opp; akseptere et tilbud rett til en bekreftet ordre |
+| Håndtere innstillinger for Ordre | `orders:settings` | Innstillingene og tilbudsmalene; kan ikke delegeres |
+
+**Håndtere abonnementer**, **Håndtere leveranser**, **Håndtere fraktselskaper** (sensitiv,
+kan ikke delegeres) og **Se salgsanalyse** er allerede listet og gjør ingenting ennå: de
+hører til leveransene som bringer abonnementer, leveranser og frakt, og analysen.
+
+Et vanlig oppsett: selgere får Bruke Ordre, Håndtere tilbud og Håndtere ordrer; den som
+godkjenner ordrer, får i tillegg Bekrefte ordrer; den som driver salgsadministrasjonen, får
+i tillegg Håndtere innstillinger for Ordre. Selgere trenger også **Se kunder** i Kunder for
+å velge kunde, **Se kontakter** og **Se kundetilknytninger** for å velge kontaktperson, og
+**Bruke Fakturaer** for å velge mva-kode på en fritekstlinje; å velge et produkt krever
+ingen rettighet i Produkter.
+
+## Hold innstillingene
+
+**Ordreinnstillinger** (`orders:settings`) har:
+
+- **Nummerserier** — **Tilbud starter på** og **Ordrer starter på**, hver med neste nummer.
+  Et nummer tas når et dokument opprettes, så et slettet utkast etterlater et hull, og det
+  er tillatt: verken tilbud eller ordrer er salgsdokumenter. En serie kan bare starte over
+  det høyeste nummeret som er brukt; sett starten før det første dokumentet hvis dere
+  fortsetter en serie fra et tidligere system.
+- **Standardverdier** — **Tilbud er gyldige i** (dager, 30 om ikke endret; en mal kan si
+  noe annet), **Betalingsbetingelser** (dager, 14 om ikke endret, brukt når kunden ikke har
+  egne) og **Samle ordrer på én faktura som standard**, som tas vare på til fakturering fra
+  ordre, som kommer senere.
+- **Utsending** — **Avsenderkanal**: postkassen i Kommunikasjon som tilbud og
+  ordrebekreftelser sendes fra, eller **Ingen — ingenting sendes**. **Send
+  ordrebekreftelsen når en ordre bekreftes** sender den av seg selv til ordrens
+  kontaktperson, ellers til kundens faktura-e-post; en ordre uten noen av dem sendes ikke.
+  E-posten har den lagrede ordrebekreftelsen for versjonen ordren ble bekreftet i; endres
+  ordren igjen før e-posten går, sendes gjeldende versjon i stedet, og **Dokumenter og
+  utsendelser** på ordren viser hvilken. En ordre som kanselleres før bekreftelsen er
+  sendt, får ingen.
+- **E-posttekster** — et emne og en tekst per type (**Tilbud**, **Ordrebekreftelse**) og
+  språk (norsk, engelsk). La en stå tom for å bruke den innebygde teksten. En tekst kan
+  bruke `{number}`, `{seller}`, `{total}` og `{validUntil}`, som fylles inn; personens egen
+  melding fra sendedialogen legges til før hilsenen.
+
+Velg **Lagre**. Har noen andre lagret innstillingene siden du åpnet dem, blir du bedt om å
+laste inn på nytt.
+
+## Hold tilbudsmalene
+
+**Tilbudsmaler** (`orders:settings`) har ferdige tilbud å starte fra: **Ny mal**, et
+**Navn** (unikt), **Gyldig i** dager (tomt bruker innstillingen), innlednings- og
+avslutningstekst, om rabatten vises, og linjer — produkter med antall, en valgfri pris
+(eksklusiv mva) og valgfri-merket, seksjoner og merknader. En mal kan arkiveres (**Vis
+arkiverte** viser dem) eller slettes; tilbud som allerede er laget fra den, beholder
+linjene sine. En mallinje der produktet senere er utgått eller slettet, utelates når malen
+brukes, og personen får vite hvilke.
+
+## Kontroller
+
+1. Som selger åpner du **Ordre** → **Tilbud** → **Nytt tilbud**, velger en kunde, legger til
+   et katalogprodukt og velger **Lagre**: linjen har en pris, og summene vises.
+2. **PDF** → **Forhåndsvis PDF-en** viser firmaets opplysninger og linjen.
+3. Med en avsenderkanal valgt **Send** du tilbudet til deg selv; det kommer fram, og
+   tilbudet er **Sendt**. Uten kanal fungerer **Marker som sendt** i stedet.
+4. **Aksepter** det til en ordre og **Bekreft** ordren: den er **Bekreftet**, og kundens
+   **Tidslinje** viser tilbudet sendt og akseptert og ordren bekreftet.
+
+## Hva som kan gå galt
+
+| Symptom | Årsak | Løsning |
+| --- | --- | --- |
+| Serveren nekter å starte: `orders requires …` | `MODULES` lister `orders` uten products, customers eller invoices | Legg til modulen som nevnes |
+| «Et produkts avgiftskategori har ingen mva-kode» ved sending eller bekreftelse | En avgiftskategori er ikke koblet i Fakturaer | Koble den under **Avgiftskategoriene i Produkter** |
+| «En linje har ingen pris i denne valutaen» | Produktet har ingen listepris i dokumentets valuta | Gi produktet en pris i Produkter, eller skriv en på linjen |
+| **Send** er deaktivert: «Utsending er av» | Kommunikasjon er av, eller ingen avsenderkanal er valgt eller kan sende | Slå på Kommunikasjon og velg en kanal; inntil da bruk **Marker som sendt** |
+| En sending vises som **Feilet** | E-postleverandøren tok ikke imot e-posten, eller en ordrebekreftelse i kø feilet åtte ganger | Kontroller kanalen i Kommunikasjon; send på nytt fra ordren |
+| En ordrebekreftelse i kø **Feilet** med en gang | Sendingen hadde ingen mottaker, eller ordren ble kansellert før den gikk | Ingenting å rette for en kansellert ordre; ellers fyll inn en e-post og send ordrebekreftelsen fra ordren |
+| En automatisk ordrebekreftelse ble aldri sendt | Ordren har ingen kontakt-e-post og kunden ingen faktura-e-post | Fyll inn en og send ordrebekreftelsen fra ordren |
+| «En serie kan bare starte over det høyeste nummeret som er brukt» | Den nye starten er under neste nummer | Velg en start på eller over neste nummer som vises |
+| Tilbudsmaler og Ordreinnstillinger mangler i sidemenyen | Personen mangler Håndtere innstillinger for Ordre | Gi rettigheten |
