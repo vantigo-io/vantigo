@@ -443,3 +443,49 @@ func TestStockLedger_PoolOfOne(t *testing.T) {
 		t.Errorf("available = %s, want 2", got)
 	}
 }
+
+// Sites answers every site not archived, and Locations the site's locations
+// holding a variant, by full code (orders design O46, O47).
+func TestStock_SitesAndLocations(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, everything...)
+	s := newLedgerSite(t, h, c)
+	receive(t, c, s.site.Id, s.shelf2.Id, receiptLine(varBolt, 5))
+	receive(t, c, s.site.Id, s.shelf1.Id, receiptLine(varBolt, 2))
+	st := stockOf(h)
+
+	sites, err := st.Sites(t.Context())
+	if err != nil {
+		t.Fatalf("Sites: %v", err)
+	}
+	var codes []string
+	for _, site := range sites {
+		codes = append(codes, site.Code)
+		if !site.Active {
+			t.Errorf("site %s answered inactive", site.Code)
+		}
+	}
+	if !slices.Equal(codes, []string{"BGO", "OSL"}) {
+		t.Errorf("Sites = %v, want [BGO OSL]", codes)
+	}
+
+	locs, err := st.Locations(t.Context(), []int32{varBolt, varNut}, s.site.Id)
+	if err != nil {
+		t.Fatalf("Locations: %v", err)
+	}
+	var got []string
+	for _, l := range locs {
+		got = append(got, strconv.Itoa(int(l.VariantID))+"@"+strconv.FormatInt(l.LocationID, 10)+":"+l.Quantity)
+	}
+	want := []string{
+		strconv.Itoa(int(varBolt)) + "@" + strconv.FormatInt(s.shelf1.Id, 10) + ":2",
+		strconv.Itoa(int(varBolt)) + "@" + strconv.FormatInt(s.shelf2.Id, 10) + ":5",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("Locations = %v, want %v", got, want)
+	}
+	if locs, err := st.Locations(t.Context(), []int32{varBolt}, s.elsewhre.Id); err != nil || len(locs) != 0 {
+		t.Errorf("Locations elsewhere = %v, %v; want none", locs, err)
+	}
+}

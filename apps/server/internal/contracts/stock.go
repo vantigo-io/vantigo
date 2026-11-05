@@ -36,6 +36,34 @@ type Stock interface {
 	// Available is each variant's on hand less what is reserved, the same
 	// way: Sites lists every site where the variant lies or is reserved.
 	Available(ctx context.Context, variantIDs []int32, siteID *int64) ([]StockQuantity, error)
+	// Sites is every site that is not archived, by code: what a caller
+	// offers as the site an order is fulfilled from, and checks one against
+	// (orders design O46).
+	Sites(ctx context.Context) ([]StockSite, error)
+	// Locations is, per variant, every active location of the site that
+	// holds more than 0 of it, by full code: where a picker takes it from
+	// (orders design O47's pick list). A variant held nowhere there has no
+	// entry.
+	Locations(ctx context.Context, variantIDs []int32, siteID int64) ([]StockLocation, error)
+}
+
+// StockSite is a site as Stock answers it: its id, code and name, whether it
+// fulfils orders, and whether it is active.
+type StockSite struct {
+	ID            int64
+	Code, Name    string
+	FulfilsOrders bool
+	Active        bool
+}
+
+// StockLocation is what one location of a site holds of a variant: the
+// location's id and full code, and its on hand (exact decimal text, more
+// than 0).
+type StockLocation struct {
+	VariantID  int32
+	LocationID int64
+	FullCode   string
+	Quantity   string
 }
 
 // StockQuantity is one variant's quantity, in total and per site.

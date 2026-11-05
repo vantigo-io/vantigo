@@ -23,6 +23,12 @@ func (fakeStock) Available(context.Context, []int32, *int64) ([]contracts.StockQ
 	return nil, nil
 }
 
+func (fakeStock) Sites(context.Context) ([]contracts.StockSite, error) { return nil, nil }
+
+func (fakeStock) Locations(context.Context, []int32, int64) ([]contracts.StockLocation, error) {
+	return nil, nil
+}
+
 type fakeStockLedger struct{}
 
 func (fakeStockLedger) Reserve(context.Context, pgx.Tx, contracts.StockSource, int64, []contracts.StockLine) error {

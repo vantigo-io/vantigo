@@ -64,3 +64,19 @@ WHERE r.id = u.id;
 -- DeleteReservations removes the reservations a release or an issue left at
 -- zero.
 DELETE FROM inventory.reservations WHERE id = ANY(@ids::bigint[]);
+
+-- name: StockSites :many
+-- StockSites is every site that is not archived, by code (contracts.Stock's
+-- Sites).
+SELECT id, code, name, fulfils_orders, status FROM inventory.sites
+WHERE status <> 'archived'
+ORDER BY code;
+
+-- name: StockLocationsAt :many
+-- StockLocationsAt is, per variant, every active location of the site holding
+-- more than 0 of it, by full code (contracts.Stock's Locations).
+SELECT b.variant_id, b.location_id, l.full_code, b.on_hand::text AS on_hand
+FROM inventory.balances b
+JOIN inventory.locations l ON l.id = b.location_id
+WHERE b.variant_id = ANY(@variant_ids::int[]) AND l.site_id = @site_id AND l.status = 'active' AND b.on_hand > 0
+ORDER BY b.variant_id, l.full_code, b.location_id;

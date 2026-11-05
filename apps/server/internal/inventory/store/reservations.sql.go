@@ -261,3 +261,92 @@ func (q *Queries) SourceReservations(ctx context.Context, arg SourceReservations
 	}
 	return items, nil
 }
+
+const stockLocationsAt = `-- name: StockLocationsAt :many
+SELECT b.variant_id, b.location_id, l.full_code, b.on_hand::text AS on_hand
+FROM inventory.balances b
+JOIN inventory.locations l ON l.id = b.location_id
+WHERE b.variant_id = ANY($1::int[]) AND l.site_id = $2 AND l.status = 'active' AND b.on_hand > 0
+ORDER BY b.variant_id, l.full_code, b.location_id
+`
+
+type StockLocationsAtParams struct {
+	VariantIds []int32
+	SiteID     int64
+}
+
+type StockLocationsAtRow struct {
+	VariantID  int32
+	LocationID int64
+	FullCode   string
+	OnHand     string
+}
+
+// StockLocationsAt is, per variant, every active location of the site holding
+// more than 0 of it, by full code (contracts.Stock's Locations).
+func (q *Queries) StockLocationsAt(ctx context.Context, arg StockLocationsAtParams) ([]StockLocationsAtRow, error) {
+	rows, err := q.db.Query(ctx, stockLocationsAt, arg.VariantIds, arg.SiteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StockLocationsAtRow
+	for rows.Next() {
+		var i StockLocationsAtRow
+		if err := rows.Scan(
+			&i.VariantID,
+			&i.LocationID,
+			&i.FullCode,
+			&i.OnHand,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const stockSites = `-- name: StockSites :many
+SELECT id, code, name, fulfils_orders, status FROM inventory.sites
+WHERE status <> 'archived'
+ORDER BY code
+`
+
+type StockSitesRow struct {
+	ID            int64
+	Code          string
+	Name          string
+	FulfilsOrders bool
+	Status        string
+}
+
+// StockSites is every site that is not archived, by code (contracts.Stock's
+// Sites).
+func (q *Queries) StockSites(ctx context.Context) ([]StockSitesRow, error) {
+	rows, err := q.db.Query(ctx, stockSites)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StockSitesRow
+	for rows.Next() {
+		var i StockSitesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.FulfilsOrders,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
