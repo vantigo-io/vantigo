@@ -16,6 +16,17 @@ type OrdersCounter struct {
 	NextValue   int64
 }
 
+type OrdersCustomerWarning struct {
+	CustomerID       int32
+	Level            string
+	Text             string
+	SubjectName      string
+	UpdatedByUserID  *uuid.UUID
+	UpdatedByDisplay *string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
 type OrdersDocument struct {
 	ID         int64
 	OwnerKind  string
@@ -66,6 +77,8 @@ type OrdersLine struct {
 	QtyDelivered      pgtype.Numeric
 	QtyInvoiced       pgtype.Numeric
 	DeliveryMethod    string
+	ProductID         *int32
+	PackagingName     *string
 }
 
 type OrdersMailing struct {
@@ -170,6 +183,17 @@ type OrdersOrderChange struct {
 	ActorDisplay *string
 	At           time.Time
 	Actions      []byte
+}
+
+type OrdersProductWarning struct {
+	ProductID        int32
+	Level            string
+	Text             string
+	SubjectName      string
+	UpdatedByUserID  *uuid.UUID
+	UpdatedByDisplay *string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type OrdersQuote struct {

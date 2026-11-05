@@ -49,6 +49,7 @@ func insertLine(ctx context.Context, txq *store.Queries, ownerKind string, owner
 		LineGross: numeric(orZero(l.amounts.Gross), amountPlaces), LineAllowance: numeric(orZero(l.amounts.Allowance), amountPlaces),
 		LineNet: numeric(orZero(l.amounts.Net), amountPlaces), ExternalLineID: l.externalLineID,
 		InvoicePolicy: "order", Optional: l.optional && ownerKind != ownerOrder, DeliveryMethod: "manual",
+		ProductID: l.productID, PackagingName: l.packagingName,
 	}
 	if l.kind != kindProduct {
 		p.PriceSource = nil
@@ -63,6 +64,7 @@ func insertLine(ctx context.Context, txq *store.Queries, ownerKind string, owner
 		PriceSource: p.PriceSource, VatCodeID: p.VatCodeID, VatCode: p.VatCode, VatRatePercent: p.VatRatePercent,
 		VatCategory: p.VatCategory, LineGross: p.LineGross, LineAllowance: p.LineAllowance, LineNet: p.LineNet,
 		ExternalLineID: p.ExternalLineID, InvoicePolicy: p.InvoicePolicy, Optional: p.Optional, DeliveryMethod: p.DeliveryMethod,
+		ProductID: p.ProductID, PackagingName: p.PackagingName,
 	})
 }
 
@@ -108,6 +110,7 @@ func lineOut(l store.OrdersLine, pricesIncludeVat bool) gen.OrdersLine {
 		Unit: l.Unit, Description: l.Description, Quantity: wirePtr(ratOf(l.Quantity), quantityPlaces),
 		UnitPrice: wirePtr(ratOf(l.UnitPrice), pricePlaces), DiscountPercent: wire(ratOrZero(l.DiscountPercent), discountPlaces),
 		PackagingId: l.PackagingID, PackagingQuantity: wirePtr(ratOf(l.PackagingQuantity), quantityPlaces),
+		PackagingName: l.PackagingName, ProductId: l.ProductID,
 		VatCodeId: l.VatCodeID, VatCode: l.VatCode, VatRatePercent: wirePtr(ratOf(l.VatRatePercent), ratePlaces),
 		VatCategory: l.VatCategory, LineGross: wire(ratOrZero(l.LineGross), amountPlaces),
 		LineAllowance: wire(ratOrZero(l.LineAllowance), amountPlaces), LineNet: wire(ratOrZero(l.LineNet), amountPlaces),

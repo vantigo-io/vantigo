@@ -158,9 +158,13 @@ const (
 	orderInputSchema     = "OrdersOrderInput"
 	orderUpdateSchema    = "OrdersOrderUpdate"
 	versionInputSchema   = "OrdersVersionInput"
+	confirmInputSchema   = "OrdersConfirmInput"
 	holdInputSchema      = "OrdersHoldInput"
 	deliveredInputSchema = "OrdersDeliveredInput"
 	deliveredLineSchema  = "OrdersDeliveredLine"
+
+	// The warnings' (O33).
+	warningInputSchema = "OrdersWarningInput"
 )
 
 // closedSchemas are the request schemas whose handlers refuse a property the
@@ -169,7 +173,8 @@ var closedSchemas = []string{
 	quoteInputSchema, quoteUpdateSchema, lineInputSchema, acceptInputSchema, applyTemplateInputSchema,
 	declineInputSchema, markSentInputSchema, revisionInputSchema, sendInputSchema, settingsInputSchema,
 	mailTextSchema, templateInputSchema, templateLineInputSchema,
-	orderInputSchema, orderUpdateSchema, versionInputSchema, holdInputSchema, deliveredInputSchema, deliveredLineSchema,
+	orderInputSchema, orderUpdateSchema, versionInputSchema, confirmInputSchema, holdInputSchema, deliveredInputSchema, deliveredLineSchema,
+	warningInputSchema,
 }
 
 // closedItems is, per closed request schema, its array properties whose

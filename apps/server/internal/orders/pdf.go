@@ -399,6 +399,9 @@ func printedLine(ln store.OrdersLine, h header, lang string) pdfRow {
 	amount := ratOrZero(ln.LineNet)
 	rate := ratOrZero(ln.VatRatePercent)
 	quantity := formatDecimal(ratOrZero(ln.Quantity), 0, 3, lang)
+	if packed := packagingText(ln, quantity, lang); packed != "" {
+		desc = strings.Join(nonEmpty(desc, packed), " – ")
+	}
 	shown := func(v *big.Rat) *big.Rat {
 		if h.PricesIncludeVat {
 			return withVAT(v, rate)
@@ -412,6 +415,24 @@ func printedLine(ln store.OrdersLine, h header, lang string) pdfRow {
 	}
 	net := round2(new(big.Rat).Mul(price, new(big.Rat).Sub(big.NewRat(1, 1), new(big.Rat).Quo(discount, hundred))))
 	return pdfRow{kind: kindProduct, cells: []string{desc, quantity, ln.Unit, money(shown(net), lang), money(shown(amount), lang)}}
+}
+
+// packagingText is how a line entered in a packaging prints it (O15): "3 ×
+// Eske à 15 (45 stk)" — the count, the packaging as the line remembers it,
+// its size and the quantity in the line's unit — or "" for a line entered in
+// its unit.
+func packagingText(ln store.OrdersLine, quantity, lang string) string {
+	count := ratOf(ln.PackagingQuantity)
+	if ln.PackagingName == nil || count == nil || count.Sign() <= 0 {
+		return ""
+	}
+	size := new(big.Rat).Quo(ratOrZero(ln.Quantity), count)
+	of := "à"
+	if lang == "en" {
+		of = "of"
+	}
+	return fmt.Sprintf("%s × %s %s %s (%s)", formatDecimal(count, 0, 3, lang), *ln.PackagingName, of,
+		formatDecimal(size, 0, 3, lang), strings.TrimSpace(quantity+" "+ln.Unit))
 }
 
 // nonEmpty is the non-empty strings of in.

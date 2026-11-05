@@ -107,9 +107,18 @@ func (c *fakeCatalog) ListPrice(ctx context.Context, id int32, currency string, 
 	return &contracts.Money{Amount: amount, Currency: strings.ToUpper(currency)}, nil
 }
 
-func (c *fakeCatalog) VariantsOfProduct(ctx context.Context, _ int32) ([]contracts.VariantEntry, error) {
+func (c *fakeCatalog) VariantsOfProduct(ctx context.Context, productID int32) ([]contracts.VariantEntry, error) {
 	lockedContractCalls.note(ctx, "fake Products.VariantsOfProduct")
-	return nil, nil
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out []contracts.VariantEntry
+	for _, v := range c.variants {
+		if v.ProductID == productID {
+			out = append(out, v)
+		}
+	}
+	slices.SortFunc(out, func(a, b contracts.VariantEntry) int { return int(a.ID - b.ID) })
+	return out, nil
 }
 
 func (c *fakeCatalog) LookupCode(ctx context.Context, _ string) ([]contracts.CodeMatch, error) {

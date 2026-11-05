@@ -18,6 +18,13 @@ components:
                         format: int64
                         type: integer
                     type: array
+                overrideReason:
+                    description: "Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note."
+                    maxLength: 500
+                    type: string
+                overrideWarnings:
+                    description: "Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning."
+                    type: boolean
                 revision:
                     format: int32
                     type: integer
@@ -116,7 +123,7 @@ components:
                 - actions
             type: object
         OrdersChangeAction:
-            description: "One typed action (O26, O32): line_added, line_removed, quantity_changed, price_changed, discount_changed, text_changed, delivery_changed, contact_changed, reference_changed, cancelled_remaining, held, released, locked, unlocked, delivered_marked, delivered_undone. lineId names the line when the action is about one; from and to are the values before and after as text."
+            description: "One typed action (O26, O32): line_added, line_removed, quantity_changed, price_changed, discount_changed, text_changed, delivery_changed, contact_changed, reference_changed, cancelled_remaining, held, released, locked, unlocked, delivered_marked, delivered_undone, warning_overridden (a block warning overridden at confirm: from is the warning, to the reason). lineId names the line when the action is about one; from and to are the values before and after as text."
             properties:
                 from:
                     nullable: true
@@ -145,6 +152,28 @@ components:
             required:
                 - items
             type: object
+        OrdersConfirmInput:
+            additionalProperties: false
+            description: "Confirm a draft order at the version the client read; overrideWarnings with overrideReason overrides its block warnings (O33)."
+            properties:
+                expectedUpdatedAt:
+                    description: "The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it)."
+                    format: date-time
+                    type: string
+                overrideReason:
+                    description: "Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note."
+                    maxLength: 500
+                    type: string
+                overrideWarnings:
+                    description: "Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning."
+                    type: boolean
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - version
+                - expectedUpdatedAt
+            type: object
         OrdersContact:
             additionalProperties: false
             description: "The chosen contact, snapshotted (O13)."
@@ -161,6 +190,20 @@ components:
                     maxLength: 50
                     nullable: true
                     type: string
+            type: object
+        OrdersCountAmount:
+            additionalProperties: false
+            description: A count and a net amount, in the currency of the row that holds it.
+            properties:
+                amount:
+                    format: double
+                    type: number
+                count:
+                    format: int32
+                    type: integer
+            required:
+                - count
+                - amount
             type: object
         OrdersCurrencySum:
             additionalProperties: false
@@ -179,6 +222,56 @@ components:
                 - currency
                 - count
                 - amount
+            type: object
+        OrdersBacklog:
+            additionalProperties: false
+            description: "The backlog today (O35), per currency and net of VAT: what confirmed orders have ordered and not delivered (count is the orders), and what they have delivered and not invoiced, aged by the latest delivery marked on each line — 0–7, 8–30 and over 30 days, since bokføringsforskriften § 5-2-2 asks an invoice within a month."
+            properties:
+                asOf:
+                    format: date
+                    type: string
+                deliveredNotInvoiced:
+                    items:
+                        $ref: "#/components/schemas/OrdersBacklogAged"
+                    type: array
+                orderedNotDelivered:
+                    items:
+                        $ref: "#/components/schemas/OrdersCurrencySum"
+                    type: array
+            required:
+                - asOf
+                - orderedNotDelivered
+                - deliveredNotInvoiced
+            type: object
+        OrdersBacklogAged:
+            additionalProperties: false
+            description: "Delivered and not invoiced in one currency: the orders, the amount and the amount by age."
+            properties:
+                amount:
+                    format: double
+                    type: number
+                count:
+                    format: int32
+                    type: integer
+                currency:
+                    maxLength: 3
+                    type: string
+                days0To7:
+                    format: double
+                    type: number
+                days8To30:
+                    format: double
+                    type: number
+                over30Days:
+                    format: double
+                    type: number
+            required:
+                - currency
+                - count
+                - amount
+                - days0To7
+                - days8To30
+                - over30Days
             type: object
         OrdersCustomerSnapshot:
             additionalProperties: false
@@ -356,6 +449,159 @@ components:
                 - version
                 - expectedUpdatedAt
             type: object
+        OrdersGridOption:
+            additionalProperties: false
+            description: "One axis of the grid: the option's name and its values."
+            properties:
+                name:
+                    type: string
+                values:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - name
+                - values
+            type: object
+        OrdersGridVariant:
+            additionalProperties: false
+            description: "A variant of the grid: its id, SKU, unit, option values and list price."
+            properties:
+                price:
+                    description: The list price, net of VAT.
+                    format: double
+                    nullable: true
+                    type: number
+                sku:
+                    type: string
+                unit:
+                    type: string
+                values:
+                    additionalProperties:
+                        type: string
+                    type: object
+                variantId:
+                    format: int32
+                    type: integer
+            required:
+                - variantId
+                - sku
+                - unit
+                - values
+            type: object
+        OrdersHitRate:
+            additionalProperties: false
+            description: "The quote hit rate of a period (O35): the quotes last sent in it, and how many of them — and how much, net — are accepted, declined, expired, cancelled or still open, per salesperson and currency (rows) and per currency (totals)."
+            properties:
+                from:
+                    format: date
+                    type: string
+                rows:
+                    items:
+                        $ref: "#/components/schemas/OrdersHitRateRow"
+                    type: array
+                to:
+                    format: date
+                    type: string
+                totals:
+                    items:
+                        $ref: "#/components/schemas/OrdersHitRateRow"
+                    type: array
+            required:
+                - from
+                - to
+                - rows
+                - totals
+            type: object
+        OrdersHitRateRow:
+            additionalProperties: false
+            description: "One salesperson's quotes in one currency, or a currency's total (salesperson null). open is a quote still sent, or revised back to a draft."
+            properties:
+                accepted:
+                    $ref: "#/components/schemas/OrdersCountAmount"
+                cancelled:
+                    $ref: "#/components/schemas/OrdersCountAmount"
+                currency:
+                    maxLength: 3
+                    type: string
+                declined:
+                    $ref: "#/components/schemas/OrdersCountAmount"
+                expired:
+                    $ref: "#/components/schemas/OrdersCountAmount"
+                open:
+                    $ref: "#/components/schemas/OrdersCountAmount"
+                salesperson:
+                    allOf:
+                        - $ref: "#/components/schemas/OrdersPerson"
+                    nullable: true
+                sent:
+                    $ref: "#/components/schemas/OrdersCountAmount"
+            required:
+                - currency
+                - sent
+                - accepted
+                - declined
+                - expired
+                - cancelled
+                - open
+            type: object
+        OrdersIntake:
+            additionalProperties: false
+            description: "The order intake of a period (O35): the net value of the orders confirmed in it and not cancelled, per group and currency, and per currency in total. A group by product or category sums the product lines' net amounts."
+            properties:
+                from:
+                    format: date
+                    type: string
+                groupBy:
+                    enum:
+                        - month
+                        - salesperson
+                        - customer
+                        - product
+                        - category
+                    type: string
+                rows:
+                    items:
+                        $ref: "#/components/schemas/OrdersIntakeRow"
+                    type: array
+                to:
+                    format: date
+                    type: string
+                totals:
+                    items:
+                        $ref: "#/components/schemas/OrdersCurrencySum"
+                    type: array
+            required:
+                - from
+                - to
+                - groupBy
+                - rows
+                - totals
+            type: object
+        OrdersIntakeRow:
+            additionalProperties: false
+            description: "One group in one currency: key is the month (YYYY-MM), the salesperson's user id, the customer's id, the product's id or the category's id — empty for none — and label what a person reads; count is the orders."
+            properties:
+                amount:
+                    format: double
+                    type: number
+                count:
+                    format: int32
+                    type: integer
+                currency:
+                    maxLength: 3
+                    type: string
+                key:
+                    type: string
+                label:
+                    type: string
+            required:
+                - key
+                - label
+                - currency
+                - count
+                - amount
+            type: object
         OrdersLine:
             additionalProperties: false
             description: "A line of a quote or an order (O15). A section or a note has only its text and position. The amounts are Invoices' own (O17); VAT is per document. The quantity buckets are an order line's and stay 0 on a quote."
@@ -417,12 +663,22 @@ components:
                     format: int32
                     nullable: true
                     type: integer
+                packagingName:
+                    description: "The name of the packaging the line was entered in, as it was then (O15)."
+                    maxLength: 40
+                    nullable: true
+                    type: string
                 packagingQuantity:
                     format: double
                     nullable: true
                     type: number
                 position:
                     format: int32
+                    type: integer
+                productId:
+                    description: "The product of a catalog line's variant, as it was when the line was written; null on a free-text line."
+                    format: int32
+                    nullable: true
                     type: integer
                 priceSource:
                     enum:
@@ -652,6 +908,13 @@ components:
                     description: "The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it)."
                     format: date-time
                     type: string
+                overrideReason:
+                    description: "Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note."
+                    maxLength: 500
+                    type: string
+                overrideWarnings:
+                    description: "Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning."
+                    type: boolean
                 revision:
                     format: int32
                     type: integer
@@ -799,6 +1062,11 @@ components:
                 version:
                     format: int32
                     type: integer
+                warnings:
+                    description: "The sales warnings that apply to the document now (O33): its customer's, and the products' on its lines."
+                    items:
+                        $ref: "#/components/schemas/OrdersWarning"
+                    type: array
                 yourReference:
                     maxLength: 100
                     type: string
@@ -827,6 +1095,7 @@ components:
                 - lines
                 - createdAt
                 - updatedAt
+                - warnings
             type: object
         OrdersOrderInput:
             additionalProperties: false
@@ -1115,7 +1384,7 @@ components:
                 - displayName
             type: object
         OrdersProblem:
-            description: "An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice, client_request_reused, template_name_taken. 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither."
+            description: "An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice, client_request_reused, template_name_taken, blocked_by_warning (a block warning refuses send, mark as sent, confirm and accept into a confirmed order; detail holds its text, O33). 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither."
             properties:
                 code:
                     nullable: true
@@ -1271,6 +1540,11 @@ components:
                     format: date
                     nullable: true
                     type: string
+                warnings:
+                    description: "The sales warnings that apply to the document now (O33): its customer's, and the products' on its lines."
+                    items:
+                        $ref: "#/components/schemas/OrdersWarning"
+                    type: array
                 yourReference:
                     maxLength: 100
                     type: string
@@ -1294,6 +1568,7 @@ components:
                 - lines
                 - createdAt
                 - updatedAt
+                - warnings
             type: object
         OrdersQuoteInput:
             additionalProperties: false
@@ -1611,6 +1886,13 @@ components:
                 message:
                     maxLength: 4000
                     type: string
+                overrideReason:
+                    description: "Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note."
+                    maxLength: 500
+                    type: string
+                overrideWarnings:
+                    description: "Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning."
+                    type: boolean
                 recipient:
                     format: email
                     maxLength: 254
@@ -2050,6 +2332,44 @@ components:
                 - gross
                 - vatSummaries
             type: object
+        OrdersVariantGrid:
+            additionalProperties: false
+            description: "A product's variants for entry from a grid (O34). mode grid: options are the one or two options the variants differ by, each with its values in the order the variants list them, and cells are the variants, each with its values. mode list: the product has more than two options, an option with more than 30 values, or a variant without a value on an option, and variants lists them. price is the list price in the currency today, null when there is none."
+            properties:
+                cells:
+                    items:
+                        $ref: "#/components/schemas/OrdersGridVariant"
+                    type: array
+                currency:
+                    maxLength: 3
+                    type: string
+                mode:
+                    enum:
+                        - grid
+                        - list
+                    type: string
+                options:
+                    items:
+                        $ref: "#/components/schemas/OrdersGridOption"
+                    type: array
+                productId:
+                    format: int32
+                    type: integer
+                productName:
+                    type: string
+                variants:
+                    items:
+                        $ref: "#/components/schemas/OrdersGridVariant"
+                    type: array
+            required:
+                - productId
+                - productName
+                - currency
+                - mode
+                - options
+                - cells
+                - variants
+            type: object
         OrdersVariant:
             additionalProperties: false
             description: "A catalog variant as a line takes it (O16): its snapshot, its list price in the asked currency today (null when it has none, which leaves the line unpriced) and the VAT code its tax category maps to (null when it maps to none)."
@@ -2173,11 +2493,259 @@ components:
                 - version
                 - expectedUpdatedAt
             type: object
+        OrdersWarning:
+            additionalProperties: false
+            description: "A sales warning (O33) on a customer or a product: info is shown when it is put on a quote or an order, block also refuses send and confirm (blocked_by_warning) unless an orders:settings holder overrides it with a reason. name is the customer's or the product's name as it was when the warning was written."
+            properties:
+                id:
+                    description: "The customer's or the product's id."
+                    format: int32
+                    type: integer
+                level:
+                    enum:
+                        - info
+                        - block
+                    type: string
+                name:
+                    type: string
+                scope:
+                    enum:
+                        - customer
+                        - product
+                    type: string
+                text:
+                    maxLength: 500
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                updatedBy:
+                    allOf:
+                        - $ref: "#/components/schemas/OrdersPerson"
+                    nullable: true
+            required:
+                - scope
+                - id
+                - name
+                - level
+                - text
+                - updatedAt
+            type: object
+        OrdersWarningInput:
+            additionalProperties: false
+            description: "A warning as it is set: its level and a text of 1–500 characters."
+            properties:
+                level:
+                    enum:
+                        - info
+                        - block
+                    type: string
+                text:
+                    maxLength: 500
+                    minLength: 1
+                    type: string
+            required:
+                - level
+                - text
+            type: object
+        OrdersWarningList:
+            additionalProperties: false
+            description: "The warnings, customers' first, each by name."
+            properties:
+                items:
+                    items:
+                        $ref: "#/components/schemas/OrdersWarning"
+                    type: array
+            required:
+                - items
+            type: object
 info:
     title: Vantigo Orders API
     version: "1"
 openapi: 3.0.3
 paths:
+    /api/v1/orders/analysis/backlog:
+        get:
+            description: "What confirmed orders have ordered and not delivered, and delivered and not invoiced, aged by the latest delivery marked (O35). Read from Orders' own tables."
+            operationId: getOrdersBacklog
+            parameters:
+                - description: "json (the default) or csv: a semicolon-separated file, UTF-8 with a byte order mark, the decimal comma, guarded against formulas."
+                  in: query
+                  name: format
+                  schema:
+                      enum:
+                          - json
+                          - csv
+                      type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersBacklog"
+                        text/csv:
+                            schema:
+                                format: binary
+                                type: string
+                    description: "OK — with format=csv, the table as a file served as an attachment, orders-backlog-<day>.csv."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+            summary: Get the order backlog
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:analysis-view
+    /api/v1/orders/analysis/hit-rate:
+        get:
+            description: "The quotes last sent in a period and how they were answered, counted and summed net per salesperson and currency (O35). Read from Orders' own tables."
+            operationId: getOrdersHitRate
+            parameters:
+                - description: "The period's first day, in the business time zone."
+                  in: query
+                  name: from
+                  required: true
+                  schema:
+                      format: date
+                      type: string
+                - description: "The period's last day, included."
+                  in: query
+                  name: to
+                  required: true
+                  schema:
+                      format: date
+                      type: string
+                - description: "Only this salesperson's quotes."
+                  in: query
+                  name: salespersonId
+                  schema:
+                      format: uuid
+                      type: string
+                - description: "json (the default) or csv: a semicolon-separated file, UTF-8 with a byte order mark, the decimal comma, guarded against formulas."
+                  in: query
+                  name: format
+                  schema:
+                      enum:
+                          - json
+                          - csv
+                      type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersHitRate"
+                        text/csv:
+                            schema:
+                                format: binary
+                                type: string
+                    description: "OK — with format=csv, the table as a file served as an attachment, orders-hit-rate-<from>-<to>.csv."
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — to before from, or a period longer than ten years."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+            summary: Get the quote hit rate
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:analysis-view
+    /api/v1/orders/analysis/intake:
+        get:
+            description: "The net value of the orders confirmed in a period and not cancelled, by month, salesperson, customer, product or product category, per currency (O35). The category is read from the catalog for the period's variants."
+            operationId: getOrdersIntake
+            parameters:
+                - description: "The period's first day, in the business time zone."
+                  in: query
+                  name: from
+                  required: true
+                  schema:
+                      format: date
+                      type: string
+                - description: "The period's last day, included."
+                  in: query
+                  name: to
+                  required: true
+                  schema:
+                      format: date
+                      type: string
+                - in: query
+                  name: groupBy
+                  schema:
+                      enum:
+                          - month
+                          - salesperson
+                          - customer
+                          - product
+                          - category
+                      type: string
+                - description: "json (the default) or csv: a semicolon-separated file, UTF-8 with a byte order mark, the decimal comma, guarded against formulas."
+                  in: query
+                  name: format
+                  schema:
+                      enum:
+                          - json
+                          - csv
+                      type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersIntake"
+                        text/csv:
+                            schema:
+                                format: binary
+                                type: string
+                    description: "OK — with format=csv, the table as a file served as an attachment, orders-intake-<groupBy>-<from>-<to>.csv."
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — to before from, or a period longer than ten years."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Service Unavailable — dependency_unavailable, by category without the catalog."
+            summary: Get the order intake
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:analysis-view
     "/api/v1/orders/customers/{customerId}/summary":
         get:
             description: "The counts and sums per currency the customer page's Orders tab shows (O31a)."
@@ -2693,7 +3261,7 @@ paths:
                 content:
                     application/json:
                         schema:
-                            $ref: "#/components/schemas/OrdersVersionInput"
+                            $ref: "#/components/schemas/OrdersConfirmInput"
                 required: true
             responses:
                 "200":
@@ -2727,7 +3295,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Conflict — version_conflict, order_not_draft."
+                    description: "Conflict — version_conflict, order_not_draft, blocked_by_warning."
             summary: Confirm an order
             tags:
                 - Orders
@@ -3251,6 +3819,61 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access+orders:sales-confirm
+    "/api/v1/orders/products/{productId}/grid":
+        get:
+            description: "A product's variants for Add from grid (O34): a matrix along its one or two options, or a list when it has more, an option with more than 30 values, or a variant without a value. Each with its list price in currency today. Read through contracts.ProductCatalog."
+            operationId: getOrdersVariantGrid
+            parameters:
+                - in: path
+                  name: productId
+                  required: true
+                  schema:
+                      format: int32
+                      type: integer
+                - description: "The document's currency, for the list price; the base currency when absent."
+                  in: query
+                  name: currency
+                  schema:
+                      maxLength: 3
+                      minLength: 3
+                      type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersVariantGrid"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — the currency is not three letters."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such product, or one with no variants. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Service Unavailable — dependency_unavailable."
+            summary: Get a product's variant grid
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
     /api/v1/orders/quotes:
         get:
             description: "Quotes, newest first, filtered by customer, status, salesperson and a search (O31a)."
@@ -3574,7 +4197,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Conflict — version_conflict, quote_not_sent, quote_already_accepted."
+                    description: "Conflict — version_conflict, quote_not_sent, quote_already_accepted, blocked_by_warning."
             summary: Accept a quote
             tags:
                 - Orders
@@ -3898,7 +4521,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Conflict — version_conflict, quote_not_draft."
+                    description: "Conflict — version_conflict, quote_not_draft, blocked_by_warning."
             summary: Mark a quote as sent
             tags:
                 - Orders
@@ -4081,7 +4704,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Conflict — version_conflict, quote_not_draft."
+                    description: "Conflict — version_conflict, quote_not_draft, blocked_by_warning."
                 "503":
                     content:
                         application/problem+json:
@@ -4452,5 +5075,280 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access
+    /api/v1/orders/warnings:
+        get:
+            description: "Every sales warning (O33), customers' first, each by name; scope narrows to one kind."
+            operationId: listOrdersWarnings
+            parameters:
+                - in: query
+                  name: scope
+                  schema:
+                      enum:
+                          - customer
+                          - product
+                      type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersWarningList"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+            summary: List the sales warnings
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+    "/api/v1/orders/warnings/customers/{customerId}":
+        delete:
+            description: "Removes the customer's warning (O33)."
+            operationId: deleteOrdersCustomerWarning
+            parameters:
+                - in: path
+                  name: customerId
+                  required: true
+                  schema:
+                      format: int32
+                      type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — the customer has no warning. The body is empty.
+            summary: Remove a customer's warning
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:settings
+        get:
+            description: "The customer's warning (O33)."
+            operationId: getOrdersCustomerWarning
+            parameters:
+                - in: path
+                  name: customerId
+                  required: true
+                  schema:
+                      format: int32
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersWarning"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — the customer has no warning. The body is empty.
+            summary: Get a customer's warning
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+        put:
+            description: "Sets the customer's warning, replacing any it had (O33). The customer's name is read and kept with it."
+            operationId: putOrdersCustomerWarning
+            parameters:
+                - in: path
+                  name: customerId
+                  required: true
+                  schema:
+                      format: int32
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersWarningInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersWarning"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such customer. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Service Unavailable — dependency_unavailable."
+            summary: Set a %(word)s's warning
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:settings
+    "/api/v1/orders/warnings/products/{productId}":
+        delete:
+            description: "Removes the product's warning (O33)."
+            operationId: deleteOrdersProductWarning
+            parameters:
+                - in: path
+                  name: productId
+                  required: true
+                  schema:
+                      format: int32
+                      type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — the product has no warning. The body is empty.
+            summary: Remove a product's warning
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:settings
+        get:
+            description: "The product's warning (O33)."
+            operationId: getOrdersProductWarning
+            parameters:
+                - in: path
+                  name: productId
+                  required: true
+                  schema:
+                      format: int32
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersWarning"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — the product has no warning. The body is empty.
+            summary: Get a product's warning
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
+        put:
+            description: "Sets the product's warning, replacing any it had (O33). The product's name is read and kept with it."
+            operationId: putOrdersProductWarning
+            parameters:
+                - in: path
+                  name: productId
+                  required: true
+                  schema:
+                      format: int32
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/OrdersWarningInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersWarning"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Bad Request — field errors."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such product. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/OrdersProblem"
+                    description: "Service Unavailable — dependency_unavailable."
+            summary: Set a %(word)s's warning
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access+orders:settings
 servers:
     - url: /

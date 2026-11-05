@@ -139,7 +139,11 @@ func (s *server) saveDraftOrder(ctx context.Context, cur store.OrdersOrder, curL
 		if err != nil {
 			return err
 		}
-		out = orderView(row, lines)
+		warnings, err := documentWarnings(ctx, txq, row.CustomerID, lines)
+		if err != nil {
+			return err
+		}
+		out = orderView(row, lines, warnings)
 		return nil
 	})
 	return out, err
@@ -414,7 +418,11 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 		}
 		actions = append(headerActions(headerOfOrder(o), h), actions...)
 		if len(actions) == 0 {
-			out = orderView(o, current)
+			warnings, err := documentWarnings(ctx, txq, o.CustomerID, current)
+			if err != nil {
+				return err
+			}
+			out = orderView(o, current, warnings)
 			return nil
 		}
 		now := s.deps.Clock()
@@ -448,7 +456,11 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 		if err := logChange(ctx, txq, row.ID, row.Version, by, now, actions); err != nil {
 			return err
 		}
-		out = orderView(row, lines)
+		warnings, err := documentWarnings(ctx, txq, row.CustomerID, lines)
+		if err != nil {
+			return err
+		}
+		out = orderView(row, lines, warnings)
 		return nil
 	})
 	return out, err

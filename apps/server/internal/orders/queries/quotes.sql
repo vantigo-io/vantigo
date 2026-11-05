@@ -142,3 +142,8 @@ WHERE (sqlc.narg(customer_id)::integer IS NULL OR customer_id = sqlc.narg(custom
   AND (sqlc.arg(q)::text = '' OR number::text = sqlc.arg(q)::text
        OR customer_name ILIKE '%' || sqlc.arg(q)::text || '%'
        OR your_reference ILIKE '%' || sqlc.arg(q)::text || '%');
+
+-- name: SetQuoteInternalNote :exec
+-- SetQuoteInternalNote writes a quote's internal note: a send that overrides
+-- a block warning appends its reason there (O33). The caller holds the row.
+UPDATE orders.quotes SET internal_note = sqlc.arg(internal_note) WHERE id = sqlc.arg(id);

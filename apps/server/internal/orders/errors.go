@@ -46,6 +46,7 @@ const (
 	codeLineHasProgress         = "line_has_progress"
 	codeLineKindChanged         = "line_kind_changed"
 	codeOrderOnHold             = "order_on_hold"
+	codeBlockedByWarning        = "blocked_by_warning"
 
 	// A line's codes (OrdersProblemLine.code).
 	codeVariantNotFound   = "variant_not_found"
@@ -76,6 +77,8 @@ const (
 	invalidConfirmTitle  = "The order cannot be confirmed"
 	invalidDeliveryTitle = "Invalid delivery"
 	invalidHoldTitle     = "Invalid hold"
+	invalidWarningTitle  = "Invalid warning"
+	invalidAnalysisTitle = "Invalid analysis"
 )
 
 // errDependencyUnavailable is every accessor's answer when the contract it

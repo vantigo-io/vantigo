@@ -510,7 +510,11 @@ func (s *server) ApplyQuoteTemplate(ctx context.Context, req gen.ApplyQuoteTempl
 		if err != nil {
 			return err
 		}
-		out = gen.OrdersTemplateApplied{Quote: quoteView(row, lines, nil), Skipped: skipped}
+		warnings, err := documentWarnings(ctx, txq, row.CustomerID, lines)
+		if err != nil {
+			return err
+		}
+		out = gen.OrdersTemplateApplied{Quote: quoteView(row, lines, nil, warnings), Skipped: skipped}
 		return nil
 	})
 	if err != nil {

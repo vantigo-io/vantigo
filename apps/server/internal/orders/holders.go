@@ -34,6 +34,7 @@ const (
 	kindOrdersOrders      = "orders.orders"
 	kindOrdersDraftOrders = "orders.draftOrders"
 	kindOrdersMailings    = "orders.mailings"
+	kindOrdersWarnings    = "orders.warnings"
 )
 
 // customerReferenceHolder re-points a merged-away customer's quotes and
@@ -50,9 +51,13 @@ func newCustomerReferenceHolder(module.Deps) contracts.CustomerReferenceHolder {
 // merge's transaction. The snapshot is not touched: a frozen document keeps
 // the customer as it was. A write of a document holds only its own row (after
 // its variants'), so the merge waits for it, and never the other way round.
+//
+// The merged-away customer's sales warning (O33) moves to the survivor when
+// the survivor has none; when it has one, the survivor's is kept and the
+// other is dropped.
 func (customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx, from, into int32) ([]contracts.RepointedReferences, error) {
 	if from == into {
-		return []contracts.RepointedReferences{{Kind: kindOrdersQuotes}, {Kind: kindOrdersOrders}}, nil
+		return []contracts.RepointedReferences{{Kind: kindOrdersQuotes}, {Kind: kindOrdersOrders}, {Kind: kindOrdersWarnings}}, nil
 	}
 	q := store.New(tx)
 	quotes, err := q.RepointCustomerQuotes(ctx, store.RepointCustomerQuotesParams{FromCustomerID: from, IntoCustomerID: into})
@@ -63,7 +68,16 @@ func (customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx, f
 	if err != nil {
 		return nil, fmt.Errorf("orders: re-point customer %d's orders to %d: %w", from, into, err)
 	}
-	return []contracts.RepointedReferences{{Kind: kindOrdersQuotes, Count: quotes}, {Kind: kindOrdersOrders, Count: orders}}, nil
+	warnings, err := q.RepointCustomerWarning(ctx, store.RepointCustomerWarningParams{FromCustomerID: from, IntoCustomerID: into})
+	if err != nil {
+		return nil, fmt.Errorf("orders: re-point customer %d's warning to %d: %w", from, into, err)
+	}
+	if _, err := q.DeleteCustomerWarning(ctx, from); err != nil {
+		return nil, fmt.Errorf("orders: drop customer %d's warning: %w", from, err)
+	}
+	return []contracts.RepointedReferences{
+		{Kind: kindOrdersQuotes, Count: quotes}, {Kind: kindOrdersOrders, Count: orders}, {Kind: kindOrdersWarnings, Count: warnings},
+	}, nil
 }
 
 // customerPersonalData is what Orders holds about a person (O29): handed
@@ -91,6 +105,14 @@ func newCustomerPersonalData(d module.Deps) contracts.CustomerPersonalData {
 type exportedOrders struct {
 	Quotes []exportedDocument `json:"quotes"`
 	Orders []exportedDocument `json:"orders"`
+	// Warning is the customer's sales warning (O33), when it has one.
+	Warning *exportedWarning `json:"warning,omitempty"`
+}
+
+type exportedWarning struct {
+	Level     string    `json:"level"`
+	Text      string    `json:"text"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 type exportedDocument struct {
@@ -136,7 +158,8 @@ type exportedMailing struct {
 	SentAt    *time.Time `json:"sentAt,omitempty"`
 }
 
-// ExportCustomerData answers nil for a customer with no quote and no order;
+// ExportCustomerData answers nil for a customer with no quote, no order and no
+// warning;
 // otherwise every one with its lines and sends, read in one REPEATABLE READ,
 // READ ONLY snapshot.
 func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID int32) (any, error) {
@@ -151,10 +174,18 @@ func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID
 		if err != nil {
 			return fmt.Errorf("orders: read customer %d's orders: %w", customerID, err)
 		}
-		if len(quotes) == 0 && len(orders) == 0 {
+		var warning *exportedWarning
+		w, err := q.CustomerWarning(ctx, customerID)
+		switch {
+		case err == nil:
+			warning = &exportedWarning{Level: w.Level, Text: w.Text, UpdatedAt: w.UpdatedAt}
+		case !noRows(err):
+			return fmt.Errorf("orders: read customer %d's warning: %w", customerID, err)
+		}
+		if len(quotes) == 0 && len(orders) == 0 && warning == nil {
 			return nil
 		}
-		section = &exportedOrders{Quotes: []exportedDocument{}, Orders: []exportedDocument{}}
+		section = &exportedOrders{Quotes: []exportedDocument{}, Orders: []exportedDocument{}, Warning: warning}
 		quoteDocs := make([]exportedDocument, 0, len(quotes))
 		quoteIDs := make([]int64, 0, len(quotes))
 		for _, r := range quotes {
@@ -300,6 +331,10 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 	if err != nil {
 		return nil, fmt.Errorf("orders: blank customer %d's sends: %w", customerID, err)
 	}
+	warnings, err := q.DeleteCustomerWarning(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("orders: delete customer %d's warning: %w", customerID, err)
+	}
 	kept, err := q.KeptOrderNumbers(ctx, customerID)
 	if err != nil {
 		return nil, fmt.Errorf("orders: read customer %d's kept orders: %w", customerID, err)
@@ -322,6 +357,7 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 		{Kind: kindOrdersDraftOrders, Count: drafts},
 		{Kind: kindOrdersOrders, Count: 0},
 		{Kind: kindOrdersMailings, Count: mailings},
+		{Kind: kindOrdersWarnings, Count: warnings},
 	}, nil
 }
 

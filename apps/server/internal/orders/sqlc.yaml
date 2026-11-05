@@ -7,6 +7,7 @@ sql:
   - engine: postgresql
     schema:
       - ../db/migrations/00119_orders_baseline.sql
+      - ../db/migrations/00120_orders_warnings.sql
     queries: queries
     gen:
       go:

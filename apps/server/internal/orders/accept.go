@@ -39,6 +39,7 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 	if !body.Into.Valid() {
 		f.add("into", "into is draft_order or confirmed_order")
 	}
+	override := s.readOverride(ctx, &f, body.OverrideWarnings, body.OverrideReason)
 	if f.failed() {
 		return gen.AcceptQuote400ApplicationProblemPlusJSONResponse(invalid(invalidAcceptTitle, f)), nil
 	}
@@ -114,7 +115,7 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 			return err
 		}
 		if confirm {
-			if order, err = confirmOrderTx(ctx, s, tx, txq, order, orderLines, by, customer); err != nil {
+			if order, err = confirmOrderTx(ctx, s, tx, txq, order, orderLines, override, by, customer); err != nil {
 				return err
 			}
 			if printed, err = p.confirmation(order, orderLines, s.deps.Clock()); err != nil {
@@ -133,7 +134,15 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 		}, now); err != nil {
 			return err
 		}
-		out = gen.OrdersAccepted{Quote: quoteView(accepted, quoteLines, &order.Number), Order: orderView(order, orderLines)}
+		warnings, err := documentWarnings(ctx, txq, accepted.CustomerID, quoteLines)
+		if err != nil {
+			return err
+		}
+		orderWarnings, err := documentWarnings(ctx, txq, order.CustomerID, orderLines)
+		if err != nil {
+			return err
+		}
+		out = gen.OrdersAccepted{Quote: quoteView(accepted, quoteLines, &order.Number, warnings), Order: orderView(order, orderLines, orderWarnings)}
 		return nil
 	})
 	if err != nil {
