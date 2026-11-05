@@ -3,7 +3,6 @@ import {
   Alert,
   Anchor,
   Button,
-  Card,
   Group,
   SegmentedControl,
   Select,
@@ -22,7 +21,7 @@ import {
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { Fragment, useState } from "react";
 import type { PlanningAllocation } from "../api/allocations";
 import { boardQueryOptions, type PlanningBoardRow } from "../api/board";
@@ -156,233 +155,235 @@ export const BoardPage = () => {
       />
 
       {hidden ? (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <EmptyState icon={IconLock} title={t("workforceHiddenTitle")} description={t("workforceHiddenDescription")} />
-        </Card>
+        </PageSection>
       ) : (
-        <>
-          <Group align="end" gap="sm" wrap="wrap">
-            <Group gap={4} align="end">
-              <ActionIcon
-                variant="default"
-                size="lg"
-                aria-label={t("previousWeeks", { count: shown })}
-                disabled={addWeeks(from, -shown) < earliestMonday()}
-                onClick={() => page(-shown)}
-              >
-                <IconChevronLeft size={16} />
-              </ActionIcon>
-              <Button variant="default" onClick={() => setSearch({ from: undefined, to: undefined })}>
-                {t("thisWeek")}
-              </Button>
-              <ActionIcon
-                variant="default"
-                size="lg"
-                aria-label={t("nextWeeks", { count: shown })}
-                onClick={() => page(shown)}
-              >
-                <IconChevronRight size={16} />
-              </ActionIcon>
+        <PageSection>
+          <Stack gap="md">
+            <Group align="end" gap="sm" wrap="wrap">
+              <Group gap={4} align="end">
+                <ActionIcon
+                  variant="default"
+                  size="lg"
+                  aria-label={t("previousWeeks", { count: shown })}
+                  disabled={addWeeks(from, -shown) < earliestMonday()}
+                  onClick={() => page(-shown)}
+                >
+                  <IconChevronLeft size={16} />
+                </ActionIcon>
+                <Button variant="default" onClick={() => setSearch({ from: undefined, to: undefined })}>
+                  {t("thisWeek")}
+                </Button>
+                <ActionIcon
+                  variant="default"
+                  size="lg"
+                  aria-label={t("nextWeeks", { count: shown })}
+                  onClick={() => page(shown)}
+                >
+                  <IconChevronRight size={16} />
+                </ActionIcon>
+              </Group>
+              <Select
+                label={t("weeksShown")}
+                w={130}
+                allowDeselect={false}
+                data={[...new Set([...boardWeekCounts, shown])]
+                  .sort((a, b) => a - b)
+                  .map((count) => ({ value: String(count), label: t("weeksOption", { count }) }))}
+                value={String(shown)}
+                onChange={(value) =>
+                  setSearch({
+                    from: search.from,
+                    to: value === String(BOARD_DEFAULT_WEEKS) ? undefined : addDays(addWeeks(from, Number(value)), -1),
+                  })
+                }
+              />
+              <Stack gap={4}>
+                <Text size="sm" fw={500}>
+                  {t("groupBy")}
+                </Text>
+                <SegmentedControl
+                  aria-label={t("groupBy")}
+                  value={groupBy}
+                  onChange={(value) => setSearch({ groupBy: value === "project" ? "project" : undefined })}
+                  data={[
+                    { value: "people", label: t("groupBy_people") },
+                    { value: "project", label: t("groupBy_project") },
+                  ]}
+                />
+              </Stack>
+              <Select
+                label={t("department")}
+                placeholder={t("allDepartments")}
+                w={200}
+                clearable
+                data={departmentOptions}
+                value={search.departmentId === undefined ? null : String(search.departmentId)}
+                onChange={(value) => setSearch({ departmentId: value === null ? undefined : Number(value) })}
+              />
+              <div style={{ width: 240 }}>
+                <ProjectPicker
+                  label={t("project")}
+                  placeholder={t("allProjects")}
+                  clearable
+                  value={search.projectId ?? null}
+                  onChange={(id) => setSearch({ projectId: id ?? undefined })}
+                />
+              </div>
+              <div style={{ width: 240 }}>
+                <CompetencePicker
+                  label={t("competence")}
+                  placeholder={t("allCompetences")}
+                  clearable
+                  value={search.competenceId ?? null}
+                  onChange={(id) => setSearch({ competenceId: id ?? undefined })}
+                />
+              </div>
+              <Stack gap={6} pb={4}>
+                <Switch
+                  label={t("showTentative")}
+                  checked={showTentative}
+                  onChange={(event) => setSearch({ tentative: event.currentTarget.checked ? undefined : false })}
+                />
+                <Switch
+                  label={t("includePipeline")}
+                  checked={search.planned !== false}
+                  onChange={(event) => setSearch({ planned: event.currentTarget.checked ? undefined : false })}
+                />
+              </Stack>
             </Group>
-            <Select
-              label={t("weeksShown")}
-              w={130}
-              allowDeselect={false}
-              data={[...new Set([...boardWeekCounts, shown])]
-                .sort((a, b) => a - b)
-                .map((count) => ({ value: String(count), label: t("weeksOption", { count }) }))}
-              value={String(shown)}
-              onChange={(value) =>
-                setSearch({
-                  from: search.from,
-                  to: value === String(BOARD_DEFAULT_WEEKS) ? undefined : addDays(addWeeks(from, Number(value)), -1),
-                })
-              }
-            />
-            <Stack gap={4}>
-              <Text size="sm" fw={500}>
-                {t("groupBy")}
-              </Text>
-              <SegmentedControl
-                aria-label={t("groupBy")}
-                value={groupBy}
-                onChange={(value) => setSearch({ groupBy: value === "project" ? "project" : undefined })}
-                data={[
-                  { value: "people", label: t("groupBy_people") },
-                  { value: "project", label: t("groupBy_project") },
-                ]}
-              />
-            </Stack>
-            <Select
-              label={t("department")}
-              placeholder={t("allDepartments")}
-              w={200}
-              clearable
-              data={departmentOptions}
-              value={search.departmentId === undefined ? null : String(search.departmentId)}
-              onChange={(value) => setSearch({ departmentId: value === null ? undefined : Number(value) })}
-            />
-            <div style={{ width: 240 }}>
-              <ProjectPicker
-                label={t("project")}
-                placeholder={t("allProjects")}
-                clearable
-                value={search.projectId ?? null}
-                onChange={(id) => setSearch({ projectId: id ?? undefined })}
-              />
-            </div>
-            <div style={{ width: 240 }}>
-              <CompetencePicker
-                label={t("competence")}
-                placeholder={t("allCompetences")}
-                clearable
-                value={search.competenceId ?? null}
-                onChange={(id) => setSearch({ competenceId: id ?? undefined })}
-              />
-            </div>
-            <Stack gap={6} pb={4}>
-              <Switch
-                label={t("showTentative")}
-                checked={showTentative}
-                onChange={(event) => setSearch({ tentative: event.currentTarget.checked ? undefined : false })}
-              />
-              <Switch
-                label={t("includePipeline")}
-                checked={search.planned !== false}
-                onChange={(event) => setSearch({ planned: event.currentTarget.checked ? undefined : false })}
-              />
-            </Stack>
-          </Group>
 
-          <Card withBorder padding="sm" radius="md">
-            {board.isError && (
-              <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadBoard")}>
-                {(board.error as { status?: number }).status === 400
-                  ? t("refusal.window_out_of_bounds")
-                  : board.error.message}
-              </Alert>
-            )}
-            {(board.isPending || meta.isPending) && !board.isError && <ContentSkeleton rows={5} rowHeight={44} />}
-            {board.data && board.data.rows.length === 0 && (
-              <EmptyState
-                title={groupBy === "project" ? t("noProjectRows") : t("noPeopleRows")}
-                description={t("noRowsDescription")}
-              />
-            )}
-            {board.data && board.data.rows.length > 0 && (
-              <Table.ScrollContainer minWidth={NAME_WIDTH + weeks.length * WEEK_WIDTH}>
-                <Table aria-label={t("boardTitle")} layout="fixed" verticalSpacing={4} horizontalSpacing={4}>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th
-                        w={NAME_WIDTH}
-                        style={{ position: "sticky", left: 0, zIndex: 1, background: "var(--mantine-color-body)" }}
-                      >
-                        {groupBy === "project" ? t("project") : t("person")}
-                      </Table.Th>
-                      {weeks.map((monday) => (
-                        <Table.Th key={monday} w={WEEK_WIDTH} scope="col">
-                          <WeekHeader monday={monday} current={monday === thisWeek} />
+            <div>
+              {board.isError && (
+                <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadBoard")}>
+                  {(board.error as { status?: number }).status === 400
+                    ? t("refusal.window_out_of_bounds")
+                    : board.error.message}
+                </Alert>
+              )}
+              {(board.isPending || meta.isPending) && !board.isError && <ContentSkeleton rows={5} rowHeight={44} />}
+              {board.data && board.data.rows.length === 0 && (
+                <EmptyState
+                  title={groupBy === "project" ? t("noProjectRows") : t("noPeopleRows")}
+                  description={t("noRowsDescription")}
+                />
+              )}
+              {board.data && board.data.rows.length > 0 && (
+                <Table.ScrollContainer minWidth={NAME_WIDTH + weeks.length * WEEK_WIDTH}>
+                  <Table aria-label={t("boardTitle")} layout="fixed" verticalSpacing={4} horizontalSpacing={4}>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th
+                          w={NAME_WIDTH}
+                          style={{ position: "sticky", left: 0, zIndex: 1, background: "var(--mantine-color-body)" }}
+                        >
+                          {groupBy === "project" ? t("project") : t("person")}
                         </Table.Th>
-                      ))}
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {board.data.rows.map((row) => {
-                      const key = rowKey(row);
-                      const name = rowName(row);
-                      const open = expanded.has(key);
-                      return (
-                        <Fragment key={key}>
-                          <Table.Tr>
-                            <Table.Th
-                              scope="row"
-                              style={{
-                                position: "sticky",
-                                left: 0,
-                                zIndex: 1,
-                                background: "var(--mantine-color-body)",
-                              }}
-                            >
-                              <Group gap={4} wrap="nowrap">
-                                <ActionIcon
-                                  variant="subtle"
-                                  size="sm"
-                                  aria-label={open ? t("hideAllocations", { name }) : t("showAllocations", { name })}
-                                  aria-expanded={open}
-                                  onClick={() => toggle(key)}
-                                >
-                                  {open ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
-                                </ActionIcon>
-                                <Stack gap={0} style={{ minWidth: 0 }}>
-                                  <Anchor
-                                    size="sm"
-                                    fw={500}
-                                    truncate
-                                    renderRoot={(props) =>
-                                      row.person ? (
-                                        <Link {...personTimelineLinkOptions(row.person.id)} {...props} />
-                                      ) : (
-                                        <Link {...projectPlanLinkOptions(row.project?.id ?? 0)} {...props} />
-                                      )
-                                    }
-                                  >
-                                    {name}
-                                  </Anchor>
-                                  <Text size="xs" c="dimmed" truncate>
-                                    {row.person
-                                      ? (row.person.department?.name ?? row.person.employeeNumber)
-                                      : (row.project?.customer?.name ?? t(`projectStatus_${row.project?.status}`))}
-                                  </Text>
-                                </Stack>
-                              </Group>
-                            </Table.Th>
-                            {row.cells.map((figures) => (
-                              <Table.Td key={figures.monday}>
-                                <LoadCell
-                                  figures={figures}
-                                  showTentative={showTentative}
-                                  label={t("cellLabel", { name, week: format.week(figures.monday) })}
-                                  onClick={
-                                    canManage ? () => setSheet({ preset: presetFor(row, figures.monday) }) : undefined
-                                  }
-                                />
-                              </Table.Td>
-                            ))}
-                          </Table.Tr>
-                          {open && (
+                        {weeks.map((monday) => (
+                          <Table.Th key={monday} w={WEEK_WIDTH} scope="col">
+                            <WeekHeader monday={monday} current={monday === thisWeek} />
+                          </Table.Th>
+                        ))}
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {board.data.rows.map((row) => {
+                        const key = rowKey(row);
+                        const name = rowName(row);
+                        const open = expanded.has(key);
+                        return (
+                          <Fragment key={key}>
                             <Table.Tr>
-                              <Table.Td />
-                              <Table.Td colSpan={weeks.length}>
-                                {rowAllocations(row).length === 0 ? (
-                                  <Text size="xs" c="dimmed">
-                                    {t("noAllocationsInWindow")}
-                                  </Text>
-                                ) : (
-                                  <AllocationBars
-                                    allocations={rowAllocations(row)}
-                                    weeks={weeks}
-                                    label={t("allocationsOf", { name })}
-                                    name={(allocation) =>
-                                      row.person
-                                        ? format.projectName(allocation.project)
-                                        : format.personName(allocation.person)
+                              <Table.Th
+                                scope="row"
+                                style={{
+                                  position: "sticky",
+                                  left: 0,
+                                  zIndex: 1,
+                                  background: "var(--mantine-color-body)",
+                                }}
+                              >
+                                <Group gap={4} wrap="nowrap">
+                                  <ActionIcon
+                                    variant="subtle"
+                                    size="sm"
+                                    aria-label={open ? t("hideAllocations", { name }) : t("showAllocations", { name })}
+                                    aria-expanded={open}
+                                    onClick={() => toggle(key)}
+                                  >
+                                    {open ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
+                                  </ActionIcon>
+                                  <Stack gap={0} style={{ minWidth: 0 }}>
+                                    <Anchor
+                                      size="sm"
+                                      fw={500}
+                                      truncate
+                                      renderRoot={(props) =>
+                                        row.person ? (
+                                          <Link {...personTimelineLinkOptions(row.person.id)} {...props} />
+                                        ) : (
+                                          <Link {...projectPlanLinkOptions(row.project?.id ?? 0)} {...props} />
+                                        )
+                                      }
+                                    >
+                                      {name}
+                                    </Anchor>
+                                    <Text size="xs" c="dimmed" truncate>
+                                      {row.person
+                                        ? (row.person.department?.name ?? row.person.employeeNumber)
+                                        : (row.project?.customer?.name ?? t(`projectStatus_${row.project?.status}`))}
+                                    </Text>
+                                  </Stack>
+                                </Group>
+                              </Table.Th>
+                              {row.cells.map((figures) => (
+                                <Table.Td key={figures.monday}>
+                                  <LoadCell
+                                    figures={figures}
+                                    showTentative={showTentative}
+                                    label={t("cellLabel", { name, week: format.week(figures.monday) })}
+                                    onClick={
+                                      canManage ? () => setSheet({ preset: presetFor(row, figures.monday) }) : undefined
                                     }
-                                    onOpen={canManage ? (allocation) => setSheet({ allocation }) : undefined}
                                   />
-                                )}
-                              </Table.Td>
+                                </Table.Td>
+                              ))}
                             </Table.Tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </Table.Tbody>
-                </Table>
-              </Table.ScrollContainer>
-            )}
-          </Card>
-        </>
+                            {open && (
+                              <Table.Tr>
+                                <Table.Td />
+                                <Table.Td colSpan={weeks.length}>
+                                  {rowAllocations(row).length === 0 ? (
+                                    <Text size="xs" c="dimmed">
+                                      {t("noAllocationsInWindow")}
+                                    </Text>
+                                  ) : (
+                                    <AllocationBars
+                                      allocations={rowAllocations(row)}
+                                      weeks={weeks}
+                                      label={t("allocationsOf", { name })}
+                                      name={(allocation) =>
+                                        row.person
+                                          ? format.projectName(allocation.project)
+                                          : format.personName(allocation.person)
+                                      }
+                                      onOpen={canManage ? (allocation) => setSheet({ allocation }) : undefined}
+                                    />
+                                  )}
+                                </Table.Td>
+                              </Table.Tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              )}
+            </div>
+          </Stack>
+        </PageSection>
       )}
 
       {canManage && (

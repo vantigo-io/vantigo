@@ -16,7 +16,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   type DueOrder,
@@ -290,269 +290,275 @@ export const FromOrdersPage = ({
   return (
     <Stack gap="lg">
       <PageHeader title={t("fromOrders.title")} description={t("fromOrders.description")} />
-      <Stepper active={step} onStepClick={setStep} allowNextStepsSelect={false} size="sm">
-        <Stepper.Step label={t("fromOrders.step.pick")}>
-          <Stack>
-            {canViewCustomers && (
-              <CustomerPicker
-                label={t("fromOrders.addCustomer")}
-                value={picker}
-                onChange={(id) => {
-                  setPicker(null);
-                  if (id !== null && !customers.includes(id)) setCustomers((current) => [...current, id]);
-                }}
-              />
-            )}
-            {customers.length > 0 && (
-              <Group gap="xs">
-                {customers.map((id) => {
-                  const name = orders.find((o) => o.customerId === id)?.customerName ?? String(id);
-                  return (
-                    <Badge
-                      key={id}
-                      variant="light"
-                      rightSection={
-                        <CloseButton
-                          size="xs"
-                          aria-label={t("fromOrders.removeCustomer", { name })}
-                          onClick={() => setCustomers((current) => current.filter((c) => c !== id))}
-                        />
-                      }
-                    >
-                      {name}
-                    </Badge>
-                  );
-                })}
-              </Group>
-            )}
-            {customers.length === 0 && orderIds.length === 0 && (
-              <Text size="sm" c="dimmed">
-                {t("fromOrders.pickHint")}
-              </Text>
-            )}
-            {due.isError && (
-              <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("fromOrders.failedToLoad")}>
-                {refusalMessage(due.error, t, date)}
-              </Alert>
-            )}
-            {due.isFetching && !due.data && <ContentSkeleton rows={3} rowHeight={40} />}
-            {due.data?.warnings.includes("orders_truncated") && (
-              <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
-                {t("fromOrders.truncated")}
-              </Alert>
-            )}
-            {due.data && orders.length === 0 && (
-              <Text size="sm" c="dimmed">
-                {t("fromOrders.noOrders")}
-              </Text>
-            )}
-            {orders.map((o) => (
-              <Group
-                key={keyOf(o)}
-                gap="sm"
-                wrap="wrap"
-                data-order={o.id}
-                data-kind={o.kind}
-                style={o.blocked ? { opacity: 0.6 } : undefined}
-              >
-                <Checkbox
-                  aria-label={
-                    isSubscription(o)
-                      ? t("fromOrders.chooseSubscription", { number: o.number })
-                      : t("fromOrders.chooseOrder", { number: o.number })
-                  }
-                  disabled={Boolean(o.blocked)}
-                  checked={!o.blocked && !unchecked.has(keyOf(o))}
-                  onChange={(e) => toggle(keyOf(o), e.currentTarget.checked)}
-                />
-                <Text size="sm" fw={600}>
-                  {documentLabel(o, true)}
-                </Text>
-                {o.customerName && <Text size="sm">{o.customerName}</Text>}
-                {o.yourReference && (
-                  <Text size="sm">{t("fromOrders.yourReference", { reference: o.yourReference })}</Text>
+      <PageSection>
+        <Stack gap="md">
+          <Stepper active={step} onStepClick={setStep} allowNextStepsSelect={false} size="sm">
+            <Stepper.Step label={t("fromOrders.step.pick")}>
+              <Stack>
+                {canViewCustomers && (
+                  <CustomerPicker
+                    label={t("fromOrders.addCustomer")}
+                    value={picker}
+                    onChange={(id) => {
+                      setPicker(null);
+                      if (id !== null && !customers.includes(id)) setCustomers((current) => [...current, id]);
+                    }}
+                  />
                 )}
-                {o.deliveryDate && (
-                  <Text size="sm">{t("fromOrders.deliveryDate", { date: date(o.deliveryDate) })}</Text>
-                )}
-                <Text size="sm">
-                  {money(
-                    round2(o.lines.reduce((sum, l) => sum + lineNet(l.toInvoice, l.unitPrice, l.discountPercent), 0)),
-                    o.currency,
-                  )}
-                </Text>
-                {o.blocked && (
-                  <Text size="xs" c="orange" data-blocked={o.blocked}>
-                    {`fromOrders.blocked.${o.blocked}` in invoicesCatalog.en
-                      ? t(`fromOrders.blocked.${o.blocked}`)
-                      : o.blocked}
-                  </Text>
-                )}
-              </Group>
-            ))}
-          </Stack>
-        </Stepper.Step>
-        <Stepper.Step label={t("fromOrders.step.lines")}>
-          <Stack>
-            <Text size="sm" c="dimmed">
-              {t("fromOrders.partialHint")}
-            </Text>
-            {chosenOrders.map((o) => (
-              <Stack key={keyOf(o)} gap={4}>
-                <Text fw={600} size="sm">
-                  {documentLabel(o)}
-                </Text>
-                <Table.ScrollContainer minWidth={640}>
-                  <Table
-                    aria-label={
-                      isSubscription(o)
-                        ? t("fromOrders.periodsOf", { number: o.number })
-                        : t("fromOrders.linesOf", { number: o.number })
-                    }
-                    fz="sm"
-                  >
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>{t("fromOrders.col.line")}</Table.Th>
-                        <Table.Th ta="right">{t("fromOrders.col.left")}</Table.Th>
-                        <Table.Th ta="right">{t("fromOrders.col.toInvoice")}</Table.Th>
-                        <Table.Th ta="right">{t("fromOrders.col.remaining")}</Table.Th>
-                        <Table.Th ta="right">{t("unitPrice")}</Table.Th>
-                        <Table.Th ta="right">{t("fromOrders.col.amount")}</Table.Th>
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {o.lines.map((l) => {
-                        const remaining = Math.round((l.toInvoice - quantityOf(l)) * 1000) / 1000;
-                        return (
-                          <Table.Tr key={`${l.lineId}:${l.periodStart ?? ""}`}>
-                            <Table.Td>
-                              {l.description}
-                              {l.periodStart && (
-                                <Text span size="sm" c="dimmed">
-                                  {` – ${periodLabel(l)}`}
-                                </Text>
-                              )}
-                              {remaining > 0 && quantityOf(l) > 0 && (
-                                <Badge ml="xs" size="xs" variant="light">
-                                  {t("fromOrders.partial")}
-                                </Badge>
-                              )}
-                            </Table.Td>
-                            <Table.Td ta="right">{`${number(l.toInvoice, 3)} ${l.unit}`}</Table.Td>
-                            <Table.Td ta="right">
-                              {l.periodStart ? (
-                                number(l.toInvoice, 3)
-                              ) : (
-                                <NumberInput
-                                  aria-label={t("fromOrders.toInvoiceOf", { line: l.description })}
-                                  value={quantities[l.lineId] ?? l.toInvoice}
-                                  min={0}
-                                  max={l.toInvoice}
-                                  decimalScale={3}
-                                  clampBehavior="strict"
-                                  size="xs"
-                                  w={110}
-                                  ml="auto"
-                                  onChange={(v) => setQuantities((current) => ({ ...current, [l.lineId]: v }))}
-                                />
-                              )}
-                            </Table.Td>
-                            <Table.Td ta="right" data-testid={`remaining-${l.lineId}`}>
-                              {number(remaining, 3)}
-                            </Table.Td>
-                            <Table.Td ta="right">{unitPrice(l.unitPrice, o.currency)}</Table.Td>
-                            <Table.Td ta="right">{money(amountOf(l), o.currency)}</Table.Td>
-                          </Table.Tr>
-                        );
-                      })}
-                    </Table.Tbody>
-                  </Table>
-                </Table.ScrollContainer>
-              </Stack>
-            ))}
-            <Text size="sm" fw={600} data-testid="from-orders-chosen">
-              {t("fromOrdersChosen", { count: chosenLines.length, amount: money(chosenAmount, "NOK") })}
-            </Text>
-          </Stack>
-        </Stepper.Step>
-        <Stepper.Step label={t("fromOrders.step.grouping")}>
-          <Stack>
-            <SegmentedControl
-              aria-label={t("fromOrders.step.grouping")}
-              value={mode}
-              onChange={(v) => setMode(v as Mode)}
-              data={[
-                { value: "perOrder", label: t("fromOrders.mode.perOrder") },
-                { value: "combined", label: t("fromOrders.mode.combined") },
-              ]}
-            />
-            {mode === "combined" && (
-              <Text size="sm" c="dimmed">
-                {t("fromOrders.combinedHint")}
-              </Text>
-            )}
-            <Text size="sm" fw={600}>
-              {t("fromOrdersPreview", { count: preview.length })}
-            </Text>
-            <Stack gap={4} data-testid="from-orders-preview">
-              {preview.map((p) => (
-                <Stack key={`${p.customerId}-${keyOf(p.orders[0])}`} gap={0}>
-                  <Text size="sm">
-                    {t("fromOrders.previewInvoice", {
-                      customer: p.customerName || p.customerId,
-                      orders: p.orders
-                        .map((o) =>
-                          isSubscription(o)
-                            ? t("fromOrders.subscriptionShort", { number: o.number })
-                            : String(o.number),
-                        )
-                        .join(", "),
+                {customers.length > 0 && (
+                  <Group gap="xs">
+                    {customers.map((id) => {
+                      const name = orders.find((o) => o.customerId === id)?.customerName ?? String(id);
+                      return (
+                        <Badge
+                          key={id}
+                          variant="light"
+                          rightSection={
+                            <CloseButton
+                              size="xs"
+                              aria-label={t("fromOrders.removeCustomer", { name })}
+                              onClick={() => setCustomers((current) => current.filter((c) => c !== id))}
+                            />
+                          }
+                        >
+                          {name}
+                        </Badge>
+                      );
                     })}
+                  </Group>
+                )}
+                {customers.length === 0 && orderIds.length === 0 && (
+                  <Text size="sm" c="dimmed">
+                    {t("fromOrders.pickHint")}
                   </Text>
-                  {p.separatedBy.length > 0 && (
-                    <Text size="xs" c="dimmed">
-                      {t("fromOrders.separatedBy", {
-                        fields: p.separatedBy.map((f) => t(`fromOrders.field.${f}`)).join(", "),
-                      })}
+                )}
+                {due.isError && (
+                  <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("fromOrders.failedToLoad")}>
+                    {refusalMessage(due.error, t, date)}
+                  </Alert>
+                )}
+                {due.isFetching && !due.data && <ContentSkeleton rows={3} rowHeight={40} />}
+                {due.data?.warnings.includes("orders_truncated") && (
+                  <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
+                    {t("fromOrders.truncated")}
+                  </Alert>
+                )}
+                {due.data && orders.length === 0 && (
+                  <Text size="sm" c="dimmed">
+                    {t("fromOrders.noOrders")}
+                  </Text>
+                )}
+                {orders.map((o) => (
+                  <Group
+                    key={keyOf(o)}
+                    gap="sm"
+                    wrap="wrap"
+                    data-order={o.id}
+                    data-kind={o.kind}
+                    style={o.blocked ? { opacity: 0.6 } : undefined}
+                  >
+                    <Checkbox
+                      aria-label={
+                        isSubscription(o)
+                          ? t("fromOrders.chooseSubscription", { number: o.number })
+                          : t("fromOrders.chooseOrder", { number: o.number })
+                      }
+                      disabled={Boolean(o.blocked)}
+                      checked={!o.blocked && !unchecked.has(keyOf(o))}
+                      onChange={(e) => toggle(keyOf(o), e.currentTarget.checked)}
+                    />
+                    <Text size="sm" fw={600}>
+                      {documentLabel(o, true)}
                     </Text>
-                  )}
+                    {o.customerName && <Text size="sm">{o.customerName}</Text>}
+                    {o.yourReference && (
+                      <Text size="sm">{t("fromOrders.yourReference", { reference: o.yourReference })}</Text>
+                    )}
+                    {o.deliveryDate && (
+                      <Text size="sm">{t("fromOrders.deliveryDate", { date: date(o.deliveryDate) })}</Text>
+                    )}
+                    <Text size="sm">
+                      {money(
+                        round2(
+                          o.lines.reduce((sum, l) => sum + lineNet(l.toInvoice, l.unitPrice, l.discountPercent), 0),
+                        ),
+                        o.currency,
+                      )}
+                    </Text>
+                    {o.blocked && (
+                      <Text size="xs" c="orange" data-blocked={o.blocked}>
+                        {`fromOrders.blocked.${o.blocked}` in invoicesCatalog.en
+                          ? t(`fromOrders.blocked.${o.blocked}`)
+                          : o.blocked}
+                      </Text>
+                    )}
+                  </Group>
+                ))}
+              </Stack>
+            </Stepper.Step>
+            <Stepper.Step label={t("fromOrders.step.lines")}>
+              <Stack>
+                <Text size="sm" c="dimmed">
+                  {t("fromOrders.partialHint")}
+                </Text>
+                {chosenOrders.map((o) => (
+                  <Stack key={keyOf(o)} gap={4}>
+                    <Text fw={600} size="sm">
+                      {documentLabel(o)}
+                    </Text>
+                    <Table.ScrollContainer minWidth={640}>
+                      <Table
+                        aria-label={
+                          isSubscription(o)
+                            ? t("fromOrders.periodsOf", { number: o.number })
+                            : t("fromOrders.linesOf", { number: o.number })
+                        }
+                        fz="sm"
+                      >
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>{t("fromOrders.col.line")}</Table.Th>
+                            <Table.Th ta="right">{t("fromOrders.col.left")}</Table.Th>
+                            <Table.Th ta="right">{t("fromOrders.col.toInvoice")}</Table.Th>
+                            <Table.Th ta="right">{t("fromOrders.col.remaining")}</Table.Th>
+                            <Table.Th ta="right">{t("unitPrice")}</Table.Th>
+                            <Table.Th ta="right">{t("fromOrders.col.amount")}</Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {o.lines.map((l) => {
+                            const remaining = Math.round((l.toInvoice - quantityOf(l)) * 1000) / 1000;
+                            return (
+                              <Table.Tr key={`${l.lineId}:${l.periodStart ?? ""}`}>
+                                <Table.Td>
+                                  {l.description}
+                                  {l.periodStart && (
+                                    <Text span size="sm" c="dimmed">
+                                      {` – ${periodLabel(l)}`}
+                                    </Text>
+                                  )}
+                                  {remaining > 0 && quantityOf(l) > 0 && (
+                                    <Badge ml="xs" size="xs" variant="light">
+                                      {t("fromOrders.partial")}
+                                    </Badge>
+                                  )}
+                                </Table.Td>
+                                <Table.Td ta="right">{`${number(l.toInvoice, 3)} ${l.unit}`}</Table.Td>
+                                <Table.Td ta="right">
+                                  {l.periodStart ? (
+                                    number(l.toInvoice, 3)
+                                  ) : (
+                                    <NumberInput
+                                      aria-label={t("fromOrders.toInvoiceOf", { line: l.description })}
+                                      value={quantities[l.lineId] ?? l.toInvoice}
+                                      min={0}
+                                      max={l.toInvoice}
+                                      decimalScale={3}
+                                      clampBehavior="strict"
+                                      size="xs"
+                                      w={110}
+                                      ml="auto"
+                                      onChange={(v) => setQuantities((current) => ({ ...current, [l.lineId]: v }))}
+                                    />
+                                  )}
+                                </Table.Td>
+                                <Table.Td ta="right" data-testid={`remaining-${l.lineId}`}>
+                                  {number(remaining, 3)}
+                                </Table.Td>
+                                <Table.Td ta="right">{unitPrice(l.unitPrice, o.currency)}</Table.Td>
+                                <Table.Td ta="right">{money(amountOf(l), o.currency)}</Table.Td>
+                              </Table.Tr>
+                            );
+                          })}
+                        </Table.Tbody>
+                      </Table>
+                    </Table.ScrollContainer>
+                  </Stack>
+                ))}
+                <Text size="sm" fw={600} data-testid="from-orders-chosen">
+                  {t("fromOrdersChosen", { count: chosenLines.length, amount: money(chosenAmount, "NOK") })}
+                </Text>
+              </Stack>
+            </Stepper.Step>
+            <Stepper.Step label={t("fromOrders.step.grouping")}>
+              <Stack>
+                <SegmentedControl
+                  aria-label={t("fromOrders.step.grouping")}
+                  value={mode}
+                  onChange={(v) => setMode(v as Mode)}
+                  data={[
+                    { value: "perOrder", label: t("fromOrders.mode.perOrder") },
+                    { value: "combined", label: t("fromOrders.mode.combined") },
+                  ]}
+                />
+                {mode === "combined" && (
+                  <Text size="sm" c="dimmed">
+                    {t("fromOrders.combinedHint")}
+                  </Text>
+                )}
+                <Text size="sm" fw={600}>
+                  {t("fromOrdersPreview", { count: preview.length })}
+                </Text>
+                <Stack gap={4} data-testid="from-orders-preview">
+                  {preview.map((p) => (
+                    <Stack key={`${p.customerId}-${keyOf(p.orders[0])}`} gap={0}>
+                      <Text size="sm">
+                        {t("fromOrders.previewInvoice", {
+                          customer: p.customerName || p.customerId,
+                          orders: p.orders
+                            .map((o) =>
+                              isSubscription(o)
+                                ? t("fromOrders.subscriptionShort", { number: o.number })
+                                : String(o.number),
+                            )
+                            .join(", "),
+                        })}
+                      </Text>
+                      {p.separatedBy.length > 0 && (
+                        <Text size="xs" c="dimmed">
+                          {t("fromOrders.separatedBy", {
+                            fields: p.separatedBy.map((f) => t(`fromOrders.field.${f}`)).join(", "),
+                          })}
+                        </Text>
+                      )}
+                    </Stack>
+                  ))}
                 </Stack>
-              ))}
-            </Stack>
-          </Stack>
-        </Stepper.Step>
-      </Stepper>
-      {refusal && (
-        <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("fromOrders.couldNotCreate")} role="alert">
-          <Stack gap={4}>
-            {refusal.map((words) => (
-              <Text key={words} size="sm">
-                {words}
-              </Text>
-            ))}
-          </Stack>
-        </Alert>
-      )}
-      <Group justify="flex-end">
-        {step > 0 && (
-          <Button variant="default" onClick={() => setStep(step - 1)}>
-            {t("fromOrders.back")}
-          </Button>
-        )}
-        {step < 2 ? (
-          <Button
-            disabled={step === 0 ? chosenOrders.length === 0 : chosenLines.length === 0}
-            onClick={() => setStep(step + 1)}
-          >
-            {t("fromOrders.next")}
-          </Button>
-        ) : (
-          <Button disabled={chosenLines.length === 0} loading={create.isPending} onClick={() => create.mutate()}>
-            {t("fromOrders.create")}
-          </Button>
-        )}
-      </Group>
+              </Stack>
+            </Stepper.Step>
+          </Stepper>
+          {refusal && (
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("fromOrders.couldNotCreate")} role="alert">
+              <Stack gap={4}>
+                {refusal.map((words) => (
+                  <Text key={words} size="sm">
+                    {words}
+                  </Text>
+                ))}
+              </Stack>
+            </Alert>
+          )}
+          <Group justify="flex-end">
+            {step > 0 && (
+              <Button variant="default" onClick={() => setStep(step - 1)}>
+                {t("fromOrders.back")}
+              </Button>
+            )}
+            {step < 2 ? (
+              <Button
+                disabled={step === 0 ? chosenOrders.length === 0 : chosenLines.length === 0}
+                onClick={() => setStep(step + 1)}
+              >
+                {t("fromOrders.next")}
+              </Button>
+            ) : (
+              <Button disabled={chosenLines.length === 0} loading={create.isPending} onClick={() => create.mutate()}>
+                {t("fromOrders.create")}
+              </Button>
+            )}
+          </Group>
+        </Stack>
+      </PageSection>
     </Stack>
   );
 };

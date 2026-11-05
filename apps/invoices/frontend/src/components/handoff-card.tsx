@@ -1,7 +1,8 @@
-import { Badge, Button, Card, Group, Stack, Text, Title } from "@mantine/core";
+import { Badge, Button, Group, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconDownload } from "@tabler/icons-react";
 import { useMutation } from "@tanstack/react-query";
+import { PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { downloadCollectionCsv, type LetterLeft } from "../api/collection";
 import { isSessionExpired, saveCsv } from "../api/export";
@@ -53,7 +54,7 @@ export const HandoffCard = ({ invoice, canAct, canIssue, today, currentUserId, o
     },
   });
   return (
-    <Card withBorder data-testid="handoff-card">
+    <PageSection data-testid="handoff-card">
       <Stack gap="xs">
         <Group justify="space-between">
           <Title order={4}>{t("handoff.title")}</Title>
@@ -140,6 +141,6 @@ export const HandoffCard = ({ invoice, canAct, canIssue, today, currentUserId, o
         />
       )}
       {modal === "delivery" && <ManualDeliveryModal invoice={invoice} today={today} onClose={() => setModal(null)} />}
-    </Card>
+    </PageSection>
   );
 };

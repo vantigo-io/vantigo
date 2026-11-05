@@ -5,7 +5,6 @@ import {
   Badge,
   Box,
   Button,
-  Card,
   Divider,
   Drawer,
   Group,
@@ -41,7 +40,14 @@ import {
 } from "@tabler/icons-react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, instantFromWallClock, useI18n, wallClockIn } from "@vantigo/frontend-shell";
+import {
+  ContentSkeleton,
+  EmptyState,
+  instantFromWallClock,
+  PageSection,
+  useI18n,
+  wallClockIn,
+} from "@vantigo/frontend-shell";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { attachmentsQueryKey, type CustomerAttachment } from "../api/attachments";
 import {
@@ -527,7 +533,7 @@ export const CustomerTimeline = ({
     </Stack>
   );
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <Group justify="space-between" wrap="wrap">
           <Group gap="xs">
@@ -866,7 +872,7 @@ export const CustomerTimeline = ({
           </Group>
         </Stack>
       </Modal>
-    </Card>
+    </PageSection>
   );
 };
 

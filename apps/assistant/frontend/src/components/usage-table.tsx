@@ -1,6 +1,6 @@
-import { Alert, Button, Card, Group, Loader, SegmentedControl, Stack, Table, Text, Title } from "@mantine/core";
+import { Alert, Button, Group, Loader, SegmentedControl, Stack, Table, Text, Title } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { usageQueryOptions } from "../api/assistant";
 import "../i18n";
@@ -28,7 +28,7 @@ export const UsageTable = () => {
   const number = new Intl.NumberFormat(i18n.language);
 
   return (
-    <Card withBorder data-testid="usage">
+    <PageSection data-testid="usage">
       <Stack gap="md">
         <Stack gap={4}>
           <Title order={4}>{t("usageTitle")}</Title>
@@ -91,6 +91,6 @@ export const UsageTable = () => {
           </Table.ScrollContainer>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

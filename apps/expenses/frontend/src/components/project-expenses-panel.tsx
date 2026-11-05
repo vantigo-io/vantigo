@@ -15,7 +15,7 @@ import {
 } from "@mantine/core";
 import { IconAlertCircle, IconFileInvoice, IconPlus, IconReceipt } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, useI18n, useShellLink } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection, useI18n, useShellLink } from "@vantigo/frontend-shell";
 import { useRef, useState } from "react";
 import { type Expense, expensesQueryOptions } from "../api/entries";
 import { expensesMetaQueryOptions } from "../api/meta";
@@ -214,13 +214,13 @@ export const ProjectExpensesPanel = ({ projectId, onChanged, invoiceHref }: Proj
           held while they are read: without it the list is drawn at the top of
           the tab and then pushed down on every mount. */}
       {summary.isPending && !projectsOff && (
-        <Card withBorder padding="lg" radius="md" data-testid="project-expense-totals-loading">
+        <PageSection data-testid="project-expense-totals-loading">
           <ContentSkeleton rows={3} rowHeight={48} />
-        </Card>
+        </PageSection>
       )}
 
       {totals && currencies.length > 0 && (
-        <Card withBorder padding="lg" radius="md" data-testid="project-expense-totals">
+        <PageSection data-testid="project-expense-totals">
           <Stack gap="md">
             <Stack gap={0}>
               <Text fw={600} component="h3">
@@ -241,10 +241,10 @@ export const ProjectExpensesPanel = ({ projectId, onChanged, invoiceHref }: Proj
               </Text>
             )}
           </Stack>
-        </Card>
+        </PageSection>
       )}
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Group justify="space-between" align="start" wrap="wrap">
             <Stack gap={0}>
@@ -441,7 +441,7 @@ export const ProjectExpensesPanel = ({ projectId, onChanged, invoiceHref }: Proj
             </>
           )}
         </Stack>
-      </Card>
+      </PageSection>
 
       <EntryDrawer
         expense={opened}

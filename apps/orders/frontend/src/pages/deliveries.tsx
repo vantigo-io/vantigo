@@ -3,7 +3,7 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { type DeliveryListFilters, deliveryListQueryOptions } from "../api/deliveries";
 import { PAGE_SIZE } from "../api/list-query";
@@ -49,120 +49,127 @@ export const DeliveriesPage = ({ access = noOrdersAccess }: { access?: OrdersAcc
   return (
     <Stack gap="lg">
       <PageHeader title={t("deliveriesTitle")} description={t("deliveriesDescription")} />
-      <Group gap="md" wrap="wrap" align="flex-end">
-        <SegmentedControl
-          aria-label={t("deliveriesView")}
-          value={view}
-          onChange={(value) => setView(value as typeof view)}
-          data={[
-            { value: "toDeliver", label: t("toDeliver") },
-            { value: "deliveries", label: t("deliveryDocuments") },
-          ]}
-          data-assist="orders.deliveries.view"
-        />
-        {view === "deliveries" && (
-          <Chip.Group
-            multiple
-            value={(filters.status ?? []) as string[]}
-            onChange={(value) => set({ status: value as DeliveryStatusOfDelivery[] })}
-          >
-            <Group gap={6} aria-label={t("status")} role="group">
-              {statuses.map((status) => (
-                <Chip key={status} value={status} size="xs" variant="outline">
-                  {t(`deliveryDocumentStatus.${status}`)}
-                </Chip>
-              ))}
-            </Group>
-          </Chip.Group>
-        )}
-        <TextInput
-          label={t("search")}
-          placeholder={t("searchDeliveriesPlaceholder")}
-          leftSection={<IconSearch size={14} />}
-          value={search}
-          onChange={(e) => {
-            setSearch(e.currentTarget.value);
-            set({});
-            setPage(1);
-          }}
-        />
-      </Group>
-      {list.isError && (
-        <Alert color="red" title={t("failedToLoadDeliveries")}>
-          {refusalMessage(list.error, t)}
-        </Alert>
-      )}
-      {list.isPending && <ContentSkeleton rows={5} rowHeight={40} />}
-      {list.data && total === 0 && (
-        <EmptyState
-          title={view === "toDeliver" ? t("nothingToDeliver") : t("noDeliveries")}
-          description={view === "toDeliver" ? t("nothingToDeliverDescription") : t("noDeliveriesDescription")}
-        />
-      )}
-      {view === "toDeliver" && toDeliver.data && total > 0 && <OrderTable rows={toDeliver.data.items} />}
-      {view === "deliveries" && deliveries.data && total > 0 && (
-        <Table.ScrollContainer minWidth={640}>
-          <Table verticalSpacing="xs" striped highlightOnHover data-testid="deliveries-table">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t("deliveryNumberColumn")}</Table.Th>
-                <Table.Th>{t("orderColumn")}</Table.Th>
-                <Table.Th>{t("customer")}</Table.Th>
-                <Table.Th>{t("status")}</Table.Th>
-                <Table.Th>{t("postedAt")}</Table.Th>
-                <Table.Th ta="right">{t("lines")}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {deliveries.data.items.map((d) => (
-                <Table.Tr key={d.id}>
-                  <Table.Td>
-                    <Anchor size="sm" renderRoot={(props) => <Link {...deliveryLinkOptions(d.id)} {...props} />}>
-                      {t("deliveryNumber", { number: d.number })}
-                    </Anchor>
-                  </Table.Td>
-                  <Table.Td>
-                    <Anchor size="sm" renderRoot={(props) => <Link {...salesOrderLinkOptions(d.orderId)} {...props} />}>
-                      {t("orderNumber", { number: d.orderNumber })}
-                    </Anchor>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{d.customerName}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <DeliveryDocumentBadge status={d.status} />
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{d.postedAt ? dateTime(d.postedAt) : "—"}</Text>
-                  </Table.Td>
-                  <Table.Td ta="right">
-                    <Text size="sm">{d.lines}</Text>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      )}
-      {list.data && total > 0 && (
-        <Group justify="space-between">
-          <Text size="sm" c="dimmed">
-            {view === "toDeliver" ? t("orderCount", { count: total }) : t("deliveryCount", { count: total })}
-          </Text>
-          {pages > 1 && (
-            <Pagination
-              total={pages}
-              value={view === "toDeliver" ? page : (filters.page ?? 1)}
-              onChange={(next) => (view === "toDeliver" ? setPage(next) : set({ page: next }))}
+      <PageSection>
+        <Stack gap="md">
+          <Group gap="md" wrap="wrap" align="flex-end">
+            <SegmentedControl
+              aria-label={t("deliveriesView")}
+              value={view}
+              onChange={(value) => setView(value as typeof view)}
+              data={[
+                { value: "toDeliver", label: t("toDeliver") },
+                { value: "deliveries", label: t("deliveryDocuments") },
+              ]}
+              data-assist="orders.deliveries.view"
+            />
+            {view === "deliveries" && (
+              <Chip.Group
+                multiple
+                value={(filters.status ?? []) as string[]}
+                onChange={(value) => set({ status: value as DeliveryStatusOfDelivery[] })}
+              >
+                <Group gap={6} aria-label={t("status")} role="group">
+                  {statuses.map((status) => (
+                    <Chip key={status} value={status} size="xs" variant="outline">
+                      {t(`deliveryDocumentStatus.${status}`)}
+                    </Chip>
+                  ))}
+                </Group>
+              </Chip.Group>
+            )}
+            <TextInput
+              label={t("search")}
+              placeholder={t("searchDeliveriesPlaceholder")}
+              leftSection={<IconSearch size={14} />}
+              value={search}
+              onChange={(e) => {
+                setSearch(e.currentTarget.value);
+                set({});
+                setPage(1);
+              }}
+            />
+          </Group>
+          {list.isError && (
+            <Alert color="red" title={t("failedToLoadDeliveries")}>
+              {refusalMessage(list.error, t)}
+            </Alert>
+          )}
+          {list.isPending && <ContentSkeleton rows={5} rowHeight={40} />}
+          {list.data && total === 0 && (
+            <EmptyState
+              title={view === "toDeliver" ? t("nothingToDeliver") : t("noDeliveries")}
+              description={view === "toDeliver" ? t("nothingToDeliverDescription") : t("noDeliveriesDescription")}
             />
           )}
-        </Group>
-      )}
-      {!access.canManageDeliveries && (
-        <Text size="xs" c="dimmed">
-          {t("deliveriesReadOnly")}
-        </Text>
-      )}
+          {view === "toDeliver" && toDeliver.data && total > 0 && <OrderTable rows={toDeliver.data.items} />}
+          {view === "deliveries" && deliveries.data && total > 0 && (
+            <Table.ScrollContainer minWidth={640}>
+              <Table verticalSpacing="xs" striped highlightOnHover data-testid="deliveries-table">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{t("deliveryNumberColumn")}</Table.Th>
+                    <Table.Th>{t("orderColumn")}</Table.Th>
+                    <Table.Th>{t("customer")}</Table.Th>
+                    <Table.Th>{t("status")}</Table.Th>
+                    <Table.Th>{t("postedAt")}</Table.Th>
+                    <Table.Th ta="right">{t("lines")}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {deliveries.data.items.map((d) => (
+                    <Table.Tr key={d.id}>
+                      <Table.Td>
+                        <Anchor size="sm" renderRoot={(props) => <Link {...deliveryLinkOptions(d.id)} {...props} />}>
+                          {t("deliveryNumber", { number: d.number })}
+                        </Anchor>
+                      </Table.Td>
+                      <Table.Td>
+                        <Anchor
+                          size="sm"
+                          renderRoot={(props) => <Link {...salesOrderLinkOptions(d.orderId)} {...props} />}
+                        >
+                          {t("orderNumber", { number: d.orderNumber })}
+                        </Anchor>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{d.customerName}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <DeliveryDocumentBadge status={d.status} />
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{d.postedAt ? dateTime(d.postedAt) : "—"}</Text>
+                      </Table.Td>
+                      <Table.Td ta="right">
+                        <Text size="sm">{d.lines}</Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          )}
+          {list.data && total > 0 && (
+            <Group justify="space-between">
+              <Text size="sm" c="dimmed">
+                {view === "toDeliver" ? t("orderCount", { count: total }) : t("deliveryCount", { count: total })}
+              </Text>
+              {pages > 1 && (
+                <Pagination
+                  total={pages}
+                  value={view === "toDeliver" ? page : (filters.page ?? 1)}
+                  onChange={(next) => (view === "toDeliver" ? setPage(next) : set({ page: next }))}
+                />
+              )}
+            </Group>
+          )}
+          {!access.canManageDeliveries && (
+            <Text size="xs" c="dimmed">
+              {t("deliveriesReadOnly")}
+            </Text>
+          )}
+        </Stack>
+      </PageSection>
     </Stack>
   );
 };

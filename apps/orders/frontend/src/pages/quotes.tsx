@@ -3,7 +3,7 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { PAGE_SIZE } from "../api/list-query";
 import { type QuoteListFilters, quoteListQueryOptions } from "../api/quotes";
@@ -51,74 +51,82 @@ export const QuotesPage = ({ access = noOrdersAccess }: { access?: OrdersAccess 
           )
         }
       />
-      <Stack gap="sm">
-        <Chip.Group multiple value={filters.status ?? []} onChange={(value) => set({ status: value as QuoteStatus[] })}>
-          <Group gap={6} aria-label={t("status")} role="group">
-            {statuses.map((status) => (
-              <Chip key={status} value={status} size="xs" variant="outline">
-                {t(`quoteStatus.${status}`)}
-              </Chip>
-            ))}
-          </Group>
-        </Chip.Group>
-        <Group align="flex-end" wrap="wrap">
-          <TextInput
-            label={t("search")}
-            placeholder={t("searchQuotesPlaceholder")}
-            leftSection={<IconSearch size={14} />}
-            value={search}
-            onChange={(e) => {
-              setSearch(e.currentTarget.value);
-              set({});
-            }}
-          />
-          {access.canViewCustomers && (
-            <CustomerPicker
-              label={t("customerFilter")}
-              anyStatus
-              value={filters.customerId ?? null}
-              onChange={(id) => set({ customerId: id ?? undefined })}
-            />
+      <PageSection>
+        <Stack gap="md">
+          <Stack gap="sm">
+            <Chip.Group
+              multiple
+              value={filters.status ?? []}
+              onChange={(value) => set({ status: value as QuoteStatus[] })}
+            >
+              <Group gap={6} aria-label={t("status")} role="group">
+                {statuses.map((status) => (
+                  <Chip key={status} value={status} size="xs" variant="outline">
+                    {t(`quoteStatus.${status}`)}
+                  </Chip>
+                ))}
+              </Group>
+            </Chip.Group>
+            <Group align="flex-end" wrap="wrap">
+              <TextInput
+                label={t("search")}
+                placeholder={t("searchQuotesPlaceholder")}
+                leftSection={<IconSearch size={14} />}
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.currentTarget.value);
+                  set({});
+                }}
+              />
+              {access.canViewCustomers && (
+                <CustomerPicker
+                  label={t("customerFilter")}
+                  anyStatus
+                  value={filters.customerId ?? null}
+                  onChange={(id) => set({ customerId: id ?? undefined })}
+                />
+              )}
+              <Select
+                label={t("salesperson")}
+                placeholder={t("anySalesperson")}
+                clearable
+                searchable
+                data={(salespeople.data ?? []).map((p) => ({ value: p.id, label: p.displayName }))}
+                value={filters.salespersonId ?? null}
+                onChange={(value) => set({ salespersonId: value ?? undefined })}
+              />
+              {access.userId && (
+                <Switch
+                  label={t("onlyMine")}
+                  mb={8}
+                  checked={filters.salespersonId === access.userId}
+                  onChange={(e) => set({ salespersonId: e.currentTarget.checked ? access.userId : undefined })}
+                />
+              )}
+            </Group>
+          </Stack>
+          {list.isError && (
+            <Alert color="red" title={t("failedToLoadQuotes")}>
+              {refusalMessage(list.error, t)}
+            </Alert>
           )}
-          <Select
-            label={t("salesperson")}
-            placeholder={t("anySalesperson")}
-            clearable
-            searchable
-            data={(salespeople.data ?? []).map((p) => ({ value: p.id, label: p.displayName }))}
-            value={filters.salespersonId ?? null}
-            onChange={(value) => set({ salespersonId: value ?? undefined })}
-          />
-          {access.userId && (
-            <Switch
-              label={t("onlyMine")}
-              mb={8}
-              checked={filters.salespersonId === access.userId}
-              onChange={(e) => set({ salespersonId: e.currentTarget.checked ? access.userId : undefined })}
-            />
+          {list.isPending && <ContentSkeleton rows={5} rowHeight={40} />}
+          {list.data && list.data.items.length === 0 && (
+            <EmptyState title={t("noQuotes")} description={t("noQuotesDescription")} />
           )}
-        </Group>
-      </Stack>
-      {list.isError && (
-        <Alert color="red" title={t("failedToLoadQuotes")}>
-          {refusalMessage(list.error, t)}
-        </Alert>
-      )}
-      {list.isPending && <ContentSkeleton rows={5} rowHeight={40} />}
-      {list.data && list.data.items.length === 0 && (
-        <EmptyState title={t("noQuotes")} description={t("noQuotesDescription")} />
-      )}
-      {list.data && list.data.items.length > 0 && (
-        <>
-          <QuoteTable rows={list.data.items} />
-          <Group justify="space-between">
-            <Text size="sm" c="dimmed">
-              {t("quoteCount", { count: list.data.total })}
-            </Text>
-            {pages > 1 && <Pagination total={pages} value={filters.page ?? 1} onChange={(page) => set({ page })} />}
-          </Group>
-        </>
-      )}
+          {list.data && list.data.items.length > 0 && (
+            <>
+              <QuoteTable rows={list.data.items} />
+              <Group justify="space-between">
+                <Text size="sm" c="dimmed">
+                  {t("quoteCount", { count: list.data.total })}
+                </Text>
+                {pages > 1 && <Pagination total={pages} value={filters.page ?? 1} onChange={(page) => set({ page })} />}
+              </Group>
+            </>
+          )}
+        </Stack>
+      </PageSection>
     </Stack>
   );
 };

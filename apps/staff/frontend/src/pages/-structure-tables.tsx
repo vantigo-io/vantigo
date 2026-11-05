@@ -1,9 +1,9 @@
-import { ActionIcon, Alert, Badge, Button, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Button, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 import { competenceProfilesQueryOptions } from "../api/competences";
 import { personQueryOptions } from "../api/people";
@@ -122,7 +122,7 @@ const TableCard = ({
 }: TableCardProps) => {
   const { t } = useI18n("staff");
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <Group justify="space-between" align="flex-start">
           <Stack gap={0} maw={640}>
@@ -145,7 +145,7 @@ const TableCard = ({
         {!empty && <Table.ScrollContainer minWidth={560}>{children}</Table.ScrollContainer>}
         {modal}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 

@@ -1,7 +1,7 @@
-import { Anchor, Badge, Button, Card, Group, Loader, Stack, Table, Text, Title } from "@mantine/core";
+import { Anchor, Badge, Button, Group, Loader, Stack, Table, Text, Title } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { EmptyState, useI18n } from "@vantigo/frontend-shell";
+import { EmptyState, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { Fragment, useState } from "react";
 import { type Settlement, settlementsQueryOptions } from "../api/settlements";
 import { MARKET_TIME_ZONE } from "../lib/market-time";
@@ -28,7 +28,7 @@ export const SettlementsCard = ({ meteringPointId }: { meteringPointId: number }
       return next;
     });
   return (
-    <Card withBorder>
+    <PageSection>
       <Stack>
         <Title order={3}>{t("settlements")}</Title>
         {isPending ? (
@@ -150,6 +150,6 @@ export const SettlementsCard = ({ meteringPointId }: { meteringPointId: number }
           </Table>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

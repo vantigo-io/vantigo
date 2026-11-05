@@ -1,8 +1,8 @@
-import { Alert, Button, Card, Checkbox, Group, Modal, Stack, Text, Textarea, TextInput, Title } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, Modal, Stack, Text, Textarea, TextInput, Title } from "@mantine/core";
 import { IconInbox, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import {
@@ -103,7 +103,7 @@ export function InboxPage({ connectionButton }: InboxPageProps = {}) {
   return (
     <Stack gap="lg" className="inbox-shell">
       <PageHeader title={t("inbox")} description={t("inboxDescription")} />
-      <Card withBorder radius="lg" padding={0} className="inbox-card">
+      <PageSection padding={0} className="inbox-card">
         <Group className="inbox-toolbar" justify="space-between" p="sm">
           <Group gap="xs">
             <IconInbox size={19} />
@@ -163,7 +163,7 @@ export function InboxPage({ connectionButton }: InboxPageProps = {}) {
             )}
           </main>
         </div>
-      </Card>
+      </PageSection>
       <Modal opened={newModalOpen} onClose={() => setNewModalOpen(false)} title={t("newConversation")} size="lg">
         <Stack gap="sm">
           <TextInput label={t("to")} required value={newTo} onChange={(e) => setNewTo(e.currentTarget.value)} />

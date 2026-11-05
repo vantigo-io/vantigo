@@ -1,4 +1,5 @@
-import { Badge, Card, Group, Stack, Text, Timeline, Title } from "@mantine/core";
+import { Badge, Group, Stack, Text, Timeline, Title } from "@mantine/core";
+import { PageSection } from "@vantigo/frontend-shell";
 import type { Change, Line } from "../api/types";
 import { hasWords } from "../lib/errors";
 import { useOrdersFormat } from "../lib/format";
@@ -17,7 +18,7 @@ export const ChangeLog = ({ changes, lines }: { changes: readonly Change[]; line
   };
   const newest = [...changes].reverse();
   return (
-    <Card withBorder padding="lg" data-testid="change-log">
+    <PageSection data-testid="change-log">
       <Stack gap="md">
         <Title order={4}>{t("changeLog")}</Title>
         {newest.length === 0 ? (
@@ -77,6 +78,6 @@ export const ChangeLog = ({ changes, lines }: { changes: readonly Change[]; line
           </Timeline>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

@@ -1,9 +1,9 @@
-import { ActionIcon, Alert, Badge, Button, Card, Group, Menu, Stack, Table, Text, Title } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Button, Group, Menu, Stack, Table, Text, Title } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconDots, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { confirmAllocation, deleteAllocation, type PlanningAllocation } from "../api/allocations";
 import { planningMetaQueryOptions } from "../api/meta";
@@ -125,7 +125,7 @@ export const ProjectPlan = ({ projectId, from, to }: ProjectPlanProps) => {
         </Group>
       )}
 
-      <Card withBorder padding="sm" radius="md">
+      <PageSection>
         <Title order={2} size="h4" mb="sm">
           {t("weeklyHours")}
         </Title>
@@ -200,9 +200,9 @@ export const ProjectPlan = ({ projectId, from, to }: ProjectPlanProps) => {
             </Stack>
           </div>
         )}
-      </Card>
+      </PageSection>
 
-      <Card withBorder padding="sm" radius="md">
+      <PageSection>
         <Title order={2} size="h4" mb="sm">
           {t("allocations")}
         </Title>
@@ -271,9 +271,9 @@ export const ProjectPlan = ({ projectId, from, to }: ProjectPlanProps) => {
             </Table>
           </Table.ScrollContainer>
         )}
-      </Card>
+      </PageSection>
 
-      <Card withBorder padding="sm" radius="md">
+      <PageSection>
         <Title order={2} size="h4" mb="sm">
           {t("requests")}
         </Title>
@@ -358,7 +358,7 @@ export const ProjectPlan = ({ projectId, from, to }: ProjectPlanProps) => {
             </Table>
           </Table.ScrollContainer>
         )}
-      </Card>
+      </PageSection>
 
       {canManage && (
         <>

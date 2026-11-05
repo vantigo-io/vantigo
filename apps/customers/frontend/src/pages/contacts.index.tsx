@@ -1,21 +1,16 @@
-import {
-  ActionIcon,
-  Alert,
-  Anchor,
-  Badge,
-  Button,
-  Card,
-  Group,
-  Pagination,
-  Stack,
-  Table,
-  TextInput,
-} from "@mantine/core";
+import { ActionIcon, Alert, Anchor, Badge, Button, Group, Pagination, Stack, Table, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
+import {
+  ContentSkeleton,
+  EmptyState,
+  PageHeader,
+  PageSection,
+  useDebouncedListSearch,
+  useI18n,
+} from "@vantigo/frontend-shell";
 import { useState } from "react";
 
 import { type ContactListItem, contactsQueryOptions, deleteContact } from "../api/contacts";
@@ -96,7 +91,7 @@ export const ContactsPage = () => {
 
       <ContactFormModal state={modalState} onClose={() => setModalState(null)} />
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <TextInput
             placeholder={t("searchContacts")}
@@ -181,7 +176,7 @@ export const ContactsPage = () => {
             </>
           )}
         </Stack>
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

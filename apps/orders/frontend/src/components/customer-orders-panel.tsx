@@ -2,7 +2,7 @@ import { Alert, Box, Button, Card, Group, SegmentedControl, SimpleGrid, Stack, T
 import { IconPlus } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { orderListQueryOptions } from "../api/orders";
 import { quoteListQueryOptions } from "../api/quotes";
@@ -115,7 +115,7 @@ export const CustomerOrdersPanel = ({ customerId, canCreateQuote, canCreateOrder
         </SimpleGrid>
       )}
 
-      <Card withBorder padding="lg">
+      <PageSection>
         <Stack gap="sm">
           <Title order={4}>{t("openQuotes")}</Title>
           {quotes.isPending && <ContentSkeleton rows={2} rowHeight={36} />}
@@ -134,9 +134,9 @@ export const CustomerOrdersPanel = ({ customerId, canCreateQuote, canCreateOrder
             </>
           )}
         </Stack>
-      </Card>
+      </PageSection>
 
-      <Card withBorder padding="lg">
+      <PageSection>
         <Stack gap="sm">
           <Group justify="space-between">
             <Title order={4}>{t("salesOrdersTitle")}</Title>
@@ -173,9 +173,9 @@ export const CustomerOrdersPanel = ({ customerId, canCreateQuote, canCreateOrder
             </>
           )}
         </Stack>
-      </Card>
+      </PageSection>
 
-      <Card withBorder padding="lg">
+      <PageSection>
         <Stack gap="sm">
           <Title order={4}>{t("subscriptionsTitle")}</Title>
           {subscriptions.isPending && <ContentSkeleton rows={2} rowHeight={36} />}
@@ -194,7 +194,7 @@ export const CustomerOrdersPanel = ({ customerId, canCreateQuote, canCreateOrder
             </>
           )}
         </Stack>
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

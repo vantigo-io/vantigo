@@ -3,7 +3,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconChecks, IconChevronDown, IconChevronRight, IconLock } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { approvalsQueryOptions, approveTimeEntries, type TimeApprovalGroup } from "../api/approvals";
 import type { TimeEntry } from "../api/entries";
@@ -84,15 +84,15 @@ export const ApprovalsPage = () => {
       {isPending && <ContentSkeleton rows={3} rowHeight={72} />}
 
       {forbidden && (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <EmptyState icon={IconLock} title={t("approvesNothing")} description={t("approvesNothingDescription")} />
-        </Card>
+        </PageSection>
       )}
 
       {data && groups.length === 0 && (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <EmptyState icon={IconChecks} title={t("nothingToApprove")} description={t("nothingToApproveDescription")} />
-        </Card>
+        </PageSection>
       )}
 
       {picked.length > 0 && (

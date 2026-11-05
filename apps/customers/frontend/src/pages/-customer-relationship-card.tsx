@@ -1,8 +1,8 @@
-import { Alert, Badge, Button, Card, Divider, Group, MultiSelect, Select, Stack, Text } from "@mantine/core";
+import { Alert, Badge, Button, Divider, Group, MultiSelect, Select, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconUserStar } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   ApiConflictError,
@@ -158,7 +158,7 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
   const rowSavePending = ownerMutation.isPending || groupMutation.isPending;
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="lg">
         <Group gap="xs">
           <IconUserStar size={18} stroke={1.5} />
@@ -238,7 +238,7 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
         </Group>
         {canEdit && <TagsEditor customerId={customerId} tags={customer.tags} />}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 

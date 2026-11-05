@@ -18,7 +18,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPlus } from "@tabler/icons-react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { createInvoice, type InvoiceListFilters, invoiceListQueryOptions } from "../api/invoices";
 import { invoicesMetaQueryOptions } from "../api/meta";
@@ -111,120 +111,124 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName, canInvoiceOrde
           {t("sellerIncomplete")}
         </Alert>
       )}
-      <Group align="flex-end" wrap="wrap">
-        <SegmentedControl
-          aria-label={t("status")}
-          value={filters.status ?? "all"}
-          onChange={(v) => set({ status: v === "all" ? undefined : (v as "draft" | "issued") })}
-          data={[
-            { value: "all", label: t("allStatuses") },
-            { value: "draft", label: t("statusDraft") },
-            { value: "issued", label: t("statusIssued") },
-          ]}
-        />
-        <SegmentedControl
-          aria-label={t("kind")}
-          value={filters.kind ?? "all"}
-          onChange={(v) => set({ kind: v === "all" ? undefined : (v as "invoice" | "credit_note") })}
-          data={[
-            { value: "all", label: t("allKinds") },
-            { value: "invoice", label: t("kindInvoice") },
-            { value: "credit_note", label: t("kindCreditNote") },
-          ]}
-        />
-        {/* Six options do not fit a phone's width: below sm they are a Select. */}
-        {phone ? (
-          <Select
-            label={t("state")}
-            value={filters.state ?? "all"}
-            onChange={(v) => set({ state: !v || v === "all" ? undefined : v })}
-            allowDeselect={false}
-            data={stateOptions}
-          />
-        ) : (
-          <SegmentedControl
-            aria-label={t("state")}
-            value={filters.state ?? "all"}
-            onChange={(v) => set({ state: v === "all" ? undefined : v })}
-            data={stateOptions}
-          />
-        )}
-        {canViewCustomers && (
-          <CustomerPicker
-            label={t("customerFilter")}
-            anyStatus
-            value={filters.customerId ?? null}
-            onChange={(id) => set({ customerId: id ?? undefined })}
-          />
-        )}
-        <TextInput
-          label={t("search")}
-          placeholder={t("searchPlaceholder")}
-          value={search}
-          onChange={(e) => {
-            setSearch(e.currentTarget.value);
-            set({}); // a new search starts on page 1
-          }}
-        />
-        <DateInput
-          label={t("issuedFrom")}
-          clearable
-          valueFormat={t("dateInputFormat")}
-          value={filters.from ?? null}
-          onChange={(d) => set({ from: d ?? undefined })}
-        />
-        <DateInput
-          label={t("issuedTo")}
-          clearable
-          valueFormat={t("dateInputFormat")}
-          value={filters.to ?? null}
-          onChange={(d) => set({ to: d ?? undefined })}
-        />
-        {filters.projectId !== undefined && (
-          <Group gap={4} data-testid="project-filter">
-            <Text size="sm">{t("projectFilter", { reference: projectReference ?? filters.projectId })}</Text>
-            <CloseButton
-              size="sm"
-              aria-label={t("clearProjectFilter")}
-              onClick={() => {
-                setProjectReference(null);
-                set({ projectId: undefined });
+      <PageSection>
+        <Stack gap="md">
+          <Group align="flex-end" wrap="wrap">
+            <SegmentedControl
+              aria-label={t("status")}
+              value={filters.status ?? "all"}
+              onChange={(v) => set({ status: v === "all" ? undefined : (v as "draft" | "issued") })}
+              data={[
+                { value: "all", label: t("allStatuses") },
+                { value: "draft", label: t("statusDraft") },
+                { value: "issued", label: t("statusIssued") },
+              ]}
+            />
+            <SegmentedControl
+              aria-label={t("kind")}
+              value={filters.kind ?? "all"}
+              onChange={(v) => set({ kind: v === "all" ? undefined : (v as "invoice" | "credit_note") })}
+              data={[
+                { value: "all", label: t("allKinds") },
+                { value: "invoice", label: t("kindInvoice") },
+                { value: "credit_note", label: t("kindCreditNote") },
+              ]}
+            />
+            {/* Six options do not fit a phone's width: below sm they are a Select. */}
+            {phone ? (
+              <Select
+                label={t("state")}
+                value={filters.state ?? "all"}
+                onChange={(v) => set({ state: !v || v === "all" ? undefined : v })}
+                allowDeselect={false}
+                data={stateOptions}
+              />
+            ) : (
+              <SegmentedControl
+                aria-label={t("state")}
+                value={filters.state ?? "all"}
+                onChange={(v) => set({ state: v === "all" ? undefined : v })}
+                data={stateOptions}
+              />
+            )}
+            {canViewCustomers && (
+              <CustomerPicker
+                label={t("customerFilter")}
+                anyStatus
+                value={filters.customerId ?? null}
+                onChange={(id) => set({ customerId: id ?? undefined })}
+              />
+            )}
+            <TextInput
+              label={t("search")}
+              placeholder={t("searchPlaceholder")}
+              value={search}
+              onChange={(e) => {
+                setSearch(e.currentTarget.value);
+                set({}); // a new search starts on page 1
               }}
             />
-          </Group>
-        )}
-      </Group>
-      {list.isError && (
-        <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadInvoices")}>
-          {refusalMessage(list.error, t, date)}
-        </Alert>
-      )}
-      {list.isPending && <ContentSkeleton rows={5} rowHeight={40} />}
-      {list.data && list.data.data.length === 0 && (
-        <EmptyState title={t("noInvoices")} description={t("noInvoicesDescription")} />
-      )}
-      {list.data && list.data.data.length > 0 && (
-        <>
-          <InvoiceTable
-            rows={list.data.data}
-            showCustomer
-            onProject={(projectId, reference) => {
-              setProjectReference(reference);
-              set({ projectId });
-            }}
-          />
-          {list.data.pagination.totalPages > 1 && (
-            <Pagination
-              total={list.data.pagination.totalPages}
-              value={list.data.pagination.page}
-              onChange={(page) => set({ page })}
+            <DateInput
+              label={t("issuedFrom")}
+              clearable
+              valueFormat={t("dateInputFormat")}
+              value={filters.from ?? null}
+              onChange={(d) => set({ from: d ?? undefined })}
             />
+            <DateInput
+              label={t("issuedTo")}
+              clearable
+              valueFormat={t("dateInputFormat")}
+              value={filters.to ?? null}
+              onChange={(d) => set({ to: d ?? undefined })}
+            />
+            {filters.projectId !== undefined && (
+              <Group gap={4} data-testid="project-filter">
+                <Text size="sm">{t("projectFilter", { reference: projectReference ?? filters.projectId })}</Text>
+                <CloseButton
+                  size="sm"
+                  aria-label={t("clearProjectFilter")}
+                  onClick={() => {
+                    setProjectReference(null);
+                    set({ projectId: undefined });
+                  }}
+                />
+              </Group>
+            )}
+          </Group>
+          {list.isError && (
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadInvoices")}>
+              {refusalMessage(list.error, t, date)}
+            </Alert>
           )}
-          <Text size="sm" c="dimmed">
-            {t("documentCount", { count: list.data.pagination.totalCount })}
-          </Text>
-        </>
-      )}
+          {list.isPending && <ContentSkeleton rows={5} rowHeight={40} />}
+          {list.data && list.data.data.length === 0 && (
+            <EmptyState title={t("noInvoices")} description={t("noInvoicesDescription")} />
+          )}
+          {list.data && list.data.data.length > 0 && (
+            <>
+              <InvoiceTable
+                rows={list.data.data}
+                showCustomer
+                onProject={(projectId, reference) => {
+                  setProjectReference(reference);
+                  set({ projectId });
+                }}
+              />
+              {list.data.pagination.totalPages > 1 && (
+                <Pagination
+                  total={list.data.pagination.totalPages}
+                  value={list.data.pagination.page}
+                  onChange={(page) => set({ page })}
+                />
+              )}
+              <Text size="sm" c="dimmed">
+                {t("documentCount", { count: list.data.pagination.totalCount })}
+              </Text>
+            </>
+          )}
+        </Stack>
+      </PageSection>
       {creating && (
         <NewInvoiceModal
           userDisplayName={userDisplayName}

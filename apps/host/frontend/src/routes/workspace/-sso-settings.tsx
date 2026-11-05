@@ -3,7 +3,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Code,
   CopyButton,
   Divider,
@@ -27,7 +26,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconCheck, IconCopy, IconKey } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { ApiError } from "../../api/request";
 import {
@@ -200,7 +199,7 @@ export const SsoSettingsCard = ({
   const settings = useQuery({ queryKey: ssoSettingsQueryKey, queryFn: fetchSsoSettings });
 
   return (
-    <Card withBorder radius="md" padding="lg">
+    <PageSection>
       <Group gap="sm" mb="sm">
         <ThemeIcon variant="light" size="lg">
           <IconKey size={20} />
@@ -233,7 +232,7 @@ export const SsoSettingsCard = ({
           sections={sections}
         />
       )}
-    </Card>
+    </PageSection>
   );
 };
 

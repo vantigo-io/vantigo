@@ -18,7 +18,7 @@ import { notifications } from "@mantine/notifications";
 import { IconDots, IconMailForward, IconPlus, IconUserPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useMemo, useState } from "react";
 import { type Invitation, invitationAction, listInvitations } from "../../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
@@ -103,7 +103,7 @@ const InvitationsPage = () => {
           </Button>
         }
       />
-      <Card withBorder radius="md" p={0} style={{ overflow: "hidden" }}>
+      <PageSection padding={0} style={{ overflow: "hidden" }}>
         <Group p="md">
           <TextInput
             label={t("admin.searchInvitations")}
@@ -263,7 +263,7 @@ const InvitationsPage = () => {
             </SimpleGrid>
           </>
         )}
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

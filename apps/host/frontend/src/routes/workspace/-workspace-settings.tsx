@@ -1,9 +1,9 @@
-import { Button, Card, Group, Select, Stack, Text, ThemeIcon, Title } from "@mantine/core";
+import { Button, Group, Select, Stack, Text, ThemeIcon, Title } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconClock } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { sessionQueryKey } from "../../api/auth";
 import {
@@ -62,7 +62,7 @@ export const WorkspaceSettingsCard = () => {
   };
 
   return (
-    <Card withBorder radius="md" padding="lg">
+    <PageSection>
       <Group gap="sm" mb="sm">
         <ThemeIcon variant="light" size="lg">
           <IconClock size={20} />
@@ -93,6 +93,6 @@ export const WorkspaceSettingsCard = () => {
           {t("admin.saveWorkspace")}
         </Button>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

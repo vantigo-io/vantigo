@@ -1,9 +1,9 @@
-import { Alert, Badge, Button, Card, Group, Pagination, Stack, Table, Tabs, Text } from "@mantine/core";
+import { Alert, Badge, Button, Group, Pagination, Stack, Table, Tabs, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconArrowLeft } from "@tabler/icons-react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   BILLING_ITEM_STATUSES,
@@ -110,7 +110,7 @@ export const BillingRunPage = ({ runId }: BillingRunPageProps) => {
       )}
       {run && detail.data && (
         <>
-          <Card withBorder>
+          <PageSection>
             <Stack gap={4}>
               <Group gap="xs">
                 <Badge variant="light" color={runStatusColour[run.status] ?? "gray"} data-testid="billing-run-status">
@@ -130,49 +130,53 @@ export const BillingRunPage = ({ runId }: BillingRunPageProps) => {
               )}
               <BillingRunCountBadges counts={run.counts} all />
             </Stack>
-          </Card>
-          <Tabs
-            value={status}
-            onChange={(next) => {
-              setStatus(next ?? ALL);
-              setPage(1);
-            }}
-          >
-            <Tabs.List>
-              <Tabs.Tab value={ALL}>{t("billingRun.filterAll")}</Tabs.Tab>
-              {BILLING_ITEM_STATUSES.map((s) => (
-                <Tabs.Tab key={s} value={s}>
-                  {itemStatusWords(s, t)}
-                </Tabs.Tab>
-              ))}
-            </Tabs.List>
-          </Tabs>
-          {detail.data.items.length === 0 ? (
-            <Text size="sm" c="dimmed">
-              {t("billingRun.noItems")}
-            </Text>
-          ) : (
-            <Table.ScrollContainer minWidth={720}>
-              <Table data-testid="billing-run-items">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>{t("billingRun.col.customer")}</Table.Th>
-                    <Table.Th>{t("billingRun.col.outcome")}</Table.Th>
-                    <Table.Th>{t("billingRun.col.documents")}</Table.Th>
-                    <Table.Th>{t("billingRun.col.reason")}</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {detail.data.items.map((item) => (
-                    <ItemRow key={item.id} item={item} />
+          </PageSection>
+          <PageSection>
+            <Stack gap="md">
+              <Tabs
+                value={status}
+                onChange={(next) => {
+                  setStatus(next ?? ALL);
+                  setPage(1);
+                }}
+              >
+                <Tabs.List>
+                  <Tabs.Tab value={ALL}>{t("billingRun.filterAll")}</Tabs.Tab>
+                  {BILLING_ITEM_STATUSES.map((s) => (
+                    <Tabs.Tab key={s} value={s}>
+                      {itemStatusWords(s, t)}
+                    </Tabs.Tab>
                   ))}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
-          )}
-          {detail.data.pagination.totalPages > 1 && (
-            <Pagination total={detail.data.pagination.totalPages} value={page} onChange={setPage} />
-          )}
+                </Tabs.List>
+              </Tabs>
+              {detail.data.items.length === 0 ? (
+                <Text size="sm" c="dimmed">
+                  {t("billingRun.noItems")}
+                </Text>
+              ) : (
+                <Table.ScrollContainer minWidth={720}>
+                  <Table data-testid="billing-run-items">
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>{t("billingRun.col.customer")}</Table.Th>
+                        <Table.Th>{t("billingRun.col.outcome")}</Table.Th>
+                        <Table.Th>{t("billingRun.col.documents")}</Table.Th>
+                        <Table.Th>{t("billingRun.col.reason")}</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {detail.data.items.map((item) => (
+                        <ItemRow key={item.id} item={item} />
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              )}
+              {detail.data.pagination.totalPages > 1 && (
+                <Pagination total={detail.data.pagination.totalPages} value={page} onChange={setPage} />
+              )}
+            </Stack>
+          </PageSection>
         </>
       )}
     </Stack>

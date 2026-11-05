@@ -2,7 +2,6 @@ import {
   ActionIcon,
   Alert,
   Button,
-  Card,
   Checkbox,
   Group,
   Pagination,
@@ -19,7 +18,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus, IconRoute, IconSend, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { expenseClaimsQueryOptions } from "../api/claims";
 import { deleteExpense, type Expense, expensesQueryOptions, submitUnits } from "../api/entries";
@@ -230,7 +229,7 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
         onSaved={(saved) => navigate(claimLinkOptions(saved.id))}
       />
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Group align="end" wrap="wrap">
             <Select
@@ -317,14 +316,14 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
             </Alert>
           )}
         </Stack>
-      </Card>
+      </PageSection>
 
       {/* Two kinds of unit, from two paged endpoints. They are listed one
           section under the other rather than shuffled into a single page: a
           merged page built from two pagers would either repeat rows or skip
           them, and a list that quietly loses an expense is worse than two
           honest ones. */}
-      <Card withBorder padding="lg" radius="md" data-testid="my-travel-claims">
+      <PageSection data-testid="my-travel-claims">
         <Stack gap="md">
           <Group justify="space-between" align="start" wrap="wrap">
             <Stack gap={0}>
@@ -428,9 +427,9 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
             </Group>
           )}
         </Stack>
-      </Card>
+      </PageSection>
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Stack gap={0}>
             <Title order={4}>{t("expensesSection")}</Title>
@@ -605,7 +604,7 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
             </>
           )}
         </Stack>
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

@@ -1,9 +1,9 @@
-import { ActionIcon, Alert, Button, Card, Menu, Stack, Table, Text } from "@mantine/core";
+import { ActionIcon, Alert, Button, Menu, Stack, Table, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconDots, IconPencil, IconPlus, IconTemplate, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { deleteProjectTemplate, type ProjectTemplate, projectTemplatesQueryOptions } from "../api/templates";
 import "../i18n";
@@ -38,7 +38,7 @@ export const ProjectTemplatesPage = () => {
 
       <TemplateFormModal state={modalState} onClose={() => setModalState(null)} />
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           {isError && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadTemplates")}>
@@ -82,7 +82,7 @@ export const ProjectTemplatesPage = () => {
             </Table.ScrollContainer>
           )}
         </Stack>
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

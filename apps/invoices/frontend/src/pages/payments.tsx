@@ -1,7 +1,6 @@
 import {
   Alert,
   Button,
-  Card,
   Checkbox,
   FileInput,
   Group,
@@ -17,7 +16,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconFileUpload } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   BANK_FORMATS,
@@ -171,7 +170,7 @@ const UploadCard = ({
     },
   });
   return (
-    <Card withBorder>
+    <PageSection>
       <Stack gap="sm">
         <Title order={4}>{t("bank.upload")}</Title>
         <Text size="sm" c="dimmed">
@@ -220,7 +219,7 @@ const UploadCard = ({
           </Alert>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -306,7 +305,7 @@ export const ImportResultCard = ({
     (kind) => file.ignoredKinds[kind] > 0,
   );
   return (
-    <Card withBorder data-testid="import-result">
+    <PageSection data-testid="import-result">
       <Stack gap="sm">
         <Group justify="space-between">
           <Title order={4}>{t("bank.result")}</Title>
@@ -356,7 +355,7 @@ export const ImportResultCard = ({
           </Alert>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -368,7 +367,7 @@ const AccountsCard = ({ canManage }: { canManage: boolean }) => {
   const accounts = useQuery(bankAccountsQueryOptions());
   const [changing, setChanging] = useState<BankAccount | null>(null);
   return (
-    <Card withBorder data-testid="bank-accounts">
+    <PageSection data-testid="bank-accounts">
       <Stack gap="sm">
         <Title order={4}>{t("bank.accounts")}</Title>
         <Text size="sm" c="dimmed">
@@ -452,7 +451,7 @@ const AccountsCard = ({ canManage }: { canManage: boolean }) => {
         )}
       </Stack>
       {changing && <FormatModal account={changing} onClose={() => setChanging(null)} />}
-    </Card>
+    </PageSection>
   );
 };
 
@@ -532,7 +531,7 @@ const FilesCard = ({
   const [page, setPage] = useState(1);
   const files = useQuery(bankFilesQueryOptions(page));
   return (
-    <Card withBorder data-testid="bank-files">
+    <PageSection data-testid="bank-files">
       <Stack gap="sm">
         <Title order={4}>{t("bank.files")}</Title>
         {files.isError && (
@@ -606,7 +605,7 @@ const FilesCard = ({
           <Pagination total={files.data.pagination.totalPages} value={page} onChange={setPage} />
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -636,7 +635,7 @@ const QueueCard = ({
   };
   const lines = useQuery(bankTransactionsQueryOptions(filters));
   return (
-    <Card withBorder data-testid="bank-queue">
+    <PageSection data-testid="bank-queue">
       <Stack gap="sm">
         <Title order={4}>{t("bank.queue")}</Title>
         <Text size="sm" c="dimmed">
@@ -728,6 +727,6 @@ const QueueCard = ({
           <Pagination total={lines.data.pagination.totalPages} value={page} onChange={setPage} />
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

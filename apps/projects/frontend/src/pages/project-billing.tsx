@@ -1,7 +1,7 @@
-import { ActionIcon, Alert, Badge, Box, Button, Card, Group, SimpleGrid, Stack, Table, Text } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Box, Button, Group, SimpleGrid, Stack, Table, Text } from "@mantine/core";
 import { IconAlertCircle, IconInfoCircle, IconLock, IconPencil, IconPlus } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, type LocaleFormatters, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, type LocaleFormatters, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useId, useState } from "react";
 import { type BillingLine, billingLinesQueryOptions } from "../api/lines";
 import { type Project, projectQueryOptions } from "../api/projects";
@@ -72,7 +72,7 @@ const FinancialSummary = ({ project }: { project: Project }) => {
         : formatters.formatNumber(value);
 
   return (
-    <Card withBorder padding="lg" radius="md" data-testid="financial-summary">
+    <PageSection data-testid="financial-summary">
       <Stack gap="md">
         <Text fw={600} component="h3">
           {t("financialSummary")}
@@ -87,7 +87,7 @@ const FinancialSummary = ({ project }: { project: Project }) => {
           <Field label={t("currency")}>{currency ?? t("notAvailable")}</Field>
         </SimpleGrid>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -100,7 +100,7 @@ const BillingLinesCard = ({ projectId, project }: { projectId: number; project: 
   const headingId = useId();
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <Group justify="space-between" wrap="wrap">
           <Stack gap={2}>
@@ -169,7 +169,7 @@ const BillingLinesCard = ({ projectId, project }: { projectId: number; project: 
         state={modalState}
         onClose={() => setModalState(null)}
       />
-    </Card>
+    </PageSection>
   );
 };
 
@@ -189,7 +189,7 @@ const WorkTypesCard = ({ projectId, canManage }: { projectId: number; canManage:
   const multiplier = (value: number) => t("multiplierValue", { percent: formatters.formatNumber(value) });
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <Group justify="space-between" wrap="wrap">
           <Stack gap={2}>
@@ -262,7 +262,7 @@ const WorkTypesCard = ({ projectId, canManage }: { projectId: number; canManage:
       </Stack>
 
       <WorkTypeFormModal projectId={projectId} state={modalState} onClose={() => setModalState(null)} />
-    </Card>
+    </PageSection>
   );
 };
 

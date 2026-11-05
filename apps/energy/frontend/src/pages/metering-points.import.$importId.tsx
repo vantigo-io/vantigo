@@ -1,9 +1,9 @@
-import { Alert, Button, Card, Checkbox, Group, Modal, Stack, Stepper, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, Modal, Stack, Stepper, Text, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconAlertTriangle, IconDownload } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ContentSkeleton, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   attachImport,
@@ -170,11 +170,11 @@ const CheckResult = ({ imp }: { imp: EnergyImport }) => {
         </Alert>
       )}
       {switches > 0 && (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <ImportRowsTable imp={imp} kind="switched" />
-        </Card>
+        </PageSection>
       )}
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <div>
             <Text fw={600}>{t("importCheckedTitle")}</Text>
@@ -208,7 +208,7 @@ const CheckResult = ({ imp }: { imp: EnergyImport }) => {
             </Button>
           </Group>
         </Stack>
-      </Card>
+      </PageSection>
       <Modal opened={confirming} onClose={() => setConfirming(false)} title={t("importRunTitle")} centered>
         <Stack gap="md">
           <Text size="sm">
@@ -288,7 +288,7 @@ const AttachPanel = ({ imp, canAttach }: { imp: EnergyImport; canAttach: boolean
   });
   const ready = canAttach && start !== "" && (switches === 0 || understood);
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <div>
           <Text fw={600}>{t("importAttachTitle")}</Text>
@@ -335,7 +335,7 @@ const AttachPanel = ({ imp, canAttach }: { imp: EnergyImport; canAttach: boolean
           </Button>
         </Group>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -346,7 +346,7 @@ const DoneResult = ({ imp, capabilities }: { imp: EnergyImport; capabilities: Im
   return (
     <Stack gap="lg">
       {imp.pending > 0 && <AttachPanel imp={imp} canAttach={capabilities.canLinkCustomers} />}
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <div>
             <Text fw={600}>{t(stopped ? "importStoppedTitle" : "importDoneTitle")}</Text>
@@ -375,7 +375,7 @@ const DoneResult = ({ imp, capabilities }: { imp: EnergyImport; capabilities: Im
             </Button>
           </Group>
         </Stack>
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

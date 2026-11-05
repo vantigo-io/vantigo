@@ -1,20 +1,9 @@
-import {
-  Alert,
-  Anchor,
-  Button,
-  Card,
-  Group,
-  Select,
-  SimpleGrid,
-  Stack,
-  Text,
-  Textarea,
-  TextInput,
-} from "@mantine/core";
+import { Alert, Anchor, Button, Group, Select, SimpleGrid, Stack, Text, Textarea, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCircleCheck } from "@tabler/icons-react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   adjustmentReasons,
@@ -200,7 +189,7 @@ export const MovementForm = ({ kind, sites, siteId: initialSite, locationId, var
           </Anchor>
         </Alert>
       )}
-      <Card withBorder>
+      <PageSection>
         <Stack gap="md">
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
             <Select
@@ -256,8 +245,8 @@ export const MovementForm = ({ kind, sites, siteId: initialSite, locationId, var
             onChange={(event) => setNote(event.currentTarget.value)}
           />
         </Stack>
-      </Card>
-      <Card withBorder>
+      </PageSection>
+      <PageSection>
         <LineEditor
           kind={kind}
           siteId={siteId}
@@ -266,7 +255,7 @@ export const MovementForm = ({ kind, sites, siteId: initialSite, locationId, var
           defaultLocationId={kind === "receipt" ? null : defaultLocation}
           lineErrors={marks}
         />
-      </Card>
+      </PageSection>
       {problem && (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotPost")}>
           {problem}

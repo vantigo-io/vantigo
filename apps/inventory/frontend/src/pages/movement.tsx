@@ -1,8 +1,8 @@
-import { Alert, Anchor, Badge, Card, Group, SimpleGrid, Stack, Table, Text } from "@mantine/core";
+import { Alert, Anchor, Badge, Group, SimpleGrid, Stack, Table, Text } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import type { InventoryLocationRef } from "../api/locations";
 import { movementQueryOptions } from "../api/movements";
@@ -81,7 +81,7 @@ export const MovementPage = () => {
         <ContentSkeleton rows={5} />
       ) : (
         <>
-          <Card withBorder>
+          <PageSection>
             <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }}>
               <Fact label={t("site")}>
                 <Anchor size="sm" renderRoot={(props) => <Link {...siteLinkOptions(data.site.id)} {...props} />}>
@@ -116,8 +116,8 @@ export const MovementPage = () => {
                 {data.note}
               </Text>
             )}
-          </Card>
-          <Card withBorder>
+          </PageSection>
+          <PageSection>
             <Table.ScrollContainer minWidth={560}>
               <Table striped verticalSpacing="xs">
                 <Table.Thead>
@@ -162,7 +162,7 @@ export const MovementPage = () => {
                 </Table.Tbody>
               </Table>
             </Table.ScrollContainer>
-          </Card>
+          </PageSection>
         </>
       )}
     </Stack>

@@ -14,7 +14,7 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   type DeliveryMilestone,
@@ -52,7 +52,7 @@ export const DeliveryMilestonesCard = ({
 
   return (
     <>
-      <Card withBorder padding="md" radius="md">
+      <PageSection>
         <Stack gap="sm">
           <Group justify="space-between" align="center" wrap="wrap">
             <Group gap="xs">
@@ -107,7 +107,7 @@ export const DeliveryMilestonesCard = ({
             </SimpleGrid>
           )}
         </Stack>
-      </Card>
+      </PageSection>
 
       <DeliveryMilestoneFormModal projectId={projectId} state={modalState} onClose={() => setModalState(null)} />
     </>

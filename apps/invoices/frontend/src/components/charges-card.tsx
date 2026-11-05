@@ -1,5 +1,6 @@
-import { Button, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { Button, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
+import { PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { type ChargePayment, removeChargePayment } from "../api/charges";
 import type { InvoiceDocument } from "../api/invoices";
@@ -51,7 +52,7 @@ export const ChargesCard = ({ invoice, canAct, today, currentUserId }: ChargesCa
     </Table.Tr>
   );
   return (
-    <Card withBorder data-testid="charges-card">
+    <PageSection data-testid="charges-card">
       <Stack gap="xs">
         <Group justify="space-between">
           <Title order={4}>{t("charges.title")}</Title>
@@ -211,6 +212,6 @@ export const ChargesCard = ({ invoice, canAct, today, currentUserId }: ChargesCa
           onClose={() => setRemoving(null)}
         />
       )}
-    </Card>
+    </PageSection>
   );
 };

@@ -2,7 +2,6 @@ import {
   Alert,
   Anchor,
   Badge,
-  Card,
   Group,
   Pagination,
   Select,
@@ -21,6 +20,7 @@ import {
   EmptyState,
   KpiCard,
   PageHeader,
+  PageSection,
   useDebouncedListSearch,
   useI18n,
   useShellLink,
@@ -155,7 +155,7 @@ export const EconomyPortfolio = () => {
         </Stack>
       )}
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Group align="end" wrap="wrap">
             <TextInput
@@ -268,7 +268,7 @@ export const EconomyPortfolio = () => {
             </>
           )}
         </Stack>
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

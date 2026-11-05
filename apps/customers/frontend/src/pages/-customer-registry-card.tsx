@@ -1,8 +1,8 @@
-import { Alert, Badge, Button, Card, CloseButton, Group, Stack, Text } from "@mantine/core";
+import { Alert, Badge, Button, CloseButton, Group, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconBuildingBank, IconRefresh } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { type LegalIdentityResponse, legalIdentityQueryOptions, upsertLegalIdentity } from "../api/customers";
 import {
@@ -120,7 +120,7 @@ export const CustomerRegistryCard = ({
   const behindHint = record ? behindSince(record) : null;
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="lg">
         <Group justify="space-between">
           <Group gap="xs">
@@ -249,7 +249,7 @@ export const CustomerRegistryCard = ({
           </Stack>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 

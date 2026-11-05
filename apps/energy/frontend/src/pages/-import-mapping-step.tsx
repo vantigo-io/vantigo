@@ -3,7 +3,6 @@ import {
   Alert,
   Box,
   Button,
-  Card,
   Group,
   ScrollArea,
   SegmentedControl,
@@ -16,7 +15,7 @@ import {
 } from "@mantine/core";
 import { IconAlertCircle, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   checkImport,
@@ -207,7 +206,7 @@ export const ImportMappingStep = ({ imp, capabilities }: { imp: EnergyImport; ca
 
   return (
     <Stack gap="lg">
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Text fw={600}>{t("importWhatToDo")}</Text>
           <SegmentedControl
@@ -227,9 +226,9 @@ export const ImportMappingStep = ({ imp, capabilities }: { imp: EnergyImport; ca
             {t(`importModeHelp_${mapping.mode}`)}
           </Text>
         </Stack>
-      </Card>
+      </PageSection>
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <div>
             <Text fw={600}>{t("importColumnsTitle")}</Text>
@@ -337,9 +336,9 @@ export const ImportMappingStep = ({ imp, capabilities }: { imp: EnergyImport; ca
             </Group>
           </Stack>
         </Stack>
-      </Card>
+      </PageSection>
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <div>
             <Text fw={600}>{t("importPreviewTitle")}</Text>
@@ -425,7 +424,7 @@ export const ImportMappingStep = ({ imp, capabilities }: { imp: EnergyImport; ca
             </Box>
           )}
         </Stack>
-      </Card>
+      </PageSection>
 
       {refusals.length > 0 && (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("importMappingRefused")}>

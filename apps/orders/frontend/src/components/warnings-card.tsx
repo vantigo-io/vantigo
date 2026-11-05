@@ -1,7 +1,8 @@
-import { Badge, Button, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { Badge, Button, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { ORDERS_QUERY_KEY } from "../api/request";
 import type { Warning, WarningScope } from "../api/types";
@@ -44,7 +45,7 @@ export const WarningsCard = ({ access, currency }: { access: OrdersAccess; curre
     onError: (e) => notifications.show({ color: "red", message: refusalMessage(e, t) }),
   });
   return (
-    <Card withBorder padding="lg" data-assist="orders.settings.warnings">
+    <PageSection data-assist="orders.settings.warnings">
       <Stack gap="md">
         <div>
           <Title order={4}>{t("warningsTitle")}</Title>
@@ -174,6 +175,6 @@ export const WarningsCard = ({ access, currency }: { access: OrdersAccess; curre
           onClose={() => setEditing(null)}
         />
       )}
-    </Card>
+    </PageSection>
   );
 };

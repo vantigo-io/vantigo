@@ -30,7 +30,7 @@ import {
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 import { metaQueryOptions } from "../api/meta";
 import {
@@ -512,7 +512,7 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
         access={access}
         errors={editor.fieldErrors}
       />
-      <Card withBorder padding="lg">
+      <PageSection>
         <Stack gap="md">
           <Title order={4}>{t("lines")}</Title>
           <LineGrid
@@ -533,7 +533,7 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
             hasOptional={editor.hasOptional}
           />
         </Stack>
-      </Card>
+      </PageSection>
       <DocumentsCard
         kind="quote"
         documents={documents.data?.items}

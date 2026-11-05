@@ -27,7 +27,7 @@ import {
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 import { NotFoundError, ORDERS_QUERY_KEY } from "../api/request";
 import {
@@ -161,7 +161,7 @@ const NewSubscription = ({ customerId: preset, access }: { customerId?: number; 
           {t("mayNotCreateSubscription")}
         </Alert>
       ) : (
-        <Card withBorder padding="xl" maw={980}>
+        <PageSection maw={980}>
           <Stack>
             <Text size="sm" c="dimmed">
               {t("newSubscriptionHint")}
@@ -188,7 +188,7 @@ const NewSubscription = ({ customerId: preset, access }: { customerId?: number; 
               </Button>
             </Group>
           </Stack>
-        </Card>
+        </PageSection>
       )}
     </Stack>
   );
@@ -352,7 +352,7 @@ const SubscriptionEditor = ({ subscription, access }: { subscription: Subscripti
         </Card>
       )}
 
-      <Card withBorder padding="lg">
+      <PageSection>
         <Stack gap="sm">
           <Group justify="space-between">
             <Title order={4}>{t("plan")}</Title>
@@ -381,7 +381,7 @@ const SubscriptionEditor = ({ subscription, access }: { subscription: Subscripti
             errors={editor.fieldErrors}
           />
         </Stack>
-      </Card>
+      </PageSection>
 
       <HeaderCard
         kind="subscription"
@@ -394,7 +394,7 @@ const SubscriptionEditor = ({ subscription, access }: { subscription: Subscripti
         errors={editor.fieldErrors}
       />
 
-      <Card withBorder padding="lg">
+      <PageSection>
         <Stack gap="md">
           <Group justify="space-between" align="flex-end">
             <Title order={4}>{t("lines")}</Title>
@@ -428,10 +428,10 @@ const SubscriptionEditor = ({ subscription, access }: { subscription: Subscripti
           </Text>
           <TotalsCard totals={subscription.totals} currency={subscription.currency} stale={editor.stale} />
         </Stack>
-      </Card>
+      </PageSection>
 
       {subscription.earlierLines.length > 0 && (
-        <Card withBorder padding="lg" data-testid="earlier-lines">
+        <PageSection data-testid="earlier-lines">
           <Stack gap="sm">
             <Title order={4}>{t("earlierLines")}</Title>
             <Table verticalSpacing="xs" fz="sm">
@@ -458,10 +458,10 @@ const SubscriptionEditor = ({ subscription, access }: { subscription: Subscripti
               </Table.Tbody>
             </Table>
           </Stack>
-        </Card>
+        </PageSection>
       )}
 
-      <Card withBorder padding="lg" data-testid="periods">
+      <PageSection data-testid="periods">
         <Stack gap="sm">
           <Title order={4}>{t("periods")}</Title>
           <Table.ScrollContainer minWidth={560}>
@@ -498,7 +498,7 @@ const SubscriptionEditor = ({ subscription, access }: { subscription: Subscripti
             </Table>
           </Table.ScrollContainer>
         </Stack>
-      </Card>
+      </PageSection>
 
       {!draft && <ChangeLog changes={changes.data?.items ?? []} lines={subscription.lines} />}
 

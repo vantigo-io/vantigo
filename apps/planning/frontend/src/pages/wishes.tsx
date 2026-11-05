@@ -1,10 +1,10 @@
-import { Alert, Anchor, Badge, Button, Card, Group, Stack, Table, Text } from "@mantine/core";
+import { Alert, Anchor, Badge, Button, Group, Stack, Table, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { planningMetaQueryOptions } from "../api/meta";
 import { PLANNING_QUERY_KEY } from "../api/request";
 import { markWishSeen, type PlanningWish, resolveWish, wishesQueryOptions } from "../api/wishes";
@@ -58,11 +58,11 @@ export const WishesPage = () => {
     <Stack gap="lg">
       <PageHeader title={t("wishesTitle")} description={t("wishesDescription")} />
       {meta.data?.workforceVisible === false && (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <EmptyState title={t("workforceHiddenTitle")} description={t("workforceHiddenDescription")} />
-        </Card>
+        </PageSection>
       )}
-      <Card withBorder padding="sm" radius="md">
+      <PageSection>
         {wishes.isError && (
           <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadWishes")}>
             {wishes.error.message}
@@ -166,7 +166,7 @@ export const WishesPage = () => {
             </Table>
           </Table.ScrollContainer>
         )}
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

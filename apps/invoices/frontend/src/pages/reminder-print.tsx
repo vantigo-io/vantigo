@@ -2,7 +2,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Checkbox,
   Group,
   List,
@@ -18,7 +17,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconArrowLeft, IconDownload } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { invoicesMetaQueryOptions } from "../api/meta";
@@ -149,7 +148,7 @@ const AwaitingCard = () => {
     return letter ? letterName(t, letter.sequence) : t("print.letterId", { id: reminderId });
   };
   return (
-    <Card withBorder data-testid="awaiting-print">
+    <PageSection data-testid="awaiting-print">
       <Stack gap="sm">
         <Title order={4}>{t("print.awaiting")}</Title>
         <Text size="sm" c="dimmed">
@@ -298,7 +297,7 @@ const AwaitingCard = () => {
           </Alert>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -314,7 +313,7 @@ const BatchesCard = ({ currentUserId }: { currentUserId?: string }) => {
   const [posted, setPosted] = useState<PrintBatchPosted | null>(null);
   const reprintBatch = useReprint();
   return (
-    <Card withBorder data-testid="print-batches">
+    <PageSection data-testid="print-batches">
       <Stack gap="sm">
         <Title order={4}>{t("print.batches")}</Title>
         {batches.isError && (
@@ -431,7 +430,7 @@ const BatchesCard = ({ currentUserId }: { currentUserId?: string }) => {
           onClose={() => setConfirming(null)}
         />
       )}
-    </Card>
+    </PageSection>
   );
 };
 

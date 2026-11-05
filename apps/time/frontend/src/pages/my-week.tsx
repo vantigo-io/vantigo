@@ -1,4 +1,4 @@
-import { ActionIcon, Alert, Anchor, Badge, Button, Card, Group, Stack, Table, Text } from "@mantine/core";
+import { ActionIcon, Alert, Anchor, Badge, Button, Group, Stack, Table, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import {
@@ -11,7 +11,7 @@ import {
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n, useShellLink } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n, useShellLink } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { createTimeEntry, deleteTimeEntry, type TimeEntry, timeEntryUpdateFrom, updateTimeEntry } from "../api/entries";
 import { isLoggable, myOpenTasksQueryOptions, myProjectsQueryOptions } from "../api/projects";
@@ -136,7 +136,7 @@ export const MyWeekPage = () => {
         </Group>
       )}
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         {isError && (
           <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadWeek")}>
             {error.message}
@@ -144,7 +144,7 @@ export const MyWeekPage = () => {
         )}
         {isPending && <ContentSkeleton rows={5} rowHeight={44} />}
         {data && <WeekGrid key={weekStart} week={data} days={days} settings={settings} />}
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

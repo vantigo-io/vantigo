@@ -1,7 +1,6 @@
 import {
   Alert,
   Button,
-  Card,
   Checkbox,
   Group,
   Pagination,
@@ -17,7 +16,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCash, IconDownload, IconLock } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { ClaimSummary } from "../api/claims";
 import type { Expense, FlowUnits } from "../api/entries";
@@ -245,23 +244,23 @@ export const ReimbursementsPage = () => {
       {isPending && <ContentSkeleton rows={3} rowHeight={72} />}
 
       {forbidden && (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <EmptyState
             icon={IconLock}
             title={t("reimbursementsForbidden")}
             description={t("reimbursementsForbiddenDescription")}
           />
-        </Card>
+        </PageSection>
       )}
 
       {data && groups.length === 0 && (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <EmptyState
             icon={IconCash}
             title={state === "waiting" ? t("nothingOwedToAnyone") : t("nothingPaidYet")}
             description={state === "waiting" ? t("nothingOwedToAnyoneDescription") : t("nothingPaidYetDescription")}
           />
-        </Card>
+        </PageSection>
       )}
 
       {groups.map((group) => (
@@ -334,7 +333,7 @@ const PersonCard = ({
     claimIds.every((id) => selectedClaims.includes(id));
 
   return (
-    <Card withBorder padding="lg" radius="md" data-reimbursement-group={group.user.userId}>
+    <PageSection data-reimbursement-group={group.user.userId}>
       <Stack gap="sm">
         <Group justify="space-between" align="start" wrap="wrap">
           <Stack gap={2}>
@@ -470,6 +469,6 @@ const PersonCard = ({
           </Table.ScrollContainer>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

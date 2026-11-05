@@ -90,7 +90,7 @@
   padding: 13px 16px;
   border: 1px solid var(--mantine-color-default-border);
   border-radius: 12px;
-  background: var(--mantine-color-white);
+  background: var(--mantine-color-body);
 }
 .message-card.outbound {
   margin-left: auto;

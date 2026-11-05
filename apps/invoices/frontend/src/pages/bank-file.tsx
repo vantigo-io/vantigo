@@ -2,7 +2,7 @@ import { Alert, Anchor, Stack, Text, Title } from "@mantine/core";
 import { IconAlertCircle, IconArrowLeft } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { appUrl, ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { appUrl, ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { bankFileQueryOptions } from "../api/bank";
 import { invoicesMetaQueryOptions } from "../api/meta";
 import { BankTransactionTable } from "../components/bank-transaction-table";
@@ -77,13 +77,17 @@ export const BankFilePage = ({ bankFileId, currentUserId }: BankFilePageProps) =
             )}
           </Stack>
           <ImportResultCard file={file} currency={currency} canAct={canAct} />
-          <Title order={4}>{t("bank.lines")}</Title>
-          <BankTransactionTable
-            lines={detail.data.transactions}
-            currency={currency}
-            canAct={canAct}
-            currentUserId={currentUserId}
-          />
+          <PageSection>
+            <Stack gap="md">
+              <Title order={4}>{t("bank.lines")}</Title>
+              <BankTransactionTable
+                lines={detail.data.transactions}
+                currency={currency}
+                canAct={canAct}
+                currentUserId={currentUserId}
+              />
+            </Stack>
+          </PageSection>
         </>
       )}
     </Stack>

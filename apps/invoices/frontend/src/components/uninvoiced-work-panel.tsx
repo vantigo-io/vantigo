@@ -1,7 +1,7 @@
-import { Alert, Badge, Button, Card, Checkbox, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { Alert, Badge, Button, Checkbox, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { IconAlertCircle, IconFileInvoice } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 import { consumptionQueryOptions, type DueSupply } from "../api/consumption";
 import { invoicesMetaQueryOptions } from "../api/meta";
@@ -98,11 +98,11 @@ const UninvoicedWork = ({ customerId, projectId, canInvoice = true }: Uninvoiced
   if (meta.data && !available) {
     if (customerId !== undefined) return null;
     return (
-      <Card withBorder padding="lg" radius="md" mt="md">
+      <PageSection mt="md">
         <Text size="sm" c="dimmed">
           {t("refusal.work_unavailable")}
         </Text>
-      </Card>
+      </PageSection>
     );
   }
 
@@ -221,7 +221,7 @@ const UninvoicedWork = ({ customerId, projectId, canInvoice = true }: Uninvoiced
   };
 
   return (
-    <Card withBorder padding="lg" radius="md" mt="md" data-testid="uninvoiced-work">
+    <PageSection mt="md" data-testid="uninvoiced-work">
       <Stack gap="md">
         <Group justify="space-between" wrap="wrap" align="flex-start">
           <Stack gap={2}>
@@ -373,7 +373,7 @@ const UninvoicedWork = ({ customerId, projectId, canInvoice = true }: Uninvoiced
       {invoicing && work.data?.customerId !== undefined && (
         <FromWorkWizard customerId={work.data.customerId} work={chosen} onClose={() => setInvoicing(false)} />
       )}
-    </Card>
+    </PageSection>
   );
 };
 
@@ -423,7 +423,7 @@ const UninvoicedConsumption = ({ customerId, canInvoice }: { customerId: number;
   const supplies: DueSupply[] = consumption.data?.supplies ?? [];
 
   return (
-    <Card withBorder padding="lg" radius="md" mt="md" data-testid="uninvoiced-consumption">
+    <PageSection mt="md" data-testid="uninvoiced-consumption">
       <Stack gap="md">
         <Group justify="space-between" wrap="wrap" align="flex-start">
           <Stack gap={2}>
@@ -505,6 +505,6 @@ const UninvoicedConsumption = ({ customerId, canInvoice }: { customerId: number;
           ))}
       </Stack>
       {invoicing && <FromConsumptionWizard customerId={customerId} onClose={() => setInvoicing(false)} />}
-    </Card>
+    </PageSection>
   );
 };

@@ -2,7 +2,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Checkbox,
   Group,
   Modal,
@@ -19,7 +18,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCircleCheck, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { sitesQueryOptions } from "../api/deliveries";
 import { ApiValidationError, ORDERS_QUERY_KEY } from "../api/request";
@@ -94,7 +93,7 @@ const AccountCard = ({ account, onEdit }: { account: CarrierAccount; onEdit: () 
     onError: (error) => notifications.show({ color: "red", title: t("verify"), message: refusalMessage(error, t) }),
   });
   return (
-    <Card withBorder padding="lg" data-testid="carrier-account">
+    <PageSection data-testid="carrier-account">
       <Stack gap="xs">
         <Group justify="space-between">
           <Group gap="xs">
@@ -155,7 +154,7 @@ const AccountCard = ({ account, onEdit }: { account: CarrierAccount; onEdit: () 
           </Alert>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -319,7 +318,7 @@ const SiteDefaultsCard = ({ accounts }: { accounts: CarrierAccount[] }) => {
   if (fulfilling.length === 0) return null;
   const options = accounts.filter((a) => a.status === "active").map((a) => ({ value: String(a.id), label: a.name }));
   return (
-    <Card withBorder padding="lg" data-testid="site-defaults">
+    <PageSection data-testid="site-defaults">
       <Stack>
         <Title order={4}>{t("siteDefaults")}</Title>
         <Text size="sm" c="dimmed">
@@ -352,6 +351,6 @@ const SiteDefaultsCard = ({ accounts }: { accounts: CarrierAccount[] }) => {
           </Button>
         </Group>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

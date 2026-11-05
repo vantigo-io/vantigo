@@ -1,7 +1,7 @@
-import { Alert, Button, Card, Group, Pagination, Stack, Text } from "@mantine/core";
+import { Alert, Button, Group, Pagination, Stack, Text } from "@mantine/core";
 import { IconAlertCircle, IconPlus } from "@tabler/icons-react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { invoiceListQueryOptions } from "../api/invoices";
 import { invoicesMetaQueryOptions } from "../api/meta";
@@ -53,7 +53,7 @@ export const CustomerInvoicesPanel = ({
 
   return (
     <>
-      <Card withBorder padding="lg" radius="md" mt="md">
+      <PageSection mt="md">
         <Stack gap="md">
           <Group justify="space-between" wrap="wrap">
             <Text fw={600} component="h3">
@@ -95,7 +95,7 @@ export const CustomerInvoicesPanel = ({
             onClose={() => setCreating(false)}
           />
         )}
-      </Card>
+      </PageSection>
       <ReminderPolicyCard customerId={customerId} canChange={canChangeReminderPolicy} currentUserId={currentUserId} />
     </>
   );

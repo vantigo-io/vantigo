@@ -1,7 +1,7 @@
-import { Button, Card, Stack, Switch, Text, Textarea, Title } from "@mantine/core";
+import { Button, Stack, Switch, Text, Textarea, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { fetchSystemStatus, setMaintenance, systemStatusQueryKey } from "../../api/system-status";
 
@@ -31,7 +31,7 @@ export const MaintenanceControls = () => {
       }),
   });
   return (
-    <Card withBorder>
+    <PageSection>
       <Stack>
         <div>
           <Title order={3}>{t("systemAdmin.maintenanceMode")}</Title>
@@ -54,6 +54,6 @@ export const MaintenanceControls = () => {
           {t("systemAdmin.saveMaintenance")}
         </Button>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

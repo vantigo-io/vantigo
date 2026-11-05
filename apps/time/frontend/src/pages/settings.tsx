@@ -1,10 +1,10 @@
-import { ActionIcon, Alert, Button, Card, Group, Stack, Table, Text } from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, Stack, Table, Text } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { deletePersonRate, type PersonRate, personRatesQueryOptions } from "../api/rates";
 import { timeSettingsQueryOptions, updateTimeSettings } from "../api/settings";
@@ -83,7 +83,7 @@ const LockCard = () => {
     });
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <Text fw={600} component="h3">
           {t("periodLock")}
@@ -114,7 +114,7 @@ const LockCard = () => {
           </Group>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -151,7 +151,7 @@ const RatesCard = () => {
   const groups = groupByPerson(data ?? []);
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <Group justify="space-between" wrap="wrap">
           <Stack gap={2}>
@@ -183,7 +183,7 @@ const RatesCard = () => {
       </Stack>
 
       <RateFormModal state={modal} onClose={() => setModal(null)} />
-    </Card>
+    </PageSection>
   );
 };
 

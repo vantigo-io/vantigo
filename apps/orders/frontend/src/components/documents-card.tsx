@@ -1,5 +1,6 @@
-import { Badge, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { Badge, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { IconFileTypePdf } from "@tabler/icons-react";
+import { PageSection } from "@vantigo/frontend-shell";
 import type { Mailing, StoredDocument } from "../api/types";
 import { hasWords } from "../lib/errors";
 import { useOrdersFormat } from "../lib/format";
@@ -22,7 +23,7 @@ export interface DocumentsCardProps {
 export const DocumentsCard = ({ kind, documents = [], mailings = [], pdfUrl }: DocumentsCardProps) => {
   const { t, dateTime } = useOrdersFormat();
   return (
-    <Card withBorder padding="lg" data-testid="documents-card">
+    <PageSection data-testid="documents-card">
       <Stack gap="md">
         <Title order={4}>{t("documentsAndMailings")}</Title>
         {documents.length === 0 ? (
@@ -106,6 +107,6 @@ export const DocumentsCard = ({ kind, documents = [], mailings = [], pdfUrl }: D
           </Table.ScrollContainer>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

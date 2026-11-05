@@ -1,10 +1,10 @@
-import { Anchor, Badge, Button, Card, Group, SegmentedControl, Stack, Table, Text, Title } from "@mantine/core";
+import { Anchor, Badge, Button, Group, SegmentedControl, Stack, Table, Text, Title } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import { IconCalendar, IconFileImport, IconPencil, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { Fragment, useState } from "react";
 import {
   billingFacts,
@@ -132,7 +132,7 @@ export const MeteringPointDetailsPage = ({
         }
       />
       <MeteringPointFormModal state={editState} onClose={() => setEditState(null)} canViewTariffs={canViewTariffs} />
-      <Card withBorder>
+      <PageSection>
         <Stack>
           <Title order={3}>{t("meteringPointDetails")}</Title>
           <Group>
@@ -159,8 +159,8 @@ export const MeteringPointDetailsPage = ({
             </Text>
           </Group>
         </Stack>
-      </Card>
-      <Card withBorder>
+      </PageSection>
+      <PageSection>
         <Stack>
           <Title order={3}>{t("billing")}</Title>
           <Group>
@@ -211,8 +211,8 @@ export const MeteringPointDetailsPage = ({
             </Stack>
           )}
         </Stack>
-      </Card>
-      <Card withBorder>
+      </PageSection>
+      <PageSection>
         <Stack>
           <Group justify="space-between">
             <Title order={3}>{t("meterHistory")}</Title>
@@ -246,8 +246,8 @@ export const MeteringPointDetailsPage = ({
             <EmptyState size="sm" title={t("noMeterHistory")} />
           )}
         </Stack>
-      </Card>
-      <Card withBorder>
+      </PageSection>
+      <PageSection>
         <Stack>
           <Group justify="space-between">
             <Title order={3}>{t("supplyPeriods")}</Title>
@@ -328,9 +328,9 @@ export const MeteringPointDetailsPage = ({
             <EmptyState size="sm" title={t("noSupplyPeriods")} />
           )}
         </Stack>
-      </Card>
+      </PageSection>
       {canViewSettlements && <SettlementsCard meteringPointId={meteringPointId} />}
-      <Card withBorder>
+      <PageSection>
         <Stack>
           <Group justify="space-between">
             <Title order={3}>{t("consumption")}</Title>
@@ -474,7 +474,7 @@ export const MeteringPointDetailsPage = ({
             />
           )}
         </Stack>
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

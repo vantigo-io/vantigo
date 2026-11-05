@@ -1,7 +1,7 @@
-import { Alert, Anchor, Button, Card, Group, Stack, Table, Text } from "@mantine/core";
+import { Alert, Anchor, Button, Group, Stack, Table, Text } from "@mantine/core";
 import { IconAlertCircle, IconPlus } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, useI18n, useShellLink } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageSection, useI18n, useShellLink } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { type ProjectSummary, projectsQueryOptions } from "../api/projects";
 import { useProjectDates } from "../lib/dates";
@@ -29,7 +29,7 @@ export const CustomerProjectsPanel = ({ customerId, canCreate = false }: Custome
   const projects = data?.data ?? [];
 
   return (
-    <Card withBorder padding="lg" radius="md" mt="md">
+    <PageSection mt="md">
       <Stack gap="md">
         <Group justify="space-between" wrap="wrap">
           <Text fw={600} component="h3">
@@ -79,7 +79,7 @@ export const CustomerProjectsPanel = ({ customerId, canCreate = false }: Custome
       </Stack>
 
       <ProjectFormModal state={modalState} onClose={() => setModalState(null)} />
-    </Card>
+    </PageSection>
   );
 };
 

@@ -1,8 +1,8 @@
-import { Alert, Button, Card, Group, Modal, Stack, Table, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Group, Modal, Stack, Table, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { ApiError } from "../api/request";
 import { createSuppression, deleteSuppression, suppressionsQueryOptions } from "../api/suppressions";
@@ -48,7 +48,7 @@ export function SuppressionsPage() {
   return (
     <Stack gap="xl">
       <PageHeader title={t("suppressions")} description={t("suppressionsDescription")} />
-      <Card withBorder radius="lg">
+      <PageSection>
         <form
           onSubmit={form.onSubmit((values) =>
             create.mutate({ emailAddress: values.emailAddress.trim(), reason: values.reason || undefined }),
@@ -62,8 +62,8 @@ export function SuppressionsPage() {
             </Button>
           </Group>
         </form>
-      </Card>
-      <Card withBorder radius="lg">
+      </PageSection>
+      <PageSection>
         <TextInput
           label={t("search")}
           placeholder={t("searchEmailOrReason")}
@@ -100,7 +100,7 @@ export function SuppressionsPage() {
           </Table>
         </Table.ScrollContainer>
         {visible.length === 0 && <EmptyState title={t("noSuppressionsFound")} />}
-      </Card>
+      </PageSection>
       <Modal opened={deleteId !== null} onClose={() => setDeleteId(null)} title={t("deleteSuppression")} centered>
         <Stack>
           <Text>{t("allowAddressAgain")}</Text>

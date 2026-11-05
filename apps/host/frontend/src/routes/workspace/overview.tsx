@@ -15,7 +15,7 @@ import {
 import { IconActivity, IconCloudLock, IconDatabase, IconUsers } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
 import { getIdentitySystemStatus } from "../../api/system-status";
@@ -39,7 +39,7 @@ const StatusCard = ({
   icon: typeof IconUsers;
   children: ReactNode;
 }) => (
-  <Card withBorder radius="md" padding="lg">
+  <PageSection>
     <Group gap="sm" mb="lg">
       <ThemeIcon variant="light" size="lg">
         <Icon size={20} />
@@ -49,7 +49,7 @@ const StatusCard = ({
       </Title>
     </Group>
     {children}
-  </Card>
+  </PageSection>
 );
 const ManagementCard = ({
   title,
@@ -62,7 +62,7 @@ const ManagementCard = ({
   description: string;
   children: ReactNode;
 }) => (
-  <Card withBorder radius="md" padding="lg">
+  <PageSection>
     <Group gap="sm" mb="sm">
       <ThemeIcon variant="light" size="lg">
         <Icon size={20} />
@@ -75,7 +75,7 @@ const ManagementCard = ({
       {description}
     </Text>
     {children}
-  </Card>
+  </PageSection>
 );
 const Metric = ({ label, value }: { label: string; value: string | number }) => (
   <div>

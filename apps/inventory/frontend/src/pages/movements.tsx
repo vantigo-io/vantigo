@@ -1,8 +1,8 @@
-import { Badge, Button, Card, CloseButton, Group, Select, SimpleGrid, Stack } from "@mantine/core";
+import { Badge, Button, CloseButton, Group, Select, SimpleGrid, Stack } from "@mantine/core";
 import { DatePickerInput } from "@mantine/dates";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { inventoryMetaQueryOptions } from "../api/meta";
 import { type InventoryMovementKind, movementKinds } from "../api/movements";
 import { sitesQueryOptions } from "../api/sites";
@@ -72,7 +72,7 @@ export const MovementsPage = () => {
           </Group>
         }
       />
-      <Card withBorder>
+      <PageSection>
         <SimpleGrid cols={{ base: 1, sm: 2, md: 5 }}>
           <Select
             label={t("site")}
@@ -124,8 +124,8 @@ export const MovementsPage = () => {
             onChange={([from, to]) => filter({ from: from ?? undefined, to: to ?? undefined })}
           />
         </SimpleGrid>
-      </Card>
-      <Card withBorder>
+      </PageSection>
+      <PageSection>
         <MovementList
           filter={{
             siteId: search.siteId,
@@ -136,7 +136,7 @@ export const MovementsPage = () => {
             to: search.to,
           }}
         />
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

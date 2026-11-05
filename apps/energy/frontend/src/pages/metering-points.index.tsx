@@ -4,7 +4,6 @@ import {
   Anchor,
   Badge,
   Button,
-  Card,
   Group,
   Pagination,
   Select,
@@ -28,7 +27,14 @@ import {
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
+import {
+  ContentSkeleton,
+  EmptyState,
+  PageHeader,
+  PageSection,
+  useDebouncedListSearch,
+  useI18n,
+} from "@vantigo/frontend-shell";
 import { type MouseEvent, useState } from "react";
 import { customersQueryOptions } from "../api/customers";
 import {
@@ -227,7 +233,7 @@ export const MeteringPointsPage = ({
         }
       />
       <MeteringPointFormModal state={modalState} onClose={() => setModalState(null)} canViewTariffs={canViewTariffs} />
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <Group gap="md" align="end" wrap="wrap">
             <TextInput
@@ -370,7 +376,7 @@ export const MeteringPointsPage = ({
             </>
           )}
         </Stack>
-      </Card>
+      </PageSection>
     </Stack>
   );
 };

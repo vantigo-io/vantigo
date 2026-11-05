@@ -1,10 +1,16 @@
-import { Alert, Avatar, Button, Card, FileInput, Group, Select, Stack, Text, TextInput } from "@mantine/core";
+import { Alert, Avatar, Button, FileInput, Group, Select, Stack, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconUser } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { ContentSkeleton, PageHeader, setLanguagePreference, useTranslation } from "@vantigo/frontend-shell";
+import {
+  ContentSkeleton,
+  PageHeader,
+  PageSection,
+  setLanguagePreference,
+  useTranslation,
+} from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import "../../i18n";
 import { getProfile, profileQueryKey, removeProfilePhoto, updateProfile, uploadProfilePhoto } from "../../api/account";
@@ -96,7 +102,7 @@ function ProfileForm() {
   const managed = value.avatarManagedBy === "staff";
   return (
     <Stack gap="lg">
-      <Card withBorder>
+      <PageSection>
         <Stack>
           <Group>
             <Avatar src={value.avatarUrl} size="lg" radius="xl">
@@ -136,8 +142,8 @@ function ProfileForm() {
             )}
           </Group>
         </Stack>
-      </Card>
-      <Card withBorder>
+      </PageSection>
+      <PageSection>
         <form onSubmit={form.onSubmit((v) => save.mutate(v))}>
           <Stack>
             <TextInput label={t("name")} {...form.getInputProps("displayName")} />
@@ -170,7 +176,7 @@ function ProfileForm() {
             </Button>
           </Stack>
         </form>
-      </Card>
+      </PageSection>
     </Stack>
   );
 }

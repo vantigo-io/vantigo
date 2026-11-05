@@ -1,7 +1,7 @@
 import { Alert, Badge, Button, Card, Group, SimpleGrid, Stack, Text, Title } from "@mantine/core";
 import { IconAlertCircle, IconUserOff } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { myPlanningQueryOptions, type PlanningMe } from "../api/me";
 import type { PlanningProjectRef } from "../api/projects";
@@ -29,9 +29,9 @@ export const MyPlanningPage = () => {
     <Stack gap="lg">
       <PageHeader title={t("myPlanningTitle")} description={t("myPlanningDescription")} />
       {noPerson && (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <EmptyState icon={IconUserOff} title={t("noPersonTitle")} description={t("refusal.no_person")} />
-        </Card>
+        </PageSection>
       )}
       {me.isError && !noPerson && (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadMyPlanning")}>
@@ -40,9 +40,9 @@ export const MyPlanningPage = () => {
       )}
       {me.isPending && <ContentSkeleton rows={3} rowHeight={72} />}
       {me.data && me.data.allocations.length === 0 && (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <EmptyState title={t("noBookingsAhead")} description={t("noBookingsAheadDescription")} />
-        </Card>
+        </PageSection>
       )}
       {me.data && me.data.allocations.length > 0 && (
         <SimpleGrid
@@ -113,7 +113,7 @@ const MyWishes = ({ me }: { me: PlanningMe }) => {
   const atLimit = me.wishes.length >= MAX_OPEN_WISHES;
 
   return (
-    <Card withBorder padding="md" radius="md">
+    <PageSection>
       <Stack gap="sm">
         <Stack gap={2}>
           <Title order={2} size="h4">
@@ -172,6 +172,6 @@ const MyWishes = ({ me }: { me: PlanningMe }) => {
         </Stack>
       </Stack>
       <WishDialog kind={filing} onClose={() => setFiling(undefined)} projects={projects} />
-    </Card>
+    </PageSection>
   );
 };

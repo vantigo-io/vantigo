@@ -1,21 +1,9 @@
 import { BarChart } from "@mantine/charts";
-import {
-  Alert,
-  Card,
-  Group,
-  SegmentedControl,
-  Select,
-  SimpleGrid,
-  Stack,
-  Table,
-  Tabs,
-  Text,
-  Title,
-} from "@mantine/core";
+import { Alert, Group, SegmentedControl, Select, SimpleGrid, Stack, Table, Tabs, Text, Title } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { IconAlertCircle, IconDownload } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 import {
   type AnalysisPeriod,
@@ -125,7 +113,7 @@ const ViewCard = ({
 }) => {
   const { t } = useOrdersFormat();
   return (
-    <Card withBorder padding="lg">
+    <PageSection>
       <Stack gap="md">
         <Group justify="space-between" align="flex-end">
           <Group gap="sm" align="flex-end">
@@ -151,7 +139,7 @@ const ViewCard = ({
         ) : null}
         {children}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 

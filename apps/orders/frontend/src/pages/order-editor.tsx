@@ -19,7 +19,7 @@ import {
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 import { metaQueryOptions } from "../api/meta";
 import {
@@ -603,7 +603,7 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
         access={access}
         errors={editor.fieldErrors}
       />
-      <Card withBorder padding="lg">
+      <PageSection>
         <Stack gap="md">
           <Group justify="space-between">
             <Title order={4}>{t("lines")}</Title>
@@ -632,7 +632,7 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
             </Text>
           )}
         </Stack>
-      </Card>
+      </PageSection>
       {confirmed && atSite && (
         <DeliveriesCard
           orderId={order.id}

@@ -1,20 +1,8 @@
-import {
-  Alert,
-  Button,
-  Card,
-  Group,
-  Loader,
-  NumberInput,
-  Radio,
-  SegmentedControl,
-  Stack,
-  Text,
-  Title,
-} from "@mantine/core";
+import { Alert, Button, Group, Loader, NumberInput, Radio, SegmentedControl, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconInfoCircle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   isVersionConflict,
@@ -114,13 +102,13 @@ export const AssistantSettingsCard = ({ translate }: AssistantSettingsCardProps)
 
   if (query.isPending)
     return (
-      <Card withBorder>
+      <PageSection>
         <Loader size="sm" />
-      </Card>
+      </PageSection>
     );
   if (query.isError || !settings)
     return (
-      <Card withBorder>
+      <PageSection>
         <Group>
           <Text size="sm" c="red">
             {t("requestFailed")}
@@ -129,7 +117,7 @@ export const AssistantSettingsCard = ({ translate }: AssistantSettingsCardProps)
             {t("tryAgain")}
           </Button>
         </Group>
-      </Card>
+      </PageSection>
     );
 
   const retentionNumber = typeof retention === "number" ? retention : Number.NaN;
@@ -142,7 +130,7 @@ export const AssistantSettingsCard = ({ translate }: AssistantSettingsCardProps)
 
   return (
     <Stack gap="md">
-      <Card withBorder>
+      <PageSection>
         <Stack gap="md">
           <Stack gap={4}>
             <Title order={4}>{t("settingsTitle")}</Title>
@@ -213,9 +201,9 @@ export const AssistantSettingsCard = ({ translate }: AssistantSettingsCardProps)
             </Button>
           </Group>
         </Stack>
-      </Card>
+      </PageSection>
 
-      <Card withBorder>
+      <PageSection>
         <Stack gap="md">
           <Stack gap={4}>
             <Title order={4}>{t("mayUseTitle")}</Title>
@@ -248,7 +236,7 @@ export const AssistantSettingsCard = ({ translate }: AssistantSettingsCardProps)
           </Stack>
           <PermissionsTable translate={translate} />
         </Stack>
-      </Card>
+      </PageSection>
 
       <UsageTable />
     </Stack>

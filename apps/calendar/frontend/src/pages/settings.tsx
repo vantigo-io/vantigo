@@ -3,7 +3,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Checkbox,
   CheckIcon,
   ColorSwatch,
@@ -24,7 +23,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCalendarShare, IconPlus, IconRefresh } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useId, useState } from "react";
 import { REVISION_MISMATCH } from "../api/appointments";
 import {
@@ -225,7 +224,7 @@ const FeedCard = ({ variant, address }: { variant: FeedVariant; address?: FeedAd
     : "";
 
   return (
-    <Card withBorder padding="lg" radius="md" role="region" aria-labelledby={titleId}>
+    <PageSection role="region" aria-labelledby={titleId}>
       <Stack gap="sm">
         <Stack gap={0}>
           <Title order={5} id={titleId}>
@@ -268,7 +267,7 @@ const FeedCard = ({ variant, address }: { variant: FeedVariant; address?: FeedAd
           </Group>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -345,7 +344,7 @@ const MailboxSection = ({ connectionButton }: SettingsPageProps) => {
   const busy = save.isPending || sync.isFetching;
 
   return (
-    <Card withBorder padding="lg" radius="md" role="region" aria-labelledby={titleId}>
+    <PageSection role="region" aria-labelledby={titleId}>
       <Stack gap="md">
         <Group gap="sm" wrap="nowrap" align="flex-start">
           <IconCalendarShare size={22} stroke={1.5} aria-hidden style={{ flexShrink: 0, marginTop: 2 }} />
@@ -488,7 +487,7 @@ const MailboxSection = ({ connectionButton }: SettingsPageProps) => {
           </>
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 
@@ -605,7 +604,7 @@ const SubscriptionsSection = () => {
   const rows = subscriptions.data ?? [];
 
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <Group justify="space-between" align="start">
           <Stack gap={0}>
@@ -720,7 +719,7 @@ const SubscriptionsSection = () => {
           )}
         </Modal>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 

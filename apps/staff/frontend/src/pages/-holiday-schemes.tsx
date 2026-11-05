@@ -3,7 +3,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Group,
   Modal,
   NumberInput,
@@ -19,7 +18,7 @@ import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   createHolidayScheme,
@@ -79,7 +78,7 @@ export const HolidaySchemesTable = () => {
     },
   });
   return (
-    <Card withBorder padding="lg" radius="md">
+    <PageSection>
       <Stack gap="md">
         <Group justify="space-between" align="flex-start">
           <Stack gap={0} maw={640}>
@@ -187,7 +186,7 @@ export const HolidaySchemesTable = () => {
           {modal && <SchemeForm key={modal.row?.id ?? "new"} row={modal.row} onClose={() => setModal(null)} />}
         </Modal>
       </Stack>
-    </Card>
+    </PageSection>
   );
 };
 

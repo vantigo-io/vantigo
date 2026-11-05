@@ -1,7 +1,8 @@
-import { Button, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { Button, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconDownload, IconSend } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { cancelTransmission, downloadUbl, type Transmission } from "../api/ehf";
 import { isSessionExpired, saveCsv } from "../api/export";
@@ -80,7 +81,7 @@ export const EhfCard = ({ document: doc, canIssue, offerSend, onSend }: EhfCardP
       ? blockedWords(ehf.blockedBy)
       : undefined;
   return (
-    <Card withBorder data-testid="ehf-card">
+    <PageSection data-testid="ehf-card">
       <Stack gap="xs">
         <Group justify="space-between">
           <Group gap="xs">
@@ -182,6 +183,6 @@ export const EhfCard = ({ document: doc, canIssue, offerSend, onSend }: EhfCardP
       {resolving && (
         <ResolveTransmissionModal document={doc} transmission={resolving} onClose={() => setResolving(null)} />
       )}
-    </Card>
+    </PageSection>
   );
 };

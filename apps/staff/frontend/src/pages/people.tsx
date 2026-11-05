@@ -3,7 +3,6 @@ import {
   Anchor,
   Badge,
   Button,
-  Card,
   Group,
   Pagination,
   SegmentedControl,
@@ -16,7 +15,14 @@ import {
 import { IconAlertCircle, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
+import {
+  ContentSkeleton,
+  EmptyState,
+  PageHeader,
+  PageSection,
+  useDebouncedListSearch,
+  useI18n,
+} from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { staffMetaQueryOptions } from "../api/meta";
 import { type PeopleStatusFilter, peopleQueryOptions } from "../api/people";
@@ -105,7 +111,7 @@ export const PeoplePage = () => {
         </Alert>
       )}
 
-      <Card withBorder padding="lg" radius="md">
+      <PageSection>
         <Stack gap="md">
           <SimpleGrid cols={{ base: 1, sm: 2, md: structure ? 4 : 1 }}>
             <TextInput
@@ -229,7 +235,7 @@ export const PeoplePage = () => {
             </Group>
           )}
         </Stack>
-      </Card>
+      </PageSection>
 
       <NewPersonModal
         // A pasted ?create=person is a request, not a permission: the form

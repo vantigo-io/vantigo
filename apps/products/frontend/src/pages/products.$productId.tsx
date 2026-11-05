@@ -3,7 +3,6 @@ import {
   Anchor,
   Badge,
   Button,
-  Card,
   Group,
   Modal,
   NumberInput,
@@ -20,7 +19,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle, IconArchive, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
-import { EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 import "../i18n";
 import { categoriesQueryOptions, categoryPath } from "../api/categories";
@@ -285,7 +284,7 @@ export const ProductDetailsPage = ({ extraPanels, stockHref }: ProductDetailsPag
         }
       />
       <ProductFormModal state={modalState} onClose={() => setModalState(null)} />
-      <Card withBorder>
+      <PageSection>
         <Stack>
           <Title order={3}>{t("prices.productDetails")}</Title>
           <Group>
@@ -351,9 +350,9 @@ export const ProductDetailsPage = ({ extraPanels, stockHref }: ProductDetailsPag
             <PackagingsEditor productId={product.id} variant={variant} />
           )}
         </Stack>
-      </Card>
+      </PageSection>
       {product.variants.length > 1 && (
-        <Card withBorder>
+        <PageSection>
           <Stack>
             <Group justify="space-between">
               <Title order={3}>{t("common.variants")}</Title>
@@ -420,10 +419,10 @@ export const ProductDetailsPage = ({ extraPanels, stockHref }: ProductDetailsPag
                 <PackagingsEditor key={item.id} productId={product.id} variant={item} showVariant />
               ))}
           </Stack>
-        </Card>
+        </PageSection>
       )}
       {extraPanels}
-      <Card withBorder>
+      <PageSection>
         <Stack>
           <Group justify="space-between">
             <Title order={3}>{t("common.prices")}</Title>
@@ -498,7 +497,7 @@ export const ProductDetailsPage = ({ extraPanels, stockHref }: ProductDetailsPag
           </Table.ScrollContainer>
           {prices.length === 0 && <EmptyState size="sm" title={t("prices.noPrices")} />}
         </Stack>
-      </Card>
+      </PageSection>
       <Modal
         opened={priceModal !== null}
         onClose={() => setPriceModal(null)}

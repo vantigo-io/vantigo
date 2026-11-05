@@ -1,21 +1,8 @@
-import {
-  Alert,
-  Badge,
-  Button,
-  Card,
-  Checkbox,
-  Group,
-  Pagination,
-  Select,
-  Stack,
-  Table,
-  Text,
-  Title,
-} from "@mantine/core";
+import { Alert, Badge, Button, Checkbox, Group, Pagination, Select, Stack, Table, Text, Title } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { IconAlertCircle, IconMail, IconPrinter } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { invoicesMetaQueryOptions } from "../api/meta";
 import {
@@ -104,73 +91,77 @@ export const OverduePage = ({ canViewCustomers, currentUserId }: OverduePageProp
           <ListWarnings warnings={list.data.warnings} />
         </>
       )}
-      <Group align="flex-end">
-        {canViewCustomers && (
-          <CustomerPicker
-            label={t("overdue.filter.customer")}
-            anyStatus
-            clearable
-            value={customerId}
-            onChange={(id) => {
-              setCustomerId(id);
-              setPage(1);
-            }}
-          />
-        )}
-        <Select
-          label={t("overdue.filter.action")}
-          data={[
-            { value: "", label: t("overdue.filter.anyAction") },
-            ...OVERDUE_ACTIONS.map((a) => ({ value: a, label: t(`overdue.action.${a}`) })),
-          ]}
-          value={action}
-          allowDeselect={false}
-          onChange={(value) => {
-            setAction((value ?? "") as OverdueAction | "");
-            setPage(1);
-          }}
-        />
-        <DateInput
-          label={t("overdue.filter.dueBefore")}
-          clearable
-          valueFormat={t("dateInputFormat")}
-          value={dueBefore}
-          onChange={(d) => {
-            setDueBefore(d);
-            setPage(1);
-          }}
-        />
-        <Checkbox
-          label={t("overdue.filter.chargesOutstanding")}
-          checked={chargesOutstanding}
-          onChange={(event) => {
-            setChargesOutstanding(event.currentTarget.checked);
-            setPage(1);
-          }}
-        />
-      </Group>
-      {list.isError && (
-        <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("overdue.failedToLoad")}>
-          {refusalMessage(list.error, t, date)}
-        </Alert>
-      )}
-      {list.isPending && <ContentSkeleton rows={4} rowHeight={40} />}
-      {list.data && list.data.items.length === 0 && (
-        <Text size="sm" c="dimmed">
-          {t("overdue.none")}
-        </Text>
-      )}
-      {list.data && list.data.items.length > 0 && (
-        <>
-          <OverdueTable items={list.data.items} currency={currency} />
-          <Text size="xs" c="dimmed">
-            {t("overdue.total", { count: list.data.total })}
-          </Text>
-        </>
-      )}
-      {list.data && list.data.total > OVERDUE_PAGE_SIZE && (
-        <Pagination total={Math.ceil(list.data.total / OVERDUE_PAGE_SIZE)} value={page} onChange={setPage} />
-      )}
+      <PageSection>
+        <Stack gap="md">
+          <Group align="flex-end">
+            {canViewCustomers && (
+              <CustomerPicker
+                label={t("overdue.filter.customer")}
+                anyStatus
+                clearable
+                value={customerId}
+                onChange={(id) => {
+                  setCustomerId(id);
+                  setPage(1);
+                }}
+              />
+            )}
+            <Select
+              label={t("overdue.filter.action")}
+              data={[
+                { value: "", label: t("overdue.filter.anyAction") },
+                ...OVERDUE_ACTIONS.map((a) => ({ value: a, label: t(`overdue.action.${a}`) })),
+              ]}
+              value={action}
+              allowDeselect={false}
+              onChange={(value) => {
+                setAction((value ?? "") as OverdueAction | "");
+                setPage(1);
+              }}
+            />
+            <DateInput
+              label={t("overdue.filter.dueBefore")}
+              clearable
+              valueFormat={t("dateInputFormat")}
+              value={dueBefore}
+              onChange={(d) => {
+                setDueBefore(d);
+                setPage(1);
+              }}
+            />
+            <Checkbox
+              label={t("overdue.filter.chargesOutstanding")}
+              checked={chargesOutstanding}
+              onChange={(event) => {
+                setChargesOutstanding(event.currentTarget.checked);
+                setPage(1);
+              }}
+            />
+          </Group>
+          {list.isError && (
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("overdue.failedToLoad")}>
+              {refusalMessage(list.error, t, date)}
+            </Alert>
+          )}
+          {list.isPending && <ContentSkeleton rows={4} rowHeight={40} />}
+          {list.data && list.data.items.length === 0 && (
+            <Text size="sm" c="dimmed">
+              {t("overdue.none")}
+            </Text>
+          )}
+          {list.data && list.data.items.length > 0 && (
+            <>
+              <OverdueTable items={list.data.items} currency={currency} />
+              <Text size="xs" c="dimmed">
+                {t("overdue.total", { count: list.data.total })}
+              </Text>
+            </>
+          )}
+          {list.data && list.data.total > OVERDUE_PAGE_SIZE && (
+            <Pagination total={Math.ceil(list.data.total / OVERDUE_PAGE_SIZE)} value={page} onChange={setPage} />
+          )}
+        </Stack>
+      </PageSection>
       {canRun && <RunsCard currentUserId={currentUserId} />}
       {previewing && (
         <RunPreviewModal
@@ -291,7 +282,7 @@ const RunsCard = ({ currentUserId }: { currentUserId?: string }) => {
   const [page, setPage] = useState(1);
   const runs = useQuery(reminderRunsQueryOptions(page));
   return (
-    <Card withBorder data-testid="reminder-runs">
+    <PageSection data-testid="reminder-runs">
       <Stack gap="sm">
         <Title order={4}>{t("overdue.runs")}</Title>
         {runs.isError && (
@@ -332,6 +323,6 @@ const RunsCard = ({ currentUserId }: { currentUserId?: string }) => {
           <Pagination total={runs.data.pagination.totalPages} value={page} onChange={setPage} />
         )}
       </Stack>
-    </Card>
+    </PageSection>
   );
 };

@@ -1,8 +1,8 @@
-import { Alert, Anchor, Card, Stack, Table, Text } from "@mantine/core";
+import { Alert, Anchor, Stack, Table, Text } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { planningMetaQueryOptions } from "../api/meta";
 import { unbookedQueryOptions } from "../api/unbooked";
 import { usePlanningFormat } from "../lib/format";
@@ -37,11 +37,11 @@ export const UnbookedPage = () => {
         }
       />
       {meta.data?.canView && meta.data.workforceVisible === false ? (
-        <Card withBorder padding="lg" radius="md">
+        <PageSection>
           <EmptyState title={t("workforceHiddenTitle")} description={t("workforceHiddenDescription")} />
-        </Card>
+        </PageSection>
       ) : (
-        <Card withBorder padding="sm" radius="md">
+        <PageSection>
           {unbooked.isError && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadUnbooked")}>
               {unbooked.error.message}
@@ -88,7 +88,7 @@ export const UnbookedPage = () => {
               </Table>
             </Table.ScrollContainer>
           )}
-        </Card>
+        </PageSection>
       )}
     </Stack>
   );
