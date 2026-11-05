@@ -86,7 +86,10 @@ A product sold in packagings — a box of 15, a pallet of 40 boxes — shows a p
 selector under the line's quantity once you have picked it. Choose the packaging and type
 how many: **3** of **Box of 15** is stored as 45 of the product's unit, and the line
 shows "= 45 pcs" as you type. The PDF prints it as "3 × Box of 15 (45 pcs)" — in Norwegian "3 × Eske à 15 (45 stk)". Choose the
-unit again to enter the quantity in the product's own unit.
+unit again to enter the quantity in the product's own unit. A count that would make the
+quantity need more than three decimals is refused; enter the quantity in the unit instead.
+A saved line keeps the packaging it was entered in even after the product no longer has
+it, and offers the product's current packagings beside it.
 
 ### Add from grid
 
@@ -134,8 +137,10 @@ shows above the header:
 Someone who manages the Orders settings sees **Override the warning** under a block. Give
 a **Reason** and choose **Override the warning**: the banner shows **Warning overridden**
 with your reason, and your next send, mark as sent, confirm or accept goes through. The
-reason is kept — in the order's **Change log** as **Warning overridden**, or at the end of
-the quote's **Internal note**. **Undo** drops the override before you use it.
+reason is kept — in the order's **Change log** as **Warning overridden**, or at the top of
+the quote's **Internal note**. **Undo** drops the override before you use it; once used, it
+is gone, and the next send or confirm needs a new one. A quote whose e-mail has gone out
+stays sent even if a block was set while it was being sent.
 
 They also see **Add customer warning** (or **Edit customer warning**) there, to set the
 customer's warning without leaving the document. All warnings are kept under
