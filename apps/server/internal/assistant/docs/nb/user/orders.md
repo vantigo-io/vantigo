@@ -341,8 +341,10 @@ dem; å lage og endre dem krever rettigheten til å administrere abonnement.
 2. Velg **Kunde** og planen: **Intervall** (**Månedlig**, **Kvartalsvis**, **Halvårlig**
    eller **Årlig**), **Fakturering** — **Forskuddsvis**, en periode fakturert fra første
    dag, eller **Etterskuddsvis**, fra siste dag — **Start**, en **Slutt** om det har en,
-   **Oppsigelse (måneder)** og **Fakturadag**. Oppsigelsestiden og fakturadagen skrives ut
-   for kunden; de endrer ikke hva som faktureres når.
+   **Oppsigelse (måneder)**, **Fakturadag** og **Siste periode ved avslutning**
+   ([Avslutt](#pause-gjenoppta-avslutt-og-kanseller)); står den tom, gjelder den
+   innstillingene for Ordre gir. Oppsigelsestiden og fakturadagen skrives ut for kunden; de
+   endrer ikke hva som faktureres når.
 3. Velg **Opprett abonnement**. Utkastet åpnes; legg til linjene som på et tilbud, og
    **Lagre**.
 4. Velg **Aktiver**. Abonnementet kontrolleres som en ordre ved bekreftelse — hver linje
@@ -383,8 +385,11 @@ versjonen starter den dagen. Linjene en endring avsluttet, står under **Tidlige
 linjer**. En endring fordeles aldri forholdsmessig, og **Endringsloggen** viser den med
 perioden den gjelder fra.
 
+Gjelder endringen fra en tidligere periode enn en endring du lagret før, erstatter den nye
+den gamle fra sin egen dato: en linje faktureres aldri to ganger i en periode.
+
 Kunden, valutaen og planens intervall, fakturering og start ligger fast når abonnementet
-er aktivt.
+er aktivt; **Siste periode ved avslutning** kan fortsatt endres.
 
 ### Pause, gjenoppta, avslutt og kanseller
 
@@ -392,9 +397,18 @@ er aktivt.
   med mindre du velger en senere. Periodene før faktureres fortsatt.
 - **Gjenoppta** starter faktureringen igjen fra en periodestart du velger. Periodene
   mellom pausen og den **hoppes over** og faktureres aldri.
-- **Avslutt** setter sluttdatoen: perioden den faller i, er den siste som faktureres. Den
-  kan ikke ligge før en periode som alt er på en faktura eller et fakturautkast — krediter
-  den først.
+- **Avslutt** setter sluttdatoen: perioden den faller i, er den siste som faktureres. Når
+  sluttdatoen ikke er periodens siste dag, velger du under **Siste periode ved
+  avslutning** hvordan den faktureres, forhåndsvalgt fra abonnementets egen innstilling:
+  - **Full periode** fakturerer hele perioden;
+  - **Forholdsmessig til sluttdato** fakturerer perioden fra første dag til og med
+    sluttdatoen, som en andel av dagene i hele perioden — et månedlig abonnement på
+    310,00 avsluttet 15. august fakturerer 15/31 av august, 150,00, for 1.–15. august.
+
+  Sluttdatoen kan ikke ligge før en periode som alt er på en faktura eller et
+  fakturautkast — krediter den først. En siste periode som alt er på en faktura eller et
+  fakturautkast, kan bare faktureres i sin helhet: krediter den først for å fordele den
+  forholdsmessig. Valget lagres på abonnementet og vises i **Endringsloggen**.
 - **Kanseller abonnement** kansellerer et utkast, eller et aktivt abonnement der ingenting
   er fakturert ennå. Et med fakturerte perioder avsluttes i stedet.
 
@@ -457,3 +471,4 @@ eller kansellert ([tidslinjen](/nb/user/customers/#tidslinjen)).
 | Et dokument kan ha høyst 500 linjer | Del det i to. |
 | En advarsel sperrer dette | En kunde eller et produkt på dokumentet har en sperre. Den som håndterer innstillingene for Ordre, kan **Overstyr advarselen** med en begrunnelse, eller endre advarselen. |
 | Forpakningen hører ikke til produktet | Velg produktet på nytt og en av forpakningene, eller skriv antallet i enheten. |
+| Siste periode er alt på en faktura eller et fakturautkast og kan ikke gjøres forholdsmessig. | Velg **Full periode**, eller krediter perioden — eller slett fakturautkastet — først. |
