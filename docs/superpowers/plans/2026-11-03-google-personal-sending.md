@@ -123,8 +123,8 @@ Checked against `6f3c3581` (delivery F's branch, `feat/google-mail-channels`).
 
 ## Tasks
 
-- [ ] **1. Plan** — this file, `docs(google): the plan for personal sending (Google G)`.
-- [ ] **2. The provider** — `feat(google): sending from one's own Gmail address (Google G)`:
+- [x] **1. Plan** — this file, `docs(google): the plan for personal sending (Google G)`.
+- [x] **2. The provider** — `feat(google): sending from one's own Gmail address (Google G)`:
   `personal_mailbox.go`; `gmailUpload` shared with the channel; `certainAccountOf` shared
   with the connect; `personalTokens.unauthorized` shared with the calendar;
   `PersonalMailbox: newPersonalMailbox` in `module.go`; the fake's Gmail answering a
@@ -132,25 +132,42 @@ Checked against `6f3c3581` (delivery F's branch, `feat/google-mail-channels`).
   through the flow, send and Sent, Reply-To kept, no read-back, read-back when the scopes
   allow, size, Bcc, `consent_missing` without moving the row, reconnect, 401 → reconnect,
   400/403/413/5xx/429 mapped, nothing logged, a pool of one).
-- [ ] **3. Through Communications** — `test(integration): personal sending through Gmail (Google G)`:
+- [x] **3. Through Communications** — `test(integration): personal sending through Gmail (Google G)`:
   a new conversation and a reply sent personally, Reply-To the channel, in the person's
   Sent, the customer's answer threading back (Gmail keeping the Message-ID; and a reply's
   answer threading by References when Gmail replaces it); a reconnect failing the job at
   once with `connection_needed` and the retry after reconnecting; an `entra` person and a
   Google person in one installation each through their own provider.
-- [ ] **4. The tab** — `feat(google-ui): sending from Gmail is here (Google G)`, both
+- [x] **4. The tab** — `feat(google-ui): sending from Gmail is here (Google G)`, both
   languages, the tab's test.
-- [ ] **5. Documentation** — `docs(google): sending from one's own Gmail address (Google G)`:
+- [x] **5. Documentation** — `docs(google): sending from one's own Gmail address (Google G)`:
   `en`/`nb` `user/communications.md` (Send from my Gmail address, Reply-To the channel,
   reconnecting, the threading caveat), `user/connections.md` (the Gmail feature,
   connecting it from the composer), `user/google-workspace.md` (the tab),
   `admin/google-workspace.md` (personal sending: what it needs, the scope, what the person
   sees, verifying); `reference/google.md` (`PersonalMailbox`, U6 and U9 for G),
   `reference/communications.md` (Google as a personal mailbox provider).
-- [ ] **6. Embedded docs** — `go generate ./...`, `chore(assistant): regenerate the embedded documentation`.
-- [ ] **7. Gates** — `mise run server:check`, `mise run server:test`,
+- [x] **6. Embedded docs** — `go generate ./...`, `chore(assistant): regenerate the embedded documentation`.
+- [x] **7. Gates** — `mise run server:check`, `mise run server:test`,
   `mise run frontend:check`, `mise run docs:check`,
   `bun run tools/docs/check-coverage.ts --base feat/google-mail-channels --head HEAD`.
+
+## As built
+
+- The tasks landed as planned, in the commits their lines name. Beyond the plan: the
+  fake's Gmail serves a person's own token (its subject the Directory id) as the user's
+  mailbox; `lastRevision` moved from the calendar's `mailboxSource` onto `personalSource`;
+  stale "later release" sentences about Gmail were brought up to date in
+  `U/connections.md`, `U/google-workspace.md`, `A/google-workspace.md` and
+  `A/index.md` (both languages).
+- The tests: `google/personal_mailbox_test.go` (the status's reasons, the mail feature
+  connected beside the calendar, the send into Sent with Reply-To and Bcc kept, no
+  read-back with `gmail.send`, the read-back with a reading scope, the refusals before any
+  call, `consent_missing` with the row untouched, a refused refresh and a 401 each to
+  reconnect, Gmail's 400/403/413/5xx/quota and a throttle, nothing logged, a pool of one)
+  and `integration/google_personal_mail_test.go` (a new conversation and a reply through
+  Communications, threading back by our Message-ID and by References; reconnect needed
+  and the retry; an Entra and a Google person in one installation).
 
 ## Unverified items this delivery depends on
 
