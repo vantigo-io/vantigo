@@ -533,3 +533,49 @@ func TestCatalog_LookupSKUs_KeyedAsWrittenIgnoringCaseWithPackagings(t *testing.
 		t.Errorf("LookupSKUs(nil) = %+v, %v, want empty without an error", none, err)
 	}
 }
+
+// TestCatalog_CarriesCategoryAndOptionValues pins the two fields Orders' grid
+// and intake read (orders design O34, O35): the product's category, id and
+// name, and each variant's option values keyed as they were typed; a product
+// with no category and a variant with no options answer neither.
+func TestCatalog_CarriesCategoryAndOptionValues(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+	categoryID := insertCategory(t, h, "Shirts", nil)
+	created := createProduct(t, c, map[string]any{
+		"name": "Shirt", "type": "Goods", "taxCategoryId": taxCategoryID, "categoryId": categoryID,
+		"variants": []map[string]any{
+			{"sku": sku(t, "shirt-s-red"), "optionValues": map[string]string{"Size": "S", "Colour": "Red"}},
+			{"sku": sku(t, "shirt-m-red"), "optionValues": map[string]string{"Size": "M", "Colour": "Red"}},
+		},
+	})
+	plain := createProduct(t, c, newProductBody(taxCategoryID, "Plain", sku(t, "plain")))
+
+	catalog := products.Module().Products(h.Deps())
+	got, err := catalog.VariantsOfProduct(context.Background(), created.Id)
+	if err != nil {
+		t.Fatalf("VariantsOfProduct: %v", err)
+	}
+	if len(got) != 2 || got[0].CategoryID == nil || *got[0].CategoryID != categoryID || got[0].CategoryName != "Shirts" ||
+		!reflect.DeepEqual(got[0].OptionValues, map[string]string{"Size": "S", "Colour": "Red"}) {
+		t.Fatalf("VariantsOfProduct = %+v, want the category and the option values", got)
+	}
+	locked, err := catalog.Variants(context.Background(), []int32{got[1].ID, plain.Variants[0].Id})
+	if err != nil || len(locked) != 2 {
+		t.Fatalf("Variants: %+v, %v", locked, err)
+	}
+	for _, e := range locked {
+		switch e.ID {
+		case got[1].ID:
+			if e.OptionValues["Size"] != "M" || e.CategoryName != "Shirts" {
+				t.Errorf("entry %+v", e)
+			}
+		default:
+			if e.CategoryID != nil || e.CategoryName != "" || e.OptionValues != nil {
+				t.Errorf("a plain product's entry %+v; want no category and no options", e)
+			}
+		}
+	}
+}
