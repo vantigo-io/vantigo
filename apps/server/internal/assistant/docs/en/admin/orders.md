@@ -1,6 +1,6 @@
 ---
 title: Orders
-description: Turning Orders on — the modules it requires, mapping Products' tax categories to VAT codes, the nine permissions and the roles to build from them — and keeping its settings — the number series, quote validity, payment terms, the send channel, the confirmation on confirm the mail texts, a subscription's final period and the default site — Inventory's part in reservations and deliveries, its quote templates and its sales warnings, who sees the sales analysis, who keeps subscriptions, and who invoices orders and subscriptions; how to verify it, and what can go wrong.
+description: Turning Orders on — the modules it requires, mapping Products' tax categories to VAT codes, the nine permissions and the roles to build from them — and keeping its settings — the number series, quote validity, payment terms, the send channel, the confirmation on confirm the mail texts, a subscription's final period, the default site, the freight product, the markup and the shipping notice — Inventory's part in reservations and deliveries, its quote templates and its sales warnings, who sees the sales analysis, who keeps subscriptions, and who invoices orders and subscriptions; how to verify it, and what can go wrong.
 sidebar:
   order: 48
 sources:
@@ -132,10 +132,18 @@ Whoever invoices needs no Orders permission to do it; the order's **Invoices** c
   order is changed again before the mail goes, the current version is sent instead, and
   the order's **Documents and mailings** shows which. An order cancelled before its
   confirmation goes gets none.
-- **Mail texts** — a subject and a text per kind (**Quote**, **Order confirmation**) and
-  language (Norwegian, English). Leave one empty to use the built-in text. A text may
-  name `{number}`, `{seller}`, `{total}` and `{validUntil}`, which are filled in; the
-  person's own message from the send dialog is added before the closing.
+- **Shipping** — the **Freight product**: a Service product whose name, price and VAT code
+  a shipping line takes, or none for a free-text line; the **Markup on the carrier's
+  estimate** in percent (0 unless changed), which **Estimate** on a shipping line adds;
+  and **E-mail the customer when a shipment is booked** (on unless changed), which sends
+  the shipping notice with the tracking link on the send channel. The carrier accounts
+  themselves are under Workspace admin › Integrations › [Shipping](/en/admin/shipping/).
+- **Mail texts** — a subject and a text per kind (**Quote**, **Order confirmation**,
+  **Shipping notice**) and language (Norwegian, English). Leave one empty to use the
+  built-in text. A text may name `{number}`, `{seller}`, `{total}` and `{validUntil}` —
+  the shipping notice `{number}`, `{seller}`, `{carrier}`, `{consignment}` and
+  `{trackingUrl}` — which are filled in; the person's own message from the send dialog is
+  added before the closing.
 
 Choose **Save**. When someone else saved the settings since you opened them, you are asked
 to reload.
@@ -225,3 +233,6 @@ A product warning outlives a deleted product: the list marks it **Product delete
 | "There is not enough available at the site" on confirm | Other orders hold the stock, or it is not received yet | Receive the goods, or **Confirm without reserving** and **Reserve now** later |
 | "The location does not hold that much" on posting a delivery | Stock was moved, corrected or issued since the delivery was picked | Pick another location, or correct the stock in Inventory |
 | **Deliveries** shows nothing to create | The order is on hold, has no site, or its goods are all delivered or in a draft delivery | Release it, set a site, or finish the draft delivery |
+| "The freight product must be a Service product" | The product chosen as freight product is goods | Make a Service product for freight in Products, and choose it |
+| **Estimate** says "No carrier account to use" | No carrier account is set up, or none is the site's default while there are several | Set one up, and the site's default, under Integrations › [Shipping](/en/admin/shipping/) |
+| No shipping notice reaches the customer | **E-mail the customer when a shipment is booked** is off, no send channel is chosen, or the shipment and the order have no e-mail | Turn it on, choose a channel, and fill in the recipient's e-mail before booking |

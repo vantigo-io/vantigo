@@ -1,6 +1,6 @@
 ---
 title: Ordre
-description: Ordre-appen — lag et tilbud, fra appen, kundesiden eller en mal; legg til produkt-, fritekst-, seksjons- og merknadslinjer, valgfrie linjer og rabatter; send det eller marker det som sendt, revider, aksepter, avslå, kanseller og kopier det; lag en ordre, bekreft den, endre den etter bekreftelse, sett den på vent, lås den, kanseller den eller resten, registrer hva som er levert, send ordrebekreftelsen og skriv ut en proforma; reserver varer på et lagersted, lag, plukk og bokfør leveranser med plukkliste og pakkseddel, og følg restordrene; fakturer den, se fakturaene dens og frigjør det fakturautkast holder; lag et abonnement, aktiver, endre, pause, gjenoppta, avslutt og kanseller det, aksepter et tilbud som abonnement og se periodene; endringsloggen; linjer i forpakninger og fra variantrutenettet; kunde- og produktadvarsler og overstyring av en sperre; salgsanalysen; kundens Ordre-fane; og hva en avvisning betyr.
+description: Ordre-appen — lag et tilbud, fra appen, kundesiden eller en mal; legg til produkt-, fritekst-, seksjons- og merknadslinjer, valgfrie linjer og rabatter; send det eller marker det som sendt, revider, aksepter, avslå, kanseller og kopier det; lag en ordre, bekreft den, endre den etter bekreftelse, sett den på vent, lås den, kanseller den eller resten, registrer hva som er levert, send ordrebekreftelsen og skriv ut en proforma; reserver varer på et lagersted, lag, plukk og bokfør leveranser med plukkliste og pakkseddel, og følg restordrene; send en leveranse med Bring — kolli, priser, bestilling, etiketter, fraktbrev, sporing og kansellering — og legg til en fraktlinje med transportørens estimat; fakturer den, se fakturaene dens og frigjør det fakturautkast holder; lag et abonnement, aktiver, endre, pause, gjenoppta, avslutt og kanseller det, aksepter et tilbud som abonnement og se periodene; endringsloggen; linjer i forpakninger og fra variantrutenettet; kunde- og produktadvarsler og overstyring av en sperre; salgsanalysen; kundens Ordre-fane; og hva en avvisning betyr.
 sidebar:
   order: 55
 sources:
@@ -63,6 +63,14 @@ Under **Linjer** legger du til:
   antall, pris og, hvis det ikke er standardsatsen, en mva-kode.
 - **Seksjon** — en overskrift som samler linjene under seg.
 - **Merknad** — en tekst som skrives ut mellom linjene.
+- **Frakt** (*Legg til frakt*, på et tilbud eller en ordre) — frakten kunden betaler:
+  antall 1, en pris og en mva-kode, standardsatsen med mindre du velger en annen.
+  **Estimer** spør transportøren om en pris for det lagrede dokumentets leveringsadresse og
+  varenes vekt, legger til påslaget fra innstillingene for Ordre og fyller inn prisen, merket
+  **Fraktestimat**; når innstillingene har et fraktprodukt, får linjen navnet og mva-koden
+  derfra. Skriv over prisen for å gjøre den til din egen. Estimer krever at dokumentet er
+  lagret og at det finnes en fraktkonto (se [Frakt](/nb/admin/shipping/)). Linjen regnes som
+  levert når ordrens første sending er bestilt, og faktureres som alle andre linjer.
 
 Gi hver produktlinje et **Antall**, og en **Rabatt** i prosent om det er noen. En pris du
 skriver inn selv, vises som **Manuell pris** og blir stående slik du skrev den; en
@@ -331,6 +339,44 @@ Det som ikke er levert, står igjen på ordren som restordre; det lages ikke noe
 neste leveranse fra ordren når varene er kommet. **Leveranser** → **Leveranser** viser
 leveransene, med utkastene først.
 
+### Send en leveranse
+
+En bokført leveranse sendes med en transportør fra kortet **Sendinger**. Det krever
+tillatelsen til å håndtere leveranser, og en fraktkonto satt opp under Arbeidsområde ›
+Integrasjoner › Frakt ([Frakt](/nb/admin/shipping/)).
+
+1. På den bokførte leveransen velger du **Send**. Et sendingsutkast lages med ett kolli som
+   veier de leverte varene (ett kilo når produktene ikke har vekt), til ordrens
+   leveringsadresse, på lagerstedets standard fraktkonto og standardtjeneste.
+2. Endre **Tjeneste** — for eksempel *Pakke til hentested* eller *Pakke til bedrift* —,
+   mottakerens telefon og e-post, som transportøren sender varslene sine til, og **Kolli**:
+   vekten på hvert i gram og lengde, bredde og høyde i millimeter. Legg til et kolli for hver
+   pakke, og velg **Lagre sendingen**.
+3. **Vis priser** viser hva transportøren tar for hver av tjenestene sine, billigste først.
+   Brings priser er estimater: transportørens faktura er fasiten.
+4. **Bestill frakt** bestiller sendingen. Sendingen viser sendingsnummeret, en lenke
+   **Spor** og en **Etikett** å skrive ut; en godstjeneste har også et **Fraktbrev** — for de
+   andre gjelder etiketten. Når innstillingene for Ordre sier det, får kunden en e-post med
+   sporingslenken. Ordrens fraktlinjer regnes som levert.
+
+En testkonto bestiller i Brings testmodus, merket **Test**. Bring sender likevel varslene sine
+til ekte telefonnumre og e-postadresser i testmodus, så bruk oppdiktede kontakter der.
+
+Når bestillingen feiler fordi transportøren ikke svarte, velger du **Bestill frakt** igjen:
+Vantigo spør transportøren først og bestiller én gang. Når transportøren avviser, sier dens
+egne ord hvorfor — et feil postnummer, for eksempel — og sendingen forblir et utkast.
+
+### Følg og kanseller en sending
+
+Sendingens status endrer seg av seg selv etter hvert som transportøren melder den —
+**Bestilt**, **Underveis**, **Levert** — hver halvtime, med hver **sporingshendelse** listet
+under. Et avvik eller en retur merker den med **Avvik**. Kortet **Sendinger** på ordren viser
+hver bestilte sending med sporingslenken.
+
+**Kanseller sendingen** kansellerer et utkast. En bestilt Bring-sending kan ikke kanselleres
+hos Bring: den **ugyldiggjøres** i Vantigo, og etiketten må ikke brukes — Bring tar bare betalt
+for pakker som er levert inn. En pakke transportøren alt har, kan ikke kanselleres.
+
 ## Fakturer en ordre
 
 En ordre faktureres i Fakturaer, fra linjene: du velger hvor mye av hver linje som skal
@@ -552,3 +598,8 @@ eller kansellert ([tidslinjen](/nb/user/customers/#tidslinjen)).
 | En advarsel sperrer dette | En kunde eller et produkt på dokumentet har en sperre. Den som håndterer innstillingene for Ordre, kan **Overstyr advarselen** med en begrunnelse, eller endre advarselen. |
 | Forpakningen hører ikke til produktet | Velg produktet på nytt og en av forpakningene, eller skriv antallet i enheten. |
 | Siste periode er alt på en faktura eller et fakturautkast og kan ikke gjøres forholdsmessig. | Velg **Full periode**, eller krediter perioden — eller slett fakturautkastet — først. |
+| Ingen fraktkonto å bruke | Be en administrator legge til en, eller velge lagerstedets standardkonto, under Integrasjoner › Frakt. |
+| Transportøren avviste forespørselen. … | Transportørens egne ord følger: rett det den nevner — adressen, vekten — og bestill igjen. |
+| Transportøren svarte ikke. | Prøv igjen senere. En bestilling der svaret gikk tapt, finnes igjen: **Bestill frakt** bestiller én gang. |
+| Transportøren har pakken; den kan ikke lenger kanselleres. | Avtal en retur med transportøren i stedet. |
+| Dokumentet har ingen adresse å sende til. | Velg en leveringsadresse på dokumentet, lagre det og estimer igjen. |

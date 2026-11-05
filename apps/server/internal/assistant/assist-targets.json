@@ -220,6 +220,11 @@
     "description": "Takes the stock off the chosen locations, registers the quantities delivered on the order and stores the packing slip."
   },
   {
+    "key": "orders.delivery.ship",
+    "route": "/orders/deliveries/{deliveryId}",
+    "description": "On a posted delivery's Shipments card: proposes a shipment with one package weighing the delivered goods, on the site's default carrier account."
+  },
+  {
     "key": "orders.document.warnings",
     "route": "/orders/quotes/{quoteId}",
     "description": "The customer's and the products' sales warnings, and for a settings holder the override of a block and the customer's warning."
@@ -228,6 +233,16 @@
     "key": "orders.lines.add-from-grid",
     "route": "/orders/quotes/{quoteId}",
     "description": "Opens the variant grid: a product's variants by size and colour, with a quantity per cell, added as lines."
+  },
+  {
+    "key": "orders.lines.add-shipping",
+    "route": "/orders/quotes/{quoteId}",
+    "description": "Adds a shipping line: the freight the customer pays, quantity 1, its price typed or estimated."
+  },
+  {
+    "key": "orders.lines.estimate-shipping",
+    "route": "/orders/quotes/{quoteId}",
+    "description": "Asks the carrier for the shipping line's price for the delivery address and the goods' weight, with the markup from the settings."
   },
   {
     "key": "orders.new-order.create",
@@ -320,6 +335,11 @@
     "description": "The final period a new subscription takes: the period the end falls in billed in full, or pro-rated to the end date."
   },
   {
+    "key": "orders.settings.freight-markup",
+    "route": "/orders/settings",
+    "description": "The percent a shipping line's estimate adds to the carrier's price."
+  },
+  {
     "key": "orders.settings.save",
     "route": "/orders/settings",
     "description": "Saves the Orders settings: number series, validity, payment terms, the send channel and the mail texts."
@@ -328,6 +348,26 @@
     "key": "orders.settings.warnings",
     "route": "/orders/settings",
     "description": "Every customer's and product's sales warning, set, changed and removed here."
+  },
+  {
+    "key": "orders.shipment.book",
+    "route": "/orders/deliveries/{deliveryId}",
+    "description": "Books the shipment with the carrier, stores its label and waybill and, when the settings say so, e-mails the customer the tracking link."
+  },
+  {
+    "key": "orders.shipment.service",
+    "route": "/orders/deliveries/{deliveryId}",
+    "description": "The carrier's product the shipment is booked as, such as Bring's parcel to a pickup point."
+  },
+  {
+    "key": "orders.shipping.add-account",
+    "route": "/workspace/shipping",
+    "description": "Adds a Bring account: the Mybring user and API key, the customer numbers and whether it runs in test mode."
+  },
+  {
+    "key": "orders.shipping.verify",
+    "route": "/workspace/shipping",
+    "description": "Checks the account's keys with the carrier and lists the services it can book; says when prices are list prices only."
   },
   {
     "key": "orders.subscription.activate",

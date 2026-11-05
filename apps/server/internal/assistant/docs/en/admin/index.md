@@ -72,6 +72,11 @@ application.
   impersonate, and the Internal web client. This release reads the organisation; the
   accounts, calendar and Gmail come later. Nothing of it is in `vantigo.env`; its page
   is under **Integrations** in Workspace admin.
+- **Shipping.** [Shipping](/en/admin/shipping/) sets up the carrier accounts Orders books
+  shipments with: Bring's Mybring user and API key — with the financial role for prices —,
+  the customer numbers, the test mode, the default account per site, the freight product
+  and the markup. `SHIPPING_CARRIERS` in `vantigo.env` withholds a carrier; the accounts
+  are under **Integrations** in Workspace admin.
 
 ## Configuration
 

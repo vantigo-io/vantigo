@@ -1,6 +1,6 @@
 ---
 title: Ordre
-description: Slå på Ordre — modulene den krever, koblingen av avgiftskategoriene i Produkter til mva-koder, de ni rettighetene og rollene du bygger av dem — og hold innstillingene — nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen, ordrebekreftelse ved bekreftelse, e-posttekstene, et abonnements siste periode og standard lagersted — Lagers del i reservasjoner og leveranser, tilbudsmalene og salgsadvarslene, hvem som ser salgsanalysen, hvem som holder abonnementene, og hvem som fakturerer ordre og abonnement; hvordan du kontrollerer det, og hva som kan gå galt.
+description: Slå på Ordre — modulene den krever, koblingen av avgiftskategoriene i Produkter til mva-koder, de ni rettighetene og rollene du bygger av dem — og hold innstillingene — nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen, ordrebekreftelse ved bekreftelse, e-posttekstene, et abonnements siste periode, standard lagersted, fraktproduktet, påslaget og sendingsvarselet — Lagers del i reservasjoner og leveranser, tilbudsmalene og salgsadvarslene, hvem som ser salgsanalysen, hvem som holder abonnementene, og hvem som fakturerer ordre og abonnement; hvordan du kontrollerer det, og hva som kan gå galt.
 sidebar:
   order: 48
 sources:
@@ -134,10 +134,17 @@ ordrer**.
   ordren igjen før e-posten går, sendes gjeldende versjon i stedet, og **Dokumenter og
   utsendelser** på ordren viser hvilken. En ordre som kanselleres før bekreftelsen er
   sendt, får ingen.
-- **E-posttekster** — et emne og en tekst per type (**Tilbud**, **Ordrebekreftelse**) og
-  språk (norsk, engelsk). La en stå tom for å bruke den innebygde teksten. En tekst kan
-  bruke `{number}`, `{seller}`, `{total}` og `{validUntil}`, som fylles inn; personens egen
-  melding fra sendedialogen legges til før hilsenen.
+- **Frakt** — **Fraktprodukt**: et tjenesteprodukt som en fraktlinje tar navn, pris og
+  mva-kode fra, eller ingen for en fritekstlinje; **Påslag på transportørens estimat** i
+  prosent (0 om ikke endret), som **Estimer** på en fraktlinje legger til; og **Send kunden
+  e-post når frakten er bestilt** (på om ikke endret), som sender sendingsvarselet med
+  sporingslenken på avsenderkanalen. Selve fraktkontoene ligger under Administrer
+  arbeidsområde › Integrasjoner › [Frakt](/nb/admin/shipping/).
+- **E-posttekster** — et emne og en tekst per type (**Tilbud**, **Ordrebekreftelse**,
+  **Sendingsvarsel**) og språk (norsk, engelsk). La en stå tom for å bruke den innebygde
+  teksten. En tekst kan bruke `{number}`, `{seller}`, `{total}` og `{validUntil}` —
+  sendingsvarselet `{number}`, `{seller}`, `{carrier}`, `{consignment}` og `{trackingUrl}` —
+  som fylles inn; personens egen melding fra sendedialogen legges til før hilsenen.
 
 Velg **Lagre**. Har noen andre lagret innstillingene siden du åpnet dem, blir du bedt om å
 laste inn på nytt.
@@ -224,3 +231,6 @@ og **Fjern** er alt den tilbyr.
 | «Det er ikke nok disponibelt på lagerstedet» ved bekreftelse | Andre ordrer holder varene, eller de er ikke tatt imot ennå | Ta imot varene, eller **Bekreft uten å reservere** og **Reserver nå** senere |
 | «Lokasjonen har ikke så mye» når en leveranse bokføres | Varer er flyttet, korrigert eller tatt ut siden leveransen ble plukket | Velg en annen lokasjon, eller korriger beholdningen i Lager |
 | **Leveranser** har ingenting å lage | Ordren er på vent, har ikke lagersted, eller varene er levert eller ligger i et leveranseutkast | Frigi den, sett et lagersted, eller gjør ferdig leveranseutkastet |
+| «Fraktproduktet må være et tjenesteprodukt» | Produktet som er valgt som fraktprodukt, er en vare | Lag et tjenesteprodukt for frakt i Produkter, og velg det |
+| **Estimer** sier «Ingen fraktkonto å bruke» | Ingen fraktkonto er satt opp, eller ingen er lagerstedets standard mens det finnes flere | Sett opp en, og lagerstedets standard, under Integrasjoner › [Frakt](/nb/admin/shipping/) |
+| Kunden får ikke noe sendingsvarsel | **Send kunden e-post når frakten er bestilt** er av, ingen avsenderkanal er valgt, eller sendingen og ordren har ingen e-post | Slå det på, velg en kanal, og fyll inn mottakerens e-post før bestilling |

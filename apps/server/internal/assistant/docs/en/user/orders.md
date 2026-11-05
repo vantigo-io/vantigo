@@ -1,6 +1,6 @@
 ---
 title: Orders
-description: The Orders app — make a quote, from the app, a customer's page or a template; add product, free-text, section and note lines, optional lines and discounts; send it or mark it as sent, revise, accept, decline, cancel and copy it; make an order, confirm it, change it after confirming, put it on hold, lock it, cancel it or its rest, register what is delivered, send the order confirmation and print a pro forma; reserve stock at a site, make, pick and post deliveries with their pick list and packing slip, and follow the back orders; invoice it, see its invoices and release what draft invoices hold; make a subscription, activate, change, pause, resume, end and cancel it, accept a quote as one and see its periods; the change log; lines in packagings and from the variant grid; customer and product warnings and overriding a block; the sales analysis; the customer's Orders tab; and what a refusal means.
+description: The Orders app — make a quote, from the app, a customer's page or a template; add product, free-text, section and note lines, optional lines and discounts; send it or mark it as sent, revise, accept, decline, cancel and copy it; make an order, confirm it, change it after confirming, put it on hold, lock it, cancel it or its rest, register what is delivered, send the order confirmation and print a pro forma; reserve stock at a site, make, pick and post deliveries with their pick list and packing slip, and follow the back orders; ship a delivery with Bring — packages, prices, booking, labels, the waybill, tracking and cancelling — and add a shipping line with the carrier's estimate; invoice it, see its invoices and release what draft invoices hold; make a subscription, activate, change, pause, resume, end and cancel it, accept a quote as one and see its periods; the change log; lines in packagings and from the variant grid; customer and product warnings and overriding a block; the sales analysis; the customer's Orders tab; and what a refusal means.
 sidebar:
   order: 55
 sources:
@@ -64,6 +64,14 @@ Under **Lines**, add:
   quantity, a price and, if it is not the standard rate, a VAT code.
 - **Section** — a heading that groups the lines below it.
 - **Note** — a text printed between the lines.
+- **Shipping** (*Add shipping*, on a quote or an order) — the freight the customer pays:
+  quantity 1, a price and a VAT code, the standard rate unless you choose another.
+  **Estimate** asks the carrier for a price for the saved document's delivery address and
+  the weight of its goods, adds the markup from the Orders settings and fills in the price,
+  marked **Carrier estimate**; when the settings name a freight product, the line takes its
+  name and VAT code. Type over the price to make it your own. Estimate needs the document
+  saved and a carrier account (see [Shipping](/en/admin/shipping/)). The line is counted as
+  delivered when the order's first shipment is booked, and is invoiced like any line.
 
 Give each product line a **Quantity**, and a **Discount** in percent if any. A price you
 type yourself is shown as **Manual price** and stays as you typed it; a catalog price is
@@ -333,6 +341,45 @@ separate document. **Deliveries** → **To deliver** lists the confirmed orders 
 left to deliver; make the next delivery from the order when the goods are in. **Deliveries**
 → **Deliveries** lists the delivery documents, drafts first.
 
+### Ship a delivery
+
+A posted delivery is sent with a carrier from its **Shipments** card. This needs the
+permission to manage deliveries, and a carrier account set up under Workspace admin ›
+Integrations › Shipping ([Shipping](/en/admin/shipping/)).
+
+1. On the posted delivery, choose **Ship**. A draft shipment is made with one package
+   weighing the delivered goods (a kilogram when the products have no weight), to the
+   order's delivery address, on the site's default carrier account and its default service.
+2. Change the **Service** — for example *Parcel to pickup point* or *Business parcel* —
+   the recipient's phone and e-mail, which the carrier sends its notices to, and the
+   **Packages**: each one's weight in grams and its length, width and height in
+   millimetres. Add a package for each parcel, then **Save shipment**.
+3. **Show prices** lists what the carrier charges for each of its services, cheapest first.
+   Bring's prices are estimates: the carrier's invoice is the truth.
+4. **Book shipment** books it. The shipment shows its consignment number (*sendingsnummer*),
+   a **Track** link and a **Label** to print; a cargo service also has a **Waybill**
+   (*fraktbrev*) — for the others the label serves. When the Orders settings say so, the
+   customer gets an e-mail with the tracking link. The order's shipping lines count as
+   delivered.
+
+A test account books in Bring's test mode, marked **Test**. Bring still sends its notices
+to real phone numbers and e-mail addresses in test mode, so use made-up contacts there.
+
+When booking fails because the carrier did not answer, choose **Book shipment** again:
+Vantigo asks the carrier first and books once. When the carrier refuses, its own words say
+why — a wrong postal code, say — and the shipment stays a draft.
+
+### Follow and cancel a shipment
+
+The shipment's state moves by itself as the carrier reports it — **Booked**, **In transit**,
+**Delivered** — every half hour, with each **tracking event** listed under it. A deviation
+or a return marks it with **Exception**. The order's **Shipments** card lists every booked
+shipment with its tracking link.
+
+**Cancel shipment** cancels a draft. A booked Bring shipment cannot be cancelled with Bring:
+it is **voided** in Vantigo and its label must not be used — Bring charges only for parcels
+handed in. A parcel the carrier already has cannot be cancelled.
+
 ## Invoice an order
 
 An order is invoiced in Invoices, from its lines: you choose how much of each line to
@@ -557,3 +604,8 @@ confirmed or cancelled ([the timeline](/en/user/customers/#the-timeline)).
 | A warning blocks this | A customer or product on the document has a block warning. Someone who manages the Orders settings can **Override the warning** with a reason, or change the warning. |
 | The packaging is not one of the product's | Pick the product again and choose one of its packagings, or enter the quantity in the unit. |
 | The final period is already on an invoice or a draft invoice and cannot be pro-rated. | Choose **Full period**, or credit the period — or delete the draft invoice — first. |
+| No carrier account to use | Ask an administrator to add one, or to choose the site's default account, under Integrations › Shipping. |
+| The carrier refused the request. … | The carrier's own words follow: correct what it names — the address, the weight — and book again. |
+| The carrier did not answer. | Try again later. A booking whose answer was lost is found again: **Book shipment** books once. |
+| The carrier has the parcel; it can no longer be cancelled. | Arrange a return with the carrier instead. |
+| The document has no address to ship to. | Choose a delivery address on the document, save it, and estimate again. |

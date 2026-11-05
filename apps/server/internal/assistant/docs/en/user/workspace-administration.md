@@ -12,12 +12,12 @@ sources:
 Workspace administration is where an **Owner** manages who can use Vantigo and what
 they may do. Open the avatar menu at the top right and choose **Workspace admin**;
 its sidebar has **Overview**, **Users**, **Invitations** and **Roles & access**, and,
-under **Integrations**, **Microsoft Entra ID**, **Google Workspace** and, once Vantigo has set up AI for the
+under **Integrations**, **Microsoft Entra ID**, **Google Workspace**, **Shipping** and, once Vantigo has set up AI for the
 installation, **AI models** and **Assistant**.
 
 Everything here needs the Owner role, with one exception: a person to whom an Owner
 has delegated role administration sees **Roles & access** alone, both in the avatar
-menu and in the sidebar; and someone who holds `entra:manage` or `google:manage` without being an Owner
+menu and in the sidebar; and someone who holds `entra:manage`, `google:manage` or `orders:carriers-manage` without being an Owner
 sees **Integrations** alone ([below](#integrations)). The last active Owner can never be
 demoted, disabled or deleted, so the workspace always has one.
 
@@ -510,7 +510,7 @@ groups, their members receive the mapped roles automatically; see
 
 **Integrations** is the second section of the **Workspace admin** sidebar: the one place
 the company's connections to systems elsewhere are managed, and the Owner's settings for the
-assistant. It has four items.
+assistant. It has five items.
 **Microsoft Entra ID** connects Vantigo to the company's Microsoft Entra ID tenant; its
 page has four tabs — **Status**, **Connection**, **Accounts** and **Outlook and mail** —
 described in [Microsoft Entra ID](/en/user/entra/#where-it-is-and-the-four-tabs). It is there
@@ -520,20 +520,24 @@ Vantigo to the company's Google Workspace organisation; its page has four tabs �
 **Status**, **Connection**, **Accounts** and **Calendar and Gmail** — described in [Google
 Workspace](/en/user/google-workspace/#where-it-is-and-the-four-tabs). It is there only
 while the Google Workspace module is on, and only for someone who holds `google:manage`.
+**Shipping** (*Frakt*) keeps the carrier accounts Orders books shipments with — Bring's
+Mybring user and API key, the customer numbers, the test mode — and the default account per
+site, described in [Shipping](/en/admin/shipping/). It is there only while the Orders module
+is on, and only for someone who holds `orders:carriers-manage`.
 **AI models** is the Owner's
 alone, and is there only while Vantigo has set up AI for this installation
 ([below](#ai-models)). **Assistant** is the Owner's alone too, and is there while the Assistant
 module is on and AI is set up ([below](#assistant)).
 
 - An Owner sees all of Workspace admin, with **Integrations** after the rest.
-- Someone who holds `entra:manage` or `google:manage` but is not an Owner sees
-  **Integrations** alone in the sidebar — the way a person with delegated role
+- Someone who holds `entra:manage`, `google:manage` or `orders:carriers-manage` but is not
+  an Owner sees **Integrations** alone in the sidebar — the way a person with delegated role
   administration sees **Roles & access** alone — with the pages their permissions open,
-  and finds **Microsoft Entra ID** or **Google Workspace** in the avatar menu. The steps that
+  and finds **Microsoft Entra ID**, **Google Workspace** or **Shipping** in the avatar menu. The steps that
   are an Owner's they read without their forms. They do not see **AI models** or **Assistant**.
-- Without `entra:manage` or `google:manage` (and not an Owner), there is no
-  **Integrations** section. For an Owner there is none either while the Microsoft Entra
-  ID and Google Workspace modules are off and AI is not set up.
+- Without `entra:manage`, `google:manage` or `orders:carriers-manage` (and not an Owner),
+  there is no **Integrations** section. For an Owner there is none either while the
+  Microsoft Entra ID, Google Workspace and Orders modules are off and AI is not set up.
 
 Your own accounts elsewhere, such as your Outlook, are connected under **Settings** ›
 **Connections** ([Connections](/en/user/connections/)); the mailboxes Communications
