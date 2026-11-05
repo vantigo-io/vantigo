@@ -106,6 +106,10 @@ const typeKey: Record<string, string> = {
   "customer.anonymised": "customerAnonymisedEvent",
   "customer.attachment_added": "customerAttachmentAddedEvent",
   "customer.attachment_removed": "customerAttachmentRemovedEvent",
+  "orders.quote_sent": "ordersQuoteSentEvent",
+  "orders.quote_accepted": "ordersQuoteAcceptedEvent",
+  "orders.order_confirmed": "ordersOrderConfirmedEvent",
+  "orders.order_cancelled": "ordersOrderCancelledEvent",
 };
 const iconFor = (type: string) =>
   type.startsWith("interaction.") ? IconCalendarEvent : type === "note" ? IconEdit : IconWand;
@@ -339,6 +343,23 @@ const MergedIntoLink = ({ payload }: { payload: unknown }) => {
   return (
     <Anchor size="sm" renderRoot={(props) => <Link to={`/customers/${into.id}` as never} {...props} />}>
       {t("mergedAwayOpenSurvivor", { number: into.customerNumber, name: into.name })}
+    </Anchor>
+  );
+};
+
+/**
+ * An orders event's entry (orders design O31): the quote or order it is
+ * about, as a link to its page in the Orders app. The link is the route the
+ * payload names, only ever a path inside the app.
+ */
+const OrdersDocumentLink = ({ payload }: { payload: unknown }) => {
+  const { t } = useI18n("customers");
+  const body = record(payload);
+  const link = body?.link;
+  if (typeof link !== "string" || !link.startsWith("/orders/")) return null;
+  return (
+    <Anchor size="sm" renderRoot={(props) => <Link to={link as never} {...props} />}>
+      {t(body?.documentKind === "quote" ? "ordersOpenQuote" : "ordersOpenOrder", { number: body?.number })}
     </Anchor>
   );
 };
@@ -659,6 +680,7 @@ export const CustomerTimeline = ({
                       )}
                       {entry.eventType === "customer.merged" && <MergedAbsorbedDetails payload={entry.payload} />}
                       {entry.eventType === "customer.merged_away" && <MergedIntoLink payload={entry.payload} />}
+                      {entry.eventType.startsWith("orders.") && <OrdersDocumentLink payload={entry.payload} />}
                       {entry.eventType === "customer.anonymised" && <AnonymisedErasedDetails payload={entry.payload} />}
                       {!entry.note && !(contact && entry.summary?.includes(contact)) && contact && (
                         <Text size="sm" c="dimmed">

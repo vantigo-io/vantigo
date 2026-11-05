@@ -76,6 +76,9 @@ func Module() module.Module {
 		Mount:       mount,
 		Directory:   newDirectory,
 		Workers:     workers,
+		// EventHandlers is the orders documents on the timeline (orders design
+		// O31, timeline_orders.go).
+		EventHandlers: eventHandlers,
 		// CalendarSource is the follow-ups and interactions on the calendar
 		// (calendar design D1, calendar_source.go).
 		CalendarSource: newCalendarSource,

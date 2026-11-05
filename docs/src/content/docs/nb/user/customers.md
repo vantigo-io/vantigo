@@ -249,6 +249,10 @@ detaljene; **Last inn flere** henter eldre hendelser. Lesing krever
 `customers:timeline-view`. Avgrens med bryteren **Kilde** (**Alle**, **Manuell**,
 **Automatisk**), **Hendelsestyper** og et **Tidspunkt**-intervall; **Nullstill** tømmer dem.
 
+Når Ordre-modulen er på, viser tidslinjen også **Tilbud sendt**, **Tilbud akseptert**,
+**Ordre bekreftet** og **Ordre kansellert**, hver med en lenke til tilbudet eller ordren i
+Ordre-appen. De registreres som systemet.
+
 **Legg til hendelse** (`customers:timeline-manage`) registrerer et øyeblikk: **Type**
 (**Samtale**, **Møte**, **E-post**, **Notat**, **Annet** eller **Registerendring**),
 **Dato** (ikke i fremtiden), valgfri **Tid**, en **Beskrivelse**, en valgfri

@@ -247,6 +247,10 @@ more** fetches older entries. Reading needs `customers:timeline-view`. Narrow it
 the **Source** switch (**All**, **Manual**, **Automatic**), **Event types** and an
 **Occurred on** range; **Reset** clears them.
 
+When the Orders module is on, the timeline also shows **Quote sent**, **Quote accepted**,
+**Order confirmed** and **Order cancelled**, each with a link to the quote or order in the
+Orders app. They are recorded as the system.
+
 **Add event** (`customers:timeline-manage`) records a moment: **Type** (**Call**,
 **Meeting**, **Email**, **Note**, **Other** or **Registry change**), **Date** (not in
 the future), an optional **Time**, a **Description**, an optional **Source URL**

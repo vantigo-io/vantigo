@@ -1031,6 +1031,16 @@ outage leaves are visible in the worker's log line ("an object could not be remo
 the store; the ledger retries it") and in the table; nothing is added to a settings
 endpoint, since this module has none.
 
+**Orders on the timeline.** The handler `customers.timeline_orders` takes
+`orders.quote.sent`, `orders.quote.accepted`, `orders.sales_order.confirmed` and
+`orders.sales_order.cancelled` (all v1) from the events outbox and writes one generated entry
+per event on the delivery's own transaction: `orders.quote_sent`, `orders.quote_accepted`,
+`orders.order_confirmed` and `orders.order_cancelled`, producer `customers.orders`, actor
+`system`, `occurred_at` the event's own time. The payload holds ids, the number, the amount and a
+`link` (`/orders/quotes/{id}` or `/orders/orders/{id}`), never a name. A customer merged into
+another is followed to the survivor; an absent or anonymised customer is skipped with a debug
+log, so the delivery still completes.
+
 **Two events.** `customer.attachment_added` and `customer.attachment_removed`, producer
 `customers.api`, written in the upload's and the delete's transaction with the caller as
 actor: summary "Attachment added: avtale.pdf" / "Attachment removed: avtale.pdf" (truncated
