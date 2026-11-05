@@ -137,9 +137,15 @@ customer or a product, with its level, text and who changed it last.
 also be set from a quote or an order (**Add customer warning**).
 
 Only a holder of **Manage Orders settings** can override a block, and must give a reason,
-which is kept on the order's change log or in the quote's internal note. A warning stays
-with the customer when customers are merged — the surviving customer's own warning wins if
-both have one — and is deleted when the customer is erased.
+which is kept on the order's change log or at the top of the quote's internal note. A
+warning stays with the customer when customers are merged — the surviving customer's own
+warning wins if both have one, except that a block on the merged-away customer turns the
+survivor's information warning into a block with both texts — and is deleted when the
+customer is erased. A moved warning is listed by the customer's number until it is next
+saved.
+
+A product warning outlives a deleted product: the list marks it **Product deleted**, and
+**Remove** is all it offers.
 
 ## Verify
 
