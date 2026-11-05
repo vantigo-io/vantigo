@@ -11,8 +11,10 @@ export interface OrdersAccess {
   canManageOrders: boolean;
   /** `orders:sales-confirm`: confirm, lock and unlock, and accept a quote into a confirmed order. */
   canConfirmOrders: boolean;
-  /** `orders:settings`: the settings and the templates. */
+  /** `orders:settings`: the settings, the templates and the warnings, and a warning's override. */
   canManageSettings: boolean;
+  /** `orders:analysis-view`: the analysis of quotes and orders (O35). */
+  canViewAnalysis: boolean;
   /** `customers:view`: the customer picker and a customer's addresses. */
   canViewCustomers: boolean;
   /** `customers:contacts-view` and `customers:associations-view`: a customer's contacts. */
@@ -32,6 +34,7 @@ export const noOrdersAccess: OrdersAccess = {
   canManageOrders: false,
   canConfirmOrders: false,
   canManageSettings: false,
+  canViewAnalysis: false,
   canViewCustomers: false,
   canViewContacts: false,
   canReadVatCodes: false,

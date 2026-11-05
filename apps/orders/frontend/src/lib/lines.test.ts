@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { line } from "../test/fixtures";
-import { editLine, fromLine, incompleteLines, moveLine, newLine, remainingToDeliver, toLineInput } from "./lines";
+import {
+  applyGrid,
+  editLine,
+  fromLine,
+  incompleteLines,
+  moveLine,
+  newLine,
+  remainingToDeliver,
+  toLineInput,
+} from "./lines";
 
 describe("a line as the save sends it", () => {
   it("leaves an untouched price out, so the server keeps or takes the catalog's", () => {
@@ -63,5 +72,31 @@ describe("moving and delivering", () => {
   it("leaves to deliver what is ordered, less cancelled and delivered", () => {
     expect(remainingToDeliver(line({ quantity: 5, qtyCancelled: 1, qtyDelivered: 2 }))).toBe(2);
     expect(remainingToDeliver(line({ quantity: 5, qtyCancelled: 3, qtyDelivered: 3 }))).toBe(0);
+  });
+});
+
+describe("packagings and the grid (O15, O34)", () => {
+  it("sends a line entered in a packaging as its count, not its quantity", () => {
+    const packed = fromLine(line({ quantity: 45, packagingId: 7, packagingQuantity: 3, packagingName: "Eske" }));
+    expect(packed.packagings).toEqual([{ id: 7, name: "Eske", quantity: 15 }]);
+    const input = toLineInput(packed, { quote: false });
+    expect(input).toMatchObject({ packagingId: 7, packagingQuantity: 3 });
+    expect(input).not.toHaveProperty("quantity");
+  });
+
+  it("updates a variant's line from the grid and adds the others", () => {
+    const lines = applyGrid(
+      [fromLine(line())],
+      [
+        { variantId: 301, sku: "KAB-10", name: "Kabel", unit: "stk", quantity: 7 },
+        { variantId: 302, sku: "KAB-20", name: "Kabel", unit: "stk", quantity: 2 },
+        { variantId: 303, sku: "KAB-30", name: "Kabel", unit: "stk", quantity: 0 },
+      ],
+    );
+    expect(lines.map((l) => [l.variantId, l.quantity, l.catalog])).toEqual([
+      [301, 7, true],
+      [302, 2, true],
+    ]);
+    expect(lines[0].changed).toBe(true);
   });
 });

@@ -69,6 +69,7 @@ import { Route as InvoicesOverdueRouteImport } from './routes/invoices/overdue'
 import { Route as InvoicesQuickRouteImport } from './routes/invoices/quick'
 import { Route as InvoicesSettingsRouteImport } from './routes/invoices/settings'
 import { Route as OrdersIndexRouteImport } from './routes/orders/index'
+import { Route as OrdersAnalysisRouteImport } from './routes/orders/analysis'
 import { Route as OrdersSettingsRouteImport } from './routes/orders/settings'
 import { Route as OrdersTemplatesRouteImport } from './routes/orders/templates'
 import { Route as PlanningIndexRouteImport } from './routes/planning/index'
@@ -470,6 +471,11 @@ const InvoicesSettingsRoute = InvoicesSettingsRouteImport.update({
 const OrdersIndexRoute = OrdersIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => OrdersRoute,
+} as any)
+const OrdersAnalysisRoute = OrdersAnalysisRouteImport.update({
+  id: '/analysis',
+  path: '/analysis',
   getParentRoute: () => OrdersRoute,
 } as any)
 const OrdersSettingsRoute = OrdersSettingsRouteImport.update({
@@ -1057,6 +1063,7 @@ export interface FileRoutesByFullPath {
   '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
+  '/orders/analysis': typeof OrdersAnalysisRoute
   '/orders/settings': typeof OrdersSettingsRoute
   '/orders/templates': typeof OrdersTemplatesRoute
   '/planning/intake': typeof PlanningIntakeRoute
@@ -1201,6 +1208,7 @@ export interface FileRoutesByTo {
   '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
+  '/orders/analysis': typeof OrdersAnalysisRoute
   '/orders/settings': typeof OrdersSettingsRoute
   '/orders/templates': typeof OrdersTemplatesRoute
   '/planning/intake': typeof PlanningIntakeRoute
@@ -1362,6 +1370,7 @@ export interface FileRoutesById {
   '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
+  '/orders/analysis': typeof OrdersAnalysisRoute
   '/orders/settings': typeof OrdersSettingsRoute
   '/orders/templates': typeof OrdersTemplatesRoute
   '/planning/intake': typeof PlanningIntakeRoute
@@ -1527,6 +1536,7 @@ export interface FileRouteTypes {
     | '/invoices/overdue'
     | '/invoices/quick'
     | '/invoices/settings'
+    | '/orders/analysis'
     | '/orders/settings'
     | '/orders/templates'
     | '/planning/intake'
@@ -1671,6 +1681,7 @@ export interface FileRouteTypes {
     | '/invoices/overdue'
     | '/invoices/quick'
     | '/invoices/settings'
+    | '/orders/analysis'
     | '/orders/settings'
     | '/orders/templates'
     | '/planning/intake'
@@ -1831,6 +1842,7 @@ export interface FileRouteTypes {
     | '/invoices/overdue'
     | '/invoices/quick'
     | '/invoices/settings'
+    | '/orders/analysis'
     | '/orders/settings'
     | '/orders/templates'
     | '/planning/intake'
@@ -2398,6 +2410,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/orders/'
       preLoaderRoute: typeof OrdersIndexRouteImport
+      parentRoute: typeof OrdersRoute
+    }
+    '/orders/analysis': {
+      id: '/orders/analysis'
+      path: '/analysis'
+      fullPath: '/orders/analysis'
+      preLoaderRoute: typeof OrdersAnalysisRouteImport
       parentRoute: typeof OrdersRoute
     }
     '/orders/settings': {
@@ -3337,6 +3356,7 @@ const InvoicesRouteWithChildren = InvoicesRoute._addFileChildren(
 )
 
 interface OrdersRouteChildren {
+  OrdersAnalysisRoute: typeof OrdersAnalysisRoute
   OrdersSettingsRoute: typeof OrdersSettingsRoute
   OrdersTemplatesRoute: typeof OrdersTemplatesRoute
   OrdersIndexRoute: typeof OrdersIndexRoute
@@ -3349,6 +3369,7 @@ interface OrdersRouteChildren {
 }
 
 const OrdersRouteChildren: OrdersRouteChildren = {
+  OrdersAnalysisRoute: OrdersAnalysisRoute,
   OrdersSettingsRoute: OrdersSettingsRoute,
   OrdersTemplatesRoute: OrdersTemplatesRoute,
   OrdersIndexRoute: OrdersIndexRoute,

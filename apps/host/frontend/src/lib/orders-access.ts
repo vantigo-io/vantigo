@@ -29,6 +29,7 @@ export const ordersAccessOf = (
     canManageOrders: orders("orders:sales-manage"),
     canConfirmOrders: orders("orders:sales-confirm"),
     canManageSettings: orders("orders:settings"),
+    canViewAnalysis: orders("orders:analysis-view"),
     canViewCustomers: mounted("customers", ["customers:view"]),
     canViewContacts: mounted("customers", ["customers:contacts-view", "customers:associations-view"]),
     canReadVatCodes: mounted("invoices", ["invoices:access"]),

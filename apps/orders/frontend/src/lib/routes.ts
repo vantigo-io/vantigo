@@ -8,6 +8,7 @@ export const NEW_SALES_ORDER_ROUTE_PATH = "/orders/orders/new";
 export const SALES_ORDER_ROUTE_PATH = "/orders/orders/$orderId";
 export const TEMPLATES_ROUTE_PATH = "/orders/templates";
 export const SETTINGS_ROUTE_PATH = "/orders/settings";
+export const ANALYSIS_ROUTE_PATH = "/orders/analysis";
 
 export const quoteLinkOptions = (quoteId: number) => ({ to: QUOTE_ROUTE_PATH, params: { quoteId: String(quoteId) } });
 export const salesOrderLinkOptions = (orderId: number) => ({

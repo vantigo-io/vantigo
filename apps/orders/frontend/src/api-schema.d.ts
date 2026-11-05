@@ -2,6 +2,66 @@
 // CI regenerates this file and fails when it is stale.
 
 export interface paths {
+    "/api/v1/orders/analysis/backlog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the order backlog
+         * @description What confirmed orders have ordered and not delivered, and delivered and not invoiced, aged by the latest delivery marked (O35). Read from Orders' own tables.
+         */
+        get: operations["getOrdersBacklog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/analysis/hit-rate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the quote hit rate
+         * @description The quotes last sent in a period and how they were answered, counted and summed net per salesperson and currency (O35). Read from Orders' own tables.
+         */
+        get: operations["getOrdersHitRate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/analysis/intake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the order intake
+         * @description The net value of the orders confirmed in a period and not cancelled, by month, salesperson, customer, product or product category, per currency (O35). The category is read from the catalog for the period's variants.
+         */
+        get: operations["getOrdersIntake"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/customers/{customerId}/summary": {
         parameters: {
             query?: never;
@@ -388,6 +448,26 @@ export interface paths {
          * @description Unlocks a locked order (O18).
          */
         post: operations["unlockSalesOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/products/{productId}/grid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a product's variant grid
+         * @description A product's variants for Add from grid (O34): a matrix along its one or two options, or a list when it has more, an option with more than 30 values, or a variant without a value. Each with its list price in currency today. Read through contracts.ProductCatalog.
+         */
+        get: operations["getOrdersVariantGrid"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -802,6 +882,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/warnings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the sales warnings
+         * @description Every sales warning (O33), customers' first, each by name; scope narrows to one kind.
+         */
+        get: operations["listOrdersWarnings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/warnings/customers/{customerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a customer's warning
+         * @description The customer's warning (O33).
+         */
+        get: operations["getOrdersCustomerWarning"];
+        /**
+         * Set a %(word)s's warning
+         * @description Sets the customer's warning, replacing any it had (O33). The customer's name is read and kept with it.
+         */
+        put: operations["putOrdersCustomerWarning"];
+        post?: never;
+        /**
+         * Remove a customer's warning
+         * @description Removes the customer's warning (O33).
+         */
+        delete: operations["deleteOrdersCustomerWarning"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/warnings/products/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a product's warning
+         * @description The product's warning (O33).
+         */
+        get: operations["getOrdersProductWarning"];
+        /**
+         * Set a %(word)s's warning
+         * @description Sets the product's warning, replacing any it had (O33). The product's name is read and kept with it.
+         */
+        put: operations["putOrdersProductWarning"];
+        post?: never;
+        /**
+         * Remove a product's warning
+         * @description Removes the product's warning (O33).
+         */
+        delete: operations["deleteOrdersProductWarning"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -816,6 +972,10 @@ export interface components {
             /** @enum {string} */
             into: "draft_order" | "confirmed_order";
             optionalLineIds?: number[];
+            /** @description Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note. */
+            overrideReason?: string;
+            /** @description Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning. */
+            overrideWarnings?: boolean;
             /** Format: int32 */
             revision: number;
         };
@@ -858,7 +1018,7 @@ export interface components {
             /** Format: int32 */
             version: number;
         };
-        /** @description One typed action (O26, O32): line_added, line_removed, quantity_changed, price_changed, discount_changed, text_changed, delivery_changed, contact_changed, reference_changed, cancelled_remaining, held, released, locked, unlocked, delivered_marked, delivered_undone. lineId names the line when the action is about one; from and to are the values before and after as text. */
+        /** @description One typed action (O26, O32): line_added, line_removed, quantity_changed, price_changed, discount_changed, text_changed, delivery_changed, contact_changed, reference_changed, cancelled_remaining, held, released, locked, unlocked, delivered_marked, delivered_undone, warning_overridden (a block warning overridden at confirm: from is the warning, to the reason). lineId names the line when the action is about one; from and to are the values before and after as text. */
         OrdersChangeAction: {
             from?: string | null;
             kind: string;
@@ -870,11 +1030,32 @@ export interface components {
         OrdersChangeList: {
             items: components["schemas"]["OrdersChange"][];
         };
+        /** @description Confirm a draft order at the version the client read; overrideWarnings with overrideReason overrides its block warnings (O33). */
+        OrdersConfirmInput: {
+            /**
+             * Format: date-time
+             * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
+            /** @description Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note. */
+            overrideReason?: string;
+            /** @description Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning. */
+            overrideWarnings?: boolean;
+            /** Format: int32 */
+            version: number;
+        };
         /** @description The chosen contact, snapshotted (O13). */
         OrdersContact: {
             email?: string | null;
             name?: string | null;
             phone?: string | null;
+        };
+        /** @description A count and a net amount, in the currency of the row that holds it. */
+        OrdersCountAmount: {
+            /** Format: double */
+            amount: number;
+            /** Format: int32 */
+            count: number;
         };
         /** @description A count and a sum in one currency. */
         OrdersCurrencySum: {
@@ -883,6 +1064,27 @@ export interface components {
             /** Format: int32 */
             count: number;
             currency: string;
+        };
+        /** @description The backlog today (O35), per currency and net of VAT: what confirmed orders have ordered and not delivered (count is the orders), and what they have delivered and not invoiced, aged by the latest delivery marked on each line — 0–7, 8–30 and over 30 days, since bokføringsforskriften § 5-2-2 asks an invoice within a month. */
+        OrdersBacklog: {
+            /** Format: date */
+            asOf: string;
+            deliveredNotInvoiced: components["schemas"]["OrdersBacklogAged"][];
+            orderedNotDelivered: components["schemas"]["OrdersCurrencySum"][];
+        };
+        /** @description Delivered and not invoiced in one currency: the orders, the amount and the amount by age. */
+        OrdersBacklogAged: {
+            /** Format: double */
+            amount: number;
+            /** Format: int32 */
+            count: number;
+            currency: string;
+            /** Format: double */
+            days0To7: number;
+            /** Format: double */
+            days8To30: number;
+            /** Format: double */
+            over30Days: number;
         };
         /** @description The customer as the document holds it (O13, O14): refreshed on every save of a draft, frozen once a quote is sent or an order confirmed, after which only the delivery address and the contact change. */
         OrdersCustomerSnapshot: {
@@ -966,6 +1168,67 @@ export interface components {
             /** Format: int32 */
             version: number;
         };
+        /** @description One axis of the grid: the option's name and its values. */
+        OrdersGridOption: {
+            name: string;
+            values: string[];
+        };
+        /** @description A variant of the grid: its id, SKU, unit, option values and list price. */
+        OrdersGridVariant: {
+            /**
+             * Format: double
+             * @description The list price, net of VAT.
+             */
+            price?: number | null;
+            sku: string;
+            unit: string;
+            values: {
+                [key: string]: string;
+            };
+            /** Format: int32 */
+            variantId: number;
+        };
+        /** @description The quote hit rate of a period (O35): the quotes last sent in it, and how many of them — and how much, net — are accepted, declined, expired, cancelled or still open, per salesperson and currency (rows) and per currency (totals). */
+        OrdersHitRate: {
+            /** Format: date */
+            from: string;
+            rows: components["schemas"]["OrdersHitRateRow"][];
+            /** Format: date */
+            to: string;
+            totals: components["schemas"]["OrdersHitRateRow"][];
+        };
+        /** @description One salesperson's quotes in one currency, or a currency's total (salesperson null). open is a quote still sent, or revised back to a draft. */
+        OrdersHitRateRow: {
+            accepted: components["schemas"]["OrdersCountAmount"];
+            cancelled: components["schemas"]["OrdersCountAmount"];
+            currency: string;
+            declined: components["schemas"]["OrdersCountAmount"];
+            expired: components["schemas"]["OrdersCountAmount"];
+            open: components["schemas"]["OrdersCountAmount"];
+            salesperson?: components["schemas"]["OrdersPerson"] | null;
+            sent: components["schemas"]["OrdersCountAmount"];
+        };
+        /** @description The order intake of a period (O35): the net value of the orders confirmed in it and not cancelled, per group and currency, and per currency in total. A group by product or category sums the product lines' net amounts. */
+        OrdersIntake: {
+            /** Format: date */
+            from: string;
+            /** @enum {string} */
+            groupBy: "month" | "salesperson" | "customer" | "product" | "category";
+            rows: components["schemas"]["OrdersIntakeRow"][];
+            /** Format: date */
+            to: string;
+            totals: components["schemas"]["OrdersCurrencySum"][];
+        };
+        /** @description One group in one currency: key is the month (YYYY-MM), the salesperson's user id, the customer's id, the product's id or the category's id — empty for none — and label what a person reads; count is the orders. */
+        OrdersIntakeRow: {
+            /** Format: double */
+            amount: number;
+            /** Format: int32 */
+            count: number;
+            currency: string;
+            key: string;
+            label: string;
+        };
         /** @description A line of a quote or an order (O15). A section or a note has only its text and position. The amounts are Invoices' own (O17); VAT is per document. The quantity buckets are an order line's and stay 0 on a quote. */
         OrdersLine: {
             /** @enum {string} */
@@ -1005,10 +1268,17 @@ export interface components {
             optional: boolean;
             /** Format: int32 */
             packagingId?: number | null;
+            /** @description The name of the packaging the line was entered in, as it was then (O15). */
+            packagingName?: string | null;
             /** Format: double */
             packagingQuantity?: number | null;
             /** Format: int32 */
             position: number;
+            /**
+             * Format: int32
+             * @description The product of a catalog line's variant, as it was when the line was written; null on a free-text line.
+             */
+            productId?: number | null;
             /** @enum {string|null} */
             priceSource?: "catalog" | "manual" | "channel" | "carrier" | null;
             /** Format: double */
@@ -1125,6 +1395,10 @@ export interface components {
              * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
              */
             expectedUpdatedAt: string;
+            /** @description Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note. */
+            overrideReason?: string;
+            /** @description Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning. */
+            overrideWarnings?: boolean;
             /** Format: int32 */
             revision: number;
             /** Format: date */
@@ -1198,6 +1472,8 @@ export interface components {
             updatedAt: string;
             /** Format: int32 */
             version: number;
+            /** @description The sales warnings that apply to the document now (O33): its customer's, and the products' on its lines. */
+            warnings: components["schemas"]["OrdersWarning"][];
             yourReference: string;
         };
         /** @description A new draft order. clientRequestId makes the create idempotent (O27): a repeat answers the first order with 200. */
@@ -1317,7 +1593,7 @@ export interface components {
             /** Format: uuid */
             userId?: string | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice, client_request_reused, template_name_taken. 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice, client_request_reused, template_name_taken, blocked_by_warning (a block warning refuses send, mark as sent, confirm and accept into a confirmed order; detail holds its text, O33). 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         OrdersProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1394,6 +1670,8 @@ export interface components {
             updatedAt: string;
             /** Format: date */
             validUntil?: string | null;
+            /** @description The sales warnings that apply to the document now (O33): its customer's, and the products' on its lines. */
+            warnings: components["schemas"]["OrdersWarning"][];
             yourReference: string;
         };
         /** @description A new draft quote. clientRequestId makes the create idempotent (O27): a repeat answers the first quote with 200. */
@@ -1538,6 +1816,10 @@ export interface components {
              */
             expectedUpdatedAt: string;
             message?: string;
+            /** @description Why a block warning is overridden; required with overrideWarnings, at most 500 characters. Logged on the order's change log, or in the quote's internal note. */
+            overrideReason?: string;
+            /** @description Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning. */
+            overrideWarnings?: boolean;
             /** Format: email */
             recipient: string;
             /** Format: int32 */
@@ -1727,6 +2009,18 @@ export interface components {
             vat: number;
             vatSummaries: components["schemas"]["OrdersVatSummary"][];
         };
+        /** @description A product's variants for entry from a grid (O34). mode grid: options are the one or two options the variants differ by, each with its values in the order the variants list them, and cells are the variants, each with its values. mode list: the product has more than two options, an option with more than 30 values, or a variant without a value on an option, and variants lists them. price is the list price in the currency today, null when there is none. */
+        OrdersVariantGrid: {
+            cells: components["schemas"]["OrdersGridVariant"][];
+            currency: string;
+            /** @enum {string} */
+            mode: "grid" | "list";
+            options: components["schemas"]["OrdersGridOption"][];
+            /** Format: int32 */
+            productId: number;
+            productName: string;
+            variants: components["schemas"]["OrdersGridVariant"][];
+        };
         /** @description A catalog variant as a line takes it (O16): its snapshot, its list price in the asked currency today (null when it has none, which leaves the line unpriced) and the VAT code its tax category maps to (null when it maps to none). */
         OrdersVariant: {
             currency: string;
@@ -1787,6 +2081,33 @@ export interface components {
             /** Format: int32 */
             version: number;
         };
+        /** @description A sales warning (O33) on a customer or a product: info is shown when it is put on a quote or an order, block also refuses send and confirm (blocked_by_warning) unless an orders:settings holder overrides it with a reason. name is the customer's or the product's name as it was when the warning was written. */
+        OrdersWarning: {
+            /**
+             * Format: int32
+             * @description The customer's or the product's id.
+             */
+            id: number;
+            /** @enum {string} */
+            level: "info" | "block";
+            name: string;
+            /** @enum {string} */
+            scope: "customer" | "product";
+            text: string;
+            /** Format: date-time */
+            updatedAt: string;
+            updatedBy?: components["schemas"]["OrdersPerson"] | null;
+        };
+        /** @description A warning as it is set: its level and a text of 1–500 characters. */
+        OrdersWarningInput: {
+            /** @enum {string} */
+            level: "info" | "block";
+            text: string;
+        };
+        /** @description The warnings, customers' first, each by name. */
+        OrdersWarningList: {
+            items: components["schemas"]["OrdersWarning"][];
+        };
         AuthErrorResponse: {
             error: {
                 code: string;
@@ -1805,6 +2126,170 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getOrdersBacklog: {
+        parameters: {
+            query?: {
+                /** @description json (the default) or csv: a semicolon-separated file, UTF-8 with a byte order mark, the decimal comma, guarded against formulas. */
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — with format=csv, the table as a file served as an attachment, orders-backlog-<day>.csv. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersBacklog"];
+                    "text/csv": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getOrdersHitRate: {
+        parameters: {
+            query: {
+                /** @description The period's first day, in the business time zone. */
+                from: string;
+                /** @description The period's last day, included. */
+                to: string;
+                /** @description Only this salesperson's quotes. */
+                salespersonId?: string;
+                /** @description json (the default) or csv: a semicolon-separated file, UTF-8 with a byte order mark, the decimal comma, guarded against formulas. */
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — with format=csv, the table as a file served as an attachment, orders-hit-rate-<from>-<to>.csv. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersHitRate"];
+                    "text/csv": string;
+                };
+            };
+            /** @description Bad Request — to before from, or a period longer than ten years. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getOrdersIntake: {
+        parameters: {
+            query: {
+                /** @description The period's first day, in the business time zone. */
+                from: string;
+                /** @description The period's last day, included. */
+                to: string;
+                groupBy?: "month" | "salesperson" | "customer" | "product" | "category";
+                /** @description json (the default) or csv: a semicolon-separated file, UTF-8 with a byte order mark, the decimal comma, guarded against formulas. */
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — with format=csv, the table as a file served as an attachment, orders-intake-<groupBy>-<from>-<to>.csv. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersIntake"];
+                    "text/csv": string;
+                };
+            };
+            /** @description Bad Request — to before from, or a period longer than ten years. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable, by category without the catalog. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
     getOrdersCustomerSummary: {
         parameters: {
             query?: never;
@@ -2385,7 +2870,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OrdersVersionInput"];
+                "application/json": components["schemas"]["OrdersConfirmInput"];
             };
         };
         responses: {
@@ -2432,7 +2917,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, order_not_draft. */
+            /** @description Conflict — version_conflict, order_not_draft, blocked_by_warning. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3099,6 +3584,74 @@ export interface operations {
             };
         };
     };
+    getOrdersVariantGrid: {
+        parameters: {
+            query?: {
+                /** @description The document's currency, for the list price; the base currency when absent. */
+                currency?: string;
+            };
+            header?: never;
+            path: {
+                productId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersVariantGrid"];
+                };
+            };
+            /** @description Bad Request — the currency is not three letters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such product, or one with no variants. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
     listQuotes: {
         parameters: {
             query?: {
@@ -3473,7 +4026,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, quote_not_sent, quote_already_accepted. */
+            /** @description Conflict — version_conflict, quote_not_sent, quote_already_accepted, blocked_by_warning. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3890,7 +4443,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, quote_not_draft. */
+            /** @description Conflict — version_conflict, quote_not_draft, blocked_by_warning. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4116,7 +4669,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, quote_not_draft. */
+            /** @description Conflict — version_conflict, quote_not_draft, blocked_by_warning. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4594,6 +5147,368 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["OrdersProblem"];
                 };
+            };
+        };
+    };
+    listOrdersWarnings: {
+        parameters: {
+            query?: {
+                scope?: "customer" | "product";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersWarningList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getOrdersCustomerWarning: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customerId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersWarning"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the customer has no warning. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putOrdersCustomerWarning: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customerId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersWarningInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersWarning"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such customer. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    deleteOrdersCustomerWarning: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customerId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the customer has no warning. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getOrdersProductWarning: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersWarning"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the product has no warning. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putOrdersProductWarning: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersWarningInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersWarning"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such product. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    deleteOrdersProductWarning: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the product has no warning. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

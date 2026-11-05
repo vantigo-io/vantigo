@@ -53,6 +53,7 @@ import {
 import { isVersionConflict, NotFoundError, ORDERS_QUERY_KEY } from "../api/request";
 import { templateListQueryOptions } from "../api/templates";
 import type { Quote } from "../api/types";
+import { overrideOf } from "../api/warnings";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { ConflictAlert } from "../components/conflict-alert";
 import { DocumentsCard } from "../components/documents-card";
@@ -65,6 +66,7 @@ import { ReasonDialog } from "../components/reason-dialog";
 import { SendDialog } from "../components/send-dialog";
 import { QuoteStatusBadge } from "../components/status-badges";
 import { TotalsCard } from "../components/totals-card";
+import { WarningBanners } from "../components/warning-banners";
 import "../i18n";
 import { noOrdersAccess, type OrdersAccess } from "../lib/access";
 import { refusalMessage } from "../lib/errors";
@@ -143,6 +145,8 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
   const editor = useEditorState(quote);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [sendError, setSendError] = useState<string>();
+  // The reason a settings holder overrides the quote's block warnings with (O33).
+  const [override, setOverride] = useState<string | null>(null);
   const detailKey = quoteQueryOptions(quote.id).queryKey;
   const documents = useQuery(quoteDocumentsQueryOptions(quote.id));
   const mailings = useQuery(quoteMailingsQueryOptions(quote.id));
@@ -176,7 +180,12 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
   });
   const send = useMutation({
     mutationFn: (input: Omit<Parameters<typeof sendQuote>[1], "expectedUpdatedAt">) =>
-      sendQuote(quote.id, { ...input, revision: quote.revision, expectedUpdatedAt: quote.updatedAt }),
+      sendQuote(quote.id, {
+        ...input,
+        revision: quote.revision,
+        expectedUpdatedAt: quote.updatedAt,
+        ...overrideOf(override),
+      }),
     onSuccess: async (sent) => {
       queryClient.setQueryData(detailKey, sent);
       await queryClient.invalidateQueries({
@@ -196,7 +205,7 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
   });
   const markSent = useDocumentWrite({
     ...common,
-    write: () => markQuoteSent(quote.id, quote, validUntilDefault),
+    write: () => markQuoteSent(quote.id, quote, validUntilDefault, overrideOf(override)),
     done: t("quoteMarkedSent"),
     errorTitle: t("couldNotMarkSent"),
   });
@@ -239,7 +248,12 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
   });
   const accept = useMutation({
     mutationFn: (input: { into: "draft_order" | "confirmed_order"; optionalLineIds: number[] }) =>
-      acceptQuote(quote.id, { revision: quote.revision, expectedUpdatedAt: quote.updatedAt, ...input }),
+      acceptQuote(quote.id, {
+        revision: quote.revision,
+        expectedUpdatedAt: quote.updatedAt,
+        ...input,
+        ...(input.into === "confirmed_order" ? overrideOf(override) : {}),
+      }),
     onSuccess: async (accepted) => {
       queryClient.setQueryData(detailKey, accepted.quote);
       await queryClient.invalidateQueries({
@@ -383,6 +397,14 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
         }
       />
       <Lifecycle steps={lifecycleOf(quote, t)} label={t("quoteLifecycle")} />
+      <WarningBanners
+        warnings={quote.warnings}
+        customer={quote.customer}
+        access={access}
+        blocking={manage && (draft || quote.status === "sent" || quote.status === "expired")}
+        override={override}
+        onOverride={setOverride}
+      />
       {editor.conflict && (
         <ConflictAlert reloading={false} onReload={() => void queryClient.refetchQueries({ queryKey: detailKey })} />
       )}

@@ -62,8 +62,9 @@ export interface QuoteRead {
 }
 const token = (read: QuoteRead) => ({ revision: read.revision, expectedUpdatedAt: read.updatedAt });
 export const sendQuote = (id: number, input: SendInput) => send<Quote>(`${base}/${id}/send`, json("POST", input));
-export const markQuoteSent = (id: number, read: QuoteRead, validUntil?: string | null) =>
-  send<Quote>(`${base}/${id}/mark-sent`, json("POST", { ...token(read), validUntil: validUntil ?? null }));
+/** Marks a draft as sent; `extra` carries a warning override (O33) when one was given. */
+export const markQuoteSent = (id: number, read: QuoteRead, validUntil?: string | null, extra: object = {}) =>
+  send<Quote>(`${base}/${id}/mark-sent`, json("POST", { ...token(read), validUntil: validUntil ?? null, ...extra }));
 export const reviseQuote = (id: number, read: QuoteRead) =>
   send<Quote>(`${base}/${id}/revise`, json("POST", token(read)));
 export const acceptQuote = (id: number, input: AcceptInput) =>

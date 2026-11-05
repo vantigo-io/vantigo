@@ -15,6 +15,7 @@ import {
   IconCashBanknote,
   IconCategory,
   IconCertificate,
+  IconChartBar,
   IconChartLine,
   IconChecklist,
   IconClipboardCheck,
@@ -191,6 +192,7 @@ const planningNavPresentation: Record<PlanningNavItem["key"], Pick<NavItem, "lab
 const ordersNavPresentation: Record<OrdersNavItem["key"], Pick<NavItem, "label" | "icon">> = {
   quotes: { label: "navigation.ordersQuotes", icon: IconFileDollar },
   orders: { label: "navigation.ordersOrders", icon: IconShoppingCart },
+  analysis: { label: "navigation.ordersAnalysis", icon: IconChartBar },
   templates: { label: "navigation.ordersTemplates", icon: IconTemplate },
   settings: { label: "navigation.ordersSettings", icon: IconAdjustments },
 };
@@ -497,7 +499,8 @@ export const apps: readonly AppDefinition[] = [
     },
   ]),
   // Every Orders call asks for orders:access (orders design §8), so the tile
-  // asks for it alone; Templates and Settings need orders:settings as well.
+  // asks for it alone; Analysis needs orders:analysis-view, Templates and
+  // Settings orders:settings as well.
   {
     ...moduleApp(
       "orders",

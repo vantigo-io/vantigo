@@ -19,10 +19,12 @@ import { IconAlertCircle, IconDeviceFloppy } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import { metaQueryOptions } from "../api/meta";
 import { ApiValidationError, isVersionConflict } from "../api/request";
 import { settingsQueryOptions, updateSettings } from "../api/settings";
 import type { MailText, Settings } from "../api/types";
 import { ConflictAlert } from "../components/conflict-alert";
+import { WarningsCard } from "../components/warnings-card";
 import "../i18n";
 import { noOrdersAccess, type OrdersAccess } from "../lib/access";
 import { refusalMessage } from "../lib/errors";
@@ -41,6 +43,7 @@ const languages = ["nb", "en"] as const;
 export const SettingsPage = ({ access = noOrdersAccess }: { access?: OrdersAccess }) => {
   const { t } = useOrdersFormat();
   const settings = useQuery({ ...settingsQueryOptions(), refetchOnWindowFocus: false });
+  const meta = useQuery(metaQueryOptions());
   return (
     <Stack gap="lg">
       <PageHeader title={t("settingsTitle")} description={t("settingsDescription")} />
@@ -51,6 +54,7 @@ export const SettingsPage = ({ access = noOrdersAccess }: { access?: OrdersAcces
         </Alert>
       )}
       {settings.data && <SettingsForm key={settings.data.revision} settings={settings.data} access={access} />}
+      {settings.data && <WarningsCard access={access} currency={meta.data?.baseCurrency ?? "NOK"} />}
     </Stack>
   );
 };

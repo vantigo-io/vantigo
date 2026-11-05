@@ -15,6 +15,7 @@ import "../i18n";
 import { CustomerOrdersPanel } from "../components/customer-orders-panel";
 import { noOrdersAccess, type OrdersAccess } from "../lib/access";
 import {
+  ANALYSIS_ROUTE_PATH,
   NEW_QUOTE_ROUTE_PATH,
   NEW_SALES_ORDER_ROUTE_PATH,
   QUOTE_ROUTE_PATH,
@@ -24,6 +25,7 @@ import {
   SETTINGS_ROUTE_PATH,
   TEMPLATES_ROUTE_PATH,
 } from "../lib/routes";
+import { AnalysisPage } from "../pages/analysis";
 import { OrderEditorPage } from "../pages/order-editor";
 import { OrdersPage } from "../pages/orders";
 import { QuoteEditorPage } from "../pages/quote-editor";
@@ -37,6 +39,7 @@ export const fullAccess: OrdersAccess = {
   canManageOrders: true,
   canConfirmOrders: true,
   canManageSettings: true,
+  canViewAnalysis: true,
   canViewCustomers: true,
   canViewContacts: true,
   canReadVatCodes: true,
@@ -92,6 +95,7 @@ const routeTree = (access: OrdersAccess, extra?: ReactNode) => {
     orderRoute,
     route(TEMPLATES_ROUTE_PATH, () => <TemplatesPage access={access} />),
     route(SETTINGS_ROUTE_PATH, () => <SettingsPage access={access} />),
+    route(ANALYSIS_ROUTE_PATH, () => <AnalysisPage access={access} />),
     route("/here", () => extra),
   ]);
 };

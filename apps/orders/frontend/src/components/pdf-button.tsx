@@ -9,6 +9,8 @@ export interface PdfButtonProps extends ButtonProps {
   url: string;
   /** "download" saves the file; "open" shows it in a new tab. */
   mode?: "download" | "open";
+  /** The notification's title when the file cannot be fetched; a PDF's by default. */
+  failure?: string;
   children: ReactNode;
 }
 
@@ -16,7 +18,7 @@ export interface PdfButtonProps extends ButtonProps {
  * A PDF behind a button (O24): fetched first, so a refusal is a notification
  * in the reader's language, never the problem JSON in a tab.
  */
-export const PdfButton = ({ url, mode = "open", children, ...button }: PdfButtonProps) => {
+export const PdfButton = ({ url, mode = "open", failure, children, ...button }: PdfButtonProps) => {
   const { t } = useOrdersFormat();
   const [loading, setLoading] = useState(false);
   const open = async () => {
@@ -36,7 +38,7 @@ export const PdfButton = ({ url, mode = "open", children, ...button }: PdfButton
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     } catch (error) {
       tab?.close();
-      notifications.show({ color: "red", title: t("couldNotOpenPdf"), message: refusalMessage(error, t) });
+      notifications.show({ color: "red", title: failure ?? t("couldNotOpenPdf"), message: refusalMessage(error, t) });
     } finally {
       setLoading(false);
     }

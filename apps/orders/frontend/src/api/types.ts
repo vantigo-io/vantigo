@@ -50,6 +50,24 @@ export type Meta = Schemas["OrdersMeta"];
 export type Salesperson = Schemas["OrdersSalesperson"];
 export type Variant = Schemas["OrdersVariant"];
 
+export type Warning = Schemas["OrdersWarning"];
+export type WarningInput = Schemas["OrdersWarningInput"];
+export type WarningScope = Warning["scope"];
+export type WarningLevel = Warning["level"];
+export type ConfirmInput = Schemas["OrdersConfirmInput"];
+
+export type VariantGrid = Schemas["OrdersVariantGrid"];
+export type GridVariant = Schemas["OrdersGridVariant"];
+export type VariantPackaging = Schemas["OrdersVariantPackaging"];
+
+export type HitRate = Schemas["OrdersHitRate"];
+export type HitRateRow = Schemas["OrdersHitRateRow"];
+export type Intake = Schemas["OrdersIntake"];
+export type IntakeRow = Schemas["OrdersIntakeRow"];
+export type IntakeGroupBy = Intake["groupBy"];
+export type Backlog = Schemas["OrdersBacklog"];
+export type BacklogAged = Schemas["OrdersBacklogAged"];
+
 export type CustomerSummary = Schemas["OrdersCustomerSummary"];
 export type CurrencySum = Schemas["OrdersCurrencySum"];
 

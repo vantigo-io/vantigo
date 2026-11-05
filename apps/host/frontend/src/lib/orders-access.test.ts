@@ -11,6 +11,9 @@ describe("what the Orders pages may offer", () => {
     expect(access.canConfirmOrders).toBe(true);
     expect(access.canManageOrders).toBe(false);
     expect(access.canManageSettings).toBe(false);
+    expect(access.canViewAnalysis).toBe(false);
+    expect(ordersAccessOf(["orders:analysis-view"], every).canViewAnalysis).toBe(false);
+    expect(ordersAccessOf(["orders:access", "orders:analysis-view"], every).canViewAnalysis).toBe(true);
   });
 
   it("offers a picker only with its module mounted and its own key", () => {

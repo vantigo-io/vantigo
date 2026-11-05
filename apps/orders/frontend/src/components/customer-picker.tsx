@@ -8,6 +8,8 @@ import { useOrdersFormat } from "../lib/format";
 export interface CustomerPickerProps {
   value: number | null;
   onChange: (customerId: number | null) => void;
+  /** Hears the picked customer as the list answered it, its name included. */
+  onPicked?: (customer: CustomerOption | null) => void;
   /** The document's customer, so its name shows before any search. */
   selected?: { id: number; name?: string };
   label?: string;
@@ -28,6 +30,7 @@ export interface CustomerPickerProps {
 export const CustomerPicker = ({
   value,
   onChange,
+  onPicked,
   selected,
   label,
   required,
@@ -63,7 +66,9 @@ export const CustomerPicker = ({
       onSearchChange={(text) => setSearch(selectedLabel !== undefined && text === selectedLabel ? "" : text)}
       onChange={(next) => {
         const id = next === null ? null : Number(next);
-        setPicked(customers.data?.find((c) => c.id === id) ?? null);
+        const found = customers.data?.find((c) => c.id === id) ?? null;
+        setPicked(found);
+        onPicked?.(found);
         onChange(id);
       }}
       nothingFoundMessage={customers.isFetching ? t("searching") : t("noCustomersFound")}
