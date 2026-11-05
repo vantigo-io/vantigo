@@ -205,6 +205,21 @@
     "description": "On the customer's Orders tab, starts a new quote for this customer."
   },
   {
+    "key": "orders.deliveries.view",
+    "route": "/orders/deliveries",
+    "description": "Switches between the orders still to deliver (back orders) and the delivery documents."
+  },
+  {
+    "key": "orders.delivery.pick-list",
+    "route": "/orders/deliveries/{deliveryId}",
+    "description": "Prints the delivery's lines sorted by location, with the locations holding each item."
+  },
+  {
+    "key": "orders.delivery.post",
+    "route": "/orders/deliveries/{deliveryId}",
+    "description": "Takes the stock off the chosen locations, registers the quantities delivered on the order and stores the packing slip."
+  },
+  {
     "key": "orders.document.warnings",
     "route": "/orders/quotes/{quoteId}",
     "description": "The customer's and the products' sales warnings, and for a settings holder the override of a block and the customer's warning."
@@ -250,9 +265,19 @@
     "description": "Confirms a draft order: freezes its prices and customer, and stores the order confirmation."
   },
   {
+    "key": "orders.order.create-delivery",
+    "route": "/orders/orders/{orderId}",
+    "description": "On a confirmed order's Deliveries card: makes a draft delivery of every open line at what is available at the site."
+  },
+  {
     "key": "orders.order.save",
     "route": "/orders/orders/{orderId}",
     "description": "Saves an order's header and lines; a confirmed order takes changes to what is not delivered or invoiced."
+  },
+  {
+    "key": "orders.order.site",
+    "route": "/orders/orders/{orderId}",
+    "description": "The Inventory site the order is reserved and delivered from; shown while Inventory keeps stock."
   },
   {
     "key": "orders.orders.new",
@@ -283,6 +308,11 @@
     "key": "orders.quotes.new",
     "route": "/orders/quotes",
     "description": "The button above the quote list that starts a new quote."
+  },
+  {
+    "key": "orders.settings.default-site",
+    "route": "/orders/settings",
+    "description": "The Inventory site a new order is fulfilled from."
   },
   {
     "key": "orders.settings.final-period",

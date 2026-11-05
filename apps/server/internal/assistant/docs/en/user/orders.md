@@ -1,6 +1,6 @@
 ---
 title: Orders
-description: The Orders app — make a quote, from the app, a customer's page or a template; add product, free-text, section and note lines, optional lines and discounts; send it or mark it as sent, revise, accept, decline, cancel and copy it; make an order, confirm it, change it after confirming, put it on hold, lock it, cancel it or its rest, register what is delivered, send the order confirmation and print a pro forma; invoice it, see its invoices and release what draft invoices hold; make a subscription, activate, change, pause, resume, end and cancel it, accept a quote as one and see its periods; the change log; lines in packagings and from the variant grid; customer and product warnings and overriding a block; the sales analysis; the customer's Orders tab; and what a refusal means.
+description: The Orders app — make a quote, from the app, a customer's page or a template; add product, free-text, section and note lines, optional lines and discounts; send it or mark it as sent, revise, accept, decline, cancel and copy it; make an order, confirm it, change it after confirming, put it on hold, lock it, cancel it or its rest, register what is delivered, send the order confirmation and print a pro forma; reserve stock at a site, make, pick and post deliveries with their pick list and packing slip, and follow the back orders; invoice it, see its invoices and release what draft invoices hold; make a subscription, activate, change, pause, resume, end and cancel it, accept a quote as one and see its periods; the change log; lines in packagings and from the variant grid; customer and product warnings and overriding a block; the sales analysis; the customer's Orders tab; and what a refusal means.
 sidebar:
   order: 55
 sources:
@@ -15,7 +15,7 @@ Norwegian the app is **Ordre**. A **quote** is an offer the customer can accept;
 
 ## The app and its sidebar
 
-The sidebar has **Quotes**, **Sales orders** and **Subscriptions** for everyone with access to the app,
+The sidebar has **Quotes**, **Sales orders**, **Deliveries** and **Subscriptions** for everyone with access to the app,
 **Analysis** for those who may view the sales analysis, and **Quote templates** and
 **Orders settings** for those who manage the Orders settings.
 What you can do in each depends on your permissions: making and changing quotes, making
@@ -192,6 +192,11 @@ orders** or on the customer's **Orders** tab, pick the **Customer** and choose *
 order**. An order has the same header and lines as a quote, except that it has no
 optional lines and no valid-until day.
 
+When Inventory keeps stock, a new order also gets a **Site** — the warehouse its goods are
+reserved at and delivered from — from the Orders settings' **Default site**. Change it in
+the order's header while the order is a draft; a confirmed order's site can be changed to
+another site until it has a delivery, and its reservations move with it.
+
 ## Confirm an order
 
 **Confirm** on a draft order freezes its customer details and prices, stores the order
@@ -201,6 +206,12 @@ price in the order's currency, or a product's tax category has no VAT code — m
 Invoices first ([Products' tax categories](/en/user/invoices/#products-tax-categories)).
 A block warning on the customer or a product stops it too, until someone who manages the
 Orders settings overrides it ([Warnings](#warnings-on-a-customer-or-a-product)).
+
+On an order with a site, **Confirm** also reserves each goods line's quantity at the site,
+so no other order can take it. When the site does not have enough available, the confirm
+is refused and **Not enough available** lists the short lines with what is available of
+each. Choose **Confirm without reserving** to confirm the order all the same — the change
+log records it — and reserve later with **Reserve now**, once the goods are in.
 
 When the Orders settings say so, the order confirmation is e-mailed by itself to the
 contact person, else the customer's invoice e-mail. To send it yourself, choose **Send the
@@ -229,6 +240,11 @@ with, even if the product is changed or deleted in the catalog later. Only its q
 price, discount and text can change; for another unit or VAT code, remove the line (if
 nothing of it is delivered or invoiced) and add a new one.
 
+On an order holding reservations, a change moves them along: a larger quantity reserves the
+difference — refused when the site does not have it available — a smaller one gives the
+rest back, a new goods line reserves its quantity, and a removed line gives its reservation
+back.
+
 Each saved change raises the order's **version**, and the confirmation you send next is
 titled **Revised order confirmation**. **Change log** lists every change since the order
 was confirmed: when, by whom and what — **Line added**, **Quantity changed**, **Put on
@@ -246,6 +262,8 @@ hold**, **Registered delivered** and so on.
 - **More actions** → **Cancel the rest**, once something is: every line's quantity not yet
   delivered or invoiced is cancelled. This is not undone.
 
+Both cancels give back what the order holds reserved and cancel its draft deliveries.
+
 Neither cancel is taken while a draft invoice holds part of the order: issue or delete the
 draft first, or [release what it holds](#release-what-draft-invoices-hold).
 
@@ -253,20 +271,69 @@ Holding, locking and registering deliveries do not change the version.
 
 ## Register what is delivered
 
-Until deliveries from stock arrive, register deliveries by hand on a confirmed order that
-is not on hold.
+When the order has no site, or Inventory keeps no stock, and for services and lines without
+a product, register deliveries by hand on a confirmed order that is not on hold. Goods on an
+order with a site are delivered with a [delivery](#deliveries-and-stock); registering them
+by hand still works, for a correction, and gives back as much of the line's reservation as
+you register.
 **Register delivered** asks how much of each line is delivered now (**Deliver now**); a
 line left at 0 is not changed, and you cannot deliver more than is left. **More actions** →
 **Undo delivered** takes quantities back (**Take back**). Each line shows its progress —
 "3 of 5 delivered" — and the order its delivery status: **Not delivered**, **Partly
 delivered** or **Delivered**.
 
+## Deliveries and stock
+
+When Inventory keeps stock, an order with a site is delivered from that site with a
+**delivery** (*leveranse*). Making, picking, posting and cancelling deliveries needs the
+permission to manage deliveries.
+
+### What each line holds
+
+On a confirmed order at a site, each goods line shows **Reserved** — what is reserved for it
+at the site — and **Available** — what of the product is at the site and not reserved for
+any order. Available can be negative after a stock correction in Inventory. When a line
+holds less than is left to deliver, **Reserve now** reserves the rest; it is refused when the
+site does not have it available.
+
+### Make a delivery
+
+1. On the confirmed order, the **Deliveries** card lists its deliveries. Choose **Create
+   delivery**. It is disabled while the order is on hold, when nothing is left to deliver,
+   and while you have unsaved changes.
+2. The new draft delivery opens with every line that is left to deliver, at what can go
+   from the site: what the line holds reserved, and what is available beside it. Each line
+   is picked from the first location that holds all of it.
+3. Change a line's **Quantity**, or set it to 0 to leave it out, and choose its **From
+   location** among the site's locations holding the product, then **Save**.
+4. **Pick list** prints the lines sorted by location, with every location holding each
+   product, for whoever picks the goods.
+5. **Post delivery** takes the goods off the chosen locations in Inventory, adds the
+   quantities to the order's delivered quantities and stores the **Packing slip** —
+   the lines, what was ordered, what this delivery takes, what is left as back order and
+   the delivery address. It needs every line picked, and is refused when a location no
+   longer holds what it should take.
+
+A posted delivery does not change. A mistake is corrected with a stock correction in
+Inventory and **Undo delivered** on the order line. A draft delivery can be cancelled; its
+quantities are open on the order again.
+
+### Back orders
+
+What is not delivered stays on the order as its back order (*restordre*); there is no
+separate document. **Deliveries** → **To deliver** lists the confirmed orders with something
+left to deliver; make the next delivery from the order when the goods are in. **Deliveries**
+→ **Deliveries** lists the delivery documents, drafts first.
+
 ## Invoice an order
 
 An order is invoiced in Invoices, from its lines: you choose how much of each line to
-invoice, and the invoice's issue marks it invoiced on the order. Lines are invoiced on
-order — what is ordered can be invoiced as soon as the order is confirmed, delivered or
-not.
+invoice, and the invoice's issue marks it invoiced on the order. A line is invoiced
+**on order** — what is ordered can be invoiced as soon as the order is confirmed, delivered or
+not — or **on delivery**: only what is delivered can be invoiced. Goods on an order with a
+site are invoiced on delivery unless you choose otherwise; everything else on order. Change
+a line's policy under its name in the lines while nothing of it is invoiced or on a draft
+invoice.
 
 1. On a confirmed order, choose **Invoice**. It needs **Use Invoices** and **Create
    invoices** in Invoices, and is not offered without them. It is disabled, saying why,
@@ -473,6 +540,12 @@ confirmed or cancelled ([the timeline](/en/user/customers/#the-timeline)).
 | Sending is off | Download the PDF and **Mark as sent**, or ask an administrator to choose a send channel. |
 | The e-mail could not be sent. Nothing was changed; try again, or download the PDF and mark it as sent. | The mail provider did not take the e-mail: **Documents and mailings** lists the send as **Failed**. Try again, or download the PDF and mark as sent. |
 | A document takes at most 500 lines | Split it in two. |
+| There is not enough available at the site. | Confirm without reserving and reserve later, lower the quantity, or deliver from another site. |
+| The location does not hold that much. | Someone took stock meanwhile: choose another location, lower the quantity, or correct the stock in Inventory. |
+| Choose the location every line is taken from. | Pick a **From location** for every line, then post. |
+| Nothing of the order is open and available at its site. | Wait for the goods, or reserve them, or finish the draft delivery that already holds them. |
+| The order has deliveries; its site no longer changes. | Leave the site as it is. |
+| A posted delivery no longer changes. | Correct the stock in Inventory and use **Undo delivered** on the order. |
 | A warning blocks this | A customer or product on the document has a block warning. Someone who manages the Orders settings can **Override the warning** with a reason, or change the warning. |
 | The packaging is not one of the product's | Pick the product again and choose one of its packagings, or enter the quantity in the unit. |
 | The final period is already on an invoice or a draft invoice and cannot be pro-rated. | Choose **Full period**, or credit the period — or delete the draft invoice — first. |
