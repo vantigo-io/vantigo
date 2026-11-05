@@ -5,11 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -41,7 +43,7 @@ func (c *catalog) Variant(ctx context.Context, id int32) (*contracts.VariantEntr
 	if err != nil {
 		return nil, fmt.Errorf("products: catalog variant: %w", err)
 	}
-	entries := []contracts.VariantEntry{variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues)}
+	entries := []contracts.VariantEntry{variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues, row.WeightKg)}
 	if err := withPackagings(ctx, c.q, entries); err != nil {
 		return nil, err
 	}
@@ -62,7 +64,7 @@ func (c *catalog) Variants(ctx context.Context, ids []int32) ([]contracts.Varian
 	}
 	entries := make([]contracts.VariantEntry, 0, len(rows))
 	for _, row := range rows {
-		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues))
+		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues, row.WeightKg))
 	}
 	if err := withPackagings(ctx, c.q, entries); err != nil {
 		return nil, err
@@ -102,7 +104,7 @@ func (c *catalog) ListPrice(ctx context.Context, variantID int32, currency strin
 // variantEntry is a catalog row as the contract answers it; every catalog
 // query selects the same columns, each into its own sqlc row type.
 func variantEntry(id, productID int32, productName, sku string, barcode *string, unit, productType, productStatus string,
-	taxCategoryID int32, description *string, categoryID *int32, categoryName *string, optionValues []byte,
+	taxCategoryID int32, description *string, categoryID *int32, categoryName *string, optionValues []byte, weightKg pgtype.Numeric,
 ) contracts.VariantEntry {
 	entry := contracts.VariantEntry{
 		ID: id, ProductID: productID, ProductName: productName, SKU: sku, Barcode: barcode,
@@ -114,6 +116,14 @@ func variantEntry(id, productID int32, productName, sku string, barcode *string,
 	}
 	if categoryName != nil {
 		entry.CategoryName = *categoryName
+	}
+	// The weight in grams: weight_kg has three decimals, so it is whole
+	// grams exactly. None stays nil.
+	if weightKg.Valid {
+		if grams := new(big.Rat).Mul(ratFromNumeric(weightKg), big.NewRat(1000, 1)); grams.IsInt() {
+			n := grams.Num().Int64()
+			entry.WeightGrams = &n
+		}
 	}
 	// The option values as stored, keyed by the option's name as it was
 	// typed; none stays nil.
@@ -163,7 +173,7 @@ func (c *catalog) VariantsOfProduct(ctx context.Context, productID int32) ([]con
 	}
 	entries := make([]contracts.VariantEntry, 0, len(rows))
 	for _, row := range rows {
-		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues))
+		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues, row.WeightKg))
 	}
 	if err := withPackagings(ctx, c.q, entries); err != nil {
 		return nil, err
@@ -189,10 +199,10 @@ func (c *catalog) LookupCode(ctx context.Context, code string) ([]contracts.Code
 	}
 	entries := make([]contracts.VariantEntry, 0, len(rows)+len(packagingRows))
 	for _, row := range rows {
-		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues))
+		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues, row.WeightKg))
 	}
 	for _, row := range packagingRows {
-		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues))
+		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues, row.WeightKg))
 	}
 	if err := withPackagings(ctx, c.q, entries); err != nil {
 		return nil, err
@@ -237,7 +247,7 @@ func (c *catalog) LookupSKUs(ctx context.Context, skus []string) (map[string][]c
 			return nil, fmt.Errorf("products: catalog lookup SKUs: %w", err)
 		}
 		for _, row := range rows {
-			entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues))
+			entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues, row.WeightKg))
 		}
 	}
 	if err := withPackagings(ctx, c.q, entries); err != nil {
@@ -281,7 +291,7 @@ func (c *catalog) SearchVariants(ctx context.Context, q string, s contracts.Vari
 	}
 	entries := make([]contracts.VariantEntry, 0, len(rows))
 	for _, row := range rows {
-		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues))
+		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues, row.WeightKg))
 	}
 	if err := withPackagings(ctx, c.q, entries); err != nil {
 		return nil, err
@@ -303,7 +313,7 @@ func (c *catalog) LockVariants(ctx context.Context, tx pgx.Tx, ids []int32) ([]c
 	}
 	entries := make([]contracts.VariantEntry, 0, len(rows))
 	for _, row := range rows {
-		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues))
+		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus, row.TaxCategoryID, row.Description, row.CategoryID, row.CategoryName, row.OptionValues, row.WeightKg))
 	}
 	if err := withPackagings(ctx, txq, entries); err != nil {
 		return nil, err

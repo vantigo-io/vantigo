@@ -46,7 +46,7 @@ func (q *Queries) ArchiveProduct(ctx context.Context, arg ArchiveProductParams) 
 
 const catalogLockVariants = `-- name: CatalogLockVariants :many
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -69,6 +69,7 @@ type CatalogLockVariantsRow struct {
 	CategoryID    *int32
 	CategoryName  *string
 	OptionValues  []byte
+	WeightKg      pgtype.Numeric
 }
 
 // CatalogLockVariants is contracts.ProductCatalog.LockVariants: FOR SHARE on
@@ -97,6 +98,7 @@ func (q *Queries) CatalogLockVariants(ctx context.Context, ids []int32) ([]Catal
 			&i.CategoryID,
 			&i.CategoryName,
 			&i.OptionValues,
+			&i.WeightKg,
 		); err != nil {
 			return nil, err
 		}
@@ -110,7 +112,7 @@ func (q *Queries) CatalogLockVariants(ctx context.Context, ids []int32) ([]Catal
 
 const catalogLookupCode = `-- name: CatalogLookupCode :many
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -132,6 +134,7 @@ type CatalogLookupCodeRow struct {
 	CategoryID    *int32
 	CategoryName  *string
 	OptionValues  []byte
+	WeightKg      pgtype.Numeric
 }
 
 // CatalogLookupCode is contracts.ProductCatalog.LookupCode's variant half: a
@@ -159,6 +162,7 @@ func (q *Queries) CatalogLookupCode(ctx context.Context, code string) ([]Catalog
 			&i.CategoryID,
 			&i.CategoryName,
 			&i.OptionValues,
+			&i.WeightKg,
 		); err != nil {
 			return nil, err
 		}
@@ -172,7 +176,7 @@ func (q *Queries) CatalogLookupCode(ctx context.Context, code string) ([]Catalog
 
 const catalogLookupSKUs = `-- name: CatalogLookupSKUs :many
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -194,6 +198,7 @@ type CatalogLookupSKUsRow struct {
 	CategoryID    *int32
 	CategoryName  *string
 	OptionValues  []byte
+	WeightKg      pgtype.Numeric
 }
 
 // CatalogLookupSKUs is contracts.ProductCatalog.LookupSKUs: every variant
@@ -221,6 +226,7 @@ func (q *Queries) CatalogLookupSKUs(ctx context.Context, skus []string) ([]Catal
 			&i.CategoryID,
 			&i.CategoryName,
 			&i.OptionValues,
+			&i.WeightKg,
 		); err != nil {
 			return nil, err
 		}
@@ -234,7 +240,7 @@ func (q *Queries) CatalogLookupSKUs(ctx context.Context, skus []string) ([]Catal
 
 const catalogSearchVariants = `-- name: CatalogSearchVariants :many
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -266,6 +272,7 @@ type CatalogSearchVariantsRow struct {
 	CategoryID    *int32
 	CategoryName  *string
 	OptionValues  []byte
+	WeightKg      pgtype.Numeric
 }
 
 // CatalogSearchVariants is contracts.ProductCatalog.SearchVariants: variants
@@ -300,6 +307,7 @@ func (q *Queries) CatalogSearchVariants(ctx context.Context, arg CatalogSearchVa
 			&i.CategoryID,
 			&i.CategoryName,
 			&i.OptionValues,
+			&i.WeightKg,
 		); err != nil {
 			return nil, err
 		}
@@ -314,7 +322,7 @@ func (q *Queries) CatalogSearchVariants(ctx context.Context, arg CatalogSearchVa
 const catalogVariant = `-- name: CatalogVariant :one
 
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -335,12 +343,15 @@ type CatalogVariantRow struct {
 	CategoryID    *int32
 	CategoryName  *string
 	OptionValues  []byte
+	WeightKg      pgtype.Numeric
 }
 
 // Catalog (Task 3, contracts.ProductCatalog): the read-only cross-module
 // view of a variant, joined with its product for the fields another module
-// may reference — never the detailed attributes (barcode, weight,
-// dimensions) that stay behind products' own contract and permissions.
+// may reference — never the detailed attributes (dimensions, cost) that stay
+// behind products' own contract and permissions. The barcode joined for
+// Inventory's scanning, and the weight for Orders' shipments (orders design
+// O50), which proposes a parcel's weight from the variants'.
 // CatalogVariant is contracts.ProductCatalog.Variant's lookup.
 func (q *Queries) CatalogVariant(ctx context.Context, id int32) (CatalogVariantRow, error) {
 	row := q.db.QueryRow(ctx, catalogVariant, id)
@@ -359,13 +370,14 @@ func (q *Queries) CatalogVariant(ctx context.Context, id int32) (CatalogVariantR
 		&i.CategoryID,
 		&i.CategoryName,
 		&i.OptionValues,
+		&i.WeightKg,
 	)
 	return i, err
 }
 
 const catalogVariants = `-- name: CatalogVariants :many
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -386,6 +398,7 @@ type CatalogVariantsRow struct {
 	CategoryID    *int32
 	CategoryName  *string
 	OptionValues  []byte
+	WeightKg      pgtype.Numeric
 }
 
 // CatalogVariants batch-loads the same fields as CatalogVariant for a set of
@@ -413,6 +426,7 @@ func (q *Queries) CatalogVariants(ctx context.Context, ids []int32) ([]CatalogVa
 			&i.CategoryID,
 			&i.CategoryName,
 			&i.OptionValues,
+			&i.WeightKg,
 		); err != nil {
 			return nil, err
 		}
@@ -426,7 +440,7 @@ func (q *Queries) CatalogVariants(ctx context.Context, ids []int32) ([]CatalogVa
 
 const catalogVariantsOfProduct = `-- name: CatalogVariantsOfProduct :many
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -448,6 +462,7 @@ type CatalogVariantsOfProductRow struct {
 	CategoryID    *int32
 	CategoryName  *string
 	OptionValues  []byte
+	WeightKg      pgtype.Numeric
 }
 
 // CatalogVariantsOfProduct is contracts.ProductCatalog.VariantsOfProduct:
@@ -475,6 +490,7 @@ func (q *Queries) CatalogVariantsOfProduct(ctx context.Context, productID int32)
 			&i.CategoryID,
 			&i.CategoryName,
 			&i.OptionValues,
+			&i.WeightKg,
 		); err != nil {
 			return nil, err
 		}
