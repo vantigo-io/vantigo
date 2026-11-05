@@ -380,7 +380,9 @@ neither (`order_on_hold`, 409) — release it first. Marking and undoing lock th
 variants, since an open line holds its variant against a delete. A marking releases what a
 line holds reserved beyond its open quantity — as much as it marked — and an undo reserves
 nothing again ([Reservations](#reservations)). On a line invoiced on delivery, undo stops at
-what is invoiced.
+what is invoiced (`delivered_below_invoiced`, 400) and, beyond that, at what is invoiced plus
+what draft invoices hold of it (`line_in_draft_invoice`, 409): the draft is issued or deleted,
+or its allocations released, first.
 
 ## Invoicing from orders
 
@@ -761,11 +763,20 @@ What a line holds is Inventory's to say; Orders keeps no copy. The ledger names 
 - **A confirmed order's save**, while the order holds any reservation, releases a removed
   line's reservation and what a line holds beyond its new open quantity, and reserves what a
   kept line's open quantity grew by and a new line's whole — refused as confirm is. An order
-  holding none — confirmed without reserving — reserves nothing on a save. A new site
+  holding none — confirmed without reserving — reserves nothing on a save. A kept line whose
+  item changed releases all it holds and reserves its whole open quantity of the new
+  variant, refused as confirm is. While Inventory keeps no stock (`Deps.Stock` nil) a kept
+  line keeps its stored delivery method — unless its item changed — so a save releases only
+  a removed line's and what a line holds beyond its open quantity, never because Inventory
+  is off, and reserves nothing; the order is as Inventory left it when it is switched on
+  again. A new site
   releases everything at the old one and reserves the open quantities at the new one when
   the order held anything; it is logged `site_changed`.
-- **Cancel** and **cancel remaining** release every reservation and cancel the order's draft
-  deliveries.
+- **Cancel** releases every reservation and cancels the order's draft deliveries.
+- **Cancel remaining** releases what each line holds beyond what is still open — a line
+  invoiced beyond what is delivered keeps that much open — removes from the draft
+  deliveries the lines of order lines with nothing open left, bumping those drafts'
+  `version`, and cancels a draft left with no line.
 - **Mark delivered** releases what a line holds beyond what is left open; **undo
   delivered** reserves nothing.
 - **Posting a delivery** issues against the reservations; Inventory consumes what it
@@ -786,8 +797,9 @@ picked. One delivery names an order line once.
 - **Create** (`POST /deliveries`, deliveries-manage) needs a confirmed order not on hold
   (`order_on_hold`, 409) with a site while stock is kept (`order_has_no_site`, 409; 503
   without stock). It proposes every delivery-method line open beyond what other draft
-  deliveries hold, at what can go from the site — the line's own reservation plus what is
-  available, shared between the lines of one variant in line order — never more than is
+  deliveries hold, at what can go from the site — the line's own reservation less what its
+  other drafts take, plus what is available, shared between the lines of one variant in line
+  order — never more than is
   open; each proposed line is picked from the first location by full code holding all of
   it. Nothing to propose is `nothing_to_deliver` (409). Several drafts may exist.
 - **Save** (`PUT /deliveries/{id}`) replaces a draft's lines: each names a delivery-method
@@ -795,7 +807,9 @@ picked. One delivery names an order line once.
   this delivery (`over_delivery`), and a location among `Stock.Locations` of the variant at
   the site (`location_unknown`), all 400 with `lines`. A delivery no longer a draft is
   `delivery_not_draft` (409); a stale `version` or `expectedUpdatedAt` `version_conflict`.
-- **Post** (`POST /deliveries/{id}/post`) locks the variants, the order and the delivery;
+- **Post** (`POST /deliveries/{id}/post`) locks the variants — of the order's delivery-method
+  lines and of the delivery's lines, again under the order's lock for any a change between
+  the read and the lock named — the order and the delivery;
   every line must be picked (`location_missing`, 400) and within what the order line has
   left (`over_delivery`, 400); the order must be confirmed and not on hold. It calls
   `StockLedger.Issue` with the order as source and the delivery `{orders, delivery, <id>}` as
@@ -1325,7 +1339,7 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `POST /orders/{id}/cancel-remaining` | sales-manage | 200; 404; 409 `order_not_confirmed`, `order_locked`, `order_in_draft_invoice` |
 | `POST /orders/{id}/release-draft-allocations` | sales-manage | 200 — [every draft allocation released](#release-draft-allocations); 404; 409 `version_conflict` |
 | `POST /orders/{id}/mark-delivered` | sales-manage | 200; 400 `over_delivery` and the line codes; 404; 409 `order_not_confirmed`, `order_on_hold` |
-| `POST /orders/{id}/undo-delivered` | sales-manage | 200; 400; 404; 409 `order_on_hold` |
+| `POST /orders/{id}/undo-delivered` | sales-manage | 200; 400; 404; 409 `order_on_hold`, `line_in_draft_invoice` |
 | `POST /orders/{id}/send` | sales-manage | 200; 400; 404; 409 `order_not_confirmed`; 503 `sending_disabled`, `mail_failed` |
 | `GET /orders/{id}/pdf` | access | 200 the stored confirmation of `version`, or the current one printed now; 404 |
 | `GET /orders/{id}/proforma` | access | 200; 404 |

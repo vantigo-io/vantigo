@@ -243,7 +243,10 @@ nothing of it is delivered or invoiced) and add a new one.
 On an order holding reservations, a change moves them along: a larger quantity reserves the
 difference — refused when the site does not have it available — a smaller one gives the
 rest back, a new goods line reserves its quantity, and a removed line gives its reservation
-back.
+back. A line whose product changes gives back what it held of the old product and reserves its
+quantity of the new one — refused when the site does not have it available. While Inventory
+keeps no stock, a change reserves nothing more but keeps what the order holds, giving back only
+what a smaller quantity no longer needs.
 
 Each saved change raises the order's **version**, and the confirmation you send next is
 titled **Revised order confirmation**. **Change log** lists every change since the order
@@ -262,7 +265,11 @@ hold**, **Registered delivered** and so on.
 - **More actions** → **Cancel the rest**, once something is: every line's quantity not yet
   delivered or invoiced is cancelled. This is not undone.
 
-Both cancels give back what the order holds reserved and cancel its draft deliveries.
+**Cancel the order** gives back everything the order holds reserved and cancels its draft
+deliveries. **Cancel the rest** gives back what is no longer left to deliver, and takes the
+lines with nothing left to deliver out of the draft deliveries — a draft left empty is
+cancelled. A line invoiced beyond what is delivered still has that much to deliver: it keeps
+its reservation for it, and stays on its drafts.
 
 Neither cancel is taken while a draft invoice holds part of the order: issue or delete the
 draft first, or [release what it holds](#release-what-draft-invoices-hold).
@@ -278,7 +285,8 @@ by hand still works, for a correction, and gives back as much of the line's rese
 you register.
 **Register delivered** asks how much of each line is delivered now (**Deliver now**); a
 line left at 0 is not changed, and you cannot deliver more than is left. **More actions** →
-**Undo delivered** takes quantities back (**Take back**). Each line shows its progress —
+**Undo delivered** takes quantities back (**Take back**); on a line invoiced on delivery, not
+below what is invoiced or on a draft invoice. Each line shows its progress —
 "3 of 5 delivered" — and the order its delivery status: **Not delivered**, **Partly
 delivered** or **Delivered**.
 
