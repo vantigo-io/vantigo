@@ -106,6 +106,7 @@ export type CarrierSender = Schemas["OrdersCarrierSender"];
 export type CarrierService = Schemas["OrdersCarrierService"];
 export type CarrierVerification = Schemas["OrdersCarrierVerification"];
 export type SiteCarrierDefaults = Schemas["OrdersSiteCarrierDefaults"];
+export type SiteCarrierDefaultsInput = Schemas["OrdersSiteCarrierDefaultsInput"];
 export type Shipment = Schemas["OrdersShipment"];
 export type ShipmentStatus = Shipment["status"];
 export type ShipmentUpdate = Schemas["OrdersShipmentUpdate"];

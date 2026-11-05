@@ -1165,7 +1165,7 @@ export interface paths {
         put?: never;
         /**
          * Book a shipment
-         * @description Books a draft shipment with the carrier (O50) under the idempotency key stored on it before the call, so a retried request books once; stores the consignment number, the package numbers, the tracking URL and the booked cost, then the label and the waybill; publishes orders.shipment.booked.v1; counts the order's shipping lines delivered; and, when the settings say so, queues the shipping notice to the order's contact. A carrier's refusal is 422 carrier_refused with its message, and the shipment stays a draft.
+         * @description Books a draft shipment with the carrier (O50) under the idempotency key stored on it before the call, so a retried request books once; stores the consignment number, the package numbers, the tracking URL and the booked cost, then the label and the waybill; publishes orders.shipment.booked.v1; counts the order's shipping lines delivered; and, when the settings say so, queues the shipping notice to the order's contact. A carrier's refusal is 422 carrier_refused with its message, and the shipment stays a draft with a fresh key. The attempt is a lease: recorded, with the version moved, before the carrier is called; while it is under two minutes old another book or a cancel is 409 booking_in_progress. After an attempt whose outcome is unknown, a book asks the carrier for the booking under the key first; while that attempt is under fifteen minutes old and the carrier shows none it is 409 booking_outcome_unknown (check Mybring, or wait), after that it books. A booking found that way has no label link: labelInMybringOnly is set and the label is printed in Mybring.
          */
         post: operations["bookShipment"];
         delete?: never;
@@ -1265,7 +1265,7 @@ export interface paths {
         put?: never;
         /**
          * Estimate a shipping line
-         * @description Asks the carrier for a shipping line's price (O53): the document's delivery address, the estimated weight of its goods lines, the default carrier account of the order's site (else the settings' default site's) and its default service, plus the settings' markup. Nothing is written.
+         * @description Asks the carrier for a shipping line's price (O53): the document's delivery address, the estimated weight of its goods lines, the default carrier account of the order's site (else the settings' default site's) and its default service, plus the settings' markup. Nothing is written. Besides orders:access it needs orders:quotes-manage for a quote and orders:sales-manage for an order (403). The VAT code is the goods lines': theirs when they share one, else the one with the largest net share; with no goods line, the freight product's, else the standard rate's.
          */
         post: operations["estimateShipping"];
         delete?: never;
@@ -1288,7 +1288,7 @@ export interface paths {
         get: operations["getSiteCarrierDefaults"];
         /**
          * Save the default carrier accounts
-         * @description Replaces the default carrier account per site (O51): each an active account, each site once.
+         * @description Saves the default carrier account of each site named (O51): each an active account, or null to clear it, each site once. A site not named keeps its default.
          */
         put: operations["putSiteCarrierDefaults"];
         post?: never;
@@ -2956,7 +2956,7 @@ export interface components {
         };
         /** @description A shipment of a posted delivery (O50). status is draft, booked, in_transit, delivered or cancelled; exception is tracking's flag beside it. voided is a cancel of a carrier with no cancel call: the shipment is void in Vantigo and its label must not be used. bookedCost is the carrier's estimate of the business's cost, never invoiced (the customer pays the order's shipping line). label and waybill say what is stored; waybillNeeded is false for a service whose label serves as the waybill. */
         OrdersShipment: {
-            /** @description A booking was attempted and its outcome may be unknown; booking again asks the carrier first and books once. */
+            /** @description A booking was attempted and its outcome may be unknown; booking again asks the carrier first and books once. The draft cannot be changed meanwhile (booking_unresolved). */
             bookAttempted: boolean;
             /** Format: date-time */
             bookedAt?: string | null;
@@ -2984,6 +2984,8 @@ export interface components {
             /** Format: int64 */
             id: number;
             label: boolean;
+            /** @description The booking was found by its reference after a lost answer, and the carrier gives no label link for it: print the label in Mybring. */
+            labelInMybringOnly: boolean;
             /** Format: int64 */
             orderId: number;
             /** Format: int64 */
@@ -3166,9 +3168,20 @@ export interface components {
             /** Format: int64 */
             siteId: number;
         };
-        /** @description The default carrier account per site, replaced whole; a site absent has none. */
+        /** @description A site's default carrier account to save (O51); accountId null clears it. */
+        OrdersSiteCarrierDefaultInput: {
+            /** Format: int64 */
+            accountId: number | null;
+            /** Format: int64 */
+            siteId: number;
+        };
+        /** @description The default carrier account per site; a site absent has none. */
         OrdersSiteCarrierDefaults: {
             items: components["schemas"]["OrdersSiteCarrierDefault"][];
+        };
+        /** @description The default carrier accounts of the sites named, each once; a site not named keeps its own. */
+        OrdersSiteCarrierDefaultsInput: {
+            items: components["schemas"]["OrdersSiteCarrierDefaultInput"][];
         };
         /** @description Inventory's sites, by code; empty when Inventory keeps no stock. */
         OrdersSiteList: {
@@ -7713,7 +7726,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, shipment_not_draft, carrier_account_archived. */
+            /** @description Conflict — version_conflict, shipment_not_draft, carrier_account_archived, booking_unresolved: a booking was attempted and its outcome is unknown; book again to resolve it. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -7782,7 +7795,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, shipment_not_draft, carrier_account_archived. */
+            /** @description Conflict — version_conflict, shipment_not_draft, carrier_account_archived, booking_in_progress, booking_outcome_unknown. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -7860,7 +7873,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, shipment_past_cancel, shipment_not_cancellable. */
+            /** @description Conflict — version_conflict, shipment_past_cancel, shipment_not_cancellable, booking_in_progress: a draft whose booking attempt is under two minutes old. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -7918,7 +7931,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Not Found — no such shipment, or no stored label. The body is empty. */
+            /** @description Not Found — no such shipment, no stored label, or the order is anonymised. The body is empty. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -8039,7 +8052,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Not Found — no such shipment, or no stored waybill or label. The body is empty. */
+            /** @description Not Found — no such shipment, no stored waybill or label, or the order is anonymised. The body is empty. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -8180,7 +8193,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OrdersSiteCarrierDefaults"];
+                "application/json": components["schemas"]["OrdersSiteCarrierDefaultsInput"];
             };
         };
         responses: {

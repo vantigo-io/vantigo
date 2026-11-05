@@ -305,10 +305,8 @@ const SiteDefaultsCard = ({ accounts }: { accounts: CarrierAccount[] }) => {
   const save = useMutation({
     mutationFn: () =>
       saveSiteCarrierDefaults({
-        items: fulfilling.flatMap((site) => {
-          const accountId = current(site.id);
-          return accountId == null ? [] : [{ siteId: site.id, accountId }];
-        }),
+        // Every row shown, a cleared one as null: a site not shown keeps its default.
+        items: fulfilling.map((site) => ({ siteId: site.id, accountId: current(site.id) })),
       }),
     onSuccess: async () => {
       setChosen({});

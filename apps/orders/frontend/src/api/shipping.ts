@@ -11,6 +11,7 @@ import type {
   ShippingEstimate,
   ShippingOption,
   SiteCarrierDefaults,
+  SiteCarrierDefaultsInput,
 } from "./types";
 
 const accounts = "/api/v1/orders/carrier-accounts";
@@ -43,7 +44,8 @@ export const updateCarrierAccount = (id: number, input: CarrierAccountInput) =>
   send<CarrierAccount>(`${accounts}/${id}`, json("PUT", input));
 export const verifyCarrierAccount = (id: number) =>
   send<CarrierVerification>(`${accounts}/${id}/verify`, { method: "POST" });
-export const saveSiteCarrierDefaults = (input: SiteCarrierDefaults) =>
+/** Saves the defaults of the sites named; a null account clears a site's, and a site not named keeps its own. */
+export const saveSiteCarrierDefaults = (input: SiteCarrierDefaultsInput) =>
   send<SiteCarrierDefaults>("/api/v1/orders/shipping/site-defaults", json("PUT", input));
 
 /** A delivery's shipments (O50), and an order's, for its tracking links (O52). */
