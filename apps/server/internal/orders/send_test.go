@@ -221,7 +221,9 @@ func TestQuotePDF_TheDiscountsVisibility(t *testing.T) {
 	mustStatus(t, res, http.StatusCreated, "create")
 	q := quoteOf(t, res)
 	mustStatus(t, c.Do(http.MethodGet, quotePath(q.Id, "pdf"), nil), http.StatusOK, "pdf")
-	m, ok := pdfModels.find("Tilbud", "Tilbud "+strconv.FormatInt(q.Number, 10))
+	m, ok := pdfModels.find("Tilbud", "Tilbud "+strconv.FormatInt(q.Number, 10), func(m orders.PDFModel) bool {
+		return len(m.Header) == 5 && len(m.Rows) > 0 && m.Rows[0][3] == "90,00"
+	})
 	if !ok || len(m.Header) != 5 || m.Rows[0][3] != "90,00" || m.Rows[0][4] != "180,00" {
 		t.Errorf("model %+v; want the net unit price 90,00 and 180,00, no discount column", m)
 	}

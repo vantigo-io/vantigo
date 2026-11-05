@@ -33,14 +33,24 @@ func (m *models) add(p orders.PDFModel) {
 	m.all = append(m.all, p)
 }
 
-// find is the last model whose subtitle is subtitle and whose title is title.
-func (m *models) find(title, subtitle string) (orders.PDFModel, bool) {
+// find is the last model whose title is title, whose subtitle is subtitle and
+// which every want accepts. Tests run in parallel, each on its own database, so
+// two tests print "Tilbud 1" alike: a test that reads what its PDF says passes
+// a want that tells its own model apart, or it may read another test's.
+func (m *models) find(title, subtitle string, want ...func(orders.PDFModel) bool) (orders.PDFModel, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+next:
 	for i := len(m.all) - 1; i >= 0; i-- {
-		if m.all[i].Title == title && m.all[i].Subtitle == subtitle {
-			return m.all[i], true
+		if m.all[i].Title != title || m.all[i].Subtitle != subtitle {
+			continue
 		}
+		for _, ok := range want {
+			if !ok(m.all[i]) {
+				continue next
+			}
+		}
+		return m.all[i], true
 	}
 	return orders.PDFModel{}, false
 }
