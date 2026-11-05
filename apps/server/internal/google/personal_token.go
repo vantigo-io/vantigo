@@ -30,8 +30,8 @@ import (
 // and leaves the row alone. Before any token is answered the account is
 // checked again (on use, G27).
 //
-// The mailbox calendar (E, mailbox.go) and personal sending (G) take their
-// tokens from personalTokens.source. Nothing here logs, audits or
+// The mailbox calendar (E, mailbox.go) and personal sending (G,
+// personal_mailbox.go) take their tokens from personalTokens.source. Nothing here logs, audits or
 // answers a token or the secret.
 
 // errWebClient: the web client is not set up, or Google refused it on a
@@ -363,6 +363,25 @@ func (t *personalTokens) reconnect(ctx context.Context, row store.GooglePersonal
 	return needsPerson(code)
 }
 
+// unauthorized records Google's refusal of gid's token, issued from the row
+// at revision, after the client fetched a fresh one (the calendar, E, and
+// personal sending, G): the row read now, moved to reconnect (sign_in_again)
+// when it is still at that revision, or its closing token forgotten,
+// through reconnect; a row moved on since is a failure to retry.
+func (t *personalTokens) unauthorized(ctx context.Context, gid string, revision int64) error {
+	row, err := t.q.GetPersonal(ctx, gid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return needsPerson(contracts.ConnectionNotConnected)
+	}
+	if err != nil {
+		return fmt.Errorf("google: read the personal connection: %w", err)
+	}
+	if row.Revision != revision {
+		return fmt.Errorf("%w: the personal connection changed while Google refused its token", errGoogleUnreachable)
+	}
+	return t.reconnect(ctx, row, personalCodeSignInAgain)
+}
+
 // source is gid's token for feature as a call's tokenSource (client.go):
 // removal allows a closing connection's token for a removal.
 func (t *personalTokens) source(gid, feature string, removal bool) *personalSource {
@@ -396,6 +415,13 @@ func (s *personalSource) dropped() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	processPersonal.drop(s.last.key)
+}
+
+// lastRevision is the revision of the row the last token came from.
+func (s *personalSource) lastRevision() int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.last.revision
 }
 
 var _ tokenSource = (*personalSource)(nil)

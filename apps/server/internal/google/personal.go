@@ -354,17 +354,23 @@ func requestPrincipal(ctx context.Context) (contracts.Principal, error) {
 // is none. It calls out of the module, so never inside one of its
 // transactions.
 func (s *server) certainAccount(ctx context.Context) (*store.GoogleAccount, error) {
-	if s.deps.Workforce == nil {
+	return certainAccountOf(ctx, s.deps.Workforce, s.q)
+}
+
+// certainAccountOf is certainAccount over Staff's workforce and the
+// module's queries, for the connect and personal sending (G35) alike.
+func certainAccountOf(ctx context.Context, workforce contracts.Workforce, q *store.Queries) (*store.GoogleAccount, error) {
+	if workforce == nil {
 		return nil, nil
 	}
-	da, err := s.deps.Workforce.DirectoryAccount(ctx)
+	da, err := workforce.DirectoryAccount(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("google: read the directory account: %w", err)
 	}
 	if da == nil || da.Provider != providerKey || !da.Enabled || !validUserID(da.ExternalID) {
 		return nil, nil
 	}
-	row, err := s.q.GetAccount(ctx, da.ExternalID)
+	row, err := q.GetAccount(ctx, da.ExternalID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
