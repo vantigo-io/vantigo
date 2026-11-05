@@ -1,6 +1,6 @@
 ---
 title: Google Workspace
-description: Connecting Vantigo to a Google Workspace organisation through a service account with domain-wide delegation — the Google Cloud project and the Admin SDK API, the service account and its JSON key, lifting iam.disableServiceAccountKeyCreation for the project, uploading the key, delegating the scopes in the Admin console and waiting for them, the admin to impersonate, the Internal web client and its two redirect URIs, verifying with Test connection — then Connection for people (each person's own Google connection — the switch, the web client as Internal, verifying by connecting yourself, turning it off, what happens to a person's connection, google-sweep), calendar sync on each person's connection (change notifications, verifying, a leaver's copies), Mail channels (the switch, the two Gmail scopes and what they reach, a licensed mailbox, verifying, turning it off, what can go wrong), the accounts Staff keeps in Google, the account rules (the address, the organisational unit, the first password and its lifetime), licences, Staff's groups and their three settings, photos at 96 px, what a leaver's steps do, delete after N days, confirming an account or a group Vantigo did not create, rotating a key, changing the service account, and what can go wrong.
+description: Connecting Vantigo to a Google Workspace organisation through a service account with domain-wide delegation — the Google Cloud project and the Admin SDK API, the service account and its JSON key, lifting iam.disableServiceAccountKeyCreation for the project, uploading the key, delegating the scopes in the Admin console and waiting for them, the admin to impersonate, the Internal web client and its two redirect URIs, verifying with Test connection — then Connection for people (each person's own Google connection — the switch, the web client as Internal, verifying by connecting yourself, turning it off, what happens to a person's connection, google-sweep), calendar sync on each person's connection (change notifications, verifying, a leaver's copies), Mail channels (the switch, the two Gmail scopes and what they reach, a licensed mailbox, verifying, turning it off, what can go wrong), sending from a person's own Gmail (what it needs, gmail.send on the person's consent, what the person sees, verifying, the threading caveat), the accounts Staff keeps in Google, the account rules (the address, the organisational unit, the first password and its lifetime), licences, Staff's groups and their three settings, photos at 96 px, what a leaver's steps do, delete after N days, confirming an account or a group Vantigo did not create, rotating a key, changing the service account, and what can go wrong.
 sidebar:
   order: 47
 sources:
@@ -35,6 +35,7 @@ sources:
   - apps/server/internal/google/channel_mailbox.go
   - apps/server/internal/google/channel_mailbox_inbound.go
   - apps/server/internal/google/channel_mailbox_marks.go
+  - apps/server/internal/google/personal_mailbox.go
 ---
 
 The Google Workspace module connects Vantigo to your company's Google Workspace
@@ -47,7 +48,7 @@ over, keeps their profile and manager in step, assigns the licences of their gro
 writes their photo, and suspends the account when they leave
 ([The accounts](#the-accounts)). Each person can connect their own Google account
 ([Connection for people](#connection-for-people)), which [calendar sync](#calendar-sync)
-uses, and sending from their own Gmail will in a later release. Communications' channels
+uses, and so does [sending from their own Gmail address](#sending-from-a-persons-own-gmail). Communications' channels
 can send from and read the organisation's licensed Gmail mailboxes, such as `post@`
 ([Mail channels](#mail-channels)).
 
@@ -240,7 +241,7 @@ the old one in the console. A new client id always needs its secret.
 
 **Connection for people** lets each person connect their own Google account to Vantigo
 once, under **Settings → Connections**, so that [calendar sync](#calendar-sync) to
-Google Calendar — and sending from their own Gmail address, in a later release — acts as
+Google Calendar and [sending from their own Gmail address](#sending-from-a-persons-own-gmail) act as
 that person with their own consent, never through the service account: no calendar scope is ever delegated.
 Vantigo keeps each person's refresh token sealed, and nothing else of Google's.
 
@@ -492,6 +493,63 @@ Vantigo does not use*.
   labelled away from the Inbox first is never read — and skips a message larger than
   `COMMUNICATIONS_INBOUND_MAX_BYTES` (25 MiB by default). Archiving or deleting a message
   in Gmail after it was read changes nothing in Vantigo.
+
+## Sending from a person's own Gmail
+
+A person whose connection holds **Gmail** can check **Send from my Gmail address** in
+Communications' composer, on a new conversation or a reply, on any channel. The message
+leaves from their own Gmail address through **their own connection** — never through the
+service account's delegation, whatever Mail channels says — lands in their own **Sent**,
+and carries `Reply-To` the channel, so the customer's answer arrives in the channel's
+mailbox ([Send from your own address](/en/user/communications/#personal-sending-and-retrying)).
+
+### What it needs
+
+- **Connection for people** on and ready ([above](#connection-for-people)). Nothing else
+  is turned on: there is no switch of its own.
+- The scope `https://www.googleapis.com/auth/gmail.send`, which each person grants for
+  themselves on Google's consent page when they connect for Gmail. It lets Vantigo send as
+  them and nothing else: it cannot read, list or label their mail. It is **not** delegated
+  to the service account; the Internal web client's consent screen should list it beside
+  the calendar's scopes, or Google answers *consent missing*.
+- If the Admin console restricts Gmail's API for third-party apps, the web client must be
+  **Trusted** ([Before you turn it on](#before-you-turn-it-on)).
+
+### What the person sees
+
+Until their connection holds Gmail, the composer offers **Connect Google** beside **Send
+from my address**; Google asks for sending and the calendar again, so the connection keeps
+both. When their connection needs reconnecting at the moment the message leaves, it is
+**not** sent from the channel instead: it fails at once with *Sending failed because your
+mail connection needs reconnecting.*, and the person reconnects and chooses **Retry send**.
+A personal message can be about **3 MB** in all, as with Microsoft 365, whatever a Gmail
+channel takes.
+
+### Verify personal sending
+
+1. Connect yourself for Gmail: in Communications, open a conversation on any channel and
+   choose **Connect Google** in the composer; allow sending on Google's page.
+2. **Settings → Connections** shows **Used by:** *Calendar, Gmail* (or *Gmail*).
+3. Reply with **Send from my Gmail address** checked. The message is in your Gmail
+   **Sent**, from your address, with **Reply-To** the channel.
+4. Answer it from outside as the customer would: the answer arrives in the channel and
+   threads onto the conversation.
+
+### What can go wrong with personal sending
+
+- **A customer's answer to a new conversation started from Gmail becomes a new
+  conversation.** Gmail may replace the Message-ID of a message it sends, and the send
+  scope cannot read back the one it chose. An answer to a reply sent from Gmail threads by
+  the earlier messages it names; an answer to a first message threads only if Gmail kept
+  Vantigo's Message-ID. Check it once in your organisation as above, with a new
+  conversation; the reference records it under U6.
+- **The person sees *Reconnect needed* with *consent missing*.** They unticked sending on
+  Google's page, or the consent screen does not list `gmail.send`: connect again and allow
+  every item.
+- **A message fails with `connection_needed`.** The person's connection expired, was
+  revoked, or no longer holds Gmail: they reconnect and retry. Nothing is sent from the
+  channel meanwhile.
+- **A message fails as `mailbox_denied`.** Gmail refused a recipient or the message itself.
 
 ## The accounts
 

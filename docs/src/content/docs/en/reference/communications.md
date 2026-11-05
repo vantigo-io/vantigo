@@ -1,6 +1,6 @@
 ---
 title: "Communications module"
-description: "Business email from shared mailboxes: the channels' providers — SMTP, and the shared mailboxes of every mailbox provider (Microsoft 365 through the Microsoft Entra ID module, and Google Workspace's licensed Gmail mailboxes through the Google Workspace module), named by key, created by address or switched from SMTP, with an optional import window and Outlook on-close behavior — the outbox and its delivery through either, the size a mailbox channel takes; the OutboundMail slot, through which Invoices and Calendar send customer mail from a channel an Owner chose, and the end of any fall-back to the installation's SMTP; receiving into a mailbox channel — the mailbox sync, change notifications, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all, and Outlook state on close —; sending from one's own address through the provider that answers for the person; Messenger channels — the channel types and the default of each, the ChannelMessenger slot, the messenger sync worker, components, answers and the reply window, sending a message in parts, and the new refusals —; retention and the operator's configuration."
+description: "Business email from shared mailboxes: the channels' providers — SMTP, and the shared mailboxes of every mailbox provider (Microsoft 365 through the Microsoft Entra ID module, and Google Workspace's licensed Gmail mailboxes through the Google Workspace module), named by key, created by address or switched from SMTP, with an optional import window and Outlook on-close behavior — the outbox and its delivery through either, the size a mailbox channel takes; the OutboundMail slot, through which Invoices and Calendar send customer mail from a channel an Owner chose, and the end of any fall-back to the installation's SMTP; receiving into a mailbox channel — the mailbox sync, change notifications, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all, and Outlook state on close —; sending from one's own address — Outlook or Gmail — through the provider that answers for the person; Messenger channels — the channel types and the default of each, the ChannelMessenger slot, the messenger sync worker, components, answers and the reply window, sending a message in parts, and the new refusals —; retention and the operator's configuration."
 sources:
   - apps/server/internal/communications
   - apps/communications/frontend
@@ -1329,8 +1329,11 @@ message is gone.
 ## Sending from one's own address
 
 People whose own connection to a personal mailbox provider is active with the `mail`
-feature — today the Microsoft 365 Outlook connection (`Mail.Send` delegated) — can choose
-**Send from my address** on both new conversations and replies (`sendFromPersonal: true`).
+feature — the Microsoft 365 Outlook connection (`Mail.Send` delegated, provider `entra`,
+*Outlook*), or the Google connection (`gmail.send` on the person's own consent, provider
+`google`, *Gmail*; [personal sending](/en/reference/google/#personal-sending)) — can
+choose **Send from my address** on both new conversations and replies
+(`sendFromPersonal: true`), on a channel of any provider.
 
 - **The provider** (Google Workspace design G3). `contracts.PersonalMailbox` is a
   many-provider slot keyed by `Key()` (`Deps.PersonalMailboxes`). Communications asks
@@ -1366,7 +1369,11 @@ feature — today the Microsoft 365 Outlook connection (`Mail.Send` delegated) �
   author's display name is a 500, never a message sent without one.
 - **Outbox dispatch & immediate failure**: The outbox dispatches personal messages via the
   recorded provider's `PersonalMailbox.Send(contracts.AsUser(ctx, authorUserID), mime, bcc)`, and records
-  what it answers as [a channel's send does](#delivery-semantics). If the provider refuses due to an
+  what it answers as [a channel's send does](#delivery-semantics). Entra answers nothing (Graph keeps
+  the Message-ID); Google answers the person's Gmail thread, recorded as `providerThreadId` but never met
+  by threading, which looks within the channel, and no Message-ID — `gmail.send` cannot read it back —,
+  so a customer's answer to a reply threads by its `References`, and an answer to a new conversation by
+  its `In-Reply-To` only while Gmail keeps the Message-ID the outbox gave (U6). If the provider refuses due to an
   expired session, revoked token, or missing consent (`contracts.ErrConnectionNeeded`), the outbox job fails
   immediately as a terminal failure after 1 attempt (`connection_needed`, never silently falling back to the
   channel's address).
