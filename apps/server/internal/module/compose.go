@@ -32,7 +32,8 @@ import (
 // collected from every module given instead, enabled or not, and calendar
 // sources and identity provisioners, the fourth and the fifth, from the
 // enabled modules only — a source kind two invoiced-work holders claim, a
-// key two identity provisioners claim, or a nil Deps.Config:
+// key two identity provisioners claim, an event handler name two handlers
+// share (EventHandlers), or a nil Deps.Config:
 // enablement (which modules MODULES turns on) is meaningless without one, and
 // every real caller already loads one before composing.
 func Compose(deps Deps, mods ...Module) (http.Handler, error) {
@@ -373,6 +374,14 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	}
 	if len(variantHolders) > 0 {
 		deps.VariantReferenceHolders = append(slices.Clone(deps.VariantReferenceHolders), variantHolders...)
+	}
+
+	// The outbox's event handlers (orders design O2), a many-provider slot
+	// collected from every module given, for the holders' reason above. The
+	// API runs none of them — the dispatcher, a worker, does — but a
+	// duplicate name is refused here, at startup, all the same.
+	if _, err := EventHandlers(deps, given...); err != nil {
+		return nil, err
 	}
 
 	// Customer personal data is the second many-provider slot (customers GDPR

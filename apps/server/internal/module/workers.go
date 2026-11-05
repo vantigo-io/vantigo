@@ -5,8 +5,39 @@ import (
 	"reflect"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/events"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
+
+// EventHandlers collects the domain-events outbox's handlers (events.Handler,
+// orders design O2) from every module given, enabled or not — a many-provider
+// slot, collected as the customer reference holders are: a handler of a module
+// MODULES leaves out checks the setting itself. They come in mods order, each
+// module's own in the order it returns them. It refuses a handler with no
+// name, no events or no Handle, and a name two handlers share, naming both
+// modules. Compose calls it to refuse a bad composition at startup; the
+// process that runs workers calls it to build the dispatcher,
+// events.NewDispatcher, since worker mode never composes.
+func EventHandlers(deps Deps, mods ...Module) ([]events.Handler, error) {
+	var out []events.Handler
+	claimedBy := make(map[string]string)
+	for _, mod := range mods {
+		if mod.EventHandlers == nil {
+			continue
+		}
+		for _, h := range mod.EventHandlers(deps) {
+			if h.Name == "" || len(h.Events) == 0 || h.Handle == nil {
+				return nil, fmt.Errorf("module: %s declares an event handler %q without a name, events or Handle", mod.Name, h.Name)
+			}
+			if other, ok := claimedBy[h.Name]; ok {
+				return nil, fmt.Errorf("module: two event handlers are both named %q: %s, %s", h.Name, other, mod.Name)
+			}
+			claimedBy[h.Name] = mod.Name
+			out = append(out, h)
+		}
+	}
+	return out, nil
+}
 
 // Workers returns every worker.Worker the enabled modules among mods
 // contribute, in mods order, each module's own contribution concatenated in
