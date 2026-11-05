@@ -82,6 +82,37 @@ func (st stock) Available(ctx context.Context, variantIDs []int32, siteID *int64
 	return st.read(ctx, variantIDs, siteID, true)
 }
 
+// Sites answers every site that is not archived, by code.
+func (st stock) Sites(ctx context.Context) ([]contracts.StockSite, error) {
+	rows, err := store.New(st.s.deps.Pool).StockSites(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("inventory: read the sites: %w", err)
+	}
+	out := make([]contracts.StockSite, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, contracts.StockSite{ID: r.ID, Code: r.Code, Name: r.Name, FulfilsOrders: r.FulfilsOrders, Active: r.Status == "active"})
+	}
+	return out, nil
+}
+
+// Locations answers, per variant, the site's active locations holding more
+// than 0 of it, by full code.
+func (st stock) Locations(ctx context.Context, variantIDs []int32, siteID int64) ([]contracts.StockLocation, error) {
+	if err := contracts.ValidateStockVariants(variantIDs); err != nil {
+		return nil, err
+	}
+	rows, err := store.New(st.s.deps.Pool).StockLocationsAt(ctx, store.StockLocationsAtParams{VariantIds: variantIDs, SiteID: siteID})
+	if err != nil {
+		return nil, fmt.Errorf("inventory: read the locations holding stock: %w", err)
+	}
+	out := make([]contracts.StockLocation, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, contracts.StockLocation{VariantID: r.VariantID, LocationID: r.LocationID, FullCode: r.FullCode,
+			Quantity: decimalText(ratFromText(r.OnHand))})
+	}
+	return out, nil
+}
+
 // read is OnHand and Available, from one snapshot of the balances and the
 // reservations.
 func (st stock) read(ctx context.Context, variantIDs []int32, siteID *int64, available bool) ([]contracts.StockQuantity, error) {
