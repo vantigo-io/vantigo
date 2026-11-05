@@ -351,7 +351,7 @@ func parseDraft(body gen.InvoicesInvoiceRequest, currency string, stored map[str
 		add(field("discountPercent"), msg)
 		if line.quantity != nil && line.unitPrice != nil && line.discount != nil {
 			line.amounts = computeLine(line.quantity, line.unitPrice, line.discount)
-			if new(big.Rat).Abs(line.amounts.gross).Cmp(maxLineGross) > 0 {
+			if new(big.Rat).Abs(line.amounts.Gross).Cmp(maxLineGross) > 0 {
 				add(field("unitPrice"), "The line amount is too large")
 			}
 		}
@@ -397,7 +397,7 @@ func taxedLines(lines []draftLine, codes map[int32]vatCodeOnDay) []taxedLine {
 	out := make([]taxedLine, 0, len(lines))
 	for _, l := range lines {
 		if s := l.snapshot; s != nil {
-			out = append(out, taxedLine{net: l.amounts.net, category: s.category, rate: s.rate, safT: s.safT, reason: s.reason})
+			out = append(out, taxedLine{Net: l.amounts.Net, Category: s.Category, Rate: s.Rate, SAFT: s.SAFT, Reason: s.Reason})
 			continue
 		}
 		c := codes[l.vatCodeID]
@@ -405,7 +405,7 @@ func taxedLines(lines []draftLine, codes map[int32]vatCodeOnDay) []taxedLine {
 		if rate == nil {
 			rate = new(big.Rat)
 		}
-		out = append(out, taxedLine{net: l.amounts.net, category: c.category, rate: rate, safT: c.safT, reason: c.reason})
+		out = append(out, taxedLine{Net: l.amounts.Net, Category: c.category, Rate: rate, SAFT: c.safT, Reason: c.reason})
 	}
 	return out
 }
@@ -430,7 +430,7 @@ func checkInvoiceLines(lines []draftLine, codes map[int32]vatCodeOnDay, errs map
 
 // checkTotal is D5's document bound, on the totals the lines make.
 func checkTotal(totals documentTotals, errs map[string][]string) map[string][]string {
-	if totals.gross.Cmp(maxGrossTotal) > 0 {
+	if totals.Gross.Cmp(maxGrossTotal) > 0 {
 		errs = withFieldError(errs, "lines", "The document total is too large")
 	}
 	return errs
@@ -438,16 +438,16 @@ func checkTotal(totals documentTotals, errs map[string][]string) map[string][]st
 
 // numerics is a document's four totals as the columns take them.
 func numerics(t documentTotals) (net, vat, gross, vatNOK pgtype.Numeric, err error) {
-	if net, err = numericFromRat(t.net, 2); err != nil {
+	if net, err = numericFromRat(t.Net, 2); err != nil {
 		return
 	}
-	if vat, err = numericFromRat(t.vat, 2); err != nil {
+	if vat, err = numericFromRat(t.VAT, 2); err != nil {
 		return
 	}
-	if gross, err = numericFromRat(t.gross, 2); err != nil {
+	if gross, err = numericFromRat(t.Gross, 2); err != nil {
 		return
 	}
-	vatNOK, err = numericFromRat(t.vatNOK, 2)
+	vatNOK, err = numericFromRat(t.VATNOK, 2)
 	return
 }
 
@@ -480,7 +480,7 @@ func writeLines(ctx context.Context, txq *store.Queries, invoiceID int64, lines 
 			places int
 		}{
 			{&p.Quantity, l.quantity, 3}, {&p.UnitPrice, l.unitPrice, unitPricePlaces}, {&p.DiscountPercent, l.discount, 2},
-			{&p.LineGross, l.amounts.gross, 2}, {&p.LineAllowance, l.amounts.allowance, 2}, {&p.LineNet, l.amounts.net, 2},
+			{&p.LineGross, l.amounts.Gross, 2}, {&p.LineAllowance, l.amounts.Allowance, 2}, {&p.LineNet, l.amounts.Net, 2},
 		} {
 			if *c.dst, err = numericFromRat(c.v, c.places); err != nil {
 				return nil, err

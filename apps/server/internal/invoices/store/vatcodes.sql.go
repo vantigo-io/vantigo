@@ -29,6 +29,17 @@ func (q *Queries) CloseOpenVatCodeRate(ctx context.Context, arg CloseOpenVatCode
 	return err
 }
 
+const deleteTaxCategoryVatCode = `-- name: DeleteTaxCategoryVatCode :exec
+DELETE FROM invoices.tax_category_vat_codes WHERE tax_category_id = $1
+`
+
+// DeleteTaxCategoryVatCode removes a tax category's VAT code; the category
+// then has none (O7).
+func (q *Queries) DeleteTaxCategoryVatCode(ctx context.Context, taxCategoryID int32) error {
+	_, err := q.db.Exec(ctx, deleteTaxCategoryVatCode, taxCategoryID)
+	return err
+}
+
 const deleteVatCodeRate = `-- name: DeleteVatCodeRate :exec
 DELETE FROM invoices.vat_code_rates WHERE id = $1
 `
@@ -227,6 +238,33 @@ func (q *Queries) LockVatCode(ctx context.Context, id int32) (InvoicesVatCode, e
 	return i, err
 }
 
+const putTaxCategoryVatCode = `-- name: PutTaxCategoryVatCode :one
+INSERT INTO invoices.tax_category_vat_codes (tax_category_id, vat_code_id, created_at, updated_at)
+VALUES ($1, $2, $3, $3)
+ON CONFLICT (tax_category_id) DO UPDATE SET vat_code_id = EXCLUDED.vat_code_id, updated_at = EXCLUDED.updated_at
+RETURNING tax_category_id, vat_code_id
+`
+
+type PutTaxCategoryVatCodeParams struct {
+	TaxCategoryID int32
+	VatCodeID     int32
+	Now           time.Time
+}
+
+type PutTaxCategoryVatCodeRow struct {
+	TaxCategoryID int32
+	VatCodeID     int32
+}
+
+// PutTaxCategoryVatCode maps a tax category to a VAT code, replacing any code
+// it had (O7).
+func (q *Queries) PutTaxCategoryVatCode(ctx context.Context, arg PutTaxCategoryVatCodeParams) (PutTaxCategoryVatCodeRow, error) {
+	row := q.db.QueryRow(ctx, putTaxCategoryVatCode, arg.TaxCategoryID, arg.VatCodeID, arg.Now)
+	var i PutTaxCategoryVatCodeRow
+	err := row.Scan(&i.TaxCategoryID, &i.VatCodeID)
+	return i, err
+}
+
 const reopenVatCodeRate = `-- name: ReopenVatCodeRate :exec
 UPDATE invoices.vat_code_rates SET valid_to = NULL WHERE id = $1
 `
@@ -236,6 +274,53 @@ UPDATE invoices.vat_code_rates SET valid_to = NULL WHERE id = $1
 func (q *Queries) ReopenVatCodeRate(ctx context.Context, id int32) error {
 	_, err := q.db.Exec(ctx, reopenVatCodeRate, id)
 	return err
+}
+
+const shareVatCode = `-- name: ShareVatCode :one
+SELECT active FROM invoices.vat_codes WHERE id = $1 FOR SHARE
+`
+
+// ShareVatCode reads whether a code is active and holds it FOR SHARE until
+// the transaction ends, so a deactivation cannot commit between the check and
+// the mapping that relies on it.
+func (q *Queries) ShareVatCode(ctx context.Context, id int32) (bool, error) {
+	row := q.db.QueryRow(ctx, shareVatCode, id)
+	var active bool
+	err := row.Scan(&active)
+	return active, err
+}
+
+const taxCategoryVatCodes = `-- name: TaxCategoryVatCodes :many
+SELECT tax_category_id, vat_code_id
+FROM invoices.tax_category_vat_codes
+ORDER BY tax_category_id
+`
+
+type TaxCategoryVatCodesRow struct {
+	TaxCategoryID int32
+	VatCodeID     int32
+}
+
+// TaxCategoryVatCodes is every Products tax category mapped to a VAT code
+// (orders design O7), for the settings page.
+func (q *Queries) TaxCategoryVatCodes(ctx context.Context) ([]TaxCategoryVatCodesRow, error) {
+	rows, err := q.db.Query(ctx, taxCategoryVatCodes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TaxCategoryVatCodesRow
+	for rows.Next() {
+		var i TaxCategoryVatCodesRow
+		if err := rows.Scan(&i.TaxCategoryID, &i.VatCodeID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateVatCode = `-- name: UpdateVatCode :one

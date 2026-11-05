@@ -2130,6 +2130,29 @@ components:
                 - data
                 - pagination
             type: object
+        InvoicesTaxCategoryVatCode:
+            description: 'One Products tax category mapped to one of Invoices'' VAT codes (orders design O7). Invoices stores the tax category''s id only and cannot name it: the settings page reads the names from the products API. A category with no mapping has no VAT code — there is no default.'
+            properties:
+                taxCategoryId:
+                    description: The tax category's id in Products.
+                    format: int32
+                    type: integer
+                vatCodeId:
+                    format: int32
+                    type: integer
+            required:
+                - taxCategoryId
+                - vatCodeId
+            type: object
+        InvoicesTaxCategoryVatCodeRequest:
+            description: The VAT code a tax category maps to. It must exist and be active (400 on vatCodeId).
+            properties:
+                vatCodeId:
+                    format: int32
+                    type: integer
+            required:
+                - vatCodeId
+            type: object
         InvoicesVatCode:
             description: One VAT code with every rate period it has had (D3). inUse is true once any line, draft or issued, carries the code; from then on its category and SAF-T code cannot change (409 vat_code_in_use).
             properties:
@@ -6070,6 +6093,110 @@ paths:
                                 $ref: '#/components/schemas/InvoicesConflictProblem'
                     description: Conflict — a stale revision (no code; the detail names both).
             summary: Change the reminder settings
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:manage
+    /api/v1/invoices/settings/tax-category-vat-codes:
+        get:
+            description: Every Products tax category mapped to a VAT code (orders design O7), by the category's id. An unmapped category is absent.
+            operationId: getInvoicesSettingsTaxCategoryVatCodes
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/InvoicesTaxCategoryVatCode'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List the tax categories' VAT codes
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access
+    /api/v1/invoices/settings/tax-category-vat-codes/{taxCategoryId}:
+        delete:
+            description: Removes a tax category's VAT code (orders design O7). The category then has none, and an order line in it is refused at confirm. Removing what is not there is a 204 too.
+            operationId: deleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId
+            parameters:
+                - in: path
+                  name: taxCategoryId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "204":
+                    description: No Content — the category has no VAT code.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Remove a tax category's VAT code
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:manage
+        put:
+            description: Maps a Products tax category to a VAT code (orders design O7), replacing any code it had. The code must exist and be active; the tax category's id is not checked against Products.
+            operationId: putInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId
+            parameters:
+                - in: path
+                  name: taxCategoryId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InvoicesTaxCategoryVatCodeRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesTaxCategoryVatCode'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — taxCategoryId is not positive, or vatCodeId names no code or an inactive one; the errors name the field.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Set a tax category's VAT code
             tags:
                 - Invoices
             x-vantigo-access: permission:invoices:access+invoices:manage

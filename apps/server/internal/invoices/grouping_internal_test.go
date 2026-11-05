@@ -261,12 +261,12 @@ func TestGroupLines_SplitByEffectiveRateAndTheFourDecimals(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("lines =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	if !lineDiffers(lines[0].amounts.net, held[0]) {
-		t.Errorf("the 133.7700 line nets %s against 468.19496150 exactly, and does not differ", lines[0].amounts.net.FloatString(2))
+	if !lineDiffers(lines[0].amounts.Net, held[0]) {
+		t.Errorf("the 133.7700 line nets %s against 468.19496150 exactly, and does not differ", lines[0].amounts.Net.FloatString(2))
 	}
 	for i := 1; i < len(lines); i++ {
-		if lineDiffers(lines[i].amounts.net, held[i]) {
-			t.Errorf("line %d nets %s and differs from its sources", i+1, lines[i].amounts.net.FloatString(2))
+		if lineDiffers(lines[i].amounts.Net, held[i]) {
+			t.Errorf("line %d nets %s and differs from its sources", i+1, lines[i].amounts.Net.FloatString(2))
 		}
 	}
 	if held[0][0].amount.FloatString(8) != "468.19496150" {

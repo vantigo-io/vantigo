@@ -182,14 +182,14 @@ func checkDeductions(lines []draftLine, left []deductible) []capBreach {
 	}
 	var breaches []capBreach
 	for i, l := range lines {
-		if l.deductsInvoiceID == nil || l.amounts.net == nil {
+		if l.deductsInvoiceID == nil || l.amounts.Net == nil {
 			continue
 		}
 		have, ok := byKey[deductionKey{*l.deductsInvoiceID, l.vatCodeID}]
 		if !ok {
 			have = new(big.Rat)
 		}
-		takes := new(big.Rat).Neg(l.amounts.net)
+		takes := new(big.Rat).Neg(l.amounts.Net)
 		if takes.Cmp(have) > 0 {
 			position := int32(i + 1)
 			breaches = append(breaches, capBreach{codeDeductionExceedsInvoice, &position, fmt.Sprintf(
@@ -203,7 +203,7 @@ func checkDeductions(lines []draftLine, left []deductible) []capBreach {
 // negative: an energy correction's.
 func lowersTotal(lines []draftLine) bool {
 	return slices.ContainsFunc(lines, func(l draftLine) bool {
-		return l.deductsInvoiceID == nil && l.amounts.net != nil && l.amounts.net.Sign() < 0
+		return l.deductsInvoiceID == nil && l.amounts.Net != nil && l.amounts.Net.Sign() < 0
 	})
 }
 
@@ -497,7 +497,7 @@ func (b creditBook) deductedOf(ctx context.Context, q *store.Queries, lines []cr
 			credit[o.VatCodeID] = new(big.Rat)
 			codes = append(codes, o.VatCodeID)
 		}
-		credit[o.VatCodeID].Add(credit[o.VatCodeID], t.amounts[i].net)
+		credit[o.VatCodeID].Add(credit[o.VatCodeID], t.amounts[i].Net)
 	}
 	slices.Sort(codes)
 	for _, code := range codes {
@@ -580,7 +580,7 @@ func (s *server) GetInvoicesByIdDeductible(ctx context.Context, req gen.GetInvoi
 		}
 		out = append(out, gen.InvoicesDeductible{
 			InvoiceId: d.invoiceID, Number: d.number, IssueDate: wireDate(d.issueDate), VatCodeId: d.vatCodeID,
-			Category: d.taxed.category, RatePercent: floatFromRat(d.taxed.rate, 2), Left: floatFromRat(d.left, 2),
+			Category: d.taxed.Category, RatePercent: floatFromRat(d.taxed.Rate, 2), Left: floatFromRat(d.left, 2),
 		})
 	}
 	return out, nil

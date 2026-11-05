@@ -213,7 +213,7 @@ func invoiceIssueChecks(ctx context.Context, txq *store.Queries, profile *contra
 			if err != nil {
 				return issuePlan{}, nil, err
 			}
-			snap.net = net
+			snap.Net = net
 			plan.lines = append(plan.lines, issuedLine{id: l.ID, position: l.Position, taxed: snap})
 			continue
 		}
@@ -234,18 +234,18 @@ func invoiceIssueChecks(ctx context.Context, txq *store.Queries, profile *contra
 			return issuePlan{}, nil, err
 		}
 		plan.lines = append(plan.lines, issuedLine{id: l.ID, position: l.Position, taxed: taxedLine{
-			net: net, category: code.category, rate: code.rate, safT: code.safT, reason: code.reason,
+			Net: net, Category: code.category, Rate: code.rate, SAFT: code.safT, Reason: code.reason,
 		}})
 	}
 	for _, l := range plan.lines {
 		switch {
-		case !settings.VatRegistered && l.taxed.category != "O":
+		case !settings.VatRegistered && l.taxed.Category != "O":
 			return issuePlan{}, cannotIssue(codeVatNotRegistered, fmt.Sprintf(
 				"The seller is not VAT-registered, so every line is outside the VAT act (category O); line %d is not.", l.position)), nil
-		case settings.VatRegistered && l.taxed.category == "O":
+		case settings.VatRegistered && l.taxed.Category == "O":
 			return issuePlan{}, cannotIssue(codeCategoryONotAllowed, fmt.Sprintf(
 				"The seller is VAT-registered, so no line may be outside the VAT act (category O); line %d is.", l.position)), nil
-		case l.taxed.category == "AE" && plan.buyer.BuyerOrganisationNumber == nil:
+		case l.taxed.Category == "AE" && plan.buyer.BuyerOrganisationNumber == nil:
 			return issuePlan{}, cannotIssue(codeReverseChargeNeedsOrgNr, fmt.Sprintf(
 				"Line %d is reverse charge, which needs the buyer's organisation number (§ 5-1-1).", l.position)), nil
 		}
@@ -504,19 +504,19 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 	}
 	// A settlement whose gross is not positive could never be credited,
 	// nor the a-kontos it deducted (invoices work design D7).
-	if plan.settlement && totals.gross.Sign() <= 0 {
+	if plan.settlement && totals.Gross.Sign() <= 0 {
 		refusal = cannotIssue(codeInvoiceTotalNotPositive, fmt.Sprintf(
 			"This settlement's total is %s: a settlement deducts less than it bills. A fixed price billed in full on account ends with its last a-konto.",
-			totals.gross.FloatString(2)))
+			totals.Gross.FloatString(2)))
 		return refused()
 	}
 	// Nor may an invoice whose energy corrections lower it below what it
 	// bills (invoices from consumption plan reading 3): a credit is a
 	// credit note's.
-	if plan.correction && totals.gross.Sign() <= 0 {
+	if plan.correction && totals.Gross.Sign() <= 0 {
 		refusal = cannotIssue(codeInvoiceTotalNotPositive, fmt.Sprintf(
 			"This invoice's total is %s: its corrections lower it below zero. Bill the corrections together with consumption, or credit the earlier invoice.",
-			totals.gross.FloatString(2)))
+			totals.Gross.FloatString(2)))
 		return refused()
 	}
 	// An invoice under the KID agreement gets its KID from the number
@@ -579,7 +579,7 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 			for _, c := range []struct {
 				dst *pgtype.Numeric
 				v   *big.Rat
-			}{{&p.LineGross, a.gross}, {&p.LineAllowance, a.allowance}, {&p.LineNet, a.net}} {
+			}{{&p.LineGross, a.Gross}, {&p.LineAllowance, a.Allowance}, {&p.LineNet, a.Net}} {
 				if *c.dst, err = numericFromRat(c.v, 2); err != nil {
 					return failed(err)
 				}
@@ -588,23 +588,23 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 				return failed(fmt.Errorf("invoices: square line %d: %w", l.id, err))
 			}
 		}
-		rate, err := numericFromRat(l.taxed.rate, 2)
+		rate, err := numericFromRat(l.taxed.Rate, 2)
 		if err != nil {
 			return failed(err)
 		}
 		if err := txq.SnapshotLine(ctx, store.SnapshotLineParams{
-			ID: l.id, VatRatePercent: rate, VatCategory: &l.taxed.category, SafTCode: &l.taxed.safT,
-			ExemptionReason: l.taxed.reason,
+			ID: l.id, VatRatePercent: rate, VatCategory: &l.taxed.Category, SafTCode: &l.taxed.SAFT,
+			ExemptionReason: l.taxed.Reason,
 		}); err != nil {
 			return failed(fmt.Errorf("invoices: snapshot line %d: %w", l.id, err))
 		}
 	}
 	for _, r := range rows {
-		p := store.InsertVatSummaryParams{InvoiceID: locked.ID, VatCategory: r.category, SafTCode: r.safT, ExemptionReason: r.reason}
+		p := store.InsertVatSummaryParams{InvoiceID: locked.ID, VatCategory: r.Category, SafTCode: r.SAFT, ExemptionReason: r.Reason}
 		for _, c := range []struct {
 			dst *pgtype.Numeric
 			v   *big.Rat
-		}{{&p.RatePercent, r.rate}, {&p.TaxableAmount, r.taxable}, {&p.VatAmount, r.vat}, {&p.VatAmountNok, r.vatNOK}} {
+		}{{&p.RatePercent, r.Rate}, {&p.TaxableAmount, r.Taxable}, {&p.VatAmount, r.VAT}, {&p.VatAmountNok, r.VATNOK}} {
 			if *c.dst, err = numericFromRat(c.v, 2); err != nil {
 				return failed(err)
 			}

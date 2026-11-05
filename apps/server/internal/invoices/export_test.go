@@ -689,7 +689,7 @@ func SetPayLinkToken(fn func() string) func() {
 // every QR code the layout carries — what a reader of the PDF would decode.
 func PDFPayLinkQR(payLink string) ([]string, error) {
 	m := buildPDFModel(pdfDocument{kind: kindInvoice, language: "nb", currency: "NOK", payLink: payLink,
-		totals: documentTotals{net: new(big.Rat), vat: new(big.Rat), gross: new(big.Rat)}})
+		totals: documentTotals{Net: new(big.Rat), VAT: new(big.Rat), Gross: new(big.Rat)}})
 	doc, err := layoutPDF(m)
 	if err != nil {
 		return nil, err

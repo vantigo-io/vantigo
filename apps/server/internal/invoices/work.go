@@ -770,7 +770,7 @@ func resolveVatCodes(settings store.InvoicesSetting, req *gen.InvoicesFromWorkVa
 // a unit price or a line too large for its column is a 400 on sources.
 func checkWorkLines(lines []draftLine, errs map[string][]string) map[string][]string {
 	for _, l := range lines {
-		if l.quantity.Cmp(maxQuantity) > 0 || l.unitPrice.Cmp(maxUnitPrice) > 0 || l.amounts.gross.Cmp(maxLineGross) > 0 {
+		if l.quantity.Cmp(maxQuantity) > 0 || l.unitPrice.Cmp(maxUnitPrice) > 0 || l.amounts.Gross.Cmp(maxLineGross) > 0 {
 			return withFieldError(errs, "sources", "The work makes a line too large for one invoice line; choose a finer grouping")
 		}
 	}

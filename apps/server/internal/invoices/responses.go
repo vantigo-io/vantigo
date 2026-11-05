@@ -87,8 +87,8 @@ func lineResponse(l store.InvoicesLine) (gen.InvoicesLine, error) {
 // summaryResponse renders one computed VAT summary row.
 func summaryResponse(r vatSummary) gen.InvoicesVatSummary {
 	return gen.InvoicesVatSummary{
-		VatCategory: r.category, RatePercent: floatFromRat(r.rate, 2), SafTCode: r.safT, ExemptionReason: r.reason,
-		TaxableAmount: floatFromRat(r.taxable, 2), VatAmount: floatFromRat(r.vat, 2), VatAmountNok: floatFromRat(r.vatNOK, 2),
+		VatCategory: r.Category, RatePercent: floatFromRat(r.Rate, 2), SafTCode: r.SAFT, ExemptionReason: r.Reason,
+		TaxableAmount: floatFromRat(r.Taxable, 2), VatAmount: floatFromRat(r.VAT, 2), VatAmountNok: floatFromRat(r.VATNOK, 2),
 	}
 }
 
@@ -122,7 +122,7 @@ func storedDraftLines(lines []store.InvoicesLine) ([]draftLine, error) {
 		if d.quantity, d.unitPrice, err = numericPair(l.Quantity, l.UnitPrice); err != nil {
 			return nil, err
 		}
-		if d.amounts.net, err = ratFromNumeric(l.LineNet); err != nil {
+		if d.amounts.Net, err = ratFromNumeric(l.LineNet); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -436,8 +436,8 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		}
 		credit, rows, totals = &cd, cd.totals.rows, cd.totals.totals
 		for i, a := range cd.totals.amounts {
-			resp.Lines[i].LineGross, resp.Lines[i].LineAllowance = floatFromRat(a.gross, 2), floatFromRat(a.allowance, 2)
-			resp.Lines[i].LineNet = floatFromRat(a.net, 2)
+			resp.Lines[i].LineGross, resp.Lines[i].LineAllowance = floatFromRat(a.Gross, 2), floatFromRat(a.Allowance, 2)
+			resp.Lines[i].LineNet = floatFromRat(a.Net, 2)
 		}
 		// What its issue would release, as it would decide it (invoices
 		// work design D8).
@@ -466,7 +466,7 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 				break
 			}
 		}
-		warnings, err := settlementWarnings(ctx, q, inv, lines, totals.gross)
+		warnings, err := settlementWarnings(ctx, q, inv, lines, totals.Gross)
 		if err != nil {
 			return gen.InvoicesInvoiceResponse{}, err
 		}
@@ -475,8 +475,8 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 	for _, r := range rows {
 		resp.VatSummaries = append(resp.VatSummaries, summaryResponse(r))
 	}
-	resp.NetTotal, resp.VatTotal = floatFromRat(totals.net, 2), floatFromRat(totals.vat, 2)
-	resp.GrossTotal, resp.VatTotalNok = floatFromRat(totals.gross, 2), floatFromRat(totals.vatNOK, 2)
+	resp.NetTotal, resp.VatTotal = floatFromRat(totals.Net, 2), floatFromRat(totals.VAT, 2)
+	resp.GrossTotal, resp.VatTotalNok = floatFromRat(totals.Gross, 2), floatFromRat(totals.VATNOK, 2)
 	if profile != nil && profile.Currency != "" && profile.Currency != inv.Currency {
 		resp.Warnings = append(resp.Warnings, warningCustomerCurrencyDiffers)
 	}

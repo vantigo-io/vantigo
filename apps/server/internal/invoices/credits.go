@@ -145,7 +145,7 @@ func snapshotOf(l store.InvoicesLine) (taxedLine, error) {
 		}
 		return *s
 	}
-	return taxedLine{category: deref(l.VatCategory), rate: rate, safT: deref(l.SafTCode), reason: l.ExemptionReason}, nil
+	return taxedLine{Category: deref(l.VatCategory), Rate: rate, SAFT: deref(l.SafTCode), Reason: l.ExemptionReason}, nil
 }
 
 // creditBook is what an invoice has had credited, read once per request and,
@@ -231,10 +231,10 @@ func storedCreditedLines(lines []store.InvoicesLine) ([]creditedLine, error) {
 		if c.discount, err = ratFromNumeric(l.DiscountPercent); err != nil {
 			return nil, err
 		}
-		if c.amounts.gross, c.amounts.allowance, err = numericPair(l.LineGross, l.LineAllowance); err != nil {
+		if c.amounts.Gross, c.amounts.Allowance, err = numericPair(l.LineGross, l.LineAllowance); err != nil {
 			return nil, err
 		}
-		if c.amounts.net, err = ratFromNumeric(l.LineNet); err != nil {
+		if c.amounts.Net, err = ratFromNumeric(l.LineNet); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -374,7 +374,7 @@ func (b creditBook) remaining(o store.InvoicesLine) (lineAmounts, error) {
 		gross.Sub(gross, c.gross)
 		allowance.Sub(allowance, c.allowance)
 	}
-	return lineAmounts{gross: gross, allowance: allowance, net: new(big.Rat).Sub(gross, allowance)}, nil
+	return lineAmounts{Gross: gross, Allowance: allowance, Net: new(big.Rat).Sub(gross, allowance)}, nil
 }
 
 // creditTotals is a credit note as it will be issued: each line's amounts,
@@ -427,10 +427,10 @@ func (b creditBook) total(ctx context.Context, q *store.Queries, lines []credite
 				}
 			}
 		}
-		if taxed.rate == nil {
-			taxed.rate = new(big.Rat)
+		if taxed.Rate == nil {
+			taxed.Rate = new(big.Rat)
 		}
-		taxed.net = amounts.net
+		taxed.Net = amounts.Net
 		out.amounts = append(out.amounts, amounts)
 		out.squared = append(out.squared, squared)
 		out.taxed = append(out.taxed, taxed)
@@ -478,7 +478,7 @@ func (b creditBook) remainingRows(ctx context.Context, q *store.Queries, own []v
 		k := key{c.VatCategory, rate.FloatString(2)}
 		left[k] = remainder{vat, vatNOK}
 		if !rowOf(own, k.category, k.rate) {
-			own = append(own, vatSummary{category: c.VatCategory, rate: rate, safT: c.SafTCode, reason: c.ExemptionReason, taxable: new(big.Rat)})
+			own = append(own, vatSummary{Category: c.VatCategory, Rate: rate, SAFT: c.SafTCode, Reason: c.ExemptionReason, Taxable: new(big.Rat)})
 		}
 	}
 	for _, r := range reversed {
@@ -496,20 +496,20 @@ func (b creditBook) remainingRows(ctx context.Context, q *store.Queries, own []v
 		}
 	}
 	var rows []vatSummary
-	totals := documentTotals{net: new(big.Rat), vat: new(big.Rat), gross: new(big.Rat), vatNOK: new(big.Rat)}
+	totals := documentTotals{Net: new(big.Rat), VAT: new(big.Rat), Gross: new(big.Rat), VATNOK: new(big.Rat)}
 	for _, r := range own {
-		if l, ok := left[key{r.category, r.rate.FloatString(2)}]; ok {
-			r.vat, r.vatNOK = l.vat, l.vatNOK
+		if l, ok := left[key{r.Category, r.Rate.FloatString(2)}]; ok {
+			r.VAT, r.VATNOK = l.vat, l.vatNOK
 		}
-		if r.taxable.Sign() == 0 && r.vat.Sign() == 0 && r.vatNOK.Sign() == 0 {
+		if r.Taxable.Sign() == 0 && r.VAT.Sign() == 0 && r.VATNOK.Sign() == 0 {
 			continue // a row the credits before squared already
 		}
-		totals.net.Add(totals.net, r.taxable)
-		totals.vat.Add(totals.vat, r.vat)
-		totals.vatNOK.Add(totals.vatNOK, r.vatNOK)
+		totals.Net.Add(totals.Net, r.Taxable)
+		totals.VAT.Add(totals.VAT, r.VAT)
+		totals.VATNOK.Add(totals.VATNOK, r.VATNOK)
 		rows = append(rows, r)
 	}
-	totals.gross.Add(totals.net, totals.vat)
+	totals.Gross.Add(totals.Net, totals.VAT)
 	sortSummaries(rows)
 	return rows, totals, nil
 }
@@ -517,7 +517,7 @@ func (b creditBook) remainingRows(ctx context.Context, q *store.Queries, own []v
 // rowOf reports whether rows has a row for (category, rate).
 func rowOf(rows []vatSummary, category, rate string) bool {
 	for _, r := range rows {
-		if r.category == category && r.rate.FloatString(2) == rate {
+		if r.Category == category && r.Rate.FloatString(2) == rate {
 			return true
 		}
 	}
@@ -584,7 +584,7 @@ func (b creditBook) caps(ctx context.Context, q *store.Queries, lines []credited
 		if err != nil {
 			return nil, err
 		}
-		qty, net := new(big.Rat).Set(l.quantity), new(big.Rat).Set(t.amounts[i].net)
+		qty, net := new(big.Rat).Set(l.quantity), new(big.Rat).Set(t.amounts[i].Net)
 		if a, ok := b.credited[o.ID]; ok {
 			qty.Add(qty, a.quantity)
 			net.Add(net, a.net)
@@ -602,9 +602,9 @@ func (b creditBook) caps(ctx context.Context, q *store.Queries, lines []credited
 	if err != nil {
 		return nil, err
 	}
-	if t.totals.gross.Cmp(left) > 0 {
+	if t.totals.Gross.Cmp(left) > 0 {
 		breaches = append(breaches, capBreach{codeCreditExceedsInvoice, nil, fmt.Sprintf(
-			"This credit note is %s, and the invoice has %s left to credit.", t.totals.gross.FloatString(2), left.FloatString(2))})
+			"This credit note is %s, and the invoice has %s left to credit.", t.totals.Gross.FloatString(2), left.FloatString(2))})
 	}
 	return breaches, nil
 }
@@ -694,10 +694,10 @@ func creditIssueChecks(ctx context.Context, txq *store.Queries, locked store.Inv
 	// A credit of a settlement's deductions without its work would leave
 	// the customer owing; zero — a "Frakt 0,-" line — stays allowed
 	// (invoices work design D7).
-	if t.totals.gross.Sign() < 0 {
+	if t.totals.Gross.Sign() < 0 {
 		return issuePlan{}, cannotIssue(codeCreditTotalNegative, fmt.Sprintf(
 			"This credit note's total is %s. A credit note gives money back; credit a settlement's deductions together with its work.",
-			t.totals.gross.FloatString(2))), nil
+			t.totals.Gross.FloatString(2))), nil
 	}
 	// An a-konto a settlement deducted is credited, per VAT code, only as
 	// far as the settlement left it; read here, after the counter.

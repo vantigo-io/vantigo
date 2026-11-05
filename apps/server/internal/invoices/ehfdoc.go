@@ -71,7 +71,7 @@ func ehfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 			Person: str(inv.BuyerType) == "person",
 		},
 		Payment:  ehf.Payment{BankAccount: p.bankAccount, IBAN: p.iban, BIC: p.bic, KID: p.kid},
-		NetTotal: p.totals.net, VATTotal: p.totals.vat, GrossTotal: p.totals.gross,
+		NetTotal: p.totals.Net, VATTotal: p.totals.VAT, GrossTotal: p.totals.Gross,
 		PDF: pdf, PDFName: fileName(inv),
 	}
 	if p.kid != "" {
@@ -114,9 +114,9 @@ func ehfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 		d.Lines = append(d.Lines, line)
 	}
 	for _, s := range p.summaries {
-		row := ehf.VATRow{Category: s.category, Rate: s.rate, Taxable: s.taxable, Amount: s.vat}
-		if s.reason != nil {
-			row.ExemptionReason = *s.reason
+		row := ehf.VATRow{Category: s.Category, Rate: s.Rate, Taxable: s.Taxable, Amount: s.VAT}
+		if s.Reason != nil {
+			row.ExemptionReason = *s.Reason
 		}
 		d.VAT = append(d.VAT, row)
 	}

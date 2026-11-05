@@ -47,10 +47,10 @@ func anInvoice() pdfDocument {
 			{description: "Eksport", unit: "stk", quantity: rat("1.5"), unitPrice: rat("33.3333"), discount: rat("10"), rate: rat("0"), net: rat("45")},
 		},
 		summaries: []vatSummary{
-			{category: "S", rate: rat("25"), safT: "3", taxable: rat("12000"), vat: rat("3000")},
-			{category: "Z", rate: rat("0"), safT: "5", reason: &zeroReason, taxable: rat("45"), vat: rat("0")},
+			{Category: "S", Rate: rat("25"), SAFT: "3", Taxable: rat("12000"), VAT: rat("3000")},
+			{Category: "Z", Rate: rat("0"), SAFT: "5", Reason: &zeroReason, Taxable: rat("45"), VAT: rat("0")},
 		},
-		totals:  documentTotals{net: rat("12045"), vat: rat("3000"), gross: rat("15045")},
+		totals:  documentTotals{Net: rat("12045"), VAT: rat("3000"), Gross: rat("15045")},
 		note:    "Takk for handelen.",
 		footer:  "Kraft-Verket AS · Storgata 1 · 0155 Oslo",
 		created: time.Date(2026, 9, 12, 10, 30, 0, 0, time.UTC),
@@ -120,7 +120,7 @@ func TestPDFModel_TheFlagsAndTheLanguage(t *testing.T) {
 	en.language = "en"
 	en.buyer = pdfParty{name: "Svenska Aktiebolaget AB", line1: "Storgatan 1", postalCode: "111 22", city: "Stockholm", country: "SE", foreignID: "SE556677889901"}
 	reason := "Omvendt avgiftsplikt – Merverdiavgift ikke beregnet"
-	en.summaries = append(en.summaries, vatSummary{category: "AE", rate: rat("0"), safT: "51", reason: &reason, taxable: rat("100"), vat: rat("0")})
+	en.summaries = append(en.summaries, vatSummary{Category: "AE", Rate: rat("0"), SAFT: "51", Reason: &reason, Taxable: rat("100"), VAT: rat("0")})
 	en.deliveryPlace = &pdfParty{line1: "Byggeplassen", city: "Bergen", country: "NO"}
 	m := buildPDFModel(en)
 	if m.title != "Invoice" || !slices.Contains(m.buyer, "VAT/Reg. no. SE556677889901") || !slices.Contains(m.buyer, "SE") {
