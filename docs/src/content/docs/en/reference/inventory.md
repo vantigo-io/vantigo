@@ -1,6 +1,6 @@
 ---
 title: "Inventory module"
-description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked variant or make its product a service; the reads — a location's contents, a product's and a variant's stock, the stock totals, the movements, the lookup by code and the dashboard's figures and attention item; the six permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
+description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; the reads — a location's contents, a product's and a variant's stock, the stock totals, the movements, the lookup by code and the dashboard's figures and attention item; the six permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
 sources:
   - apps/server/internal/inventory
   - apps/inventory/frontend
@@ -8,6 +8,8 @@ sources:
   - apps/server/internal/openapi/specs/inventory.yaml
   - apps/server/internal/db/migrations/00108_inventory_baseline.sql
   - apps/server/internal/db/migrations/00110_inventory_counts.sql
+  - apps/server/internal/db/migrations/00125_inventory_reservations.sql
+  - apps/server/internal/contracts/stock.go
   - apps/host/frontend/src/routes/inventory
 ---
 The Inventory module keeps the stock of the catalog's goods in the company's warehouses
@@ -31,14 +33,17 @@ through `contracts.ProductCatalog` ([contracts consumed](#contracts-consumed)).
 refuses to mount without a catalog (*inventory: no product catalog; the inventory module
 requires the products module*). It provides one many-provider slot to Products, the
 [variant reference holder](#contracts-provided), which makes Products refuse to delete
-a variant that still lies in stock.
+a variant that still lies in stock, and two contracts to Orders: **`contracts.Stock`**,
+the read of on hand and available, and **`contracts.StockLedger`**, the write of
+[reservations and issues](#reservations-and-issues) on Orders' own transaction.
 
-This page describes phase 1, deliveries A and B: the [contracts](#contracts-consumed),
+This page describes phase 1, deliveries A and B, and the reservations Orders' delivery C
+added: the [contracts](#contracts-consumed),
 [the schema](#the-schema), the [permissions](#permissions),
 [sites and locations](#sites-and-locations), [the ledger](#the-ledger),
 [entering in packagings](#entering-in-packagings), [counts](#counts),
 [labels](#labels), [the opening-balance import](#the-opening-balance-import),
-[the locks](#locks),
+[reservations and issues](#reservations-and-issues), [the locks](#locks),
 [the reads](#reads), the [personal data](#personal-data) it keeps,
 [how a refusal looks](#refusals), [the switch](#enabling-and-disabling),
 [what comes next](#what-comes-next) and the [endpoints](#endpoints).
@@ -105,19 +110,56 @@ The module fills one many-provider slot, **`Module.VariantReferences`** with a
   product in id order.
 
 `VariantHeld(ctx, tx, variantID, purpose)` sums the variant's balances on Products'
-transaction and answers `nil` when it lies nowhere, or a `VariantHold` of kind `stock`
+transaction and answers a `VariantHold` of kind `stock`
 — the same for either purpose, since stock stops a delete and a change to Service
 alike: the quantity as the shortest
 decimal that says it (`"34"`, `"2.5"`, `"0.125"`) and the number of locations it lies
-on. The first hold refuses Products' write with 409 — *Variant has stock* or *Product
-has stock* — with the unit from Products' own row. The holder locks nothing of its own:
+on. When it lies nowhere but is [reserved](#reservations-and-issues), it answers kind
+`reserved`: the quantity reserved and, in `Locations`, the number of sites; `nil` when
+neither. The first hold refuses Products' write with 409 — *Variant has stock* or
+*Product has stock* — with the unit from Products' own row; the detail reads *5 pcs
+reserved for orders at 1 site* and asks for the orders to be delivered or cancelled
+first. The holder locks nothing of its own:
 every posting that could add to the variant holds `FOR SHARE` on it through
 `LockVariants`, so it has committed before Products' `FOR UPDATE` was granted, or waits
 for Products' transaction. The holder needs nothing of `Deps` and is collected
 **whether or not `inventory` is enabled** ([enabling and disabling](#enabling-and-disabling)).
 
-The module provides no single-provider contract: no other module reads stock in this
-phase (I34).
+It also provides the two stock contracts of `contracts/stock.go` (orders design O45,
+rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
+
+- **`Module.Stock`** — **`contracts.Stock`**, a single-provider slot set from the
+  enabled modules, so `Deps.Stock` is nil when `inventory` is off, which Orders reads
+  as "stock is not kept":
+  - `OnHand(ctx, variantIDs, siteID)` — each variant's on hand, in total and per site
+    holding it; with `siteID` set, at that site only;
+  - `Available(ctx, variantIDs, siteID)` — on hand less reserved, the same way, per
+    site where the variant lies or is reserved; it may be negative.
+
+  Both read on the pool in one snapshot, answer every variant asked in the order
+  asked (one with nothing at `"0"` and no sites), as exact decimal text, and refuse
+  none or more than `MaxStockVariants` (1000) variants, or one named twice.
+- **`Module.StockLedger`** — **`contracts.StockLedger`**, resolved from **every module
+  given, enabled or not**, as the holders are, so `Deps.StockLedger` is there even when
+  `inventory` is off and a reservation made while it was on is still released. Its
+  four calls run on the caller's transaction and are described under
+  [reservations and issues](#reservations-and-issues):
+  - `Reserve(ctx, tx, src, siteID, lines []StockLine{VariantID, LineID, Quantity})`;
+  - `Release(ctx, tx, src, releases []StockRelease{LineID, Quantity})` — none releases
+    everything `src` holds, a `Quantity` of `""` a line's whole reservation;
+  - `Issue(ctx, tx, src, StockIssue{Document, SiteID, Lines []IssueLine{VariantID,
+    LineID, FromLocationID, Quantity}, PostedByUserID, PostedByDisplay}) (movementID,
+    error)`;
+  - `ReservationsFor(ctx, tx, src) ([]Reservation{VariantID, LineID, SiteID, Quantity},
+    error)`.
+
+  A document is a `StockSource{Module, Kind, ID}` — `{"orders", "order", 42}`. A
+  quantity is decimal text with at most three decimals, more than 0; a bad one is the
+  caller's bug, answered as a failure. Every refusal is a **`*contracts.StockRefusal`**
+  — `Code`, `VariantID`, `LineID` and `Detail` of the first failing line, and `Lines`,
+  every one — and nothing is written when one is answered. Its codes:
+  `insufficient_available`, `insufficient_stock`, `site_not_fulfilling`,
+  `variant_not_stocked`, `site_unknown` and `location_unknown`.
 
 ## The schema
 
@@ -139,10 +181,11 @@ is an identity from 1001.
   (`ux_locations_full_code`). A GIN index on `ancestors` finds a subtree:
   `id = X OR ancestors @> {X}`.
 - **`movements`** — `client_request_id` (unique) and `request_hash`, `site_id`, `kind`
-  (`adjustment`, `move` or `receipt`; an open set kept as text), `reason` (an
+  (`adjustment`, `move`, `receipt`, `count` or `issue`; an open set kept as text), `reason` (an
   adjustment's), `note` (1000), `supplier_name` (200) and `supplier_reference` (100) (a
   receipt's), the **source reference** `source_module`, `source_kind`, `source_id`,
-  `source_line_id` — null in this phase and indexed for the modules that will set it —
+  `source_line_id` — set by an [issue](#reservations-and-issues) to the document it was
+  posted for, null on the module's own movements, and indexed —
   `posted_by_user_id`, `posted_by_display` and `posted_at`.
 - **`movement_lines`** — `movement_id`, `line_no`, `variant_id`, the **snapshots**
   `sku`, `product_name` and `unit` as they were at posting, `from_location_id` and
@@ -177,6 +220,18 @@ is an identity from 1001.
 
 Products' packagings are Products' table, `products.variant_packagings`
 (`00109_products_packagings.sql`); Inventory reads them only through the catalog.
+
+`00125_inventory_reservations.sql` (Orders' delivery C) adds a table and a column:
+
+- **`reservations`** — `variant_id`, `site_id`, `quantity` (`numeric(14,3)`, the one
+  `CHECK`: more than 0; a reservation brought to zero is deleted), the source
+  `source_module`, `source_kind`, `source_id` and `source_line_id` (text, as a
+  movement's), `created_at` and `updated_at`. One row per source line and site
+  (`ux_reservations_source_line_site`), indexed by `(variant_id, site_id)`. The balances
+  gain no reserved column: reservations are per site, never per location (design §12).
+- **`sites.fulfils_orders`** (`boolean`) — whether orders reserve and deliver from the
+  site; set to true for every warehouse and false for every store when the migration
+  ran.
 
 ## Permissions
 
@@ -240,8 +295,13 @@ in the deployment (`full_code_taken` guards the rest).
 
 ### Sites
 
-A **site** is a `warehouse` or a `store` (I1), with a name, an optional address and a
-status. The kind changes the words on screen and no rule. **Creating a site creates its
+A **site** is a `warehouse` or a `store` (I1), with a name, an optional address, a
+status and **`fulfilsOrders`**. The kind changes the words on screen and no rule but
+one default: a site created without `fulfilsOrders` fulfils orders when it is a
+warehouse and not when it is a store. `fulfilsOrders` decides whether Orders may
+[reserve and issue](#reservations-and-issues) there; a `PUT` without it keeps it as it
+is, and turning it off leaves the site's reservations as they are. A change is recorded
+in `site_changed`. **Creating a site creates its
 root location** — kind `site`, coded as the site — in the same transaction. `PUT` takes
 `If-Match` with the site's revision and the whole site:
 
@@ -346,8 +406,9 @@ on the parent listing every full code the bulk made. A [count](#counts) records
 ### Movements and lines
 
 Every change of stock is a **movement** (I8): a kind — `adjustment`, `move`,
-`receipt` or `count` in this phase; the set is open, and `issue`, `production` and
-`transfer` come with Orders and Manufacturing — a site, an adjustment's reason, an
+`receipt`, `count`, or `issue`, posted only through
+[`StockLedger.Issue`](#reservations-and-issues); the set is open, and `production` and
+`transfer` come with Manufacturing and transfers — a site, an adjustment's reason, an
 optional note, a receipt's optional supplier and supplier's reference, a count
 movement's `countId`, the poster and the time. **A movement is never edited or deleted**; a mistake is corrected
 by a new adjustment.
@@ -373,6 +434,9 @@ snapshotted, so history reads after the variant is gone. A line may be given in
 - **Count** — posted only by [a count's post](#posting), never through
   `/movements`: one line per counted location and variant that changes, posted as a
   `set`.
+- **Issue** — posted only by another module through
+  [`StockLedger.Issue`](#reservations-and-issues), never through `/movements`: lines
+  with only *from*, and the source reference of the document it was posted for.
 
 ### Balances and quantities
 
@@ -654,6 +718,48 @@ The import resolves its SKUs in **one batch**: a single `LookupSKUs` call for ev
 distinct SKU of the file, before any transaction, on the dry run and the commit alike.
 A SKU two variants match ignoring case resolves to the first by id.
 
+## Reservations and issues
+
+Orders reserves stock for a confirmed order's goods lines at the order's site and
+delivers it with an issue (orders design O45–O47), through
+[`contracts.StockLedger`](#contracts-provided) (`ledger.go`), always **on Orders' own
+transaction**: Inventory begins, commits and rolls back nothing. A reservation is held
+by a **source line** — `orders/order/42`, line 7 — at a **site**.
+
+**Available** at a site is its on hand, summed over every location of the site, less
+every reservation there. Across sites it is the sum of the sites'. Only a reserve checks
+it.
+
+- **`Reserve`** refuses, naming every failing line, a site that does not exist
+  (`site_unknown`), one archived or not fulfilling orders (`site_not_fulfilling`), a
+  variant the catalog does not answer or that is not goods (`variant_not_stocked`),
+  and a line whose quantity the site's available — less what the call's earlier lines
+  of the same variant took — does not cover (`insufficient_available`, naming the SKU,
+  the site and what is available). Otherwise it adds each line's quantity to the line's
+  reservation at the site, creating it when there is none. A line id names one variant.
+- **`Release`** gives back reservations of the document: all of them when no release
+  is named; a line's whole reservation for a release without a quantity; or that
+  quantity of it, site by site in site id order. Never below zero: releasing more than
+  is held releases what is held, and a line holding nothing is no refusal.
+- **`Issue`** posts one movement of kind `issue` at the site through the
+  [posting engine](#locks), one line per issue line — taken off its from-location — and
+  records the document it was posted for (`StockIssue.Document`, the reserving document
+  when it is zero) as its source reference and the poster given. It refuses a site as
+  `Reserve` does, a variant not goods (`variant_not_stocked`), a from-location that is
+  unknown, archived or in another site (`location_unknown`), and stock the location does
+  not hold (`insufficient_stock`, Inventory's own rule: a balance never goes below
+  zero). Reservations of other documents never stop an issue. Then it consumes, of each
+  issued line's reservation at the site, as much as the line issued, never below zero.
+  **An issue is idempotent by its document**: its key is a UUID derived from the
+  document, so a second `Issue` for the same document answers the first movement and
+  consumes nothing again; one with different lines is a failure.
+- **`ReservationsFor`** reads what the document holds, by line id then site id.
+
+**Inventory's own decreases ignore reservations.** An adjustment, a move and a count are
+corrections of fact: they may take on hand below what is reserved, and available then
+shows negative — on the reads, and in red with a warning on the product page's Stock
+card and the variant page.
+
 ## Locks
 
 **A posting** (`posting.go`), in this order:
@@ -716,6 +822,20 @@ under its site row's lock; an open takes the same lock, so neither misses the ot
 **The import** resolves every row outside any transaction, then posts as an API posting
 does, from step 1, with its derived key.
 
+**A ledger call** (`ledger.go`) runs on Orders' transaction, after Orders has called
+`ProductCatalog.LockVariants` and locked its own rows (rule 24). It takes
+`LockVariants` again for the variants' types — already held, so it waits for nothing.
+A **reserve** then reads the site plainly, takes the variants' balances at the site's
+locations `FOR UPDATE` in (variant, location) order, reads on hand and reserved in a
+statement of its own, and upserts the reservations: two reserves of one variant at one
+site — two orders confirmed for the last unit — serialise on the balances, and the
+second sees what the first reserved. An **issue** follows the posting's order above
+from step 1, with its derived key, and then locks the document's reservations
+`FOR UPDATE` in id order. A **release** locks only the document's reservations: it can
+only make more available. So the order everywhere is Products, then Orders' rows, then
+Inventory's balances, then its reservations, and a reserve takes no location or site
+lock a tree write could hold.
+
 **With Products.** Products' rows are locked before Inventory's everywhere: a posting
 shares the variants first, and a variant's delete or a type change locks them
 `FOR UPDATE` and then asks the [holder](#contracts-provided), which reads under them. A
@@ -731,9 +851,13 @@ against packagings that hold until the commit.
   (I29), by full code then SKU; `subtree=false` restricts it to the location itself.
 - **`GET /products/{productId}/stock`** — the product page's Stock card (I27): every
   **goods** variant of the product in the catalog's order, with or without stock, each
-  by site (by code) and location (by full code), with the totals summed exactly. A
-  product the catalog does not know is the 404; a Service product answers no variants.
-- **`GET /variants/{variantId}/stock`** — one variant's stock by site and location. A
+  by site (by code) and location (by full code), with the totals summed exactly. Each
+  site and the variant's totals carry `reserved` — what orders hold there — and
+  `available`, on hand less reserved, which may be negative; a site where the variant
+  is reserved but lies nowhere is listed with no rows. A product the catalog does not
+  know is the 404; a Service product answers no variants.
+- **`GET /variants/{variantId}/stock`** — one variant's stock by site and location,
+  with `reserved` and `available` per site and in total, as above. A
   variant the catalog **no longer knows** is named by its latest movement line's
   snapshot and marked deleted; one neither the catalog nor the ledger knows is the 404.
   Stock cannot outlive its variant (I23), so the fallback names history.
@@ -741,20 +865,21 @@ against packagings that hold until the commit.
   `limit` up to 50 (20 by default), through the catalog's `SearchVariants`, which does
   not search packaging barcodes.
 - **`GET /stock?variantIds=`** — the product list's *On hand* column (I33): each
-  variant's on hand across every location, summed exactly, for at most **100** ids
+  variant's on hand across every location, summed exactly, with `reserved` across every
+  site and `available`, for at most **100** ids
   (comma-separated, de-duplicated); none or more than 100 is a 400 on `variantIds`. A
-  variant with no stock is absent from `totals`. Products reads nothing of Inventory on
+  variant with neither stock nor a reservation is absent from `totals`. Products reads nothing of Inventory on
   the server: the host composes the column into Products' list through the list's
   `extraColumns`, with one request per page, or per 100 of its variants.
 
-Each reads the balances in one snapshot and names the variants through the catalog
-outside it.
+Each reads the balances, and the reservations, in one snapshot and names the variants
+through the catalog outside it.
 
 ### Movements
 
 `GET /movements` lists the movements **newest first** by `(posted_at, id)` (I30),
 filtered by `siteId`, `locationId` (a line from or to the location **or below it**),
-`variantId`, `kind` (`count` among them), and `from` and `to` — **business days** in the workspace's zone,
+`variantId`, `kind` (`count` and `issue` among them), and `from` and `to` — **business days** in the workspace's zone,
 `to` inclusive. `limit` is 100 by default and at most 500; `nextCursor` is an opaque
 base64url cursor. A filter or cursor that does not parse, or `to` before `from`, is a
 400. `GET /movements/{id}` answers one movement with its site, poster, source
@@ -857,6 +982,9 @@ their 409s.
 An unknown id is a bare 404, and a caller without the operation's permission the
 access layer's uniform 403.
 
+The [stock ledger](#reservations-and-issues) answers no HTTP: its refusals are
+`*contracts.StockRefusal` values for Orders to turn into its own problems.
+
 An import's rows are not refusals: a row that fails is its outcome — `location_not_found`,
 `variant_not_found`, `variant_not_stockable` or `quantity_invalid` — in a 200 with
 `ok: false`.
@@ -903,7 +1031,10 @@ and the product page draws no Stock card. The `inventory` schema is **migrated
 regardless**, so enabling it later needs no migration — and because stock in the schema
 is still stock, the [holder](#contracts-provided) **runs even when `inventory` is off**:
 Products still refuses to delete a variant, or to make its product a service, while
-the schema holds stock of it. Inventory contributes **no background worker** and no
+the schema holds stock of it. The **stock ledger** is composed whatever `MODULES` says,
+for the same reason: Orders' cancel, edits and manual marking still release the
+reservations made while Inventory was on, and turning it back on shows true figures.
+`Deps.Stock` is nil while it is off, and Orders then reserves and issues nothing. Inventory contributes **no background worker** and no
 setting — a count left open is raised on the dashboard when it is read, not by a job.
 
 ## What comes next
@@ -919,11 +1050,15 @@ scanning and needs reprinting only when its text should change. Labels are chose
 print dialog from a searchable list, not by ticking locations in the tree, and the count
 screen draws every line of the scope it shows, without virtualisation.
 
+**Reservations**, `contracts.Stock` and `contracts.StockLedger`, the `issue` kind and
+the *fulfils orders* flag came with Orders' delivery C ([reservations and
+issues](#reservations-and-issues)).
+
 **Later** (§11), each waiting for what it names: transfers between sites (Orders);
-reservations and `contracts.Stock` (Orders, the domain-events outbox); lots, serials and
-expiry (Manufacturing); negative stock by a setting (point of sale); placement and
-min/max (the owner's call); units beyond packagings and supplier records (Products
-phase 5); camera scanning; thermal label printers; valuation; store flags.
+lots, serials and expiry (Manufacturing); negative stock by a setting (point of sale);
+placement and min/max (the owner's call); units beyond packagings and supplier records
+(Products phase 5); camera scanning; thermal label printers; valuation; the store flag
+*sells at the till* (point of sale).
 
 The phase keeps what Orders and Manufacturing need (§12): the source reference on every
 movement, null and indexed; the kinds as an open set; lines with no *from* or no *to*;
@@ -942,7 +1077,7 @@ requires, all of them.
 | `GET /sites` | `locations-view` | The active sites, or those of a status. |
 | `POST /sites` | `locations-manage` + `locations-view` | Create a site and its root. |
 | `GET /sites/{id}` | `locations-view` | One site with its root's id. |
-| `PUT /sites/{id}` | `locations-manage` + `locations-view` | Change, recode, archive or reactivate a site, with `If-Match`. |
+| `PUT /sites/{id}` | `locations-manage` + `locations-view` | Change, recode, archive or reactivate a site, or whether it fulfils orders, with `If-Match`. |
 | `DELETE /sites/{id}` | `locations-manage` + `locations-view` | Delete a site with no movement. |
 | `GET /sites/{id}/locations` | `locations-view` | The site's tree, flat, by full code, at most 10,000 (`truncated` beyond), searched with `q`. |
 | `POST /locations` | `locations-manage` + `locations-view` | Create a location under an active parent. |

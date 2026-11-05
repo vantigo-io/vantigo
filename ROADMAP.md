@@ -863,20 +863,31 @@ locations. Migrations `00109` and `00110`.
 *Unblocks:* knowing what lies where before Orders reserves it and Point of sale sells
 it.
 
+### Reservations (with Orders' delivery C)
+
+**Done** (migration `00125`): `inventory.reservations` per source line and site, the
+movement kind `issue`, and the site flag **Fulfils orders** (on for warehouses, off for
+stores). Inventory serves `contracts.Stock` — on hand and available, on hand less
+reserved, per variant and site — and `contracts.StockLedger` — reserve, release, issue
+and what a document holds, on the caller's transaction, refusing through a typed
+`StockRefusal` and composed whatever `MODULES` says (module-boundaries rule 24). Two
+reserves for the last unit serialise on the site's balances; Inventory's own corrections
+may take available negative, shown in red. The product page's Stock card and the item
+page show reserved and available. Documented in
+[Inventory](docs/src/content/docs/en/user/inventory.md#reserved-and-available) and
+[the reference](docs/src/content/docs/en/reference/inventory.md#reservations-and-issues).
+
 ### Later
 
 **Transfers between sites** (sent, in transit, received) wait for Orders.
-**Reservations** — available is on hand less reserved, per site — with the
-`contracts.Stock` and `StockLedger` reads, come with Orders' delivery C; a reservation is
-made synchronously on the order's own transaction, not through the outbox.
 **Lots, serials, expiry, FEFO and traceability** wait for [Manufacturing](#manufacturing).
 **Negative stock**, allowed per site by an administrator, waits for Point of sale.
 **Placement** — a primary location, min and max, a low-stock list — waits for the
 owner's call. **Units other than packagings** (kg, litre, purchase units) wait for
 Products phase 5, and **supplier records on receipts** for the same phase with Orders.
 **Camera scanning** waits for browser support of `BarcodeDetector`, **thermal label
-printers** (ZPL) for demand, **valuation** for a ledger, and the **store flags**
-(*sells at the till*, *fulfils orders*) for Point of sale and Orders.
+printers** (ZPL) for demand, **valuation** for a ledger, and the store flag *sells at
+the till* for Point of sale.
 
 ## Manufacturing
 
@@ -1533,7 +1544,9 @@ Customers and Invoices; Inventory and Communications stay optional.
   and the references ([Orders](docs/src/content/docs/en/reference/orders.md#subscriptions),
   [Invoices](docs/src/content/docs/en/reference/invoices.md#invoicing-orders)).
 - **C — Deliveries and stock.** `contracts.Stock` and `StockLedger`, reservations made
-  synchronously on the order's transaction, and deliveries.
+  synchronously on the order's transaction, and deliveries. Inventory's side — the
+  reservations, the `issue` kind, *Fulfils orders* and the two contracts — is done
+  ([Inventory](#reservations-with-orders-delivery-c)); Orders' side is next.
 - **D — Shipping.** Carriers (Bring first), shipments and the shipping line, revised
   from the carrier research.
 
