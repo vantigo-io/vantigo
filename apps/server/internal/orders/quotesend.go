@@ -267,9 +267,10 @@ type quoteMail struct {
 // still logged.
 //
 // A block warning on the quote's customer or its products refuses it
-// (blocked_by_warning) before anything is printed or mailed, and again under
-// the quote's lock, unless o overrides it; an override is appended to the
-// quote's internal note (O33).
+// (blocked_by_warning) before anything is printed or mailed, unless o
+// overrides it; an override is appended to the quote's internal note (O33).
+// Mark as sent judges the warnings again under the quote's lock; a send whose
+// mail went out does not, since the customer already has the quote.
 func (s *server) freezeQuote(ctx context.Context, id int64, revision int32, expected time.Time, validUntilIn *openapi_types.Date, m *quoteMail, o warningOverride) (gen.OrdersQuote, error) {
 	q := store.New(s.deps.Pool)
 	quote, err := q.GetQuote(ctx, id)
@@ -374,9 +375,20 @@ func (s *server) freezeQuote(ctx context.Context, id int64, revision int32, expe
 			return conflict(codeVersionConflict, "The quote changed",
 				"The quote was saved while it was being sent; nothing was frozen. Reload it and send it again.")
 		}
-		overridden, err := judgeWarnings(ctx, txq, locked.CustomerID, lines, o)
+		// A mail that went out was judged before it was sent, and that judgment
+		// is final: a block set since must not undo a quote the customer
+		// already holds. Only the override note is collected then. Mark as
+		// sent, with no mail, is judged again under the lock.
+		judged := o
+		if m != nil {
+			judged.requested, judged.allowed = true, true
+		}
+		overridden, err := judgeWarnings(ctx, txq, locked.CustomerID, lines, judged)
 		if err != nil {
 			return err
+		}
+		if !o.requested {
+			overridden = nil
 		}
 		if len(overridden) > 0 {
 			note := overrideNote(locked.InternalNote, overridden, o.reason, by, now, zone, locked.Language)

@@ -207,8 +207,82 @@ func TestWarnings_BlockAndOverride(t *testing.T) {
 	}), http.StatusConflict, "blocked_by_warning", "confirm a recalled product")
 }
 
-// A merge moves the absorbed customer's warning to a survivor without one and
-// drops it beside a survivor's own; an erase deletes the customer's (O33).
+// A block set while a quote's mail is going out does not undo the send: the
+// customer has the quote, so it is sent; mark as sent, with no mail, is
+// judged again under the quote's lock (O33).
+func TestWarnings_ABlockDuringTheMailKeepsTheQuoteSent(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{communications: true})
+	chooseChannel(t, h)
+	seller := h.SignIn(t, append(boss, "orders:quotes-manage")...)
+	q := createQuote(t, seller, custBusiness, productLine(varBolt, 1))
+	h.onSend = func() {
+		h.Exec(t, `INSERT INTO orders.customer_warnings (customer_id, level, text, created_at, updated_at)
+			VALUES ($1, 'block', 'Betaler ikke', now(), now())`, custBusiness)
+	}
+	res := seller.Do(http.MethodPost, quotePath(q.Id, "send"), gen.OrdersSendInput{
+		ExpectedUpdatedAt: q.UpdatedAt, Revision: &q.Revision, Recipient: "kari@acme.example",
+	})
+	mustStatus(t, res, http.StatusOK, "send while a block is set")
+	h.onSend = nil
+	if sent := quoteOf(t, res); sent.Status != gen.OrdersQuoteStatusSent || strings.Contains(sent.InternalNote, "Betaler ikke") {
+		t.Errorf("quote %s, note %q; want it sent and no override noted", sent.Status, sent.InternalNote)
+	}
+	if n := len(h.mail.Sent()); n != 1 {
+		t.Errorf("%d mails; want the one", n)
+	}
+}
+
+// An override goes first in a quote's internal note, so a note at its 4000
+// characters still keeps the whole override (O33).
+func TestWarnings_OverrideFitsAFullNote(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	admin := h.SignIn(t, settingsKey...)
+	chief := h.SignIn(t, append(boss, "orders:quotes-manage", "orders:settings")...)
+	setWarning(t, admin, customerWarningPath(custBusiness), gen.OrdersWarningInputLevelBlock, "Betaler ikke")
+	q := createQuote(t, chief, custBusiness, productLine(varBolt, 1))
+	h.Exec(t, `UPDATE orders.quotes SET internal_note = $2 WHERE id = $1`, q.Id, strings.Repeat("n", 3990))
+	yes := true
+	res := chief.Do(http.MethodPost, quotePath(q.Id, "mark-sent"), gen.OrdersMarkSentInput{
+		ExpectedUpdatedAt: quoteAt(t, chief, q.Id), Revision: q.Revision, OverrideWarnings: &yes, OverrideReason: str("Forhåndsbetalt"),
+	})
+	mustStatus(t, res, http.StatusOK, "an override on a full note")
+	note := quoteOf(t, res).InternalNote
+	first, _, _ := strings.Cut(note, "\n")
+	if !strings.Contains(first, "Betaler ikke") || !strings.HasSuffix(first, "Forhåndsbetalt") || len([]rune(note)) != 4000 {
+		t.Errorf("note starts %q, %d characters; want the whole override first, cut to 4000", first, len([]rune(note)))
+	}
+}
+
+// A product warning whose product is gone is listed as orphaned; it cannot be
+// set again, but is removed (O33).
+func TestWarnings_AnOrphanedProductWarning(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	admin := h.SignIn(t, settingsKey...)
+	setWarning(t, admin, productWarningPath(varBolt), gen.OrdersWarningInputLevelInfo, "Utgående vare")
+	setWarning(t, admin, productWarningPath(varFood), gen.OrdersWarningInputLevelBlock, "Tilbakekalt")
+	h.catalog.remove(varFood)
+
+	res := admin.Do(http.MethodGet, warningsPath+"?scope=product", nil)
+	mustStatus(t, res, http.StatusOK, "list")
+	var list gen.OrdersWarningList
+	res.JSON(&list)
+	orphaned := map[int32]bool{}
+	for _, w := range list.Items {
+		orphaned[w.Id] = w.Orphaned != nil && *w.Orphaned
+	}
+	if len(list.Items) != 2 || orphaned[varBolt] || !orphaned[varFood] {
+		t.Errorf("list %+v; want only the coffee's orphaned", list.Items)
+	}
+	mustStatus(t, admin.Do(http.MethodPut, productWarningPath(varFood), gen.OrdersWarningInput{Level: "info", Text: "x"}), http.StatusNotFound, "set an orphan")
+	mustStatus(t, admin.Do(http.MethodDelete, productWarningPath(varFood), nil), http.StatusNoContent, "remove an orphan")
+}
+
+// A merge moves the absorbed customer's warning to a survivor without one, its
+// name blanked; beside a survivor's own it is dropped, but a block over an
+// info is merged into a block; an erase deletes the customer's (O33).
 func TestWarnings_MergeAndErase(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, harnessOptions{})
@@ -233,19 +307,34 @@ func TestWarnings_MergeAndErase(t *testing.T) {
 	mustStatus(t, res, http.StatusOK, "the survivor's")
 	var w gen.OrdersWarning
 	res.JSON(&w)
-	if w.Text != "Fra Ola" {
-		t.Errorf("survivor's warning %+v", w)
+	if w.Text != "Fra Ola" || w.Name != "" {
+		t.Errorf("survivor's warning %+v; want Ola's text, the absorbed name blanked", w)
 	}
 
+	// A block over the survivor's info makes it a block with both texts.
 	setWarning(t, admin, customerWarningPath(custDisabled), gen.OrdersWarningInputLevelBlock, "Fra Gone")
+	moved = repoint(custDisabled, custBusiness)
+	if moved[2].Count != 1 {
+		t.Errorf("moved %+v; want the block merged", moved)
+	}
+	res = admin.Do(http.MethodGet, customerWarningPath(custBusiness), nil)
+	res.JSON(&w)
+	if w.Level != gen.OrdersWarningLevelBlock || w.Text != "Fra Ola\nFra Gone" ||
+		h.Count(t, `SELECT count(*) FROM orders.customer_warnings WHERE customer_id = $1`, custDisabled) != 0 {
+		t.Errorf("survivor's warning %+v; want the block with both texts, the absorbed one's dropped", w)
+	}
+
+	// Anything else beside the survivor's own is dropped.
+	setWarning(t, admin, customerWarningPath(custDisabled), gen.OrdersWarningInputLevelInfo, "Bare info")
 	moved = repoint(custDisabled, custBusiness)
 	if moved[2].Count != 0 {
 		t.Errorf("moved %+v; want the survivor's kept", moved)
 	}
 	res = admin.Do(http.MethodGet, customerWarningPath(custBusiness), nil)
 	res.JSON(&w)
-	if w.Text != "Fra Ola" || h.Count(t, `SELECT count(*) FROM orders.customer_warnings WHERE customer_id = $1`, custDisabled) != 0 {
-		t.Errorf("survivor's warning %+v; the absorbed one's must be dropped", w)
+	if w.Level != gen.OrdersWarningLevelBlock || w.Text != "Fra Ola\nFra Gone" ||
+		h.Count(t, `SELECT count(*) FROM orders.customer_warnings WHERE customer_id = $1`, custDisabled) != 0 {
+		t.Errorf("survivor's warning %+v; the absorbed info must be dropped", w)
 	}
 
 	data := orders.Module().CustomerPersonalData(h.Deps())

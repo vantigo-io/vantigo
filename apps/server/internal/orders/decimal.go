@@ -62,6 +62,12 @@ func decimalPlaces(v float64) int {
 	return 0
 }
 
+// hasPlaces reports whether v is exact at places decimals.
+func hasPlaces(v *big.Rat, places int) bool {
+	scaled := new(big.Rat).Mul(v, new(big.Rat).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(places)), nil)))
+	return scaled.IsInt()
+}
+
 // finite reports whether v is a number.
 func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 

@@ -1,6 +1,7 @@
 package orders_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -119,4 +120,67 @@ func TestPackagingEntry_ConvertsAndPrints(t *testing.T) {
 	lines := []gen.OrdersLineInput{bad}
 	expectRefusal(t, c.Do(http.MethodPost, quotesPath, gen.OrdersQuoteInput{ClientRequestId: uuid.New(), CustomerId: custBusiness, Lines: &lines}),
 		http.StatusBadRequest, "packaging_not_found", "another variant's packaging")
+}
+
+// A packaging count whose quantity would need more than three decimals is
+// quantity_invalid, so the stored quantity is always count × size exactly
+// (O15).
+func TestPackagingEntry_RefusesAnInexactQuantity(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	c := h.SignIn(t, quoter...)
+	bolt, err := h.catalog.Variant(context.Background(), varBolt)
+	if err != nil || bolt == nil {
+		t.Fatalf("bolt: %v", err)
+	}
+	bolt.Packagings = append(bolt.Packagings, contracts.PackagingEntry{ID: 8, Name: "Roll", Kind: "roll", Quantity: "1.555"})
+	h.catalog.seed(*bolt)
+
+	l := productLine(varBolt, 1)
+	l.Quantity = nil
+	l.PackagingId, l.PackagingQuantity = i32(8), f64(1.5)
+	lines := []gen.OrdersLineInput{l}
+	expectRefusal(t, c.Do(http.MethodPost, quotesPath, gen.OrdersQuoteInput{ClientRequestId: uuid.New(), CustomerId: custBusiness, Lines: &lines}),
+		http.StatusBadRequest, "quantity_invalid", "1.5 × 1.555")
+	l.PackagingQuantity = f64(2)
+	q := createQuote(t, c, custBusiness, l)
+	if got := q.Lines[0]; got.Quantity == nil || *got.Quantity != 3.11 {
+		t.Errorf("line %+v; want 3.11", got)
+	}
+}
+
+// A saved line keeps a packaging the catalog has since removed — its size and
+// name as the line has them — while a new line cannot name it (O15).
+func TestPackagingEntry_KeepsARemovedPackaging(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	c := h.SignIn(t, quoter...)
+	l := productLine(varBolt, 1)
+	l.Quantity = nil
+	l.PackagingId, l.PackagingQuantity = i32(packCase), f64(3)
+	q := createQuote(t, c, custBusiness, l)
+
+	bolt, err := h.catalog.Variant(context.Background(), varBolt)
+	if err != nil || bolt == nil {
+		t.Fatalf("bolt: %v", err)
+	}
+	bolt.Packagings = nil
+	h.catalog.seed(*bolt)
+
+	id := q.Lines[0].Id
+	kept := gen.OrdersLineInput{Id: &id, Kind: gen.OrdersLineInputKindProduct, VariantId: i32(varBolt), PackagingId: i32(packCase), PackagingQuantity: f64(2)}
+	res := c.Do(http.MethodPut, quotePath(q.Id), gen.OrdersQuoteUpdate{ExpectedUpdatedAt: q.UpdatedAt, Revision: q.Revision, CustomerId: custBusiness,
+		Lines: []gen.OrdersLineInput{kept}})
+	mustStatus(t, res, http.StatusOK, "save the line in its removed packaging")
+	saved := quoteOf(t, res)
+	if got := saved.Lines[0]; got.Quantity == nil || *got.Quantity != 30 || got.PackagingName == nil || *got.PackagingName != "Case" ||
+		got.PackagingQuantity == nil || *got.PackagingQuantity != 2 {
+		t.Errorf("line %+v; want 30 pcs as 2 cases", got)
+	}
+
+	fresh := productLine(varBolt, 1)
+	fresh.Quantity = nil
+	fresh.PackagingId, fresh.PackagingQuantity = i32(packCase), f64(1)
+	expectRefusal(t, c.Do(http.MethodPut, quotePath(q.Id), gen.OrdersQuoteUpdate{ExpectedUpdatedAt: saved.UpdatedAt, Revision: saved.Revision, CustomerId: custBusiness,
+		Lines: []gen.OrdersLineInput{kept, fresh}}), http.StatusBadRequest, "packaging_not_found", "a new line in a removed packaging")
 }

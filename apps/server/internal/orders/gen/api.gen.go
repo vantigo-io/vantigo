@@ -1997,9 +1997,12 @@ type OrdersVersionInput struct {
 // OrdersWarning A sales warning (O33) on a customer or a product: info is shown when it is put on a quote or an order, block also refuses send and confirm (blocked_by_warning) unless an orders:settings holder overrides it with a reason. name is the customer's or the product's name as it was when the warning was written.
 type OrdersWarning struct {
 	// Id The customer's or the product's id.
-	Id        int32              `json:"id"`
-	Level     OrdersWarningLevel `json:"level"`
-	Name      string             `json:"name"`
+	Id    int32              `json:"id"`
+	Level OrdersWarningLevel `json:"level"`
+	Name  string             `json:"name"`
+
+	// Orphaned On the list only: true for a product warning whose product no longer exists in the catalog. It cannot be set again (404) but can be removed.
+	Orphaned  *bool              `json:"orphaned,omitempty"`
 	Scope     OrdersWarningScope `json:"scope"`
 	Text      string             `json:"text"`
 	UpdatedAt time.Time          `json:"updatedAt"`
