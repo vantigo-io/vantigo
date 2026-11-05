@@ -1491,8 +1491,16 @@ Customers and Invoices; Inventory and Communications stay optional.
   `orders.quote_expiry` workers. Documented in [Orders](docs/src/content/docs/en/user/orders.md),
   [administration](docs/src/content/docs/en/admin/orders.md) and the
   [reference](docs/src/content/docs/en/reference/orders.md).
-- **A2 — Selling comfort.** Warnings with block and override, the variant grid,
-  packagings on lines, and the analysis.
+- **A2 — Selling comfort (done).** Sales warnings on customers and products, info or
+  block, with an override by a settings holder kept on the change log or the quote's
+  note; the variant grid along a product's two options, falling back to a list;
+  packagings on lines, stored in the variant's unit and printed as "3 × Eske à 15"; and
+  the analysis views — quote hit rate, order intake by month, salesperson, customer,
+  product or category, and the backlog aged from delivery — each with a chart and a CSV.
+  The catalog contract gained a variant's category and option values. Documented in
+  [Orders](docs/src/content/docs/en/user/orders.md),
+  [administration](docs/src/content/docs/en/admin/orders.md) and the
+  [reference](docs/src/content/docs/en/reference/orders.md).
 - **B — Invoicing from orders.** Allocations, `contracts.BillableOrders`, the
   invoiced-work holder, the wizard and the billing run.
 - **S — Subscriptions.** Recurring lines invoiced per period.

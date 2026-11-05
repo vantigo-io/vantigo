@@ -1,6 +1,6 @@
 ---
 title: Ordre
-description: Ordre-appen — lag et tilbud, fra appen, kundesiden eller en mal; legg til produkt-, fritekst-, seksjons- og merknadslinjer, valgfrie linjer og rabatter; send det eller marker det som sendt, revider, aksepter, avslå, kanseller og kopier det; lag en ordre, bekreft den, endre den etter bekreftelse, sett den på vent, lås den, kanseller den eller resten, registrer hva som er levert, send ordrebekreftelsen og skriv ut en proforma; endringsloggen; kundens Ordre-fane; og hva en avvisning betyr.
+description: Ordre-appen — lag et tilbud, fra appen, kundesiden eller en mal; legg til produkt-, fritekst-, seksjons- og merknadslinjer, valgfrie linjer og rabatter; send det eller marker det som sendt, revider, aksepter, avslå, kanseller og kopier det; lag en ordre, bekreft den, endre den etter bekreftelse, sett den på vent, lås den, kanseller den eller resten, registrer hva som er levert, send ordrebekreftelsen og skriv ut en proforma; endringsloggen; linjer i forpakninger og fra variantrutenettet; kunde- og produktadvarsler og overstyring av en sperre; salgsanalysen; kundens Ordre-fane; og hva en avvisning betyr.
 sidebar:
   order: 55
 sources:
@@ -15,8 +15,9 @@ leverer og — når fakturering fra ordre kommer — fakturerer.
 
 ## Appen og sidemenyen
 
-Sidemenyen har **Tilbud** og **Ordre** for alle med tilgang til appen, og **Tilbudsmaler**
-og **Ordreinnstillinger** for dem som håndterer innstillingene for Ordre. Hva du kan gjøre
+Sidemenyen har **Tilbud** og **Ordre** for alle med tilgang til appen, **Analyse** for dem
+som kan se salgsanalysen, og **Tilbudsmaler** og **Ordreinnstillinger** for dem som
+håndterer innstillingene for Ordre. Hva du kan gjøre
 i hver, avhenger av rettighetene dine: å lage og endre tilbud, å lage og endre ordrer og å
 bekrefte ordrer er tre ulike rettigheter, så en kollega kan se knapper du ikke ser.
 
@@ -77,6 +78,29 @@ og **Totalt**.
 En lagret linje beholder typen sin: for å gjøre en merknad om til en produktlinje, for
 eksempel, fjerner du den og legger til en ny linje.
 
+### Selg i forpakninger
+
+Et produkt som selges i forpakninger — en eske à 15, en pall med 40 esker — får en
+forpakningsvelger under antallet på linjen når du har valgt det. Velg forpakningen og skriv
+hvor mange: **3** av **Eske à 15** lagres som 45 av produktets enhet, og linjen viser
+«= 45 stk» mens du skriver. PDF-en skriver det som «3 × Eske à 15 (45 stk)». Velg enheten
+igjen for å skrive antallet i produktets egen enhet.
+
+### Legg til fra rutenett
+
+For et produkt med varianter — størrelser og farger, for eksempel — sparer **Legg til fra
+rutenett** deg for å skrive én linje per variant:
+
+1. Velg **Legg til fra rutenett** under linjene, og søk opp produktet med en av variantene
+   under **Produkt (søk etter en variant)**.
+2. Variantene vises i et rutenett, én egenskap nedover og den andre bortover. Skriv antall
+   i hver rute du vil ha; en rute med strek er en kombinasjon produktet ikke har.
+3. Velg **Legg til linjene**. Hvert antall legger til variantens linje, eller endrer
+   antallet på linjen den allerede har.
+
+Et produkt med mer enn to egenskaper, en egenskap med mer enn 30 verdier eller en variant
+uten verdi på en av dem vises som en liste i stedet, med antall per variant.
+
 ### Når noen andre har endret det
 
 Hver endring du gjør — lagre, sende, akseptere, bekrefte, sette på vent, låse, registrere
@@ -92,6 +116,27 @@ igjen.
 På et utkast legger **Flere handlinger** → **Bruk en mal** til malens linjer etter
 tilbudets egne, eller med **Erstatt tilbudets linjer** i stedet for dem, og fyller inn tomme
 tekster. En mallinje der produktet er utgått eller slettet, utelates, og appen navngir den.
+
+## Advarsler på en kunde eller et produkt
+
+En kunde eller et produkt kan ha en **advarsel**, som alle tilbud og ordrer med den viser
+over hodet:
+
+- en **Informasjon**-advarsel, i gult — «Ring før levering», for eksempel — vises bare;
+- en **Sperre**, i rødt — «Betaler ikke», «Tilbakekalt» — stopper også **Send**,
+  **Marker som sendt**, **Bekreft** og aksept av et tilbud til en bekreftet ordre: appen
+  sier «En advarsel sperrer dette».
+
+Den som håndterer innstillingene for Ordre, ser **Overstyr advarselen** under en sperre.
+Skriv en **Begrunnelse** og velg **Overstyr advarselen**: banneret viser **Advarsel
+overstyrt** med begrunnelsen din, og neste sending, markering som sendt, bekreftelse eller
+aksept går gjennom. Begrunnelsen lagres — i ordrens **Endringslogg** som **Advarsel
+overstyrt**, eller nederst i tilbudets **Internt notat**. **Angre** fjerner overstyringen
+før du bruker den.
+
+De ser også **Legg til kundeadvarsel** (eller **Endre kundeadvarsel**) der, for å sette
+kundens advarsel uten å forlate dokumentet. Alle advarslene ligger under
+**Ordreinnstillinger** → **Salgsadvarsler** ([administrasjon](/nb/admin/orders/#hold-salgsadvarslene-ved-like)).
 
 ## Send et tilbud
 
@@ -145,6 +190,8 @@ ordrebekreftelsen og gjør den **Bekreftet**. Det krever rettigheten til å bekr
 Det avvises når kunden er deaktivert, ordren ikke har produktlinjer, en linje ikke har pris
 i ordrens valuta, eller et produkts avgiftskategori ikke har mva-kode — koble den i
 Fakturaer først ([Avgiftskategoriene i Produkter](/nb/user/invoices/#avgiftskategoriene-i-produkter)).
+En sperre på kunden eller et produkt stopper den også, til den som håndterer innstillingene
+for Ordre, overstyrer den ([Advarsler](#advarsler-på-en-kunde-eller-et-produkt)).
 
 Når innstillingene for Ordre sier det, sendes ordrebekreftelsen av seg selv på e-post til
 kontaktpersonen, ellers til kundens faktura-e-post. For å sende den selv velger du **Send
@@ -202,6 +249,26 @@ med 0 endres ikke, og du kan ikke levere mer enn det som gjenstår. **Flere hand
 **Angre levert** tar antall tilbake (**Ta tilbake**). Hver linje viser fremdriften — «3 av 5
 levert» — og ordren leveringsstatusen: **Ikke levert**, **Delvis levert** eller **Levert**.
 
+## Salgsanalyse
+
+**Analyse** (rettigheten til å se salgsanalysen) har tre visninger, hver med et diagram, en
+tabell og **Last ned CSV**, som lagrer tabellen som en fil et regneark åpner. Beløpene er
+eks. mva og legges aldri sammen på tvers av valutaer: hvert diagram viser én valuta, og med
+flere velger du den over diagrammet.
+
+- **Treffprosent på tilbud** — tilbudene sendt mellom **Fra** og **Til**, og hvor mange av
+  dem som er **Akseptert**, **Avslått**, **Utløpt**, **Kansellert** eller fortsatt
+  **Åpne**, telt og summert per selger; **Treffprosent** er aksepterte av sendte. Avgrens
+  til én **Selger**. Et tilbud som sendes på nytt etter en revisjon, telles én gang, den
+  dagen det sist ble sendt.
+- **Ordreinngang** — ordrene bekreftet i perioden og ikke kansellert, gruppert etter
+  **Måned**, **Selger**, **Kunde**, **Produkt** eller **Kategori** under **Grupper etter**.
+  Fritekstlinjer er én gruppe, og det samme er produkter uten kategori.
+- **Ordrereserve** — i dag: hva bekreftede ordrer har **Bestilt, ikke levert**, og hva de
+  har **Levert, ikke fakturert**, fordelt på 0–7 dager, 8–30 dager og over 30 dager siden
+  leveringen ble registrert. En faktura skal sendes innen en måned etter levering, så alt
+  over 30 dager vises i rødt.
+
 ## Kundens Ordre-fane
 
 På kundesiden viser fanen **Ordre** tre tall per valuta, eksklusiv mva — **Åpne tilbud**,
@@ -234,3 +301,5 @@ eller kansellert ([tidslinjen](/nb/user/customers/#tidslinjen)).
 | Utsending er av | Last ned PDF-en og **Marker som sendt**, eller be en administrator velge en avsenderkanal. |
 | E-posten kunne ikke sendes. Ingenting ble endret; prøv igjen, eller last ned PDF-en og merk den som sendt. | E-postleverandøren tok ikke imot e-posten: **Dokumenter og utsendelser** viser sendingen som **Feilet**. Prøv igjen, eller last ned PDF-en og marker som sendt. |
 | Et dokument kan ha høyst 500 linjer | Del det i to. |
+| En advarsel sperrer dette | En kunde eller et produkt på dokumentet har en sperre. Den som håndterer innstillingene for Ordre, kan **Overstyr advarselen** med en begrunnelse, eller endre advarselen. |
+| Forpakningen hører ikke til produktet | Velg produktet på nytt og en av forpakningene, eller skriv antallet i enheten. |
