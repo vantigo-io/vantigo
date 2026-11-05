@@ -1,4 +1,18 @@
-import { Alert, Anchor, Box, Button, Card, Group, Modal, Stack, Table, Text, Title, Tooltip } from "@mantine/core";
+import {
+  Alert,
+  Anchor,
+  Box,
+  Button,
+  Card,
+  Group,
+  Modal,
+  Radio,
+  Stack,
+  Table,
+  Text,
+  Title,
+  Tooltip,
+} from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import {
@@ -18,13 +32,14 @@ import { type ReactNode, useState } from "react";
 import { NotFoundError, ORDERS_QUERY_KEY } from "../api/request";
 import {
   createSubscription,
+  type StepInput,
   type SubscriptionStep,
   stepSubscription,
   subscriptionChangesQueryOptions,
   subscriptionQueryOptions,
   updateSubscription,
 } from "../api/subscriptions";
-import type { Subscription } from "../api/types";
+import type { FinalPeriod, Subscription } from "../api/types";
 import { ChangeLog } from "../components/change-log";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { ConflictAlert } from "../components/conflict-alert";
@@ -40,7 +55,7 @@ import { refusalMessage } from "../lib/errors";
 import { newRequestId, useOrdersFormat } from "../lib/format";
 import { subscriptionHeaderInput } from "../lib/header";
 import { toLineInput } from "../lib/lines";
-import { type PlanState, planInput } from "../lib/plan";
+import { FINAL_PERIODS, type PlanState, planInput } from "../lib/plan";
 import { quoteLinkOptions, SUBSCRIPTIONS_ROUTE_PATH, subscriptionLinkOptions } from "../lib/routes";
 import { useDocumentWrite, useEditorState } from "../lib/use-editor";
 
@@ -115,6 +130,7 @@ const NewSubscription = ({ customerId: preset, access }: { customerId?: number; 
     endDate: null,
     noticeMonths: 0,
     invoiceDay: "",
+    finalPeriod: null,
   });
   const [requestId] = useState(newRequestId);
   const create = useMutation({
@@ -187,6 +203,7 @@ const planOf = (s: Subscription): PlanState => ({
   endDate: s.endDate ?? null,
   noticeMonths: s.noticeMonths,
   invoiceDay: s.invoiceDay ?? "",
+  finalPeriod: s.finalPeriod,
 });
 
 const SubscriptionEditor = ({ subscription, access }: { subscription: Subscription; access: OrdersAccess }) => {
@@ -218,7 +235,9 @@ const SubscriptionEditor = ({ subscription, access }: { subscription: Subscripti
         version: subscription.version,
         expectedUpdatedAt: subscription.updatedAt,
         ...header,
-        ...(draft ? { ...rest, startDate } : { noticeMonths: rest.noticeMonths, invoiceDay: rest.invoiceDay }),
+        ...(draft
+          ? { ...rest, startDate }
+          : { noticeMonths: rest.noticeMonths, invoiceDay: rest.invoiceDay, finalPeriod: rest.finalPeriod }),
         ...(activated && effectiveFrom ? { effectiveFrom } : {}),
         lines: editor.lines.map((line) => toLineInput(line, { quote: false })),
       });
@@ -228,12 +247,12 @@ const SubscriptionEditor = ({ subscription, access }: { subscription: Subscripti
   });
   const step = useDocumentWrite({
     ...common,
-    write: ({ name, dates }: { name: SubscriptionStep; dates?: { from?: string; endDate?: string } }) =>
-      stepSubscription(subscription.id, name, subscription, dates),
+    write: ({ name, input }: { name: SubscriptionStep; input?: StepInput }) =>
+      stepSubscription(subscription.id, name, subscription, input),
     errorTitle: t("couldNotChangeSubscription"),
   });
-  const run = (name: SubscriptionStep, done: string, dates?: { from?: string; endDate?: string }) =>
-    step.mutate({ name, dates }, { onSuccess: () => notifications.show({ color: "green", message: done }) });
+  const run = (name: SubscriptionStep, done: string, input?: StepInput) =>
+    step.mutate({ name, input }, { onSuccess: () => notifications.show({ color: "green", message: done }) });
 
   const busy = save.isPending || step.isPending;
   const needsSave = dirty ? t("saveFirst") : undefined;
@@ -354,6 +373,7 @@ const SubscriptionEditor = ({ subscription, access }: { subscription: Subscripti
           <PlanFields
             plan={plan}
             disabled={!manage || !draft}
+            finalPeriodEditable={editable}
             onChange={(patch) => {
               setPlan((current) => ({ ...current, ...patch }));
               setPlanDirty(true);
@@ -492,11 +512,12 @@ const SubscriptionEditor = ({ subscription, access }: { subscription: Subscripti
                 ? (subscription.pausedFrom ?? null)
                 : null
           }
+          finalPeriod={subscription.finalPeriod}
           loading={step.isPending}
-          onSubmit={(value) => {
+          onSubmit={(value, finalPeriod) => {
             if (dialog === "pause") run("pause", t("subscriptionPaused"), value ? { from: value } : {});
             else if (dialog === "resume") run("resume", t("subscriptionResumed"), { from: value ?? "" });
-            else run("end", t("subscriptionEnded"), { endDate: value ?? "" });
+            else run("end", t("subscriptionEnded"), { endDate: value ?? "", finalPeriod });
           }}
           onClose={close}
         />
@@ -520,23 +541,28 @@ const SubscriptionEditor = ({ subscription, access }: { subscription: Subscripti
 /**
  * A pause's, a resume's or an end's date (O44): a pause from a period start,
  * the next one when left empty; a resume from a period start on or after the
- * pause, the periods between skipped; an end, whose period is the last billed.
+ * pause, the periods between skipped; an end, whose period is the last billed
+ * — in full or pro-rated to the end, chosen here and pre-selected from the
+ * subscription's own setting.
  */
 const DateDialog = ({
   kind,
   defaultDate,
+  finalPeriod: initialFinalPeriod,
   loading,
   onSubmit,
   onClose,
 }: {
   kind: "pause" | "resume" | "end";
   defaultDate: string | null;
+  finalPeriod: FinalPeriod;
   loading: boolean;
-  onSubmit: (value: string | null) => void;
+  onSubmit: (value: string | null, finalPeriod: FinalPeriod) => void;
   onClose: () => void;
 }) => {
   const { t } = useOrdersFormat();
   const [value, setValue] = useState<string | null>(defaultDate);
+  const [finalPeriod, setFinalPeriod] = useState<FinalPeriod>(initialFinalPeriod);
   const titles = { pause: t("pauseSubscription"), resume: t("resumeSubscription"), end: t("endSubscription") };
   const hints = { pause: t("pauseHint"), resume: t("resumeHint"), end: t("endHint") };
   const labels = { pause: t("pauseFrom"), resume: t("resumeFrom"), end: t("endDate") };
@@ -553,11 +579,25 @@ const DateDialog = ({
           onChange={(next) => setValue(next ?? null)}
           data-autofocus
         />
+        {kind === "end" && (
+          <Radio.Group
+            label={t("finalPeriodLabel")}
+            value={finalPeriod}
+            onChange={(next) => setFinalPeriod(next as FinalPeriod)}
+            data-assist="orders.subscription.end-final-period"
+          >
+            <Stack gap="xs" mt={6}>
+              {FINAL_PERIODS.map((option) => (
+                <Radio key={option} value={option} label={t(`finalPeriod.${option}`)} />
+              ))}
+            </Stack>
+          </Radio.Group>
+        )}
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>
             {t("cancelDialog")}
           </Button>
-          <Button loading={loading} disabled={kind !== "pause" && !value} onClick={() => onSubmit(value)}>
+          <Button loading={loading} disabled={kind !== "pause" && !value} onClick={() => onSubmit(value, finalPeriod)}>
             {titles[kind]}
           </Button>
         </Group>

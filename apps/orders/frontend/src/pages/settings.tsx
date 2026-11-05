@@ -22,13 +22,14 @@ import { useState } from "react";
 import { metaQueryOptions } from "../api/meta";
 import { ApiValidationError, isVersionConflict } from "../api/request";
 import { settingsQueryOptions, updateSettings } from "../api/settings";
-import type { MailText, Settings } from "../api/types";
+import type { FinalPeriod, MailText, Settings } from "../api/types";
 import { ConflictAlert } from "../components/conflict-alert";
 import { WarningsCard } from "../components/warnings-card";
 import "../i18n";
 import { noOrdersAccess, type OrdersAccess } from "../lib/access";
 import { refusalMessage } from "../lib/errors";
 import { useOrdersFormat } from "../lib/format";
+import { FINAL_PERIODS } from "../lib/plan";
 
 const mailKinds = ["quote", "confirmation"] as const;
 const languages = ["nb", "en"] as const;
@@ -37,8 +38,9 @@ const languages = ["nb", "en"] as const;
  * Orders' settings (§9, O12, O25): where the quote and order series start,
  * how long a quote is valid and the default payment terms; the channel
  * documents are sent from, whether a confirmation is mailed on confirm and
- * whether orders are combined on one invoice by default; and the mail texts
- * per kind and language, empty for the built-in ones.
+ * whether orders are combined on one invoice by default, and how a
+ * subscription's final period is billed by default; and the mail texts per
+ * kind and language, empty for the built-in ones.
  */
 export const SettingsPage = ({ access = noOrdersAccess }: { access?: OrdersAccess }) => {
   const { t } = useOrdersFormat();
@@ -93,6 +95,7 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
         defaultPaymentTermsDays: Number(values.defaultPaymentTermsDays) || 0,
         confirmationOnConfirm: values.confirmationOnConfirm,
         combineByDefault: values.combineByDefault,
+        subscriptionFinalPeriodDefault: values.subscriptionFinalPeriodDefault,
         sendChannelId: values.sendChannelId ?? null,
         // An override left empty falls back to the built-in text (O25), so it is not sent.
         mailTexts: values.mailTexts.filter((text) => text.subject.trim() !== "" || text.body.trim() !== ""),
@@ -190,6 +193,18 @@ const SettingsForm = ({ settings, access }: { settings: Settings; access: Orders
             disabled={!manage}
             checked={values.combineByDefault}
             onChange={(e) => set("combineByDefault", e.currentTarget.checked)}
+          />
+          <Select
+            label={t("finalPeriodDefault")}
+            description={t("finalPeriodDefaultHint")}
+            maw={360}
+            allowDeselect={false}
+            disabled={!manage}
+            data={FINAL_PERIODS.map((value) => ({ value, label: t(`finalPeriod.${value}`) }))}
+            value={values.subscriptionFinalPeriodDefault}
+            error={errors.subscriptionFinalPeriodDefault}
+            onChange={(value) => value && set("subscriptionFinalPeriodDefault", value as FinalPeriod)}
+            data-assist="orders.settings.final-period"
           />
         </Stack>
       </Card>

@@ -27,6 +27,8 @@ describe("the orders settings", () => {
     await userEvent.type(validity, "21");
     await userEvent.click(screen.getByRole("combobox", { name: "Send channel" }));
     await userEvent.click(await screen.findByRole("option", { name: "Salg <salg@firma.no>" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Final period when a subscription ends" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Pro-rated to the end date" }));
     await userEvent.type(screen.getAllByLabelText("Subject")[0], "Tilbud fra oss");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -39,6 +41,7 @@ describe("the orders settings", () => {
       defaultPaymentTermsDays: 14,
       confirmationOnConfirm: false,
       combineByDefault: true,
+      subscriptionFinalPeriodDefault: "prorated",
       sendChannelId: "11111111-1111-4111-8111-111111111111",
       mailTexts: [{ kind: "quote", language: "nb", subject: "Tilbud fra oss", body: "" }],
     });

@@ -168,6 +168,18 @@
     }
   },
   {
+    "key": "orders.settings.final-period",
+    "route": "/orders/settings",
+    "label": {
+      "en": "Final period when a subscription ends",
+      "nb": "Siste periode ved avslutning"
+    },
+    "description": {
+      "en": "The final period a new subscription takes: the period the end falls in billed in full, or pro-rated to the end date.",
+      "nb": "Siste periode et nytt abonnement får: perioden sluttdatoen faller i, fakturert i sin helhet eller forholdsmessig til sluttdatoen."
+    }
+  },
+  {
     "key": "orders.customer.new-quote",
     "route": "/customers/{customerId}/orders",
     "label": {
@@ -357,6 +369,30 @@
     "description": {
       "en": "The period start an active subscription's line changes take effect from.",
       "nb": "Periodestarten endringer i et aktivt abonnements linjer gjelder fra."
+    }
+  },
+  {
+    "key": "orders.subscription.final-period",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "label": {
+      "en": "Final period when a subscription ends",
+      "nb": "Siste periode ved avslutning"
+    },
+    "description": {
+      "en": "Whether the period the end falls in is billed in full or pro-rated to the end date; editable while the subscription runs.",
+      "nb": "Om perioden sluttdatoen faller i, faktureres i sin helhet eller forholdsmessig til sluttdatoen; kan endres mens abonnementet løper."
+    }
+  },
+  {
+    "key": "orders.subscription.end-final-period",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "label": {
+      "en": "Final period",
+      "nb": "Siste periode"
+    },
+    "description": {
+      "en": "In the End dialog: bill the last period in full or pro-rated to the end date, pre-selected from the subscription's setting.",
+      "nb": "I Avslutt-dialogen: fakturer den siste perioden i sin helhet eller forholdsmessig til sluttdatoen, forhåndsvalgt fra abonnementets innstilling."
     }
   }
 ]

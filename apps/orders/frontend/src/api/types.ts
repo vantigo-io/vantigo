@@ -79,6 +79,7 @@ export type SubscriptionPeriod = Schemas["OrdersSubscriptionPeriod"];
 export type SubscriptionStatus = Subscription["status"];
 export type SubscriptionInterval = Subscription["interval"];
 export type SubscriptionBilling = Subscription["billing"];
+export type FinalPeriod = Schemas["OrdersFinalPeriod"];
 export type PeriodState = SubscriptionPeriod["state"];
 
 export type CustomerSummary = Schemas["OrdersCustomerSummary"];

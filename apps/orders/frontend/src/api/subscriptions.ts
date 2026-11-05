@@ -3,6 +3,7 @@ import { type ListFilters, listQuery } from "./list-query";
 import { json, ORDERS_QUERY_KEY, request, send } from "./request";
 import type {
   Change,
+  FinalPeriod,
   Subscription,
   SubscriptionInput,
   SubscriptionPage,
@@ -50,10 +51,12 @@ const token = (read: SubscriptionRead) => ({ version: read.version, expectedUpda
 /** The steps of a subscription's life (O42, O44); pause, resume and end take a date. */
 export type SubscriptionStep = "activate" | "cancel" | "pause" | "resume" | "end";
 
-/** `dates` carries a pause's or a resume's `from`, or an end's `endDate`. */
-export const stepSubscription = (
-  id: number,
-  step: SubscriptionStep,
-  read: SubscriptionRead,
-  dates: { from?: string; endDate?: string } = {},
-) => send<Subscription>(`${base}/${id}/${step}`, json("POST", { ...token(read), ...dates }));
+/** What a step takes besides the token: a pause's or a resume's `from`, or an end's `endDate` and `finalPeriod`. */
+export interface StepInput {
+  from?: string;
+  endDate?: string;
+  finalPeriod?: FinalPeriod;
+}
+
+export const stepSubscription = (id: number, step: SubscriptionStep, read: SubscriptionRead, input: StepInput = {}) =>
+  send<Subscription>(`${base}/${id}/${step}`, json("POST", { ...token(read), ...input }));

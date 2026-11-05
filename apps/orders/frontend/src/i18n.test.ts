@@ -81,7 +81,9 @@ describe("the orders catalog", () => {
         "cancelled",
         "effective_from",
         "notice_changed",
+        "final_period",
       ],
+      finalPeriod: ["full", "prorated"],
       subscriptionStatus: ["draft", "active", "paused", "ended", "cancelled"],
       periodState: ["invoiced", "draft", "skipped", "paused", "due", "upcoming"],
       interval: ["monthly", "quarterly", "half_yearly", "yearly"],
@@ -130,6 +132,7 @@ describe("the orders catalog", () => {
         "change_in_billed_period",
         "end_before_billed",
         "not_a_period_start",
+        "final_period_billed",
       ],
     };
     for (const [family, values] of Object.entries(families))

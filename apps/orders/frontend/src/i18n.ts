@@ -681,7 +681,14 @@ export const ordersCatalog = {
     pauseHint: "Billing stops from a period start. Leave the date empty for the next period that has not been billed.",
     resumeHint: "Billing restarts from this period start. The periods since the pause are skipped and never billed.",
     endHint:
-      "The period the end falls in is the last one billed. A period already on an invoice must be credited before the end can come before it.",
+      "The period the end falls in is the last one billed, in full or pro-rated to the end. A period already on an invoice must be credited before the end can come before it.",
+    finalPeriodLabel: "Final period when a subscription ends",
+    finalPeriodFromSettings: "As in the settings",
+    "finalPeriod.full": "Full period",
+    "finalPeriod.prorated": "Pro-rated to the end date",
+    finalPeriodDefault: "Final period when a subscription ends",
+    finalPeriodDefaultHint:
+      "What a new subscription takes: bill the period the end falls in in full, or pro-rated by its days to the end date.",
     pauseFrom: "Pause from",
     resumeFrom: "Resume from",
     acceptIntoSubscription: "A subscription",
@@ -697,6 +704,7 @@ export const ordersCatalog = {
     "changeAction.cancelled": "Cancelled",
     "changeAction.effective_from": "Lines changed from",
     "changeAction.notice_changed": "Notice changed",
+    "changeAction.final_period": "Final period",
     "refusal.subscription_goods_not_allowed":
       "A subscription sells services only. Remove the goods line, or sell it on an order.",
     "refusal.subscription_not_draft": "Only a draft subscription is activated.",
@@ -711,6 +719,8 @@ export const ordersCatalog = {
     "refusal.end_before_billed":
       "A period after that end is already on an invoice or a draft invoice. Credit it first.",
     "refusal.not_a_period_start": "The date must be the first day of one of the subscription's periods.",
+    "refusal.final_period_billed":
+      "The final period is already on an invoice or a draft invoice and cannot be pro-rated. Bill it in full, or credit it first.",
     "refusal.subscription_not_invoiceable": "The subscription bills nothing now.",
     "refusal.nothing_due": "No period of the subscription is due.",
   },
@@ -1372,7 +1382,14 @@ export const ordersCatalog = {
     resumeHint:
       "Faktureringen starter igjen fra denne periodestarten. Periodene siden pausen hoppes over og faktureres aldri.",
     endHint:
-      "Perioden sluttdatoen faller i, er den siste som faktureres. En periode som alt er på en faktura, må krediteres før sluttdatoen kan ligge før den.",
+      "Perioden sluttdatoen faller i, er den siste som faktureres, i sin helhet eller forholdsmessig til sluttdatoen. En periode som alt er på en faktura, må krediteres før sluttdatoen kan ligge før den.",
+    finalPeriodLabel: "Siste periode ved avslutning",
+    finalPeriodFromSettings: "Som i innstillingene",
+    "finalPeriod.full": "Full periode",
+    "finalPeriod.prorated": "Forholdsmessig til sluttdato",
+    finalPeriodDefault: "Siste periode ved avslutning",
+    finalPeriodDefaultHint:
+      "Det et nytt abonnement får: fakturer perioden sluttdatoen faller i, i sin helhet eller forholdsmessig etter dagene til sluttdatoen.",
     pauseFrom: "Pause fra",
     resumeFrom: "Gjenoppta fra",
     acceptIntoSubscription: "Et abonnement",
@@ -1388,6 +1405,7 @@ export const ordersCatalog = {
     "changeAction.cancelled": "Kansellert",
     "changeAction.effective_from": "Linjer endret fra",
     "changeAction.notice_changed": "Oppsigelsestid endret",
+    "changeAction.final_period": "Siste periode",
     "refusal.subscription_goods_not_allowed":
       "Et abonnement selger bare tjenester. Fjern varelinjen, eller selg den på en ordre.",
     "refusal.subscription_not_draft": "Bare et abonnementsutkast aktiveres.",
@@ -1402,6 +1420,8 @@ export const ordersCatalog = {
     "refusal.end_before_billed":
       "En periode etter den sluttdatoen er alt på en faktura eller et fakturautkast. Krediter den først.",
     "refusal.not_a_period_start": "Datoen må være første dag i en av abonnementets perioder.",
+    "refusal.final_period_billed":
+      "Siste periode er alt på en faktura eller et fakturautkast og kan ikke gjøres forholdsmessig. Fakturer den i sin helhet, eller krediter den først.",
     "refusal.subscription_not_invoiceable": "Abonnementet fakturerer ingenting nå.",
     "refusal.nothing_due": "Ingen periode av abonnementet er til fakturering.",
   },
