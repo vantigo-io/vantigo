@@ -1,5 +1,3 @@
-import { IconCalendar } from "@tabler/icons-react";
-import { EmptyState, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { MailChannelsCard } from "../components/mail-channels";
 import { PeopleConnectionCard } from "../components/people-connection";
 import "../i18n";
@@ -10,23 +8,16 @@ import { TabFrame } from "./tab-frame";
  * lets each person connect their own Google account, its status, the counts
  * and the redirect URI —, Mail channels — the switch that lets
  * Communications' channels use the organisation's Gmail mailboxes, and its
- * scopes — and, underneath, sending from a person's Gmail still to come.
+ * scopes. Sending from a person's own Gmail address needs nothing more here:
+ * it rides on each person's connection, with the Gmail feature.
  */
 export function GoogleCalendarGmailTab() {
-  const { t } = useI18n("google");
   return (
     <TabFrame>
       {({ connection, owner }) => (
         <>
           <PeopleConnectionCard connection={connection} owner={owner} />
           <MailChannelsCard connection={connection} owner={owner} />
-          <PageSection>
-            <EmptyState
-              icon={IconCalendar}
-              title={t("calendarGmailComingTitle")}
-              description={t("calendarGmailComing")}
-            />
-          </PageSection>
         </>
       )}
     </TabFrame>
