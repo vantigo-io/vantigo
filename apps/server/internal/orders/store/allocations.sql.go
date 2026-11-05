@@ -7,9 +7,165 @@ package store
 
 import (
 	"context"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const allocationOrders = `-- name: AllocationOrders :many
+SELECT id, order_id, line_id FROM orders.invoice_allocations WHERE id = ANY($1::bigint[])
+`
+
+type AllocationOrdersRow struct {
+	ID      int64
+	OrderID int64
+	LineID  int64
+}
+
+// AllocationOrders is, for the holder, the order and line of each named
+// allocation, read before the locks: an allocation never moves, so these
+// are the rows to lock.
+func (q *Queries) AllocationOrders(ctx context.Context, ids []int64) ([]AllocationOrdersRow, error) {
+	rows, err := q.db.Query(ctx, allocationOrders, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AllocationOrdersRow
+	for rows.Next() {
+		var i AllocationOrdersRow
+		if err := rows.Scan(&i.ID, &i.OrderID, &i.LineID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const allocationsByIDs = `-- name: AllocationsByIDs :many
+SELECT a.id, a.revision, a.order_id, o.number AS order_number, a.line_id, a.quantity, a.unit_price,
+       a.discount_percent, a.amount, a.vat_code_id, l.description, l.unit, o.currency::text AS currency,
+       o.project_id, o.your_reference, a.state, a.period_start, a.period_end
+FROM orders.invoice_allocations a
+JOIN orders.orders o ON o.id = a.order_id
+JOIN orders.lines l ON l.id = a.line_id
+WHERE a.id = ANY($1::bigint[])
+ORDER BY a.id
+`
+
+type AllocationsByIDsRow struct {
+	ID              int64
+	Revision        int32
+	OrderID         int64
+	OrderNumber     int64
+	LineID          int64
+	Quantity        pgtype.Numeric
+	UnitPrice       pgtype.Numeric
+	DiscountPercent pgtype.Numeric
+	Amount          pgtype.Numeric
+	VatCodeID       int32
+	Description     string
+	Unit            string
+	Currency        string
+	ProjectID       *int32
+	YourReference   string
+	State           string
+	PeriodStart     pgtype.Date
+	PeriodEnd       pgtype.Date
+}
+
+// AllocationsByIDs is the allocations named as they stand, each with its
+// line's text and its order's references, in id order; an id that does not
+// exist is absent.
+func (q *Queries) AllocationsByIDs(ctx context.Context, ids []int64) ([]AllocationsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, allocationsByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AllocationsByIDsRow
+	for rows.Next() {
+		var i AllocationsByIDsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Revision,
+			&i.OrderID,
+			&i.OrderNumber,
+			&i.LineID,
+			&i.Quantity,
+			&i.UnitPrice,
+			&i.DiscountPercent,
+			&i.Amount,
+			&i.VatCodeID,
+			&i.Description,
+			&i.Unit,
+			&i.Currency,
+			&i.ProjectID,
+			&i.YourReference,
+			&i.State,
+			&i.PeriodStart,
+			&i.PeriodEnd,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deleteForgottenLineAllocations = `-- name: DeleteForgottenLineAllocations :exec
+DELETE FROM orders.invoice_allocations
+WHERE line_id = $1 AND state = 'released' AND invoice_id IS NULL
+`
+
+// DeleteForgottenLineAllocations deletes a removed line's released
+// allocations that no invoice ever stamped — drafts given back — so the line
+// can go; an allocation with an invoice's stamp keeps the line (O26).
+func (q *Queries) DeleteForgottenLineAllocations(ctx context.Context, lineID int64) error {
+	_, err := q.db.Exec(ctx, deleteForgottenLineAllocations, lineID)
+	return err
+}
+
+const draftAllocatedByLine = `-- name: DraftAllocatedByLine :many
+SELECT line_id, sum(quantity)::numeric(12,3) AS allocated
+FROM orders.invoice_allocations
+WHERE line_id = ANY($1::bigint[]) AND state = 'draft'
+GROUP BY line_id
+`
+
+type DraftAllocatedByLineRow struct {
+	LineID    int64
+	Allocated pgtype.Numeric
+}
+
+// DraftAllocatedByLine is what the draft allocations of each named line
+// hold, summed; a line with none is absent.
+func (q *Queries) DraftAllocatedByLine(ctx context.Context, ids []int64) ([]DraftAllocatedByLineRow, error) {
+	rows, err := q.db.Query(ctx, draftAllocatedByLine, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DraftAllocatedByLineRow
+	for rows.Next() {
+		var i DraftAllocatedByLineRow
+		if err := rows.Scan(&i.LineID, &i.Allocated); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const dueOrderLines = `-- name: DueOrderLines :many
 SELECT o.id AS order_id, o.number AS order_number, o.customer_id, o.currency::text AS currency, o.project_id,
@@ -132,6 +288,546 @@ func (q *Queries) DueOrderLines(ctx context.Context, arg DueOrderLinesParams) ([
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const insertAllocation = `-- name: InsertAllocation :one
+INSERT INTO orders.invoice_allocations (
+    line_id, order_id, kind, quantity, unit_price, discount_percent, amount, vat_code_id, state, revision,
+    created_at, updated_at
+) VALUES (
+    $1, $2, 'order_line', $3, $4,
+    $5, $6, $7, 'draft', 1, $8, $8
+)
+RETURNING id, line_id, order_id, kind, period_start, period_end, quantity, unit_price, discount_percent, amount, vat_code_id, state, revision, invoice_id, invoice_number, issue_date, invoiced_at, invoiced_by, invoiced_by_display, released_at, created_at, updated_at
+`
+
+type InsertAllocationParams struct {
+	LineID          int64
+	OrderID         int64
+	Quantity        pgtype.Numeric
+	UnitPrice       pgtype.Numeric
+	DiscountPercent pgtype.Numeric
+	Amount          pgtype.Numeric
+	VatCodeID       int32
+	Now             time.Time
+}
+
+// InsertAllocation writes one new draft allocation of an order line at
+// revision 1 (O36): Allocate never rewrites one.
+func (q *Queries) InsertAllocation(ctx context.Context, arg InsertAllocationParams) (OrdersInvoiceAllocation, error) {
+	row := q.db.QueryRow(ctx, insertAllocation,
+		arg.LineID,
+		arg.OrderID,
+		arg.Quantity,
+		arg.UnitPrice,
+		arg.DiscountPercent,
+		arg.Amount,
+		arg.VatCodeID,
+		arg.Now,
+	)
+	var i OrdersInvoiceAllocation
+	err := row.Scan(
+		&i.ID,
+		&i.LineID,
+		&i.OrderID,
+		&i.Kind,
+		&i.PeriodStart,
+		&i.PeriodEnd,
+		&i.Quantity,
+		&i.UnitPrice,
+		&i.DiscountPercent,
+		&i.Amount,
+		&i.VatCodeID,
+		&i.State,
+		&i.Revision,
+		&i.InvoiceID,
+		&i.InvoiceNumber,
+		&i.IssueDate,
+		&i.InvoicedAt,
+		&i.InvoicedBy,
+		&i.InvoicedByDisplay,
+		&i.ReleasedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const lineOrders = `-- name: LineOrders :many
+SELECT id, owner_id AS order_id FROM orders.lines
+WHERE id = ANY($1::bigint[]) AND owner_kind = 'order'
+`
+
+type LineOrdersRow struct {
+	ID      int64
+	OrderID int64
+}
+
+// LineOrders is, for Allocate, the order each named order line belongs to,
+// read before the locks: a line never moves to another order, so the order
+// ids it answers are the ones to lock. A line that is not an order's is
+// absent.
+func (q *Queries) LineOrders(ctx context.Context, ids []int64) ([]LineOrdersRow, error) {
+	rows, err := q.db.Query(ctx, lineOrders, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LineOrdersRow
+	for rows.Next() {
+		var i LineOrdersRow
+		if err := rows.Scan(&i.ID, &i.OrderID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockAllocationsByIDs = `-- name: LockAllocationsByIDs :many
+SELECT id, line_id, order_id, kind, period_start, period_end, quantity, unit_price, discount_percent, amount, vat_code_id, state, revision, invoice_id, invoice_number, issue_date, invoiced_at, invoiced_by, invoiced_by_display, released_at, created_at, updated_at FROM orders.invoice_allocations WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
+`
+
+// LockAllocationsByIDs takes allocations FOR UPDATE in id order, after
+// their orders and their lines (O38).
+func (q *Queries) LockAllocationsByIDs(ctx context.Context, ids []int64) ([]OrdersInvoiceAllocation, error) {
+	rows, err := q.db.Query(ctx, lockAllocationsByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrdersInvoiceAllocation
+	for rows.Next() {
+		var i OrdersInvoiceAllocation
+		if err := rows.Scan(
+			&i.ID,
+			&i.LineID,
+			&i.OrderID,
+			&i.Kind,
+			&i.PeriodStart,
+			&i.PeriodEnd,
+			&i.Quantity,
+			&i.UnitPrice,
+			&i.DiscountPercent,
+			&i.Amount,
+			&i.VatCodeID,
+			&i.State,
+			&i.Revision,
+			&i.InvoiceID,
+			&i.InvoiceNumber,
+			&i.IssueDate,
+			&i.InvoicedAt,
+			&i.InvoicedBy,
+			&i.InvoicedByDisplay,
+			&i.ReleasedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockOrderLinesByIDs = `-- name: LockOrderLinesByIDs :many
+SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name FROM orders.lines
+WHERE id = ANY($1::bigint[]) AND owner_kind = 'order'
+ORDER BY id FOR UPDATE
+`
+
+// LockOrderLinesByIDs takes order lines FOR UPDATE in id order, after their
+// orders.
+func (q *Queries) LockOrderLinesByIDs(ctx context.Context, ids []int64) ([]OrdersLine, error) {
+	rows, err := q.db.Query(ctx, lockOrderLinesByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrdersLine
+	for rows.Next() {
+		var i OrdersLine
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerKind,
+			&i.OwnerID,
+			&i.Position,
+			&i.Kind,
+			&i.ParentLineID,
+			&i.VariantID,
+			&i.Sku,
+			&i.Name,
+			&i.Unit,
+			&i.Description,
+			&i.Quantity,
+			&i.UnitPrice,
+			&i.DiscountPercent,
+			&i.PackagingID,
+			&i.PackagingQuantity,
+			&i.PriceSource,
+			&i.VatCodeID,
+			&i.VatCode,
+			&i.VatRatePercent,
+			&i.VatCategory,
+			&i.LineGross,
+			&i.LineAllowance,
+			&i.LineNet,
+			&i.ExternalLineID,
+			&i.InvoicePolicy,
+			&i.Optional,
+			&i.QtyCancelled,
+			&i.QtyDelivered,
+			&i.QtyInvoiced,
+			&i.DeliveryMethod,
+			&i.ProductID,
+			&i.PackagingName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockOrdersByIDs = `-- name: LockOrdersByIDs :many
+SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.orders WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
+`
+
+// LockOrdersByIDs takes orders FOR UPDATE in id order: the first of Orders'
+// invoicing locks (O36, O38), before their lines and their allocations.
+func (q *Queries) LockOrdersByIDs(ctx context.Context, ids []int64) ([]OrdersOrder, error) {
+	rows, err := q.db.Query(ctx, lockOrdersByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrdersOrder
+	for rows.Next() {
+		var i OrdersOrder
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.Status,
+			&i.OnHold,
+			&i.HoldReason,
+			&i.Locked,
+			&i.Version,
+			&i.DeliveryStatus,
+			&i.InvoiceStatus,
+			&i.ConfirmedAt,
+			&i.ConfirmedByUserID,
+			&i.ConfirmedByDisplay,
+			&i.CancelledAt,
+			&i.CustomerID,
+			&i.CustomerNumber,
+			&i.CustomerName,
+			&i.CustomerType,
+			&i.CustomerOrganisationNumber,
+			&i.CustomerForeignID,
+			&i.CustomerCountry,
+			&i.InvoiceAddressLine1,
+			&i.InvoiceAddressLine2,
+			&i.InvoicePostalCode,
+			&i.InvoiceCity,
+			&i.InvoiceCountry,
+			&i.DeliveryAddressID,
+			&i.DeliveryName,
+			&i.DeliveryAddressLine1,
+			&i.DeliveryAddressLine2,
+			&i.DeliveryPostalCode,
+			&i.DeliveryCity,
+			&i.DeliveryCountry,
+			&i.ContactID,
+			&i.ContactName,
+			&i.ContactEmail,
+			&i.ContactPhone,
+			&i.CustomerInvoiceEmail,
+			&i.YourReference,
+			&i.SalespersonID,
+			&i.SalespersonDisplay,
+			&i.ProjectID,
+			&i.Currency,
+			&i.PricesIncludeVat,
+			&i.PaymentTermsDays,
+			&i.DiscountVisible,
+			&i.Language,
+			&i.IntroText,
+			&i.ClosingText,
+			&i.InternalNote,
+			&i.DeliveryDate,
+			&i.NetTotal,
+			&i.VatTotal,
+			&i.GrossTotal,
+			&i.Channel,
+			&i.SourceModule,
+			&i.SourceKind,
+			&i.SourceID,
+			&i.ExternalID,
+			&i.ExternalNumber,
+			&i.ClientRequestID,
+			&i.PaymentReference,
+			&i.PrepaidAmount,
+			&i.CreatedByUserID,
+			&i.CreatedByDisplay,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AnonymisedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const orderAllocations = `-- name: OrderAllocations :many
+SELECT id, line_id, order_id, kind, period_start, period_end, quantity, unit_price, discount_percent, amount, vat_code_id, state, revision, invoice_id, invoice_number, issue_date, invoiced_at, invoiced_by, invoiced_by_display, released_at, created_at, updated_at FROM orders.invoice_allocations WHERE order_id = $1 ORDER BY id
+`
+
+// OrderAllocations is every allocation of an order, in id order: the order
+// page's invoices (O41) and its lines' draft allocations, and the edit rules
+// (O26) under the order's lock.
+func (q *Queries) OrderAllocations(ctx context.Context, orderID int64) ([]OrdersInvoiceAllocation, error) {
+	rows, err := q.db.Query(ctx, orderAllocations, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrdersInvoiceAllocation
+	for rows.Next() {
+		var i OrdersInvoiceAllocation
+		if err := rows.Scan(
+			&i.ID,
+			&i.LineID,
+			&i.OrderID,
+			&i.Kind,
+			&i.PeriodStart,
+			&i.PeriodEnd,
+			&i.Quantity,
+			&i.UnitPrice,
+			&i.DiscountPercent,
+			&i.Amount,
+			&i.VatCodeID,
+			&i.State,
+			&i.Revision,
+			&i.InvoiceID,
+			&i.InvoiceNumber,
+			&i.IssueDate,
+			&i.InvoicedAt,
+			&i.InvoicedBy,
+			&i.InvoicedByDisplay,
+			&i.ReleasedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const releaseAllocationsInvoiced = `-- name: ReleaseAllocationsInvoiced :many
+UPDATE orders.invoice_allocations
+SET state = 'released', released_at = $1, updated_at = $1
+WHERE id = ANY($2::bigint[]) AND state = 'invoiced' AND invoice_id = $3
+RETURNING id
+`
+
+type ReleaseAllocationsInvoicedParams struct {
+	ReleasedAt *time.Time
+	Ids        []int64
+	InvoiceID  *int64
+}
+
+// ReleaseAllocationsInvoiced moves the named allocations invoiced by an
+// invoice to released at the credit note's issue, the stamp kept as history
+// (O38).
+func (q *Queries) ReleaseAllocationsInvoiced(ctx context.Context, arg ReleaseAllocationsInvoicedParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, releaseAllocationsInvoiced, arg.ReleasedAt, arg.Ids, arg.InvoiceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const releaseDraftAllocations = `-- name: ReleaseDraftAllocations :many
+UPDATE orders.invoice_allocations
+SET state = 'released', released_at = $1, updated_at = $1
+WHERE id = ANY($2::bigint[]) AND state = 'draft'
+RETURNING id
+`
+
+type ReleaseDraftAllocationsParams struct {
+	Now *time.Time
+	Ids []int64
+}
+
+// ReleaseDraftAllocations turns the named allocations still draft released
+// (O36); one invoiced or released already is left as it is.
+func (q *Queries) ReleaseDraftAllocations(ctx context.Context, arg ReleaseDraftAllocationsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, releaseDraftAllocations, arg.Now, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const releaseOrderDraftAllocations = `-- name: ReleaseOrderDraftAllocations :many
+UPDATE orders.invoice_allocations
+SET state = 'released', released_at = $1, updated_at = $1
+WHERE order_id = $2 AND state = 'draft'
+RETURNING id
+`
+
+type ReleaseOrderDraftAllocationsParams struct {
+	Now     *time.Time
+	OrderID int64
+}
+
+// ReleaseOrderDraftAllocations turns every draft allocation of an order
+// released: the order page's Release draft allocations (O36). The caller
+// holds the order's row.
+func (q *Queries) ReleaseOrderDraftAllocations(ctx context.Context, arg ReleaseOrderDraftAllocationsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, releaseOrderDraftAllocations, arg.Now, arg.OrderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const stampAllocationsInvoiced = `-- name: StampAllocationsInvoiced :many
+UPDATE orders.invoice_allocations
+SET state = 'invoiced', invoice_id = $1, invoice_number = $2,
+    issue_date = $3, invoiced_at = $4, invoiced_by = $5,
+    invoiced_by_display = $6, updated_at = $4
+WHERE id = ANY($7::bigint[]) AND state = 'draft'
+RETURNING id
+`
+
+type StampAllocationsInvoicedParams struct {
+	InvoiceID         *int64
+	InvoiceNumber     *int64
+	IssueDate         pgtype.Date
+	IssuedAt          *time.Time
+	InvoicedBy        *uuid.UUID
+	InvoicedByDisplay *string
+	Ids               []int64
+}
+
+// StampAllocationsInvoiced stamps the named draft allocations invoiced with
+// the invoice's id, number and date, at the issue's time (O38).
+func (q *Queries) StampAllocationsInvoiced(ctx context.Context, arg StampAllocationsInvoicedParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, stampAllocationsInvoiced,
+		arg.InvoiceID,
+		arg.InvoiceNumber,
+		arg.IssueDate,
+		arg.IssuedAt,
+		arg.InvoicedBy,
+		arg.InvoicedByDisplay,
+		arg.Ids,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const sweepDraftAllocations = `-- name: SweepDraftAllocations :many
+UPDATE orders.invoice_allocations
+SET state = 'released', released_at = $1, updated_at = $1
+WHERE state = 'draft' AND updated_at < $2
+RETURNING id
+`
+
+type SweepDraftAllocationsParams struct {
+	Now    *time.Time
+	Cutoff time.Time
+}
+
+// SweepDraftAllocations releases every draft allocation untouched since
+// before cutoff: the daily orders.allocation_sweep (O36).
+func (q *Queries) SweepDraftAllocations(ctx context.Context, arg SweepDraftAllocationsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, sweepDraftAllocations, arg.Now, arg.Cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

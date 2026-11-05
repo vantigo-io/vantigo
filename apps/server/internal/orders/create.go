@@ -151,7 +151,7 @@ func (s *server) CreateSalesOrder(ctx context.Context, req gen.CreateSalesOrderR
 	if err != nil {
 		return nil, err
 	}
-	return gen.CreateSalesOrder201JSONResponse(orderView(o, lines, warnings)), nil
+	return gen.CreateSalesOrder201JSONResponse(orderView(o, lines, warnings, nil)), nil
 }
 
 // repeatedOrder is the order an earlier create with requestID made, nil when

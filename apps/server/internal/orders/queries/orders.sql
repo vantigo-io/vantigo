@@ -200,8 +200,9 @@ ORDER BY t.currency;
 
 -- name: DeliveredNotInvoicedSums :many
 -- DeliveredNotInvoicedSums is a customer's confirmed orders with a delivered
--- quantity not yet invoiced, and its net value, per currency (O31a). Nothing
--- is invoiced before delivery B, so until then it is what was delivered.
+-- quantity not yet invoiced, and its net value, per currency (O31a): what is
+-- delivered less what the invoices' issues stamped (O38); a draft invoice's
+-- allocation is not invoiced yet.
 SELECT t.currency::text AS currency, count(*)::integer AS documents, coalesce(sum(t.amount), 0)::numeric(14,2) AS amount
 FROM (
     SELECT o.id, o.currency,

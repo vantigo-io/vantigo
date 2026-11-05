@@ -52,6 +52,9 @@ const (
 	// actionWarningOverridden is a block warning overridden at confirm
 	// (O33): from is the warning, to the reason.
 	actionWarningOverridden = "warning_overridden"
+	// actionDraftAllocationsReleased is the order page's Release draft
+	// allocations (O36): to is how many were released.
+	actionDraftAllocationsReleased = "draft_allocations_released"
 )
 
 // changeAction is one typed action of a change log entry: its kind, the line
@@ -162,7 +165,11 @@ func (s *server) getOrderView(ctx context.Context, id int64) (gen.OrdersOrder, e
 		if err != nil {
 			return err
 		}
-		out = orderView(o, lines, warnings)
+		allocations, err := orderAllocations(ctx, q, id)
+		if err != nil {
+			return err
+		}
+		out = orderView(o, lines, warnings, allocations)
 		return nil
 	})
 	return out, err
