@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/orders"
 	"github.com/vantigo-io/vantigo/server/internal/orders/gen"
 )
 
@@ -109,7 +110,9 @@ func TestPackagingEntry_ConvertsAndPrints(t *testing.T) {
 		t.Fatalf("line %+v; want 45 pcs in 3 cases", got)
 	}
 	mustStatus(t, c.Do(http.MethodGet, quotePath(q.Id, "pdf"), nil), http.StatusOK, "the PDF")
-	m, ok := pdfModels.find("Tilbud", "Tilbud "+strconv.FormatInt(q.Number, 10))
+	m, ok := pdfModels.find("Tilbud", "Tilbud "+strconv.FormatInt(q.Number, 10), func(m orders.PDFModel) bool {
+		return len(m.Rows) == 1 && strings.Contains(m.Rows[0][0], "Case à 15")
+	})
 	if !ok || len(m.Rows) != 1 || !strings.Contains(m.Rows[0][0], "3 × Case à 15 (45 pcs)") || m.Rows[0][1] != "45" {
 		t.Errorf("PDF rows %q; want the packaging printed", m.Rows)
 	}
