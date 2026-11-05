@@ -1,6 +1,6 @@
 ---
 title: Orders
-description: Turning Orders on — the modules it requires, mapping Products' tax categories to VAT codes, the nine permissions and the roles to build from them — and keeping its settings — the number series, quote validity, payment terms, the send channel, the confirmation on confirm and the mail texts — its quote templates and its sales warnings, and who sees the sales analysis; how to verify it, and what can go wrong.
+description: Turning Orders on — the modules it requires, mapping Products' tax categories to VAT codes, the nine permissions and the roles to build from them — and keeping its settings — the number series, quote validity, payment terms, the send channel, the confirmation on confirm and the mail texts — its quote templates and its sales warnings, who sees the sales analysis, and who invoices orders; how to verify it, and what can go wrong.
 sidebar:
   order: 48
 sources:
@@ -81,6 +81,12 @@ Orders settings. Salespeople also need **View customers** in Customers to pick a
 **View contacts** and **View customer associations** to pick a contact, and **Use Invoices** to pick a VAT code for a
 free-text line; picking a product needs no Products permission.
 
+**Invoicing an order** is Invoices' work, not a permission of Orders: the order's
+**Invoice** button and the **From orders** wizard need **Use Invoices** and **Create
+invoices**, and issuing the draft **Issue invoices**. Whoever invoices needs no Orders
+permission to do it; the order's **Invoices** card links to the invoices for those with
+**Use Invoices**. **Release draft allocations** on an order needs **Manage orders**.
+
 ## Keep the settings
 
 **Orders settings** (`orders:settings`) holds:
@@ -92,8 +98,9 @@ free-text line; picking a product needs no Products permission.
   you continue a series from an earlier system.
 - **Defaults** — **Quotes are valid for** (days, 30 unless changed; a template may say
   otherwise), **Payment terms** (days, 14 unless changed, used when the customer has none
-  of its own) and **Combine orders on one invoice by default**, kept for invoicing from
-  orders, which comes later.
+  of its own) and **Combine orders on one invoice by default**, which has no effect yet:
+  Invoices' **From orders** wizard starts at one invoice per order, and a billing run of
+  orders combines as the run is told.
 - **Sending** — the **Send channel**: the Communications mailbox quotes and order
   confirmations are sent from, or **None — nothing is sent**. **Send the order
   confirmation when an order is confirmed** e-mails it by itself to the order's contact
@@ -162,6 +169,9 @@ A product warning outlives a deleted product: the list marks it **Product delete
    **Warning overridden**.
 6. With **View sales analysis**, **Analysis** shows the quote under **Quote hit rate** and
    the order under **Order intake**.
+7. With **Create invoices** and **Issue invoices**, choose **Invoice** on the confirmed
+   order, **Create the drafts** and issue the draft in Invoices: the order's **Invoices**
+   card lists the invoice, and its invoicing status is **Invoiced**.
 
 ## What can go wrong
 
@@ -177,4 +187,7 @@ A product warning outlives a deleted product: the list marks it **Product delete
 | "A series can only start above the highest number already used" | The new start is below the next number | Choose a start at or above the next number shown |
 | The Templates and Settings entries are missing | The person lacks Manage Orders settings | Grant it |
 | The Analysis entry is missing | The person lacks View sales analysis | Grant it beside Use Orders |
+| **Invoice** is missing on a confirmed order | The person lacks Use Invoices or Create invoices, or Invoices is off | Grant both in Invoices |
+| "Part of the order is on a draft invoice" when cancelling | A draft invoice holds part of the order | Issue or delete the draft in Invoices, or choose **Release draft allocations** on the order |
+| An invoice's issue is refused: "Work on line … can no longer be invoiced" | The order's draft allocations were released, or the draft was made more than 30 days ago and released by itself | Delete the draft and invoice the order again |
 | "A warning blocks this", and no **Override the warning** | A block warning applies, and the person lacks Manage Orders settings | Ask a settings holder to override it, or change the warning |

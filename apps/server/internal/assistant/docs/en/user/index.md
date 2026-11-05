@@ -92,7 +92,9 @@ from a button in that area's header instead — **Import customers**, for exampl
 **Import** on the customer list ([Export and
 import](/en/user/customers/#export-and-import)), and **Import metering points** from
 **Import** on the metering-point list ([Import metering
-points](/en/user/energy/#import-metering-points)).
+points](/en/user/energy/#import-metering-points)), and **Invoice from orders** from **From
+orders** on the invoice list or **Invoice** on a confirmed order ([Invoicing
+orders](/en/user/invoices/#invoicing-orders)).
 
 ## Search
 

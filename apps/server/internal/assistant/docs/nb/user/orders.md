@@ -1,6 +1,6 @@
 ---
 title: Ordre
-description: Ordre-appen — lag et tilbud, fra appen, kundesiden eller en mal; legg til produkt-, fritekst-, seksjons- og merknadslinjer, valgfrie linjer og rabatter; send det eller marker det som sendt, revider, aksepter, avslå, kanseller og kopier det; lag en ordre, bekreft den, endre den etter bekreftelse, sett den på vent, lås den, kanseller den eller resten, registrer hva som er levert, send ordrebekreftelsen og skriv ut en proforma; endringsloggen; linjer i forpakninger og fra variantrutenettet; kunde- og produktadvarsler og overstyring av en sperre; salgsanalysen; kundens Ordre-fane; og hva en avvisning betyr.
+description: Ordre-appen — lag et tilbud, fra appen, kundesiden eller en mal; legg til produkt-, fritekst-, seksjons- og merknadslinjer, valgfrie linjer og rabatter; send det eller marker det som sendt, revider, aksepter, avslå, kanseller og kopier det; lag en ordre, bekreft den, endre den etter bekreftelse, sett den på vent, lås den, kanseller den eller resten, registrer hva som er levert, send ordrebekreftelsen og skriv ut en proforma; fakturer den, se fakturaene dens og frigjør det fakturautkast holder; endringsloggen; linjer i forpakninger og fra variantrutenettet; kunde- og produktadvarsler og overstyring av en sperre; salgsanalysen; kundens Ordre-fane; og hva en avvisning betyr.
 sidebar:
   order: 55
 sources:
@@ -11,7 +11,7 @@ sources:
 
 I Ordre-appen lager du tilbud til kundene dine og tar imot ordrene deres. Et **tilbud** er
 et pristilbud kunden kan akseptere; en **ordre** er det kunden har kjøpt, som du bekrefter,
-leverer og — når fakturering fra ordre kommer — fakturerer.
+leverer og fakturerer.
 
 ## Appen og sidemenyen
 
@@ -27,8 +27,7 @@ Avgrens med søket (nummer, kunde eller referanse), **Status**, **Kunde**, **Sel
 **Ferdige** og filtrene **Levering** og **Fakturering**; en ordre er ferdig når den er
 bekreftet og hver produktlinje er fakturert eller kansellert fullt ut. En ordre der alt som
 gjensto, er kansellert, er ferdig; en som er levert, men ikke fakturert ennå, er fortsatt
-åpen. Til fakturering fra ordre kommer, er bare en ordre der alle linjene er kansellert,
-ferdig.
+åpen.
 
 ## Lag et tilbud
 
@@ -215,9 +214,10 @@ versjonen. En ordre som kanselleres før bekreftelsen er sendt, får ingen.
 ## Endre en bekreftet ordre
 
 En bekreftet ordre kan endres i det som ikke er levert eller fakturert: legg til linjer;
-senk antallet på en linje, men ikke under det som er levert eller fakturert; endre pris,
-rabatt eller tekst på en linje så lenge ingenting av den er fakturert; fjern en linje uten
-leveranser eller fakturaer; og endre leveringsdato, leveringsadresse, kontaktperson, Deres
+senk antallet på en linje, men ikke under det som er levert, fakturert eller står på et
+fakturautkast; endre pris, rabatt eller tekst på en linje så lenge ingenting av den er
+fakturert eller står på et fakturautkast; fjern en linje uten leveranser, fakturaer eller
+fakturautkast; og endre leveringsdato, leveringsadresse, kontaktperson, Deres
 referanse og internt notat. Kunde, valuta, mva-visning, betalingsbetingelser, språk,
 tekster, prosjekt og selger ligger fast når den er bekreftet.
 
@@ -243,6 +243,9 @@ på vent**, **Registrert levert** og så videre.
 - **Flere handlinger** → **Kanseller rest**, når noe er det: det som ikke er levert eller
   fakturert på hver linje, kanselleres. Dette kan ikke angres.
 
+Ingen av dem tas mens et fakturautkast holder deler av ordren: utsted eller slett utkastet
+først, eller [frigjør det det holder](#frigjør-det-fakturautkast-holder).
+
 Å sette på vent, låse og registrere leveranser endrer ikke versjonen.
 
 ## Registrer hva som er levert
@@ -253,6 +256,66 @@ som ikke er på vent.
 med 0 endres ikke, og du kan ikke levere mer enn det som gjenstår. **Flere handlinger** →
 **Angre levert** tar antall tilbake (**Ta tilbake**). Hver linje viser fremdriften — «3 av 5
 levert» — og ordren leveringsstatusen: **Ikke levert**, **Delvis levert** eller **Levert**.
+
+## Fakturer en ordre
+
+En ordre faktureres i Fakturaer, fra linjene: du velger hvor mye av hver linje som skal
+faktureres, og utstedelsen av fakturaen markerer det som fakturert på ordren. Linjene
+faktureres ved ordre — det som er bestilt, kan faktureres så snart ordren er bekreftet,
+levert eller ikke.
+
+1. På en bekreftet ordre velger du **Fakturer**. Den krever **Bruke Fakturaer**
+   (`invoices:access`) og **Lage fakturaer** (`invoices:create`) i Fakturaer, og vises
+   ikke uten dem. Den er deaktivert, med begrunnelse, mens ordren er på vent («En ordre på
+   vent faktureres ikke. Ta den av vent først.»), når ingenting gjenstår å fakturere
+   («Ingenting gjenstår å fakturere.») og mens du har endringer som ikke er lagret
+   («Lagre endringene først»).
+2. **Fakturer fra ordre** i Fakturaer åpnes med ordren valgt. Velg hvor mye av hver linje
+   som skal faktureres — alt som gjenstår, eller mindre for å fakturere deler av en linje —
+   og velg **Lag utkastene**
+   ([Fakturer fra ordre](/nb/user/invoices/#fakturere-ordre)).
+3. Sjekk utkastet i Fakturaer og utsted det. Til da **holder** utkastet antallene det
+   fakturerer: fremdriften på hver linje viser «2 på fakturautkast», og de tilbys ikke til
+   fakturering igjen.
+
+Når fakturaen utstedes, øker det fakturerte antallet på linjen med det den fakturerte, og
+faktureringsstatusen på ordren blir **Delvis fakturert** eller **Fakturert**. En ordre er
+ferdig når den er bekreftet og hver produktlinje er fakturert eller kansellert fullt ut —
+registrer leveransene også, for **Levering**-statusen og ordrereserven.
+
+Sletter du utkastet i Fakturaer, gis antallene tilbake med en gang: de tilbys til
+fakturering igjen. Det samme gjør en kreditnota som returnerer en fakturalinje fullt ut —
+det fakturerte antallet på ordren går ned igjen, og linjen kan faktureres på nytt.
+
+### Mens et fakturautkast holder deler av ordren
+
+Et fakturautkast er et løfte om hva som skal faktureres, så ordren holder seg til det:
+
+- antallet på en linje kan ikke bli lavere enn det som er levert, fakturert eller står på
+  et fakturautkast;
+- pris og rabatt på en linje kan ikke endres mens deler av den står på et fakturautkast;
+- en linje på et fakturautkast kan ikke fjernes;
+- ordren kan ikke kanselleres, heller ikke resten av den.
+
+Utsted eller slett utkastet i Fakturaer, eller frigjør det det holder.
+
+### Frigjør det fakturautkast holder
+
+Når et fakturautkast likevel ikke skal utstedes — noen laget det og glemte det, for
+eksempel — velger du **Flere handlinger** → **Frigjør fra fakturautkast** på ordren. Alt
+fakturautkast holder av ordren, tilbys til fakturering igjen med en gang. Et fakturautkast
+som fortsatt holder deler av den, avvises da når noen utsteder det; slett det og fakturer
+ordren på nytt. **Endringslogg** viser det som **Frigjort fra fakturautkast**.
+
+Det et fakturautkast holder, gis tilbake av seg selv 30 dager etter at utkastet ble laget fra ordren, enten noen har endret utkastet siden eller ikke; å utstede det etter det avvises. Utsted et fakturautkast innen 30 dager, eller lag det på nytt.
+
+### Kortet Fakturaer
+
+Siden til en bekreftet ordre har kortet **Fakturaer**, som viser hver faktura utstedt fra
+den: **Fakturanr.**, **Fakturadato**, **Beløp eks. mva** — det fakturaen fakturerte av
+denne ordren — og **Status**, **Fakturert** eller, når kreditnotaer har returnert alt,
+**Kreditert**. Med **Bruke Fakturaer** lenker nummeret til fakturaen. Til noe er fakturert,
+sier kortet «Ingenting er fakturert ennå.»
 
 ## Salgsanalyse
 
@@ -297,9 +360,13 @@ eller kansellert ([tidslinjen](/nb/user/customers/#tidslinjen)).
 | Ordren har ingen produktlinjer | Legg til minst én produktlinje før du bekrefter. |
 | Kunden er deaktivert eller arkivert | Aktiver kunden i Kunder, eller bruk en annen. |
 | Prosjektet tilhører en annen kunde | Velg et av denne kundens prosjekter, eller ingen. |
-| Et antall kan ikke bli lavere enn det som er levert eller fakturert | Kanseller resten i stedet, eller angre leveringen først. |
+| Et antall kan ikke bli lavere enn det som er levert, fakturert eller står på et fakturautkast. | Kanseller resten i stedet, angre leveringen først, eller utsted eller slett fakturautkastet. |
 | Prisen på en fakturert linje kan ikke endres | Linjen er fakturert: la den stå. |
-| En linje med leveranser eller fakturaer kan ikke fjernes | Senk antallet, eller kanseller resten. |
+| En linje med leveranser, fakturaer eller et fakturautkast kan ikke fjernes. | Senk antallet, eller kanseller resten. |
+| Deler av linjen står på et fakturautkast: pris og rabatt kan ikke endres før utkastet er utstedt eller slettet. | Utsted eller slett fakturautkastet i Fakturaer, eller **Frigjør fra fakturautkast**, og endre så prisen. |
+| Deler av ordren står på et fakturautkast. Utsted eller slett utkastet, eller velg Frigjør fra fakturautkast i ordrens meny. | Gjør som det står: en ordre kanselleres ikke mens et fakturautkast holder deler av den. |
+| Det er mer enn det som gjenstår å fakturere. | Noen har fakturert linjen i mellomtiden. Last inn på nytt og fakturer det som gjenstår. |
+| Linjen kan ikke faktureres nå: ordren er et utkast, på vent eller kansellert. | Bekreft ordren, eller ta den av vent, og fakturer på nytt. |
 | Noe er levert eller fakturert: kanseller resten i stedet | Bruk **Kanseller rest**. |
 | Ordren er låst. | Noen med rettigheten til å bekrefte må **Lås opp** — også før den kan kanselleres. |
 | Ordren er satt på vent. Ta den av vent før du registrerer levering. | Velg **Ta av vent**, og registrer eller angre leveringen. |

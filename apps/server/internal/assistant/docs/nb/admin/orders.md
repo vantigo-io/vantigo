@@ -1,6 +1,6 @@
 ---
 title: Ordre
-description: Slå på Ordre — modulene den krever, koblingen av avgiftskategoriene i Produkter til mva-koder, de ni rettighetene og rollene du bygger av dem — og hold innstillingene — nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen, ordrebekreftelse ved bekreftelse og e-posttekstene — tilbudsmalene og salgsadvarslene, og hvem som ser salgsanalysen; hvordan du kontrollerer det, og hva som kan gå galt.
+description: Slå på Ordre — modulene den krever, koblingen av avgiftskategoriene i Produkter til mva-koder, de ni rettighetene og rollene du bygger av dem — og hold innstillingene — nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen, ordrebekreftelse ved bekreftelse og e-posttekstene — tilbudsmalene og salgsadvarslene, hvem som ser salgsanalysen, og hvem som fakturerer ordre; hvordan du kontrollerer det, og hva som kan gå galt.
 sidebar:
   order: 48
 sources:
@@ -83,6 +83,13 @@ i tillegg Håndtere innstillinger for Ordre. Selgere trenger også **Se kunder**
 **Bruke Fakturaer** for å velge mva-kode på en fritekstlinje; å velge et produkt krever
 ingen rettighet i Produkter.
 
+**Å fakturere en ordre** er Fakturaers arbeid, ikke en rettighet i Ordre: knappen
+**Fakturer** på ordren og veiviseren **Fra ordre** krever **Bruke Fakturaer** og **Lage
+fakturaer**, og å utstede utkastet **Utstede fakturaer**. Den som fakturerer, trenger ingen
+rettighet i Ordre for det; kortet **Fakturaer** på ordren lenker til fakturaene for dem
+som har **Bruke Fakturaer**. **Frigjør fra fakturautkast** på en ordre krever **Håndtere
+ordrer**.
+
 ## Hold innstillingene
 
 **Ordreinnstillinger** (`orders:settings`) har:
@@ -94,8 +101,9 @@ ingen rettighet i Produkter.
   fortsetter en serie fra et tidligere system.
 - **Standardverdier** — **Tilbud er gyldige i** (dager, 30 om ikke endret; en mal kan si
   noe annet), **Betalingsbetingelser** (dager, 14 om ikke endret, brukt når kunden ikke har
-  egne) og **Samle ordrer på én faktura som standard**, som tas vare på til fakturering fra
-  ordre, som kommer senere.
+  egne) og **Samle ordrer på én faktura som standard**, som ikke har noen virkning ennå:
+  veiviseren **Fra ordre** i Fakturaer starter med én faktura per ordre, og en
+  fakturakjøring av ordre samler slik kjøringen sier.
 - **Utsending** — **Avsenderkanal**: postkassen i Kommunikasjon som tilbud og
   ordrebekreftelser sendes fra, eller **Ingen — ingenting sendes**. **Send
   ordrebekreftelsen når en ordre bekreftes** sender den av seg selv til ordrens
@@ -162,6 +170,9 @@ og **Fjern** er alt den tilbyr.
    **Endringslogg** viser **Advarsel overstyrt**.
 6. Med **Se salgsanalyse** viser **Analyse** tilbudet under **Treffprosent på tilbud** og
    ordren under **Ordreinngang**.
+7. Med **Lage fakturaer** og **Utstede fakturaer** velger du **Fakturer** på den bekreftede
+   ordren, **Lag utkastene** og utsteder utkastet i Fakturaer: kortet **Fakturaer** på
+   ordren viser fakturaen, og faktureringsstatusen er **Fakturert**.
 
 ## Hva som kan gå galt
 
@@ -177,4 +188,7 @@ og **Fjern** er alt den tilbyr.
 | «En serie kan bare starte over det høyeste nummeret som er brukt» | Den nye starten er under neste nummer | Velg en start på eller over neste nummer som vises |
 | Tilbudsmaler og Ordreinnstillinger mangler i sidemenyen | Personen mangler Håndtere innstillinger for Ordre | Gi rettigheten |
 | Analyse mangler i sidemenyen | Personen mangler Se salgsanalyse | Gi den sammen med Bruke Ordre |
+| **Fakturer** mangler på en bekreftet ordre | Personen mangler Bruke Fakturaer eller Lage fakturaer, eller Fakturaer er slått av | Gi begge i Fakturaer |
+| «Deler av ordren står på et fakturautkast» ved kansellering | Et fakturautkast holder deler av ordren | Utsted eller slett utkastet i Fakturaer, eller velg **Frigjør fra fakturautkast** på ordren |
+| Utstedelsen av en faktura avvises: «Arbeid på linje … kan ikke lenger faktureres» | Det fakturautkastet holdt av ordren, ble frigjort, eller utkastet ble laget for mer enn 30 dager siden og frigjort av seg selv | Slett utkastet og fakturer ordren på nytt |
 | «En advarsel sperrer dette», og ingen **Overstyr advarselen** | En sperre gjelder, og personen mangler Håndtere innstillinger for Ordre | Be noen med innstillingene overstyre den, eller endre advarselen |
