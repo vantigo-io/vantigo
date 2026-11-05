@@ -235,6 +235,16 @@
     "description": "The customer picker a new quote starts from."
   },
   {
+    "key": "orders.new-subscription.create",
+    "route": "/orders/subscriptions/new",
+    "description": "Creates the draft subscription on the plan chosen and opens its editor."
+  },
+  {
+    "key": "orders.new-subscription.customer",
+    "route": "/orders/subscriptions/new",
+    "description": "The customer picker a new subscription starts from."
+  },
+  {
     "key": "orders.order.confirm",
     "route": "/orders/orders/{orderId}",
     "description": "Confirms a draft order: freezes its prices and customer, and stores the order confirmation."
@@ -283,6 +293,41 @@
     "key": "orders.settings.warnings",
     "route": "/orders/settings",
     "description": "Every customer's and product's sales warning, set, changed and removed here."
+  },
+  {
+    "key": "orders.subscription.activate",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "description": "Activates a draft subscription, so its periods are billed."
+  },
+  {
+    "key": "orders.subscription.effective-from",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "description": "The period start an active subscription's line changes take effect from."
+  },
+  {
+    "key": "orders.subscription.end",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "description": "Sets the subscription's end; its period is the last one billed."
+  },
+  {
+    "key": "orders.subscription.pause",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "description": "Stops billing from a period start."
+  },
+  {
+    "key": "orders.subscription.resume",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "description": "Restarts billing from a period start; the periods between are skipped."
+  },
+  {
+    "key": "orders.subscription.save",
+    "route": "/orders/subscriptions/{subscriptionId}",
+    "description": "Saves the subscription: a draft whole, an active one's lines from the period chosen."
+  },
+  {
+    "key": "orders.subscriptions.new",
+    "route": "/orders/subscriptions",
+    "description": "The button above the subscription list that starts a new subscription."
   },
   {
     "key": "orders.templates.new",

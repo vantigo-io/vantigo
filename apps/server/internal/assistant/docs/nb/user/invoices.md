@@ -659,6 +659,14 @@ siden av **Ny faktura** øverst i fakturalisten, som vises når Ordre-modulen er
    viser fakturaene som lages, og sier hva som holdt to av en kundes ordre atskilt —
    *Holdes atskilt fra kundens andre faktura på grunn av leveringsadresse.*
 
+En kundes **abonnement** vises ved siden av ordrene, med periodene som skal faktureres i
+dag — *Abonnement 3001 – januar 2027, februar 2027*
+([Abonnement](/nb/user/orders/#abonnement)). Et abonnements perioder faktureres hele: i
+steget **Linjer** er hver periode en egen linje, *Support – januar 2027*, uten antall å
+sette ned; fjern krysset for abonnementet for å vente med det. Med **Samlefaktura per
+kunde** samles en kundes ordre og abonnement på én faktura der de stemmer overens, som
+ordre gjør.
+
 Velg **Lag utkastene**. Ett utkast åpnes med en gang; flere listes opp — *Utkast 1042:
 ordre 2210* — så du kan åpne og sjekke dem ett for ett. Ingenting er utstedt ennå.
 
@@ -675,6 +683,12 @@ ordre 2210* — så du kan åpne og sjekke dem ett for ett. Ingenting er utstedt
   betalingsbetingelsene deres, ordrenummeret som **Ordrereferanse** når fakturaen har én
   ordre, den seneste leveringsdatoen blant ordrene (i dag når ingen har en),
   leveringsadressen når alle ordrene har den samme fullstendige, og ordrenes prosjekt.
+- **Et abonnements periode** er en linje med abonnementslinjens tekst og perioden —
+  *Support, januar 2027* — og leveringen i hodet er en **Leveringsperiode** fra første
+  periodes første dag til siste periodes siste. En forholdsmessig første periode
+  fakturerer sin andel med en enhetspris på opptil åtte desimaler, uten rabatt. På en
+  samlefaktura innledes et abonnements linjer med *Abonnement 3001* (*Subscription 3001*
+  på engelsk).
 
 ### Redigere, slette, utstede og kreditere det
 
@@ -713,6 +727,10 @@ gjenstår å fakturere, for alle kunder — eller kundene du nevner — i én om
    der de har samme valuta, deres referanse, prosjekt, betalingsbetingelser og
    leveringsadresse; uten kryss får hver ordre sin egen.
 4. **Utsted fakturaene** og **Kunde-ID-er** som for forbruk, og så **Start kjøringen**.
+
+En kundes aktive abonnement faktureres i samme kjøring: hver periode som skal faktureres
+til og med kjøringens dag — første dag på eller før den ved forskuddsfakturering, siste
+dag ved etterskuddsfakturering — og ingen som starter mer enn tolv måneder fram.
 
 En ordre på vent eller som fortsatt er et utkast, tas ikke med. Det gjør heller ikke en
 ordre i en annen valuta enn fakturainnstillingenes: kundens rad nevner den — *Orders 2212
