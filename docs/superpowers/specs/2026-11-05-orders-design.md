@@ -1,6 +1,6 @@
 # Orders — quotes, sales orders, invoicing, subscriptions and deliveries (phase 1)
 
-Revision 2, 2026-11-05 (after a critic review and the owner's shipping addition; §16 lists what changed). This spec is drawn from the research
+Revision 4, 2026-11-06 (after a critic review, the owner's shipping addition and the owner's final-period choice; §16 lists what changed). This spec is drawn from the research
 `docs/superpowers/research/2026-11-04-orders-module.md` ("R"), whose §11.1 answers it
 does not reopen. Decisions are numbered O*n*. The implementation plan will be
 `docs/superpowers/plans/2026-11-05-orders-plan.md`. Abbreviations:
@@ -891,7 +891,11 @@ A2 may run beside B. S and C may run beside each other. D follows C.
     - `start_date`;
     - `end_date` (optional);
     - `notice_months` (0–12; informational, printed);
-    - `invoice_day`: the period's first day, or the setting's day of month.
+    - `invoice_day`: the period's first day, or the setting's day of month;
+    - `final_period`: `full` or `prorated` — how the period the end falls in is billed
+      (revision 4). A new subscription takes the settings'
+      `subscription_final_period_default` (`full`) unless its plan names one; it stays
+      editable while the subscription runs.
   - **Its lines:** product lines whose variant must be a `Service` product
     (`subscription_goods_not_allowed`), or free-text lines. Sections and notes are
     allowed.
@@ -903,7 +907,13 @@ A2 may run beside B. S and C may run beside each other. D follows C.
   - **The periods** are computed from the start date and the interval.
     - The first period is **partial** when the start is not the first of a month. Its
       amount is pro-rated by days, as a fraction of the period, to øre.
-    - That is the only pro-rating in this phase.
+    - The **final period** — the one the end falls in, when the end is not its last day —
+      is billed in full, or, with `final_period` `prorated`, ends on the end date and is
+      pro-rated the same way: its days from the period's start to the end, inclusive,
+      over the full period's days, to øre, at the eight-decimal unit price (a quantity of
+      1 when eight decimals cannot carry it). A period both first and final pro-rates
+      over its actual span (revision 4).
+    - Those are the only pro-ratings in this phase.
   - **A period is due:**
     - when its first day is on or before the run date, for `in_advance`;
     - when its last day is, for `in_arrears`.
@@ -940,8 +950,13 @@ A2 may run beside B. S and C may run beside each other. D follows C.
     period start.
     - The periods in between are written to `orders.subscription_skips`
       (`subscription_id`, `period_start`) and never billed.
-  - **End** sets `end_date`. It must be after the last period with a live allocation,
-    or the user is asked to credit first.
+  - **End** sets `end_date`, and takes an optional `final_period`: absent, the
+    subscription's own applies; the one used is stored on the subscription and logged.
+    - No period with a live allocation may start after the end (`end_before_billed`): the
+      user is asked to credit first.
+    - A final period with a live allocation (draft or invoiced) is not pro-rated
+      (`final_period_billed`, 409): the user credits it first. `full` is always allowed,
+      so an end inside the last billed period bills it in full (revision 4).
   - **Each change** is logged in `orders.order_changes`, which also serves
     subscriptions. Events: `orders.subscription.started.v1`, `…changed.v1`, `…ended.v1`.
 
@@ -1549,3 +1564,30 @@ revised from the carrier research in R §2.9, which covers Porterbuddy in full:
 - grams and millimetres;
 - products as data.
 
+### Revision 4: the final period choice (owner, 2026-11-06)
+
+- **The decision.** When a subscription ends mid-period, the final period is billed
+  either in **full** or **pro-rated to the end date** (O42, O43, O44):
+  - `orders.subscriptions.final_period` (`full`/`prorated`, NOT NULL), defaulted for a
+    new subscription from the new setting `subscription_final_period_default` (`full`),
+    and editable in the plan, draft and active;
+  - End takes an optional `finalPeriod`; absent, the subscription's own applies. The
+    choice is stored on the subscription and logged (`final_period`);
+  - `prorated` bills the period from its start to the end date, inclusive, over the full
+    period's days, to øre, by the partial first period's eight-decimal unit price
+    mechanism; a period both first and final pro-rates over its actual span;
+  - a `prorated` final period with a live allocation is refused
+    (`final_period_billed`, 409) — credit it first; `full` is always allowed. So End's
+    `end_before_billed` is now refused only when a billed period starts after the end.
+- **The review fixes of delivery S**, made with it:
+  - a change saved from an effective date before one already scheduled left the line's
+    first version in force beside the new one, billing the periods between twice. A
+    line's dated versions now form a chain (`orders.lines.chain_id`, the first version's
+    id), and a change or a removal ends every version of the chain still in force on or
+    after its date, so at any date exactly one version of a line is in force;
+  - `BillableOrders` judges a subscription's today — `DueOrders` without `Until`, and
+    the twelve-month limit — in the business time zone, as Invoices does;
+  - ending a paused subscription derives billed through again over the periods it skips,
+    as a resume does;
+  - the variant holder counts an ended subscription whose end is still to come, and a
+    line whose validity runs on, not only the lines in force from the latest change.

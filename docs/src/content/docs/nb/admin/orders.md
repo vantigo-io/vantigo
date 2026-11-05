@@ -1,6 +1,6 @@
 ---
 title: Ordre
-description: Slå på Ordre — modulene den krever, koblingen av avgiftskategoriene i Produkter til mva-koder, de ni rettighetene og rollene du bygger av dem — og hold innstillingene — nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen, ordrebekreftelse ved bekreftelse og e-posttekstene — tilbudsmalene og salgsadvarslene, hvem som ser salgsanalysen, hvem som holder abonnementene, og hvem som fakturerer ordre og abonnement; hvordan du kontrollerer det, og hva som kan gå galt.
+description: Slå på Ordre — modulene den krever, koblingen av avgiftskategoriene i Produkter til mva-koder, de ni rettighetene og rollene du bygger av dem — og hold innstillingene — nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen, ordrebekreftelse ved bekreftelse, e-posttekstene og et abonnements siste periode — tilbudsmalene og salgsadvarslene, hvem som ser salgsanalysen, hvem som holder abonnementene, og hvem som fakturerer ordre og abonnement; hvordan du kontrollerer det, og hva som kan gå galt.
 sidebar:
   order: 48
 sources:
@@ -109,7 +109,12 @@ ordrer**.
   noe annet), **Betalingsbetingelser** (dager, 14 om ikke endret, brukt når kunden ikke har
   egne) og **Samle ordrer på én faktura som standard**, som ikke har noen virkning ennå:
   veiviseren **Fra ordre** i Fakturaer starter med én faktura per ordre, og en
-  fakturakjøring av ordre samler slik kjøringen sier.
+  fakturakjøring av ordre samler slik kjøringen sier. **Siste periode ved avslutning** er
+  det et nytt abonnement får for perioden sluttdatoen faller i, når sluttdatoen ikke er
+  periodens siste dag: **Full periode** (om ikke endret) fakturerer hele perioden,
+  **Forholdsmessig til sluttdato** fakturerer den etter dagene fram til sluttdatoen. Hvert
+  abonnement har sin egen, som kan endres på abonnementet og når det avsluttes; å endre
+  standarden endrer ingen eksisterende abonnement.
 - **Utsending** — **Avsenderkanal**: postkassen i Kommunikasjon som tilbud og
   ordrebekreftelser sendes fra, eller **Ingen — ingenting sendes**. **Send
   ordrebekreftelsen når en ordre bekreftes** sender den av seg selv til ordrens

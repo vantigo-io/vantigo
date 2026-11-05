@@ -1409,8 +1409,9 @@ wizard shows greyed with its reason; each line its `lineId`, `position`,
 `description`, `unit`, `toInvoice` (ordered − cancelled − invoiced − draft-allocated,
 three decimals), `unitPrice` (eight decimals), `discountPercent`, `vatCodeId`,
 `invoicePolicy` and `amount`, docmath's net of `toInvoice` — and a subscription's line its
-`periodStart` and `periodEnd`, listed once per due period, a pro-rated first period at its
-pro-rated unit price. The wizard names a subscription "Abonnement 3001 – januar 2027"
+`periodStart` and `periodEnd`, listed once per due period, a pro-rated first period — or a
+final period pro-rated to the subscription's end, whose `periodEnd` is the end date — at
+its pro-rated unit price. The wizard names a subscription "Abonnement 3001 – januar 2027"
 (*Subscription 3001 – January 2027*), its periods by month, and invoices each period
 whole. `orders_truncated` warns when
 Orders had more than 5 000 lines and the last orders are left out. Nothing is written and
