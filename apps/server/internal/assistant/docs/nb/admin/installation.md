@@ -932,6 +932,20 @@ ville gitt tilbake, blir holdt til noen frigjør det på ordren; å rulle `00122
 avvises så lenge en fakturalinje viser til en ordrelinje eller en fakturakjøring
 fakturerer ordre; å rulle `00121` tilbake fjerner det fakturaene holdt.
 
+**Utgivelsen med frakt.** Den har `00127_orders_shipping.sql`: fraktkontoene,
+standardkontoen per lagersted, sendingene med kolli, lagrede etiketter og fraktbrev og
+sporingshendelser, alle tomme; tre innstillinger i Ordre — ikke noe fraktprodukt, ikke noe
+påslag, og sendingsvarselet på — og e-posttypen for sendingsvarselet. Ordre starter én
+arbeider til, alltid, `orders.shipment_tracking`: hvert 30. minutt spør den transportørene om
+sendingene bestilt de siste 60 dagene, og tar hver ved å flytte tidspunktet den sist ble
+sporet (`SKIP LOCKED`), så et hvilket som helst antall instanser deler arbeidet uten å spørre
+to ganger; uten fraktkonto gjør den ingenting. API-et og arbeidercontaineren trenger utgående
+https til `api.bring.com` (ingen sertifikatfesting: Bring bruker Let's Encrypt).
+`SHIPPING_CARRIERS` (standard `bring`) holder tilbake en transportør. Nøklene forsegles med
+`APP_SECRET`: endres den, kan de ikke leses, og hver kontos nøkler må legges inn på nytt. Å
+rulle migreringen tilbake fjerner sendingene og kontoene med nøklene; etikettene blir liggende
+i objektlageret under `orders/shipment/`. Se [Frakt](/nb/admin/shipping/).
+
 **Utgivelsen med kompetanse i Ansatte.** Den har `00066_staff_competence.sql`:
 kompetansekatalogen — fem kategorier og femten norske sertifikater forhåndsdefinert — og
 personenes kompetanser, tomme. Ingen rettighet er ny: `staff:approve` bekrefter nå også
