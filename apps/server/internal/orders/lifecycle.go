@@ -469,9 +469,10 @@ func (s *server) CancelSalesOrder(ctx context.Context, req gen.CancelSalesOrderR
 // Each product line's cancelled quantity becomes ordered less the larger of
 // delivered and invoiced (O18). When that changes a line, the version is
 // bumped, the derived statuses recomputed, cancelled_remaining logged per line,
-// the order's reservations released and its draft deliveries cancelled
-// (O46, O47), and orders.sales_order.changed.v1 published; otherwise nothing
-// is written.
+// what each line holds reserved beyond what is still open released, the
+// lines with nothing left to deliver taken out of the draft deliveries and a
+// draft left with no line cancelled (O46, O47), and
+// orders.sales_order.changed.v1 published; otherwise nothing is written.
 func (s *server) CancelSalesOrderRemaining(ctx context.Context, req gen.CancelSalesOrderRemainingRequestObject) (gen.CancelSalesOrderRemainingResponseObject, error) {
 	out, err := s.changeOrder(ctx, req.Id, req.Body.Version, req.Body.ExpectedUpdatedAt, true,
 		func(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.OrdersOrder, lines []store.OrdersLine) (store.OrdersOrder, []changeAction, error) {
@@ -510,13 +511,30 @@ func (s *server) CancelSalesOrderRemaining(ctx context.Context, req gen.CancelSa
 			if len(actions) == 0 {
 				return o, nil, nil
 			}
-			// Nothing remains to reserve or to deliver (O18, O46).
-			if err := s.releaseAll(ctx, tx, o.ID); err != nil {
+			// What a line holds beyond what is still open is released, and the
+			// draft deliveries let go of the lines with nothing left to deliver
+			// — a draft left with no line is cancelled (O18, O46, O47). A line
+			// invoiced beyond what is delivered still has that much to deliver.
+			if err := s.releaseBeyondOpen(ctx, tx, o.ID, lines); err != nil {
 				return o, nil, err
 			}
-			now := s.deps.Clock()
-			if _, err := txq.CancelDraftDeliveriesOfOrder(ctx, store.CancelDraftDeliveriesOfOrderParams{OrderID: o.ID, Now: &now}); err != nil {
-				return o, nil, fmt.Errorf("orders: cancel order %d's draft deliveries: %w", o.ID, err)
+			var closed []int64
+			for _, l := range lines {
+				if l.Kind == kindProduct && l.Quantity.Valid && openToDeliver(l).Sign() == 0 {
+					closed = append(closed, l.ID)
+				}
+			}
+			if len(closed) > 0 {
+				touched, err := txq.DeleteDraftDeliveryLinesOf(ctx, store.DeleteDraftDeliveryLinesOfParams{OrderID: o.ID, OrderLineIds: closed})
+				if err != nil {
+					return o, nil, fmt.Errorf("orders: take order %d's closed lines out of its draft deliveries: %w", o.ID, err)
+				}
+				if len(touched) > 0 {
+					slices.Sort(touched)
+					if err := txq.CancelEmptyDraftDeliveries(ctx, store.CancelEmptyDraftDeliveriesParams{Ids: slices.Compact(touched), Now: s.deps.Clock()}); err != nil {
+						return o, nil, fmt.Errorf("orders: cancel order %d's emptied draft deliveries: %w", o.ID, err)
+					}
+				}
 			}
 			row, err := s.bumpProgress(ctx, tx, txq, o, lines, o.Version+1)
 			return row, actions, err

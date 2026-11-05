@@ -138,6 +138,18 @@ func goodsVariantsOf(lines []store.OrdersLine) []int32 {
 	return ids
 }
 
+// withDeliveryVariants adds the variants a delivery's lines issue to ids,
+// sorted.
+func withDeliveryVariants(ids []int32, dlines []store.OrdersDeliveryLine) []int32 {
+	for _, dl := range dlines {
+		if !slices.Contains(ids, dl.VariantID) {
+			ids = append(ids, dl.VariantID)
+		}
+	}
+	slices.Sort(ids)
+	return ids
+}
+
 // deliveryView is a delivery as the API answers it: o is its order, lines
 // its order's lines, drafted what other drafts hold of them, and locations,
 // on a draft, the site's locations holding each variant.
@@ -400,7 +412,16 @@ func (s *server) CreateDelivery(ctx context.Context, req gen.CreateDeliveryReque
 			if open.Sign() <= 0 {
 				continue
 			}
-			can := new(big.Rat).Set(orZero(reserved[l.ID]))
+			// The line's reservation less what its other drafts already
+			// take of it, then what is free at the site.
+			own := new(big.Rat).Set(orZero(reserved[l.ID]))
+			if d := drafted[l.ID]; d != nil {
+				own.Sub(own, d)
+			}
+			if own.Sign() < 0 {
+				own.SetInt64(0)
+			}
+			can := new(big.Rat).Set(own)
 			if f := free[*l.VariantID]; f != nil && f.Sign() > 0 {
 				can.Add(can, f)
 			}
@@ -413,7 +434,7 @@ func (s *server) CreateDelivery(ctx context.Context, req gen.CreateDeliveryReque
 			}
 			// What went beyond the line's own reservation came from what is
 			// free at the site.
-			if extra := new(big.Rat).Sub(qty, orZero(reserved[l.ID])); extra.Sign() > 0 && free[*l.VariantID] != nil {
+			if extra := new(big.Rat).Sub(qty, own); extra.Sign() > 0 && free[*l.VariantID] != nil {
 				free[*l.VariantID].Sub(free[*l.VariantID], extra)
 			}
 			picks = append(picks, proposed{line: l, qty: qty})
@@ -701,7 +722,7 @@ func (s *server) PostDelivery(ctx context.Context, req gen.PostDeliveryRequestOb
 	if err != nil {
 		return nil, err
 	}
-	variants := goodsVariantsOf(cur.lines)
+	variants := withDeliveryVariants(goodsVariantsOf(cur.lines), cur.dlines)
 	var posted store.OrdersDelivery
 	var printed []byte
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
@@ -729,6 +750,19 @@ func (s *server) PostDelivery(ctx context.Context, req gen.PostDeliveryRequestOb
 		dlines, err := txq.DeliveryLinesOf(ctx, d.ID)
 		if err != nil {
 			return fmt.Errorf("orders: read delivery %d's lines: %w", d.ID, err)
+		}
+		// The variants as they are under the lock: an edit or a save between
+		// the read and the lock may have named one not locked yet.
+		var more []int32
+		for _, id := range withDeliveryVariants(goodsVariantsOf(lines), dlines) {
+			if !slices.Contains(variants, id) {
+				more = append(more, id)
+			}
+		}
+		if len(more) > 0 {
+			if _, err := s.lockVariants(ctx, tx, more); err != nil {
+				return err
+			}
 		}
 		at := map[int64]int{}
 		for i, l := range lines {

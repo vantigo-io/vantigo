@@ -5,7 +5,8 @@ package orders
 // hand on a confirmed order. A marking adds to a line's delivered quantity,
 // never beyond what is ordered less cancelled (over_delivery); an undo takes
 // it back, never below 0 (undo_exceeds_delivered) and, on a line invoiced on
-// delivery, never below what is invoiced (delivered_below_invoiced). Every
+// delivery, never below what is invoiced (delivered_below_invoiced) nor below
+// that and what a draft invoice holds (line_in_draft_invoice, 409). Every
 // line of the request is judged at once. The derived delivery status is
 // recomputed and delivered_marked or delivered_undone logged per line; the
 // version is not bumped, since the confirmation prints nothing delivered. A
@@ -46,6 +47,14 @@ func (s *server) markDelivered(ctx context.Context, id int64, body gen.OrdersDel
 			for i, l := range lines {
 				index[l.ID] = i
 			}
+			var allocs lineAllocations
+			if undo {
+				rows, err := orderAllocations(ctx, txq, o.ID)
+				if err != nil {
+					return o, nil, err
+				}
+				allocs = allocationsByLine(rows)
+			}
 			var failures []lineFailure
 			var actions []changeAction
 			for i, in := range body.Lines {
@@ -79,10 +88,15 @@ func (s *server) markDelivered(ctx context.Context, id int64, body gen.OrdersDel
 							detail: fmt.Sprintf("Line %d has %s delivered.", l.Position, before.FloatString(quantityPlaces))})
 						continue
 					}
-					if l.InvoicePolicy == "delivery" && after.Cmp(ratOrZero(l.QtyInvoiced)) < 0 {
+					if l.InvoicePolicy == policyOnDelivery && after.Cmp(ratOrZero(l.QtyInvoiced)) < 0 {
 						failures = append(failures, lineFailure{index: i, code: codeDeliveredBelowInvoiced,
 							detail: fmt.Sprintf("Line %d is invoiced on delivery; what is invoiced stays delivered.", l.Position)})
 						continue
+					}
+					if billed := new(big.Rat).Add(ratOrZero(l.QtyInvoiced), allocs.drafted(l.ID)); l.InvoicePolicy == policyOnDelivery && after.Cmp(billed) < 0 {
+						return o, nil, conflict(codeLineInDraftInvoice, "The line is in a draft invoice",
+							fmt.Sprintf("Line %d is invoiced on delivery and %s of it is in a draft invoice; what is in the draft stays delivered until the draft is issued or deleted, or its allocations released.",
+								l.Position, allocs.drafted(l.ID).FloatString(quantityPlaces)))
 					}
 				}
 				lines[at].QtyDelivered = numeric(after, quantityPlaces)

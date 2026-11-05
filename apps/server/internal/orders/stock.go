@@ -20,9 +20,11 @@ package orders
 //     reserved yet.
 //   - An edit of a confirmed order that holds reservations reserves what a
 //     goods line's open quantity grew by, a new goods line's whole, and
-//     releases what a line holds beyond its open quantity; an order holding
-//     none reserves nothing on an edit.
-//   - A removed line, a cancel and a cancel of what remains release.
+//     releases what a line holds beyond its open quantity; a line whose item
+//     changed releases all and reserves its whole open quantity of the new
+//     variant; an order holding none reserves nothing on an edit.
+//   - A removed line and a cancel release all; a cancel of what remains
+//     releases what each line holds beyond what is still open.
 //   - A manual marking releases as much as it marked; its undo reserves
 //     nothing again (Reserve now does).
 //   - A delivery's post issues against the reservations, which Inventory
@@ -344,9 +346,13 @@ func (s *server) reserveOpen(ctx context.Context, tx pgx.Tx, o store.OrdersOrder
 
 // adjustReservations follows a confirmed order's edit (O26, O46) on tx:
 // before are its lines under the lock, after as written. A line removed
-// releases all it holds; a line holding more than its open quantity releases
-// the excess; and, while the order holds reservations, a goods line reserves
-// what its open quantity grew by — a new line its whole open quantity.
+// releases all it holds, and so does a line whose item changed — it then
+// reserves its whole open quantity of the new variant; a line holding more
+// than its open quantity releases the excess; and, while the order holds
+// reservations, a goods line reserves what its open quantity grew by — a new
+// line its whole open quantity. With Inventory off a kept line keeps how it
+// is delivered (saveConfirmedOrder), so it releases only what it no longer
+// has open, never because Inventory is off.
 func (s *server) adjustReservations(ctx context.Context, tx pgx.Tx, o store.OrdersOrder, before, after []store.OrdersLine, title string) error {
 	reserved, err := s.reservedByLine(ctx, tx, o.ID)
 	if err != nil {
@@ -358,15 +364,21 @@ func (s *server) adjustReservations(ctx context.Context, tx pgx.Tx, o store.Orde
 	}
 	was := byID(before)
 	now := byID(after)
+	// itemChanged reports whether a kept line's variant changed.
+	itemChanged := func(l store.OrdersLine) bool {
+		old, ok := was[l.ID]
+		return ok && !equalInt32(old.VariantID, l.VariantID)
+	}
 	release := map[int64]*big.Rat{}
 	for id, q := range reserved {
 		l, kept := now[id]
-		if !kept || !reservable(l) {
+		switch {
+		case !kept, itemChanged(l), !reservable(l) && s.stockKept():
 			release[id] = nil
-			continue
-		}
-		if open := openToDeliver(l); q.Cmp(open) > 0 {
-			release[id] = new(big.Rat).Sub(q, open)
+		default:
+			if open := openToDeliver(l); q.Cmp(open) > 0 {
+				release[id] = new(big.Rat).Sub(q, open)
+			}
 		}
 	}
 	if err := s.releaseLines(ctx, tx, o.ID, release); err != nil {
@@ -379,12 +391,16 @@ func (s *server) adjustReservations(ctx context.Context, tx pgx.Tx, o store.Orde
 		}
 		open := openToDeliver(l)
 		grew := open
-		if old, ok := was[l.ID]; ok && reservable(old) {
+		if old, ok := was[l.ID]; ok && reservable(old) && !itemChanged(l) {
 			grew = new(big.Rat).Sub(open, openToDeliver(old))
 		}
 		held := new(big.Rat).Set(orZero(reserved[l.ID]))
-		if r := release[l.ID]; r != nil {
-			held = new(big.Rat).Sub(held, r)
+		if r, ok := release[l.ID]; ok {
+			if r == nil {
+				held = new(big.Rat)
+			} else {
+				held = new(big.Rat).Sub(held, r)
+			}
 		}
 		// Never beyond what is open.
 		if room := new(big.Rat).Sub(open, held); grew.Cmp(room) > 0 {

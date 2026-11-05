@@ -62,7 +62,7 @@ type CancelDraftDeliveriesOfOrderParams struct {
 }
 
 // CancelDraftDeliveriesOfOrder cancels every draft delivery of an order: the
-// order's cancel and cancel remaining leave nothing for them to deliver.
+// order's cancel leaves nothing for them to deliver.
 func (q *Queries) CancelDraftDeliveriesOfOrder(ctx context.Context, arg CancelDraftDeliveriesOfOrderParams) ([]int64, error) {
 	rows, err := q.db.Query(ctx, cancelDraftDeliveriesOfOrder, arg.Now, arg.OrderID)
 	if err != nil {
@@ -81,6 +81,26 @@ func (q *Queries) CancelDraftDeliveriesOfOrder(ctx context.Context, arg CancelDr
 		return nil, err
 	}
 	return items, nil
+}
+
+const cancelEmptyDraftDeliveries = `-- name: CancelEmptyDraftDeliveries :exec
+UPDATE orders.deliveries d
+SET status = CASE WHEN EXISTS (SELECT 1 FROM orders.delivery_lines dl WHERE dl.delivery_id = d.id) THEN 'draft' ELSE 'cancelled' END,
+    cancelled_at = CASE WHEN EXISTS (SELECT 1 FROM orders.delivery_lines dl WHERE dl.delivery_id = d.id) THEN NULL ELSE $1::timestamptz END,
+    version = version + 1, updated_at = $1
+WHERE d.id = ANY($2::bigint[]) AND d.status = 'draft'
+`
+
+type CancelEmptyDraftDeliveriesParams struct {
+	Now time.Time
+	Ids []int64
+}
+
+// CancelEmptyDraftDeliveries cancels the drafts among ids left without a
+// line, and bumps the others' version: their lines changed.
+func (q *Queries) CancelEmptyDraftDeliveries(ctx context.Context, arg CancelEmptyDraftDeliveriesParams) error {
+	_, err := q.db.Exec(ctx, cancelEmptyDraftDeliveries, arg.Now, arg.Ids)
+	return err
 }
 
 const countDeliveries = `-- name: CountDeliveries :one
@@ -121,6 +141,42 @@ DELETE FROM orders.delivery_lines WHERE delivery_id = $1
 func (q *Queries) DeleteDeliveryLines(ctx context.Context, deliveryID int64) error {
 	_, err := q.db.Exec(ctx, deleteDeliveryLines, deliveryID)
 	return err
+}
+
+const deleteDraftDeliveryLinesOf = `-- name: DeleteDraftDeliveryLinesOf :many
+DELETE FROM orders.delivery_lines dl
+USING orders.deliveries d
+WHERE d.id = dl.delivery_id AND d.order_id = $1 AND d.status = 'draft'
+  AND dl.order_line_id = ANY($2::bigint[])
+RETURNING dl.delivery_id
+`
+
+type DeleteDraftDeliveryLinesOfParams struct {
+	OrderID      int64
+	OrderLineIds []int64
+}
+
+// DeleteDraftDeliveryLinesOf removes the lines of the order's draft
+// deliveries that name the order lines: a cancel of what remains leaves
+// nothing of them to deliver. It answers the drafts that lost a line.
+func (q *Queries) DeleteDraftDeliveryLinesOf(ctx context.Context, arg DeleteDraftDeliveryLinesOfParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, deleteDraftDeliveryLinesOf, arg.OrderID, arg.OrderLineIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var delivery_id int64
+		if err := rows.Scan(&delivery_id); err != nil {
+			return nil, err
+		}
+		items = append(items, delivery_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const deliveriesOfOrder = `-- name: DeliveriesOfOrder :many

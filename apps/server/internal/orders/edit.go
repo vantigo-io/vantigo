@@ -475,6 +475,21 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 		}
 		siteChanged := !equalInt64(site, o.SiteID)
 		settlePolicies(ctx, priced, byID(current), s.atSite(site), false)
+		// Inventory off says nothing of a kept line's goods (O45): it keeps
+		// how it is delivered, and so its reservation, unless its item
+		// changed.
+		if !s.stockKept() {
+			old := byID(current)
+			for i := range priced {
+				p := &priced[i]
+				if p.id == nil {
+					continue
+				}
+				if was, ok := old[*p.id]; ok && equalInt32(was.VariantID, p.variantID) {
+					p.deliveryMethod = was.DeliveryMethod
+				}
+			}
+		}
 		if err := judgePolicies(priced, current, allocationsByLine(allocations)); err != nil {
 			return err
 		}
