@@ -463,8 +463,9 @@ comes from ([where invitations are sent from](/en/user/calendar/#where-invitatio
 permission needs **Use Orders** beside it; **Confirm orders** also accepts a quote straight
 into a confirmed order; **Manage Orders settings** keeps the quote templates as well and
 cannot be delegated; **Manage subscriptions** makes, changes, pauses and ends
-subscriptions; and **Manage deliveries** and **Manage carriers** are listed for the
-deliveries still to come and do nothing yet ([Orders](/en/admin/orders/#give-people-access)).
+subscriptions; **Manage deliveries** makes, picks, posts and cancels deliveries; and
+**Manage carriers** is listed for the shipping still to come and does nothing yet
+([Orders](/en/admin/orders/#give-people-access)).
 
 ### Assignments
 
