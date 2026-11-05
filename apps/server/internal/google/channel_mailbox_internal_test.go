@@ -65,7 +65,9 @@ func TestClient_ABudgetedCallOutlivesTheClientsTimeout(t *testing.T) {
 	}()
 	time.Sleep(50 * time.Millisecond)
 	cancel()
-	<-done
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Errorf("the cancelled upload: %v, want context.Canceled", err)
+	}
 	if got := rt.deadline.Sub(start); got < callBudget+20*time.Second || got > callBudget+26*time.Second {
 		t.Errorf("a 25 MB upload's deadline is %v away, want about %v", got, sizedBudget(25_000_000))
 	}
@@ -90,7 +92,9 @@ func TestClient_ABudgetedCallOutlivesTheClientsTimeout(t *testing.T) {
 	go func() { done <- c.get(ctx, &staticSource{}, directoryBase+"/customers/my_customer", nil) }()
 	time.Sleep(50 * time.Millisecond)
 	cancel()
-	<-done
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Errorf("the cancelled upload: %v, want context.Canceled", err)
+	}
 	if got := rt.deadline.Sub(start); got > callBudget+time.Second {
 		t.Errorf("a plain call's deadline is %v away, want at most %v", got, callBudget)
 	}
