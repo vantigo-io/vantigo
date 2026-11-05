@@ -13,7 +13,7 @@ export interface SendDialogProps {
   validUntil?: string | null;
   loading?: boolean;
   error?: string;
-  onSend: (input: Omit<SendInput, "revision" | "version">) => void;
+  onSend: (input: Omit<SendInput, "revision" | "version" | "expectedUpdatedAt">) => void;
   onClose: () => void;
 }
 

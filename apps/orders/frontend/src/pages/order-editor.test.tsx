@@ -31,7 +31,12 @@ describe("the order editor", () => {
     renderRoute("/orders/orders/2001");
 
     await userEvent.click(await screen.findByRole("button", { name: "Confirm" }));
-    await waitFor(() => expect(fake.sent("POST", `${url}/confirm`)?.body).toEqual({ version: 1 }));
+    await waitFor(() =>
+      expect(fake.sent("POST", `${url}/confirm`)?.body).toEqual({
+        version: 1,
+        expectedUpdatedAt: "2026-11-01T08:00:00Z",
+      }),
+    );
     expect(await screen.findByText("The order is confirmed")).toBeInTheDocument();
     expect(await screen.findByTestId("order-status")).toHaveTextContent("Confirmed");
   });
@@ -95,6 +100,7 @@ describe("the order editor", () => {
     await waitFor(() =>
       expect(fake.sent("POST", `${url}/mark-delivered`)?.body).toEqual({
         version: 3,
+        expectedUpdatedAt: "2026-11-01T08:00:00Z",
         lines: [{ lineId: 5001, quantity: 3 }],
       }),
     );
@@ -133,7 +139,11 @@ describe("the order editor", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Put on hold" }));
 
     await waitFor(() =>
-      expect(fake.sent("POST", `${url}/hold`)?.body).toEqual({ version: 3, reason: "Venter på betaling" }),
+      expect(fake.sent("POST", `${url}/hold`)?.body).toEqual({
+        version: 3,
+        expectedUpdatedAt: "2026-11-01T08:00:00Z",
+        reason: "Venter på betaling",
+      }),
     );
     expect(await screen.findByText("Venter på betaling")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Release" })).toBeInTheDocument();
@@ -158,7 +168,12 @@ describe("the order editor", () => {
     expect(screen.queryByRole("menuitem", { name: "Cancel the order" })).not.toBeInTheDocument();
     await userEvent.click(await screen.findByRole("menuitem", { name: "Cancel the rest" }));
     await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Cancel the rest" }));
-    await waitFor(() => expect(fake.sent("POST", `${url}/cancel-remaining`)?.body).toEqual({ version: 3 }));
+    await waitFor(() =>
+      expect(fake.sent("POST", `${url}/cancel-remaining`)?.body).toEqual({
+        version: 3,
+        expectedUpdatedAt: "2026-11-01T08:00:00Z",
+      }),
+    );
     expect(await screen.findByText("The rest of the order is cancelled")).toBeInTheDocument();
   });
 
@@ -173,7 +188,9 @@ describe("the order editor", () => {
     expect(await screen.findByLabelText("Quantity of line 1")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "More actions" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Lock" }));
-    await waitFor(() => expect(fake.sent("POST", `${url}/lock`)?.body).toEqual({ version: 3 }));
+    await waitFor(() =>
+      expect(fake.sent("POST", `${url}/lock`)?.body).toEqual({ version: 3, expectedUpdatedAt: "2026-11-01T08:00:00Z" }),
+    );
     expect(await screen.findByText(/The order is locked: it takes no edits/)).toBeInTheDocument();
     expect(screen.queryByLabelText("Quantity of line 1")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();

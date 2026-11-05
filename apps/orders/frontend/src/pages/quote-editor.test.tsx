@@ -190,6 +190,7 @@ describe("the quote editor", () => {
       message: "Takk for praten",
       validUntil: "2026-12-01",
       revision: 1,
+      expectedUpdatedAt: "2026-11-01T08:00:00Z",
     });
     expect(await screen.findByText("The quote is sent")).toBeInTheDocument();
     expect(await screen.findByTestId("quote-status")).toHaveTextContent("Sent");
@@ -223,7 +224,11 @@ describe("the quote editor", () => {
     await userEvent.click(screen.getByRole("button", { name: "Mark as sent" }));
     await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Mark as sent" }));
     await waitFor(() =>
-      expect(fake.sent("POST", `${url}/mark-sent`)?.body).toEqual({ revision: 1, validUntil: "2026-12-01" }),
+      expect(fake.sent("POST", `${url}/mark-sent`)?.body).toEqual({
+        revision: 1,
+        expectedUpdatedAt: "2026-11-01T08:00:00Z",
+        validUntil: "2026-12-01",
+      }),
     );
   });
 
@@ -240,8 +245,37 @@ describe("the quote editor", () => {
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Quantity of line 1")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Revise" }));
-    await waitFor(() => expect(fake.sent("POST", `${url}/revise`)?.body).toEqual({ revision: 1 }));
+    await waitFor(() =>
+      expect(fake.sent("POST", `${url}/revise`)?.body).toEqual({
+        revision: 1,
+        expectedUpdatedAt: "2026-11-01T08:00:00Z",
+      }),
+    );
     expect(await screen.findByText("revision 2")).toBeInTheDocument();
+  });
+
+  it("offers Revise and Decline on an expired quote, sending the updatedAt it read", async () => {
+    const expired = quote({
+      status: "expired",
+      sentAt: "2026-10-01T10:00:00Z",
+      updatedAt: "2026-11-02T00:00:00.123456Z",
+    });
+    const fake = server(expired, (call) =>
+      call.url === `${url}/revise`
+        ? jsonResponse(200, quote({ revision: 2, updatedAt: "2026-11-06T10:00:00Z" }))
+        : undefined,
+    );
+    renderRoute("/orders/quotes/1001");
+
+    await screen.findByRole("heading", { name: /Quote 1042/ });
+    expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Revise" }));
+    await waitFor(() =>
+      expect(fake.sent("POST", `${url}/revise`)?.body).toEqual({
+        revision: 1,
+        expectedUpdatedAt: "2026-11-02T00:00:00.123456Z",
+      }),
+    );
   });
 
   it("accepts with the optional lines the customer took into a draft order, and opens it", async () => {
@@ -267,6 +301,7 @@ describe("the quote editor", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/orders/orders/2009"));
     expect(fake.sent("POST", `${url}/accept`)?.body).toEqual({
       revision: 1,
+      expectedUpdatedAt: "2026-11-01T08:00:00Z",
       into: "draft_order",
       optionalLineIds: [5003],
     });
@@ -303,7 +338,13 @@ describe("the quote editor", () => {
     const dialog = await screen.findByRole("dialog");
     await userEvent.type(within(dialog).getByLabelText("Reason"), "For dyrt");
     await userEvent.click(within(dialog).getByRole("button", { name: "Decline" }));
-    await waitFor(() => expect(fake.sent("POST", `${url}/decline`)?.body).toEqual({ revision: 1, reason: "For dyrt" }));
+    await waitFor(() =>
+      expect(fake.sent("POST", `${url}/decline`)?.body).toEqual({
+        revision: 1,
+        expectedUpdatedAt: "2026-11-01T08:00:00Z",
+        reason: "For dyrt",
+      }),
+    );
     expect(await screen.findByText("For dyrt")).toBeInTheDocument();
   });
 

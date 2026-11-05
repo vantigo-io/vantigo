@@ -54,18 +54,30 @@ export const orderMailingsQueryOptions = (id: number) =>
 
 export const createOrder = (input: OrderInput) => send<Order>(base, json("POST", input));
 export const updateOrder = (id: number, input: OrderUpdate) => send<Order>(`${base}/${id}`, json("PUT", input));
-export const deleteOrder = (id: number) => send<void>(`${base}/${id}`, { method: "DELETE" });
+/** Deletes a draft as it was read: `expectedUpdatedAt` is its `updatedAt` (409 `version_conflict` otherwise). */
+export const deleteOrder = (id: number, expectedUpdatedAt: string) =>
+  send<void>(`${base}/${id}?expectedUpdatedAt=${encodeURIComponent(expectedUpdatedAt)}`, { method: "DELETE" });
 
-/** The state changes that take only the version the page read (O18). */
+/**
+ * What every write sends of the order as the page read it (O26): its version
+ * and its `updatedAt`, the concurrency token a hold or a lock moves too.
+ */
+export interface OrderRead {
+  version: number;
+  updatedAt: string;
+}
+const token = (read: OrderRead) => ({ version: read.version, expectedUpdatedAt: read.updatedAt });
+
+/** The state changes that take only the order as the page read it (O18). */
 export type OrderTransition = "confirm" | "release" | "lock" | "unlock" | "cancel" | "cancel-remaining";
-export const transitionOrder = (id: number, transition: OrderTransition, version: number) =>
-  send<Order>(`${base}/${id}/${transition}`, json("POST", { version }));
-export const holdOrder = (id: number, version: number, reason: string) =>
-  send<Order>(`${base}/${id}/hold`, json("POST", { version, ...(reason ? { reason } : {}) }));
-export const markDelivered = (id: number, version: number, lines: DeliveredLine[]) =>
-  send<Order>(`${base}/${id}/mark-delivered`, json("POST", { version, lines }));
-export const undoDelivered = (id: number, version: number, lines: DeliveredLine[]) =>
-  send<Order>(`${base}/${id}/undo-delivered`, json("POST", { version, lines }));
+export const transitionOrder = (id: number, transition: OrderTransition, read: OrderRead) =>
+  send<Order>(`${base}/${id}/${transition}`, json("POST", token(read)));
+export const holdOrder = (id: number, read: OrderRead, reason: string) =>
+  send<Order>(`${base}/${id}/hold`, json("POST", { ...token(read), ...(reason ? { reason } : {}) }));
+export const markDelivered = (id: number, read: OrderRead, lines: DeliveredLine[]) =>
+  send<Order>(`${base}/${id}/mark-delivered`, json("POST", { ...token(read), lines }));
+export const undoDelivered = (id: number, read: OrderRead, lines: DeliveredLine[]) =>
+  send<Order>(`${base}/${id}/undo-delivered`, json("POST", { ...token(read), lines }));
 export const sendOrder = (id: number, input: SendInput) => send<Order>(`${base}/${id}/send`, json("POST", input));
 
 /** Where an order confirmation's PDF is: a version's stored one, or the current one printed now (O24). */

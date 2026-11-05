@@ -86,7 +86,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a draft order
-         * @description Deletes a draft order; its number is left as a gap (O12, O54).
+         * @description Deletes a draft order; its number is left as a gap (O12, O54). A draft accepted from a quote puts that quote back to sent, so it can be accepted again.
          */
         delete: operations["deleteSalesOrder"];
         options?: never;
@@ -105,7 +105,7 @@ export interface paths {
         put?: never;
         /**
          * Cancel an order
-         * @description Cancels an order while nothing is delivered or invoiced, and publishes orders.sales_order.cancelled.v1 (O18).
+         * @description Cancels an order while nothing is delivered or invoiced, and publishes orders.sales_order.cancelled.v1 (O18). A locked confirmed order is unlocked first (order_locked).
          */
         post: operations["cancelSalesOrder"];
         delete?: never;
@@ -808,6 +808,11 @@ export interface components {
     schemas: {
         /** @description Accept a sent (or expired) quote (O20, O21): which optional lines the customer took, and what to make. confirmed_order also needs orders:sales-confirm. */
         OrdersAcceptInput: {
+            /**
+             * Format: date-time
+             * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
             /** @enum {string} */
             into: "draft_order" | "confirmed_order";
             optionalLineIds?: number[];
@@ -831,6 +836,11 @@ export interface components {
         };
         /** @description Apply a template to a draft quote (O23): its lines are appended, or replace the quote's with replace; empty texts are filled. */
         OrdersApplyTemplateInput: {
+            /**
+             * Format: date-time
+             * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
             replace?: boolean;
             /** Format: int32 */
             revision: number;
@@ -906,12 +916,22 @@ export interface components {
         };
         /** @description Decline a sent quote, with an optional reason. */
         OrdersDeclineInput: {
+            /**
+             * Format: date-time
+             * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
             reason?: string;
             /** Format: int32 */
             revision: number;
         };
         /** @description Register delivered, or undo (O32): per-line quantities; a line left out is not changed. */
         OrdersDeliveredInput: {
+            /**
+             * Format: date-time
+             * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
             lines: components["schemas"]["OrdersDeliveredLine"][];
             /** Format: int32 */
             version: number;
@@ -937,6 +957,11 @@ export interface components {
         };
         /** @description Hold an order (O18), with a reason. */
         OrdersHoldInput: {
+            /**
+             * Format: date-time
+             * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
             reason?: string;
             /** Format: int32 */
             version: number;
@@ -1095,6 +1120,11 @@ export interface components {
         };
         /** @description Mark a draft quote as sent by other means (O20); validUntil defaults as on send. */
         OrdersMarkSentInput: {
+            /**
+             * Format: date-time
+             * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
             /** Format: int32 */
             revision: number;
             /** Format: date */
@@ -1161,7 +1191,10 @@ export interface components {
             /** @enum {string} */
             status: "draft" | "confirmed" | "cancelled";
             totals: components["schemas"]["OrdersTotals"];
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the document was last written: the concurrency token every write sends back as expectedUpdatedAt (O26).
+             */
             updatedAt: string;
             /** Format: int32 */
             version: number;
@@ -1231,7 +1264,7 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
-        /** @description An order's save: the header and every line, replaced whole, lines naming their ids kept (O15). A confirmed order takes only what O26 allows. version is the one the editor read (version_conflict otherwise). */
+        /** @description An order's save: the header and every line, replaced whole, lines naming their ids kept (O15); a kept line's kind never changes (line_kind_changed) — remove it and add a new one. A confirmed order takes only what O26 allows, and its kept lines keep their frozen item, name, unit and VAT. version is the one the editor read (version_conflict otherwise). */
         OrdersOrderUpdate: {
             closingText?: string;
             /** Format: int32 */
@@ -1244,6 +1277,11 @@ export interface components {
             /** Format: date */
             deliveryDate?: string | null;
             discountVisible?: boolean;
+            /**
+             * Format: date-time
+             * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
             internalNote?: string;
             introText?: string;
             /** @enum {string} */
@@ -1279,7 +1317,7 @@ export interface components {
             /** Format: uuid */
             userId?: string | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version or revision), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_has_progress, line_invoiced, line_has_progress, line_in_draft_invoice, client_request_reused, template_name_taken. 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice, client_request_reused, template_name_taken. 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         OrdersProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1349,7 +1387,10 @@ export interface components {
             /** @enum {string} */
             status: "draft" | "sent" | "accepted" | "declined" | "expired" | "cancelled";
             totals: components["schemas"]["OrdersTotals"];
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the document was last written: the concurrency token every write sends back as expectedUpdatedAt (O26).
+             */
             updatedAt: string;
             /** Format: date */
             validUntil?: string | null;
@@ -1431,6 +1472,11 @@ export interface components {
             /** Format: date */
             deliveryDate?: string | null;
             discountVisible?: boolean;
+            /**
+             * Format: date-time
+             * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
             internalNote?: string;
             introText?: string;
             /** @enum {string} */
@@ -1451,6 +1497,11 @@ export interface components {
         };
         /** @description The revision the client read. */
         OrdersRevisionInput: {
+            /**
+             * Format: date-time
+             * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
             /** Format: int32 */
             revision: number;
         };
@@ -1481,6 +1532,11 @@ export interface components {
         /** @description A send from the dialog (O25): the recipient defaults to the contact's e-mail, else the customer's invoice e-mail. revision for a quote, version for an order. */
         OrdersSendInput: {
             cc?: string[];
+            /**
+             * Format: date-time
+             * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
             message?: string;
             /** Format: email */
             recipient: string;
@@ -1723,6 +1779,11 @@ export interface components {
         };
         /** @description The version the client read. */
         OrdersVersionInput: {
+            /**
+             * Format: date-time
+             * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
             /** Format: int32 */
             version: number;
         };
@@ -2069,7 +2130,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, order_locked, line_invoiced, line_has_progress, line_in_draft_invoice. */
+            /** @description Conflict — version_conflict, order_locked, line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2091,7 +2152,10 @@ export interface operations {
     };
     deleteSalesOrder: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description The updatedAt of the document as the client read it (version_conflict otherwise). */
+                expectedUpdatedAt: string;
+            };
             header?: never;
             path: {
                 id: number;
@@ -2132,7 +2196,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — order_not_draft. */
+            /** @description Conflict — version_conflict, order_not_draft. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2192,7 +2256,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, order_has_progress. */
+            /** @description Conflict — version_conflict, order_locked, order_has_progress. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2660,7 +2724,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, order_not_confirmed. */
+            /** @description Conflict — version_conflict, order_not_confirmed, order_on_hold. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2964,7 +3028,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, order_not_confirmed. */
+            /** @description Conflict — version_conflict, order_not_confirmed, order_on_hold. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3274,7 +3338,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, quote_not_draft. */
+            /** @description Conflict — version_conflict, quote_not_draft, line_kind_changed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3296,7 +3360,10 @@ export interface operations {
     };
     deleteQuote: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description The updatedAt of the document as the client read it (version_conflict otherwise). */
+                expectedUpdatedAt: string;
+            };
             header?: never;
             path: {
                 id: number;
@@ -3337,7 +3404,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — quote_not_draft. */
+            /** @description Conflict — version_conflict, quote_not_draft. */
             409: {
                 headers: {
                     [name: string]: unknown;
