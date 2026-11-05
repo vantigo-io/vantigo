@@ -18,6 +18,7 @@ import {
 import {
   IconArrowDown,
   IconArrowUp,
+  IconGridDots,
   IconHeading,
   IconNote,
   IconPackage,
@@ -25,12 +26,13 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import type { Line } from "../api/types";
 import { currentRate, vatCodesQueryOptions } from "../api/vat-codes";
 import type { OrdersAccess } from "../lib/access";
 import { useOrdersFormat } from "../lib/format";
-import { type EditableLine, editLine, moveLine, newLine } from "../lib/lines";
+import { applyGrid, type EditableLine, editLine, moveLine, newLine, packagingOf } from "../lib/lines";
+import { GridDialog } from "./grid-dialog";
 import { VariantPicker } from "./variant-picker";
 
 export interface LineGridProps {
@@ -71,6 +73,7 @@ export const LineGrid = ({
   refused,
 }: LineGridProps) => {
   const { t, money, unitPrice, quantity, percent } = useOrdersFormat();
+  const [gridOpen, setGridOpen] = useState(false);
   const vatCodes = useQuery({ ...vatCodesQueryOptions(), enabled: editable && access.canReadVatCodes });
   const amounts = mode !== "template";
   const showProgress = mode === "order" && confirmed;
@@ -88,6 +91,7 @@ export const LineGrid = ({
   const productRow = (line: EditableLine, index: number) => {
     const saved = line.saved;
     const invoiced = confirmed && (saved?.qtyInvoiced ?? 0) > 0;
+    const pack = packagingOf(line);
     const position = index + 1;
     const vatText = saved?.vatCode
       ? `${saved.vatCode}${saved.vatRatePercent == null ? "" : ` · ${percent(saved.vatRatePercent)}`}`
@@ -114,8 +118,18 @@ export const LineGrid = ({
                             // A catalog line is priced by the server unless a price is typed (O16).
                             unitPrice: "",
                             priceTouched: false,
+                            packagings: variant.packagings,
+                            packagingId: null,
+                            packagingQuantity: "",
                           }
-                        : { variantId: null, sku: null, name: "" },
+                        : {
+                            variantId: null,
+                            sku: null,
+                            name: "",
+                            packagings: [],
+                            packagingId: null,
+                            packagingQuantity: "",
+                          },
                     )
                   }
                 />
@@ -170,21 +184,77 @@ export const LineGrid = ({
             )}
           </Stack>
         </Table.Td>
-        <Table.Td w={110}>
+        <Table.Td w={150}>
           {editable ? (
-            <NumberInput
-              size="xs"
-              aria-label={t("lineQuantity", { position })}
-              value={line.quantity}
-              min={0}
-              decimalScale={3}
-              hideControls
-              onChange={(value) => set(index, { quantity: value === "" ? "" : Number(value) })}
-            />
+            <Stack gap={4}>
+              {pack ? (
+                <NumberInput
+                  size="xs"
+                  aria-label={t("linePackagingQuantity", { position })}
+                  value={line.packagingQuantity}
+                  min={0}
+                  decimalScale={3}
+                  hideControls
+                  onChange={(value) => set(index, { packagingQuantity: value === "" ? "" : Number(value) })}
+                />
+              ) : (
+                <NumberInput
+                  size="xs"
+                  aria-label={t("lineQuantity", { position })}
+                  value={line.quantity}
+                  min={0}
+                  decimalScale={3}
+                  hideControls
+                  onChange={(value) => set(index, { quantity: value === "" ? "" : Number(value) })}
+                />
+              )}
+              {line.packagings.length > 0 && (
+                <Select
+                  size="xs"
+                  aria-label={t("linePackaging", { position })}
+                  data={[
+                    { value: "", label: line.unit || t("packagingUnit") },
+                    ...line.packagings.map((p) => ({
+                      value: String(p.id),
+                      label: t("packagingOption", { name: p.name, size: quantity(p.quantity) }),
+                    })),
+                  ]}
+                  value={line.packagingId === null ? "" : String(line.packagingId)}
+                  allowDeselect={false}
+                  onChange={(value) =>
+                    set(
+                      index,
+                      value
+                        ? { packagingId: Number(value), packagingQuantity: line.packagingQuantity || 1 }
+                        : { packagingId: null, packagingQuantity: "" },
+                    )
+                  }
+                />
+              )}
+              {pack && line.packagingQuantity !== "" && (
+                <Text size="xs" c="dimmed" data-testid={`line-packaging-${position}`}>
+                  {t("packagingTotal", {
+                    total: quantity(Math.round(line.packagingQuantity * pack.quantity * 1000) / 1000),
+                    unit: line.unit,
+                  })}
+                </Text>
+              )}
+            </Stack>
           ) : (
-            <Text size="sm" ta="right">
-              {line.quantity === "" ? "—" : quantity(line.quantity)}
-            </Text>
+            <>
+              <Text size="sm" ta="right">
+                {line.quantity === "" ? "—" : quantity(line.quantity)}
+              </Text>
+              {pack && line.packagingQuantity !== "" && (
+                <Text size="xs" c="dimmed" ta="right" data-testid={`line-packaging-${position}`}>
+                  {t("packagingText", {
+                    count: quantity(line.packagingQuantity),
+                    name: pack.name,
+                    size: quantity(pack.quantity),
+                  })}
+                </Text>
+              )}
+            </>
           )}
         </Table.Td>
         <Table.Td w={80}>
@@ -453,6 +523,17 @@ export const LineGrid = ({
           >
             {t("addProductLine")}
           </Button>
+          {mode !== "template" && (
+            <Button
+              size="xs"
+              variant="light"
+              leftSection={<IconGridDots size={14} />}
+              onClick={() => setGridOpen(true)}
+              data-assist="orders.lines.add-from-grid"
+            >
+              {t("addFromGrid")}
+            </Button>
+          )}
           <Button
             size="xs"
             variant="light"
@@ -484,6 +565,16 @@ export const LineGrid = ({
             {t("addNote")}
           </Button>
         </Group>
+      )}
+      {gridOpen && (
+        <GridDialog
+          currency={currency}
+          onClose={() => setGridOpen(false)}
+          onAdd={(picks) => {
+            onChange(applyGrid(lines, picks));
+            setGridOpen(false);
+          }}
+        />
       )}
     </Stack>
   );

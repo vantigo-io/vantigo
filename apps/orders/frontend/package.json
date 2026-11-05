@@ -9,6 +9,7 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@mantine/charts": "catalog:",
     "@mantine/core": "catalog:",
     "@mantine/dates": "catalog:",
     "@mantine/form": "catalog:",

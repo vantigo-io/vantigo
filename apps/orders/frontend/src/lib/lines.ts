@@ -1,4 +1,4 @@
-import type { Line, LineInput, LineKind, TemplateLine } from "../api/types";
+import type { Line, LineInput, LineKind, TemplateLine, VariantPackaging } from "../api/types";
 import type { components } from "../api-schema";
 
 type TemplateLineInput = components["schemas"]["OrdersTemplateLineInput"];
@@ -34,6 +34,14 @@ export interface EditableLine {
   discountPercent: number | "";
   vatCodeId: number | null;
   optional: boolean;
+  /**
+   * The packagings the line may be entered in (O15): the picked variant's, or
+   * the one a saved line was entered in. A line entered in one sends how many
+   * of it, and the server stores the quantity in the variant's unit.
+   */
+  packagings: VariantPackaging[];
+  packagingId: number | null;
+  packagingQuantity: number | "";
   saved?: Line;
   /** Whether any entry field moved since `saved`. */
   changed: boolean;
@@ -56,6 +64,18 @@ export const fromLine = (line: Line): EditableLine => ({
   discountPercent: line.discountPercent,
   vatCodeId: line.vatCodeId ?? null,
   optional: line.optional,
+  packagings:
+    line.packagingId != null && line.packagingQuantity != null && line.quantity != null
+      ? [
+          {
+            id: line.packagingId,
+            name: line.packagingName ?? "",
+            quantity: Math.round((line.quantity / line.packagingQuantity) * 1000) / 1000,
+          },
+        ]
+      : [],
+  packagingId: line.packagingId ?? null,
+  packagingQuantity: line.packagingQuantity ?? "",
   saved: line,
   changed: false,
 });
@@ -77,6 +97,9 @@ export const fromTemplateLine = (line: TemplateLine): EditableLine => ({
   discountPercent: 0,
   vatCodeId: null,
   optional: line.optional,
+  packagings: [],
+  packagingId: null,
+  packagingQuantity: "",
   changed: false,
 });
 
@@ -96,6 +119,9 @@ export const newLine = (kind: LineKind, catalog = false): EditableLine => ({
   discountPercent: 0,
   vatCodeId: null,
   optional: false,
+  packagings: [],
+  packagingId: null,
+  packagingQuantity: "",
   changed: true,
 });
 
@@ -117,13 +143,18 @@ export const toLineInput = (line: EditableLine, { quote }: { quote: boolean }): 
   if (line.kind !== "product")
     return { ...(line.id ? { id: line.id } : {}), kind: line.kind, description: line.description };
   const priced = line.unitPrice !== "" && (line.priceTouched || line.id === undefined);
+  const packed = line.packagingId !== null;
   return {
     ...(line.id ? { id: line.id } : {}),
     kind: "product",
     variantId: line.variantId,
     ...(line.catalog ? {} : { name: line.name, vatCodeId: line.vatCodeId }),
     description: line.description,
-    quantity: line.quantity === "" ? 0 : line.quantity,
+    // A line entered in a packaging sends how many of it; the server stores
+    // the quantity in the variant's unit (O15).
+    ...(packed
+      ? { packagingId: line.packagingId, packagingQuantity: line.packagingQuantity === "" ? 0 : line.packagingQuantity }
+      : { quantity: line.quantity === "" ? 0 : line.quantity }),
     unit: line.unit,
     ...(priced ? { unitPrice: line.unitPrice as number } : {}),
     discountPercent: line.discountPercent === "" ? 0 : line.discountPercent,
@@ -172,7 +203,46 @@ export const incompleteLines = (lines: readonly EditableLine[], { template = fal
     if (line.kind !== "product") return;
     if (line.catalog && line.variantId === null) problems.set(index, "linePickVariant");
     else if (!line.catalog && line.name.trim() === "") problems.set(index, "lineNameMissing");
-    else if (!template && (line.quantity === "" || line.quantity <= 0)) problems.set(index, "lineQuantityMissing");
+    else if (!template && line.packagingId !== null) {
+      if (line.packagingQuantity === "" || line.packagingQuantity <= 0) problems.set(index, "lineQuantityMissing");
+    } else if (!template && (line.quantity === "" || line.quantity <= 0)) problems.set(index, "lineQuantityMissing");
   });
   return problems;
+};
+
+/**
+ * A line entered in a packaging, as the grid and the PDF say it (O15):
+ * "3 × Eske à 15" — the count, the packaging and its size — or null for a
+ * line entered in its unit.
+ */
+export const packagingOf = (line: EditableLine): VariantPackaging | null =>
+  line.packagingId === null ? null : (line.packagings.find((p) => p.id === line.packagingId) ?? null);
+
+/**
+ * The lines with the grid's quantities applied (O34): a quantity typed for a
+ * variant updates its line entered in the unit when there is one, else adds a
+ * catalog line for it; a cell left empty or at 0 changes nothing.
+ */
+export const applyGrid = (
+  lines: readonly EditableLine[],
+  picks: readonly { variantId: number; sku: string; name: string; unit: string; quantity: number }[],
+): EditableLine[] => {
+  const next = [...lines];
+  for (const pick of picks) {
+    if (!(pick.quantity > 0)) continue;
+    const index = next.findIndex(
+      (line) => line.kind === "product" && line.variantId === pick.variantId && line.packagingId === null,
+    );
+    if (index >= 0) next[index] = editLine(next[index], { quantity: pick.quantity });
+    else
+      next.push({
+        ...newLine("product", true),
+        variantId: pick.variantId,
+        sku: pick.sku,
+        name: pick.name,
+        unit: pick.unit,
+        quantity: pick.quantity,
+      });
+  }
+  return next;
 };

@@ -38,6 +38,7 @@ import {
 } from "../api/orders";
 import { isVersionConflict, NotFoundError, ORDERS_QUERY_KEY } from "../api/request";
 import type { DeliveredLine, Order } from "../api/types";
+import { overrideOf } from "../api/warnings";
 import { ChangeLog } from "../components/change-log";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { ConflictAlert } from "../components/conflict-alert";
@@ -52,6 +53,7 @@ import { ReasonDialog } from "../components/reason-dialog";
 import { SendDialog } from "../components/send-dialog";
 import { DeliveryBadge, InvoiceBadge, OrderFlags, OrderStatusBadge } from "../components/status-badges";
 import { TotalsCard } from "../components/totals-card";
+import { WarningBanners } from "../components/warning-banners";
 import "../i18n";
 import { noOrdersAccess, type OrdersAccess } from "../lib/access";
 import { refusalMessage } from "../lib/errors";
@@ -164,6 +166,8 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
   const openToDeliver = order.lines.some(
     (line) => line.kind === "product" && (line.quantity ?? 0) - line.qtyCancelled - line.qtyDelivered > 0,
   );
+  // The reason a settings holder overrides the order's block warnings with (O33).
+  const [override, setOverride] = useState<string | null>(null);
   const close = () => {
     setDialog(null);
     setDialogError(undefined);
@@ -184,7 +188,8 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
   });
   const transition = useDocumentWrite({
     ...common,
-    write: (name: OrderTransition) => transitionOrder(order.id, name, order),
+    write: (name: OrderTransition) =>
+      transitionOrder(order.id, name, order, name === "confirm" ? overrideOf(override) : {}),
     errorTitle: t("couldNotChangeOrder"),
   });
   const hold = useDocumentWrite({
@@ -410,6 +415,14 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
         }
       />
       <Lifecycle steps={lifecycleOf(order, t)} label={t("orderLifecycle")} />
+      <WarningBanners
+        warnings={order.warnings}
+        customer={order.customer}
+        access={access}
+        blocking={confirmAllowed && draft}
+        override={override}
+        onOverride={setOverride}
+      />
       {editor.conflict && <ConflictAlert onReload={() => void queryClient.refetchQueries({ queryKey: detailKey })} />}
       {order.onHold && (
         <Alert color="orange" icon={<IconPlayerPause size={16} />} title={t("onHoldTitle")}>

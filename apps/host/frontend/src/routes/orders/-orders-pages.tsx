@@ -1,6 +1,7 @@
 import { useParams, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton } from "@vantigo/frontend-shell";
 import type { OrdersAccess } from "@vantigo/orders-ui";
+import { AnalysisPage } from "@vantigo/orders-ui/pages/analysis";
 import { OrderEditorPage } from "@vantigo/orders-ui/pages/order-editor";
 import { OrdersPage } from "@vantigo/orders-ui/pages/orders";
 import { QuoteEditorPage } from "@vantigo/orders-ui/pages/quote-editor";
@@ -26,6 +27,7 @@ export const QuotesRoutePage = withAccess((access) => <QuotesPage access={access
 export const OrdersRoutePage = withAccess((access) => <OrdersPage access={access} />);
 export const TemplatesRoutePage = withAccess((access) => <TemplatesPage access={access} />);
 export const SettingsRoutePage = withAccess((access) => <SettingsPage access={access} />);
+export const AnalysisRoutePage = withAccess((access) => <AnalysisPage access={access} />);
 
 const QuoteEditor = ({ access }: { access: OrdersAccess }) => {
   const { quoteId } = useParams({ from: "/orders/quotes/$quoteId" });

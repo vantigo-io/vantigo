@@ -7,6 +7,7 @@ export { ordersCatalog } from "./i18n";
 export { noOrdersAccess, type OrdersAccess } from "./lib/access";
 export { type OrdersNavItem, ordersNavItems, visibleOrdersNavItems } from "./lib/navigation";
 export * from "./lib/routes";
+export { AnalysisPage } from "./pages/analysis";
 export { OrderEditorPage } from "./pages/order-editor";
 export { OrdersPage } from "./pages/orders";
 export { QuoteEditorPage } from "./pages/quote-editor";

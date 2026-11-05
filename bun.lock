@@ -491,6 +491,7 @@
       "name": "@vantigo/orders-ui",
       "version": "0.0.0",
       "dependencies": {
+        "@mantine/charts": "catalog:",
         "@mantine/core": "catalog:",
         "@mantine/dates": "catalog:",
         "@mantine/form": "catalog:",

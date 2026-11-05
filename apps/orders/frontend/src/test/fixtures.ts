@@ -67,6 +67,7 @@ const header = {
   projectId: null,
   salesperson: { displayName: "Kari Selger", userId: "00000000-0000-4000-8000-000000000001" },
   totals: totals(),
+  warnings: [],
   createdAt: "2026-11-01T08:00:00Z",
   updatedAt: "2026-11-01T08:00:00Z",
 };
