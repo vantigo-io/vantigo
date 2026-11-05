@@ -96,6 +96,7 @@ begge) svarer med høyst 200 leveringer, de sist endrede først, med
       "event": "orders.sales_order.confirmed",
       "version": 1,
       "module": "orders",
+      "aggregate": "orders.sales_order",
       "aggregateId": "1042",
       "handler": "customers.timeline_orders",
       "state": "dead",
@@ -114,7 +115,7 @@ begge) svarer med høyst 200 leveringer, de sist endrede først, med
 | Felt | Betydning |
 | --- | --- |
 | `id` | Leveringens id, som de to kallene under tar |
-| `eventId`, `event`, `version`, `module`, `aggregateId` | Hendelsen: id-en, navnet og versjonen av innholdet, modulen som publiserte den, og id-en til det den gjelder |
+| `eventId`, `event`, `version`, `module`, `aggregate`, `aggregateId` | Hendelsen: id-en, navnet og versjonen av innholdet, modulen som publiserte den, hva slags ting den gjelder (`orders.sales_order`) og id-en til den |
 | `handler` | Mottakeren den leveres til, `<modul>.<hva>` |
 | `state` | `failed` (prøves igjen) eller `dead` |
 | `attempts` | Forsøk som har feilet så langt |

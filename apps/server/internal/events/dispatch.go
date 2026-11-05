@@ -35,7 +35,8 @@ const (
 	maxAttempts = 8
 	// lastErrorLimit is platform.event_deliveries.last_error's length.
 	lastErrorLimit = 2000
-	// retention is how long an event whose deliveries are all done is kept.
+	// retention is how long after its creation an event fanned out whose
+	// deliveries are all done is kept.
 	retention = 30 * 24 * time.Hour
 	// pruneBatch bounds the events one pass deletes.
 	pruneBatch = 1000
@@ -50,14 +51,18 @@ func backoffAfter(attempts int) time.Duration {
 }
 
 // Dispatcher is the outbox's one leased worker, events.dispatch (orders
-// design O3). Each pass it fans every event out into one
-// platform.event_deliveries row per subscribed handler, claims due
-// deliveries under a lease — in event id order per handler and aggregate, an
-// earlier delivery not yet done holding a later one back — and handles each
-// on its own transaction, marking it done on that transaction. A failure is
-// recorded on a separate short transaction, with backoff, and the eighth
-// makes the delivery dead until the operator retries or skips it (O4).
-// Events older than 30 days whose deliveries are all done are pruned.
+// design O3). Each pass it fans every event not yet fanned out into one
+// platform.event_deliveries row per handler subscribed now, marking the
+// event fanned out in the same statement — a handler composed later gets no
+// deliveries for events fanned out before it. It then claims due deliveries
+// under a lease — in event id order per handler, aggregate and aggregate
+// id, an earlier delivery not yet done, or an earlier event of the same
+// aggregate not yet fanned out, holding a later one back — and handles each
+// on its own transaction, marking it done on that transaction. A failure of
+// the handler is recorded on a separate short transaction, with backoff,
+// and the eighth makes the delivery dead until the operator retries or
+// skips it (O4). Events fanned out and created more than 30 days ago whose
+// deliveries are all done are pruned.
 //
 // It never holds one pooled connection while it asks for another: every
 // statement and every transaction takes its connection, uses it and gives
@@ -161,33 +166,50 @@ func (d *Dispatcher) handlerNames() []string {
 	return names
 }
 
-// fanOutSQL writes a pending delivery for every (event, subscribed handler)
-// that has none, the lowest event ids first. An event no handler takes gets
-// none. ON CONFLICT lets two dispatchers fan out at once.
-const fanOutSQL = `INSERT INTO platform.event_deliveries
-    (event_id, handler, aggregate_id, state, attempts, next_attempt_at, created_at, updated_at)
-SELECT e.id, s.handler, e.aggregate_id, 'pending', 0, $4, $4, $4
-FROM platform.events e
-JOIN unnest($1::text[], $2::text[], $3::int[]) AS s(handler, name, version)
-  ON s.name = e.name AND s.version = e.version
-WHERE NOT EXISTS (
-    SELECT 1 FROM platform.event_deliveries d WHERE d.event_id = e.id AND d.handler = s.handler)
-ORDER BY e.id, s.handler
-LIMIT $5
-ON CONFLICT (event_id, handler) DO NOTHING`
+// fanOutSQL fans out up to $5 events not yet fanned out, the lowest ids
+// first: a pending delivery for every handler subscribed to the event's name
+// and version, and the event marked fanned out, in one statement, so either
+// both commit or neither does. An event no handler takes gets no delivery
+// and is marked all the same. A handler composed later gets nothing for an
+// event already marked: there is no backfill.
+//
+// FOR UPDATE SKIP LOCKED lets two dispatchers fan out at once, each its own
+// events. One may so commit a later event's deliveries before the other
+// commits an earlier event's of the same aggregate; the claim then holds the
+// later one back while the earlier event is not yet fanned out (claimSQL).
+const fanOutSQL = `WITH batch AS (
+    SELECT e.id, e.name, e.version, e.aggregate, e.aggregate_id FROM platform.events e
+    WHERE e.fanned_out_at IS NULL
+    ORDER BY e.id
+    LIMIT $5
+    FOR UPDATE SKIP LOCKED
+), marked AS (
+    UPDATE platform.events e SET fanned_out_at = $4
+    FROM batch b WHERE e.id = b.id
+    RETURNING e.id
+), delivered AS (
+    INSERT INTO platform.event_deliveries
+        (event_id, handler, aggregate, aggregate_id, state, attempts, next_attempt_at, created_at, updated_at)
+    SELECT b.id, s.handler, b.aggregate, b.aggregate_id, 'pending', 0, $4, $4, $4
+    FROM batch b
+    JOIN unnest($1::text[], $2::text[], $3::int[]) AS s(handler, name, version)
+      ON s.name = b.name AND s.version = b.version
+    ON CONFLICT (event_id, handler) DO NOTHING
+)
+SELECT count(*) FROM marked`
 
+// fanOut fans out batches until one comes back short. It runs with no
+// handler composed too, so the events of such a time are marked, and pruned,
+// rather than delivered to a handler composed later.
 func (d *Dispatcher) fanOut(ctx context.Context) error {
 	handlers, names, versions := d.subscriptions()
-	if len(handlers) == 0 {
-		return nil
-	}
 	now := d.clock()
 	for ctx.Err() == nil {
-		tag, err := d.pool.Exec(ctx, fanOutSQL, handlers, names, versions, now, dispatchBatch)
-		if err != nil {
+		var marked int
+		if err := d.pool.QueryRow(ctx, fanOutSQL, handlers, names, versions, now, dispatchBatch).Scan(&marked); err != nil {
 			return fmt.Errorf("events: fan out: %w", err)
 		}
-		if tag.RowsAffected() < dispatchBatch {
+		if marked < dispatchBatch {
 			return nil
 		}
 	}
@@ -218,10 +240,13 @@ func (d *Dispatcher) warnUnknown(ctx context.Context) error {
 }
 
 // claimSQL leases up to $2 due deliveries of composed handlers: pending or
-// failed, due, not leased, and with no earlier delivery for the same handler
-// and aggregate that is not done — a failed or dead one holds the later
-// ones back (O3). SKIP LOCKED lets two dispatchers claim at once without
-// one waiting on the other's rows; the lease keeps them apart afterwards.
+// failed, due, not leased, with no earlier delivery for the same handler,
+// aggregate and aggregate id that is not done — a failed or dead one holds
+// the later ones back (O3) — and no earlier event of the same aggregate and
+// aggregate id not yet fanned out, whose deliveries another dispatcher may
+// be about to commit (fanOutSQL). SKIP LOCKED lets two dispatchers claim at
+// once without one waiting on the other's rows; the lease keeps them apart
+// afterwards.
 const claimSQL = `WITH due AS (
     SELECT d.id FROM platform.event_deliveries d
     WHERE d.state IN ('pending', 'failed')
@@ -230,8 +255,12 @@ const claimSQL = `WITH due AS (
       AND d.handler = ANY($5::text[])
       AND NOT EXISTS (
           SELECT 1 FROM platform.event_deliveries p
-          WHERE p.handler = d.handler AND p.aggregate_id = d.aggregate_id
+          WHERE p.handler = d.handler AND p.aggregate = d.aggregate AND p.aggregate_id = d.aggregate_id
             AND p.event_id < d.event_id AND p.state <> 'done')
+      AND NOT EXISTS (
+          SELECT 1 FROM platform.events e
+          WHERE e.fanned_out_at IS NULL AND e.id < d.event_id
+            AND e.aggregate = d.aggregate AND e.aggregate_id = d.aggregate_id)
     ORDER BY d.event_id, d.id
     LIMIT $2
     FOR UPDATE SKIP LOCKED
@@ -267,13 +296,14 @@ func (d *Dispatcher) claim(ctx context.Context) ([]claimed, error) {
 	return out, nil
 }
 
-// leasedSQL re-reads a claimed delivery's event under the delivery's row
-// lock, only while the claim's lease still holds it.
-const leasedSQL = `SELECT e.id, e.name, e.version, e.module, e.aggregate_id, e.payload, e.occurred_at
-FROM platform.event_deliveries d
-JOIN platform.events e ON e.id = d.event_id
-WHERE d.id = $1 AND d.lease_id = $2 AND d.state IN ('pending', 'failed')
-FOR UPDATE OF d`
+// leasedSQL renews a claimed delivery's lease from now, as its handling
+// starts — a delivery late in a batch is not left with what remains of the
+// claim's lease — and reads its event under the delivery's row lock, only
+// while the claim's lease still holds it.
+const leasedSQL = `UPDATE platform.event_deliveries d SET lease_until = $3
+FROM platform.events e
+WHERE e.id = d.event_id AND d.id = $1 AND d.lease_id = $2 AND d.state IN ('pending', 'failed')
+RETURNING e.id, e.name, e.version, e.module, e.aggregate_id, e.payload, e.occurred_at`
 
 const doneSQL = `UPDATE platform.event_deliveries
 SET state = 'done', completed_at = $2, lease_id = NULL, lease_until = NULL, updated_at = $2
@@ -287,14 +317,21 @@ var errLeaseLost = errors.New("events: the lease was lost")
 // there. A handler error rolls that back; the failure is then recorded on a
 // separate statement, after the transaction gave its connection back. It
 // returns an error only for the database failing, never for the handler.
+//
+// Only a failure after the lease was re-checked is an attempt: the handler's
+// error, panic or timeout, or the database failing under it (its commit,
+// say). Failing to begin or to re-read the delivery — the database down —
+// counts nothing: the pass ends with the error, and the delivery is claimed
+// again once its lease runs out.
 func (d *Dispatcher) handle(ctx context.Context, c claimed) error {
 	h := d.handlers[c.handler]
+	leased := false
 	handleErr := db.WithTx(ctx, d.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		var (
 			ev      Delivered
 			version int16
 		)
-		err := tx.QueryRow(ctx, leasedSQL, c.id, c.leaseID).
+		err := tx.QueryRow(ctx, leasedSQL, c.id, c.leaseID, d.clock().Add(leaseDuration)).
 			Scan(&ev.ID, &ev.Name, &version, &ev.Module, &ev.AggregateID, &ev.Payload, &ev.OccurredAt)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errLeaseLost
@@ -302,6 +339,7 @@ func (d *Dispatcher) handle(ctx context.Context, c claimed) error {
 		if err != nil {
 			return fmt.Errorf("events: read delivery %d: %w", c.id, err)
 		}
+		leased = true
 		ev.Version = int(version)
 		if err := runHandler(ctx, h, tx, ev); err != nil {
 			return handlerError{err}
@@ -321,6 +359,8 @@ func (d *Dispatcher) handle(ctx context.Context, c claimed) error {
 		return ctx.Err()
 	case errors.As(handleErr, &failed):
 		return d.fail(ctx, c, failed.err)
+	case !leased:
+		return handleErr
 	default:
 		// The database failed under the handler — its commit, say. That is
 		// an attempt too: a handler whose commit always fails must die, not
@@ -387,15 +427,18 @@ func truncate(s string, n int) string {
 	return string(runes[:n])
 }
 
-// pruneSQL deletes events older than the cutoff none of whose deliveries is
-// undone — every one done, or none at all; their deliveries cascade.
+// pruneSQL deletes events created before the cutoff and fanned out none of
+// whose deliveries is undone — every one done, or none at all; their
+// deliveries cascade. It keys on created_at, the outbox's own clock, not the
+// publisher's occurred_at, and never deletes an event not yet fanned out.
 const pruneSQL = `DELETE FROM platform.events
 WHERE id IN (
     SELECT e.id FROM platform.events e
-    WHERE e.occurred_at < $1
+    WHERE e.created_at < $1
+      AND e.fanned_out_at IS NOT NULL
       AND NOT EXISTS (
           SELECT 1 FROM platform.event_deliveries d WHERE d.event_id = e.id AND d.state <> 'done')
-    ORDER BY e.occurred_at
+    ORDER BY e.created_at
     LIMIT $2)`
 
 func (d *Dispatcher) prune(ctx context.Context) error {

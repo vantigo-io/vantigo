@@ -1103,6 +1103,7 @@ const TaxCategoriesCard = ({ canReadNames }: { canReadNames: boolean }) => {
                         placeholder={t("taxCategories.none")}
                         data={options}
                         clearable
+                        allowDeselect={false}
                         clearButtonProps={{ "aria-label": t("taxCategories.clear", { name: row.name }) }}
                         disabled={save.isPending}
                         value={current === undefined ? null : String(current)}

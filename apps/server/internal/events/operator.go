@@ -33,6 +33,7 @@ type DeliveryRecord struct {
 	Event         string
 	Version       int
 	Module        string
+	Aggregate     string
 	AggregateID   string
 	Handler       string
 	State         string
@@ -56,7 +57,7 @@ var (
 	ErrDeliveryState = errors.New("events: the delivery is not in a state that allows this")
 )
 
-const listSQL = `SELECT d.id, d.event_id, e.name, e.version, e.module, d.aggregate_id, d.handler, d.state,
+const listSQL = `SELECT d.id, d.event_id, e.name, e.version, e.module, d.aggregate, d.aggregate_id, d.handler, d.state,
        d.attempts, d.last_error, d.note, d.next_attempt_at, e.occurred_at, d.created_at, d.updated_at
 FROM platform.event_deliveries d
 JOIN platform.events e ON e.id = d.event_id
@@ -84,7 +85,7 @@ func (o *Operator) List(ctx context.Context, state string) ([]DeliveryRecord, er
 			r       DeliveryRecord
 			version int16
 		)
-		err := row.Scan(&r.ID, &r.EventID, &r.Event, &version, &r.Module, &r.AggregateID, &r.Handler, &r.State,
+		err := row.Scan(&r.ID, &r.EventID, &r.Event, &version, &r.Module, &r.Aggregate, &r.AggregateID, &r.Handler, &r.State,
 			&r.Attempts, &r.LastError, &r.Note, &r.NextAttemptAt, &r.OccurredAt, &r.CreatedAt, &r.UpdatedAt)
 		r.Version = int(version)
 		return r, err
@@ -117,8 +118,8 @@ SET state = 'done', note = $2, completed_at = $3, lease_id = NULL, lease_until =
 WHERE id = $1 AND state <> 'done'`
 
 // Skip marks a delivery that is not done as done without handling it,
-// keeping note, which unblocks the later deliveries of its handler and
-// aggregate.
+// keeping note, which unblocks the later deliveries of its handler,
+// aggregate and aggregate id.
 func (o *Operator) Skip(ctx context.Context, id int64, note string) error {
 	tag, err := o.pool.Exec(ctx, skipSQL, id, note, o.clock())
 	if err != nil {

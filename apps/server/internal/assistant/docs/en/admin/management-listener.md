@@ -96,6 +96,7 @@ both) answers at most 200 deliveries, the latest changed first, with
       "event": "orders.sales_order.confirmed",
       "version": 1,
       "module": "orders",
+      "aggregate": "orders.sales_order",
       "aggregateId": "1042",
       "handler": "customers.timeline_orders",
       "state": "dead",
@@ -114,7 +115,7 @@ both) answers at most 200 deliveries, the latest changed first, with
 | Field | Meaning |
 | --- | --- |
 | `id` | The delivery's id, which the two calls below take |
-| `eventId`, `event`, `version`, `module`, `aggregateId` | The event: its id, its name and payload version, the module that published it, and the id of what it is about |
+| `eventId`, `event`, `version`, `module`, `aggregate`, `aggregateId` | The event: its id, its name and payload version, the module that published it, the kind of thing it is about (`orders.sales_order`) and that thing's id |
 | `handler` | The handler it is delivered to, `<module>.<what>` |
 | `state` | `failed` (retrying) or `dead` |
 | `attempts` | Failed attempts so far |

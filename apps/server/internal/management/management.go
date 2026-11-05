@@ -167,6 +167,7 @@ type delivery struct {
 	Event         string    `json:"event"`
 	Version       int       `json:"version"`
 	Module        string    `json:"module"`
+	Aggregate     string    `json:"aggregate"`
 	AggregateID   string    `json:"aggregateId"`
 	Handler       string    `json:"handler"`
 	State         string    `json:"state"`

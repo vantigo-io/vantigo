@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -55,27 +57,44 @@ type Delivered struct {
 	OccurredAt  time.Time
 }
 
-const insertEventSQL = `INSERT INTO platform.events (name, version, module, aggregate_id, payload, occurred_at)
-VALUES ($1, $2, $3, $4, $5, $6)`
+const insertEventSQL = `INSERT INTO platform.events (name, version, module, aggregate, aggregate_id, payload, occurred_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)`
 
 // Publish inserts ev, published by module at occurredAt, into the outbox on
 // the publisher's own transaction tx, so it commits with the state change
 // that caused it or not at all. It never begins, commits or rolls back tx,
 // and never takes a pool (module-boundaries rule 10's discipline). The
 // payload is ev marshalled as JSON.
+//
+// An event's name is "<module>.<aggregate>.<what>", as
+// "orders.sales_order.confirmed": its aggregate is the name less its last
+// segment ("orders.sales_order"), and deliveries to one handler are ordered
+// per aggregate and aggregate id, so quote 42 and sales order 42 never hold
+// each other back. Publish refuses a name of fewer than three segments, or
+// with an empty one.
+//
+// The publisher holds the aggregate's row lock while it publishes — it
+// publishes on the transaction that locked and changed the aggregate — so
+// one aggregate's events commit in the order of their ids, which the
+// per-aggregate ordering relies on.
 func Publish(ctx context.Context, tx pgx.Tx, module string, ev contracts.Event, occurredAt time.Time) error {
 	if ev == nil {
 		return errors.New("events: publish a nil event")
 	}
-	name, version, aggregate := ev.EventName(), ev.EventVersion(), ev.AggregateID()
-	if name == "" || version < 1 || module == "" || aggregate == "" {
-		return fmt.Errorf("events: publish %q v%d by %q for %q: name, version, module and aggregate id are required", name, version, module, aggregate)
+	name, version, aggregateID := ev.EventName(), ev.EventVersion(), ev.AggregateID()
+	if name == "" || version < 1 || module == "" || aggregateID == "" {
+		return fmt.Errorf("events: publish %q v%d by %q for %q: name, version, module and aggregate id are required", name, version, module, aggregateID)
 	}
+	segments := strings.Split(name, ".")
+	if len(segments) < 3 || slices.Contains(segments, "") {
+		return fmt.Errorf("events: publish %q: a name is \"<module>.<aggregate>.<what>\"", name)
+	}
+	aggregate := name[:strings.LastIndex(name, ".")]
 	payload, err := json.Marshal(ev)
 	if err != nil {
 		return fmt.Errorf("events: marshal %s v%d: %w", name, version, err)
 	}
-	if _, err := tx.Exec(ctx, insertEventSQL, name, version, module, aggregate, payload, occurredAt); err != nil {
+	if _, err := tx.Exec(ctx, insertEventSQL, name, version, module, aggregate, aggregateID, payload, occurredAt); err != nil {
 		return fmt.Errorf("events: publish %s v%d: %w", name, version, err)
 	}
 	return nil

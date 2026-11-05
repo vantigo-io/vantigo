@@ -17,8 +17,9 @@ type Event interface {
 	// EventVersion is the payload's wire version, from 1.
 	EventVersion() int
 	// AggregateID is the id of the aggregate the event is about, as text.
-	// Deliveries to one handler are ordered per aggregate, so a publisher
-	// publishes an aggregate's events only while it holds that aggregate's
-	// row lock.
+	// Deliveries to one handler are ordered per aggregate — the name less
+	// its last segment, with this id, so quote 42 and sales order 42 are
+	// two — and a publisher publishes an aggregate's events only while it
+	// holds that aggregate's row lock.
 	AggregateID() string
 }

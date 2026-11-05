@@ -250,5 +250,8 @@ type CustomerDirectory interface {
 	// the default bill rate Time's rate chain prices hours with, already
 	// resolved (see the rules above). It returns (nil, nil) if id does not
 	// exist. opts says whether DeliveryAddresses and Contacts are filled.
+	// The profile, its invoice address, its delivery addresses and its
+	// contacts are read in separate statements, not one snapshot, so a
+	// concurrent edit can show in one part and not yet in another.
 	BillingProfile(ctx context.Context, id int32, opts BillingProfileOptions) (*CustomerBillingProfile, error)
 }
