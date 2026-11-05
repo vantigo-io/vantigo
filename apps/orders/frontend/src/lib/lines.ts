@@ -1,4 +1,4 @@
-import type { Line, LineInput, LineKind, TemplateLine, VariantPackaging } from "../api/types";
+import type { InvoicePolicy, Line, LineInput, LineKind, TemplateLine, VariantPackaging } from "../api/types";
 import type { components } from "../api-schema";
 
 type TemplateLineInput = components["schemas"]["OrdersTemplateLineInput"];
@@ -45,6 +45,12 @@ export interface EditableLine {
   saved?: Line;
   /** Whether any entry field moved since `saved`. */
   changed: boolean;
+  /**
+   * An order line's invoice policy (O48), sent only when the person chose it:
+   * the server keeps a kept line's and defaults a new one's otherwise.
+   */
+  invoicePolicy?: InvoicePolicy;
+  policyTouched?: boolean;
 }
 
 /**
@@ -86,6 +92,8 @@ export const fromLine = (line: Line, current?: readonly VariantPackaging[]): Edi
   packagingQuantity: line.packagingQuantity ?? "",
   saved: line,
   changed: false,
+  invoicePolicy: line.invoicePolicy,
+  policyTouched: false,
 });
 
 /** A template's line as an editor row: no amounts, a price override when it has one. */
@@ -167,6 +175,7 @@ export const toLineInput = (line: EditableLine, { quote }: { quote: boolean }): 
     ...(priced ? { unitPrice: line.unitPrice as number } : {}),
     discountPercent: line.discountPercent === "" ? 0 : line.discountPercent,
     ...(quote ? { optional: line.optional } : {}),
+    ...(!quote && line.policyTouched && line.invoicePolicy ? { invoicePolicy: line.invoicePolicy } : {}),
   };
 };
 

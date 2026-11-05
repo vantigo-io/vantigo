@@ -82,6 +82,17 @@ export type SubscriptionBilling = Subscription["billing"];
 export type FinalPeriod = Schemas["OrdersFinalPeriod"];
 export type PeriodState = SubscriptionPeriod["state"];
 
+export type Delivery = Schemas["OrdersDelivery"];
+export type DeliveryStatusOfDelivery = Delivery["status"];
+export type DeliveryLine = Schemas["OrdersDeliveryLine"];
+export type DeliveryLineInput = Schemas["OrdersDeliveryLineInput"];
+export type DeliveryUpdate = Schemas["OrdersDeliveryUpdate"];
+export type DeliverySummary = Schemas["OrdersDeliverySummary"];
+export type DeliveryPage = Schemas["OrdersDeliveryPage"];
+export type StockLocation = Schemas["OrdersStockLocation"];
+export type Site = Schemas["OrdersSite"];
+export type InvoicePolicy = Line["invoicePolicy"];
+
 export type CustomerSummary = Schemas["OrdersCustomerSummary"];
 export type CurrencySum = Schemas["OrdersCurrencySum"];
 

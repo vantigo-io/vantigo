@@ -49,6 +49,7 @@ import {
   IconTelescope,
   IconTemplate,
   IconTransfer,
+  IconTruckDelivery,
   IconUser,
   IconUserPlus,
   IconUserQuestion,
@@ -193,6 +194,7 @@ const planningNavPresentation: Record<PlanningNavItem["key"], Pick<NavItem, "lab
 const ordersNavPresentation: Record<OrdersNavItem["key"], Pick<NavItem, "label" | "icon">> = {
   quotes: { label: "navigation.ordersQuotes", icon: IconFileDollar },
   orders: { label: "navigation.ordersOrders", icon: IconShoppingCart },
+  deliveries: { label: "navigation.ordersDeliveries", icon: IconTruckDelivery },
   subscriptions: { label: "navigation.ordersSubscriptions", icon: IconRepeat },
   analysis: { label: "navigation.ordersAnalysis", icon: IconChartBar },
   templates: { label: "navigation.ordersTemplates", icon: IconTemplate },

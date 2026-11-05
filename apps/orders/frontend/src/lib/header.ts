@@ -21,6 +21,8 @@ export interface HeaderState {
   deliveryDate: string | null;
   /** A quote's only (O20). */
   validUntil: string | null;
+  /** An order's only: the Inventory site it is fulfilled from (O46). */
+  siteId: number | null;
 }
 
 /** A quote's, an order's or a subscription's header as the editor holds it; a subscription has no delivery date. */
@@ -42,6 +44,7 @@ export const headerOf = (document: Quote | Order | Subscription): HeaderState =>
   internalNote: document.internalNote,
   deliveryDate: "deliveryDate" in document ? (document.deliveryDate ?? null) : null,
   validUntil: "validUntil" in document ? (document.validUntil ?? null) : null,
+  siteId: "siteId" in document ? (document.siteId ?? null) : null,
 });
 
 /** The header fields of a save (OrdersQuoteUpdate, OrdersOrderUpdate) — every one but the version and the lines. */

@@ -43,6 +43,7 @@ describe("the orders settings", () => {
       combineByDefault: true,
       subscriptionFinalPeriodDefault: "prorated",
       sendChannelId: "11111111-1111-4111-8111-111111111111",
+      defaultSiteId: null,
       mailTexts: [{ kind: "quote", language: "nb", subject: "Tilbud fra oss", body: "" }],
     });
     expect(await screen.findByText("The settings are saved")).toBeInTheDocument();

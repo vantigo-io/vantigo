@@ -7,6 +7,7 @@ import {
   Group,
   NumberInput,
   Progress,
+  SegmentedControl,
   Select,
   Stack,
   Table,
@@ -211,6 +212,30 @@ export const LineGrid = ({
                 {t("optional")}
               </Badge>
             )}
+            {mode === "order" && saved && <LineStock line={saved} />}
+            {mode === "order" &&
+              saved &&
+              (editable && !priceHeld ? (
+                <SegmentedControl
+                  size="xs"
+                  w="fit-content"
+                  aria-label={t("lineInvoicePolicy", { position })}
+                  data={[
+                    { value: "order", label: t("invoicePolicy.order") },
+                    { value: "delivery", label: t("invoicePolicy.delivery") },
+                  ]}
+                  value={line.invoicePolicy ?? saved.invoicePolicy}
+                  onChange={(value) =>
+                    set(index, { invoicePolicy: value as EditableLine["invoicePolicy"], policyTouched: true })
+                  }
+                />
+              ) : (
+                saved.invoicePolicy === "delivery" && (
+                  <Badge size="xs" variant="outline" color="cyan" w="fit-content">
+                    {t("invoicePolicy.delivery")}
+                  </Badge>
+                )
+              ))}
           </Stack>
         </Table.Td>
         <Table.Td w={150}>
@@ -651,5 +676,30 @@ export const LineProgress = ({ line }: { line: Line }) => {
         {line.qtyCancelled > 0 && ` · ${t("progressCancelled", { cancelled: quantity(line.qtyCancelled) })}`}
       </Text>
     </Box>
+  );
+};
+
+/**
+ * What Inventory holds of an order line (O45, O46): what is reserved for it
+ * at the order's site, and what is available of its variant there — on hand
+ * less every reservation, negative after Inventory's own corrections.
+ */
+export const LineStock = ({ line }: { line: Line }) => {
+  const { t, quantity } = useOrdersFormat();
+  const reserved = line.qtyReserved ?? 0;
+  if (line.deliveryMethod !== "delivery" || (reserved === 0 && line.available == null)) return null;
+  return (
+    <Group gap={4} data-testid="line-stock">
+      {reserved > 0 && (
+        <Badge size="xs" variant="light" color="teal">
+          {t("reservedQuantity", { quantity: quantity(reserved) })}
+        </Badge>
+      )}
+      {line.available != null && (
+        <Badge size="xs" variant="light" color={line.available < 0 ? "red" : "gray"}>
+          {t("availableQuantity", { quantity: quantity(line.available) })}
+        </Badge>
+      )}
+    </Group>
   );
 };

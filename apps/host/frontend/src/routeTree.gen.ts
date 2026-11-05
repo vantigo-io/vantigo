@@ -137,6 +137,8 @@ import { Route as InvoicesPaymentsIndexRouteImport } from './routes/invoices/pay
 import { Route as InvoicesPaymentsVippsRouteImport } from './routes/invoices/payments.vipps'
 import { Route as InvoicesReminderRunsRunIdRouteImport } from './routes/invoices/reminder-runs.$runId'
 import { Route as InvoicesRemindersPrintRouteImport } from './routes/invoices/reminders.print'
+import { Route as OrdersDeliveriesIndexRouteImport } from './routes/orders/deliveries.index'
+import { Route as OrdersDeliveriesDeliveryIdRouteImport } from './routes/orders/deliveries.$deliveryId'
 import { Route as OrdersOrdersIndexRouteImport } from './routes/orders/orders.index'
 import { Route as OrdersOrdersOrderIdRouteImport } from './routes/orders/orders.$orderId'
 import { Route as OrdersOrdersNewRouteImport } from './routes/orders/orders.new'
@@ -831,6 +833,17 @@ const InvoicesRemindersPrintRoute = InvoicesRemindersPrintRouteImport.update({
   path: '/reminders/print',
   getParentRoute: () => InvoicesRoute,
 } as any)
+const OrdersDeliveriesIndexRoute = OrdersDeliveriesIndexRouteImport.update({
+  id: '/deliveries/',
+  path: '/deliveries/',
+  getParentRoute: () => OrdersRoute,
+} as any)
+const OrdersDeliveriesDeliveryIdRoute =
+  OrdersDeliveriesDeliveryIdRouteImport.update({
+    id: '/deliveries/$deliveryId',
+    path: '/deliveries/$deliveryId',
+    getParentRoute: () => OrdersRoute,
+  } as any)
 const OrdersOrdersIndexRoute = OrdersOrdersIndexRouteImport.update({
   id: '/orders/',
   path: '/orders/',
@@ -1160,6 +1173,7 @@ export interface FileRoutesByFullPath {
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
+  '/orders/deliveries/$deliveryId': typeof OrdersDeliveriesDeliveryIdRoute
   '/orders/orders/$orderId': typeof OrdersOrdersOrderIdRoute
   '/orders/orders/new': typeof OrdersOrdersNewRoute
   '/orders/quotes/$quoteId': typeof OrdersQuotesQuoteIdRoute
@@ -1192,6 +1206,7 @@ export interface FileRoutesByFullPath {
   '/inventory/movements/': typeof InventoryMovementsIndexRoute
   '/invoices/billing-runs/': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
+  '/orders/deliveries/': typeof OrdersDeliveriesIndexRoute
   '/orders/orders/': typeof OrdersOrdersIndexRoute
   '/orders/quotes/': typeof OrdersQuotesIndexRoute
   '/orders/subscriptions/': typeof OrdersSubscriptionsIndexRoute
@@ -1306,6 +1321,7 @@ export interface FileRoutesByTo {
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
+  '/orders/deliveries/$deliveryId': typeof OrdersDeliveriesDeliveryIdRoute
   '/orders/orders/$orderId': typeof OrdersOrdersOrderIdRoute
   '/orders/orders/new': typeof OrdersOrdersNewRoute
   '/orders/quotes/$quoteId': typeof OrdersQuotesQuoteIdRoute
@@ -1338,6 +1354,7 @@ export interface FileRoutesByTo {
   '/inventory/movements': typeof InventoryMovementsIndexRoute
   '/invoices/billing-runs': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments': typeof InvoicesPaymentsIndexRoute
+  '/orders/deliveries': typeof OrdersDeliveriesIndexRoute
   '/orders/orders': typeof OrdersOrdersIndexRoute
   '/orders/quotes': typeof OrdersQuotesIndexRoute
   '/orders/subscriptions': typeof OrdersSubscriptionsIndexRoute
@@ -1475,6 +1492,7 @@ export interface FileRoutesById {
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
+  '/orders/deliveries/$deliveryId': typeof OrdersDeliveriesDeliveryIdRoute
   '/orders/orders/$orderId': typeof OrdersOrdersOrderIdRoute
   '/orders/orders/new': typeof OrdersOrdersNewRoute
   '/orders/quotes/$quoteId': typeof OrdersQuotesQuoteIdRoute
@@ -1507,6 +1525,7 @@ export interface FileRoutesById {
   '/inventory/movements/': typeof InventoryMovementsIndexRoute
   '/invoices/billing-runs/': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
+  '/orders/deliveries/': typeof OrdersDeliveriesIndexRoute
   '/orders/orders/': typeof OrdersOrdersIndexRoute
   '/orders/quotes/': typeof OrdersQuotesIndexRoute
   '/orders/subscriptions/': typeof OrdersSubscriptionsIndexRoute
@@ -1645,6 +1664,7 @@ export interface FileRouteTypes {
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
+    | '/orders/deliveries/$deliveryId'
     | '/orders/orders/$orderId'
     | '/orders/orders/new'
     | '/orders/quotes/$quoteId'
@@ -1677,6 +1697,7 @@ export interface FileRouteTypes {
     | '/inventory/movements/'
     | '/invoices/billing-runs/'
     | '/invoices/payments/'
+    | '/orders/deliveries/'
     | '/orders/orders/'
     | '/orders/quotes/'
     | '/orders/subscriptions/'
@@ -1791,6 +1812,7 @@ export interface FileRouteTypes {
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
+    | '/orders/deliveries/$deliveryId'
     | '/orders/orders/$orderId'
     | '/orders/orders/new'
     | '/orders/quotes/$quoteId'
@@ -1823,6 +1845,7 @@ export interface FileRouteTypes {
     | '/inventory/movements'
     | '/invoices/billing-runs'
     | '/invoices/payments'
+    | '/orders/deliveries'
     | '/orders/orders'
     | '/orders/quotes'
     | '/orders/subscriptions'
@@ -1959,6 +1982,7 @@ export interface FileRouteTypes {
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
+    | '/orders/deliveries/$deliveryId'
     | '/orders/orders/$orderId'
     | '/orders/orders/new'
     | '/orders/quotes/$quoteId'
@@ -1991,6 +2015,7 @@ export interface FileRouteTypes {
     | '/inventory/movements/'
     | '/invoices/billing-runs/'
     | '/invoices/payments/'
+    | '/orders/deliveries/'
     | '/orders/orders/'
     | '/orders/quotes/'
     | '/orders/subscriptions/'
@@ -2938,6 +2963,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InvoicesRemindersPrintRouteImport
       parentRoute: typeof InvoicesRoute
     }
+    '/orders/deliveries/': {
+      id: '/orders/deliveries/'
+      path: '/deliveries'
+      fullPath: '/orders/deliveries/'
+      preLoaderRoute: typeof OrdersDeliveriesIndexRouteImport
+      parentRoute: typeof OrdersRoute
+    }
+    '/orders/deliveries/$deliveryId': {
+      id: '/orders/deliveries/$deliveryId'
+      path: '/deliveries/$deliveryId'
+      fullPath: '/orders/deliveries/$deliveryId'
+      preLoaderRoute: typeof OrdersDeliveriesDeliveryIdRouteImport
+      parentRoute: typeof OrdersRoute
+    }
     '/orders/orders/': {
       id: '/orders/orders/'
       path: '/orders'
@@ -3440,12 +3479,14 @@ interface OrdersRouteChildren {
   OrdersSettingsRoute: typeof OrdersSettingsRoute
   OrdersTemplatesRoute: typeof OrdersTemplatesRoute
   OrdersIndexRoute: typeof OrdersIndexRoute
+  OrdersDeliveriesDeliveryIdRoute: typeof OrdersDeliveriesDeliveryIdRoute
   OrdersOrdersOrderIdRoute: typeof OrdersOrdersOrderIdRoute
   OrdersOrdersNewRoute: typeof OrdersOrdersNewRoute
   OrdersQuotesQuoteIdRoute: typeof OrdersQuotesQuoteIdRoute
   OrdersQuotesNewRoute: typeof OrdersQuotesNewRoute
   OrdersSubscriptionsSubscriptionIdRoute: typeof OrdersSubscriptionsSubscriptionIdRoute
   OrdersSubscriptionsNewRoute: typeof OrdersSubscriptionsNewRoute
+  OrdersDeliveriesIndexRoute: typeof OrdersDeliveriesIndexRoute
   OrdersOrdersIndexRoute: typeof OrdersOrdersIndexRoute
   OrdersQuotesIndexRoute: typeof OrdersQuotesIndexRoute
   OrdersSubscriptionsIndexRoute: typeof OrdersSubscriptionsIndexRoute
@@ -3456,6 +3497,7 @@ const OrdersRouteChildren: OrdersRouteChildren = {
   OrdersSettingsRoute: OrdersSettingsRoute,
   OrdersTemplatesRoute: OrdersTemplatesRoute,
   OrdersIndexRoute: OrdersIndexRoute,
+  OrdersDeliveriesDeliveryIdRoute: OrdersDeliveriesDeliveryIdRoute,
   OrdersOrdersOrderIdRoute: OrdersOrdersOrderIdRoute,
   OrdersOrdersNewRoute: OrdersOrdersNewRoute,
   OrdersQuotesQuoteIdRoute: OrdersQuotesQuoteIdRoute,
@@ -3463,6 +3505,7 @@ const OrdersRouteChildren: OrdersRouteChildren = {
   OrdersSubscriptionsSubscriptionIdRoute:
     OrdersSubscriptionsSubscriptionIdRoute,
   OrdersSubscriptionsNewRoute: OrdersSubscriptionsNewRoute,
+  OrdersDeliveriesIndexRoute: OrdersDeliveriesIndexRoute,
   OrdersOrdersIndexRoute: OrdersOrdersIndexRoute,
   OrdersQuotesIndexRoute: OrdersQuotesIndexRoute,
   OrdersSubscriptionsIndexRoute: OrdersSubscriptionsIndexRoute,

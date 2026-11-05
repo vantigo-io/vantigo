@@ -16,6 +16,8 @@ import { CustomerOrdersPanel } from "../components/customer-orders-panel";
 import { noOrdersAccess, type OrdersAccess } from "../lib/access";
 import {
   ANALYSIS_ROUTE_PATH,
+  DELIVERIES_ROUTE_PATH,
+  DELIVERY_ROUTE_PATH,
   NEW_QUOTE_ROUTE_PATH,
   NEW_SALES_ORDER_ROUTE_PATH,
   NEW_SUBSCRIPTION_ROUTE_PATH,
@@ -29,6 +31,8 @@ import {
   TEMPLATES_ROUTE_PATH,
 } from "../lib/routes";
 import { AnalysisPage } from "../pages/analysis";
+import { DeliveriesPage } from "../pages/deliveries";
+import { DeliveryEditorPage } from "../pages/delivery-editor";
 import { OrderEditorPage } from "../pages/order-editor";
 import { OrdersPage } from "../pages/orders";
 import { QuoteEditorPage } from "../pages/quote-editor";
@@ -43,6 +47,7 @@ export const fullAccess: OrdersAccess = {
   canManageQuotes: true,
   canManageOrders: true,
   canConfirmOrders: true,
+  canManageDeliveries: true,
   canManageSubscriptions: true,
   canManageSettings: true,
   canViewAnalysis: true,
@@ -84,6 +89,15 @@ const routeTree = (access: OrdersAccess, extra?: ReactNode) => {
     const { subscriptionId } = subscriptionRoute.useParams();
     return <SubscriptionEditorPage subscriptionId={Number(subscriptionId)} access={access} />;
   };
+  const DeliveryRoute = () => {
+    const { deliveryId } = deliveryRoute.useParams();
+    return <DeliveryEditorPage deliveryId={Number(deliveryId)} access={access} />;
+  };
+  const deliveryRoute = createRoute({
+    getParentRoute: () => root,
+    path: DELIVERY_ROUTE_PATH,
+    component: DeliveryRoute,
+  });
   const subscriptionRoute = createRoute({
     getParentRoute: () => root,
     path: SUBSCRIPTION_ROUTE_PATH,
@@ -116,6 +130,8 @@ const routeTree = (access: OrdersAccess, extra?: ReactNode) => {
     route(SALES_ORDERS_ROUTE_PATH, () => <OrdersPage access={access} />),
     newOrder,
     orderRoute,
+    route(DELIVERIES_ROUTE_PATH, () => <DeliveriesPage access={access} />),
+    deliveryRoute,
     route(SUBSCRIPTIONS_ROUTE_PATH, () => <SubscriptionsPage access={access} />),
     newSubscription,
     subscriptionRoute,

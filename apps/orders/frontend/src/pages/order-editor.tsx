@@ -10,6 +10,7 @@ import {
   IconFileText,
   IconLock,
   IconLockOpen,
+  IconPackage,
   IconPlayerPause,
   IconPlayerPlay,
   IconSend,
@@ -33,18 +34,20 @@ import {
   orderProformaUrl,
   orderQueryOptions,
   releaseDraftAllocations,
+  reserveOrder,
   sendOrder,
   transitionOrder,
   undoDelivered,
   updateOrder,
 } from "../api/orders";
-import { isVersionConflict, NotFoundError, ORDERS_QUERY_KEY } from "../api/request";
+import { isVersionConflict, NotFoundError, ORDERS_QUERY_KEY, refusalCode, refusedLines } from "../api/request";
 import type { DeliveredLine, Order } from "../api/types";
 import { overrideOf } from "../api/warnings";
 import { ChangeLog } from "../components/change-log";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { ConflictAlert } from "../components/conflict-alert";
 import { DeliveredDialog } from "../components/delivered-dialog";
+import { DeliveriesCard } from "../components/deliveries-card";
 import { DocumentsCard } from "../components/documents-card";
 import { HeaderCard } from "../components/header-card";
 import { InvoicesCard } from "../components/invoices-card";
@@ -62,7 +65,7 @@ import { noOrdersAccess, type OrdersAccess } from "../lib/access";
 import { refusalMessage } from "../lib/errors";
 import { useOrdersFormat } from "../lib/format";
 import { headerInput } from "../lib/header";
-import { toLineInput } from "../lib/lines";
+import { remainingToDeliver, toLineInput } from "../lib/lines";
 import { invoiceFromOrderLinkOptions, quoteLinkOptions, SALES_ORDERS_ROUTE_PATH } from "../lib/routes";
 import { useDocumentWrite, useEditorState } from "../lib/use-editor";
 
@@ -144,6 +147,7 @@ type Dialog =
   | "markDelivered"
   | "undoDelivered"
   | "releaseDrafts"
+  | "shortfall"
   | null;
 
 const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) => {
@@ -160,6 +164,12 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
   // Whether Send works now (O25), read under orders:access alone.
   const meta = useQuery(metaQueryOptions());
   const sendingOff = meta.data?.sendingAvailable === false;
+  // Inventory keeps stock and the order names a site (O46): it reserves, and
+  // its goods lines are delivered by delivery documents (O47).
+  const stockKept = meta.data?.stockKept === true;
+  const atSite = stockKept && order.siteId != null;
+  // The lines short at confirm (insufficient_available), by their index.
+  const [shortfall, setShortfall] = useState<readonly number[]>([]);
 
   const manage = access.canManageOrders;
   const confirmAllowed = access.canConfirmOrders;
@@ -172,6 +182,11 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
   const openToDeliver = order.lines.some(
     (line) => line.kind === "product" && (line.quantity ?? 0) - line.qtyCancelled - line.qtyDelivered > 0,
   );
+  // A goods line at the site holds less than it has open: Reserve now (O46).
+  const unreserved = order.lines.some(
+    (line) => line.deliveryMethod === "delivery" && remainingToDeliver(line) > (line.qtyReserved ?? 0),
+  );
+  const openToShip = order.lines.some((line) => line.deliveryMethod === "delivery" && remainingToDeliver(line) > 0);
   // What draft invoices hold of the order, and what is left to invoice on
   // order (O36): ordered − cancelled − invoiced − draft-allocated.
   const inDraftInvoice = order.lines.some((line) => line.qtyDraftAllocated > 0);
@@ -196,6 +211,7 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
         version: order.version,
         expectedUpdatedAt: order.updatedAt,
         ...headerInput(editor.header),
+        siteId: editor.header.siteId,
         lines: editor.lines.map((line) => toLineInput(line, { quote: false })),
       }),
     done: t("orderSaved"),
@@ -211,6 +227,23 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
       close();
     },
     errorTitle: t("couldNotChangeOrder"),
+  });
+  // Confirm without reserving (O46), offered when the confirm was short.
+  const confirmUnreserved = useDocumentWrite({
+    ...common,
+    write: () => transitionOrder(order.id, "confirm", order, { ...overrideOf(override), reserve: false }),
+    done: t("orderConfirmedUnreserved"),
+    onDone: () => {
+      setOverride(null);
+      close();
+    },
+    errorTitle: t("couldNotChangeOrder"),
+  });
+  const reserve = useDocumentWrite({
+    ...common,
+    write: () => reserveOrder(order.id, order),
+    done: t("orderReserved"),
+    errorTitle: t("couldNotReserve"),
   });
   const releaseDrafts = useDocumentWrite({
     ...common,
@@ -277,9 +310,23 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
     onError: (error) => editor.showRefusal(error, t("couldNotDelete")),
   });
   const run = (name: OrderTransition, done: string) =>
-    transition.mutate(name, { onSuccess: () => notifications.show({ color: "green", message: done }) });
+    transition.mutate(name, {
+      onSuccess: () => notifications.show({ color: "green", message: done }),
+      // Not enough at the site: say which lines, and offer to confirm without reserving (O46).
+      onError: (error) => {
+        if (name !== "confirm" || refusalCode(error) !== "insufficient_available") return;
+        setShortfall(refusedLines(error).map((line) => line.index));
+        setDialog("shortfall");
+      },
+    });
 
-  const busy = save.isPending || transition.isPending || hold.isPending || releaseDrafts.isPending;
+  const busy =
+    save.isPending ||
+    transition.isPending ||
+    hold.isPending ||
+    releaseDrafts.isPending ||
+    reserve.isPending ||
+    confirmUnreserved.isPending;
   const needsSave = editor.dirty ? t("saveFirst") : undefined;
   const invoiceBlocked = order.onHold ? t("heldTakesNoInvoice") : !openToInvoice ? t("nothingToInvoice") : needsSave;
   const title = t("orderNumber", { number: order.number });
@@ -516,6 +563,13 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
               })}
             {manage &&
               confirmed &&
+              atSite &&
+              unreserved &&
+              stateButton(t("reserveNow"), () => reserve.mutate(), {
+                icon: <IconPackage size={16} />,
+              })}
+            {manage &&
+              confirmed &&
               stateButton(t("sendConfirmation"), () => setDialog("send"), {
                 icon: <IconSend size={16} />,
                 disabledReason: sendingOff ? t("sendingOff") : undefined,
@@ -576,6 +630,13 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
           )}
         </Stack>
       </Card>
+      {confirmed && atSite && (
+        <DeliveriesCard
+          orderId={order.id}
+          canCreate={access.canManageDeliveries}
+          blocked={order.onHold ? t("heldTakesNoDelivery") : !openToShip ? t("nothingToShip") : needsSave}
+        />
+      )}
       {!draft && <InvoicesCard invoices={order.invoices} canViewInvoices={access.canViewInvoices} />}
       {!draft && <ChangeLog changes={changes.data?.items ?? []} lines={order.lines} />}
       <DocumentsCard
@@ -629,6 +690,31 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
           onClose={close}
         >
           {t("cancelRemainingHint")}
+        </ConfirmDialog>
+      )}
+      {dialog === "shortfall" && (
+        <ConfirmDialog
+          title={t("shortfallTitle")}
+          confirmLabel={t("confirmWithoutReserving")}
+          loading={confirmUnreserved.isPending}
+          onConfirm={() => confirmUnreserved.mutate()}
+          onClose={close}
+        >
+          <Stack gap="xs">
+            <Text size="sm">{t("shortfallHint")}</Text>
+            {shortfall.map((index) => {
+              const shown = order.lines[index];
+              return (
+                <Text size="sm" key={index} data-testid="shortfall-line">
+                  {t("shortfallLine", {
+                    position: index + 1,
+                    name: shown?.name ?? shown?.sku ?? "",
+                    available: shown?.available == null ? "—" : String(shown.available),
+                  })}
+                </Text>
+              );
+            })}
+          </Stack>
         </ConfirmDialog>
       )}
       {dialog === "releaseDrafts" && (

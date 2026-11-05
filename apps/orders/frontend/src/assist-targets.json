@@ -394,5 +394,77 @@
       "en": "In the End dialog: bill the last period in full or pro-rated to the end date, pre-selected from the subscription's setting.",
       "nb": "I Avslutt-dialogen: fakturer den siste perioden i sin helhet eller forholdsmessig til sluttdatoen, forhåndsvalgt fra abonnementets innstilling."
     }
+  },
+  {
+    "key": "orders.order.site",
+    "route": "/orders/orders/{orderId}",
+    "label": {
+      "en": "Site",
+      "nb": "Lagersted"
+    },
+    "description": {
+      "en": "The Inventory site the order is reserved and delivered from; shown while Inventory keeps stock.",
+      "nb": "Lagerstedet i Lager-appen ordren reserveres og leveres fra; vises når Lager fører beholdning."
+    }
+  },
+  {
+    "key": "orders.order.create-delivery",
+    "route": "/orders/orders/{orderId}",
+    "label": {
+      "en": "Create delivery",
+      "nb": "Lag leveranse"
+    },
+    "description": {
+      "en": "On a confirmed order's Deliveries card: makes a draft delivery of every open line at what is available at the site.",
+      "nb": "På kortet Leveranser på en bekreftet ordre: lager et leveranseutkast av hver åpen linje med det som er disponibelt på lagerstedet."
+    }
+  },
+  {
+    "key": "orders.deliveries.view",
+    "route": "/orders/deliveries",
+    "label": {
+      "en": "To deliver or Deliveries",
+      "nb": "Til levering eller Leveranser"
+    },
+    "description": {
+      "en": "Switches between the orders still to deliver (back orders) and the delivery documents.",
+      "nb": "Bytter mellom ordrene som gjenstår å levere (restordre) og leveransene."
+    }
+  },
+  {
+    "key": "orders.delivery.pick-list",
+    "route": "/orders/deliveries/{deliveryId}",
+    "label": {
+      "en": "Pick list",
+      "nb": "Plukkliste"
+    },
+    "description": {
+      "en": "Prints the delivery's lines sorted by location, with the locations holding each item.",
+      "nb": "Skriver ut leveransens linjer sortert etter lokasjon, med lokasjonene som har hver vare."
+    }
+  },
+  {
+    "key": "orders.delivery.post",
+    "route": "/orders/deliveries/{deliveryId}",
+    "label": {
+      "en": "Post delivery",
+      "nb": "Bokfør leveranse"
+    },
+    "description": {
+      "en": "Takes the stock off the chosen locations, registers the quantities delivered on the order and stores the packing slip.",
+      "nb": "Trekker varene fra de valgte lokasjonene, registrerer de leverte mengdene på ordren og lagrer pakkseddelen."
+    }
+  },
+  {
+    "key": "orders.settings.default-site",
+    "route": "/orders/settings",
+    "label": {
+      "en": "Default site",
+      "nb": "Standard lagersted"
+    },
+    "description": {
+      "en": "The Inventory site a new order is fulfilled from.",
+      "nb": "Lagerstedet i Lager-appen en ny ordre leveres fra."
+    }
   }
 ]

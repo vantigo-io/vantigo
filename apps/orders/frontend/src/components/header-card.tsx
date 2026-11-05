@@ -20,6 +20,8 @@ import { IconChevronDown, IconChevronRight, IconUserCheck } from "@tabler/icons-
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { customerAddressesQueryOptions, customerContactsQueryOptions } from "../api/customers";
+import { sitesQueryOptions } from "../api/deliveries";
+import { metaQueryOptions } from "../api/meta";
 import { customerProjectsQueryOptions } from "../api/projects";
 import { salespeopleQueryOptions } from "../api/salespeople";
 import type { CustomerSnapshot, Person } from "../api/types";
@@ -93,6 +95,14 @@ export const HeaderCard = ({
     ...customerProjectsQueryOptions(customerId),
     enabled: customerId > 0 && editable.draft && access.canViewProjects,
   });
+  // An order's site (O46), offered while Inventory keeps stock: the sites
+  // that are active and fulfil orders, and the order's own whatever it is now.
+  const meta = useQuery({ ...metaQueryOptions(), enabled: kind === "order" });
+  const stockKept = kind === "order" && meta.data?.stockKept === true;
+  const sites = useQuery({ ...sitesQueryOptions(), enabled: stockKept });
+  const siteOptions = (sites.data?.items ?? [])
+    .filter((site) => (site.active && site.fulfilsOrders) || site.id === header.siteId)
+    .map((site) => ({ value: String(site.id), label: `${site.code} · ${site.name}` }));
   const sameCustomer = snapshot?.customerId === customerId;
   const addressOptions = (addresses.data ?? []).map((a) => ({
     value: String(a.id),
@@ -301,6 +311,21 @@ export const HeaderCard = ({
               value={header.validUntil}
               onChange={(value) => onChange({ validUntil: value ?? null })}
               error={errors.validUntil}
+            />
+          )}
+          {stockKept && (
+            <Select
+              label={t("site")}
+              description={t("siteHint")}
+              w={220}
+              data={siteOptions}
+              value={header.siteId === null ? null : String(header.siteId)}
+              // A confirmed order's site changes to another, never to none (O46).
+              clearable={editable.draft}
+              disabled={!editable.delivery}
+              onChange={(value) => onChange({ siteId: value ? Number(value) : editable.draft ? null : header.siteId })}
+              error={errors.siteId}
+              data-assist="orders.order.site"
             />
           )}
           {kind !== "subscription" && (

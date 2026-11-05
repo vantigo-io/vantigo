@@ -118,3 +118,17 @@ export const OrderFlags = ({ done, onHold, locked }: { done: boolean; onHold: bo
     </Group>
   );
 };
+
+const deliveryDocumentColours: Record<string, string> = { draft: "gray", posted: "teal", cancelled: "gray" };
+
+/** A delivery document's state (O47) as a badge. */
+export const DeliveryDocumentBadge = ({ status }: { status: string }) => (
+  <Badge
+    variant="light"
+    color={deliveryDocumentColours[status] ?? "gray"}
+    data-testid="delivery-status"
+    data-status={status}
+  >
+    <Words prefix="deliveryDocumentStatus" value={status} />
+  </Badge>
+);
