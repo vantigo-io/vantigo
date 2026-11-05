@@ -118,6 +118,11 @@ func (s *server) CreateSalesOrder(ctx context.Context, req gen.CreateSalesOrderR
 	}
 	h := resolveHeader(&f, in, nil, reads)
 	customerUsable(&f, reads.profile)
+	if body.SiteId != nil {
+		if err := s.judgeSite(ctx, &f, "siteId", *body.SiteId); err != nil {
+			return nil, err
+		}
+	}
 	if f.failed() {
 		return gen.CreateSalesOrder400ApplicationProblemPlusJSONResponse(invalid(invalidOrderTitle, f)), nil
 	}
@@ -135,6 +140,7 @@ func (s *server) CreateSalesOrder(ctx context.Context, req gen.CreateSalesOrderR
 	}
 	o, lines, _, err := s.createOrderOnce(ctx, CreateOrder{
 		Origin: OrderOrigin{Channel: channelManual, ClientRequestID: &requestID}, Header: h, Lines: priced, CreatedBy: by,
+		SiteID: body.SiteId,
 	})
 	if db.IsUniqueViolation(err, "ux_orders_client_request") {
 		if repeat, err := s.repeatedOrder(ctx, requestID, body.CustomerId); repeat != nil || err != nil {

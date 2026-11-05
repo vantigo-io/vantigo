@@ -95,7 +95,19 @@ func (s *server) lockVariants(ctx context.Context, tx pgx.Tx, ids []int32) ([]co
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	return s.deps.Products.LockVariants(ctx, tx, ids)
+	entries, err := s.deps.Products.LockVariants(ctx, tx, ids)
+	if err != nil {
+		return nil, err
+	}
+	if rec := lockedVariantsOf(ctx); rec != nil {
+		if rec.byID == nil {
+			rec.byID = map[int32]contracts.VariantEntry{}
+		}
+		for _, e := range entries {
+			rec.byID[e.ID] = e
+		}
+	}
+	return entries, nil
 }
 
 // lockVariantsCall is the name the hook hears lockVariants by.

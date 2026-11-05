@@ -61,6 +61,9 @@ type lineInput struct {
 	// refused when its variant went away (O23); skipDiscontinued, a
 	// template's, also when its product was discontinued.
 	skippable, skipDiscontinued bool
+	// invoicePolicy is an order line's policy as the request names it (O48),
+	// nil when it names none.
+	invoicePolicy *string
 }
 
 // lineInputsOf reads the API's lines.
@@ -74,6 +77,9 @@ func lineInputsOf(in []gen.OrdersLineInput) []lineInput {
 		}
 		if l.Optional != nil {
 			li.optional = *l.Optional
+		}
+		if l.InvoicePolicy != nil {
+			li.invoicePolicy = ptr(string(*l.InvoicePolicy))
 		}
 		out = append(out, li)
 	}
@@ -115,6 +121,12 @@ type pricedLine struct {
 	// chainID is the first version of the subscription line this one
 	// continues (O44); nil on a first version and on every other owner's.
 	chainID *int64
+	// invoicePolicy is an order line's invoice policy (O48) and
+	// deliveryMethod how its delivery is registered (O32, O47): "" until
+	// settlePolicies settles them, which writes "order" and "manual".
+	// requestedPolicy is the policy the request named, nil for none.
+	invoicePolicy, deliveryMethod string
+	requestedPolicy               *string
 }
 
 // pricedLineOf is a stored line as it would be written again, unchanged:
@@ -320,7 +332,7 @@ func priceLines(in []lineInput, existing map[int64]store.OrdersLine, r pricingRe
 
 // priceLine prices one line, or names why it cannot be.
 func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOptions) (pricedLine, string, string) {
-	p := pricedLine{kind: l.kind, id: l.id, discount: new(big.Rat)}
+	p := pricedLine{kind: l.kind, id: l.id, discount: new(big.Rat), requestedPolicy: l.invoicePolicy}
 	text := func(in *string, was string, maxLen int, what string) (string, string) {
 		v := was
 		if in != nil {

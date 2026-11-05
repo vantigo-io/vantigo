@@ -3,7 +3,8 @@ package orders
 // The settings operations (orders design §9, O12, O25): the number series'
 // starts, the default validity and payment terms, the channel to send from,
 // whether a confirmation is sent on confirm, the invoicing default, the mail
-// texts and the final period a new subscription takes.
+// texts, the final period a new subscription takes and the default site a new
+// order is fulfilled from (O46).
 
 import (
 	"context"
@@ -51,6 +52,7 @@ func (s *server) settingsView(ctx context.Context, q *store.Queries, st ordersSe
 		MailTexts: []gen.OrdersMailText{}, SendingAvailable: s.deps.OutboundMail != nil, Revision: st.revision,
 		SendChannelId: st.sendChannel, SendChannels: []gen.OrdersSendChannel{}, SendChannelState: gen.Disabled,
 		SubscriptionFinalPeriodDefault: gen.OrdersFinalPeriod(st.subscriptionFinalPeriodDefault),
+		DefaultSiteId:                  st.defaultSiteID,
 	}
 	for _, t := range st.mailTexts {
 		out.MailTexts = append(out.MailTexts, gen.OrdersMailText{
@@ -145,6 +147,11 @@ func (s *server) PutOrdersSettings(ctx context.Context, req gen.PutOrdersSetting
 			channel = &ch.ID
 		}
 	}
+	if b.DefaultSiteId != nil {
+		if err := s.judgeSite(ctx, &f, "defaultSiteId", *b.DefaultSiteId); err != nil {
+			return nil, err
+		}
+	}
 	if f.failed() {
 		return gen.PutOrdersSettings400ApplicationProblemPlusJSONResponse(invalid(invalidSettingsTitle, f)), nil
 	}
@@ -196,7 +203,7 @@ func (s *server) PutOrdersSettings(ctx context.Context, req gen.PutOrdersSetting
 			QuoteSeriesStart: b.QuoteSeriesStart, OrderSeriesStart: b.OrderSeriesStart, QuoteValidityDays: b.QuoteValidityDays,
 			DefaultPaymentTermsDays: b.DefaultPaymentTermsDays, SendChannel: channel,
 			ConfirmationOnConfirm: b.ConfirmationOnConfirm, CombineByDefault: b.CombineByDefault, MailTexts: mailTexts,
-			SubscriptionFinalPeriodDefault: finalPeriod, UpdatedAt: s.deps.Clock(),
+			SubscriptionFinalPeriodDefault: finalPeriod, DefaultSiteID: b.DefaultSiteId, UpdatedAt: s.deps.Clock(),
 		})
 		if err != nil {
 			return fmt.Errorf("orders: save the settings: %w", err)

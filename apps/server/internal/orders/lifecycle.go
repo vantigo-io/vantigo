@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"slices"
 	"time"
 	"unicode/utf8"
 
@@ -66,7 +67,7 @@ func customerConfirmable(p *contracts.CustomerBillingProfile) error {
 // order's change log at the confirmed version (O33). The warnings are read
 // without a lock, so the check is best effort against a concurrent change.
 func confirmTx(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, order store.OrdersOrder, lines []store.OrdersLine, o warningOverride,
-	by actor, customer *contracts.CustomerBillingProfile) (store.OrdersOrder, error) {
+	by actor, customer *contracts.CustomerBillingProfile, reserve bool) (store.OrdersOrder, error) {
 	if order.Status != orderDraft {
 		return order, conflict(codeOrderNotDraft, "The order is not a draft",
 			fmt.Sprintf("Order %d is %s; only a draft is confirmed.", order.Number, order.Status))
@@ -99,7 +100,19 @@ func confirmTx(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, or
 	if err != nil {
 		return order, fmt.Errorf("orders: confirm order %d: %w", order.ID, err)
 	}
-	if err := logChange(ctx, txq, row.ID, row.Version, by, now, overrideActions(overridden, o.reason)); err != nil {
+	actions := overrideActions(overridden, o.reason)
+	if s.atSite(row.SiteID) && slices.ContainsFunc(lines, reservable) {
+		if reserve {
+			// Every goods line's open quantity, at the site (O46): the first
+			// shortfall refuses the confirm, naming every short line.
+			if _, err := s.reserveOpen(ctx, tx, row, lines, invalidConfirmTitle); err != nil {
+				return row, err
+			}
+		} else {
+			actions = append(actions, changeAction{Kind: actionConfirmedWithoutReserving})
+		}
+	}
+	if err := logChange(ctx, txq, row.ID, row.Version, by, now, actions); err != nil {
 		return row, err
 	}
 	if err := events.Publish(ctx, tx, moduleName, contracts.SalesOrderConfirmed{
@@ -184,7 +197,7 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 		if err != nil {
 			return err
 		}
-		if confirmed, err = confirmTx(ctx, s, tx, txq, o, locked, override, by, customer); err != nil {
+		if confirmed, err = confirmTx(ctx, s, tx, txq, o, locked, override, by, customer, req.Body.Reserve == nil || *req.Body.Reserve); err != nil {
 			return err
 		}
 		if printed, err = p.confirmation(confirmed, locked, s.deps.Clock()); err != nil {
@@ -201,6 +214,9 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 		return answer(err, resp)
 	}
 	afterOrderConfirmed(ctx, s, confirmed, printed)
+	if err := s.withStockFigures(ctx, &out); err != nil {
+		return nil, err
+	}
 	return gen.ConfirmSalesOrder200JSONResponse(out), nil
 }
 
@@ -262,7 +278,10 @@ func (s *server) changeOrder(ctx context.Context, id int64, version int32, expec
 		out = orderView(row, lines, warnings, allocations)
 		return nil
 	})
-	return out, err
+	if err != nil {
+		return out, err
+	}
+	return out, s.withStockFigures(ctx, &out)
 }
 
 // HoldSalesOrder Hold an order
@@ -389,7 +408,9 @@ func (s *server) UnlockSalesOrder(ctx context.Context, req gen.UnlockSalesOrderR
 // cancelled (O18) — a locked one is unlocked first (order_locked); after that the order has progress (order_has_progress) and
 // Cancel remaining is the way. Neither is taken while a draft invoice holds
 // an allocation of the order (order_in_draft_invoice, O36): the draft is
-// deleted or issued, or the allocations released, first. orders.sales_order.cancelled.v1 is published
+// deleted or issued, or the allocations released, first. A cancel releases
+// the order's reservations and cancels its draft deliveries (O46, O47).
+// orders.sales_order.cancelled.v1 is published
 // for an order that was confirmed — a draft was never on the customer's
 // timeline.
 func (s *server) CancelSalesOrder(ctx context.Context, req gen.CancelSalesOrderRequestObject) (gen.CancelSalesOrderResponseObject, error) {
@@ -416,6 +437,13 @@ func (s *server) CancelSalesOrder(ctx context.Context, req gen.CancelSalesOrderR
 			if err != nil {
 				return o, nil, fmt.Errorf("orders: cancel order %d: %w", o.ID, err)
 			}
+			// Its reservations and its draft deliveries go with it (O18, O46).
+			if err := s.releaseAll(ctx, tx, o.ID); err != nil {
+				return row, nil, err
+			}
+			if _, err := txq.CancelDraftDeliveriesOfOrder(ctx, store.CancelDraftDeliveriesOfOrderParams{OrderID: o.ID, Now: &now}); err != nil {
+				return row, nil, fmt.Errorf("orders: cancel order %d's draft deliveries: %w", o.ID, err)
+			}
 			if o.Status == orderConfirmed {
 				if err := events.Publish(ctx, tx, moduleName, contracts.SalesOrderCancelled{
 					OrderID: row.ID, Number: row.Number, CustomerID: row.CustomerID, CancelledAt: now,
@@ -440,8 +468,10 @@ func (s *server) CancelSalesOrder(ctx context.Context, req gen.CancelSalesOrderR
 //
 // Each product line's cancelled quantity becomes ordered less the larger of
 // delivered and invoiced (O18). When that changes a line, the version is
-// bumped, the derived statuses recomputed, cancelled_remaining logged per line
-// and orders.sales_order.changed.v1 published; otherwise nothing is written.
+// bumped, the derived statuses recomputed, cancelled_remaining logged per line,
+// the order's reservations released and its draft deliveries cancelled
+// (O46, O47), and orders.sales_order.changed.v1 published; otherwise nothing
+// is written.
 func (s *server) CancelSalesOrderRemaining(ctx context.Context, req gen.CancelSalesOrderRemainingRequestObject) (gen.CancelSalesOrderRemainingResponseObject, error) {
 	out, err := s.changeOrder(ctx, req.Id, req.Body.Version, req.Body.ExpectedUpdatedAt, true,
 		func(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.OrdersOrder, lines []store.OrdersLine) (store.OrdersOrder, []changeAction, error) {
@@ -479,6 +509,14 @@ func (s *server) CancelSalesOrderRemaining(ctx context.Context, req gen.CancelSa
 			}
 			if len(actions) == 0 {
 				return o, nil, nil
+			}
+			// Nothing remains to reserve or to deliver (O18, O46).
+			if err := s.releaseAll(ctx, tx, o.ID); err != nil {
+				return o, nil, err
+			}
+			now := s.deps.Clock()
+			if _, err := txq.CancelDraftDeliveriesOfOrder(ctx, store.CancelDraftDeliveriesOfOrderParams{OrderID: o.ID, Now: &now}); err != nil {
+				return o, nil, fmt.Errorf("orders: cancel order %d's draft deliveries: %w", o.ID, err)
 			}
 			row, err := s.bumpProgress(ctx, tx, txq, o, lines, o.Version+1)
 			return row, actions, err

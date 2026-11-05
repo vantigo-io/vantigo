@@ -25,7 +25,10 @@ type ordersSettings struct {
 	// subscriptionFinalPeriodDefault is the final period a new subscription
 	// takes (owner, 2026-11-06): full or prorated.
 	subscriptionFinalPeriodDefault string
-	revision                       int32 // 0 while never saved
+	// defaultSiteID is the Inventory site a new order is fulfilled from
+	// (O46), nil for none.
+	defaultSiteID *int64
+	revision      int32 // 0 while never saved
 }
 
 // mailTextOverride is one document kind's subject and body in one language,
@@ -50,7 +53,7 @@ func settingsOf(row store.OrdersSetting) (ordersSettings, error) {
 		quoteValidityDays: row.QuoteValidityDays, defaultPaymentTermsDays: row.DefaultPaymentTermsDays,
 		sendChannel: row.SendChannel, confirmationOnConfirm: row.ConfirmationOnConfirm,
 		combineByDefault: row.CombineByDefault, subscriptionFinalPeriodDefault: row.SubscriptionFinalPeriodDefault,
-		revision: row.Revision,
+		defaultSiteID: row.DefaultSiteID, revision: row.Revision,
 	}
 	if len(row.MailTexts) > 0 {
 		var texts []mailTextOverride
@@ -99,4 +102,6 @@ func allocateNumber(ctx context.Context, txq *store.Queries, series string, star
 const (
 	seriesQuote = "quote"
 	seriesOrder = "order"
+	// seriesDelivery numbers the deliveries (O47); it starts at 1.
+	seriesDelivery = "delivery"
 )

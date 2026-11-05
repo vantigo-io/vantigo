@@ -59,6 +59,48 @@ func (e OrdersCustomerSnapshotType) Valid() bool {
 	}
 }
 
+// Defines values for OrdersDeliveryStatus.
+const (
+	OrdersDeliveryStatusCancelled OrdersDeliveryStatus = "cancelled"
+	OrdersDeliveryStatusDraft     OrdersDeliveryStatus = "draft"
+	OrdersDeliveryStatusPosted    OrdersDeliveryStatus = "posted"
+)
+
+// Valid indicates whether the value is a known member of the OrdersDeliveryStatus enum.
+func (e OrdersDeliveryStatus) Valid() bool {
+	switch e {
+	case OrdersDeliveryStatusCancelled:
+		return true
+	case OrdersDeliveryStatusDraft:
+		return true
+	case OrdersDeliveryStatusPosted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersDeliverySummaryStatus.
+const (
+	OrdersDeliverySummaryStatusCancelled OrdersDeliverySummaryStatus = "cancelled"
+	OrdersDeliverySummaryStatusDraft     OrdersDeliverySummaryStatus = "draft"
+	OrdersDeliverySummaryStatusPosted    OrdersDeliverySummaryStatus = "posted"
+)
+
+// Valid indicates whether the value is a known member of the OrdersDeliverySummaryStatus enum.
+func (e OrdersDeliverySummaryStatus) Valid() bool {
+	switch e {
+	case OrdersDeliverySummaryStatusCancelled:
+		return true
+	case OrdersDeliverySummaryStatusDraft:
+		return true
+	case OrdersDeliverySummaryStatusPosted:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrdersDocumentRefKind.
 const (
 	OrdersDocumentRefKindOrder        OrdersDocumentRefKind = "order"
@@ -197,6 +239,24 @@ func (e OrdersLinePriceSource) Valid() bool {
 	case OrdersLinePriceSourceChannel:
 		return true
 	case OrdersLinePriceSourceManual:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrdersLineInputInvoicePolicy.
+const (
+	OrdersLineInputInvoicePolicyDelivery OrdersLineInputInvoicePolicy = "delivery"
+	OrdersLineInputInvoicePolicyOrder    OrdersLineInputInvoicePolicy = "order"
+)
+
+// Valid indicates whether the value is a known member of the OrdersLineInputInvoicePolicy enum.
+func (e OrdersLineInputInvoicePolicy) Valid() bool {
+	switch e {
+	case OrdersLineInputInvoicePolicyDelivery:
+		return true
+	case OrdersLineInputInvoicePolicyOrder:
 		return true
 	default:
 		return false
@@ -1214,6 +1274,27 @@ func (e GetOrdersIntakeParamsFormat) Valid() bool {
 	}
 }
 
+// Defines values for ListDeliveriesParamsStatus.
+const (
+	ListDeliveriesParamsStatusCancelled ListDeliveriesParamsStatus = "cancelled"
+	ListDeliveriesParamsStatusDraft     ListDeliveriesParamsStatus = "draft"
+	ListDeliveriesParamsStatusPosted    ListDeliveriesParamsStatus = "posted"
+)
+
+// Valid indicates whether the value is a known member of the ListDeliveriesParamsStatus enum.
+func (e ListDeliveriesParamsStatus) Valid() bool {
+	switch e {
+	case ListDeliveriesParamsStatusCancelled:
+		return true
+	case ListDeliveriesParamsStatusDraft:
+		return true
+	case ListDeliveriesParamsStatusPosted:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListSalesOrdersParamsStatus.
 const (
 	ListSalesOrdersParamsStatusCancelled ListSalesOrdersParamsStatus = "cancelled"
@@ -1461,8 +1542,11 @@ type OrdersConfirmInput struct {
 	OverrideWarnings *bool `json:"overrideWarnings,omitempty"`
 
 	// Plan A subscription's plan (O42), when a quote is accepted as a subscription.
-	Plan    *OrdersSubscriptionPlan `json:"plan,omitempty"`
-	Version int32                   `json:"version"`
+	Plan *OrdersSubscriptionPlan `json:"plan,omitempty"`
+
+	// Reserve Reserve each goods line's open quantity at the order's site (O46), the default when Inventory keeps stock and the order names a site. false is Confirm without reserving, logged confirmed_without_reserving; a shortfall is otherwise refused with insufficient_available naming every short line.
+	Reserve *bool `json:"reserve,omitempty"`
+	Version int32 `json:"version"`
 }
 
 // OrdersContact The chosen contact, snapshotted (O13).
@@ -1544,6 +1628,108 @@ type OrdersDeliveredLine struct {
 
 	// Quantity Greater than 0, at most three decimals.
 	Quantity float64 `json:"quantity"`
+}
+
+// OrdersDelivery A delivery (leveranse, O47): what of an order leaves one site. A draft is edited, picked and posted or cancelled; a posted delivery is immutable. version is the draft's optimistic-concurrency token.
+type OrdersDelivery struct {
+	CancelledAt *time.Time `json:"cancelledAt,omitempty"`
+	CreatedAt   time.Time  `json:"createdAt"`
+
+	// CreatedBy A user as snapshotted on the document: the salesperson or an actor (O13, O29).
+	CreatedBy    *OrdersPerson `json:"createdBy,omitempty"`
+	CustomerId   int32         `json:"customerId"`
+	CustomerName string        `json:"customerName"`
+
+	// DeliveryAddress A postal address snapshotted on the document; every field optional.
+	DeliveryAddress *OrdersAddress       `json:"deliveryAddress,omitempty"`
+	Id              int64                `json:"id"`
+	Lines           []OrdersDeliveryLine `json:"lines"`
+
+	// MovementId Inventory's issue movement, once posted.
+	MovementId  *int64 `json:"movementId,omitempty"`
+	Number      int64  `json:"number"`
+	OrderId     int64  `json:"orderId"`
+	OrderNumber int64  `json:"orderNumber"`
+
+	// OrderOnHold Whether the order is on hold: a held order takes no delivery (order_on_hold).
+	OrderOnHold bool `json:"orderOnHold"`
+
+	// PackingSlipStored Whether the posted delivery's packing slip is stored.
+	PackingSlipStored bool       `json:"packingSlipStored"`
+	PostedAt          *time.Time `json:"postedAt,omitempty"`
+
+	// PostedBy A user as snapshotted on the document: the salesperson or an actor (O13, O29).
+	PostedBy  *OrdersPerson        `json:"postedBy,omitempty"`
+	SiteId    int64                `json:"siteId"`
+	Status    OrdersDeliveryStatus `json:"status"`
+	UpdatedAt time.Time            `json:"updatedAt"`
+	Version   int32                `json:"version"`
+}
+
+// OrdersDeliveryStatus defines model for OrdersDelivery.Status.
+type OrdersDeliveryStatus string
+
+// OrdersDeliveryInput A new draft delivery of a confirmed order (O47): every open goods line is proposed — ordered less cancelled less delivered less what other draft deliveries hold — at what is available at the order's site, never more than is open.
+type OrdersDeliveryInput struct {
+	OrderId int64 `json:"orderId"`
+}
+
+// OrdersDeliveryLine A delivery's line: one order line, the quantity, and the location it is picked from (null until picked). open is what of the order line is still to deliver outside this delivery; locations, on a draft, are the site's locations holding the variant, by full code.
+type OrdersDeliveryLine struct {
+	FromLocationCode *string               `json:"fromLocationCode,omitempty"`
+	FromLocationId   *int64                `json:"fromLocationId,omitempty"`
+	Id               int64                 `json:"id"`
+	Locations        []OrdersStockLocation `json:"locations"`
+	Name             *string               `json:"name,omitempty"`
+	Open             float64               `json:"open"`
+	OrderLineId      int64                 `json:"orderLineId"`
+	Ordered          float64               `json:"ordered"`
+	Position         int32                 `json:"position"`
+	Quantity         float64               `json:"quantity"`
+	Sku              *string               `json:"sku,omitempty"`
+	Unit             string                `json:"unit"`
+	VariantId        int32                 `json:"variantId"`
+}
+
+// OrdersDeliveryLineInput A draft delivery's line as the editor saves it.
+type OrdersDeliveryLineInput struct {
+	FromLocationId *int64 `json:"fromLocationId,omitempty"`
+	OrderLineId    int64  `json:"orderLineId"`
+
+	// Quantity Greater than 0, at most three decimals, never beyond what is open (over_delivery).
+	Quantity float64 `json:"quantity"`
+}
+
+// OrdersDeliveryPage One page of deliveries, newest first; total counts every match.
+type OrdersDeliveryPage struct {
+	Items []OrdersDeliverySummary `json:"items"`
+	Total int32                   `json:"total"`
+}
+
+// OrdersDeliverySummary A delivery in a list.
+type OrdersDeliverySummary struct {
+	CustomerId   int32                       `json:"customerId"`
+	CustomerName string                      `json:"customerName"`
+	Id           int64                       `json:"id"`
+	Lines        int32                       `json:"lines"`
+	Number       int64                       `json:"number"`
+	OrderId      int64                       `json:"orderId"`
+	OrderNumber  int64                       `json:"orderNumber"`
+	PostedAt     *time.Time                  `json:"postedAt,omitempty"`
+	SiteId       int64                       `json:"siteId"`
+	Status       OrdersDeliverySummaryStatus `json:"status"`
+	UpdatedAt    time.Time                   `json:"updatedAt"`
+}
+
+// OrdersDeliverySummaryStatus defines model for OrdersDeliverySummary.Status.
+type OrdersDeliverySummaryStatus string
+
+// OrdersDeliveryUpdate A draft delivery's save: every line, replaced whole, at the version the editor read (version_conflict otherwise).
+type OrdersDeliveryUpdate struct {
+	// ExpectedUpdatedAt The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+	ExpectedUpdatedAt time.Time                 `json:"expectedUpdatedAt"`
+	Lines             []OrdersDeliveryLineInput `json:"lines"`
+	Version           int32                     `json:"version"`
 }
 
 // OrdersDocumentRef A document Orders made from another.
@@ -1649,6 +1835,8 @@ type OrdersIntakeRow struct {
 
 // OrdersLine A line of a quote or an order (O15). A section or a note has only its text and position. The amounts are Invoices' own (O17); VAT is per document. The quantity buckets are an order line's and stay 0 on a quote.
 type OrdersLine struct {
+	// Available What is available of the line's variant at the order's site — on hand less every reservation there — as Inventory answers it (O45). Null when stock is not kept, the order names no site, or the line names no goods variant. May be negative.
+	Available       *float64                 `json:"available,omitempty"`
 	DeliveryMethod  OrdersLineDeliveryMethod `json:"deliveryMethod"`
 	Description     string                   `json:"description"`
 	DiscountPercent float64                  `json:"discountPercent"`
@@ -1688,6 +1876,9 @@ type OrdersLine struct {
 	// QtyDraftAllocated What draft invoices hold of the line (O36): its draft allocations' quantity, not yet invoiced and not offered to invoice again. 0 on a quote.
 	QtyDraftAllocated float64 `json:"qtyDraftAllocated"`
 	QtyInvoiced       float64 `json:"qtyInvoiced"`
+
+	// QtyReserved What Inventory holds reserved of the line at the order's site (O46). 0 when nothing is.
+	QtyReserved *float64 `json:"qtyReserved,omitempty"`
 
 	// Quantity At most three decimals.
 	Quantity *float64 `json:"quantity,omitempty"`
@@ -1734,6 +1925,9 @@ type OrdersLineInput struct {
 	// Id The line's id when it already exists.
 	Id *int64 `json:"id,omitempty"`
 
+	// InvoicePolicy An order line's invoice policy (O48): order, or delivery to invoice only what is delivered. Absent keeps a kept line's policy and gives a new line the default — delivery for goods on an order with a site, order otherwise. It changes only while nothing of the line is invoiced or in a draft invoice (line_invoiced).
+	InvoicePolicy *OrdersLineInputInvoicePolicy `json:"invoicePolicy,omitempty"`
+
 	// Kind An open set (O15): product, section and note in this phase.
 	Kind OrdersLineInputKind `json:"kind"`
 
@@ -1756,6 +1950,9 @@ type OrdersLineInput struct {
 	// VatCodeId A free-text line's VAT code; a catalog line takes its category's.
 	VatCodeId *int32 `json:"vatCodeId,omitempty"`
 }
+
+// OrdersLineInputInvoicePolicy An order line's invoice policy (O48): order, or delivery to invoice only what is delivered. Absent keeps a kept line's policy and gives a new line the default — delivery for goods on an order with a site, order otherwise. It changes only while nothing of the line is invoiced or in a draft invoice (line_invoiced).
+type OrdersLineInputInvoicePolicy string
 
 // OrdersLineInputKind An open set (O15): product, section and note in this phase.
 type OrdersLineInputKind string
@@ -1824,6 +2021,9 @@ type OrdersMeta struct {
 
 	// SendingAvailable Whether Send works now: Communications is on and the channel the settings choose can send (O25). False leaves Download and Mark as sent.
 	SendingAvailable bool `json:"sendingAvailable"`
+
+	// StockKept Whether Inventory keeps stock (O45): orders then name a site, reserve at confirm and are delivered by delivery documents.
+	StockKept bool `json:"stockKept"`
 }
 
 // OrdersOrder A sales order (O13, O18). version is the order's optimistic-concurrency token and the version its confirmation prints: a draft stays at 1 through its saves, and after confirmation every edit that changes it and every cancel-remaining bumps it, so a confirmation sent at version 2 or later prints as revised (O26). Hold, release, lock, unlock and delivery marking are logged at the version they found. done is derived: confirmed, delivered and invoiced.
@@ -1871,6 +2071,9 @@ type OrdersOrder struct {
 	// Salesperson A user as snapshotted on the document: the salesperson or an actor (O13, O29).
 	Salesperson *OrdersPerson `json:"salesperson,omitempty"`
 
+	// SiteId The Inventory site the order is fulfilled from (O46); null when it names none, and its goods lines are then delivered by hand (O32).
+	SiteId *int64 `json:"siteId,omitempty"`
+
 	// SourceQuoteId The quote the order was accepted from, when its origin is one (channel quote); the same quote origin.sourceId names with its revision.
 	SourceQuoteId *int64            `json:"sourceQuoteId,omitempty"`
 	Status        OrdersOrderStatus `json:"status"`
@@ -1917,7 +2120,10 @@ type OrdersOrderInput struct {
 	PricesIncludeVat  *bool                     `json:"pricesIncludeVat,omitempty"`
 	ProjectId         *int32                    `json:"projectId,omitempty"`
 	SalespersonId     *openapi_types.UUID       `json:"salespersonId,omitempty"`
-	YourReference     *string                   `json:"yourReference,omitempty"`
+
+	// SiteId The Inventory site the order is fulfilled from (O46); absent takes the settings' default site when Inventory keeps stock.
+	SiteId        *int64  `json:"siteId,omitempty"`
+	YourReference *string `json:"yourReference,omitempty"`
 }
 
 // OrdersOrderInputLanguage defines model for OrdersOrderInput.Language.
@@ -1997,8 +2203,11 @@ type OrdersOrderUpdate struct {
 	PricesIncludeVat  *bool                      `json:"pricesIncludeVat,omitempty"`
 	ProjectId         *int32                     `json:"projectId,omitempty"`
 	SalespersonId     *openapi_types.UUID        `json:"salespersonId,omitempty"`
-	Version           int32                      `json:"version"`
-	YourReference     *string                    `json:"yourReference,omitempty"`
+
+	// SiteId The site (O46). On a draft, absent or null names none. On a confirmed order, absent keeps it; another site moves the order's reservations there (released at the old, reserved at the new, insufficient_available when it is short), refused once the order has a delivery (order_has_deliveries).
+	SiteId        *int64  `json:"siteId,omitempty"`
+	Version       int32   `json:"version"`
+	YourReference *string `json:"yourReference,omitempty"`
 }
 
 // OrdersOrderUpdateLanguage defines model for OrdersOrderUpdate.Language.
@@ -2265,17 +2474,20 @@ type OrdersSendInput struct {
 
 // OrdersSettings Orders' settings. nextQuoteNumber and nextOrderNumber are the numbers the series hand out next; a series start may only rise above the highest number used (O12). sendingAvailable says whether Communications is on.
 type OrdersSettings struct {
-	CombineByDefault        bool                `json:"combineByDefault"`
-	ConfirmationOnConfirm   bool                `json:"confirmationOnConfirm"`
-	DefaultPaymentTermsDays int32               `json:"defaultPaymentTermsDays"`
-	MailTexts               []OrdersMailText    `json:"mailTexts"`
-	NextOrderNumber         int64               `json:"nextOrderNumber"`
-	NextQuoteNumber         int64               `json:"nextQuoteNumber"`
-	OrderSeriesStart        int64               `json:"orderSeriesStart"`
-	QuoteSeriesStart        int64               `json:"quoteSeriesStart"`
-	QuoteValidityDays       int32               `json:"quoteValidityDays"`
-	Revision                int32               `json:"revision"`
-	SendChannelId           *openapi_types.UUID `json:"sendChannelId,omitempty"`
+	CombineByDefault        bool  `json:"combineByDefault"`
+	ConfirmationOnConfirm   bool  `json:"confirmationOnConfirm"`
+	DefaultPaymentTermsDays int32 `json:"defaultPaymentTermsDays"`
+
+	// DefaultSiteId The site a new order is fulfilled from (O46); null names none.
+	DefaultSiteId     *int64              `json:"defaultSiteId,omitempty"`
+	MailTexts         []OrdersMailText    `json:"mailTexts"`
+	NextOrderNumber   int64               `json:"nextOrderNumber"`
+	NextQuoteNumber   int64               `json:"nextQuoteNumber"`
+	OrderSeriesStart  int64               `json:"orderSeriesStart"`
+	QuoteSeriesStart  int64               `json:"quoteSeriesStart"`
+	QuoteValidityDays int32               `json:"quoteValidityDays"`
+	Revision          int32               `json:"revision"`
+	SendChannelId     *openapi_types.UUID `json:"sendChannelId,omitempty"`
 
 	// SendChannelState What the stored sendChannelId is now: disabled (none chosen), ready (the channel can send), unavailable (it exists but cannot send now — its provider is off or an SMTP channel has no credentials) or gone (no active channel has the id, or Communications is off). Anything but ready sends nothing, and GET /meta answers sendingAvailable false.
 	SendChannelState OrdersSettingsSendChannelState `json:"sendChannelState"`
@@ -2293,18 +2505,35 @@ type OrdersSettingsSendChannelState string
 
 // OrdersSettingsInput Orders' settings, replaced whole. revision is the one the client read.
 type OrdersSettingsInput struct {
-	CombineByDefault        bool                `json:"combineByDefault"`
-	ConfirmationOnConfirm   bool                `json:"confirmationOnConfirm"`
-	DefaultPaymentTermsDays int32               `json:"defaultPaymentTermsDays"`
-	MailTexts               []OrdersMailText    `json:"mailTexts"`
-	OrderSeriesStart        int64               `json:"orderSeriesStart"`
-	QuoteSeriesStart        int64               `json:"quoteSeriesStart"`
-	QuoteValidityDays       int32               `json:"quoteValidityDays"`
-	Revision                int32               `json:"revision"`
-	SendChannelId           *openapi_types.UUID `json:"sendChannelId,omitempty"`
+	CombineByDefault        bool  `json:"combineByDefault"`
+	ConfirmationOnConfirm   bool  `json:"confirmationOnConfirm"`
+	DefaultPaymentTermsDays int32 `json:"defaultPaymentTermsDays"`
+
+	// DefaultSiteId The site a new order takes (O46): an active site of Inventory's that fulfils orders (site_not_fulfilling otherwise); null names none.
+	DefaultSiteId     *int64              `json:"defaultSiteId,omitempty"`
+	MailTexts         []OrdersMailText    `json:"mailTexts"`
+	OrderSeriesStart  int64               `json:"orderSeriesStart"`
+	QuoteSeriesStart  int64               `json:"quoteSeriesStart"`
+	QuoteValidityDays int32               `json:"quoteValidityDays"`
+	Revision          int32               `json:"revision"`
+	SendChannelId     *openapi_types.UUID `json:"sendChannelId,omitempty"`
 
 	// SubscriptionFinalPeriodDefault How a subscription bills the period its end falls in when the end is not the period's last day (owner, 2026-11-06): full, the whole period; prorated, by its days from the period's start to the end, inclusive, over the full period's days, to øre.
 	SubscriptionFinalPeriodDefault *OrdersFinalPeriod `json:"subscriptionFinalPeriodDefault,omitempty"`
+}
+
+// OrdersSite An Inventory site as Orders offers it (contracts.Stock, O46): an order is fulfilled from an active site that fulfils orders.
+type OrdersSite struct {
+	Active        bool   `json:"active"`
+	Code          string `json:"code"`
+	FulfilsOrders bool   `json:"fulfilsOrders"`
+	Id            int64  `json:"id"`
+	Name          string `json:"name"`
+}
+
+// OrdersSiteList Inventory's sites, by code; empty when Inventory keeps no stock.
+type OrdersSiteList struct {
+	Items []OrdersSite `json:"items"`
 }
 
 // OrdersSkippedLine A template line left out.
@@ -2316,6 +2545,13 @@ type OrdersSkippedLine struct {
 
 // OrdersSkippedLineReason defines model for OrdersSkippedLine.Reason.
 type OrdersSkippedLineReason string
+
+// OrdersStockLocation A location of the site holding the variant, and how much (O47).
+type OrdersStockLocation struct {
+	FullCode   string  `json:"fullCode"`
+	LocationId int64   `json:"locationId"`
+	Quantity   float64 `json:"quantity"`
+}
 
 // OrdersStoredDocument A stored PDF (O24): a sent quote revision, or a sent or confirmed order version.
 type OrdersStoredDocument struct {
@@ -2808,6 +3044,20 @@ type GetOrdersIntakeParamsGroupBy string
 // GetOrdersIntakeParamsFormat defines parameters for GetOrdersIntake.
 type GetOrdersIntakeParamsFormat string
 
+// ListDeliveriesParams defines parameters for ListDeliveries.
+type ListDeliveriesParams struct {
+	// Status Any of the statuses; none means all.
+	Status   *[]ListDeliveriesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	OrderId  *int64                        `form:"orderId,omitempty" json:"orderId,omitempty"`
+	SiteId   *int64                        `form:"siteId,omitempty" json:"siteId,omitempty"`
+	Q        *string                       `form:"q,omitempty" json:"q,omitempty"`
+	Page     *int32                        `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32                        `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// ListDeliveriesParamsStatus defines parameters for ListDeliveries.
+type ListDeliveriesParamsStatus string
+
 // ListSalesOrdersParams defines parameters for ListSalesOrders.
 type ListSalesOrdersParams struct {
 	CustomerId *int32 `form:"customerId,omitempty" json:"customerId,omitempty"`
@@ -2829,6 +3079,9 @@ type ListSalesOrdersParams struct {
 
 	// InvoiceStatus Any of the invoice statuses; none means all.
 	InvoiceStatus *[]ListSalesOrdersParamsInvoiceStatus `form:"invoiceStatus,omitempty" json:"invoiceStatus,omitempty"`
+
+	// ToDeliver Only confirmed orders with a quantity still to deliver — the back orders (restordre, O47).
+	ToDeliver *bool `form:"toDeliver,omitempty" json:"toDeliver,omitempty"`
 
 	// Done true keeps only the done orders (confirmed, delivered and invoiced), false only those not done; absent keeps both.
 	Done *bool `form:"done,omitempty" json:"done,omitempty"`
@@ -2934,6 +3187,18 @@ type ListOrdersWarningsParams struct {
 // ListOrdersWarningsParamsScope defines parameters for ListOrdersWarnings.
 type ListOrdersWarningsParamsScope string
 
+// CreateDeliveryJSONRequestBody defines body for CreateDelivery for application/json ContentType.
+type CreateDeliveryJSONRequestBody = OrdersDeliveryInput
+
+// UpdateDeliveryJSONRequestBody defines body for UpdateDelivery for application/json ContentType.
+type UpdateDeliveryJSONRequestBody = OrdersDeliveryUpdate
+
+// CancelDeliveryJSONRequestBody defines body for CancelDelivery for application/json ContentType.
+type CancelDeliveryJSONRequestBody = OrdersVersionInput
+
+// PostDeliveryJSONRequestBody defines body for PostDelivery for application/json ContentType.
+type PostDeliveryJSONRequestBody = OrdersVersionInput
+
 // CreateSalesOrderJSONRequestBody defines body for CreateSalesOrder for application/json ContentType.
 type CreateSalesOrderJSONRequestBody = OrdersOrderInput
 
@@ -2963,6 +3228,9 @@ type ReleaseSalesOrderJSONRequestBody = OrdersVersionInput
 
 // ReleaseSalesOrderDraftAllocationsJSONRequestBody defines body for ReleaseSalesOrderDraftAllocations for application/json ContentType.
 type ReleaseSalesOrderDraftAllocationsJSONRequestBody = OrdersVersionInput
+
+// ReserveSalesOrderJSONRequestBody defines body for ReserveSalesOrder for application/json ContentType.
+type ReserveSalesOrderJSONRequestBody = OrdersVersionInput
 
 // SendSalesOrderJSONRequestBody defines body for SendSalesOrder for application/json ContentType.
 type SendSalesOrderJSONRequestBody = OrdersSendInput
@@ -3050,6 +3318,30 @@ type ServerInterface interface {
 	// GetOrdersCustomerSummary Get a customer's orders summary
 	// (GET /api/v1/orders/customers/{customerId}/summary)
 	GetOrdersCustomerSummary(w http.ResponseWriter, r *http.Request, customerId int32)
+	// ListDeliveries List deliveries
+	// (GET /api/v1/orders/deliveries)
+	ListDeliveries(w http.ResponseWriter, r *http.Request, params ListDeliveriesParams)
+	// CreateDelivery Create a delivery
+	// (POST /api/v1/orders/deliveries)
+	CreateDelivery(w http.ResponseWriter, r *http.Request)
+	// GetDelivery Get a delivery
+	// (GET /api/v1/orders/deliveries/{id})
+	GetDelivery(w http.ResponseWriter, r *http.Request, id int64)
+	// UpdateDelivery Save a delivery
+	// (PUT /api/v1/orders/deliveries/{id})
+	UpdateDelivery(w http.ResponseWriter, r *http.Request, id int64)
+	// CancelDelivery Cancel a delivery
+	// (POST /api/v1/orders/deliveries/{id}/cancel)
+	CancelDelivery(w http.ResponseWriter, r *http.Request, id int64)
+	// GetDeliveryPackingSlip Download a packing slip
+	// (GET /api/v1/orders/deliveries/{id}/packing-slip)
+	GetDeliveryPackingSlip(w http.ResponseWriter, r *http.Request, id int64)
+	// GetDeliveryPickList Download a pick list
+	// (GET /api/v1/orders/deliveries/{id}/pick-list)
+	GetDeliveryPickList(w http.ResponseWriter, r *http.Request, id int64)
+	// PostDelivery Post a delivery
+	// (POST /api/v1/orders/deliveries/{id}/post)
+	PostDelivery(w http.ResponseWriter, r *http.Request, id int64)
 	// GetOrdersMeta Get what the Orders screens need
 	// (GET /api/v1/orders/meta)
 	GetOrdersMeta(w http.ResponseWriter, r *http.Request)
@@ -3107,6 +3399,9 @@ type ServerInterface interface {
 	// ReleaseSalesOrderDraftAllocations Release an order's draft invoice allocations
 	// (POST /api/v1/orders/orders/{id}/release-draft-allocations)
 	ReleaseSalesOrderDraftAllocations(w http.ResponseWriter, r *http.Request, id int64)
+	// ReserveSalesOrder Reserve an order's stock
+	// (POST /api/v1/orders/orders/{id}/reserve)
+	ReserveSalesOrder(w http.ResponseWriter, r *http.Request, id int64)
 	// SendSalesOrder Send an order confirmation
 	// (POST /api/v1/orders/orders/{id}/send)
 	SendSalesOrder(w http.ResponseWriter, r *http.Request, id int64)
@@ -3179,6 +3474,9 @@ type ServerInterface interface {
 	// PutOrdersSettings Save the Orders settings
 	// (PUT /api/v1/orders/settings)
 	PutOrdersSettings(w http.ResponseWriter, r *http.Request)
+	// ListOrdersSites List the sites
+	// (GET /api/v1/orders/sites)
+	ListOrdersSites(w http.ResponseWriter, r *http.Request)
 	// ListSubscriptions List subscriptions
 	// (GET /api/v1/orders/subscriptions)
 	ListSubscriptions(w http.ResponseWriter, r *http.Request, params ListSubscriptionsParams)
@@ -3462,6 +3760,274 @@ func (siw *ServerInterfaceWrapper) GetOrdersCustomerSummary(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// ListDeliveries operation middleware
+func (siw *ServerInterfaceWrapper) ListDeliveries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListDeliveriesParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "orderId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "orderId", r.URL.Query(), &params.OrderId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "orderId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orderId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDeliveries(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateDelivery operation middleware
+func (siw *ServerInterfaceWrapper) CreateDelivery(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateDelivery(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDelivery operation middleware
+func (siw *ServerInterfaceWrapper) GetDelivery(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDelivery(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateDelivery operation middleware
+func (siw *ServerInterfaceWrapper) UpdateDelivery(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateDelivery(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelDelivery operation middleware
+func (siw *ServerInterfaceWrapper) CancelDelivery(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelDelivery(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDeliveryPackingSlip operation middleware
+func (siw *ServerInterfaceWrapper) GetDeliveryPackingSlip(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDeliveryPackingSlip(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDeliveryPickList operation middleware
+func (siw *ServerInterfaceWrapper) GetDeliveryPickList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDeliveryPickList(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostDelivery operation middleware
+func (siw *ServerInterfaceWrapper) PostDelivery(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostDelivery(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetOrdersMeta operation middleware
 func (siw *ServerInterfaceWrapper) GetOrdersMeta(w http.ResponseWriter, r *http.Request) {
 
@@ -3598,6 +4164,19 @@ func (siw *ServerInterfaceWrapper) ListSalesOrders(w http.ResponseWriter, r *htt
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "invoiceStatus"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invoiceStatus", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "toDeliver" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "toDeliver", r.URL.Query(), &params.ToDeliver, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "toDeliver"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "toDeliver", Err: err})
 		}
 		return
 	}
@@ -4079,6 +4658,32 @@ func (siw *ServerInterfaceWrapper) ReleaseSalesOrderDraftAllocations(w http.Resp
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReleaseSalesOrderDraftAllocations(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReserveSalesOrder operation middleware
+func (siw *ServerInterfaceWrapper) ReserveSalesOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReserveSalesOrder(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4794,6 +5399,20 @@ func (siw *ServerInterfaceWrapper) PutOrdersSettings(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutOrdersSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOrdersSites operation middleware
+func (siw *ServerInterfaceWrapper) ListOrdersSites(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrdersSites(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5607,6 +6226,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/analysis/hit-rate", wrapper.GetOrdersHitRate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/analysis/intake", wrapper.GetOrdersIntake)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/customers/{customerId}/summary", wrapper.GetOrdersCustomerSummary)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/deliveries", wrapper.ListDeliveries)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/deliveries", wrapper.CreateDelivery)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/deliveries/{id}", wrapper.GetDelivery)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/orders/deliveries/{id}", wrapper.UpdateDelivery)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/deliveries/{id}/cancel", wrapper.CancelDelivery)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/deliveries/{id}/packing-slip", wrapper.GetDeliveryPackingSlip)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/deliveries/{id}/pick-list", wrapper.GetDeliveryPickList)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/deliveries/{id}/post", wrapper.PostDelivery)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/meta", wrapper.GetOrdersMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/orders", wrapper.ListSalesOrders)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders", wrapper.CreateSalesOrder)
@@ -5626,6 +6253,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/orders/{id}/proforma", wrapper.GetSalesOrderProforma)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/release", wrapper.ReleaseSalesOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/release-draft-allocations", wrapper.ReleaseSalesOrderDraftAllocations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/reserve", wrapper.ReserveSalesOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/send", wrapper.SendSalesOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/undo-delivered", wrapper.UndoSalesOrderDelivered)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/orders/{id}/unlock", wrapper.UnlockSalesOrder)
@@ -5650,6 +6278,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/salespeople", wrapper.ListOrdersSalespeople)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/settings", wrapper.GetOrdersSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/orders/settings", wrapper.PutOrdersSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/sites", wrapper.ListOrdersSites)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/subscriptions", wrapper.ListSubscriptions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/subscriptions", wrapper.CreateSubscription)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/subscriptions/{id}", wrapper.GetSubscription)
@@ -5975,6 +6604,645 @@ func (response GetOrdersCustomerSummary403JSONResponse) VisitGetOrdersCustomerSu
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveriesRequestObject struct {
+	Params ListDeliveriesParams
+}
+
+type ListDeliveriesResponseObject interface {
+	VisitListDeliveriesResponse(w http.ResponseWriter) error
+}
+
+type ListDeliveries200JSONResponse OrdersDeliveryPage
+
+func (response ListDeliveries200JSONResponse) VisitListDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveries400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response ListDeliveries400ApplicationProblemPlusJSONResponse) VisitListDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveries401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListDeliveries401JSONResponse) VisitListDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveries403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListDeliveries403JSONResponse) VisitListDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDeliveryRequestObject struct {
+	Body *CreateDeliveryJSONRequestBody
+}
+
+type CreateDeliveryResponseObject interface {
+	VisitCreateDeliveryResponse(w http.ResponseWriter) error
+}
+
+type CreateDelivery201JSONResponse OrdersDelivery
+
+func (response CreateDelivery201JSONResponse) VisitCreateDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDelivery400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CreateDelivery400ApplicationProblemPlusJSONResponse) VisitCreateDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDelivery401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateDelivery401JSONResponse) VisitCreateDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDelivery403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateDelivery403JSONResponse) VisitCreateDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDelivery404Response struct {
+}
+
+func (response CreateDelivery404Response) VisitCreateDeliveryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type CreateDelivery409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CreateDelivery409ApplicationProblemPlusJSONResponse) VisitCreateDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDelivery503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CreateDelivery503ApplicationProblemPlusJSONResponse) VisitCreateDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDeliveryRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetDeliveryResponseObject interface {
+	VisitGetDeliveryResponse(w http.ResponseWriter) error
+}
+
+type GetDelivery200JSONResponse OrdersDelivery
+
+func (response GetDelivery200JSONResponse) VisitGetDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDelivery401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetDelivery401JSONResponse) VisitGetDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDelivery403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetDelivery403JSONResponse) VisitGetDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDelivery404Response struct {
+}
+
+func (response GetDelivery404Response) VisitGetDeliveryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateDeliveryRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *UpdateDeliveryJSONRequestBody
+}
+
+type UpdateDeliveryResponseObject interface {
+	VisitUpdateDeliveryResponse(w http.ResponseWriter) error
+}
+
+type UpdateDelivery200JSONResponse OrdersDelivery
+
+func (response UpdateDelivery200JSONResponse) VisitUpdateDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDelivery400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response UpdateDelivery400ApplicationProblemPlusJSONResponse) VisitUpdateDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDelivery401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateDelivery401JSONResponse) VisitUpdateDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDelivery403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateDelivery403JSONResponse) VisitUpdateDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDelivery404Response struct {
+}
+
+func (response UpdateDelivery404Response) VisitUpdateDeliveryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateDelivery409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response UpdateDelivery409ApplicationProblemPlusJSONResponse) VisitUpdateDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDelivery503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response UpdateDelivery503ApplicationProblemPlusJSONResponse) VisitUpdateDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelDeliveryRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *CancelDeliveryJSONRequestBody
+}
+
+type CancelDeliveryResponseObject interface {
+	VisitCancelDeliveryResponse(w http.ResponseWriter) error
+}
+
+type CancelDelivery200JSONResponse OrdersDelivery
+
+func (response CancelDelivery200JSONResponse) VisitCancelDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelDelivery401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CancelDelivery401JSONResponse) VisitCancelDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelDelivery403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CancelDelivery403JSONResponse) VisitCancelDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelDelivery404Response struct {
+}
+
+func (response CancelDelivery404Response) VisitCancelDeliveryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type CancelDelivery409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response CancelDelivery409ApplicationProblemPlusJSONResponse) VisitCancelDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDeliveryPackingSlipRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetDeliveryPackingSlipResponseObject interface {
+	VisitGetDeliveryPackingSlipResponse(w http.ResponseWriter) error
+}
+
+type GetDeliveryPackingSlip200ApplicationpdfResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetDeliveryPackingSlip200ApplicationpdfResponse) VisitGetDeliveryPackingSlipResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetDeliveryPackingSlip401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetDeliveryPackingSlip401JSONResponse) VisitGetDeliveryPackingSlipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDeliveryPackingSlip403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetDeliveryPackingSlip403JSONResponse) VisitGetDeliveryPackingSlipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDeliveryPackingSlip404Response struct {
+}
+
+func (response GetDeliveryPackingSlip404Response) VisitGetDeliveryPackingSlipResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetDeliveryPickListRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetDeliveryPickListResponseObject interface {
+	VisitGetDeliveryPickListResponse(w http.ResponseWriter) error
+}
+
+type GetDeliveryPickList200ApplicationpdfResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetDeliveryPickList200ApplicationpdfResponse) VisitGetDeliveryPickListResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetDeliveryPickList401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetDeliveryPickList401JSONResponse) VisitGetDeliveryPickListResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDeliveryPickList403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetDeliveryPickList403JSONResponse) VisitGetDeliveryPickListResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDeliveryPickList404Response struct {
+}
+
+func (response GetDeliveryPickList404Response) VisitGetDeliveryPickListResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetDeliveryPickList503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response GetDeliveryPickList503ApplicationProblemPlusJSONResponse) VisitGetDeliveryPickListResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostDeliveryRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostDeliveryJSONRequestBody
+}
+
+type PostDeliveryResponseObject interface {
+	VisitPostDeliveryResponse(w http.ResponseWriter) error
+}
+
+type PostDelivery200JSONResponse OrdersDelivery
+
+func (response PostDelivery200JSONResponse) VisitPostDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostDelivery400ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response PostDelivery400ApplicationProblemPlusJSONResponse) VisitPostDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostDelivery401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostDelivery401JSONResponse) VisitPostDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostDelivery403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostDelivery403JSONResponse) VisitPostDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostDelivery404Response struct {
+}
+
+func (response PostDelivery404Response) VisitPostDeliveryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostDelivery409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response PostDelivery409ApplicationProblemPlusJSONResponse) VisitPostDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostDelivery503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response PostDelivery503ApplicationProblemPlusJSONResponse) VisitPostDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -7349,6 +8617,93 @@ func (response ReleaseSalesOrderDraftAllocations409ApplicationProblemPlusJSONRes
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReserveSalesOrderRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *ReserveSalesOrderJSONRequestBody
+}
+
+type ReserveSalesOrderResponseObject interface {
+	VisitReserveSalesOrderResponse(w http.ResponseWriter) error
+}
+
+type ReserveSalesOrder200JSONResponse OrdersOrder
+
+func (response ReserveSalesOrder200JSONResponse) VisitReserveSalesOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReserveSalesOrder401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReserveSalesOrder401JSONResponse) VisitReserveSalesOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReserveSalesOrder403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReserveSalesOrder403JSONResponse) VisitReserveSalesOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReserveSalesOrder404Response struct {
+}
+
+func (response ReserveSalesOrder404Response) VisitReserveSalesOrderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ReserveSalesOrder409ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response ReserveSalesOrder409ApplicationProblemPlusJSONResponse) VisitReserveSalesOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReserveSalesOrder503ApplicationProblemPlusJSONResponse OrdersProblem
+
+func (response ReserveSalesOrder503ApplicationProblemPlusJSONResponse) VisitReserveSalesOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -9186,6 +10541,55 @@ func (response PutOrdersSettings409ApplicationProblemPlusJSONResponse) VisitPutO
 	return err
 }
 
+type ListOrdersSitesRequestObject struct {
+}
+
+type ListOrdersSitesResponseObject interface {
+	VisitListOrdersSitesResponse(w http.ResponseWriter) error
+}
+
+type ListOrdersSites200JSONResponse OrdersSiteList
+
+func (response ListOrdersSites200JSONResponse) VisitListOrdersSitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrdersSites401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListOrdersSites401JSONResponse) VisitListOrdersSitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrdersSites403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListOrdersSites403JSONResponse) VisitListOrdersSitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListSubscriptionsRequestObject struct {
 	Params ListSubscriptionsParams
 }
@@ -10855,6 +12259,30 @@ type StrictServerInterface interface {
 	// GetOrdersCustomerSummary Get a customer's orders summary
 	// (GET /api/v1/orders/customers/{customerId}/summary)
 	GetOrdersCustomerSummary(ctx context.Context, request GetOrdersCustomerSummaryRequestObject) (GetOrdersCustomerSummaryResponseObject, error)
+	// ListDeliveries List deliveries
+	// (GET /api/v1/orders/deliveries)
+	ListDeliveries(ctx context.Context, request ListDeliveriesRequestObject) (ListDeliveriesResponseObject, error)
+	// CreateDelivery Create a delivery
+	// (POST /api/v1/orders/deliveries)
+	CreateDelivery(ctx context.Context, request CreateDeliveryRequestObject) (CreateDeliveryResponseObject, error)
+	// GetDelivery Get a delivery
+	// (GET /api/v1/orders/deliveries/{id})
+	GetDelivery(ctx context.Context, request GetDeliveryRequestObject) (GetDeliveryResponseObject, error)
+	// UpdateDelivery Save a delivery
+	// (PUT /api/v1/orders/deliveries/{id})
+	UpdateDelivery(ctx context.Context, request UpdateDeliveryRequestObject) (UpdateDeliveryResponseObject, error)
+	// CancelDelivery Cancel a delivery
+	// (POST /api/v1/orders/deliveries/{id}/cancel)
+	CancelDelivery(ctx context.Context, request CancelDeliveryRequestObject) (CancelDeliveryResponseObject, error)
+	// GetDeliveryPackingSlip Download a packing slip
+	// (GET /api/v1/orders/deliveries/{id}/packing-slip)
+	GetDeliveryPackingSlip(ctx context.Context, request GetDeliveryPackingSlipRequestObject) (GetDeliveryPackingSlipResponseObject, error)
+	// GetDeliveryPickList Download a pick list
+	// (GET /api/v1/orders/deliveries/{id}/pick-list)
+	GetDeliveryPickList(ctx context.Context, request GetDeliveryPickListRequestObject) (GetDeliveryPickListResponseObject, error)
+	// PostDelivery Post a delivery
+	// (POST /api/v1/orders/deliveries/{id}/post)
+	PostDelivery(ctx context.Context, request PostDeliveryRequestObject) (PostDeliveryResponseObject, error)
 	// GetOrdersMeta Get what the Orders screens need
 	// (GET /api/v1/orders/meta)
 	GetOrdersMeta(ctx context.Context, request GetOrdersMetaRequestObject) (GetOrdersMetaResponseObject, error)
@@ -10912,6 +12340,9 @@ type StrictServerInterface interface {
 	// ReleaseSalesOrderDraftAllocations Release an order's draft invoice allocations
 	// (POST /api/v1/orders/orders/{id}/release-draft-allocations)
 	ReleaseSalesOrderDraftAllocations(ctx context.Context, request ReleaseSalesOrderDraftAllocationsRequestObject) (ReleaseSalesOrderDraftAllocationsResponseObject, error)
+	// ReserveSalesOrder Reserve an order's stock
+	// (POST /api/v1/orders/orders/{id}/reserve)
+	ReserveSalesOrder(ctx context.Context, request ReserveSalesOrderRequestObject) (ReserveSalesOrderResponseObject, error)
 	// SendSalesOrder Send an order confirmation
 	// (POST /api/v1/orders/orders/{id}/send)
 	SendSalesOrder(ctx context.Context, request SendSalesOrderRequestObject) (SendSalesOrderResponseObject, error)
@@ -10984,6 +12415,9 @@ type StrictServerInterface interface {
 	// PutOrdersSettings Save the Orders settings
 	// (PUT /api/v1/orders/settings)
 	PutOrdersSettings(ctx context.Context, request PutOrdersSettingsRequestObject) (PutOrdersSettingsResponseObject, error)
+	// ListOrdersSites List the sites
+	// (GET /api/v1/orders/sites)
+	ListOrdersSites(ctx context.Context, request ListOrdersSitesRequestObject) (ListOrdersSitesResponseObject, error)
 	// ListSubscriptions List subscriptions
 	// (GET /api/v1/orders/subscriptions)
 	ListSubscriptions(ctx context.Context, request ListSubscriptionsRequestObject) (ListSubscriptionsResponseObject, error)
@@ -11191,6 +12625,240 @@ func (sh *strictHandler) GetOrdersCustomerSummary(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetOrdersCustomerSummaryResponseObject); ok {
 		if err := validResponse.VisitGetOrdersCustomerSummaryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDeliveries operation middleware
+func (sh *strictHandler) ListDeliveries(w http.ResponseWriter, r *http.Request, params ListDeliveriesParams) {
+	var request ListDeliveriesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDeliveries(ctx, request.(ListDeliveriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDeliveries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDeliveriesResponseObject); ok {
+		if err := validResponse.VisitListDeliveriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateDelivery operation middleware
+func (sh *strictHandler) CreateDelivery(w http.ResponseWriter, r *http.Request) {
+	var request CreateDeliveryRequestObject
+
+	var body CreateDeliveryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateDelivery(ctx, request.(CreateDeliveryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateDelivery")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateDeliveryResponseObject); ok {
+		if err := validResponse.VisitCreateDeliveryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDelivery operation middleware
+func (sh *strictHandler) GetDelivery(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetDeliveryRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDelivery(ctx, request.(GetDeliveryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDelivery")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDeliveryResponseObject); ok {
+		if err := validResponse.VisitGetDeliveryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateDelivery operation middleware
+func (sh *strictHandler) UpdateDelivery(w http.ResponseWriter, r *http.Request, id int64) {
+	var request UpdateDeliveryRequestObject
+
+	request.Id = id
+
+	var body UpdateDeliveryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateDelivery(ctx, request.(UpdateDeliveryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateDelivery")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateDeliveryResponseObject); ok {
+		if err := validResponse.VisitUpdateDeliveryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelDelivery operation middleware
+func (sh *strictHandler) CancelDelivery(w http.ResponseWriter, r *http.Request, id int64) {
+	var request CancelDeliveryRequestObject
+
+	request.Id = id
+
+	var body CancelDeliveryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelDelivery(ctx, request.(CancelDeliveryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelDelivery")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelDeliveryResponseObject); ok {
+		if err := validResponse.VisitCancelDeliveryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDeliveryPackingSlip operation middleware
+func (sh *strictHandler) GetDeliveryPackingSlip(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetDeliveryPackingSlipRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDeliveryPackingSlip(ctx, request.(GetDeliveryPackingSlipRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDeliveryPackingSlip")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDeliveryPackingSlipResponseObject); ok {
+		if err := validResponse.VisitGetDeliveryPackingSlipResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDeliveryPickList operation middleware
+func (sh *strictHandler) GetDeliveryPickList(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetDeliveryPickListRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDeliveryPickList(ctx, request.(GetDeliveryPickListRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDeliveryPickList")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDeliveryPickListResponseObject); ok {
+		if err := validResponse.VisitGetDeliveryPickListResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostDelivery operation middleware
+func (sh *strictHandler) PostDelivery(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostDeliveryRequestObject
+
+	request.Id = id
+
+	var body PostDeliveryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostDelivery(ctx, request.(PostDeliveryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostDelivery")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostDeliveryResponseObject); ok {
+		if err := validResponse.VisitPostDeliveryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -11753,6 +13421,39 @@ func (sh *strictHandler) ReleaseSalesOrderDraftAllocations(w http.ResponseWriter
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ReleaseSalesOrderDraftAllocationsResponseObject); ok {
 		if err := validResponse.VisitReleaseSalesOrderDraftAllocationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReserveSalesOrder operation middleware
+func (sh *strictHandler) ReserveSalesOrder(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ReserveSalesOrderRequestObject
+
+	request.Id = id
+
+	var body ReserveSalesOrderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReserveSalesOrder(ctx, request.(ReserveSalesOrderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReserveSalesOrder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReserveSalesOrderResponseObject); ok {
+		if err := validResponse.VisitReserveSalesOrderResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -12465,6 +14166,30 @@ func (sh *strictHandler) PutOrdersSettings(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutOrdersSettingsResponseObject); ok {
 		if err := validResponse.VisitPutOrdersSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListOrdersSites operation middleware
+func (sh *strictHandler) ListOrdersSites(w http.ResponseWriter, r *http.Request) {
+	var request ListOrdersSitesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListOrdersSites(ctx, request.(ListOrdersSitesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListOrdersSites")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListOrdersSitesResponseObject); ok {
+		if err := validResponse.VisitListOrdersSitesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

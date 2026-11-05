@@ -185,7 +185,8 @@ SELECT o.id AS order_id, o.number AS order_number, o.customer_id, o.currency::te
        o.payment_terms_days, o.status AS order_status, o.on_hold,
        l.id AS line_id, l.position, l.description, l.unit, l.unit_price, l.discount_percent,
        l.vat_code_id, l.invoice_policy,
-       (l.quantity - l.qty_cancelled - l.qty_invoiced - coalesce(a.allocated, 0))::numeric(12,3) AS to_invoice
+       ((CASE WHEN l.invoice_policy = 'delivery' THEN l.qty_delivered ELSE l.quantity - l.qty_cancelled END)
+        - l.qty_invoiced - coalesce(a.allocated, 0))::numeric(12,3) AS to_invoice
 FROM orders.orders o
 JOIN orders.lines l ON l.owner_kind = 'order' AND l.owner_id = o.id
 LEFT JOIN (
@@ -199,9 +200,10 @@ WHERE o.status IN ('draft', 'confirmed')
        OR o.customer_id = ANY($2::integer[])
        OR o.id = ANY($3::bigint[]))
   AND ($4::date IS NULL OR o.delivery_date IS NULL OR o.delivery_date <= $4::date)
-  AND l.kind = 'product' AND l.invoice_policy = 'order'
+  AND l.kind = 'product' AND l.invoice_policy IN ('order', 'delivery')
   AND l.quantity IS NOT NULL AND l.unit_price IS NOT NULL AND l.vat_code_id IS NOT NULL
-  AND l.quantity - l.qty_cancelled - l.qty_invoiced - coalesce(a.allocated, 0) > 0
+  AND (CASE WHEN l.invoice_policy = 'delivery' THEN l.qty_delivered ELSE l.quantity - l.qty_cancelled END)
+      - l.qty_invoiced - coalesce(a.allocated, 0) > 0
 ORDER BY o.id, l.position
 LIMIT $5
 `
@@ -247,7 +249,8 @@ type DueOrderLinesRow struct {
 // product line of a draft or confirmed order with a quantity to invoice, its
 // order's header beside it, in order and position order. To invoice is, for
 // a line invoiced on order, ordered − cancelled − invoiced − what draft
-// allocations hold (O36); a line invoiced on delivery is C's. The orders are
+// allocations hold (O36); for a line invoiced on delivery, delivered −
+// invoiced − what draft allocations hold (O48). The orders are
 // the customers named, the orders named, or — with every — all; an order
 // whose delivery date falls after until is not yet due (a NULL until is no
 // bound, and an order with no delivery date is always due). At most
@@ -549,7 +552,7 @@ func (q *Queries) LockOrderLinesByIDs(ctx context.Context, ids []int64) ([]Order
 }
 
 const lockOrdersByIDs = `-- name: LockOrdersByIDs :many
-SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.orders WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
+SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at, site_id FROM orders.orders WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
 `
 
 // LockOrdersByIDs takes orders FOR UPDATE in id order: the first of Orders'
@@ -631,6 +634,7 @@ func (q *Queries) LockOrdersByIDs(ctx context.Context, ids []int64) ([]OrdersOrd
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.AnonymisedAt,
+			&i.SiteID,
 		); err != nil {
 			return nil, err
 		}

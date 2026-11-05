@@ -85,9 +85,25 @@ func callerID(ctx context.Context) uuid.UUID {
 // module from inside one — all but lockVariants, the one call made on the
 // transaction itself (MB rule 21).
 type (
-	lockedTxKey struct{}
-	openTxKey   struct{}
+	lockedTxKey       struct{}
+	openTxKey         struct{}
+	lockedVariantsKey struct{}
 )
+
+// lockedVariants are the variants a locked transaction's lockVariants
+// answered, by id: what the catalog says of them while their locks are held —
+// whether each is goods (O45) — for the writes after it that settle a line's
+// delivery method and invoice policy (stock.go).
+type lockedVariants struct {
+	byID map[int32]contracts.VariantEntry
+}
+
+// lockedVariantsOf is the transaction's record of its locked variants, nil
+// outside a locked transaction.
+func lockedVariantsOf(ctx context.Context) *lockedVariants {
+	v, _ := ctx.Value(lockedVariantsKey{}).(*lockedVariants)
+	return v
+}
 
 // inLockedTx reports whether ctx is a locked transaction's.
 func inLockedTx(ctx context.Context) bool {
@@ -112,7 +128,7 @@ func inOpenTx(ctx context.Context) bool {
 // runs on this transaction's own connection, and it is the first thing a
 // write that touches catalog lines does.
 func (s *server) withLockedTx(ctx context.Context, fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error) error {
-	locked := context.WithValue(ctx, lockedTxKey{}, true)
+	locked := context.WithValue(context.WithValue(ctx, lockedTxKey{}, true), lockedVariantsKey{}, &lockedVariants{})
 	return db.WithTx(locked, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		return fn(locked, tx, store.New(tx))
 	})

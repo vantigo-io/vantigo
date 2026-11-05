@@ -138,7 +138,10 @@ func (q *Queries) CompleteErasure(ctx context.Context, arg CompleteErasureParams
 const customerHasDocuments = `-- name: CustomerHasDocuments :one
 SELECT EXISTS (SELECT 1 FROM orders.documents d
                WHERE (d.owner_kind = 'quote' AND d.owner_id IN (SELECT q.id FROM orders.quotes q WHERE q.customer_id = $1))
-                  OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = $1)))::boolean
+                  OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = $1))
+                  OR (d.owner_kind = 'delivery' AND d.owner_id IN (SELECT dv.id FROM orders.deliveries dv
+                                                                   JOIN orders.orders o ON o.id = dv.order_id
+                                                                   WHERE o.customer_id = $1)))::boolean
 `
 
 // CustomerHasDocuments reports whether any quote or order of a customer has a
@@ -152,7 +155,7 @@ func (q *Queries) CustomerHasDocuments(ctx context.Context, customerID int32) (b
 }
 
 const customerOrders = `-- name: CustomerOrders :many
-SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.orders WHERE customer_id = $1 ORDER BY id
+SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at, site_id FROM orders.orders WHERE customer_id = $1 ORDER BY id
 `
 
 func (q *Queries) CustomerOrders(ctx context.Context, customerID int32) ([]OrdersOrder, error) {
@@ -232,6 +235,7 @@ func (q *Queries) CustomerOrders(ctx context.Context, customerID int32) ([]Order
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.AnonymisedAt,
+			&i.SiteID,
 		); err != nil {
 			return nil, err
 		}
@@ -365,13 +369,16 @@ WHERE (d.owner_kind = 'quote' AND d.owner_id IN (SELECT q.id FROM orders.quotes 
                                                  WHERE q.customer_id = $1 AND q.anonymised_at IS NOT NULL))
    OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o
                                                  WHERE o.customer_id = $1 AND o.anonymised_at IS NOT NULL))
+   OR (d.owner_kind = 'delivery' AND d.owner_id IN (SELECT dv.id FROM orders.deliveries dv
+                                                    JOIN orders.orders o ON o.id = dv.order_id
+                                                    WHERE o.customer_id = $1 AND o.anonymised_at IS NOT NULL))
 ORDER BY d.id
 `
 
 // ErasedDocuments is the stored PDFs of a customer's anonymised quotes and
 // orders (O29, O54): a quote's at once after the erase, a confirmed order's
-// once its retention has run and it was anonymised. The PDF prints the
-// person, so it goes with them.
+// once its retention has run and it was anonymised, and so the packing slips
+// of its deliveries (O47). The PDF prints the person, so it goes with them.
 func (q *Queries) ErasedDocuments(ctx context.Context, customerID int32) ([]OrdersDocument, error) {
 	rows, err := q.db.Query(ctx, erasedDocuments, customerID)
 	if err != nil {
@@ -607,6 +614,9 @@ SELECT (
      WHERE l.variant_id = $1
        AND (s.status IN ('draft', 'active', 'paused') OR (s.status = 'ended' AND s.end_date >= $2::date))
        AND (l.valid_to IS NULL OR l.valid_to >= $2::date))
+  + (SELECT count(DISTINCT d.id) FROM orders.deliveries d
+     JOIN orders.delivery_lines dl ON dl.delivery_id = d.id
+     WHERE dl.variant_id = $1 AND d.status = 'draft')
 )::integer AS documents
 `
 
@@ -620,7 +630,7 @@ type OpenDocumentsOfVariantParams struct {
 // not done — delivered or invoiced short of what is ordered less cancelled —
 // and a subscription still billing on today — draft, active or paused, or
 // ended on or after today — with a line of it in force on or after today
-// (O42).
+// (O42), and a draft delivery naming it (O47).
 // A template is no document: a variant gone from it is skipped when it is
 // applied (O23).
 func (q *Queries) OpenDocumentsOfVariant(ctx context.Context, arg OpenDocumentsOfVariantParams) (int32, error) {

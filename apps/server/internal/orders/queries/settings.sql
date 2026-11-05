@@ -14,11 +14,11 @@ SELECT * FROM orders.settings WHERE id = 1 FOR UPDATE;
 INSERT INTO orders.settings (
     id, quote_series_start, order_series_start, quote_validity_days, default_payment_terms_days,
     send_channel, confirmation_on_confirm, combine_by_default, mail_texts, subscription_final_period_default,
-    revision, updated_at
+    default_site_id, revision, updated_at
 ) VALUES (
     1, sqlc.arg(quote_series_start), sqlc.arg(order_series_start), sqlc.arg(quote_validity_days),
     sqlc.arg(default_payment_terms_days), sqlc.narg(send_channel), sqlc.arg(confirmation_on_confirm),
-    sqlc.arg(combine_by_default), sqlc.arg(mail_texts), sqlc.arg(subscription_final_period_default), 1, sqlc.arg(updated_at)
+    sqlc.arg(combine_by_default), sqlc.arg(mail_texts), sqlc.arg(subscription_final_period_default), sqlc.narg(default_site_id), 1, sqlc.arg(updated_at)
 )
 ON CONFLICT (id) DO UPDATE SET
     quote_series_start         = EXCLUDED.quote_series_start,
@@ -30,6 +30,7 @@ ON CONFLICT (id) DO UPDATE SET
     combine_by_default         = EXCLUDED.combine_by_default,
     mail_texts                 = EXCLUDED.mail_texts,
     subscription_final_period_default = EXCLUDED.subscription_final_period_default,
+    default_site_id            = EXCLUDED.default_site_id,
     revision                   = orders.settings.revision + 1,
     updated_at                 = EXCLUDED.updated_at
 RETURNING *;

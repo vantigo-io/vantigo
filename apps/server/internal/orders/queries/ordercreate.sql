@@ -13,7 +13,7 @@ INSERT INTO orders.orders (
     payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note,
     delivery_date, net_total, vat_total, gross_total,
     channel, source_module, source_kind, source_id, external_id, external_number, client_request_id,
-    payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at
+    payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, site_id
 ) VALUES (
     sqlc.arg(number), 'draft',
     sqlc.arg(customer_id), sqlc.narg(customer_number), sqlc.arg(customer_name), sqlc.narg(customer_type),
@@ -30,7 +30,7 @@ INSERT INTO orders.orders (
     sqlc.arg(channel), sqlc.narg(source_module), sqlc.narg(source_kind), sqlc.narg(source_id),
     sqlc.narg(external_id), sqlc.narg(external_number), sqlc.narg(client_request_id),
     sqlc.narg(payment_reference), sqlc.narg(prepaid_amount),
-    sqlc.narg(created_by_user_id), sqlc.narg(created_by_display), sqlc.arg(now), sqlc.arg(now)
+    sqlc.narg(created_by_user_id), sqlc.narg(created_by_display), sqlc.arg(now), sqlc.arg(now), sqlc.narg(site_id)
 )
 RETURNING *;
 

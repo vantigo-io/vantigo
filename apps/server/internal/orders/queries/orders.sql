@@ -83,6 +83,14 @@ SET delivery_status = sqlc.arg(delivery_status), invoice_status = sqlc.arg(invoi
 WHERE id = sqlc.arg(id)
 RETURNING *;
 
+-- name: SetOrderSite :one
+-- SetOrderSite sets the site an order is fulfilled from (O46). The caller
+-- holds the row; a confirmed order's reservations are moved on the same
+-- transaction.
+UPDATE orders.orders SET site_id = sqlc.narg(site_id), updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id)
+RETURNING *;
+
 -- name: DeleteOrderRow :execrows
 DELETE FROM orders.orders WHERE id = sqlc.arg(id);
 
@@ -140,6 +148,10 @@ WHERE (sqlc.narg(customer_id)::integer IS NULL OR o.customer_id = sqlc.narg(cust
                    AND l.kind = 'product' AND l.quantity IS NOT NULL
                    AND (l.qty_cancelled + l.qty_invoiced < l.quantity
                         OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))) = sqlc.narg(done)::boolean)
+  AND (NOT sqlc.arg(to_deliver)::boolean OR (o.status = 'confirmed'
+       AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL
+                   AND l.qty_cancelled + l.qty_delivered < l.quantity)))
   AND (sqlc.arg(q)::text = '' OR o.number::text = sqlc.arg(q)::text
        OR o.customer_name ILIKE '%' || sqlc.arg(q)::text || '%'
        OR o.your_reference ILIKE '%' || sqlc.arg(q)::text || '%')
@@ -167,6 +179,10 @@ WHERE (sqlc.narg(customer_id)::integer IS NULL OR o.customer_id = sqlc.narg(cust
                    AND l.kind = 'product' AND l.quantity IS NOT NULL
                    AND (l.qty_cancelled + l.qty_invoiced < l.quantity
                         OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))) = sqlc.narg(done)::boolean)
+  AND (NOT sqlc.arg(to_deliver)::boolean OR (o.status = 'confirmed'
+       AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL
+                   AND l.qty_cancelled + l.qty_delivered < l.quantity)))
   AND (sqlc.arg(q)::text = '' OR o.number::text = sqlc.arg(q)::text
        OR o.customer_name ILIKE '%' || sqlc.arg(q)::text || '%'
        OR o.your_reference ILIKE '%' || sqlc.arg(q)::text || '%');

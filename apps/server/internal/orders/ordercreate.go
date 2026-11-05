@@ -50,6 +50,9 @@ type CreateOrder struct {
 	Header    header
 	Lines     []pricedLine
 	CreatedBy actor
+	// SiteID is the Inventory site the order is fulfilled from (O46); nil
+	// takes the settings' default site while Inventory keeps stock.
+	SiteID *int64
 }
 
 // createOrder writes a new draft order and its lines on the caller's
@@ -85,6 +88,11 @@ func (s *server) createOrder(ctx context.Context, _ pgx.Tx, txq *store.Queries, 
 	if err != nil {
 		return store.OrdersOrder{}, nil, err
 	}
+	site := c.SiteID
+	if site == nil && s.stockKept() {
+		site = settings.defaultSiteID
+	}
+	settlePolicies(ctx, c.Lines, nil, s.atSite(site), false)
 	h, t := c.Header, totalsOfPriced(c.Lines)
 	row, err := txq.InsertOrder(ctx, store.InsertOrderParams{
 		Number:     number,
@@ -103,7 +111,7 @@ func (s *server) createOrder(ctx context.Context, _ pgx.Tx, txq *store.Queries, 
 		NetTotal:     numeric(t.net, amountPlaces), VatTotal: numeric(t.vat, amountPlaces), GrossTotal: numeric(t.gross, amountPlaces),
 		Channel: c.Origin.Channel, SourceModule: c.Origin.SourceModule, SourceKind: c.Origin.SourceKind, SourceID: c.Origin.SourceID,
 		ExternalID: c.Origin.ExternalID, ExternalNumber: c.Origin.ExternalNumber, ClientRequestID: c.Origin.ClientRequestID,
-		CreatedByUserID: c.CreatedBy.id, CreatedByDisplay: c.CreatedBy.display, Now: s.deps.Clock(),
+		CreatedByUserID: c.CreatedBy.id, CreatedByDisplay: c.CreatedBy.display, Now: s.deps.Clock(), SiteID: site,
 	})
 	if err != nil {
 		return store.OrdersOrder{}, nil, fmt.Errorf("orders: insert order: %w", err)
@@ -118,12 +126,14 @@ func (s *server) createOrder(ctx context.Context, _ pgx.Tx, txq *store.Queries, 
 // confirmOrderTx confirms a draft order on the caller's transaction (O18),
 // the caller holding the order's row and its lines' variants: it judges the
 // order confirmable (customer_disabled, order_empty, line_unpriced,
-// vat_code_unmapped), freezes it, records who confirmed it and publishes
-// orders.sales_order.confirmed.v1 on tx, and answers the order as it now is.
+// vat_code_unmapped), freezes it, records who confirmed it, reserves its
+// goods lines' open quantity at its site when reserve is set (O46,
+// insufficient_available), publishes orders.sales_order.confirmed.v1 on tx,
+// and answers the order as it now is.
 // It makes no call out of the module: the customer's billing profile was read
 // before the transaction and rides in as customer. lifecycle.go sets it.
 var confirmOrderTx func(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, order store.OrdersOrder, lines []store.OrdersLine, o warningOverride,
-	by actor, customer *contracts.CustomerBillingProfile) (store.OrdersOrder, error)
+	by actor, customer *contracts.CustomerBillingProfile, reserve bool) (store.OrdersOrder, error)
 
 // afterOrderConfirmed is what follows a confirmation's commit, outside any
 // transaction: storing the confirmation's PDF (O24), printed as body inside
@@ -155,7 +165,7 @@ func orderView(o store.OrdersOrder, lines []store.OrdersLine, warnings []gen.Ord
 		CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt, ProjectId: o.ProjectID,
 		Salesperson: personOut(o.SalespersonID, o.SalespersonDisplay), DeliveryDate: dateOut(o.DeliveryDate),
 		ConfirmedAt: o.ConfirmedAt, ConfirmedBy: personOut(o.ConfirmedByUserID, o.ConfirmedByDisplay), CancelledAt: o.CancelledAt,
-		SourceQuoteId: sourceQuoteID(o), Warnings: warningsOrEmpty(warnings),
+		SourceQuoteId: sourceQuoteID(o), Warnings: warningsOrEmpty(warnings), SiteId: o.SiteID,
 		Invoices: orderInvoicesOut(allocations, o.Currency),
 	}
 	drafts := allocationsByLine(allocations)

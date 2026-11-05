@@ -325,6 +325,8 @@ var filesOrRedirects = []string{
 	"getQuoteProforma",
 	"getSalesOrderPdf",
 	"getSalesOrderProforma",
+	"getDeliveryPickList",
+	"getDeliveryPackingSlip",
 }
 
 func equalMaps(a, b map[string]string) bool {
