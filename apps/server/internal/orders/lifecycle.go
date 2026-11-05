@@ -63,7 +63,8 @@ func customerConfirmable(p *contracts.CustomerBillingProfile) error {
 //
 // A block warning on the order's customer or its products refuses it
 // (blocked_by_warning) unless o overrides it; an override is logged on the
-// order's change log at the confirmed version (O33).
+// order's change log at the confirmed version (O33). The warnings are read
+// without a lock, so the check is best effort against a concurrent change.
 func confirmTx(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, order store.OrdersOrder, lines []store.OrdersLine, o warningOverride,
 	by actor, customer *contracts.CustomerBillingProfile) (store.OrdersOrder, error) {
 	if order.Status != orderDraft {
@@ -85,6 +86,10 @@ func confirmTx(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, or
 	if failures := sendable(lines); len(failures) > 0 {
 		return order, refuseLines(invalidConfirmTitle, failures)
 	}
+	// The warnings are read on the transaction but not locked: the check is
+	// best effort. A warning set or raised to block by a commit that lands
+	// after this read and before the confirm commits does not refuse it; the
+	// next confirm or send judges it.
 	overridden, err := judgeWarnings(ctx, txq, order.CustomerID, lines, o)
 	if err != nil {
 		return order, err

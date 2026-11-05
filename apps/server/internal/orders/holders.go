@@ -53,8 +53,10 @@ func newCustomerReferenceHolder(module.Deps) contracts.CustomerReferenceHolder {
 // its variants'), so the merge waits for it, and never the other way round.
 //
 // The merged-away customer's sales warning (O33) moves to the survivor when
-// the survivor has none; when it has one, the survivor's is kept and the
-// other is dropped.
+// the survivor has none, its kept name blanked; when it has one, the
+// survivor's is kept and the other is dropped — but for a block over an info
+// warning, which makes the survivor's a block with both texts, so a merge
+// never lifts a block.
 func (customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx, from, into int32) ([]contracts.RepointedReferences, error) {
 	if from == into {
 		return []contracts.RepointedReferences{{Kind: kindOrdersQuotes}, {Kind: kindOrdersOrders}, {Kind: kindOrdersWarnings}}, nil
@@ -68,10 +70,15 @@ func (customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx, f
 	if err != nil {
 		return nil, fmt.Errorf("orders: re-point customer %d's orders to %d: %w", from, into, err)
 	}
+	merged, err := q.MergeCustomerBlock(ctx, store.MergeCustomerBlockParams{FromCustomerID: from, IntoCustomerID: into})
+	if err != nil {
+		return nil, fmt.Errorf("orders: merge customer %d's block into %d's warning: %w", from, into, err)
+	}
 	warnings, err := q.RepointCustomerWarning(ctx, store.RepointCustomerWarningParams{FromCustomerID: from, IntoCustomerID: into})
 	if err != nil {
 		return nil, fmt.Errorf("orders: re-point customer %d's warning to %d: %w", from, into, err)
 	}
+	warnings += merged
 	if _, err := q.DeleteCustomerWarning(ctx, from); err != nil {
 		return nil, fmt.Errorf("orders: drop customer %d's warning: %w", from, err)
 	}

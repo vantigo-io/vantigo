@@ -170,9 +170,11 @@ func overrideActions(overridden []gen.OrdersWarning, reason string) []changeActi
 	return out
 }
 
-// overrideNote is a quote's internal note with an override appended (O33): a
+// overrideNote is a quote's internal note with an override put first (O33): a
 // quote has no change log, so the note keeps who overrode which warning, when
-// and why, in the quote's language, cut to the note's 4000 characters.
+// and why, in the quote's language. The override comes before the note it is
+// added to, so cutting to the note's 4000 characters cuts the old note's end,
+// never the override.
 func overrideNote(note string, overridden []gen.OrdersWarning, reason string, by actor, at time.Time, zone *time.Location, lang string) string {
 	labels := make([]string, 0, len(overridden))
 	for _, w := range overridden {
@@ -185,7 +187,7 @@ func overrideNote(note string, overridden []gen.OrdersWarning, reason string, by
 		line = fmt.Sprintf("Warning overridden on %s by %s (%s): %s", day, who, strings.Join(labels, " "), reason)
 	}
 	if strings.TrimSpace(note) != "" {
-		line = note + "\n\n" + line
+		line += "\n\n" + note
 	}
 	return truncate(line, 4000)
 }
@@ -209,6 +211,10 @@ func readWarningInput(ctx context.Context, s *server, b gen.OrdersWarningInput) 
 
 // ListOrdersWarnings List the sales warnings
 // (GET /api/v1/orders/warnings)
+//
+// A product warning whose product the catalog no longer has is marked
+// orphaned, read through the catalog product by product, outside any
+// transaction; it cannot be set again, only removed.
 func (s *server) ListOrdersWarnings(ctx context.Context, req gen.ListOrdersWarningsRequestObject) (gen.ListOrdersWarningsResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	out := gen.OrdersWarningList{Items: []gen.OrdersWarning{}}
@@ -231,10 +237,28 @@ func (s *server) ListOrdersWarnings(ctx context.Context, req gen.ListOrdersWarni
 			return nil, fmt.Errorf("orders: list the product warnings: %w", err)
 		}
 		for _, w := range rows {
-			out.Items = append(out.Items, productWarningOut(w))
+			item := productWarningOut(w)
+			item.Orphaned = s.productGone(ctx, w.ProductID)
+			out.Items = append(out.Items, item)
 		}
 	}
 	return gen.ListOrdersWarnings200JSONResponse(out), nil
+}
+
+// productGone is whether a product warning's product is gone from the catalog
+// (orphaned): Products deletes a product without asking Orders to write, so
+// its warning stays until it is removed. A catalog that cannot be read leaves
+// it unmarked, nil, rather than failing the list.
+func (s *server) productGone(ctx context.Context, productID int32) *bool {
+	variants, err := s.variantsOfProduct(ctx, productID)
+	if err != nil {
+		s.deps.Logger.WarnContext(ctx, "orders: a product warning's product could not be read", "product_id", productID, "error", err.Error())
+		return nil
+	}
+	if len(variants) > 0 {
+		return nil
+	}
+	return ptr(true)
 }
 
 // GetOrdersCustomerWarning Get a customer's warning

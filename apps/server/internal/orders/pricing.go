@@ -448,34 +448,35 @@ func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOpt
 		p.vatRate = mustRat(code.RatePercent)
 	}
 
-	// The quantity, through a packaging when one is named (O15).
+	// The quantity, through a packaging when one is named (O15): the count
+	// times the packaging's size, which must come out at the quantity's three
+	// decimals exactly, so the stored quantity is always count × size and a
+	// later save can read the size back from the row.
 	switch {
-	case frozen && l.packagingID != nil:
-		// The packaging the line was confirmed in, its size from the row.
-		if l.packagingQuantity == nil {
-			return p, codeQuantityInvalid, "A line entered in a packaging needs how many of it."
-		}
-		count, msg := parseQuantity(*l.packagingQuantity)
-		if msg != "" {
-			return p, codeQuantityInvalid, msg
-		}
-		size := new(big.Rat).Quo(ratOf(old.Quantity), ratOf(old.PackagingQuantity))
-		p.packagingID, p.packagingQuantity, p.packagingName = old.PackagingID, count, old.PackagingName
-		p.quantity = new(big.Rat).Mul(count, size)
-		if p.quantity.Cmp(maxQuantity) > 0 {
-			return p, codeQuantityInvalid, "The quantity is too large."
-		}
 	case l.packagingID != nil:
-		if variant == nil {
+		var size *big.Rat
+		switch {
+		case frozen:
+			// The packaging the line was confirmed in, its size from the row.
+			size = storedPackagingSize(old)
+			p.packagingID, p.packagingName = old.PackagingID, old.PackagingName
+		case variant == nil:
 			return p, codePackagingNotFound, "A free-text line has no packagings."
-		}
-		var pack *contracts.PackagingEntry
-		for i := range variant.Packagings {
-			if variant.Packagings[i].ID == *l.packagingID {
-				pack = &variant.Packagings[i]
+		default:
+			for i := range variant.Packagings {
+				if pack := variant.Packagings[i]; pack.ID == *l.packagingID {
+					size = mustRat(pack.Quantity)
+					p.packagingID, p.packagingName = &pack.ID, textPtr(pack.Name)
+				}
+			}
+			if size == nil && old != nil && equalInt32(old.PackagingID, l.packagingID) && equalInt32(old.VariantID, p.variantID) {
+				// The packaging the line was saved in, since removed from
+				// the catalog: kept as it was, its size from the row.
+				size = storedPackagingSize(old)
+				p.packagingID, p.packagingName = old.PackagingID, old.PackagingName
 			}
 		}
-		if pack == nil {
+		if size == nil {
 			return p, codePackagingNotFound, fmt.Sprintf("Packaging %d is not one of the variant's.", *l.packagingID)
 		}
 		if l.packagingQuantity == nil {
@@ -485,10 +486,13 @@ func priceLine(l lineInput, old *store.OrdersLine, r pricingReads, opts priceOpt
 		if msg != "" {
 			return p, codeQuantityInvalid, msg
 		}
-		p.packagingID, p.packagingQuantity, p.packagingName = &pack.ID, count, textPtr(pack.Name)
-		p.quantity = new(big.Rat).Mul(count, mustRat(pack.Quantity))
+		p.packagingQuantity = count
+		p.quantity = new(big.Rat).Mul(count, size)
 		if p.quantity.Cmp(maxQuantity) > 0 {
 			return p, codeQuantityInvalid, "The quantity is too large."
+		}
+		if !hasPlaces(p.quantity, quantityPlaces) {
+			return p, codeQuantityInvalid, "That many of the packaging comes to more than three decimals; enter the quantity without the packaging."
 		}
 	case l.quantity != nil:
 		q, msg := parseQuantity(*l.quantity)
@@ -577,6 +581,17 @@ func parseQuantity(v float64) (*big.Rat, string) {
 		return nil, "The quantity is too large."
 	}
 	return q, ""
+}
+
+// storedPackagingSize is the size of the packaging a stored line was entered
+// in: its quantity over its count, exact since a quantity is always stored
+// as count × size (O15); nil for a line entered in none.
+func storedPackagingSize(old *store.OrdersLine) *big.Rat {
+	q, n := ratOf(old.Quantity), ratOf(old.PackagingQuantity)
+	if old.PackagingID == nil || q == nil || n == nil || n.Sign() == 0 {
+		return nil
+	}
+	return new(big.Rat).Quo(q, n)
 }
 
 // ptr is a pointer to v.

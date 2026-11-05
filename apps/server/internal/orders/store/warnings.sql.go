@@ -125,6 +125,30 @@ func (q *Queries) ListProductWarnings(ctx context.Context) ([]OrdersProductWarni
 	return items, nil
 }
 
+const mergeCustomerBlock = `-- name: MergeCustomerBlock :execrows
+UPDATE orders.customer_warnings s SET level = 'block', text = left(s.text || E'\n' || f.text, 500)
+FROM orders.customer_warnings f
+WHERE s.customer_id = $1 AND f.customer_id = $2
+  AND s.level = 'info' AND f.level = 'block'
+`
+
+type MergeCustomerBlockParams struct {
+	IntoCustomerID int32
+	FromCustomerID int32
+}
+
+// MergeCustomerBlock keeps the stricter warning on a merge (O33): a
+// merged-away customer's block over a survivor's info makes the survivor's a
+// block, its text the survivor's then the merged-away one's, cut to the 500
+// characters a text holds.
+func (q *Queries) MergeCustomerBlock(ctx context.Context, arg MergeCustomerBlockParams) (int64, error) {
+	result, err := q.db.Exec(ctx, mergeCustomerBlock, arg.IntoCustomerID, arg.FromCustomerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const productWarning = `-- name: ProductWarning :one
 SELECT product_id, level, text, subject_name, updated_by_user_id, updated_by_display, created_at, updated_at FROM orders.product_warnings WHERE product_id = $1
 `
@@ -181,7 +205,7 @@ func (q *Queries) ProductWarningsOf(ctx context.Context, productIds []int32) ([]
 }
 
 const repointCustomerWarning = `-- name: RepointCustomerWarning :execrows
-UPDATE orders.customer_warnings w SET customer_id = $1
+UPDATE orders.customer_warnings w SET customer_id = $1, subject_name = ''
 WHERE w.customer_id = $2
   AND NOT EXISTS (SELECT 1 FROM orders.customer_warnings s WHERE s.customer_id = $1)
 `
@@ -192,7 +216,9 @@ type RepointCustomerWarningParams struct {
 }
 
 // RepointCustomerWarning moves a merged-away customer's warning to the
-// survivor when the survivor has none (O33); the survivor's own is kept.
+// survivor when the survivor has none (O33); the survivor's own is kept. The
+// name kept beside it was the merged-away customer's, so it is blanked: the
+// settings list the warning by the customer's number until it is next set.
 func (q *Queries) RepointCustomerWarning(ctx context.Context, arg RepointCustomerWarningParams) (int64, error) {
 	result, err := q.db.Exec(ctx, repointCustomerWarning, arg.IntoCustomerID, arg.FromCustomerID)
 	if err != nil {

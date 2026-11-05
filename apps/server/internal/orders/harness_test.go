@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/orders"
 	"github.com/vantigo-io/vantigo/server/internal/orders/gen"
@@ -35,6 +36,22 @@ type harness struct {
 	objects *fakeObjectStore
 	mail    *modtest.FakeOutboundMail
 	channel uuid.UUID
+	// onSend, when set, runs as each mail is handed to the provider, before
+	// it is taken.
+	onSend func()
+}
+
+// hookedMail is the fake provider with the harness's onSend before each send.
+type hookedMail struct {
+	*modtest.FakeOutboundMail
+	h *harness
+}
+
+func (m hookedMail) Send(ctx context.Context, id uuid.UUID, out mail.Outbound) error {
+	if m.h.onSend != nil {
+		m.h.onSend()
+	}
+	return m.FakeOutboundMail.Send(ctx, id, out)
 }
 
 // harnessOptions say what a harness composes beyond the defaults.
@@ -63,7 +80,7 @@ func newHarness(t *testing.T, o harnessOptions) *harness {
 		h.mail = modtest.NewFakeOutboundMail()
 		h.channel = uuid.New()
 		h.mail.SetChannels(contracts.OutboundChannel{ID: h.channel, Address: "salg@demo.example", Provider: "smtp", Available: true})
-		opts = append(opts, modtest.WithOutboundMail(h.mail))
+		opts = append(opts, modtest.WithOutboundMail(hookedMail{FakeOutboundMail: h.mail, h: h}))
 	}
 	before := lockedContractCalls.count()
 	h.Harness = modtest.New(t, opts...)
