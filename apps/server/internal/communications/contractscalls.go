@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,7 +24,8 @@ import (
 //
 // What is checked is the lock rule: no call out of the module is made inside
 // one of its transactions. Check, Forget, Send, Delta and Raw reach mailbox
-// Graph, and a transaction holding the default-channel slot's lock while it
+// Graph, the ChannelMessenger's Send, Pending, OpenAttachment, Ack and Profile
+// reach the messaging platform's provider (Messenger design N2), and a transaction holding the default-channel slot's lock while it
 // waits on the network would hold every channel writer with it. Every accessor reports its
 // call to contractCallHook, which the tests install to record it with whether
 // it was made inside one, and refuses a call made inside one with
@@ -42,10 +44,55 @@ import (
 // key (Google Workspace design G4): the module names no provider.
 const providerSMTP = "smtp"
 
-// isMailboxProvider reports whether provider names a mailbox channel's
+// The channel types (channels.type): e-mail, over SMTP or a mailbox provider,
+// and Messenger, a chat through a messenger provider (Messenger design N1).
+// channelTypeEmail is declared in outbound_mail.go.
+const channelTypeMessenger = "messenger"
+
+// isMailboxProvider reports whether provider names an e-mail channel's mailbox
 // provider: anything but SMTP. Whether one is filled under it is
-// channelMailboxFor's answer.
+// channelMailboxFor's answer. It is asked only of a provider that belongs to
+// an e-mail channel — a Messenger channel's provider names a messenger
+// provider, which isMailboxChannel tells by the channel's type.
 func isMailboxProvider(provider string) bool { return provider != providerSMTP }
+
+// isMailboxChannel reports whether a channel of channelType on provider is a
+// mailbox channel: an e-mail channel on a provider other than SMTP.
+func isMailboxChannel(channelType, provider string) bool {
+	return channelType != channelTypeMessenger && isMailboxProvider(provider)
+}
+
+// The two kinds of provider a channel can name, by the slot that fills its key
+// (Messenger design N1).
+const (
+	slotMailbox   = "mailbox"
+	slotMessenger = "messenger"
+)
+
+// providerSlotOf is the slot a provider is filled in under key — slotMailbox,
+// slotMessenger — and "" when it is filled in neither, SMTP included. Compose
+// refuses a key filled in both, so the answer is never ambiguous. No network
+// call.
+func providerSlotOf(deps module.Deps, key string) string {
+	switch {
+	case channelMailboxFor(deps, key) != nil:
+		return slotMailbox
+	case channelMessengerFor(deps, key) != nil:
+		return slotMessenger
+	}
+	return ""
+}
+
+// channelMessengerFor is the ChannelMessenger filled under key, nil when none
+// is: reading the slot calls nobody and makes no network call.
+func channelMessengerFor(deps module.Deps, key string) contracts.ChannelMessenger {
+	for _, m := range deps.ChannelMessengers {
+		if m != nil && m.Key() == key {
+			return m
+		}
+	}
+	return nil
+}
 
 // channelMailboxFor is the ChannelMailbox filled under key, nil when none
 // is (Google Workspace design G2): reading the slot calls nobody and makes
@@ -186,6 +233,58 @@ func (s *server) offeredMailboxes(ctx context.Context) (map[string]bool, error) 
 	return out, nil
 }
 
+// offeredProviders is offeredMailboxes' answer plus the messenger providers':
+// each filled messenger provider by its Key, whether its Status is available,
+// and each Page it has connected under providerPageKey, whether it is. A
+// provider whose status or Pages do not answer is not offered, and logged. It
+// makes calls out of the module, so it is asked outside any transaction.
+func (s *server) offeredProviders(ctx context.Context) (map[string]bool, error) {
+	out, err := s.offeredMailboxes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range s.deps.ChannelMessengers {
+		if m == nil {
+			continue
+		}
+		if err := noteContractCall(ctx, "ChannelMessenger.Key"); err != nil {
+			return nil, err
+		}
+		key := m.Key()
+		status, err := messengerStatus(ctx, m)
+		if errors.Is(err, errCallInsideTransaction) {
+			return nil, err
+		}
+		if err != nil {
+			s.deps.Logger.WarnContext(ctx, "communications: the messenger provider's status did not answer",
+				"provider", key, "err", err)
+			out[key] = false
+			continue
+		}
+		out[key] = status.Available
+		if !status.Available {
+			continue
+		}
+		endpoints, err := messengerEndpoints(ctx, m)
+		if errors.Is(err, errCallInsideTransaction) {
+			return nil, err
+		}
+		if err != nil {
+			s.deps.Logger.WarnContext(ctx, "communications: the messenger provider's Pages did not answer",
+				"provider", key, "err", err)
+			continue
+		}
+		for _, e := range endpoints {
+			out[providerPageKey(key, e.Address)] = e.Available
+		}
+	}
+	return out, nil
+}
+
+// providerPageKey is the key of a messenger provider's Page in the map
+// offeredProviders answers; the separator cannot be in a provider key.
+func providerPageKey(provider, address string) string { return provider + "\x00" + address }
+
 // mailboxDisplayName is the provider's name as an admin reads it.
 func (s *server) mailboxDisplayName(ctx context.Context, m contracts.ChannelMailbox) (string, error) {
 	if err := noteContractCall(ctx, "ChannelMailbox.DisplayName"); err != nil {
@@ -220,12 +319,14 @@ func (s *server) mailboxForget(ctx context.Context, m contracts.ChannelMailbox, 
 	return m.Forget(ctx, mailbox)
 }
 
-// mailBudget is the largest message a channel on provider sends, in bytes of
-// MIME (M13): nil for SMTP, which sets no limit of its own, and for a
-// mailbox channel while no provider is filled under its key (it cannot send
-// then anyway); that provider's MaxMessage otherwise. No network call.
-func (s *server) mailBudget(ctx context.Context, provider string) (*int64, error) {
-	if !isMailboxProvider(provider) {
+// mailBudget is the largest message a channel of channelType on provider
+// sends, in bytes of MIME (M13): nil for SMTP, which sets no limit of its
+// own, for a Messenger channel, whose limits are its provider's Capabilities,
+// and for a mailbox channel while no provider is filled under its key (it
+// cannot send then anyway); that provider's MaxMessage otherwise. No network
+// call.
+func (s *server) mailBudget(ctx context.Context, channelType, provider string) (*int64, error) {
+	if !isMailboxChannel(channelType, provider) {
 		return nil, nil
 	}
 	m, err := s.channelMailbox(ctx, provider)
@@ -335,6 +436,108 @@ func mailboxEnsureFolder(ctx context.Context, m contracts.ChannelMailbox, mailbo
 		return "", err
 	}
 	return m.EnsureFolder(ctx, mailbox, name)
+}
+
+// channelMessenger is the messenger provider filled under provider, a
+// Messenger channel's provider, else nil: a channel is never served by a
+// provider under another key. Key makes no network call.
+func (s *server) channelMessenger(ctx context.Context, provider string) (contracts.ChannelMessenger, error) {
+	if err := noteContractCall(ctx, "ChannelMessenger.Key"); err != nil {
+		return nil, err
+	}
+	return channelMessengerFor(s.deps, provider), nil
+}
+
+// messengerDisplayName is the provider's name as an admin reads it.
+func (s *server) messengerDisplayName(ctx context.Context, m contracts.ChannelMessenger) (string, error) {
+	if err := noteContractCall(ctx, "ChannelMessenger.DisplayName"); err != nil {
+		return "", err
+	}
+	return m.DisplayName(), nil
+}
+
+// messengerStatus is whether channels may use the provider now. It reads the
+// provider's own state, never the network.
+func messengerStatus(ctx context.Context, m contracts.ChannelMessenger) (contracts.MessengerStatus, error) {
+	if err := noteContractCall(ctx, "ChannelMessenger.Status"); err != nil {
+		return contracts.MessengerStatus{}, err
+	}
+	return m.Status(ctx)
+}
+
+// messengerCapabilities is what a message on the provider may carry and the
+// reply window (N4, N6). No network call.
+func messengerCapabilities(ctx context.Context, m contracts.ChannelMessenger) (contracts.MessengerCapabilities, error) {
+	if err := noteContractCall(ctx, "ChannelMessenger.Capabilities"); err != nil {
+		return contracts.MessengerCapabilities{}, err
+	}
+	return m.Capabilities(), nil
+}
+
+// messengerEndpoints is the Pages the provider has connected, each with its
+// own status.
+func messengerEndpoints(ctx context.Context, m contracts.ChannelMessenger) ([]contracts.MessengerEndpoint, error) {
+	if err := noteContractCall(ctx, "ChannelMessenger.Endpoints"); err != nil {
+		return nil, err
+	}
+	return m.Endpoints(ctx)
+}
+
+// messengerCheck resolves address to a Page the provider has connected.
+func messengerCheck(ctx context.Context, m contracts.ChannelMessenger, address string) (contracts.MessengerEndpoint, error) {
+	if err := noteContractCall(ctx, "ChannelMessenger.Check"); err != nil {
+		return contracts.MessengerEndpoint{}, err
+	}
+	return m.Check(ctx, address)
+}
+
+// messengerSend hands the provider one part of a message. Never retried here:
+// the outbox retries on its backoff.
+func messengerSend(ctx context.Context, m contracts.ChannelMessenger, address string, part contracts.MessengerPart) (contracts.MessengerSent, error) {
+	if err := noteContractCall(ctx, "ChannelMessenger.Send"); err != nil {
+		return contracts.MessengerSent{}, err
+	}
+	return m.Send(ctx, address, part)
+}
+
+// messengerNotified reads the Pages notified since since.
+func messengerNotified(ctx context.Context, m contracts.ChannelMessenger, since time.Time) ([]string, error) {
+	if err := noteContractCall(ctx, "ChannelMessenger.Notified"); err != nil {
+		return nil, err
+	}
+	return m.Notified(ctx, since)
+}
+
+// messengerPending reads the events of a Page after the cursor.
+func messengerPending(ctx context.Context, m contracts.ChannelMessenger, address string, after int64, limit int) ([]contracts.MessengerEvent, error) {
+	if err := noteContractCall(ctx, "ChannelMessenger.Pending"); err != nil {
+		return nil, err
+	}
+	return m.Pending(ctx, address, after, limit)
+}
+
+// messengerOpenAttachment opens one attachment of an event.
+func messengerOpenAttachment(ctx context.Context, m contracts.ChannelMessenger, address, ref string) (io.ReadCloser, contracts.MessengerFile, error) {
+	if err := noteContractCall(ctx, "ChannelMessenger.OpenAttachment"); err != nil {
+		return nil, contracts.MessengerFile{}, err
+	}
+	return m.OpenAttachment(ctx, address, ref)
+}
+
+// messengerAck tells the provider every event up to upTo is in Communications.
+func messengerAck(ctx context.Context, m contracts.ChannelMessenger, address string, upTo int64) error {
+	if err := noteContractCall(ctx, "ChannelMessenger.Ack"); err != nil {
+		return err
+	}
+	return m.Ack(ctx, address, upTo)
+}
+
+// messengerProfile reads what the platform knows of one participant.
+func messengerProfile(ctx context.Context, m contracts.ChannelMessenger, address, participant string) (contracts.MessengerProfile, error) {
+	if err := noteContractCall(ctx, "ChannelMessenger.Profile"); err != nil {
+		return contracts.MessengerProfile{}, err
+	}
+	return m.Profile(ctx, address, participant)
 }
 
 // directoryContactsByEmail is the linker's one read of the customer

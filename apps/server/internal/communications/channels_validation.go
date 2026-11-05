@@ -59,6 +59,20 @@ func validChannelAddress(v string) bool {
 	return parsed.Address == v
 }
 
+// validPageID is a Messenger channel's address, the Page's id: digits, at most
+// 30 (Messenger design N1).
+func validPageID(v string) bool {
+	if v == "" || len(v) > 30 {
+		return false
+	}
+	for _, r := range v {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // validDisplayName is the channel displayName rule behind "DisplayName is
 // invalid." (inventory §3.1): at most 200 UTF-16 code units, already
 // trimmed (untrimmed is invalid — never silently trimmed), no control

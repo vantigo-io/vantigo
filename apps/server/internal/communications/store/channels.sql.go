@@ -14,7 +14,7 @@ import (
 
 const anyChannelExists = `-- name: AnyChannelExists :one
 
-SELECT EXISTS (SELECT 1 FROM communications.channels) AS any_exists
+SELECT EXISTS (SELECT 1 FROM communications.channels WHERE type = $1) AS any_exists
 `
 
 // Channels: getCommunicationsChannels, postCommunicationsChannels,
@@ -29,33 +29,44 @@ SELECT EXISTS (SELECT 1 FROM communications.channels) AS any_exists
 // queries below LEFT JOIN the credential so neither kind is hidden.
 // AnyChannelExists backs CreateChannel's "the first channel ever created is
 // forced default" rule (inventory §2's CreateChannel bullet:
-// `request.IsDefault == true || !await db.Channels.AnyAsync(ct)`).
-func (q *Queries) AnyChannelExists(ctx context.Context) (bool, error) {
-	row := q.db.QueryRow(ctx, anyChannelExists)
+// `request.IsDefault == true || !await db.Channels.AnyAsync(ct)`). It counts
+// the channels of one type: the first Messenger channel is the Messenger
+// default whatever e-mail channels exist (Messenger design N1, divergence 16).
+func (q *Queries) AnyChannelExists(ctx context.Context, type_ string) (bool, error) {
+	row := q.db.QueryRow(ctx, anyChannelExists, type_)
 	var any_exists bool
 	err := row.Scan(&any_exists)
 	return any_exists, err
 }
 
 const clearDefaultChannels = `-- name: ClearDefaultChannels :exec
-UPDATE communications.channels SET is_default = false WHERE is_default
+UPDATE communications.channels SET is_default = false WHERE is_default AND type = $1
 `
 
-// ClearDefaultChannels demotes every existing default channel, run before
-// inserting a new channel that will itself be the default (CreateChannel:
-// "setting a default demotes every other row in the same call").
-func (q *Queries) ClearDefaultChannels(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, clearDefaultChannels)
+// ClearDefaultChannels demotes the existing default channel of one type, run
+// before inserting a new channel of that type that will itself be the default
+// (CreateChannel: "setting a default demotes every other row of its type in
+// the same call"). A channel of another type keeps its default (design N1,
+// divergence 16): the first Messenger default must not demote the e-mail
+// default Invoices and Calendar send through.
+func (q *Queries) ClearDefaultChannels(ctx context.Context, type_ string) error {
+	_, err := q.db.Exec(ctx, clearDefaultChannels, type_)
 	return err
 }
 
 const clearOtherDefaultChannels = `-- name: ClearOtherDefaultChannels :exec
-UPDATE communications.channels SET is_default = false WHERE id != $1
+UPDATE communications.channels SET is_default = false WHERE id != $1 AND type = $2
 `
+
+type ClearOtherDefaultChannelsParams struct {
+	ID   uuid.UUID
+	Type string
+}
 
 // ClearOtherDefaultChannels is ClearDefaultChannels for UpdateChannel,
 // excluding the row being updated (it is set to the new default
-// separately, by UpdateChannel below).
+// separately, by UpdateChannel below), and limited to the channels of its
+// type (@type is the updated channel's own).
 //
 // THE MISSING `AND is_default` IS THE POINT for the PUT-vs-PUT pair, and
 // that pair ONLY. With the predicate present, two PUTs on different channels
@@ -71,9 +82,9 @@ UPDATE communications.channels SET is_default = false WHERE id != $1
 // contract does not declare at all (200/400/401/403/404 only), so it cannot
 // simply be caught and re-shaped the way CreateChannel's own collision is.
 //
-// Without the predicate the statement visits every other row, blocks on the
-// winner's lock, and EvalPlanQual re-checks the winner's NEW version against
-// `id != @id`, which still matches — so the loser demotes the winner and the
+// Without the predicate the statement visits every other row of the type,
+// blocks on the winner's lock, and EvalPlanQual re-checks the winner's NEW
+// version against `id != @id AND type = @type`, which still matches — so the loser demotes the winner and the
 // update proceeds to a correct last-writer-wins outcome.
 //
 // **SCOPE, precisely: this closes PUT-vs-PUT and nothing else.** It does NOT
@@ -84,8 +95,9 @@ UPDATE communications.channels SET is_default = false WHERE id != $1
 // safe; this predicate and that lock are both required, for different pairs.
 //
 // COST, stated because it is not free: dropping the term widens the write set
-// from "the current default" to "every other channel row", so one PUT now
-// row-locks every other channel for the rest of its transaction. On this
+// from "the current default" to "every other channel row of the type", so one
+// PUT now row-locks every other channel of its type for the rest of its
+// transaction. On this
 // table that is a handful of rows and no sequential behaviour changes, but it
 // is a lock-order surface: at scale, writers acquiring these rows in
 // different orders is how a lock-order inversion (40P01, surfacing as a 500)
@@ -95,8 +107,8 @@ UPDATE communications.channels SET is_default = false WHERE id != $1
 // TestUpdateChannel_ConcurrentDefaultRaceLeavesExactlyOneDefault pins the
 // PUT-vs-PUT pair; TestChannels_ConcurrentUpdateAndCreateDefaultRace pins
 // PUT-vs-POST.
-func (q *Queries) ClearOtherDefaultChannels(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, clearOtherDefaultChannels, id)
+func (q *Queries) ClearOtherDefaultChannels(ctx context.Context, arg ClearOtherDefaultChannelsParams) error {
+	_, err := q.db.Exec(ctx, clearOtherDefaultChannels, arg.ID, arg.Type)
 	return err
 }
 
@@ -177,20 +189,25 @@ func (q *Queries) GetChannelCredentialByChannelID(ctx context.Context, channelID
 }
 
 const getChannelProviderForConversation = `-- name: GetChannelProviderForConversation :one
-SELECT ch.provider
+SELECT ch.type, ch.provider
 FROM communications.conversations c
 JOIN communications.channels ch ON ch.id = c.channel_id
 WHERE c.id = $1
 `
 
-// GetChannelProviderForConversation is the provider of a conversation's
-// channel, for its size budget (M13): the staging handler's and the
-// conversation detail's maxMessageBytes.
-func (q *Queries) GetChannelProviderForConversation(ctx context.Context, id uuid.UUID) (string, error) {
+type GetChannelProviderForConversationRow struct {
+	Type     string
+	Provider string
+}
+
+// GetChannelProviderForConversation is the provider and type of a
+// conversation's channel, for its size budget (M13): the staging handler's and
+// the conversation detail's maxMessageBytes.
+func (q *Queries) GetChannelProviderForConversation(ctx context.Context, id uuid.UUID) (GetChannelProviderForConversationRow, error) {
 	row := q.db.QueryRow(ctx, getChannelProviderForConversation, id)
-	var provider string
-	err := row.Scan(&provider)
-	return provider, err
+	var i GetChannelProviderForConversationRow
+	err := row.Scan(&i.Type, &i.Provider)
+	return i, err
 }
 
 const getChannelSettingsByID = `-- name: GetChannelSettingsByID :one
@@ -379,28 +396,16 @@ SELECT pg_advisory_xact_lock($1::int, 0)
 // with retention's single-bigint COMMRET1 lease or internal/db's migration
 // lock.
 //
-// **ONE GLOBAL SLOT, not one per channel type, and that is deliberate.** The
-// obvious key is the channel type, since ux_channels_type_is_default is per
-// type — but the lock has to serialise the WRITE SET of the demote, and both
-// demote statements are type-UNFILTERED: ClearDefaultChannels clears every
-// default row and ClearOtherDefaultChannels clears every other row. That is
-// faithful, not an oversight — .NET's own demotes are unfiltered too
-// (`ChannelEndpoints.cs:29` `Where(item => item.IsDefault)` on create, `:46`
-// `Where(item => item.Id != id && item.IsDefault)` on update) — so a port
-// that filtered by type here would be the divergence.
-//
-// A type-keyed lock in front of a type-unfiltered demote is under-scoped:
-// two writers of DIFFERENT types would not serialise, yet each demotes the
-// other's row, so one demotion can be lost. No 23505 (the index is per type,
-// so two defaults of different types satisfy it) but two default rows where
-// sequential execution leaves one. Unreachable today — validateCreateChannel
-// pins type to "email" — and cheap to close now rather than leave as a trap
-// for whoever adds the second type. Channel writes are administrative and
-// rare, so one global slot costs nothing.
-//
-// If the demotes ever gain a type filter, this key should become
-// hashtext(type) in the same change, so the lock and the write set keep
-// matching.
+// **ONE GLOBAL SLOT, not one per channel type, and that is deliberate.**
+// The demote statements below are filtered by the channel's type since
+// Messenger (design N1, divergence 16), so a lock per type would now cover
+// each one's write set. It stays one slot for the whole installation all the
+// same: channel writes are administrative and rare, a single key costs
+// nothing, and one lock serialises every writer whichever type it writes, so
+// no writer ever has to be proven disjoint from another. (Before Messenger
+// both demotes were type-unfiltered, faithfully — .NET's own are —, so a
+// lock per type would have been under-scoped: two writers of different types
+// would not have serialised, yet each demoted the other's row.)
 //
 // **THIS LOCK REQUIRES READ COMMITTED, and both handlers rely on it.** Every
 // transaction taking it uses pgx.TxOptions{} (the pool default, READ

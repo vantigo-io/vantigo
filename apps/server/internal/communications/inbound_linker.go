@@ -3,12 +3,14 @@ package communications
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
+	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
 // senderLink is what the linker found for a received message's sender (M15;
@@ -24,13 +26,19 @@ type senderLink struct {
 // directory that fails all link nothing: the import goes on unlinked, and a
 // failure is logged.
 func (w *MailboxSyncWorker) lookupSender(ctx context.Context, channelID uuid.UUID, address string) senderLink {
-	if w.deps.Directory == nil || address == "" {
+	return lookupSenderLink(ctx, w.deps, w.logger(), mailboxSyncWorkerName, channelID, address)
+}
+
+// lookupSenderLink is lookupSender for any worker that imports what a person
+// sent: workerName is how a failure is logged.
+func lookupSenderLink(ctx context.Context, deps module.Deps, logger *slog.Logger, workerName string, channelID uuid.UUID, address string) senderLink {
+	if deps.Directory == nil || address == "" {
 		return senderLink{}
 	}
-	matches, err := directoryContactsByEmail(ctx, w.deps.Directory, address)
+	matches, err := directoryContactsByEmail(ctx, deps.Directory, address)
 	if err != nil {
-		w.logger().Warn("mailbox sync could not look the sender up in the customer directory; imported unlinked",
-			"worker", mailboxSyncWorkerName, "channel", channelID, "error", err)
+		logger.Warn("the sender could not be looked up in the customer directory; imported unlinked",
+			"worker", workerName, "channel", channelID, "error", err)
 		return senderLink{}
 	}
 	var link senderLink

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/mail"
 	"regexp"
 	"strings"
@@ -14,11 +15,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	platformmail "github.com/vantigo-io/vantigo/server/internal/mail"
+	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
 
 // This file is one inbound message's import (Outlook connection design M14;
@@ -437,30 +440,43 @@ func inboundParticipant(ctx context.Context, txq *store.Queries, channelID uuid.
 // reservations already made are queued for deletion, and the error ends the
 // cycle.
 func (w *MailboxSyncWorker) storeObjects(ctx context.Context, objects []inboundObject, now time.Time) error {
-	if w.storeErr != nil {
-		return fmt.Errorf("communications: attachment storage is required: %w", w.storeErr)
-	}
-	for i, o := range objects {
-		if err := reserveObjectKey(ctx, w.deps.Pool, o.key, now); err != nil {
-			w.forgetObjects(ctx, objects[:i], now)
-			return fmt.Errorf("communications: reserve an inbound object: %w", err)
-		}
-		if err := w.store.Put(ctx, o.key, bytes.NewReader(o.content), o.contentType); err != nil {
-			w.forgetObjects(ctx, objects[:i+1], now)
-			return fmt.Errorf("communications: store an inbound object: %w", err)
-		}
-	}
-	return nil
+	return storeInboundObjects(ctx, w.deps.Pool, w.store, w.storeErr, w.logger(), mailboxSyncWorkerName, objects, now)
 }
 
 // forgetObjects queues objects whose import did not commit for deletion, so
 // the cleanup worker removes them now rather than when their reservation
 // expires. A failure is logged: the reservation's expiry is the fallback.
 func (w *MailboxSyncWorker) forgetObjects(ctx context.Context, objects []inboundObject, now time.Time) {
+	forgetInboundObjects(ctx, w.deps.Pool, w.logger(), mailboxSyncWorkerName, objects, now)
+}
+
+// storeInboundObjects is storeObjects for any worker that imports what it
+// received: each object is reserved, then stored, before the transaction that
+// names it.
+func storeInboundObjects(ctx context.Context, pool *pgxpool.Pool, objectStore storage.ObjectStore, storeErr error,
+	logger *slog.Logger, workerName string, objects []inboundObject, now time.Time) error {
+	if storeErr != nil {
+		return fmt.Errorf("communications: attachment storage is required: %w", storeErr)
+	}
+	for i, o := range objects {
+		if err := reserveObjectKey(ctx, pool, o.key, now); err != nil {
+			forgetInboundObjects(ctx, pool, logger, workerName, objects[:i], now)
+			return fmt.Errorf("communications: reserve an inbound object: %w", err)
+		}
+		if err := objectStore.Put(ctx, o.key, bytes.NewReader(o.content), o.contentType); err != nil {
+			forgetInboundObjects(ctx, pool, logger, workerName, objects[:i+1], now)
+			return fmt.Errorf("communications: store an inbound object: %w", err)
+		}
+	}
+	return nil
+}
+
+// forgetInboundObjects is forgetObjects for any worker.
+func forgetInboundObjects(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, workerName string, objects []inboundObject, now time.Time) {
 	if len(objects) == 0 {
 		return
 	}
-	err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	err := db.WithTx(ctx, pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		for _, o := range objects {
 			if err := queueObjectForDeletion(ctx, q, o.key, nil, now); err != nil {
@@ -470,8 +486,8 @@ func (w *MailboxSyncWorker) forgetObjects(ctx context.Context, objects []inbound
 		return nil
 	})
 	if err != nil {
-		w.logger().Warn("mailbox sync could not queue an import's objects for deletion; their reservations expire",
-			"worker", mailboxSyncWorkerName, "error", err)
+		logger.Warn("an import's objects could not be queued for deletion; their reservations expire",
+			"worker", workerName, "error", err)
 	}
 }
 

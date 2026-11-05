@@ -12,7 +12,8 @@ import (
 
 // communicationsMessagingVersion is 00130_communications_messaging.sql:
 // message components, the attachment role, the messenger sync's state and
-// the progress of a message sent as parts (Messenger design N3, N4, N7).
+// the progress of a message sent as parts, and when a participant's profile was
+// read (Messenger design N3, N4, N7).
 const communicationsMessagingVersion = 130
 
 // TestCommunicationsMessaging_AppliesAndIsIdempotent proves the migration
@@ -115,13 +116,31 @@ func TestCommunicationsMessaging_AppliesAndIsIdempotent(t *testing.T) {
 		t.Errorf("parts after the message's deletion = %v, want none: they cascade", got)
 	}
 
+	// A participant's profile read goes with the participant.
+	participant := uuid.New()
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO communications.participants (id, channel_id, address, created_at)
+		VALUES ($1, $2, '4242', now())`, participant, channel); err != nil {
+		t.Fatalf("insert participant: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO communications.participant_profiles (participant_id, fetched_at) VALUES ($1, now())`, participant); err != nil {
+		t.Fatalf("insert profile: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM communications.participants WHERE id = $1`, participant); err != nil {
+		t.Fatalf("delete participant: %v", err)
+	}
+	if got := staffCollect(t, ctx, pool, "the profile after the participant's deletion", `
+		SELECT participant_id::text FROM communications.participant_profiles WHERE participant_id = $1`, participant); len(got) != 0 {
+		t.Errorf("profiles after the participant's deletion = %v, want none: they cascade", got)
+	}
+
 	migrateTo(t, url, communicationsMessagingVersion-1)
 	if got := columns(); len(got) != 0 {
 		t.Errorf("columns after the down = %v, want none", got)
 	}
 	if got := staffCollect(t, ctx, pool, "the tables after the down", `
 		SELECT table_name FROM information_schema.tables
-		WHERE table_schema = 'communications' AND table_name IN ('messenger_sync', 'messenger_parts')`); len(got) != 0 {
+		WHERE table_schema = 'communications' AND table_name IN ('messenger_sync', 'messenger_parts', 'participant_profiles')`); len(got) != 0 {
 		t.Errorf("tables after the down = %v, want none", got)
 	}
 }

@@ -15,6 +15,16 @@ ALTER TABLE communications.message_attachments
     ADD COLUMN role varchar(10) NOT NULL DEFAULT 'file',
     ADD CONSTRAINT ck_message_attachments_role CHECK (role IN ('file', 'card'));
 
+-- When a Messenger participant's profile — its name — was last read from the
+-- platform: it is fetched when the participant is new and again when it is
+-- older than 30 days (N3). A table of its own, so the participants' rows and
+-- every query that returns them stay as they were; an e-mail participant has no
+-- row, its name coming with its mail.
+CREATE TABLE communications.participant_profiles (
+    participant_id  uuid        PRIMARY KEY REFERENCES communications.participants (id) ON DELETE CASCADE,
+    fetched_at      timestamptz NOT NULL
+);
+
 -- Each Messenger channel's sync state, read and written by the
 -- communications-messenger-sync worker under its lease (N3). cursor is the
 -- provider's own insertion id: the last event of the channel's inbox in
@@ -58,6 +68,7 @@ CREATE INDEX ix_messenger_parts_platform_message
 -- +goose Down
 DROP TABLE communications.messenger_parts;
 DROP TABLE communications.messenger_sync;
+DROP TABLE communications.participant_profiles;
 ALTER TABLE communications.message_attachments
     DROP CONSTRAINT ck_message_attachments_role,
     DROP COLUMN role;

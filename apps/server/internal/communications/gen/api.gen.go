@@ -87,7 +87,7 @@ type ChannelProviderResponse struct {
 	Reason *string `json:"reason"`
 
 	// Type The channel type the provider serves, email (smtp and the mailbox providers) or messenger. Always answered; optional in the schema only because the recorded exchanges predate it.
-	Type *string `json:"type,omitempty"`
+	Type *string `json:"type"`
 
 	// Warning tenant_wide while the provider's grant reaches every mailbox in the tenant; null otherwise.
 	Warning *string `json:"warning"`

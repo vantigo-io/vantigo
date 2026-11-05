@@ -26,9 +26,11 @@ import (
 //
 // SMTP always, available and with no budget of its own; then every filled
 // mail channels provider in slot order, with its status — available, or not
-// with the reason — the tenant_wide warning and MaxMessage.
+// with the reason — the tenant_wide warning and MaxMessage; then every filled
+// messenger provider, of type messenger, with its status and the Pages it has
+// connected.
 func (s *server) GetCommunicationsChannelProviders(ctx context.Context, _ gen.GetCommunicationsChannelProvidersRequestObject) (gen.GetCommunicationsChannelProvidersResponseObject, error) {
-	out := []gen.ChannelProviderResponse{{Key: providerSMTP, DisplayName: "SMTP", Available: true}}
+	out := []gen.ChannelProviderResponse{{Key: providerSMTP, DisplayName: "SMTP", Available: true, Type: apicommon.Ptr(channelTypeEmail)}}
 	for _, m := range s.deps.ChannelMailboxes {
 		if m == nil {
 			continue
@@ -42,7 +44,67 @@ func (s *server) GetCommunicationsChannelProviders(ctx context.Context, _ gen.Ge
 		}
 		out = append(out, entry)
 	}
+	for _, m := range s.deps.ChannelMessengers {
+		if m == nil {
+			continue
+		}
+		if err := noteContractCall(ctx, "ChannelMessenger.Key"); err != nil {
+			return nil, err
+		}
+		entry, err := s.messengerProviderEntry(ctx, m)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, entry)
+	}
 	return gen.GetCommunicationsChannelProviders200JSONResponse(out), nil
+}
+
+// messengerProviderEntry is one filled messenger provider as
+// /channel-providers lists it: its status — available, or not with the reason —
+// and, while it is available, the Pages it has connected for the form's
+// picker. A status or Pages that do not answer are not offered, and logged.
+func (s *server) messengerProviderEntry(ctx context.Context, m contracts.ChannelMessenger) (gen.ChannelProviderResponse, error) {
+	key := m.Key()
+	name, err := s.messengerDisplayName(ctx, m)
+	if err != nil {
+		return gen.ChannelProviderResponse{}, err
+	}
+	entry := gen.ChannelProviderResponse{Key: key, DisplayName: name, Type: apicommon.Ptr(channelTypeMessenger)}
+	status, err := messengerStatus(ctx, m)
+	switch {
+	case errors.Is(err, errCallInsideTransaction):
+		return gen.ChannelProviderResponse{}, err
+	case err != nil:
+		s.deps.Logger.WarnContext(ctx, "communications: the messenger provider's status did not answer",
+			"provider", key, "err", err)
+		entry.Reason = apicommon.Ptr("status_unavailable")
+		return entry, nil
+	case !status.Available:
+		entry.Reason = apicommon.Ptr(status.Reason)
+		return entry, nil
+	}
+	entry.Available = true
+	endpoints, err := messengerEndpoints(ctx, m)
+	switch {
+	case errors.Is(err, errCallInsideTransaction):
+		return gen.ChannelProviderResponse{}, err
+	case err != nil:
+		s.deps.Logger.WarnContext(ctx, "communications: the messenger provider's Pages did not answer",
+			"provider", key, "err", err)
+		entry.Available, entry.Reason = false, apicommon.Ptr("endpoints_unavailable")
+		return entry, nil
+	}
+	pages := make([]gen.ChannelEndpointResponse, 0, len(endpoints))
+	for _, e := range endpoints {
+		page := gen.ChannelEndpointResponse{Address: e.Address, DisplayName: e.DisplayName, Available: e.Available}
+		if !e.Available {
+			page.Reason = apicommon.Ptr(e.Reason)
+		}
+		pages = append(pages, page)
+	}
+	entry.Endpoints = &pages
+	return entry, nil
 }
 
 // channelProviderEntry is one filled mail channels provider as
@@ -53,11 +115,11 @@ func (s *server) channelProviderEntry(ctx context.Context, m contracts.ChannelMa
 	if err != nil {
 		return gen.ChannelProviderResponse{}, err
 	}
-	budget, err := s.mailBudget(ctx, key)
+	budget, err := s.mailBudget(ctx, channelTypeEmail, key)
 	if err != nil {
 		return gen.ChannelProviderResponse{}, err
 	}
-	entry := gen.ChannelProviderResponse{Key: key, DisplayName: name, MaxMessageBytes: budget}
+	entry := gen.ChannelProviderResponse{Key: key, DisplayName: name, MaxMessageBytes: budget, Type: apicommon.Ptr(channelTypeEmail)}
 	status, err := s.mailboxStatus(ctx, m)
 	switch {
 	case errors.Is(err, errCallInsideTransaction):
@@ -172,6 +234,72 @@ func (s *server) resolveSharedMailbox(ctx context.Context, provider, address str
 		s.deps.Logger.WarnContext(ctx, "communications: the mail channels provider did not answer a mailbox check",
 			"provider", provider, "err", err)
 		return contracts.ChannelMailboxInfo{}, refusalProviderUnreachable(name), nil
+	}
+}
+
+// The refusals of a Messenger channel's Page, as the mailbox's: create and
+// verify answer them with the status, the code and the message.
+func refusalMessengerOff(provider string) *mailboxRefusal {
+	return &mailboxRefusal{http.StatusConflict, "messenger_off", fmt.Sprintf(
+		"Messenger channels through %s are not available. An administrator turns them on under Integrations.", provider)}
+}
+
+func refusalEndpointUnknown(provider string) *mailboxRefusal {
+	return &mailboxRefusal{http.StatusUnprocessableEntity, "endpoint_unknown",
+		fmt.Sprintf("No Page with this id is connected in %s.", provider)}
+}
+
+func refusalEndpointUnavailable(provider string) *mailboxRefusal {
+	return &mailboxRefusal{http.StatusUnprocessableEntity, "endpoint_unavailable",
+		fmt.Sprintf("The Page is not available in %s right now.", provider)}
+}
+
+// resolveMessengerEndpoint is resolveSharedMailbox for a Messenger channel,
+// run before any transaction opens: the provider filled under provider and
+// available (else messenger_off), then Check of address — a Page it has
+// connected and that is available is the answer; an unknown one, an
+// unavailable one, the provider unavailable are refusals; anything else is
+// provider_unreachable, logged.
+func (s *server) resolveMessengerEndpoint(ctx context.Context, provider, address string) (contracts.MessengerEndpoint, *mailboxRefusal, error) {
+	m, err := s.channelMessenger(ctx, provider)
+	if err != nil {
+		return contracts.MessengerEndpoint{}, nil, err
+	}
+	if m == nil {
+		return contracts.MessengerEndpoint{}, refusalMessengerOff(provider), nil
+	}
+	name, err := s.messengerDisplayName(ctx, m)
+	if err != nil {
+		return contracts.MessengerEndpoint{}, nil, err
+	}
+	status, err := messengerStatus(ctx, m)
+	if errors.Is(err, errCallInsideTransaction) {
+		return contracts.MessengerEndpoint{}, nil, err
+	}
+	if err != nil {
+		s.deps.Logger.WarnContext(ctx, "communications: the messenger provider's status did not answer",
+			"provider", provider, "err", err)
+		return contracts.MessengerEndpoint{}, refusalProviderUnreachable(name), nil
+	}
+	if !status.Available {
+		return contracts.MessengerEndpoint{}, refusalMessengerOff(name), nil
+	}
+	endpoint, err := messengerCheck(ctx, m, address)
+	switch {
+	case err == nil && !endpoint.Available:
+		return contracts.MessengerEndpoint{}, refusalEndpointUnavailable(name), nil
+	case err == nil:
+		return endpoint, nil, nil
+	case errors.Is(err, errCallInsideTransaction):
+		return contracts.MessengerEndpoint{}, nil, err
+	case errors.Is(err, contracts.ErrMessengerEndpointUnknown):
+		return contracts.MessengerEndpoint{}, refusalEndpointUnknown(name), nil
+	case errors.Is(err, contracts.ErrMessengerUnavailable):
+		return contracts.MessengerEndpoint{}, refusalMessengerOff(name), nil
+	default:
+		s.deps.Logger.WarnContext(ctx, "communications: the messenger provider did not answer a Page check",
+			"provider", provider, "err", err)
+		return contracts.MessengerEndpoint{}, refusalProviderUnreachable(name), nil
 	}
 }
 

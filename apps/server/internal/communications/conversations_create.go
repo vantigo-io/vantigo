@@ -246,6 +246,12 @@ func (s *server) PostCommunicationsConversations(ctx context.Context, req gen.Po
 			return nil, fmt.Errorf("communications: get channel: %w", err)
 		}
 		channelID, channelType = row.ID, row.Type
+		// A Messenger conversation starts when the person writes first: the
+		// platform lets the Page answer, never open (Messenger design N7).
+		if channelType == channelTypeMessenger {
+			return gen.PostCommunicationsConversations422JSONResponse(flatErrorBody(
+				"channel_cannot_start", "A conversation on a messenger channel starts when the person writes first.")), nil
+		}
 	} else {
 		row, err := q.GetDefaultActiveEmailChannel(ctx)
 		if errors.Is(err, pgx.ErrNoRows) {

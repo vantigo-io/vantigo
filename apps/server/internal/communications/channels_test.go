@@ -48,6 +48,7 @@ type channelJSON struct {
 		OnClose string  `json:"onClose"`
 		Folder  *string `json:"folder"`
 	} `json:"mailbox"`
+	Available *bool `json:"available"`
 }
 
 // commErrorJSON decodes CommunicationErrorResponse
@@ -238,12 +239,12 @@ func TestCreateChannel_ValidationMessages(t *testing.T) {
 			b := newChannelBody(channelAddress(t))
 			delete(b, "type")
 			return b
-		}, "type", "Only the email channel is currently supported."},
+		}, "type", "Only the email and messenger channels are currently supported."},
 		{"wrong type", func() map[string]any {
 			b := newChannelBody(channelAddress(t))
 			b["type"] = "sms"
 			return b
-		}, "type", "Only the email channel is currently supported."},
+		}, "type", "Only the email and messenger channels are currently supported."},
 		{"missing address", func() map[string]any {
 			b := newChannelBody(channelAddress(t))
 			delete(b, "address")

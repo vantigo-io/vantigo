@@ -19,6 +19,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
+	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
 // This file is the Channels area (EP/ChannelEndpoints.cs, communications
@@ -29,6 +30,14 @@ import (
 // postCommunicationsChannelsByIdProvider. All require channels-manage only
 // (communications.yaml's x-vantigo-access on each operation under /channels)
 // — module.Router already enforces it, so no handler here re-checks it.
+//
+// TYPES (Messenger design N1). A channel's type is email or messenger. An
+// e-mail channel's address is RFC 5322 and its provider SMTP or a mailbox
+// provider; a Messenger channel's address is a Page's id (digits) and its
+// provider the Key of a filled contracts.ChannelMessenger, which has no
+// credential row and settings '{}'. A provider that does not serve the type is
+// 422 provider_type_mismatch. The default channel is the default of its type
+// (design divergence 16).
 //
 // PROVIDERS. A channel is SMTP — its settings and sealed password on its
 // channel_credentials row — or a mailbox channel (Outlook connection design
@@ -244,7 +253,7 @@ func channelResponseOf(row channelRow, settingsJSON *string) (gen.ChannelRespons
 		Id: row.ID, Type: row.Type, Address: row.Address, DisplayName: row.DisplayName,
 		Provider: row.Provider, IsDefault: row.IsDefault, IsActive: row.IsActive, CreatedAt: row.CreatedAt,
 	}
-	if isMailboxProvider(row.Provider) {
+	if isMailboxChannel(row.Type, row.Provider) {
 		ms, err := channelSettingsOf(row.Settings)
 		if err != nil {
 			return gen.ChannelResponse{}, err
@@ -262,7 +271,8 @@ func channelResponseOf(row channelRow, settingsJSON *string) (gen.ChannelRespons
 	// a mailbox. Whether the provider is offered now is the provider's own
 	// state, which a call out of the module reads — never inside the
 	// transaction that built this response — and withProviderState folds in.
-	resp.Available = apicommon.Ptr(isMailboxProvider(row.Provider) && resp.Mailbox != nil ||
+	resp.Available = apicommon.Ptr(isMailboxChannel(row.Type, row.Provider) && resp.Mailbox != nil ||
+		row.Type == channelTypeMessenger ||
 		row.Provider == providerSMTP && settingsJSON != nil)
 	if settingsJSON == nil {
 		return resp, nil
@@ -288,16 +298,24 @@ func channelResponseOf(row channelRow, settingsJSON *string) (gen.ChannelRespons
 
 // withProviderState folds the provider's state into a response's available: a
 // mailbox channel whose provider is not filled, or not offered, cannot send
-// (offered is offeredMailboxes' answer). An SMTP channel's available is its
-// credentials'.
+// (offered is offeredProviders' answer), nor can a Messenger channel whose
+// provider is not offered or whose Page is not available. An SMTP channel's
+// available is its credentials'.
 func withProviderState(resp gen.ChannelResponse, offered map[string]bool) gen.ChannelResponse {
-	if isMailboxProvider(resp.Provider) && resp.Available != nil && !offered[resp.Provider] {
+	switch {
+	case resp.Available == nil:
+	case resp.Type == channelTypeMessenger:
+		if !offered[resp.Provider] || !offered[providerPageKey(resp.Provider, resp.Address)] {
+			resp.Available = apicommon.Ptr(false)
+		}
+	case isMailboxProvider(resp.Provider) && !offered[resp.Provider]:
 		resp.Available = apicommon.Ptr(false)
 	}
 	return resp
 }
 
-// channelSyncs is each channel's mailbox sync row, for ChannelResponse.sync.
+// channelSyncs is each channel's sync row, a mailbox channel's or a Messenger
+// channel's, for ChannelResponse.sync.
 func channelSyncs(ctx context.Context, q *store.Queries, ids []uuid.UUID) (map[uuid.UUID]store.GetChannelSyncByChannelIDsRow, error) {
 	rows, err := q.GetChannelSyncByChannelIDs(ctx, ids)
 	if err != nil {
@@ -307,14 +325,21 @@ func channelSyncs(ctx context.Context, q *store.Queries, ids []uuid.UUID) (map[u
 	for _, r := range rows {
 		out[r.ChannelID] = r
 	}
+	messengerRows, err := q.GetMessengerSyncByChannelIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("communications: list messenger syncs: %w", err)
+	}
+	for _, r := range messengerRows {
+		out[r.ChannelID] = store.GetChannelSyncByChannelIDsRow(r)
+	}
 	return out, nil
 }
 
-// withSync is resp with its mailbox channel's receive state (delivery
-// D, a plan addition): null for an SMTP channel, and for one with no sync
-// row.
+// withSync is resp with its mailbox or Messenger channel's receive state
+// (delivery D, a plan addition): null for an SMTP channel, and for one with no
+// sync row.
 func withSync(resp gen.ChannelResponse, row *store.GetChannelSyncByChannelIDsRow) gen.ChannelResponse {
-	if row == nil || !isMailboxProvider(resp.Provider) {
+	if row == nil || resp.Provider == providerSMTP {
 		return resp
 	}
 	resp.Sync = &struct {
@@ -371,7 +396,7 @@ type createChannelInput struct {
 	address      string
 	displayName  *string
 	isDefault    bool
-	provider     string // providerSMTP or a filled ChannelMailbox's Key
+	provider     string // providerSMTP, a filled ChannelMailbox's Key or a filled ChannelMessenger's
 	settings     smtpProviderSettings
 	password     string
 	importWindow string
@@ -397,8 +422,8 @@ func validateCreateChannel(body gen.CreateChannelRequest) (createChannelInput, m
 	if body.Type != nil {
 		channelType = *body.Type
 	}
-	if channelType != "email" {
-		errs["type"] = []string{"Only the email channel is currently supported."}
+	if channelType != channelTypeEmail && channelType != channelTypeMessenger {
+		errs["type"] = []string{"Only the email and messenger channels are currently supported."}
 	}
 	in.channelType = channelType
 
@@ -406,7 +431,10 @@ func validateCreateChannel(body gen.CreateChannelRequest) (createChannelInput, m
 	if body.Address != nil {
 		address = *body.Address
 	}
-	if !validChannelAddress(address) {
+	switch {
+	case channelType == channelTypeMessenger && !validPageID(address):
+		errs["address"] = []string{"A valid Facebook Page id is required."}
+	case channelType != channelTypeMessenger && !validChannelAddress(address):
 		errs["address"] = []string{"A valid channel email address is required."}
 	}
 	in.address = address
@@ -427,6 +455,12 @@ func validateCreateChannel(body gen.CreateChannelRequest) (createChannelInput, m
 	}
 	in.provider = provider
 	switch {
+	case channelType == channelTypeMessenger:
+		// A messenger channel has no credentials; whether its provider serves the
+		// type is the handler's answer, 422 provider_type_mismatch.
+		if body.Smtp != nil {
+			errs["smtp"] = []string{"SMTP credentials require the smtp provider."}
+		}
 	case provider != providerSMTP && body.Smtp == nil:
 		in.importWindow, in.onClose, in.folder = validateMailboxChannelOptions(body.ImportWindow, body.OnClose, body.Folder, errs)
 	case provider != providerSMTP:
@@ -472,7 +506,7 @@ func (s *server) GetCommunicationsChannels(ctx context.Context, _ gen.GetCommuni
 	if err != nil {
 		return nil, err
 	}
-	offered, err := s.offeredMailboxes(ctx)
+	offered, err := s.offeredProviders(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -511,12 +545,32 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 		return gen.PostCommunicationsChannels400JSONResponse(validationErrorBody(errs)), nil
 	}
 
+	// The provider has to serve the type: 422 provider_type_mismatch.
+	if providerTypeMismatch(s.deps, in.channelType, in.provider) {
+		return gen.PostCommunicationsChannels422JSONResponse(flatErrorBody(
+			"provider_type_mismatch", "The provider does not serve this type of channel.")), nil
+	}
+
 	// A mailbox channel: the M12 table, before the transaction opens — the
 	// stored address is Check's primary one, and its settings the mailbox;
-	// no credential row.
+	// no credential row. A Messenger channel is the same with its Page: its
+	// address the Page's id, no credential row, settings '{}'.
 	channelSettings := []byte("{}")
 	var settingsJSON, sealed []byte
-	if isMailboxProvider(in.provider) {
+	switch {
+	case in.channelType == channelTypeMessenger:
+		endpoint, refusal, err := s.resolveMessengerEndpoint(ctx, in.provider, in.address)
+		if err != nil {
+			return nil, err
+		}
+		if refusal != nil {
+			return createChannelRefusal(refusal), nil
+		}
+		in.address = endpoint.Address
+		if in.displayName == nil && endpoint.DisplayName != "" && validDisplayName(endpoint.DisplayName) {
+			in.displayName = &endpoint.DisplayName
+		}
+	case isMailboxProvider(in.provider):
 		info, refusal, err := s.resolveSharedMailbox(ctx, in.provider, in.address)
 		if err != nil {
 			return nil, err
@@ -528,7 +582,7 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 		if channelSettings, err = json.Marshal(mailboxSettings{Mailbox: info.Mailbox, OnClose: in.onClose, Folder: in.folder}); err != nil {
 			return nil, fmt.Errorf("communications: encode channel settings: %w", err)
 		}
-	} else {
+	default:
 		var err error
 		if settingsJSON, err = json.Marshal(in.settings); err != nil {
 			return nil, fmt.Errorf("communications: encode channel settings: %w", err)
@@ -547,13 +601,13 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 		if err := lockDefaultChannelSlot(ctx, q); err != nil {
 			return err
 		}
-		anyExists, err := q.AnyChannelExists(ctx)
+		anyExists, err := q.AnyChannelExists(ctx, in.channelType)
 		if err != nil {
 			return err
 		}
 		isDefault := in.isDefault || !anyExists
 		if isDefault {
-			if err := q.ClearDefaultChannels(ctx); err != nil {
+			if err := q.ClearDefaultChannels(ctx, in.channelType); err != nil {
 				return err
 			}
 		}
@@ -564,6 +618,18 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 		})
 		if err != nil {
 			return err
+		}
+		if in.channelType == channelTypeMessenger {
+			// It receives from the first event of its Page's inbox (N3).
+			sync, err := q.InsertMessengerSync(ctx, store.InsertMessengerSyncParams{ChannelID: channel.ID, Now: now})
+			if err != nil {
+				return err
+			}
+			if resp, err = channelResponseOf(channelRowFromChannel(channel), nil); err != nil {
+				return err
+			}
+			resp = withSync(resp, &store.GetChannelSyncByChannelIDsRow{ChannelID: sync.ChannelID, State: sync.State, Error: sync.LastError})
+			return nil
 		}
 		if isMailboxProvider(in.provider) {
 			// It receives from import_from (from_now, last_30_days or last_90_days, M14/M17).
@@ -623,8 +689,9 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 		}
 		return nil, fmt.Errorf("communications: create channel: %w", txErr)
 	}
-	// A mailbox channel is created only while its provider is offered
-	// (resolveSharedMailbox asked), so its own availability is the answer.
+	// A mailbox or Messenger channel is created only while its provider is
+	// offered (resolveSharedMailbox, resolveMessengerEndpoint asked), so its own
+	// availability is the answer.
 	return gen.PostCommunicationsChannels201JSONResponse(resp), nil
 }
 
@@ -660,7 +727,7 @@ func (s *server) GetCommunicationsChannelsById(ctx context.Context, req gen.GetC
 	if err != nil {
 		return nil, err
 	}
-	offered, err := s.offeredMailboxes(ctx)
+	offered, err := s.offeredProviders(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -745,7 +812,7 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 	if body.Provider != nil && strings.TrimSpace(*body.Provider) != "" {
 		provider = strings.ToLower(strings.TrimSpace(*body.Provider))
 	}
-	backToSMTP := isMailboxProvider(existing.Provider) && provider == providerSMTP
+	backToSMTP := isMailboxChannel(existing.Type, existing.Provider) && provider == providerSMTP
 
 	var rewriteCredential bool
 	var newSettingsJSON string
@@ -755,10 +822,14 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 	// inside the transaction (see the transaction body).
 	var suppliedPassword *string
 	switch {
+	case existing.Type == channelTypeMessenger && (provider != existing.Provider || body.Smtp != nil):
+		credErrs["provider"] = []string{"A messenger channel's provider cannot be changed."}
+	case provider != existing.Provider && providerTypeMismatch(s.deps, existing.Type, provider):
+		credErrs["provider"] = []string{"The provider does not serve this type of channel."}
 	case provider != existing.Provider && provider != providerSMTP && s.filledMailboxProvider(provider):
 		credErrs["provider"] = []string{"A channel is switched to a mailbox provider through its provider switch, not an update."}
 	case provider == existing.Provider && isMailboxProvider(provider) && body.Smtp == nil:
-		// A mailbox channel's own fields only: no credential.
+		// A mailbox or Messenger channel's own fields only: no credential.
 	case provider != providerSMTP:
 		credErrs["smtp"] = []string{"SMTP credentials require the smtp provider."}
 	case backToSMTP && body.Smtp == nil:
@@ -873,7 +944,7 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 
 		isDefault := current.IsDefault
 		if wantDefault {
-			if err := txq.ClearOtherDefaultChannels(ctx, req.Id); err != nil {
+			if err := txq.ClearOtherDefaultChannels(ctx, store.ClearOtherDefaultChannelsParams{ID: req.Id, Type: current.Type}); err != nil {
 				return err
 			}
 			isDefault = true
@@ -890,7 +961,7 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 			finalDisplayName = newDisplayName
 		}
 		finalSettings := current.Settings
-		if isMailboxProvider(current.Provider) && !backToSMTP {
+		if isMailboxChannel(current.Type, current.Provider) && !backToSMTP {
 			ms, serr := channelSettingsOf(current.Settings)
 			if serr != nil {
 				return serr
@@ -1014,7 +1085,7 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 	} else if unwatch != "" {
 		s.unwatchMailbox(ctx, req.Id, mailboxProvider, unwatch)
 	}
-	offered, err := s.offeredMailboxes(ctx)
+	offered, err := s.offeredProviders(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1210,6 +1281,9 @@ func (s *server) PostCommunicationsChannelsByIdVerify(ctx context.Context, req g
 		return nil, fmt.Errorf("communications: get channel: %w", err)
 	}
 
+	if channel.Type == channelTypeMessenger {
+		return s.verifyMessengerChannel(ctx, channel)
+	}
 	if isMailboxProvider(channel.Provider) {
 		return s.verifyMailboxChannel(ctx, channel)
 	}
@@ -1241,6 +1315,20 @@ func (s *server) verifyMailboxChannel(ctx context.Context, channel store.GetChan
 	}
 	if refusal == nil && !strings.EqualFold(info.Mailbox, stored) {
 		refusal = refusalMailboxChanged
+	}
+	if refusal != nil {
+		return gen.PostCommunicationsChannelsByIdVerify422JSONResponse(flatErrorBody(refusal.code, refusal.message)), nil
+	}
+	return gen.PostCommunicationsChannelsByIdVerify200JSONResponse(gen.ChannelVerifyResponse{Ok: true}), nil
+}
+
+// verifyMessengerChannel is verify for a Messenger channel: the provider's
+// Status and Check of the channel's Page again, ok only when it is still
+// connected and available. Every refusal is a 422 with the create's code.
+func (s *server) verifyMessengerChannel(ctx context.Context, channel store.GetChannelByIDRow) (gen.PostCommunicationsChannelsByIdVerifyResponseObject, error) {
+	_, refusal, err := s.resolveMessengerEndpoint(ctx, channel.Provider, channel.Address)
+	if err != nil {
+		return nil, err
 	}
 	if refusal != nil {
 		return gen.PostCommunicationsChannelsByIdVerify422JSONResponse(flatErrorBody(refusal.code, refusal.message)), nil
@@ -1297,6 +1385,9 @@ func (s *server) PostCommunicationsChannelsByIdProvider(ctx context.Context, req
 		return nil, fmt.Errorf("communications: get channel: %w", err)
 	}
 	switch {
+	case existing.Type == channelTypeMessenger || providerTypeMismatch(s.deps, existing.Type, provider):
+		return gen.PostCommunicationsChannelsByIdProvider422JSONResponse(flatErrorBody(
+			"provider_type_mismatch", "The provider does not serve this type of channel.")), nil
 	case existing.Provider == provider:
 		return s.switchProviderUnchanged(provider), nil
 	case existing.Provider != providerSMTP:
@@ -1407,4 +1498,18 @@ func switchProviderUnsupported() gen.PostCommunicationsChannelsByIdProviderRespo
 // Reading the slice calls nobody.
 func (s *server) filledMailboxProvider(key string) bool {
 	return channelMailboxFor(s.deps, key) != nil
+}
+
+// providerTypeMismatch reports whether provider cannot serve a channel of
+// channelType (Messenger design N1): an e-mail channel is served by SMTP or a
+// provider of the mailbox slot, a Messenger channel by one of the messenger
+// slot, and a key in the other slot never. A key in neither slot is no
+// mismatch: it is an unfilled provider of the type, which the channel's own
+// operations refuse as off.
+func providerTypeMismatch(deps module.Deps, channelType, provider string) bool {
+	slot := providerSlotOf(deps, provider)
+	if channelType == channelTypeMessenger {
+		return provider == providerSMTP || slot == slotMailbox
+	}
+	return slot == slotMessenger
 }
