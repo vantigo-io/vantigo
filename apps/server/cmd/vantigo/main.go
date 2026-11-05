@@ -44,6 +44,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/docs"
 	"github.com/vantigo-io/vantigo/server/internal/energy"
 	"github.com/vantigo-io/vantigo/server/internal/entra"
+	"github.com/vantigo-io/vantigo/server/internal/events"
 	"github.com/vantigo-io/vantigo/server/internal/expenses"
 	"github.com/vantigo-io/vantigo/server/internal/google"
 	"github.com/vantigo-io/vantigo/server/internal/health"
@@ -492,6 +493,14 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	var runner *worker.Runner
 	if wantWorkers {
 		workers := module.Workers(deps, append(mods, extraModules...)...)
+		// The domain-events dispatcher (orders design O3) is the platform's
+		// own worker, over every module's handlers, enabled or not.
+		handlers, err := module.EventHandlers(deps, append(mods, extraModules...)...)
+		if err != nil {
+			logger.Error("startup failed", "error", err)
+			return 1
+		}
+		workers = append(workers, events.NewDispatcher(pool, handlers, logger, deps.Clock))
 		runner = worker.NewRunner(logger)
 		runner.Start(workerCtx, workers)
 	}
@@ -513,6 +522,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 					return management.Installation{Bootstrap: st.Bootstrap, Users: st.Users, ActiveUsers: st.ActiveUsers}, err
 				},
 				DatabaseBytes: management.DatabaseBytes(pool),
+				Deliveries:    events.NewOperator(pool, deps.Clock),
 			}),
 			ReadHeaderTimeout: readHeaderTimeout,
 			IdleTimeout:       idleTimeout,
