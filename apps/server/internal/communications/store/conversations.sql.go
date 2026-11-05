@@ -405,6 +405,33 @@ func (q *Queries) GetIdempotencyRecordByKey(ctx context.Context, key string) (Co
 	return i, err
 }
 
+const getMessengerReplyParticipant = `-- name: GetMessengerReplyParticipant :one
+SELECT p.id, p.address
+FROM communications.conversation_participants cp
+JOIN communications.participants p ON p.id = cp.participant_id
+WHERE cp.conversation_id = $1
+ORDER BY (SELECT max(m.occurred_at) FROM communications.conversation_messages m
+          WHERE m.conversation_id = cp.conversation_id AND m.participant_id = p.id AND m.direction = 'inbound') DESC NULLS LAST,
+         p.created_at ASC, p.id ASC
+LIMIT 1
+`
+
+type GetMessengerReplyParticipantRow struct {
+	ID      uuid.UUID
+	Address string
+}
+
+// Who a reply on a Messenger conversation answers (N7): the conversation's
+// participant — the one whose message came last, when there are several. A
+// conversation the Page started from the platform has one too, through its
+// echo, though nothing of theirs was received.
+func (q *Queries) GetMessengerReplyParticipant(ctx context.Context, conversationID uuid.UUID) (GetMessengerReplyParticipantRow, error) {
+	row := q.db.QueryRow(ctx, getMessengerReplyParticipant, conversationID)
+	var i GetMessengerReplyParticipantRow
+	err := row.Scan(&i.ID, &i.Address)
+	return i, err
+}
+
 const getReplyRecipientsSource = `-- name: GetReplyRecipientsSource :one
 SELECT m.rfc_message_id, m.channel_metadata_json, p.address AS sender_address,
        c.channel_id, ch.address AS channel_address
@@ -506,11 +533,11 @@ const insertConversationMessage = `-- name: InsertConversationMessage :one
 INSERT INTO communications.conversation_messages
  (id, conversation_id, direction, participant_id, author_user_id, subject, text_body, html_body,
   channel_metadata_json, occurred_at, created_at, rfc_message_id, send_as, from_address, from_display_name,
-  send_provider)
+  send_provider, components)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
   $9, $10, $11, $12,
   COALESCE(NULLIF($13::text, ''), 'channel'), $14, $15,
-  $16::text)
+  $16::text, $17::jsonb)
 RETURNING id
 `
 
@@ -531,6 +558,7 @@ type InsertConversationMessageParams struct {
 	FromAddress         *string
 	FromDisplayName     *string
 	SendProvider        *string
+	Components          []byte
 }
 
 // Shared by AddNote (direction=internal_note), CreateConversation and Reply
@@ -553,6 +581,7 @@ func (q *Queries) InsertConversationMessage(ctx context.Context, arg InsertConve
 		arg.FromAddress,
 		arg.FromDisplayName,
 		arg.SendProvider,
+		arg.Components,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)

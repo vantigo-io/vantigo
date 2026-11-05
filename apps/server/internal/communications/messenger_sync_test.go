@@ -32,10 +32,20 @@ type chatFixture struct {
 func newChat(t *testing.T, opts ...modtest.Option) chatFixture {
 	t.Helper()
 	h, fake := messengerHarness(t, opts...)
-	c := h.SignIn(t, "communications:channels-manage", "communications:conversations-view",
-		"communications:conversations-reply", "communications:conversations-manage")
+	c := signInChat(t, h)
 	return chatFixture{h: h, fake: fake, c: c, channel: newMessengerChannel(t, c, fake)}
 }
+
+// signInChat is a user with every permission a Messenger conversation needs.
+func signInChat(t *testing.T, h *modtest.Harness) *modtest.Client {
+	t.Helper()
+	return h.SignIn(t, "communications:channels-manage", "communications:conversations-view",
+		"communications:conversations-reply", "communications:conversations-manage")
+}
+
+// resign signs the user in again: a test that moves the clock a day or more has
+// outlived the session.
+func (f *chatFixture) resign(t *testing.T) { f.c = signInChat(t, f.h) }
 
 // worker is a messenger sync worker, as one replica.
 func (f chatFixture) worker() *communications.MessengerSyncWorker {

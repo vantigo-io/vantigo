@@ -274,7 +274,7 @@ func (s *server) GetCommunicationsConversations(ctx context.Context, req gen.Get
 // (resolveReplyRecipients). canReply is whether there is one and replyTo its
 // address; replyAllCc the participants its Cc named, canReplyAll whether
 // there are any. A conversation nobody wrote to answers all negative.
-func (s *server) replyRecipientsOf(ctx context.Context, q *store.Queries, conversationID uuid.UUID) (struct {
+func (s *server) replyRecipientsOf(ctx context.Context, q *store.Queries, conversationID uuid.UUID, channelType string) (struct {
 	CanReply    bool `json:"canReply"`
 	CanReplyAll bool `json:"canReplyAll"`
 	ReplyAllCc  []struct {
@@ -287,7 +287,14 @@ func (s *server) replyRecipientsOf(ctx context.Context, q *store.Queries, conver
 	ReplyTo *string `json:"replyTo"`
 }, error) {
 	rr := noReplyRecipients()
-	source, err := s.resolveReplyRecipients(ctx, q, conversationID)
+	var source *replySource
+	var err error
+	if channelType == channelTypeMessenger {
+		// A Messenger conversation answers its participant, no Cc.
+		source, err = s.messengerReplySource(ctx, q, conversationID)
+	} else {
+		source, err = s.resolveReplyRecipients(ctx, q, conversationID)
+	}
 	if err != nil || source == nil {
 		return rr, err
 	}
@@ -404,7 +411,7 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 		allowance = apicommon.Ptr(attachmentAllowance(*budget))
 	}
 
-	replyRecipients, err := s.replyRecipientsOf(ctx, q, req.Id)
+	replyRecipients, err := s.replyRecipientsOf(ctx, q, req.Id, channelDetail.Type)
 	if err != nil {
 		return nil, err
 	}

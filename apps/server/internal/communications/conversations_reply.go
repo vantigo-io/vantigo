@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -46,6 +47,16 @@ import (
 //  10. inside the transaction, the clean -> claimed conditional claim -> 409
 //     attachments_not_ready again (the race fence a preflight-only
 //     implementation would leave open between check and claim).
+//
+// A reply on a Messenger conversation (Messenger design N4, N6, N7) takes the
+// same steps with the e-mail-only inputs refused or ignored: sendFromPersonal
+// and replyMode reply_all are 422 not_supported_on_channel, the subject and the
+// HTML are ignored, the text is at most 2000 characters (422 text_too_long),
+// the components are checked against the provider's Capabilities (422
+// components_unsupported, components_invalid), the person answered is the
+// conversation's participant and no Cc exists, and a conversation whose reply
+// window is closed answers 422 reply_window_closed — after the idempotency
+// replay, which an already-accepted reply still gets.
 //
 // Step 7 finds the latest inbound message with a sender: the mailbox sync
 // (mailbox_sync.go) writes inbound messages for a mailbox channel, so a
@@ -215,17 +226,23 @@ func replyMetadata(source *replySource) ([]byte, error) {
 // request.Subject, request.ReplyMode, request.AttachmentIds }`) — the exact
 // same "same conclusion, not same bytes" latitude fingerprintOf's own
 // comment (conversations_create.go) already claims for CreateConversation.
+//
+// The components are part of it (Messenger design N4), with each card's image:
+// an idempotent replay with different components is the existing mismatch
+// refusal. omitempty keeps the fingerprint of a reply with none what it was.
 func replyFingerprint(conversationID uuid.UUID, body gen.ReplyRequest) (string, error) {
 	return fingerprintOf(struct {
-		ConversationId uuid.UUID    `json:"conversationId"`
-		TextBody       *string      `json:"textBody"`
-		HtmlBody       *string      `json:"htmlBody"`
-		Subject        *string      `json:"subject"`
-		ReplyMode      *string      `json:"replyMode"`
-		AttachmentIds  *[]uuid.UUID `json:"attachmentIds"`
+		ConversationId uuid.UUID              `json:"conversationId"`
+		TextBody       *string                `json:"textBody"`
+		HtmlBody       *string                `json:"htmlBody"`
+		Subject        *string                `json:"subject"`
+		ReplyMode      *string                `json:"replyMode"`
+		AttachmentIds  *[]uuid.UUID           `json:"attachmentIds"`
+		Components     *gen.MessageComponents `json:"components,omitempty"`
 	}{
 		ConversationId: conversationID, TextBody: body.TextBody, HtmlBody: body.HtmlBody,
 		Subject: body.Subject, ReplyMode: body.ReplyMode, AttachmentIds: body.AttachmentIds,
+		Components: body.Components,
 	})
 }
 
@@ -299,6 +316,23 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 			"channel_inactive", "The conversation channel is inactive.")), nil
 	}
 
+	// A reply on a Messenger channel is refused, before the replay, what that
+	// channel cannot take (N4, N7); a reply on an e-mail channel what only
+	// Messenger takes.
+	messenger := conv.ChannelType == channelTypeMessenger
+	var state messengerConversationState
+	if messenger {
+		if state, err = s.messengerStateOf(ctx, q, req.Id, conv.ChannelProvider, s.deps.Clock()); err != nil {
+			return nil, err
+		}
+		if refusal := messengerReplyRefusal(body, state.caps); refusal != nil {
+			return refusal, nil
+		}
+	} else if hasComponents(body.Components) {
+		return gen.PostCommunicationsConversationsByIdReply422JSONResponse(flatErrorBody(
+			"components_unsupported", "This channel takes no answer options or cards.")), nil
+	}
+
 	fingerprint, err := replyFingerprint(req.Id, body)
 	if err != nil {
 		return nil, err
@@ -320,10 +354,23 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 		return nil, fmt.Errorf("communications: get idempotency record: %w", err)
 	}
 
+	// A Messenger conversation's window: the person must have written within it
+	// (N6).
+	if messenger && state.window.state == windowClosed {
+		return gen.PostCommunicationsConversationsByIdReply422JSONResponse(flatErrorBody(
+			"reply_window_closed", "The customer must write again before you can answer here.")), nil
+	}
+
 	// Step 7: no inbound participant -> 422 recipients_missing: a
 	// conversation with no message received — one this module's own API
-	// created — has nobody to answer.
-	source, err := s.resolveReplyRecipients(ctx, q, req.Id)
+	// created — has nobody to answer. On Messenger the person answered is the
+	// conversation's participant.
+	var source *replySource
+	if messenger {
+		source, err = s.messengerReplySource(ctx, q, req.Id)
+	} else {
+		source, err = s.resolveReplyRecipients(ctx, q, req.Id)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -351,11 +398,92 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 	if messageSubject == nil {
 		messageSubject = conv.Subject
 	}
+	var components []byte
+	if messenger {
+		// No subject and no HTML: a chat is plain text (N8).
+		messageSubject, body.HtmlBody = nil, nil
+		if stored := storedComponentsOf(body.Components); !stored.empty() {
+			if components, err = json.Marshal(stored); err != nil {
+				return nil, fmt.Errorf("communications: encode the reply's components: %w", err)
+			}
+		}
+	}
 	return s.queueReply(ctx, replyQueueParams{
 		conversationID: req.Id, channelType: conv.ChannelType, channelProvider: conv.ChannelProvider, caller: caller, key: key,
 		fingerprint: fingerprint, body: body, messageSubject: messageSubject,
-		primaryAddress: source.senderAddress, ccAddresses: ccAddresses, metadata: metadata, now: s.deps.Clock(),
+		primaryAddress: source.senderAddress, ccAddresses: ccAddresses, metadata: metadata, components: components,
+		now: s.deps.Clock(),
 	})
+}
+
+// messengerMaxText is a Messenger message's text limit when its provider names
+// none (Messenger design N7).
+const messengerMaxText = 2000
+
+// hasComponents reports whether a reply carries components at all: answer
+// options, cards, or the request for an e-mail address.
+func hasComponents(c *gen.MessageComponents) bool {
+	return c != nil && (c.AnswerOptions != nil || c.Cards != nil || (c.ShareEmail != nil && *c.ShareEmail))
+}
+
+// messengerReplyRefusal is what a Messenger channel refuses of a reply before
+// anything is read of the conversation's recipients (N4, N7), or nil: the
+// e-mail-only inputs (422 not_supported_on_channel), text that is missing (400)
+// or too long (422 text_too_long), and components the provider takes none of
+// (422 components_unsupported) or breaking its limits (422 components_invalid,
+// with fields). Cards need a product image, which the delivery that attaches
+// products brings: they are refused until then.
+func messengerReplyRefusal(body gen.ReplyRequest, caps contracts.MessengerCapabilities) gen.PostCommunicationsConversationsByIdReplyResponseObject {
+	if (body.SendFromPersonal != nil && *body.SendFromPersonal) || normalizedReplyMode(body.ReplyMode) == "reply_all" {
+		return gen.PostCommunicationsConversationsByIdReply422JSONResponse(flatErrorBody(
+			"not_supported_on_channel", "Sending from a personal address and replying to all are not available on this channel."))
+	}
+	text := ""
+	if body.TextBody != nil {
+		text = *body.TextBody
+	}
+	if strings.TrimSpace(text) == "" {
+		return gen.PostCommunicationsConversationsByIdReply400JSONResponse(validationErrorBody(map[string][]string{
+			"textBody": {"TextBody is required."},
+		}))
+	}
+	limit := caps.MaxText
+	if limit <= 0 {
+		limit = messengerMaxText
+	}
+	if utf8.RuneCountInString(text) > limit {
+		return gen.PostCommunicationsConversationsByIdReply422JSONResponse(flatErrorBody(
+			"text_too_long", fmt.Sprintf("The text is longer than %d characters.", limit)))
+	}
+	if !hasComponents(body.Components) {
+		return nil
+	}
+	if !caps.Components() {
+		return gen.PostCommunicationsConversationsByIdReply422JSONResponse(flatErrorBody(
+			"components_unsupported", "This channel takes no answer options or cards."))
+	}
+	errs := validateComponents(body.Components, caps)
+	if body.Components.Cards != nil {
+		errs["cards"] = []string{"A carousel needs a product image, which cannot be attached yet."}
+	}
+	if len(errs) > 0 {
+		return gen.PostCommunicationsConversationsByIdReply422JSONResponse(fieldsErrorBody(
+			"components_invalid", "The answer options or cards break the channel's limits.", errs))
+	}
+	return nil
+}
+
+// messengerReplySource is who a reply on a Messenger conversation answers: its
+// participant, nil when it has none.
+func (s *server) messengerReplySource(ctx context.Context, q *store.Queries, conversationID uuid.UUID) (*replySource, error) {
+	p, err := q.GetMessengerReplyParticipant(ctx, conversationID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("communications: get the conversation's participant: %w", err)
+	}
+	return &replySource{senderAddress: p.Address}, nil
 }
 
 // replyQueueParams is everything queueReply needs once a primary recipient
@@ -373,7 +501,10 @@ type replyQueueParams struct {
 	primaryAddress  string
 	ccAddresses     []string
 	metadata        []byte
-	now             time.Time
+	// components is a Messenger reply's conversation_messages.components, nil for
+	// none.
+	components []byte
+	now        time.Time
 }
 
 // queueReply is QueueOutboundAsync's steps 8-10 (`:291-336`): the
@@ -516,6 +647,7 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 			Subject: p.messageSubject, TextBody: p.body.TextBody, HtmlBody: p.body.HtmlBody,
 			ChannelMetadataJson: p.metadata, OccurredAt: p.now, CreatedAt: p.now, RfcMessageID: &rfcMessageID,
 			SendAs: sendAs, FromAddress: fromAddress, FromDisplayName: fromDisplayName, SendProvider: sendProvider,
+			Components: p.components,
 		}); err != nil {
 			return err
 		}
