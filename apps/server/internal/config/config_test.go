@@ -2125,3 +2125,35 @@ func TestConfig_AILocal(t *testing.T) {
 		t.Error("a nil Config is not local")
 	}
 }
+
+// TestConfig_ShippingCarriers: SHIPPING_CARRIERS (orders design O51)
+// defaults to bring, may withhold every carrier when empty, and refuses an
+// unknown or repeated adapter; SHIPPING_BRING_BASE_URL defaults to Bring's
+// API and must be https.
+func TestConfig_ShippingCarriers(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !slices.Equal(cfg.ShippingCarriers, []string{"bring"}) || !cfg.ShippingCarrierAllowed("bring") {
+		t.Errorf("ShippingCarriers = %v, want [bring]", cfg.ShippingCarriers)
+	}
+	if cfg.ShippingBringBaseURL != "https://api.bring.com" {
+		t.Errorf("ShippingBringBaseURL = %q", cfg.ShippingBringBaseURL)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "SHIPPING_CARRIERS", "")); len(cfg.ShippingCarriers) != 0 || cfg.ShippingCarrierAllowed("bring") {
+		t.Errorf("SHIPPING_CARRIERS empty = %v, want none", cfg.ShippingCarriers)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "SHIPPING_CARRIERS", " Bring ")); !slices.Equal(cfg.ShippingCarriers, []string{"bring"}) {
+		t.Errorf("SHIPPING_CARRIERS ' Bring ' = %v", cfg.ShippingCarriers)
+	}
+	if msg := loadError(t, with(validEnv(), "SHIPPING_CARRIERS", "bring,postnord")); !strings.Contains(msg, `SHIPPING_CARRIERS: "postnord" is not a known carrier`) {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "SHIPPING_CARRIERS", "bring,bring")); !strings.Contains(msg, `SHIPPING_CARRIERS: "bring" is named twice`) {
+		t.Errorf("error = %q", msg)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "SHIPPING_BRING_BASE_URL", "https://bring.mock.example/")); cfg.ShippingBringBaseURL != "https://bring.mock.example" {
+		t.Errorf("SHIPPING_BRING_BASE_URL = %q", cfg.ShippingBringBaseURL)
+	}
+	if msg := loadError(t, with(validEnv(), "SHIPPING_BRING_BASE_URL", "http://bring.mock.example")); !strings.Contains(msg, "SHIPPING_BRING_BASE_URL: must be an https URL") {
+		t.Errorf("error = %q", msg)
+	}
+}
