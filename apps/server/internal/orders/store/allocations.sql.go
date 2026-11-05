@@ -484,7 +484,7 @@ func (q *Queries) LockOrderDraftAllocations(ctx context.Context, orderID *int64)
 }
 
 const lockOrderLinesByIDs = `-- name: LockOrderLinesByIDs :many
-SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to FROM orders.lines
+SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to, chain_id FROM orders.lines
 WHERE id = ANY($1::bigint[]) AND owner_kind = 'order'
 ORDER BY id FOR UPDATE
 `
@@ -536,6 +536,7 @@ func (q *Queries) LockOrderLinesByIDs(ctx context.Context, ids []int64) ([]Order
 			&i.PackagingName,
 			&i.ValidFrom,
 			&i.ValidTo,
+			&i.ChainID,
 		); err != nil {
 			return nil, err
 		}

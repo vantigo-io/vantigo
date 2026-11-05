@@ -167,8 +167,9 @@ DELETE FROM orders.documents WHERE id = sqlc.arg(id);
 -- OpenDocumentsOfVariant is how many open documents name a variant (O30): a
 -- draft or sent quote, an order not cancelled with a line of it that is
 -- not done — delivered or invoiced short of what is ordered less cancelled —
--- and a draft, active or paused subscription whose lines in force from its
--- latest change on name it (O42).
+-- and a subscription still billing on today — draft, active or paused, or
+-- ended on or after today — with a line of it in force on or after today
+-- (O42).
 -- A template is no document: a variant gone from it is skipped when it is
 -- applied (O23).
 SELECT (
@@ -181,7 +182,9 @@ SELECT (
        AND (l.qty_delivered + l.qty_cancelled < l.quantity OR l.qty_invoiced + l.qty_cancelled < l.quantity))
   + (SELECT count(DISTINCT s.id) FROM orders.subscriptions s
      JOIN orders.lines l ON l.owner_kind = 'subscription' AND l.owner_id = s.id
-     WHERE l.variant_id = sqlc.arg(variant_id) AND s.status IN ('draft', 'active', 'paused') AND l.valid_to IS NULL)
+     WHERE l.variant_id = sqlc.arg(variant_id)
+       AND (s.status IN ('draft', 'active', 'paused') OR (s.status = 'ended' AND s.end_date >= sqlc.arg(today)::date))
+       AND (l.valid_to IS NULL OR l.valid_to >= sqlc.arg(today)::date))
 )::integer AS documents;
 
 -- name: ExpireQuotes :execrows

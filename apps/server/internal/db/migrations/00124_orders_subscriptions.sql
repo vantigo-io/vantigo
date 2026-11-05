@@ -127,9 +127,14 @@ CREATE TABLE orders.subscription_skips (
 -- unique position holds for the other owners only.
 ALTER TABLE orders.lines DROP CONSTRAINT ck_lines_owner_kind;
 ALTER TABLE orders.lines ADD CONSTRAINT ck_lines_owner_kind CHECK (owner_kind IN ('quote', 'order', 'template', 'subscription'));
+-- chain_id links a subscription line's dated versions: NULL on the first,
+-- the first's id on every later one, so a change finds every version of the
+-- line it changes — a scheduled one too — and at any date exactly one
+-- version of a line is in force.
 ALTER TABLE orders.lines
     ADD COLUMN valid_from date,
-    ADD COLUMN valid_to   date;
+    ADD COLUMN valid_to   date,
+    ADD COLUMN chain_id   bigint;
 -- valid_to one day before valid_from is a line that never took effect: a
 -- change made again from the same period start, whose line an invoice once
 -- stamped and so cannot be deleted.
@@ -139,6 +144,7 @@ ALTER TABLE orders.lines ADD CONSTRAINT ck_lines_validity CHECK (
 DROP INDEX orders.ux_lines_owner_position;
 CREATE UNIQUE INDEX ux_lines_owner_position ON orders.lines (owner_kind, owner_id, position) WHERE owner_kind <> 'subscription';
 CREATE INDEX ix_lines_subscription ON orders.lines (owner_id, position) WHERE owner_kind = 'subscription';
+ALTER TABLE orders.lines ADD CONSTRAINT ck_lines_chain CHECK (chain_id IS NULL OR owner_kind = 'subscription');
 
 -- A subscription's change log shares the orders' (O44).
 ALTER TABLE orders.order_changes DROP CONSTRAINT ck_order_changes_owner_kind;
@@ -178,8 +184,9 @@ DELETE FROM orders.lines WHERE owner_kind = 'subscription';
 DROP INDEX orders.ix_lines_subscription;
 DROP INDEX orders.ux_lines_owner_position;
 CREATE UNIQUE INDEX ux_lines_owner_position ON orders.lines (owner_kind, owner_id, position);
+ALTER TABLE orders.lines DROP CONSTRAINT ck_lines_chain;
 ALTER TABLE orders.lines DROP CONSTRAINT ck_lines_validity;
-ALTER TABLE orders.lines DROP COLUMN valid_to, DROP COLUMN valid_from;
+ALTER TABLE orders.lines DROP COLUMN chain_id, DROP COLUMN valid_to, DROP COLUMN valid_from;
 ALTER TABLE orders.lines DROP CONSTRAINT ck_lines_owner_kind;
 ALTER TABLE orders.lines ADD CONSTRAINT ck_lines_owner_kind CHECK (owner_kind IN ('quote', 'order', 'template'));
 DROP TABLE orders.subscription_skips;

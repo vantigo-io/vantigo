@@ -389,6 +389,15 @@ func (s *server) EndSubscription(ctx context.Context, req gen.EndSubscriptionReq
 			if err != nil {
 				return sub, nil, fmt.Errorf("orders: end subscription %d: %w", sub.ID, err)
 			}
+			if sub.Status == subscriptionPaused {
+				// The skipped periods count as covered: billed through may run on.
+				if err := refreshBilledThrough(ctx, txq, row, now); err != nil {
+					return sub, nil, err
+				}
+				if row, err = txq.SubscriptionByID(ctx, row.ID); err != nil {
+					return sub, nil, fmt.Errorf("orders: read subscription %d: %w", sub.ID, err)
+				}
+			}
 			if err := events.Publish(ctx, tx, moduleName, contracts.SubscriptionEnded{
 				SubscriptionID: row.ID, Number: row.Number, Version: row.Version, CustomerID: row.CustomerID, Status: row.Status,
 				EndDate: end.Format(time.DateOnly), EndedAt: now,

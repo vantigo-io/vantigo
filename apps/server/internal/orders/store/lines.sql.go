@@ -33,7 +33,7 @@ INSERT INTO orders.lines (
     quantity, unit_price, discount_percent, packaging_id, packaging_quantity,
     price_source, vat_code_id, vat_code, vat_rate_percent, vat_category,
     line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, delivery_method,
-    product_id, packaging_name, valid_from, valid_to
+    product_id, packaging_name, valid_from, valid_to, chain_id
 ) VALUES (
     $1, $2, $3, $4, $5,
     $6, $7, $8, $9, $10,
@@ -41,9 +41,9 @@ INSERT INTO orders.lines (
     $15, $16, $17, $18,
     $19, $20, $21, $22,
     $23, $24, $25, $26,
-    $27, $28, $29, $30
+    $27, $28, $29, $30, $31
 )
-RETURNING id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to
+RETURNING id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to, chain_id
 `
 
 type InsertLineParams struct {
@@ -77,10 +77,12 @@ type InsertLineParams struct {
 	PackagingName     *string
 	ValidFrom         pgtype.Date
 	ValidTo           pgtype.Date
+	ChainID           *int64
 }
 
 // InsertLine writes one line of a quote, an order, a template or a
-// subscription (O15), with a new id; a subscription's line may be dated (O44). The amounts are docmath's (O17), computed by the caller.
+// subscription (O15), with a new id; a subscription's line may be dated and
+// name the first version of its chain (O44). The amounts are docmath's (O17), computed by the caller.
 func (q *Queries) InsertLine(ctx context.Context, arg InsertLineParams) (OrdersLine, error) {
 	row := q.db.QueryRow(ctx, insertLine,
 		arg.OwnerKind,
@@ -113,6 +115,7 @@ func (q *Queries) InsertLine(ctx context.Context, arg InsertLineParams) (OrdersL
 		arg.PackagingName,
 		arg.ValidFrom,
 		arg.ValidTo,
+		arg.ChainID,
 	)
 	var i OrdersLine
 	err := row.Scan(
@@ -151,6 +154,7 @@ func (q *Queries) InsertLine(ctx context.Context, arg InsertLineParams) (OrdersL
 		&i.PackagingName,
 		&i.ValidFrom,
 		&i.ValidTo,
+		&i.ChainID,
 	)
 	return i, err
 }
@@ -161,7 +165,7 @@ INSERT INTO orders.lines (
     quantity, unit_price, discount_percent, packaging_id, packaging_quantity,
     price_source, vat_code_id, vat_code, vat_rate_percent, vat_category,
     line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, delivery_method,
-    product_id, packaging_name, valid_from, valid_to
+    product_id, packaging_name, valid_from, valid_to, chain_id
 ) OVERRIDING SYSTEM VALUE VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $11,
@@ -169,9 +173,9 @@ INSERT INTO orders.lines (
     $16, $17, $18, $19,
     $20, $21, $22, $23,
     $24, $25, $26, $27,
-    $28, $29, $30, $31
+    $28, $29, $30, $31, $32
 )
-RETURNING id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to
+RETURNING id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to, chain_id
 `
 
 type InsertLineKeepingIDParams struct {
@@ -206,6 +210,7 @@ type InsertLineKeepingIDParams struct {
 	PackagingName     *string
 	ValidFrom         pgtype.Date
 	ValidTo           pgtype.Date
+	ChainID           *int64
 }
 
 // InsertLineKeepingID writes a line again under the id it had: a save
@@ -244,6 +249,7 @@ func (q *Queries) InsertLineKeepingID(ctx context.Context, arg InsertLineKeeping
 		arg.PackagingName,
 		arg.ValidFrom,
 		arg.ValidTo,
+		arg.ChainID,
 	)
 	var i OrdersLine
 	err := row.Scan(
@@ -282,6 +288,7 @@ func (q *Queries) InsertLineKeepingID(ctx context.Context, arg InsertLineKeeping
 		&i.PackagingName,
 		&i.ValidFrom,
 		&i.ValidTo,
+		&i.ChainID,
 	)
 	return i, err
 }
@@ -324,7 +331,7 @@ func (q *Queries) LineCounts(ctx context.Context, arg LineCountsParams) ([]LineC
 }
 
 const linesOf = `-- name: LinesOf :many
-SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to FROM orders.lines
+SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to, chain_id FROM orders.lines
 WHERE owner_kind = $1 AND owner_id = $2
 ORDER BY position
 `
@@ -380,6 +387,7 @@ func (q *Queries) LinesOf(ctx context.Context, arg LinesOfParams) ([]OrdersLine,
 			&i.PackagingName,
 			&i.ValidFrom,
 			&i.ValidTo,
+			&i.ChainID,
 		); err != nil {
 			return nil, err
 		}
