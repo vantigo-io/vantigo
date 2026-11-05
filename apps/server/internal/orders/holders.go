@@ -155,6 +155,22 @@ type exportedDocument struct {
 	Plan     string            `json:"plan,omitempty"`
 	Lines    []exportedLine    `json:"lines"`
 	Mailings []exportedMailing `json:"mailings"`
+	// Deliveries are an order's deliveries (O47): no personal data of
+	// their own — the address they ship to is the order's above.
+	Deliveries []exportedDelivery `json:"deliveries,omitempty"`
+}
+
+type exportedDelivery struct {
+	Number   int64                  `json:"number"`
+	Status   string                 `json:"status"`
+	PostedAt *time.Time             `json:"postedAt,omitempty"`
+	Lines    []exportedDeliveryLine `json:"lines"`
+}
+
+type exportedDeliveryLine struct {
+	SKU      string `json:"sku,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Quantity string `json:"quantity"`
 }
 
 type exportedLine struct {
@@ -232,6 +248,9 @@ func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID
 			return err
 		}
 		if section.Orders, err = withLinesAndMailings(ctx, q, ownerOrder, orderIDs, orderDocs); err != nil {
+			return err
+		}
+		if err := withDeliveries(ctx, q, orderIDs, section.Orders); err != nil {
 			return err
 		}
 		subDocs := make([]exportedDocument, 0, len(subscriptions))
@@ -462,4 +481,49 @@ func (v variantReferenceHolder) VariantHeld(ctx context.Context, tx pgx.Tx, vari
 		return nil, nil
 	}
 	return &contracts.VariantHold{Kind: contracts.VariantHoldKindOpenDocuments, Documents: int(n)}, nil
+}
+
+// withDeliveries fills the orders' docs, in the order of ids, with their
+// deliveries and their lines.
+func withDeliveries(ctx context.Context, q *store.Queries, ids []int64, docs []exportedDocument) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	at := map[int64]int{}
+	for i, id := range ids {
+		at[id] = i
+	}
+	deliveries, err := q.DeliveriesOfOrders(ctx, ids)
+	if err != nil || len(deliveries) == 0 {
+		if err != nil {
+			return fmt.Errorf("orders: read the orders' deliveries: %w", err)
+		}
+		return nil
+	}
+	lines, err := q.LinesOfOwners(ctx, store.LinesOfOwnersParams{OwnerKind: ownerOrder, OwnerIds: ids})
+	if err != nil {
+		return fmt.Errorf("orders: read the orders' lines: %w", err)
+	}
+	byLine := byID(lines)
+	deliveryIDs := make([]int64, 0, len(deliveries))
+	where := map[int64][2]int{}
+	for _, d := range deliveries {
+		i := at[d.OrderID]
+		deliveryIDs = append(deliveryIDs, d.ID)
+		where[d.ID] = [2]int{i, len(docs[i].Deliveries)}
+		docs[i].Deliveries = append(docs[i].Deliveries, exportedDelivery{
+			Number: d.Number, Status: d.Status, PostedAt: d.PostedAt, Lines: []exportedDeliveryLine{},
+		})
+	}
+	dlines, err := q.DeliveryLinesOfDeliveries(ctx, deliveryIDs)
+	if err != nil {
+		return fmt.Errorf("orders: read the deliveries' lines: %w", err)
+	}
+	for _, dl := range dlines {
+		w := where[dl.DeliveryID]
+		l := byLine[dl.OrderLineID]
+		d := &docs[w[0]].Deliveries[w[1]]
+		d.Lines = append(d.Lines, exportedDeliveryLine{SKU: deref(l.Sku), Name: deref(l.Name), Quantity: ratOrZero(dl.Quantity).FloatString(quantityPlaces)})
+	}
+	return nil
 }

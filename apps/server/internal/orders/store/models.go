@@ -27,6 +27,36 @@ type OrdersCustomerWarning struct {
 	UpdatedAt        time.Time
 }
 
+type OrdersDelivery struct {
+	ID                    int64
+	Number                int64
+	OrderID               int64
+	SiteID                int64
+	Status                string
+	MovementID            *int64
+	PostedAt              *time.Time
+	PostedByUserID        *uuid.UUID
+	PostedByDisplay       *string
+	CancelledAt           *time.Time
+	PackingSlipDocumentID *int64
+	Version               int32
+	CreatedByUserID       *uuid.UUID
+	CreatedByDisplay      *string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+}
+
+type OrdersDeliveryLine struct {
+	ID               int64
+	DeliveryID       int64
+	Position         int32
+	OrderLineID      int64
+	VariantID        int32
+	FromLocationID   *int64
+	FromLocationCode *string
+	Quantity         pgtype.Numeric
+}
+
 type OrdersDocument struct {
 	ID         int64
 	OwnerKind  string
@@ -200,6 +230,7 @@ type OrdersOrder struct {
 	CreatedAt                  time.Time
 	UpdatedAt                  time.Time
 	AnonymisedAt               *time.Time
+	SiteID                     *int64
 }
 
 type OrdersOrderChange struct {
@@ -308,6 +339,7 @@ type OrdersSetting struct {
 	Revision                       int32
 	UpdatedAt                      time.Time
 	SubscriptionFinalPeriodDefault string
+	DefaultSiteID                  *int64
 }
 
 type OrdersSubscription struct {

@@ -132,7 +132,7 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 			return err
 		}
 		if confirm {
-			if order, err = confirmOrderTx(ctx, s, tx, txq, order, orderLines, override, by, customer); err != nil {
+			if order, err = confirmOrderTx(ctx, s, tx, txq, order, orderLines, override, by, customer, true); err != nil {
 				return err
 			}
 			if printed, err = p.confirmation(order, orderLines, s.deps.Clock()); err != nil {

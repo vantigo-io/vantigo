@@ -10,7 +10,9 @@ package orders
 // the contact, your reference and the internal note; anything else of the
 // frozen header that differs is refused. It is judged under the order's lock
 // against the lines as they are then, logs one change entry, bumps the
-// version and publishes orders.sales_order.changed.v1.
+// version and publishes orders.sales_order.changed.v1. The save settles each
+// line's delivery method and invoice policy (O48), changes the site (O46),
+// and moves the order's reservations with it (stock.go).
 
 import (
 	"context"
@@ -115,6 +117,16 @@ func (s *server) saveDraftOrder(ctx context.Context, cur store.OrdersOrder, curL
 	if err != nil {
 		return gen.OrdersOrder{}, err
 	}
+	// A draft's site is the body's, none when it names none (O46).
+	site := body.SiteId
+	if site != nil && !equalInt64(site, cur.SiteID) {
+		if err := s.judgeSite(ctx, &f, "siteId", *site); err != nil {
+			return gen.OrdersOrder{}, err
+		}
+		if f.failed() {
+			return gen.OrdersOrder{}, refuseInvalid(invalidOrderTitle, f)
+		}
+	}
 	var out gen.OrdersOrder
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		if err := s.lockLines(ctx, tx, invalidOrderTitle, priced); err != nil {
@@ -130,6 +142,17 @@ func (s *server) saveDraftOrder(ctx context.Context, cur store.OrdersOrder, curL
 		if o.Status != orderDraft {
 			return conflict(codeVersionConflict, "The order changed",
 				fmt.Sprintf("Order %d was confirmed while it was being saved. Reload it and try again.", o.Number))
+		}
+		current, err := linesOf(ctx, txq, ownerOrder, o.ID)
+		if err != nil {
+			return err
+		}
+		siteChanged := !equalInt64(site, o.SiteID)
+		settlePolicies(ctx, priced, byID(current), s.atSite(site), siteChanged)
+		if siteChanged {
+			if _, err := txq.SetOrderSite(ctx, store.SetOrderSiteParams{ID: o.ID, SiteID: site, Now: s.deps.Clock()}); err != nil {
+				return fmt.Errorf("orders: set order %d's site: %w", o.ID, err)
+			}
 		}
 		row, err := txq.UpdateOrderHeader(ctx, updateOrderParams(o.ID, h, totalsOfPriced(priced), o.DeliveryStatus, o.InvoiceStatus, o.Version, s.deps.Clock()))
 		if err != nil {
@@ -256,6 +279,10 @@ func headerActions(from, to header) []changeAction {
 }
 
 func equalInt32(a, b *int32) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
+}
+
+func equalInt64(a, b *int64) bool {
 	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
 }
 
@@ -390,6 +417,18 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 	if err != nil {
 		return gen.OrdersOrder{}, err
 	}
+	// A confirmed order's site changes to another site, never to none; an
+	// absent site keeps it (O46).
+	site := cur.SiteID
+	if body.SiteId != nil && !equalInt64(body.SiteId, cur.SiteID) {
+		if err := s.judgeSite(ctx, &f, "siteId", *body.SiteId); err != nil {
+			return gen.OrdersOrder{}, err
+		}
+		if f.failed() {
+			return gen.OrdersOrder{}, refuseInvalid(invalidOrderTitle, f)
+		}
+		site = body.SiteId
+	}
 	by, err := s.actorFor(ctx)
 	if err != nil {
 		return gen.OrdersOrder{}, err
@@ -431,7 +470,27 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 		if err != nil {
 			return err
 		}
+		if err := judgeDraftDelivered(ctx, txq, o, priced, current); err != nil {
+			return err
+		}
+		siteChanged := !equalInt64(site, o.SiteID)
+		settlePolicies(ctx, priced, byID(current), s.atSite(site), false)
+		if err := judgePolicies(priced, current, allocationsByLine(allocations)); err != nil {
+			return err
+		}
 		actions = append(headerActions(headerOfOrder(o), h), actions...)
+		actions = append(actions, policyActions(priced, current)...)
+		if siteChanged {
+			has, err := txq.OrderHasDeliveries(ctx, o.ID)
+			if err != nil {
+				return fmt.Errorf("orders: read order %d's deliveries: %w", o.ID, err)
+			}
+			if has {
+				return conflict(codeOrderHasDeliveries, "The order has deliveries",
+					fmt.Sprintf("Order %d has a delivery; its site no longer changes.", o.Number))
+			}
+			actions = append(actions, changeAction{Kind: actionSiteChanged, From: idText64(o.SiteID), To: idText64(site)})
+		}
 		if len(actions) == 0 {
 			warnings, err := documentWarnings(ctx, txq, o.CustomerID, current)
 			if err != nil {
@@ -474,6 +533,28 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 		if err != nil {
 			return err
 		}
+		// The reservations follow the edit (O26, O46): a new site takes
+		// them all over, at what is open now; otherwise each line's grows or
+		// shrinks with its open quantity.
+		if siteChanged {
+			reserved, err := s.reservedByLine(ctx, tx, o.ID)
+			if err != nil {
+				return err
+			}
+			if err := s.releaseAll(ctx, tx, o.ID); err != nil {
+				return err
+			}
+			if o, err = txq.SetOrderSite(ctx, store.SetOrderSiteParams{ID: o.ID, SiteID: site, Now: now}); err != nil {
+				return fmt.Errorf("orders: set order %d's site: %w", o.ID, err)
+			}
+			if holdsReservations(reserved) {
+				if _, err := s.reserveOpen(ctx, tx, o, lines, invalidOrderTitle); err != nil {
+					return err
+				}
+			}
+		} else if err := s.adjustReservations(ctx, tx, o, current, lines, invalidOrderTitle); err != nil {
+			return err
+		}
 		row, err := s.bumpProgress(ctx, tx, txq, o, lines, o.Version+1)
 		if err != nil {
 			return err
@@ -488,5 +569,61 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 		out = orderView(row, lines, warnings, allocations)
 		return nil
 	})
-	return out, err
+	if err != nil {
+		return out, err
+	}
+	return out, s.withStockFigures(ctx, &out)
+}
+
+// idText64 is an id as a change log value.
+func idText64(p *int64) *string {
+	if p == nil {
+		return ptr("")
+	}
+	return ptr(fmt.Sprint(*p))
+}
+
+// policyActions are the invoice policies a confirmed save changed (O48).
+func policyActions(priced []pricedLine, current []store.OrdersLine) []changeAction {
+	old := byID(current)
+	var out []changeAction
+	for _, p := range priced {
+		if p.id == nil {
+			continue
+		}
+		if o, ok := old[*p.id]; ok && o.InvoicePolicy != p.invoicePolicy {
+			id := o.ID
+			out = append(out, changeAction{Kind: actionPolicyChanged, LineID: &id, From: ptr(o.InvoicePolicy), To: ptr(p.invoicePolicy)})
+		}
+	}
+	return out
+}
+
+// judgeDraftDelivered refuses a confirmed order's save that removes a line a
+// draft delivery names, or changes its item (line_has_progress, O47): the
+// draft is saved without it, or cancelled, first.
+func judgeDraftDelivered(ctx context.Context, txq *store.Queries, o store.OrdersOrder, priced []pricedLine, current []store.OrdersLine) error {
+	ids, err := txq.LinesInDraftDeliveries(ctx, o.ID)
+	if err != nil {
+		return fmt.Errorf("orders: read order %d's draft deliveries: %w", o.ID, err)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	kept := map[int64]pricedLine{}
+	for _, p := range priced {
+		if p.id != nil {
+			kept[*p.id] = p
+		}
+	}
+	old := byID(current)
+	for _, id := range ids {
+		p, ok := kept[id]
+		if ok && equalInt32(p.variantID, old[id].VariantID) {
+			continue
+		}
+		return conflict(codeLineHasProgress, "The line is in a draft delivery",
+			fmt.Sprintf("Line %d is in a draft delivery; save the delivery without it, or cancel it, first.", old[id].Position))
+	}
+	return nil
 }

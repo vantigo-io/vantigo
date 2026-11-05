@@ -173,6 +173,11 @@ const (
 	pauseInputSchema         = "OrdersPauseInput"
 	resumeInputSchema        = "OrdersResumeInput"
 	endInputSchema           = "OrdersEndInput"
+
+	// The deliveries' (O47).
+	deliveryInputSchema     = "OrdersDeliveryInput"
+	deliveryUpdateSchema    = "OrdersDeliveryUpdate"
+	deliveryLineInputSchema = "OrdersDeliveryLineInput"
 )
 
 // closedSchemas are the request schemas whose handlers refuse a property the
@@ -184,6 +189,7 @@ var closedSchemas = []string{
 	orderInputSchema, orderUpdateSchema, versionInputSchema, confirmInputSchema, holdInputSchema, deliveredInputSchema, deliveredLineSchema,
 	warningInputSchema,
 	subscriptionInputSchema, subscriptionUpdateSchema, subscriptionPlanSchema, pauseInputSchema, resumeInputSchema, endInputSchema,
+	deliveryInputSchema, deliveryUpdateSchema, deliveryLineInputSchema,
 }
 
 // closedItems is, per closed request schema, its array properties whose
@@ -199,6 +205,7 @@ var closedItems = map[string]map[string]string{
 	deliveredInputSchema:     {"lines": deliveredLineSchema},
 	subscriptionInputSchema:  {"lines": lineInputSchema},
 	subscriptionUpdateSchema: {"lines": lineInputSchema},
+	deliveryUpdateSchema:     {"lines": deliveryLineInputSchema},
 }
 
 // closedObjects is, per closed schema, its object properties that are closed

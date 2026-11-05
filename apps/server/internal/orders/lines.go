@@ -1,6 +1,7 @@
 package orders
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"math/big"
@@ -49,8 +50,9 @@ func insertLine(ctx context.Context, txq *store.Queries, ownerKind string, owner
 		VatCodeID: l.vatCodeID, VatCode: l.vatCode, VatRatePercent: numeric(l.vatRate, ratePlaces), VatCategory: l.vatCategory,
 		LineGross: numeric(orZero(l.amounts.Gross), amountPlaces), LineAllowance: numeric(orZero(l.amounts.Allowance), amountPlaces),
 		LineNet: numeric(orZero(l.amounts.Net), amountPlaces), ExternalLineID: l.externalLineID,
-		InvoicePolicy: "order", Optional: l.optional && (ownerKind == ownerQuote || ownerKind == ownerTemplate), DeliveryMethod: "manual",
-		ProductID: l.productID, PackagingName: l.packagingName, ValidFrom: l.validFrom, ValidTo: l.validTo, ChainID: l.chainID,
+		InvoicePolicy: cmp.Or(l.invoicePolicy, policyOnOrder), Optional: l.optional && (ownerKind == ownerQuote || ownerKind == ownerTemplate),
+		DeliveryMethod: cmp.Or(l.deliveryMethod, methodManual),
+		ProductID:      l.productID, PackagingName: l.packagingName, ValidFrom: l.validFrom, ValidTo: l.validTo, ChainID: l.chainID,
 	}
 	if l.kind != kindProduct {
 		p.PriceSource = nil

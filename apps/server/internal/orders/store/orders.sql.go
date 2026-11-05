@@ -17,7 +17,7 @@ const cancelOrderRow = `-- name: CancelOrderRow :one
 UPDATE orders.orders
 SET status = 'cancelled', cancelled_at = $1, on_hold = false, hold_reason = NULL, updated_at = $1
 WHERE id = $2
-RETURNING id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
+RETURNING id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at, site_id
 `
 
 type CancelOrderRowParams struct {
@@ -96,6 +96,7 @@ func (q *Queries) CancelOrderRow(ctx context.Context, arg CancelOrderRowParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AnonymisedAt,
+		&i.SiteID,
 	)
 	return i, err
 }
@@ -105,7 +106,7 @@ UPDATE orders.orders
 SET status = 'confirmed', confirmed_at = $1, confirmed_by_user_id = $2,
     confirmed_by_display = $3, updated_at = $1
 WHERE id = $4 AND status = 'draft'
-RETURNING id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
+RETURNING id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at, site_id
 `
 
 type ConfirmOrderRowParams struct {
@@ -193,6 +194,7 @@ func (q *Queries) ConfirmOrderRow(ctx context.Context, arg ConfirmOrderRowParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AnonymisedAt,
+		&i.SiteID,
 	)
 	return i, err
 }
@@ -218,9 +220,13 @@ WHERE ($1::integer IS NULL OR o.customer_id = $1)
                    AND l.kind = 'product' AND l.quantity IS NOT NULL
                    AND (l.qty_cancelled + l.qty_invoiced < l.quantity
                         OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))) = $7::boolean)
-  AND ($8::text = '' OR o.number::text = $8::text
-       OR o.customer_name ILIKE '%' || $8::text || '%'
-       OR o.your_reference ILIKE '%' || $8::text || '%')
+  AND (NOT $8::boolean OR (o.status = 'confirmed'
+       AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL
+                   AND l.qty_cancelled + l.qty_delivered < l.quantity)))
+  AND ($9::text = '' OR o.number::text = $9::text
+       OR o.customer_name ILIKE '%' || $9::text || '%'
+       OR o.your_reference ILIKE '%' || $9::text || '%')
 `
 
 type CountOrdersParams struct {
@@ -231,6 +237,7 @@ type CountOrdersParams struct {
 	SalespersonID    *uuid.UUID
 	Open             bool
 	Done             *bool
+	ToDeliver        bool
 	Q                string
 }
 
@@ -243,6 +250,7 @@ func (q *Queries) CountOrders(ctx context.Context, arg CountOrdersParams) (int32
 		arg.SalespersonID,
 		arg.Open,
 		arg.Done,
+		arg.ToDeliver,
 		arg.Q,
 	)
 	var column_1 int32
@@ -351,7 +359,7 @@ func (q *Queries) InsertOrderChange(ctx context.Context, arg InsertOrderChangePa
 }
 
 const listOrders = `-- name: ListOrders :many
-SELECT o.id, o.number, o.status, o.on_hold, o.hold_reason, o.locked, o.version, o.delivery_status, o.invoice_status, o.confirmed_at, o.confirmed_by_user_id, o.confirmed_by_display, o.cancelled_at, o.customer_id, o.customer_number, o.customer_name, o.customer_type, o.customer_organisation_number, o.customer_foreign_id, o.customer_country, o.invoice_address_line1, o.invoice_address_line2, o.invoice_postal_code, o.invoice_city, o.invoice_country, o.delivery_address_id, o.delivery_name, o.delivery_address_line1, o.delivery_address_line2, o.delivery_postal_code, o.delivery_city, o.delivery_country, o.contact_id, o.contact_name, o.contact_email, o.contact_phone, o.customer_invoice_email, o.your_reference, o.salesperson_id, o.salesperson_display, o.project_id, o.currency, o.prices_include_vat, o.payment_terms_days, o.discount_visible, o.language, o.intro_text, o.closing_text, o.internal_note, o.delivery_date, o.net_total, o.vat_total, o.gross_total, o.channel, o.source_module, o.source_kind, o.source_id, o.external_id, o.external_number, o.client_request_id, o.payment_reference, o.prepaid_amount, o.created_by_user_id, o.created_by_display, o.created_at, o.updated_at, o.anonymised_at, ((o.status = 'confirmed'
+SELECT o.id, o.number, o.status, o.on_hold, o.hold_reason, o.locked, o.version, o.delivery_status, o.invoice_status, o.confirmed_at, o.confirmed_by_user_id, o.confirmed_by_display, o.cancelled_at, o.customer_id, o.customer_number, o.customer_name, o.customer_type, o.customer_organisation_number, o.customer_foreign_id, o.customer_country, o.invoice_address_line1, o.invoice_address_line2, o.invoice_postal_code, o.invoice_city, o.invoice_country, o.delivery_address_id, o.delivery_name, o.delivery_address_line1, o.delivery_address_line2, o.delivery_postal_code, o.delivery_city, o.delivery_country, o.contact_id, o.contact_name, o.contact_email, o.contact_phone, o.customer_invoice_email, o.your_reference, o.salesperson_id, o.salesperson_display, o.project_id, o.currency, o.prices_include_vat, o.payment_terms_days, o.discount_visible, o.language, o.intro_text, o.closing_text, o.internal_note, o.delivery_date, o.net_total, o.vat_total, o.gross_total, o.channel, o.source_module, o.source_kind, o.source_id, o.external_id, o.external_number, o.client_request_id, o.payment_reference, o.prepaid_amount, o.created_by_user_id, o.created_by_display, o.created_at, o.updated_at, o.anonymised_at, o.site_id, ((o.status = 'confirmed'
        AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL)
        AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
@@ -377,11 +385,15 @@ WHERE ($1::integer IS NULL OR o.customer_id = $1)
                    AND l.kind = 'product' AND l.quantity IS NOT NULL
                    AND (l.qty_cancelled + l.qty_invoiced < l.quantity
                         OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))) = $7::boolean)
-  AND ($8::text = '' OR o.number::text = $8::text
-       OR o.customer_name ILIKE '%' || $8::text || '%'
-       OR o.your_reference ILIKE '%' || $8::text || '%')
+  AND (NOT $8::boolean OR (o.status = 'confirmed'
+       AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
+                   AND l.kind = 'product' AND l.quantity IS NOT NULL
+                   AND l.qty_cancelled + l.qty_delivered < l.quantity)))
+  AND ($9::text = '' OR o.number::text = $9::text
+       OR o.customer_name ILIKE '%' || $9::text || '%'
+       OR o.your_reference ILIKE '%' || $9::text || '%')
 ORDER BY o.id DESC
-LIMIT $10::integer OFFSET $9::integer
+LIMIT $11::integer OFFSET $10::integer
 `
 
 type ListOrdersParams struct {
@@ -392,6 +404,7 @@ type ListOrdersParams struct {
 	SalespersonID    *uuid.UUID
 	Open             bool
 	Done             *bool
+	ToDeliver        bool
 	Q                string
 	PageOffset       int32
 	PageSize         int32
@@ -418,6 +431,7 @@ func (q *Queries) ListOrders(ctx context.Context, arg ListOrdersParams) ([]ListO
 		arg.SalespersonID,
 		arg.Open,
 		arg.Done,
+		arg.ToDeliver,
 		arg.Q,
 		arg.PageOffset,
 		arg.PageSize,
@@ -497,6 +511,7 @@ func (q *Queries) ListOrders(ctx context.Context, arg ListOrdersParams) ([]ListO
 			&i.OrdersOrder.CreatedAt,
 			&i.OrdersOrder.UpdatedAt,
 			&i.OrdersOrder.AnonymisedAt,
+			&i.OrdersOrder.SiteID,
 			&i.Done,
 		); err != nil {
 			return nil, err
@@ -510,7 +525,7 @@ func (q *Queries) ListOrders(ctx context.Context, arg ListOrdersParams) ([]ListO
 }
 
 const lockOrder = `-- name: LockOrder :one
-SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.orders WHERE id = $1 FOR UPDATE
+SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at, site_id FROM orders.orders WHERE id = $1 FOR UPDATE
 `
 
 // LockOrder reads an order under its row lock: every write of an order takes
@@ -587,6 +602,7 @@ func (q *Queries) LockOrder(ctx context.Context, id int64) (OrdersOrder, error) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AnonymisedAt,
+		&i.SiteID,
 	)
 	return i, err
 }
@@ -628,7 +644,7 @@ func (q *Queries) OpenQuoteSums(ctx context.Context, customerID int32) ([]OpenQu
 }
 
 const orderByClientRequest = `-- name: OrderByClientRequest :one
-SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.orders WHERE client_request_id = $1
+SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at, site_id FROM orders.orders WHERE client_request_id = $1
 `
 
 // OrderByClientRequest is the order an earlier create with this
@@ -704,12 +720,13 @@ func (q *Queries) OrderByClientRequest(ctx context.Context, clientRequestID *uui
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AnonymisedAt,
+		&i.SiteID,
 	)
 	return i, err
 }
 
 const orderByExternal = `-- name: OrderByExternal :one
-SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.orders WHERE channel = $1 AND external_id = $2
+SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at, site_id FROM orders.orders WHERE channel = $1 AND external_id = $2
 `
 
 type OrderByExternalParams struct {
@@ -790,6 +807,7 @@ func (q *Queries) OrderByExternal(ctx context.Context, arg OrderByExternalParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AnonymisedAt,
+		&i.SiteID,
 	)
 	return i, err
 }
@@ -905,7 +923,7 @@ const setOrderHold = `-- name: SetOrderHold :one
 UPDATE orders.orders
 SET on_hold = $1, hold_reason = $2, updated_at = $3
 WHERE id = $4
-RETURNING id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
+RETURNING id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at, site_id
 `
 
 type SetOrderHoldParams struct {
@@ -992,6 +1010,7 @@ func (q *Queries) SetOrderHold(ctx context.Context, arg SetOrderHoldParams) (Ord
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AnonymisedAt,
+		&i.SiteID,
 	)
 	return i, err
 }
@@ -999,7 +1018,7 @@ func (q *Queries) SetOrderHold(ctx context.Context, arg SetOrderHoldParams) (Ord
 const setOrderLocked = `-- name: SetOrderLocked :one
 UPDATE orders.orders SET locked = $1, updated_at = $2
 WHERE id = $3
-RETURNING id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
+RETURNING id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at, site_id
 `
 
 type SetOrderLockedParams struct {
@@ -1080,6 +1099,7 @@ func (q *Queries) SetOrderLocked(ctx context.Context, arg SetOrderLockedParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AnonymisedAt,
+		&i.SiteID,
 	)
 	return i, err
 }
@@ -1089,7 +1109,7 @@ UPDATE orders.orders
 SET delivery_status = $1, invoice_status = $2,
     version = $3, updated_at = $4
 WHERE id = $5
-RETURNING id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
+RETURNING id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at, site_id
 `
 
 type SetOrderProgressParams struct {
@@ -1180,6 +1200,98 @@ func (q *Queries) SetOrderProgress(ctx context.Context, arg SetOrderProgressPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AnonymisedAt,
+		&i.SiteID,
+	)
+	return i, err
+}
+
+const setOrderSite = `-- name: SetOrderSite :one
+UPDATE orders.orders SET site_id = $1, updated_at = $2
+WHERE id = $3
+RETURNING id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at, site_id
+`
+
+type SetOrderSiteParams struct {
+	SiteID *int64
+	Now    time.Time
+	ID     int64
+}
+
+// SetOrderSite sets the site an order is fulfilled from (O46). The caller
+// holds the row; a confirmed order's reservations are moved on the same
+// transaction.
+func (q *Queries) SetOrderSite(ctx context.Context, arg SetOrderSiteParams) (OrdersOrder, error) {
+	row := q.db.QueryRow(ctx, setOrderSite, arg.SiteID, arg.Now, arg.ID)
+	var i OrdersOrder
+	err := row.Scan(
+		&i.ID,
+		&i.Number,
+		&i.Status,
+		&i.OnHold,
+		&i.HoldReason,
+		&i.Locked,
+		&i.Version,
+		&i.DeliveryStatus,
+		&i.InvoiceStatus,
+		&i.ConfirmedAt,
+		&i.ConfirmedByUserID,
+		&i.ConfirmedByDisplay,
+		&i.CancelledAt,
+		&i.CustomerID,
+		&i.CustomerNumber,
+		&i.CustomerName,
+		&i.CustomerType,
+		&i.CustomerOrganisationNumber,
+		&i.CustomerForeignID,
+		&i.CustomerCountry,
+		&i.InvoiceAddressLine1,
+		&i.InvoiceAddressLine2,
+		&i.InvoicePostalCode,
+		&i.InvoiceCity,
+		&i.InvoiceCountry,
+		&i.DeliveryAddressID,
+		&i.DeliveryName,
+		&i.DeliveryAddressLine1,
+		&i.DeliveryAddressLine2,
+		&i.DeliveryPostalCode,
+		&i.DeliveryCity,
+		&i.DeliveryCountry,
+		&i.ContactID,
+		&i.ContactName,
+		&i.ContactEmail,
+		&i.ContactPhone,
+		&i.CustomerInvoiceEmail,
+		&i.YourReference,
+		&i.SalespersonID,
+		&i.SalespersonDisplay,
+		&i.ProjectID,
+		&i.Currency,
+		&i.PricesIncludeVat,
+		&i.PaymentTermsDays,
+		&i.DiscountVisible,
+		&i.Language,
+		&i.IntroText,
+		&i.ClosingText,
+		&i.InternalNote,
+		&i.DeliveryDate,
+		&i.NetTotal,
+		&i.VatTotal,
+		&i.GrossTotal,
+		&i.Channel,
+		&i.SourceModule,
+		&i.SourceKind,
+		&i.SourceID,
+		&i.ExternalID,
+		&i.ExternalNumber,
+		&i.ClientRequestID,
+		&i.PaymentReference,
+		&i.PrepaidAmount,
+		&i.CreatedByUserID,
+		&i.CreatedByDisplay,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AnonymisedAt,
+		&i.SiteID,
 	)
 	return i, err
 }
@@ -1209,7 +1321,7 @@ UPDATE orders.orders SET
     delivery_status = $41, invoice_status = $42,
     version = $43, updated_at = $44
 WHERE id = $45
-RETURNING id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at
+RETURNING id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at, site_id
 `
 
 type UpdateOrderHeaderParams struct {
@@ -1381,6 +1493,7 @@ func (q *Queries) UpdateOrderHeader(ctx context.Context, arg UpdateOrderHeaderPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AnonymisedAt,
+		&i.SiteID,
 	)
 	return i, err
 }

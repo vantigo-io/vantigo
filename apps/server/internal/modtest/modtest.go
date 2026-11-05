@@ -164,6 +164,8 @@ type setup struct {
 	milestones        contracts.BillableMilestones
 	consumption       contracts.ConsumptionProvider
 	billableOrders    contracts.BillableOrders
+	stock             contracts.Stock
+	stockLedger       contracts.StockLedger
 	smtpVerify        func(ctx context.Context, cfg config.MailConfig) error
 	smtpSend          func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore       storage.ObjectStore
@@ -232,6 +234,16 @@ func WithDirectory(d contracts.CustomerDirectory) Option {
 // survives Compose unchanged.
 func WithProducts(p contracts.ProductCatalog) Option {
 	return func(s *setup) { s.products = p }
+}
+
+// WithStock sets Deps.Stock and Deps.StockLedger directly, for a module under
+// test that reserves and issues stock (orders, through contracts.Stock and
+// contracts.StockLedger) without composing inventory beside it, for the
+// reason WithProducts gives. Compose only overwrites them when a composed
+// module declares Module.Stock or Module.StockLedger. A nil stock with a
+// ledger is Inventory switched off after reservations were made.
+func WithStock(stock contracts.Stock, ledger contracts.StockLedger) Option {
+	return func(s *setup) { s.stock, s.stockLedger = stock, ledger }
 }
 
 // WithProjects sets Deps.Projects directly to p, for a module under test
@@ -783,6 +795,8 @@ func New(t *testing.T, opts ...Option) *Harness {
 		BillableMilestones:       s.milestones,
 		Consumption:              s.consumption,
 		BillableOrders:           s.billableOrders,
+		Stock:                    s.stock,
+		StockLedger:              s.stockLedger,
 		SMTPVerify:               s.smtpVerify,
 		SMTPSend:                 s.smtpSend,
 		ObjectStore:              s.objectStore,

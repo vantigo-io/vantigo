@@ -82,6 +82,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List deliveries
+         * @description Deliveries, newest first, filtered by status, order, site and a search of the delivery's and the order's number and the customer's name (O47).
+         */
+        get: operations["listDeliveries"];
+        put?: never;
+        /**
+         * Create a delivery
+         * @description Creates a draft delivery of a confirmed order from its site, proposing every open goods line at what is available (O47). Refused for an order on hold (order_on_hold), without a site or stock kept (order_has_no_site), or with nothing to deliver (nothing_to_deliver).
+         */
+        post: operations["createDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/deliveries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a delivery
+         * @description A delivery with its lines; a draft's lines name the site's locations holding each variant (O47).
+         */
+        get: operations["getDelivery"];
+        /**
+         * Save a delivery
+         * @description Saves a draft delivery's lines: quantities and the locations they are picked from (O47). A line names an open goods line of the order, at most what is open (over_delivery), and a location of the site (location_unknown).
+         */
+        put: operations["updateDelivery"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/deliveries/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a delivery
+         * @description Cancels a draft delivery; its quantities are open on the order again (O47). A posted delivery is immutable.
+         */
+        post: operations["cancelDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/deliveries/{id}/packing-slip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a packing slip
+         * @description The packing slip (pakkseddel): the lines and quantities with the order's delivery address — the stored one of a posted delivery, a draft's printed now (O47).
+         */
+        get: operations["getDeliveryPackingSlip"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/deliveries/{id}/pick-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a pick list
+         * @description The pick list (plukkliste): the lines sorted by the location's full code, with the site's locations holding each variant (O47); printed now, never stored.
+         */
+        get: operations["getDeliveryPickList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/deliveries/{id}/post": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post a delivery
+         * @description Posts a draft delivery (O47): every line needs a location; Inventory issues the stock from the site in one movement, consuming the order lines' reservations; the order lines' delivered quantities grow, the back order is what remains, orders.delivery.posted.v1 is published and the packing slip is stored. Refused for an order on hold (order_on_hold), beyond what is open (over_delivery) or beyond what the location holds (insufficient_stock, naming every short line).
+         */
+        post: operations["postDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/meta": {
         parameters: {
             query?: never;
@@ -408,6 +536,26 @@ export interface paths {
          * @description Releases every draft invoice allocation of the order at once (O36), so its quantity is offered to invoice again. A draft invoice still holding one is refused at issue. Logged as draft_allocations_released; an order with none is answered as it is.
          */
         post: operations["releaseSalesOrderDraftAllocations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/orders/{id}/reserve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reserve an order's stock
+         * @description Reserve now (O46): reserves at the order's site what of each open goods line is not reserved yet. A shortfall is refused with insufficient_available naming every short line; nothing is reserved then.
+         */
+        post: operations["reserveSalesOrder"];
         delete?: never;
         options?: never;
         head?: never;
@@ -830,6 +978,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/sites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the sites
+         * @description Inventory's sites that are not archived, by code, for the order's site and the default site (contracts.Stock, O46); empty when Inventory keeps no stock.
+         */
+        get: operations["listOrdersSites"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/subscriptions": {
         parameters: {
             query?: never;
@@ -1235,6 +1403,8 @@ export interface components {
             overrideReason?: string;
             /** @description Override the document's block warnings (O33): only a holder of orders:settings may; anyone else is still refused with blocked_by_warning. */
             overrideWarnings?: boolean;
+            /** @description Reserve each goods line's open quantity at the order's site (O46), the default when Inventory keeps stock and the order names a site. false is Confirm without reserving, logged confirmed_without_reserving; a shortfall is otherwise refused with insufficient_available naming every short line. */
+            reserve?: boolean;
             /** Format: int32 */
             version: number;
         };
@@ -1344,6 +1514,129 @@ export interface components {
              */
             quantity: number;
         };
+        /** @description A delivery (leveranse, O47): what of an order leaves one site. A draft is edited, picked and posted or cancelled; a posted delivery is immutable. version is the draft's optimistic-concurrency token. */
+        OrdersDelivery: {
+            /** Format: date-time */
+            cancelledAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            createdBy?: components["schemas"]["OrdersPerson"];
+            /** Format: int32 */
+            customerId: number;
+            customerName: string;
+            deliveryAddress?: components["schemas"]["OrdersAddress"];
+            /** Format: int64 */
+            id: number;
+            lines: components["schemas"]["OrdersDeliveryLine"][];
+            /**
+             * Format: int64
+             * @description Inventory's issue movement, once posted.
+             */
+            movementId?: number | null;
+            /** Format: int64 */
+            number: number;
+            /** Format: int64 */
+            orderId: number;
+            /** Format: int64 */
+            orderNumber: number;
+            /** @description Whether the order is on hold: a held order takes no delivery (order_on_hold). */
+            orderOnHold: boolean;
+            /** @description Whether the posted delivery's packing slip is stored. */
+            packingSlipStored: boolean;
+            /** Format: date-time */
+            postedAt?: string | null;
+            postedBy?: components["schemas"]["OrdersPerson"];
+            /** Format: int64 */
+            siteId: number;
+            /** @enum {string} */
+            status: "draft" | "posted" | "cancelled";
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int32 */
+            version: number;
+        };
+        /** @description A new draft delivery of a confirmed order (O47): every open goods line is proposed — ordered less cancelled less delivered less what other draft deliveries hold — at what is available at the order's site, never more than is open. */
+        OrdersDeliveryInput: {
+            /** Format: int64 */
+            orderId: number;
+        };
+        /** @description A delivery's line: one order line, the quantity, and the location it is picked from (null until picked). open is what of the order line is still to deliver outside this delivery; locations, on a draft, are the site's locations holding the variant, by full code. */
+        OrdersDeliveryLine: {
+            fromLocationCode?: string | null;
+            /** Format: int64 */
+            fromLocationId?: number | null;
+            /** Format: int64 */
+            id: number;
+            locations: components["schemas"]["OrdersStockLocation"][];
+            name?: string | null;
+            /** Format: double */
+            open: number;
+            /** Format: int64 */
+            orderLineId: number;
+            /** Format: double */
+            ordered: number;
+            /** Format: int32 */
+            position: number;
+            /** Format: double */
+            quantity: number;
+            sku?: string | null;
+            unit: string;
+            /** Format: int32 */
+            variantId: number;
+        };
+        /** @description A draft delivery's line as the editor saves it. */
+        OrdersDeliveryLineInput: {
+            /** Format: int64 */
+            fromLocationId?: number | null;
+            /** Format: int64 */
+            orderLineId: number;
+            /**
+             * Format: double
+             * @description Greater than 0, at most three decimals, never beyond what is open (over_delivery).
+             */
+            quantity: number;
+        };
+        /** @description One page of deliveries, newest first; total counts every match. */
+        OrdersDeliveryPage: {
+            items: components["schemas"]["OrdersDeliverySummary"][];
+            /** Format: int32 */
+            total: number;
+        };
+        /** @description A delivery in a list. */
+        OrdersDeliverySummary: {
+            /** Format: int32 */
+            customerId: number;
+            customerName: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: int32 */
+            lines: number;
+            /** Format: int64 */
+            number: number;
+            /** Format: int64 */
+            orderId: number;
+            /** Format: int64 */
+            orderNumber: number;
+            /** Format: date-time */
+            postedAt?: string | null;
+            /** Format: int64 */
+            siteId: number;
+            /** @enum {string} */
+            status: "draft" | "posted" | "cancelled";
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A draft delivery's save: every line, replaced whole, at the version the editor read (version_conflict otherwise). */
+        OrdersDeliveryUpdate: {
+            /**
+             * Format: date-time
+             * @description The updatedAt of the document as the client read it: the write is refused with version_conflict when the document was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
+            lines: components["schemas"]["OrdersDeliveryLineInput"][];
+            /** Format: int32 */
+            version: number;
+        };
         /** @description A document Orders made from another. */
         OrdersDocumentRef: {
             /** Format: int64 */
@@ -1445,6 +1738,11 @@ export interface components {
         };
         /** @description A line of a quote or an order (O15). A section or a note has only its text and position. The amounts are Invoices' own (O17); VAT is per document. The quantity buckets are an order line's and stay 0 on a quote. */
         OrdersLine: {
+            /**
+             * Format: double
+             * @description What is available of the line's variant at the order's site — on hand less every reservation there — as Inventory answers it (O45). Null when stock is not kept, the order names no site, or the line names no goods variant. May be negative.
+             */
+            available?: number | null;
             /** @enum {string} */
             deliveryMethod: "manual" | "delivery";
             description: string;
@@ -1508,6 +1806,11 @@ export interface components {
             qtyInvoiced: number;
             /**
              * Format: double
+             * @description What Inventory holds reserved of the line at the order's site (O46). 0 when nothing is.
+             */
+            qtyReserved?: number;
+            /**
+             * Format: double
              * @description At most three decimals.
              */
             quantity?: number | null;
@@ -1554,6 +1857,11 @@ export interface components {
              * @description The line's id when it already exists.
              */
             id?: number;
+            /**
+             * @description An order line's invoice policy (O48): order, or delivery to invoice only what is delivered. Absent keeps a kept line's policy and gives a new line the default — delivery for goods on an order with a site, order otherwise. It changes only while nothing of the line is invoiced or in a draft invoice (line_invoiced).
+             * @enum {string}
+             */
+            invoicePolicy?: "order" | "delivery";
             /**
              * @description An open set (O15): product, section and note in this phase.
              * @enum {string}
@@ -1644,6 +1952,8 @@ export interface components {
             quoteValidityDays: number;
             /** @description Whether Send works now: Communications is on and the channel the settings choose can send (O25). False leaves Download and Mark as sent. */
             sendingAvailable: boolean;
+            /** @description Whether Inventory keeps stock (O45): orders then name a site, reserve at confirm and are delivered by delivery documents. */
+            stockKept: boolean;
         };
         /** @description A sales order (O13, O18). version is the order's optimistic-concurrency token and the version its confirmation prints: a draft stays at 1 through its saves, and after confirmation every edit that changes it and every cancel-remaining bumps it, so a confirmation sent at version 2 or later prints as revised (O26). Hold, release, lock, unlock and delivery marking are logged at the version they found. done is derived: confirmed, delivered and invoiced. */
         OrdersOrder: {
@@ -1707,6 +2017,11 @@ export interface components {
             /** @description The sales warnings that apply to the document now (O33): its customer's, and the products' on its lines. */
             warnings: components["schemas"]["OrdersWarning"][];
             yourReference: string;
+            /**
+             * Format: int64
+             * @description The Inventory site the order is fulfilled from (O46); null when it names none, and its goods lines are then delivered by hand (O32).
+             */
+            siteId?: number | null;
         };
         /** @description A new draft order. clientRequestId makes the create idempotent (O27): a repeat answers the first order with 200. */
         OrdersOrderInput: {
@@ -1736,6 +2051,11 @@ export interface components {
             /** Format: uuid */
             salespersonId?: string | null;
             yourReference?: string;
+            /**
+             * Format: int64
+             * @description The Inventory site the order is fulfilled from (O46); absent takes the settings' default site when Inventory keeps stock.
+             */
+            siteId?: number | null;
         };
         /** @description An invoice issued from an order (O41): its id and number in Invoices, its issue date, the net amount of the order it still bills (amount — its allocations still invoiced), the net amount credit notes gave back (releasedAmount — its allocations released since), and its state — invoiced, or released when a credit note gave all of it back. */
         OrdersOrderInvoice: {
@@ -1827,6 +2147,11 @@ export interface components {
             /** Format: int32 */
             version: number;
             yourReference?: string;
+            /**
+             * Format: int64
+             * @description The site (O46). On a draft, absent or null names none. On a confirmed order, absent keeps it; another site moves the order's reservations there (released at the old, reserved at the new, insufficient_available when it is short), refused once the order has a delivery (order_has_deliveries).
+             */
+            siteId?: number | null;
         };
         /** @description Where the document came from (O27). channel is an open set: manual, quote and copy in this phase. */
         OrdersOrigin: {
@@ -2115,6 +2440,11 @@ export interface components {
             confirmationOnConfirm: boolean;
             /** Format: int32 */
             defaultPaymentTermsDays: number;
+            /**
+             * Format: int64
+             * @description The site a new order is fulfilled from (O46); null names none.
+             */
+            defaultSiteId?: number | null;
             mailTexts: components["schemas"]["OrdersMailText"][];
             /** Format: int64 */
             nextOrderNumber: number;
@@ -2146,6 +2476,11 @@ export interface components {
             confirmationOnConfirm: boolean;
             /** Format: int32 */
             defaultPaymentTermsDays: number;
+            /**
+             * Format: int64
+             * @description The site a new order takes (O46): an active site of Inventory's that fulfils orders (site_not_fulfilling otherwise); null names none.
+             */
+            defaultSiteId?: number | null;
             mailTexts: components["schemas"]["OrdersMailText"][];
             /** Format: int64 */
             orderSeriesStart: number;
@@ -2159,6 +2494,19 @@ export interface components {
             sendChannelId?: string | null;
             subscriptionFinalPeriodDefault?: components["schemas"]["OrdersFinalPeriod"];
         };
+        /** @description An Inventory site as Orders offers it (contracts.Stock, O46): an order is fulfilled from an active site that fulfils orders. */
+        OrdersSite: {
+            active: boolean;
+            code: string;
+            fulfilsOrders: boolean;
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        /** @description Inventory's sites, by code; empty when Inventory keeps no stock. */
+        OrdersSiteList: {
+            items: components["schemas"]["OrdersSite"][];
+        };
         /** @description A template line left out. */
         OrdersSkippedLine: {
             /** @enum {string} */
@@ -2166,6 +2514,14 @@ export interface components {
             sku?: string | null;
             /** Format: int32 */
             variantId: number;
+        };
+        /** @description A location of the site holding the variant, and how much (O47). */
+        OrdersStockLocation: {
+            fullCode: string;
+            /** Format: int64 */
+            locationId: number;
+            /** Format: double */
+            quantity: number;
         };
         /** @description A stored PDF (O24): a sent quote revision, or a sent or confirmed order version. */
         OrdersStoredDocument: {
@@ -2866,6 +3222,503 @@ export interface operations {
             };
         };
     };
+    listDeliveries: {
+        parameters: {
+            query?: {
+                /** @description Any of the statuses; none means all. */
+                status?: ("draft" | "posted" | "cancelled")[];
+                orderId?: number;
+                siteId?: number;
+                q?: string;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersDeliveryPage"];
+                };
+            };
+            /** @description Bad Request — paging out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    createDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersDeliveryInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersDelivery"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — order_not_confirmed, order_on_hold, order_has_no_site, nothing_to_deliver. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable (Inventory keeps no stock). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    getDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersDelivery"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such delivery. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersDeliveryUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersDelivery"];
+                };
+            };
+            /** @description Bad Request — field errors, a line's codes: line_not_found, quantity_invalid, over_delivery, location_unknown. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such delivery. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — version_conflict, delivery_not_draft. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    cancelDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersVersionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersDelivery"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such delivery. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — version_conflict, delivery_not_draft. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    getDeliveryPackingSlip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such delivery. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getDeliveryPickList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such delivery. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    postDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersVersionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersDelivery"];
+                };
+            };
+            /** @description Bad Request — a line's codes: location_missing, over_delivery. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such delivery. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — version_conflict, delivery_not_draft, order_on_hold, insufficient_stock, location_unknown, site_not_fulfilling, variant_not_stocked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
     getOrdersMeta: {
         parameters: {
             query?: never;
@@ -2921,6 +3774,8 @@ export interface operations {
                 deliveryStatus?: ("none" | "partial" | "delivered")[];
                 /** @description Any of the invoice statuses; none means all. */
                 invoiceStatus?: ("none" | "partial" | "invoiced")[];
+                /** @description Only confirmed orders with a quantity still to deliver — the back orders (restordre, O47). */
+                toDeliver?: boolean;
                 /** @description true keeps only the done orders (confirmed, delivered and invoiced), false only those not done; absent keeps both. */
                 done?: boolean;
             };
@@ -3964,6 +4819,75 @@ export interface operations {
             };
             /** @description Conflict — version_conflict. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    reserveSalesOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersVersionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersOrder"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — version_conflict, order_not_confirmed, order_has_no_site, insufficient_available, site_not_fulfilling, variant_not_stocked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable (Inventory keeps no stock). */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5420,6 +6344,44 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    listOrdersSites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersSiteList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };

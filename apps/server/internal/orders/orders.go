@@ -55,6 +55,10 @@ const (
 	// actionDraftAllocationsReleased is the order page's Release draft
 	// allocations (O36): to is how many were released.
 	actionDraftAllocationsReleased = "draft_allocations_released"
+	// actionPolicyChanged is a line's invoice policy changed (O48);
+	// actionDeliveryPosted a delivery posted (O47): to is its number.
+	actionPolicyChanged  = "policy_changed"
+	actionDeliveryPosted = "delivery_posted"
 )
 
 // changeAction is one typed action of a change log entry: its kind, the line
@@ -172,7 +176,10 @@ func (s *server) getOrderView(ctx context.Context, id int64) (gen.OrdersOrder, e
 		out = orderView(o, lines, warnings, allocations)
 		return nil
 	})
-	return out, err
+	if err != nil {
+		return out, err
+	}
+	return out, s.withStockFigures(ctx, &out)
 }
 
 // openQuantity is what remains of a line to deliver or invoice: ordered less
@@ -266,18 +273,19 @@ func (s *server) ListSalesOrders(ctx context.Context, req gen.ListSalesOrdersReq
 		search = strings.TrimSpace(*p.Q)
 	}
 	open := p.Open != nil && *p.Open
+	toDeliver := p.ToDeliver != nil && *p.ToDeliver
 	out := gen.OrdersOrderPage{Items: []gen.OrdersOrderSummary{}}
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		rows, err := q.ListOrders(ctx, store.ListOrdersParams{
 			CustomerID: p.CustomerId, Statuses: statuses, DeliveryStatuses: deliveries, InvoiceStatuses: invoices,
-			SalespersonID: p.SalespersonId, Open: open, Done: p.Done, Q: search, PageSize: size, PageOffset: (page - 1) * size,
+			SalespersonID: p.SalespersonId, Open: open, Done: p.Done, ToDeliver: toDeliver, Q: search, PageSize: size, PageOffset: (page - 1) * size,
 		})
 		if err != nil {
 			return fmt.Errorf("orders: list orders: %w", err)
 		}
 		total, err := q.CountOrders(ctx, store.CountOrdersParams{
 			CustomerID: p.CustomerId, Statuses: statuses, DeliveryStatuses: deliveries, InvoiceStatuses: invoices,
-			SalespersonID: p.SalespersonId, Open: open, Done: p.Done, Q: search,
+			SalespersonID: p.SalespersonId, Open: open, Done: p.Done, ToDeliver: toDeliver, Q: search,
 		})
 		if err != nil {
 			return fmt.Errorf("orders: count orders: %w", err)

@@ -141,18 +141,24 @@ WHERE orders.erasures.customer_id = sqlc.arg(customer_id) AND completed_at IS NU
 -- deletes the PDFs of what was anonymised.
 SELECT EXISTS (SELECT 1 FROM orders.documents d
                WHERE (d.owner_kind = 'quote' AND d.owner_id IN (SELECT q.id FROM orders.quotes q WHERE q.customer_id = sqlc.arg(customer_id)))
-                  OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = sqlc.arg(customer_id))))::boolean;
+                  OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o WHERE o.customer_id = sqlc.arg(customer_id)))
+                  OR (d.owner_kind = 'delivery' AND d.owner_id IN (SELECT dv.id FROM orders.deliveries dv
+                                                                   JOIN orders.orders o ON o.id = dv.order_id
+                                                                   WHERE o.customer_id = sqlc.arg(customer_id))))::boolean;
 
 -- name: ErasedDocuments :many
 -- ErasedDocuments is the stored PDFs of a customer's anonymised quotes and
 -- orders (O29, O54): a quote's at once after the erase, a confirmed order's
--- once its retention has run and it was anonymised. The PDF prints the
--- person, so it goes with them.
+-- once its retention has run and it was anonymised, and so the packing slips
+-- of its deliveries (O47). The PDF prints the person, so it goes with them.
 SELECT d.* FROM orders.documents d
 WHERE (d.owner_kind = 'quote' AND d.owner_id IN (SELECT q.id FROM orders.quotes q
                                                  WHERE q.customer_id = sqlc.arg(customer_id) AND q.anonymised_at IS NOT NULL))
    OR (d.owner_kind = 'order' AND d.owner_id IN (SELECT o.id FROM orders.orders o
                                                  WHERE o.customer_id = sqlc.arg(customer_id) AND o.anonymised_at IS NOT NULL))
+   OR (d.owner_kind = 'delivery' AND d.owner_id IN (SELECT dv.id FROM orders.deliveries dv
+                                                    JOIN orders.orders o ON o.id = dv.order_id
+                                                    WHERE o.customer_id = sqlc.arg(customer_id) AND o.anonymised_at IS NOT NULL))
 ORDER BY d.id;
 
 -- name: DetachDocumentMailings :exec
@@ -169,7 +175,7 @@ DELETE FROM orders.documents WHERE id = sqlc.arg(id);
 -- not done — delivered or invoiced short of what is ordered less cancelled —
 -- and a subscription still billing on today — draft, active or paused, or
 -- ended on or after today — with a line of it in force on or after today
--- (O42).
+-- (O42), and a draft delivery naming it (O47).
 -- A template is no document: a variant gone from it is skipped when it is
 -- applied (O23).
 SELECT (
@@ -185,6 +191,9 @@ SELECT (
      WHERE l.variant_id = sqlc.arg(variant_id)
        AND (s.status IN ('draft', 'active', 'paused') OR (s.status = 'ended' AND s.end_date >= sqlc.arg(today)::date))
        AND (l.valid_to IS NULL OR l.valid_to >= sqlc.arg(today)::date))
+  + (SELECT count(DISTINCT d.id) FROM orders.deliveries d
+     JOIN orders.delivery_lines dl ON dl.delivery_id = d.id
+     WHERE dl.variant_id = sqlc.arg(variant_id) AND d.status = 'draft')
 )::integer AS documents;
 
 -- name: ExpireQuotes :execrows

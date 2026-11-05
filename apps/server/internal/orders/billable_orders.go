@@ -24,7 +24,8 @@ import (
 // ReleaseAllocations write allocations, each in a short transaction of its
 // own. It never reads a directory.
 
-// policyOnOrder is a line invoiced on order; "delivery" is delivery C's.
+// policyOnOrder is a line invoiced on order; policyOnDelivery (stock.go) one
+// invoiced as it is delivered (O48).
 const policyOnOrder = "order"
 
 // billableOrders is Orders' contracts.BillableOrders, on the pool, the clock
@@ -480,14 +481,14 @@ func allocationAmount(quantity, unitPrice, discountPercent *big.Rat) *big.Rat {
 }
 
 // notInvoiceable is why an order line cannot be invoiced now, or "": it must
-// be a priced product line with a VAT code, invoiced on order (on delivery is
-// delivery C's), of a confirmed order not on hold.
+// be a priced product line with a VAT code, invoiced on order or on delivery
+// (O48), of a confirmed order not on hold.
 func notInvoiceable(o store.OrdersOrder, l store.OrdersLine) string {
 	switch {
 	case l.Kind != kindProduct || !l.Quantity.Valid || !l.UnitPrice.Valid || l.VatCodeID == nil:
 		return fmt.Sprintf("Line %d is not a priced product line.", l.Position)
-	case l.InvoicePolicy != policyOnOrder:
-		return fmt.Sprintf("Line %d is invoiced on delivery.", l.Position)
+	case l.InvoicePolicy != policyOnOrder && l.InvoicePolicy != policyOnDelivery:
+		return fmt.Sprintf("Line %d has an invoice policy this version does not invoice.", l.Position)
 	case o.Status == orderDraft:
 		return fmt.Sprintf("Order %d is a draft.", o.Number)
 	case o.Status != orderConfirmed:
@@ -498,10 +499,21 @@ func notInvoiceable(o store.OrdersOrder, l store.OrdersLine) string {
 	return ""
 }
 
-// toInvoice is what an order line invoiced on order has left to invoice:
-// ordered − cancelled − invoiced − drafted, never below 0 (O36).
+// toInvoice is what an order line has left to invoice, never below 0 (O36,
+// O48): on order, ordered − cancelled − invoiced − drafted; on delivery,
+// delivered − invoiced − drafted.
 func toInvoice(l store.OrdersLine, drafted *big.Rat) *big.Rat {
 	done := new(big.Rat).Add(ratOrZero(l.QtyInvoiced), drafted)
+	return invoiceOpen(l, done)
+}
+
+// invoiceOpen is what of an order line is billable less done, never below 0:
+// what is ordered less cancelled on order, what is delivered on delivery
+// (O48).
+func invoiceOpen(l store.OrdersLine, done *big.Rat) *big.Rat {
+	if l.InvoicePolicy == policyOnDelivery {
+		return openQuantity(ratOrZero(l.QtyDelivered), new(big.Rat), done)
+	}
 	return openQuantity(orZero(ratOf(l.Quantity)), ratOrZero(l.QtyCancelled), done)
 }
 

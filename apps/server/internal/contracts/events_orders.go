@@ -150,3 +150,19 @@ type SubscriptionEnded struct {
 func (SubscriptionEnded) EventName() string     { return "orders.subscription.ended" }
 func (SubscriptionEnded) EventVersion() int     { return 1 }
 func (e SubscriptionEnded) AggregateID() string { return strconv.FormatInt(e.SubscriptionID, 10) }
+
+// DeliveryPosted is orders.delivery.posted v1: a delivery of an order was
+// posted from a site, its stock issued by Inventory (orders design O47). Its
+// aggregate is the order, so an order's deliveries are handled in the order
+// they were posted.
+type DeliveryPosted struct {
+	DeliveryID int64     `json:"deliveryId"`
+	Number     int64     `json:"number"`
+	OrderID    int64     `json:"orderId"`
+	SiteID     int64     `json:"siteId"`
+	PostedAt   time.Time `json:"postedAt"`
+}
+
+func (DeliveryPosted) EventName() string     { return "orders.delivery.posted" }
+func (DeliveryPosted) EventVersion() int     { return 1 }
+func (e DeliveryPosted) AggregateID() string { return strconv.FormatInt(e.OrderID, 10) }

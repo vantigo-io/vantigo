@@ -8,7 +8,9 @@ package orders
 // delivery, never below what is invoiced (delivered_below_invoiced). Every
 // line of the request is judged at once. The derived delivery status is
 // recomputed and delivered_marked or delivered_undone logged per line; the
-// version is not bumped, since the confirmation prints nothing delivered.
+// version is not bumped, since the confirmation prints nothing delivered. A
+// marking releases what a line holds reserved beyond what is still open
+// (O45); an undo reserves nothing again — Reserve now does.
 
 import (
 	"context"
@@ -100,6 +102,14 @@ func (s *server) markDelivered(ctx context.Context, id int64, body gen.OrdersDel
 					ID: l.ID, QtyCancelled: l.QtyCancelled, QtyDelivered: l.QtyDelivered, QtyInvoiced: l.QtyInvoiced,
 				}); err != nil {
 					return o, nil, fmt.Errorf("orders: mark line %d delivered: %w", l.ID, err)
+				}
+			}
+			if !undo {
+				// What was marked delivered is no longer held for the line
+				// (O45): its reservation beyond what is still open is
+				// released. An undo reserves nothing again.
+				if err := s.releaseBeyondOpen(ctx, tx, o.ID, lines); err != nil {
+					return o, nil, err
 				}
 			}
 			row, err := s.bumpProgress(ctx, tx, txq, o, lines, o.Version)

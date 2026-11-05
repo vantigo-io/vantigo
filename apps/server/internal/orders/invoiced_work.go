@@ -300,7 +300,7 @@ func judgeAllocation(held heldAllocations, invoiced map[int64]*big.Rat, source c
 	if why := notInvoiceable(o, l); why != "" {
 		return refuse(contracts.SourceNotInvoiceable, why)
 	}
-	open := openQuantity(ratOf(l.Quantity), ratOrZero(l.QtyCancelled), invoiced[l.ID])
+	open := invoiceOpen(l, orZero(invoiced[l.ID]))
 	if open.Cmp(ratOrZero(a.Quantity)) < 0 {
 		return refuse(contracts.SourceNotInvoiceable, fmt.Sprintf("Line %d of order %d has %s open, less than allocation %d's %s",
 			l.Position, o.Number, open.FloatString(quantityPlaces), a.ID, ratOrZero(a.Quantity).FloatString(quantityPlaces)))

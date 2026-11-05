@@ -31,6 +31,7 @@ func (s *server) GetOrdersMeta(ctx context.Context, _ gen.GetOrdersMetaRequestOb
 	return gen.GetOrdersMeta200JSONResponse(gen.OrdersMeta{
 		SendingAvailable: available, QuoteValidityDays: settings.quoteValidityDays,
 		DefaultPaymentTermsDays: settings.defaultPaymentTermsDays, BaseCurrency: baseCurrency,
+		StockKept: s.deps.Stock != nil,
 	}), nil
 }
 

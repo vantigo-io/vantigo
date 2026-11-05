@@ -36,6 +36,8 @@ type harness struct {
 	objects *fakeObjectStore
 	mail    *modtest.FakeOutboundMail
 	channel uuid.UUID
+	// stock is Inventory's fake stock read and ledger, when composed.
+	stock *fakeStock
 	// onSend, when set, runs as each mail is handed to the provider, before
 	// it is taken.
 	onSend func()
@@ -59,6 +61,10 @@ type harnessOptions struct {
 	// communications composes a fake contracts.OutboundMail with one
 	// available channel.
 	communications bool
+	// stock composes a fake contracts.Stock and contracts.StockLedger:
+	// Inventory on. stockOff composes the ledger alone: Inventory switched
+	// off after reservations were made (O45).
+	stock, stockOff bool
 }
 
 // newHarness is an orders installation with the seeded catalog, VAT codes
@@ -81,6 +87,14 @@ func newHarness(t *testing.T, o harnessOptions) *harness {
 		h.channel = uuid.New()
 		h.mail.SetChannels(contracts.OutboundChannel{ID: h.channel, Address: "salg@demo.example", Provider: "smtp", Available: true})
 		opts = append(opts, modtest.WithOutboundMail(hookedMail{FakeOutboundMail: h.mail, h: h}))
+	}
+	switch {
+	case o.stock:
+		h.stock = newFakeStock()
+		opts = append(opts, modtest.WithStock(h.stock, h.stock))
+	case o.stockOff:
+		h.stock = newFakeStock()
+		opts = append(opts, modtest.WithStock(nil, h.stock))
 	}
 	before := lockedContractCalls.count()
 	h.Harness = modtest.New(t, opts...)
