@@ -1,15 +1,18 @@
 ---
 title: "Management listener"
-description: "The private, bearer-protected status endpoint a control plane polls, and seating the first Owner by invitation."
+description: "The private, bearer-protected status endpoint a control plane polls, the stuck deliveries of the events outbox and their retry and skip, and seating the first Owner by invitation."
 sidebar:
   order: 40
 sources:
   - apps/server/internal/management
+  - apps/server/internal/events
 ---
 A control plane that runs many Vantigo instances needs to ask each one three
 things without holding a user session: which version is running, whether its
 first Owner has been seated, and how much it is being used. The management
-listener answers exactly that, and nothing else.
+listener answers exactly that — and lets the operator see and clear the deliveries of
+the events outbox that are stuck ([The events outbox](#the-events-outbox)) — and
+nothing else.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
@@ -54,6 +57,99 @@ through normal configuration, since `MANAGEMENT_TOKEN` must be at least 32
 characters, but the listener does not rely on that upstream check — closes
 the endpoint instead of opening it: every request is then rejected, `401`,
 regardless of what is presented.
+
+## The events outbox
+
+Modules tell each other what happened through the platform's events outbox: an event is
+written with the change that caused it, and the `events.dispatch` worker hands it to
+each module that takes it — one **delivery** per event and handler
+([The domain-events outbox](/en/contributing/platform-packages/#the-domain-events-outbox)).
+A delivery that fails is retried after 1 minute, 5 minutes, 30 minutes, 2 hours and
+12 hours, and every 12 hours from then on; after the eighth failure it is **dead** and
+is never tried again by itself. A failed or dead delivery also holds back the later
+deliveries to the same handler for the same document, so they stay in order. Clearing
+it is the operator's job, with three calls on this listener, behind the same bearer
+token. No tenant user and no permission reaches them.
+
+The dispatcher runs wherever the workers run — the `worker` command, or `api` with
+`WORKERS_IN_PROCESS=1` — and has no setting of its own. It logs what to look for:
+
+| Log line | Level | Meaning |
+| --- | --- | --- |
+| `events delivery failed` | warn | One attempt failed; it is retried after the backoff |
+| `events delivery is dead` | error | The eighth attempt failed; the delivery waits for a retry or a skip |
+| `events deliveries wait for handlers that are not composed` | warn | Deliveries name a handler this release no longer has, usually after a downgrade or a removed module; skip them |
+| `events dispatch failed` | error | A pass of the dispatcher failed, the database most often; the next pass tries again |
+
+### List the stuck deliveries
+
+`GET /management/events/deliveries?state=dead` (or `state=failed`; with no `state`,
+both) answers at most 200 deliveries, the latest changed first, with
+`Cache-Control: no-store`. Any other `state` is `400`.
+
+```json
+{
+  "deliveries": [
+    {
+      "id": 812,
+      "eventId": 5531,
+      "event": "orders.sales_order.confirmed",
+      "version": 1,
+      "module": "orders",
+      "aggregateId": "1042",
+      "handler": "customers.timeline_orders",
+      "state": "dead",
+      "attempts": 8,
+      "lastError": "…",
+      "note": null,
+      "nextAttemptAt": "2026-11-05T21:14:03Z",
+      "occurredAt": "2026-11-02T09:12:44Z",
+      "createdAt": "2026-11-02T09:12:47Z",
+      "updatedAt": "2026-11-05T09:14:03Z"
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `id` | The delivery's id, which the two calls below take |
+| `eventId`, `event`, `version`, `module`, `aggregateId` | The event: its id, its name and payload version, the module that published it, and the id of what it is about |
+| `handler` | The handler it is delivered to, `<module>.<what>` |
+| `state` | `failed` (retrying) or `dead` |
+| `attempts` | Failed attempts so far |
+| `lastError` | The last failure, at most 2 000 characters |
+| `note` | The operator's note, set by a skip |
+| `nextAttemptAt` | When a failed delivery is next tried |
+| `occurredAt` | When the event happened |
+| `createdAt`, `updatedAt` | When the delivery was written and last changed |
+
+An event's payload is not shown. Payloads carry ids, numbers, amounts and states only,
+never a person's name, address, e-mail or phone.
+
+### Retry one
+
+`POST /management/events/deliveries/{id}/retry` sets a `failed` or `dead` delivery back
+to pending, due at once: `204`. Its attempts are kept, so a dead delivery that fails
+again is dead again at once — fix the cause first, then retry. No such delivery is
+`404`; one in another state (pending or done) is `409`.
+
+### Skip one
+
+`POST /management/events/deliveries/{id}/skip` with `{"note": "…"}` marks a delivery
+that is not done as done without handling it, keeping the note, and so lets the
+deliveries waiting behind it go: `204`. The note is required, at most 500 characters
+(`400` otherwise). No such delivery is `404`; one already done is `409`. Skipping means
+the handling never happens — whatever the handler would have written (a confirmation
+queued, a line on a timeline) is not written.
+
+### Verify
+
+List again: the delivery is gone from `state=dead`. A retried one shows up as `failed`
+if it fails again, or `dead` at once if it was dead before; one that succeeded is listed
+no more.
+
+Events whose deliveries are all done are deleted after 30 days.
 
 ## Keep it private
 

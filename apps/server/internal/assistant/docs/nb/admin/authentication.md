@@ -1052,7 +1052,7 @@ oppstarten feiler.
 | `SHUTDOWN_TIMEOUT` | Budsjett for å tømme pågående forespørsler og arbeidere | `30s` |
 | `LOG_LEVEL` | `debug`, `info`, `warn`, `error` | `info` |
 | `MODULES` | Kommaseparert liste over forretningsmoduler som skal betjenes; `planning` krever `projects` og `staff`, `inventory` krever `products`, og `entra` krever `staff` ([Microsoft Entra ID](/nb/admin/entra/), som ikke har noen egen variabel: innstillingene ligger i databasen) | `customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,calendar,entra` |
-| `WORKERS_IN_PROCESS` | Om `api` også kjører bakgrunnsarbeidere i samme prosess | `1` |
+| `WORKERS_IN_PROCESS` | Om `api` også kjører bakgrunnsarbeidere i samme prosess — hver aktivert moduls, og plattformens hendelsesutsender `events.dispatch` ([Bakgrunnsjobber og skalering](/nb/admin/installation/#bakgrunnsjobber-og-skalering)) | `1` |
 
 ### Hemmeligheter og identitet
 

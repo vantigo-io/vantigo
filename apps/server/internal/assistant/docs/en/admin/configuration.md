@@ -107,7 +107,9 @@ See [Object storage](/en/admin/object-storage/).
 ### Workers
 
 Each background worker has an on/off switch and, where it looks on a schedule, a
-poll. All are on by default except the spot-price worker.
+poll. All are on by default except the spot-price worker. The platform's events
+dispatcher, `events.dispatch`, has neither: it runs wherever the workers run, every
+5 seconds ([Background workers and scaling](/en/admin/installation/#background-workers-and-scaling)).
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
