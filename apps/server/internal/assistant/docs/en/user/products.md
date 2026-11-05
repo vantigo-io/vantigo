@@ -1,6 +1,6 @@
 ---
 title: Products
-description: The catalog of goods and services, categories, tax categories, prices and packagings, and the On hand column of the product list.
+description: The catalog of goods and services, categories, tax categories, prices, packagings and images, and the On hand column of the product list.
 sidebar:
   order: 60
 sources:
@@ -89,8 +89,8 @@ Clicking a product opens its page, with the status badge next to the name. The
 example *Furniture / Chairs*), **Barcode**, **Unit**, **Standard cost**, **Tax
 category** with its rate, **Current price** in every currency that has one, and the
 description. For goods, a **Logistics** section shows **Weight** and **Dimensions
-(L×W×H)**, or says that none are recorded. Below are the **Prices** card and, when the
-product has more than one variant, the **Variants** card.
+(L×W×H)**, or says that none are recorded. Below are the [**Images**](#images) card, the **Prices**
+card and, when the product has more than one variant, the **Variants** card.
 
 When your organisation uses Inventory and you hold `inventory:locations-view` and
 `inventory:stock-view`, a **Stock** card sits above **Prices**: the total on hand, and
@@ -174,6 +174,43 @@ Saving is refused, in the app's words:
   when you delete a box a pallet is built from.
 
 Adding and changing packagings needs `products:variants-manage`.
+
+## Images
+
+The **Images** card on the product page holds the pictures of the product: the ones that
+can be shown to a customer. It is the same card for goods and services, and sits below
+**Product details**.
+
+To add images, drop JPEG or PNG files on the card, or press the file picker
+(**Add images**) and choose them; several at once are fine. A file must be a **JPEG or
+PNG** of at most **10 MiB** and at least 200 × 200 pixels. Vantigo does not keep the file
+as it was sent: it turns the picture upright by the orientation the camera recorded,
+shrinks it to at most 2048 pixels on the longer side, and saves it again **without any
+camera data** — no location, device or time reaches a customer. A small version is made
+for the card's thumbnails.
+
+Each image is shown as a thumbnail, in the order a customer will see them, with:
+
+- **Move left** and **Move right**, which change the order (the first cannot move left,
+  the last cannot move right);
+- a star: the filled one marks the **Primary image**; press the star on another image
+  (**Make this the primary image**) to move it. The first image you add is primary, and
+  when you delete the primary image the next one takes over;
+- **Alt text** — what the picture shows, for a customer who cannot see it, up to 250
+  characters; it is saved when you leave the field;
+- **Show in Communications** — on by default: the image may be shown to a customer in a
+  message;
+- **Show in marketing** — for marketing use, such as ads — nothing reads it yet;
+- the bin, **Delete image**, which asks first and removes the image from the product for
+  good.
+
+A file is turned away in the app's words: *{name} is not a JPEG or PNG image.*, *{name} is
+larger than 10 MiB.*, and from Vantigo itself *The picture must be at least 200 by 200
+pixels.*, *The picture is larger than 10 MiB, or has more than 40 megapixels.*, *Only
+JPEG and PNG images can be uploaded.* (WebP and HEIC are not accepted), *The file could
+not be read as a picture.* and *The image store could not be reached. Nothing was
+changed; try again.* Adding, changing and deleting images needs
+`products:products-manage`; seeing them needs `products:products-view`.
 
 ## Prices
 
@@ -270,6 +307,8 @@ products to another tax category first.
 | Create, edit and archive products | `products:products-manage` (creating also needs `products:variants-manage`) |
 | Add, edit and remove variants | `products:variants-manage` (editing and removing also need `products:pricing-manage`) |
 | Add, edit and delete packagings | `products:variants-manage` |
+| See a product's images | `products:products-view` |
+| Add, change and delete images | `products:products-manage` |
 | The **On hand** column | `inventory:locations-view` and `inventory:stock-view` |
 | Add, edit and delete prices | `products:pricing-manage` |
 | See the Categories area | `products:categories-view` |
