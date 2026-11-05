@@ -15,7 +15,7 @@ export type InventoryMoveInput = Schemas["InventoryMoveInput"];
 export type InventoryReceiptInput = Schemas["InventoryReceiptInput"];
 
 /** The movement kinds of this phase (I8), pinned to the contract by i18n.test.ts. */
-export const movementKinds: readonly InventoryMovementKind[] = ["adjustment", "move", "receipt", "count"];
+export const movementKinds: readonly InventoryMovementKind[] = ["adjustment", "move", "receipt", "count", "issue"];
 /** An adjustment's reasons (I8). */
 export const adjustmentReasons: readonly InventoryAdjustmentReason[] = [
   "correction",

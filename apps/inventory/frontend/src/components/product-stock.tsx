@@ -27,6 +27,34 @@ const totalsByUnit = (variants: readonly InventoryVariantStock[]) => {
   return [...totals];
 };
 
+/**
+ * What orders have reserved and what is left available (orders design O45),
+ * drawn only when something is reserved; available below zero — a
+ * correction took on hand under what is reserved — is red, with a warning.
+ */
+export const ReservedAvailable = ({
+  reserved,
+  available,
+  unit,
+}: {
+  reserved: number;
+  available: number;
+  unit: string;
+}) => {
+  const { t, quantity } = useInventoryFormat();
+  if (reserved === 0) return null;
+  return (
+    <Text
+      size="xs"
+      c={available < 0 ? "red" : "dimmed"}
+      title={available < 0 ? t("availableNegative") : undefined}
+      component="div"
+    >
+      {t("reservedAvailable", { reserved: quantity(reserved, unit), available: quantity(available, unit) })}
+    </Text>
+  );
+};
+
 /** A site's line, expanding to its locations by full code and name, sorted by full code. */
 const SiteStock = ({
   stock,
@@ -46,9 +74,12 @@ const SiteStock = ({
           <Text size="sm">
             {stock.site.code} · {stock.site.name}
           </Text>
-          <Text size="sm" fw={500} ta="right" component="div">
-            <Quantity value={stock.onHand} unit={unit} packagings={packagings} />
-          </Text>
+          <Stack gap={0} align="flex-end">
+            <Text size="sm" fw={500} ta="right" component="div">
+              <Quantity value={stock.onHand} unit={unit} packagings={packagings} />
+            </Text>
+            <ReservedAvailable reserved={stock.reserved} available={stock.available} unit={unit} />
+          </Stack>
         </Group>
       </Accordion.Control>
       <Accordion.Panel>
@@ -87,6 +118,8 @@ const SiteStock = ({
 
 /**
  * Where a product's stock lies (I27): the total on hand per unit; by site,
+ * with what orders have reserved there and what is left available (orders
+ * design O45), warning when a correction took available below zero;
  * broken down in the variant's packagings where they fit (I26),
  * each expanding to its locations; per variant when the product has more
  * than one, each linking to the variant's stock and movements. With no stock
@@ -102,7 +135,8 @@ export const ProductStock = ({ productId }: ProductStockProps) => {
 
   const variants = stock.data?.variants ?? [];
   const several = variants.length > 1;
-  const empty = variants.every((one) => one.totalOnHand === 0);
+  const empty = variants.every((one) => one.totalOnHand === 0 && one.totalReserved === 0);
+  const short = variants.some((one) => one.sites.some((site) => site.available < 0));
   const only = several ? undefined : variants[0]?.variant;
 
   return (
@@ -158,41 +192,48 @@ export const ProductStock = ({ productId }: ProductStockProps) => {
             }
           />
         ) : (
-          variants.map((one) => (
-            <Stack key={one.variant.id} gap="xs">
-              <Group justify="space-between">
-                {several ? (
-                  <Text fw={500} size="sm">
-                    {one.variant.sku}
-                    <Text span c="dimmed" size="sm">
-                      {" · "}
-                      {quantity(one.totalOnHand, one.variant.unit)}
+          <>
+            {short && (
+              <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
+                {t("availableNegative")}
+              </Alert>
+            )}
+            {variants.map((one) => (
+              <Stack key={one.variant.id} gap="xs">
+                <Group justify="space-between">
+                  {several ? (
+                    <Text fw={500} size="sm">
+                      {one.variant.sku}
+                      <Text span c="dimmed" size="sm">
+                        {" · "}
+                        {quantity(one.totalOnHand, one.variant.unit)}
+                      </Text>
                     </Text>
-                  </Text>
-                ) : (
-                  <span />
+                  ) : (
+                    <span />
+                  )}
+                  <Anchor
+                    size="sm"
+                    renderRoot={(props) => <Link {...variantStockLinkOptions(one.variant.id)} {...props} />}
+                  >
+                    {t("variantStockLink", { sku: one.variant.sku })}
+                  </Anchor>
+                </Group>
+                {one.sites.length > 0 && (
+                  <Accordion multiple variant="contained" chevronPosition="left">
+                    {one.sites.map((site) => (
+                      <SiteStock
+                        key={site.site.id}
+                        stock={site}
+                        unit={one.variant.unit}
+                        packagings={one.variant.packagings}
+                      />
+                    ))}
+                  </Accordion>
                 )}
-                <Anchor
-                  size="sm"
-                  renderRoot={(props) => <Link {...variantStockLinkOptions(one.variant.id)} {...props} />}
-                >
-                  {t("variantStockLink", { sku: one.variant.sku })}
-                </Anchor>
-              </Group>
-              {one.sites.length > 0 && (
-                <Accordion multiple variant="contained" chevronPosition="left">
-                  {one.sites.map((site) => (
-                    <SiteStock
-                      key={site.site.id}
-                      stock={site}
-                      unit={one.variant.unit}
-                      packagings={one.variant.packagings}
-                    />
-                  ))}
-                </Accordion>
-              )}
-            </Stack>
-          ))
+              </Stack>
+            ))}
+          </>
         )}
       </Stack>
     </Card>

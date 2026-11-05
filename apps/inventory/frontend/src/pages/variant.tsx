@@ -6,13 +6,15 @@ import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell
 import { inventoryMetaQueryOptions } from "../api/meta";
 import { variantStockQueryOptions } from "../api/stock";
 import { MovementList } from "../components/movement-list";
+import { ReservedAvailable } from "../components/product-stock";
 import { StockTable } from "../components/stock-table";
 import { canPost } from "../lib/capabilities";
 import { useInventoryFormat } from "../lib/format";
 import { INVENTORY_HOME_ROUTE_PATH, newMovementLinkOptions } from "../lib/routes";
 
 /**
- * One variant's stock (design §7): the total, each site with its locations
+ * One variant's stock (design §7): the total, what orders have reserved and
+ * what is available (orders design O45), each site with its locations
  * by full code, and the variant's movements, newest first. A variant the
  * catalog no longer knows is shown from its last movement's snapshot.
  */
@@ -76,8 +78,20 @@ export const VariantStockPage = () => {
           <Stack gap="md">
             <Group justify="space-between">
               <Title order={4}>{t("stockCardTitle")}</Title>
-              <Text fw={600}>{quantity(stock.data.totalOnHand, stock.data.variant.unit)}</Text>
+              <Stack gap={0} align="flex-end">
+                <Text fw={600}>{quantity(stock.data.totalOnHand, stock.data.variant.unit)}</Text>
+                <ReservedAvailable
+                  reserved={stock.data.totalReserved}
+                  available={stock.data.totalAvailable}
+                  unit={stock.data.variant.unit}
+                />
+              </Stack>
             </Group>
+            {stock.data.sites.some((site) => site.available < 0) && (
+              <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
+                {t("availableNegative")}
+              </Alert>
+            )}
             {stock.data.sites.length === 0 ? (
               <EmptyState size="sm" icon={IconPackage} title={t("noStock")} />
             ) : (
@@ -87,9 +101,16 @@ export const VariantStockPage = () => {
                     <Text fw={500} size="sm">
                       {site.site.code} · {site.site.name}
                     </Text>
-                    <Text size="sm">{quantity(site.onHand, stock.data.variant.unit)}</Text>
+                    <Stack gap={0} align="flex-end">
+                      <Text size="sm">{quantity(site.onHand, stock.data.variant.unit)}</Text>
+                      <ReservedAvailable
+                        reserved={site.reserved}
+                        available={site.available}
+                        unit={stock.data.variant.unit}
+                      />
+                    </Stack>
                   </Group>
-                  <StockTable rows={site.rows} hideVariant />
+                  {site.rows.length > 0 && <StockTable rows={site.rows} hideVariant />}
                 </Stack>
               ))
             )}

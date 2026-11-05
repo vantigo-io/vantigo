@@ -1,4 +1,4 @@
-import { Alert, Button, Group, Modal, Select, SimpleGrid, Stack, TextInput } from "@mantine/core";
+import { Alert, Button, Group, Modal, Select, SimpleGrid, Stack, Switch, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle } from "@tabler/icons-react";
@@ -30,6 +30,7 @@ interface SiteFormValues {
   code: string;
   name: string;
   kind: InventorySiteKind;
+  fulfilsOrders: boolean;
   line1: string;
   line2: string;
   postalCode: string;
@@ -38,7 +39,8 @@ interface SiteFormValues {
 }
 
 /**
- * A site's form (I1): code, name, kind and an optional address. Creating one
+ * A site's form (I1): code, name, kind, whether it fulfils orders and an
+ * optional address. Creating one
  * creates its root location with it; a new code rewrites every full code in
  * the site (I4). The status is changed by Archive and Reactivate, not here.
  */
@@ -51,6 +53,7 @@ export const SiteFormModal = ({ opened, onClose, site, onSaved }: SiteFormModalP
       code: site?.code ?? "",
       name: site?.name ?? "",
       kind: site?.kind ?? "warehouse",
+      fulfilsOrders: site?.fulfilsOrders ?? true,
       line1: site?.address?.line1 ?? "",
       line2: site?.address?.line2 ?? "",
       postalCode: site?.address?.postalCode ?? "",
@@ -75,6 +78,7 @@ export const SiteFormModal = ({ opened, onClose, site, onSaved }: SiteFormModalP
         code: values.code.trim().toUpperCase(),
         name: values.name.trim(),
         kind: values.kind,
+        fulfilsOrders: values.fulfilsOrders,
         ...(Object.keys(address).length > 0 ? { address } : {}),
       };
       return site ? updateSite(site.id, { ...input, status: site.status }, site.revision) : createSite(input);
@@ -126,8 +130,19 @@ export const SiteFormModal = ({ opened, onClose, site, onSaved }: SiteFormModalP
               allowDeselect={false}
               data={siteKinds.map((value) => ({ value, label: t(`siteKind_${value}`) }))}
               {...form.getInputProps("kind")}
+              onChange={(value) => {
+                if (!value) return;
+                form.setFieldValue("kind", value as InventorySiteKind);
+                // A new site follows its kind's default until saved (orders design O45).
+                if (!site) form.setFieldValue("fulfilsOrders", value === "warehouse");
+              }}
             />
           </SimpleGrid>
+          <Switch
+            label={t("fulfilsOrders")}
+            description={t("fulfilsOrdersHint")}
+            {...form.getInputProps("fulfilsOrders", { type: "checkbox" })}
+          />
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
             <TextInput label={t("addressLine1")} {...form.getInputProps("line1")} />
             <TextInput label={t("addressLine2")} {...form.getInputProps("line2")} />

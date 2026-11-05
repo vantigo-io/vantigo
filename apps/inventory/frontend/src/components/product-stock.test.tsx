@@ -50,6 +50,35 @@ describe("the product's Stock card", () => {
     expect(screen.getByText("TS-L")).toBeInTheDocument();
   });
 
+  it("shows what orders reserved and what is available per site, warning when available is below zero", async () => {
+    stubInventoryApi({
+      balances: [
+        { variantId: 201, locationId: 12, onHand: 3 },
+        { variantId: 201, locationId: 21, onHand: 4 },
+      ],
+      reservations: [
+        { variantId: 201, siteId: 1, quantity: 5 },
+        { variantId: 201, siteId: 2, quantity: 1 },
+      ],
+    });
+    renderRoute("/products/2");
+    const oslo = await screen.findByRole("button", { name: /OSL · Oslo lager/ });
+    expect(oslo).toHaveTextContent("Reserved 5 pcs · available -2 pcs");
+    expect(screen.getByRole("button", { name: /BGO · Bergen butikk/ })).toHaveTextContent(
+      "Reserved 1 pcs · available 3 pcs",
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("More is reserved than lies here");
+  });
+
+  it("lists a site holding only a reservation", async () => {
+    stubInventoryApi({ reservations: [{ variantId: 201, siteId: 1, quantity: 2 }] });
+    renderRoute("/products/2");
+    expect(await screen.findByRole("button", { name: /OSL · Oslo lager/ })).toHaveTextContent(
+      "Reserved 2 pcs · available -2 pcs",
+    );
+    expect(screen.queryByText("No stock")).not.toBeInTheDocument();
+  });
+
   it("is not drawn for a product that answers no variants (a Service)", async () => {
     const fetchMock = stubInventoryApi({ productStock: { 3: { productId: 3, variants: [] } } });
     renderRoute("/products/3");
