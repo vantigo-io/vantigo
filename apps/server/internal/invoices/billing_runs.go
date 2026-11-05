@@ -47,6 +47,13 @@ const (
 	customerChunk          = contracts.MaxActualsRequests
 )
 
+// A run's sources (orders design O40): consumption settles and invoices
+// Energy's supply periods, orders invoices the order lines due.
+const (
+	runSourceConsumption = "consumption"
+	runSourceOrders      = "orders"
+)
+
 // An item's statuses (plan reading 1).
 const (
 	itemQueued    = "queued"
@@ -78,14 +85,21 @@ func billingRunActive(runID int64) gen.InvoicesConflictProblem {
 // given, 1 to 5 000 of them, each positive and named once. through is a
 // date the generated wrapper has decoded already.
 func parseBillingRun(body gen.InvoicesBillingRunRequest) map[string][]string {
-	if body.CustomerIds == nil {
-		return nil
-	}
 	var errs map[string][]string
+	source := runSource(body)
+	if body.Source != nil && !body.Source.Valid() {
+		errs = withFieldError(errs, "source", "A billing run's source is consumption or orders")
+	}
+	if source != runSourceOrders && body.Combine != nil && *body.Combine {
+		errs = withFieldError(errs, "combine", "Only a billing run of orders combines invoices")
+	}
+	if body.CustomerIds == nil {
+		return errs
+	}
 	given := *body.CustomerIds
 	switch {
 	case len(given) == 0:
-		errs = withFieldError(errs, "customerIds", "Name the customers to bill, or leave customerIds out to bill every customer with consumption due")
+		errs = withFieldError(errs, "customerIds", "Name the customers to bill, or leave customerIds out to bill every customer with something due")
 	case len(given) > maxBillingRunCustomers:
 		errs = withFieldError(errs, "customerIds", fmt.Sprintf("A billing run bills at most %d customers", maxBillingRunCustomers))
 	}
@@ -102,6 +116,14 @@ func parseBillingRun(body gen.InvoicesBillingRunRequest) map[string][]string {
 		}
 	}
 	return errs
+}
+
+// runSource is the body's source, consumption when it names none.
+func runSource(body gen.InvoicesBillingRunRequest) string {
+	if body.Source != nil && *body.Source == gen.Orders {
+		return runSourceOrders
+	}
+	return runSourceConsumption
 }
 
 // PostInvoicesBillingRuns Make a billing run
@@ -127,8 +149,13 @@ func (s *server) PostInvoicesBillingRuns(ctx context.Context, req gen.PostInvoic
 	if body.Issue && !s.has(ctx, "invoices:issue") {
 		return gen.PostInvoicesBillingRuns403JSONResponse(apicommon.ForbiddenBody()), nil
 	}
-	if s.deps.Consumption == nil {
+	source := runSource(body)
+	combine := source == runSourceOrders && body.Combine != nil && *body.Combine
+	switch {
+	case source == runSourceConsumption && s.deps.Consumption == nil:
 		return gen.PostInvoicesBillingRuns409ApplicationProblemPlusJSONResponse(consumptionUnavailable()), nil
+	case source == runSourceOrders && s.deps.BillableOrders == nil:
+		return gen.PostInvoicesBillingRuns409ApplicationProblemPlusJSONResponse(ordersUnavailable()), nil
 	}
 	q := store.New(s.deps.Pool)
 	if refusal, err := activeRunRefusal(ctx, q); refusal != nil || err != nil {
@@ -162,6 +189,29 @@ func (s *server) PostInvoicesBillingRuns(ctx context.Context, req gen.PostInvoic
 				return gen.PostInvoicesBillingRuns400ApplicationProblemPlusJSONResponse(invalid(invalidBillingRunTitle, errs)), nil
 			}
 		}
+	} else if source == runSourceOrders {
+		// Every customer with an order line due through the date (orders
+		// design O40): an order's delivery date on or before it, or none. A
+		// blocked order's customer is left out — nothing of it is invoiced.
+		page, err := s.dueOrders(ctx, contracts.DueOrdersRequest{Every: true, Until: through})
+		if err != nil {
+			return nil, fmt.Errorf("invoices: read every customer's due orders: %w", err)
+		}
+		if page.More {
+			return gen.PostInvoicesBillingRuns409ApplicationProblemPlusJSONResponse(conflict(codeTooManyCustomers, cannotRunBillingTitle,
+				fmt.Sprintf("More than %d order lines are due; name the customers to bill.", contracts.MaxBillableRows))), nil
+		}
+		for _, o := range page.Orders {
+			if o.Blocked == "" {
+				customers = append(customers, o.CustomerID)
+			}
+		}
+		slices.Sort(customers)
+		customers = slices.Compact(customers)
+		if len(customers) == 0 {
+			return gen.PostInvoicesBillingRuns409ApplicationProblemPlusJSONResponse(conflict(codeNoOrdersDue, cannotRunBillingTitle,
+				fmt.Sprintf("No customer has order lines due through %s.", through.Format("2006-01-02")))), nil
+		}
 	} else {
 		page, err := s.dueSupplies(ctx, contracts.DueSuppliesRequest{Every: true, Through: throughInstant(through)})
 		if err != nil {
@@ -187,7 +237,7 @@ func (s *server) PostInvoicesBillingRuns(ctx context.Context, req gen.PostInvoic
 		now := s.deps.Clock()
 		var err error
 		run, err = txq.InsertBillingRun(ctx, store.InsertBillingRunParams{
-			Through: pgDate(through), Issue: body.Issue, Customers: int32(len(customers)),
+			Through: pgDate(through), Issue: body.Issue, Source: source, Combine: combine, Customers: int32(len(customers)),
 			CreatedByUserID: callerID(ctx), CreatedAt: now,
 		})
 		var pgErr *pgconn.PgError
@@ -273,7 +323,7 @@ func (s *server) billingRunsWire(ctx context.Context, q *store.Queries, runs []s
 	out := make([]gen.InvoicesBillingRun, 0, len(runs))
 	for _, r := range runs {
 		w := gen.InvoicesBillingRun{
-			Id: r.ID, Through: wireDate(r.Through.Time), Issue: r.Issue, Status: r.Status, Customers: r.Customers,
+			Id: r.ID, Through: wireDate(r.Through.Time), Issue: r.Issue, Source: r.Source, Combine: r.Combine, Status: r.Status, Customers: r.Customers,
 			CreatedByUserId: r.CreatedByUserID, CreatedAt: r.CreatedAt, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt,
 		}
 		if c := counts[r.ID]; c != nil {

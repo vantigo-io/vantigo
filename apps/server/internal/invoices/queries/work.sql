@@ -19,10 +19,14 @@ ORDER BY l.position, s.source_kind, s.source_id;
 -- ordered by (source_kind, source_id) (D2): two transactions inserting
 -- overlapping holds wait on ux_line_sources_live in the same order, so one
 -- fails with the unique violation and neither deadlocks. The arrays run in
--- parallel; an empty subkind is NULL (an expense and a settlement carry
--- one). A project of 0 is none — an energy settlement's (energy consumption
--- billing design D7) — and only a source without one keeps the snapshot of
--- its metering point; a work source's is NULL whatever the arrays carry.
+-- parallel; an empty subkind is NULL (an expense, a settlement and an
+-- order allocation carry one). A project of 0 is none — an energy
+-- settlement's (energy consumption billing design D7), or an order
+-- allocation's whose order has none (orders design O38) — and only a source
+-- without one that is not an allocation keeps the snapshot of its metering
+-- point; a work source's is NULL whatever the arrays carry. An allocation
+-- keeps period_from alone: a subscription period's first day, NULL as the
+-- array gives it for an order line's part.
 INSERT INTO invoices.line_sources (
     line_id, invoice_id, source_kind, source_id, source_revision, source_subkind,
     project_id, quantity, amount, currency, source_date, line_count,
@@ -30,9 +34,12 @@ INSERT INTO invoices.line_sources (
 )
 SELECT u.line_id, @invoice_id::bigint, u.kind, u.id, u.revision, NULLIF(u.subkind, ''),
     NULLIF(u.project_id, 0), u.quantity, u.amount, u.currency, u.source_date, u.line_count,
-    CASE WHEN u.project_id = 0 THEN u.point_gsrn END, CASE WHEN u.project_id = 0 THEN u.point_address END,
-    CASE WHEN u.project_id = 0 THEN u.price_area END, CASE WHEN u.project_id = 0 THEN u.contract_name END,
-    CASE WHEN u.project_id = 0 THEN u.period_from END, CASE WHEN u.project_id = 0 THEN u.estimated END
+    CASE WHEN u.project_id = 0 AND u.kind <> 'orders.allocation' THEN u.point_gsrn END,
+    CASE WHEN u.project_id = 0 AND u.kind <> 'orders.allocation' THEN u.point_address END,
+    CASE WHEN u.project_id = 0 AND u.kind <> 'orders.allocation' THEN u.price_area END,
+    CASE WHEN u.project_id = 0 AND u.kind <> 'orders.allocation' THEN u.contract_name END,
+    CASE WHEN u.project_id = 0 OR u.kind = 'orders.allocation' THEN u.period_from END,
+    CASE WHEN u.project_id = 0 AND u.kind <> 'orders.allocation' THEN u.estimated END
 FROM (
     SELECT unnest(@line_ids::bigint[]) AS line_id, unnest(@kinds::text[]) AS kind,
         unnest(@ids::bigint[]) AS id, unnest(@revisions::int[]) AS revision,

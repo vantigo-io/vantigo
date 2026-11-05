@@ -98,6 +98,8 @@ type InvoicesBillingRun struct {
 	CreatedAt       time.Time
 	StartedAt       *time.Time
 	FinishedAt      *time.Time
+	Source          string
+	Combine         bool
 }
 
 type InvoicesBillingRunItem struct {

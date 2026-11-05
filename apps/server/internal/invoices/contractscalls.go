@@ -198,6 +198,40 @@ func (s *server) settlementsByID(ctx context.Context, ids []int64) (contracts.Se
 	return s.deps.Consumption.Settlements(ctx, ids)
 }
 
+// dueOrders, allocate, orderAllocations and releaseAllocations are Orders'
+// invoicing reads and commands (contracts.BillableOrders, orders design
+// O36, O37), made on the pool and never inside withLockedTx: the From orders
+// wizard's reads before its transaction, a held allocation's freshness on
+// GET, refreshSources' reads, and the release after a draft's delete or a
+// save that dropped allocations has committed. allocate and
+// releaseAllocations write Orders' own rows in transactions of its own. A
+// caller checks deps.BillableOrders first — nil is Orders switched off.
+func (s *server) dueOrders(ctx context.Context, req contracts.DueOrdersRequest) (contracts.DueOrdersPage, error) {
+	noteContractCall(ctx, "BillableOrders.DueOrders")
+	return s.deps.BillableOrders.DueOrders(ctx, req)
+}
+
+func (s *server) allocate(ctx context.Context, req contracts.AllocateRequest) ([]contracts.OrderAllocation, error) {
+	noteContractCall(ctx, "BillableOrders.Allocate")
+	return s.deps.BillableOrders.Allocate(ctx, req)
+}
+
+func (s *server) orderAllocations(ctx context.Context, ids []int64) ([]contracts.OrderAllocation, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	noteContractCall(ctx, "BillableOrders.Allocations")
+	return s.deps.BillableOrders.Allocations(ctx, ids)
+}
+
+func (s *server) releaseAllocations(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	noteContractCall(ctx, "BillableOrders.ReleaseAllocations")
+	return s.deps.BillableOrders.ReleaseAllocations(ctx, ids)
+}
+
 func (s *server) billableExpenses(ctx context.Context, req contracts.BillableRequest) (contracts.BillableExpensesPage, error) {
 	noteContractCall(ctx, "BillableExpenses.BillableExpenses")
 	return s.deps.BillableExpenses.BillableExpenses(ctx, req)

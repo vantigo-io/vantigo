@@ -163,6 +163,7 @@ type setup struct {
 	billExpenses      contracts.BillableExpenses
 	milestones        contracts.BillableMilestones
 	consumption       contracts.ConsumptionProvider
+	billableOrders    contracts.BillableOrders
 	smtpVerify        func(ctx context.Context, cfg config.MailConfig) error
 	smtpSend          func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore       storage.ObjectStore
@@ -492,6 +493,12 @@ func WithConsumption(p contracts.ConsumptionProvider) Option {
 	return func(s *setup) { s.consumption = p }
 }
 
+// WithBillableOrders is WithBillableHours for orders' due lines and
+// allocations (contracts.BillableOrders), which invoices builds lines from.
+func WithBillableOrders(p contracts.BillableOrders) Option {
+	return func(s *setup) { s.billableOrders = p }
+}
+
 // WithSMTPVerify sets the function Deps.SMTPVerify carries, for a module
 // whose own SMTP connectivity check (communications' channel verification)
 // must succeed in a test without a live SMTP server or the production
@@ -775,6 +782,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		BillableExpenses:         s.billExpenses,
 		BillableMilestones:       s.milestones,
 		Consumption:              s.consumption,
+		BillableOrders:           s.billableOrders,
 		SMTPVerify:               s.smtpVerify,
 		SMTPSend:                 s.smtpSend,
 		ObjectStore:              s.objectStore,

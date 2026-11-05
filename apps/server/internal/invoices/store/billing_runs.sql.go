@@ -138,7 +138,7 @@ func (q *Queries) CancelAbandonedBillingRunItems(ctx context.Context, now time.T
 const cancelBillingRun = `-- name: CancelBillingRun :one
 UPDATE invoices.billing_runs SET status = 'cancelled', finished_at = $1::timestamptz
 WHERE id = $2 AND status IN ('queued', 'running')
-RETURNING id, through, issue, status, customers, created_by_user_id, created_at, started_at, finished_at
+RETURNING id, through, issue, status, customers, created_by_user_id, created_at, started_at, finished_at, source, combine
 `
 
 type CancelBillingRunParams struct {
@@ -161,6 +161,8 @@ func (q *Queries) CancelBillingRun(ctx context.Context, arg CancelBillingRunPara
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.Source,
+		&i.Combine,
 	)
 	return i, err
 }
@@ -365,7 +367,7 @@ func (q *Queries) FinishIdleBillingRuns(ctx context.Context, now time.Time) (int
 }
 
 const getBillingRun = `-- name: GetBillingRun :one
-SELECT id, through, issue, status, customers, created_by_user_id, created_at, started_at, finished_at FROM invoices.billing_runs WHERE id = $1
+SELECT id, through, issue, status, customers, created_by_user_id, created_at, started_at, finished_at, source, combine FROM invoices.billing_runs WHERE id = $1
 `
 
 func (q *Queries) GetBillingRun(ctx context.Context, id int64) (InvoicesBillingRun, error) {
@@ -381,20 +383,24 @@ func (q *Queries) GetBillingRun(ctx context.Context, id int64) (InvoicesBillingR
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.Source,
+		&i.Combine,
 	)
 	return i, err
 }
 
 const insertBillingRun = `-- name: InsertBillingRun :one
 
-INSERT INTO invoices.billing_runs (through, issue, customers, created_by_user_id, created_at)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, through, issue, status, customers, created_by_user_id, created_at, started_at, finished_at
+INSERT INTO invoices.billing_runs (through, issue, source, combine, customers, created_by_user_id, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, through, issue, status, customers, created_by_user_id, created_at, started_at, finished_at, source, combine
 `
 
 type InsertBillingRunParams struct {
 	Through         pgtype.Date
 	Issue           bool
+	Source          string
+	Combine         bool
 	Customers       int32
 	CreatedByUserID uuid.UUID
 	CreatedAt       time.Time
@@ -408,11 +414,14 @@ type InsertBillingRunParams struct {
 // names its lease — 0 rows is another actor's move. Every query takes the
 // time as a parameter from Deps.Clock(), never now().
 // InsertBillingRun makes a queued run. ux_billing_runs_active refuses a
-// second run while one is queued or running (23505).
+// second run while one is queued or running (23505). source is consumption
+// or orders, and combine the orders source's grouping (orders design O40).
 func (q *Queries) InsertBillingRun(ctx context.Context, arg InsertBillingRunParams) (InvoicesBillingRun, error) {
 	row := q.db.QueryRow(ctx, insertBillingRun,
 		arg.Through,
 		arg.Issue,
+		arg.Source,
+		arg.Combine,
 		arg.Customers,
 		arg.CreatedByUserID,
 		arg.CreatedAt,
@@ -428,6 +437,8 @@ func (q *Queries) InsertBillingRun(ctx context.Context, arg InsertBillingRunPara
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.Source,
+		&i.Combine,
 	)
 	return i, err
 }
@@ -505,7 +516,7 @@ func (q *Queries) ListBillingRunItems(ctx context.Context, arg ListBillingRunIte
 }
 
 const listBillingRuns = `-- name: ListBillingRuns :many
-SELECT id, through, issue, status, customers, created_by_user_id, created_at, started_at, finished_at FROM invoices.billing_runs
+SELECT id, through, issue, status, customers, created_by_user_id, created_at, started_at, finished_at, source, combine FROM invoices.billing_runs
 ORDER BY id DESC
 LIMIT $2 OFFSET $1
 `
@@ -535,6 +546,8 @@ func (q *Queries) ListBillingRuns(ctx context.Context, arg ListBillingRunsParams
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.FinishedAt,
+			&i.Source,
+			&i.Combine,
 		); err != nil {
 			return nil, err
 		}
