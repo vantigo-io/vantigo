@@ -155,6 +155,7 @@ type setup struct {
 	workforce         contracts.Workforce
 	mailboxCalendars  []contracts.MailboxCalendar
 	channelMailboxes  []contracts.ChannelMailbox
+	channelMessengers []contracts.ChannelMessenger
 	personalMailboxes []contracts.PersonalMailbox
 	directorySearches []contracts.DirectorySearch
 	outboundMail      contracts.OutboundMail
@@ -432,6 +433,17 @@ func WithMailboxCalendar(m contracts.MailboxCalendar) Option {
 // claim.
 func WithChannelMailbox(m contracts.ChannelMailbox) Option {
 	return func(s *setup) { s.channelMailboxes = append(s.channelMailboxes, m) }
+}
+
+// WithChannelMessenger appends to Deps.ChannelMessengers, for Communications
+// to be tested against a fake messaging provider — its Pages, its events and
+// its refusals set by the test — without composing the Meta module beside it:
+// depguard keeps it out of communications' tests. Given twice, under two keys,
+// it is two providers. module.Compose and module.Workers keep the values set
+// here before the enabled modules' own and refuse a key both claim, or one
+// also filled as a channel mailbox.
+func WithChannelMessenger(m contracts.ChannelMessenger) Option {
+	return func(s *setup) { s.channelMessengers = append(s.channelMessengers, m) }
 }
 
 // WithDirectorySearch appends to Deps.DirectorySearches, for identity's
@@ -786,6 +798,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		Workforce:                s.workforce,
 		MailboxCalendars:         s.mailboxCalendars,
 		ChannelMailboxes:         s.channelMailboxes,
+		ChannelMessengers:        s.channelMessengers,
 		PersonalMailboxes:        s.personalMailboxes,
 		DirectorySearches:        s.directorySearches,
 		OutboundMail:             s.outboundMail,

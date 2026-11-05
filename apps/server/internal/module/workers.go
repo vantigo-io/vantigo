@@ -143,6 +143,14 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	if err != nil {
 		panic(err.Error())
 	}
+	// The channel messengers, resolved as Compose resolves them (Messenger
+	// design N2): Communications' outbox and messenger sync run through them,
+	// and worker mode never composes. A key two providers claim, or one also
+	// filled as a channel mailbox, panics, as for the channel mailboxes.
+	deps, err = withChannelMessengers(deps, enabled)
+	if err != nil {
+		panic(err.Error())
+	}
 	// The personal mailboxes, resolved as Compose resolves them (Outlook
 	// connection design M20): Communications' outbox sends through them, and
 	// worker mode never composes. A key two providers claim panics, as
@@ -305,6 +313,30 @@ func withChannelMailboxes(deps Deps, enabled []Module) (Deps, error) {
 		return deps, err
 	}
 	deps.ChannelMailboxes = providers
+	return deps, nil
+}
+
+// withChannelMessengers collects contracts.ChannelMessenger from the enabled
+// modules into Deps.ChannelMessengers, after whatever the caller preset (the
+// seam modtest.WithChannelMessenger fills), refusing a duplicate or reserved
+// Key as the other slots do, and a Key that is also filled in
+// Deps.ChannelMailboxes (Messenger design N1): a channel's provider names one
+// kind of provider, so one key under both would be served by either. Compose
+// and Workers both call it, after the channel mailboxes.
+func withChannelMessengers(deps Deps, enabled []Module) (Deps, error) {
+	providers, err := collectKeyed(deps.ChannelMessengers, enabled, "Deps.ChannelMessengers", "a channel messenger",
+		func(m Module) func(Deps) contracts.ChannelMessenger { return m.ChannelMessenger }, deps)
+	if err != nil {
+		return deps, err
+	}
+	for _, messenger := range providers {
+		for _, mailbox := range deps.ChannelMailboxes {
+			if mailbox != nil && mailbox.Key() == messenger.Key() {
+				return deps, fmt.Errorf("module: %q is provided both as a channel mailbox and as a channel messenger", messenger.Key())
+			}
+		}
+	}
+	deps.ChannelMessengers = providers
 	return deps, nil
 }
 

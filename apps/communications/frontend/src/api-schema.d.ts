@@ -496,7 +496,9 @@ export interface components {
             /** @description Whether channels may be created on or switched to the provider now. */
             available: boolean;
             displayName: string;
-            /** @description A channel's provider value, smtp or a mailbox provider (`entra`, `google`). */
+            /** @description The Pages a messenger provider has connected, each with its own status, for the channel form's picker; null for an e-mail provider. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            endpoints?: components["schemas"]["ChannelEndpointResponse"][] | null;
+            /** @description A channel's provider value, smtp, a mailbox provider (`entra`, `google`) or a messenger provider (`meta`). */
             key: string;
             /**
              * Format: int64
@@ -505,8 +507,18 @@ export interface components {
             maxMessageBytes: number | null;
             /** @description Why the provider is not available (switch_off, or the connection's reason); null while available. */
             reason: string | null;
+            /** @description The channel type the provider serves, email (smtp and the mailbox providers) or messenger. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            type?: string;
             /** @description tenant_wide while the provider's grant reaches every mailbox in the tenant; null otherwise. */
             warning: string | null;
+        };
+        ChannelEndpointResponse: {
+            /** @description The Page's id, which is a channel's address. */
+            address: string;
+            available: boolean;
+            displayName: string;
+            /** @description Why the Page is not available (token_rejected, removed); null while available. */
+            reason: string | null;
         };
         ChannelRecipientRequest: {
             address?: string | null;
@@ -519,7 +531,7 @@ export interface components {
         };
         ChannelResponse: {
             address: string;
-            /** @description Whether the channel can send now (integrations design T5, T7) - its provider is offered and, for SMTP, its credentials are stored; an SMTP channel without credentials sends nothing, and the channels page shows it Unavailable. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            /** @description Whether the channel can send now (integrations design T5, T7) - its provider is offered and, for SMTP, its credentials are stored, for a messenger channel its Page is available; an SMTP channel without credentials sends nothing, and the channels page shows it Unavailable. Always answered; optional in the schema only because the recorded exchanges predate it. */
             available?: boolean;
             /** Format: date-time */
             createdAt: string;
@@ -544,13 +556,14 @@ export interface components {
                 useSsl: boolean | null;
                 username: string | null;
             } | null;
-            /** @description Whether a channel on a mailbox provider (`entra`, `google`) receives: its mailbox sync's state — pending (waiting for its first sync), active, failed or stopped —, the code of its last failure (mailbox_denied, mailbox_gone, mailbox_unknown, sync_failed, provider_unavailable) and when it last finished a sync; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            /** @description Whether a channel on a mailbox provider (`entra`, `google`) or a messenger provider (`meta`) receives: its sync's state — pending (a mailbox channel waiting for its first sync), active, failed or stopped —, the code of its last failure (mailbox_denied, mailbox_gone, mailbox_unknown, sync_failed, provider_unavailable) and when it last finished a sync; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it. */
             sync?: {
                 error: string | null;
                 /** Format: date-time */
                 lastSyncedAt: string | null;
                 state: string;
             } | null;
+            /** @description The channel's type, email or messenger. A messenger channel's address is its Page's id and its provider the key of a messenger provider (`meta`); its defaults, the default channel of the type, are kept per type. */
             type: string;
         };
         ChannelVerifyResponse: {
@@ -611,6 +624,10 @@ export interface components {
             channelDisplayName?: string | null;
             /** Format: uuid */
             channelId: string;
+            /** @description The type of the conversation's channel, email or messenger; the thread and the composer render by it. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            channelType?: string;
+            /** @description What a message on the conversation's channel may carry beside its text, and its text limit; null when the channel takes no components (every e-mail channel). Always answered; optional in the schema only because the recorded exchanges predate it. */
+            componentLimits?: components["schemas"]["MessageComponentLimits"] | null;
             /** Format: date-time */
             createdAt: string;
             customerAssociationSource: string | null;
@@ -644,14 +661,20 @@ export interface components {
                     /** Format: uuid */
                     id: string;
                     isInline: boolean;
+                    /** @description file, or card for the image of one of the message's cards, which the thread shows in the carousel and not among the files. Always answered; optional in the schema only because the recorded exchanges predate it. */
+                    role?: string;
                     scanStatus: string;
                     /** Format: int64 */
                     sizeBytes: number;
                 }[];
+                /** @description The answer an inbound message of a messenger conversation is, to an option of an earlier message; null for any other message. Always answered; optional in the schema only because the recorded exchanges predate it. */
+                answerTo?: components["schemas"]["MessageAnswer"] | null;
                 /** Format: uuid */
                 authorUserId: string | null;
                 /** @description An inbound message an automatic system sent — an out-of-office answer, a bounce, a list — by its Auto-Submitted, X-Auto-Response-Suppress, Precedence or X-Autoreply header. Always answered; optional in the schema only because the recorded exchanges predate it. */
                 autoSubmitted?: boolean;
+                /** @description What the message carries beside its text — answer options, a request for an e-mail address, cards; null for a message with none, every e-mail message and every message from before components. Always answered; optional in the schema only because the recorded exchanges predate it. */
+                components?: components["schemas"]["MessageComponents"] | null;
                 /** Format: date-time */
                 createdAt: string;
                 deliveries: {
@@ -667,6 +690,8 @@ export interface components {
                     status: string;
                 }[];
                 direction: string;
+                /** @description An outbound message sent from the platform itself — Meta Business Suite, say — and imported into the thread; the thread marks it. Always answered; optional in the schema only because the recorded exchanges predate it. */
+                echo?: boolean;
                 /** @description The sender's personal directory email address when sendAs is personal; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it. */
                 fromAddress?: string | null;
                 /** @description The sender's display name when sendAs is personal; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it. */
@@ -710,6 +735,8 @@ export interface components {
             previewText: string | null;
             /** @description Whether the caller can send from their own connected address, through a personal mailbox provider, in this conversation's composer. Always answered; optional in the schema only because the recorded exchanges predate it. */
             personalSender?: components["schemas"]["PersonalSenderResponse"];
+            /** @description Whether a reply may be sent in a messenger conversation now, by the participant's newest message; null for an e-mail conversation. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            replyWindow?: components["schemas"]["ReplyWindow"] | null;
             /** @description Who a reply answers, from the latest inbound message with a sender: replyTo is its sender and canReply whether there is one; replyAllCc the participants its Cc named — without the channel's own address and the sender, distinct by address in any case, at most 100 — and canReplyAll whether there are any. */
             replyRecipients: {
                 canReply: boolean;
@@ -746,6 +773,8 @@ export interface components {
             candidateCustomerIds: number[];
             /** Format: uuid */
             channelId: string;
+            /** @description The type of the conversation's channel, email or messenger; the inbox shows its icon. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            channelType?: string;
             customerAssociationSource: string | null;
             /** Format: int32 */
             customerId: number | null;
@@ -798,6 +827,7 @@ export interface components {
             suggestedCustomerId: number | null;
         };
         CreateChannelRequest: {
+            /** @description The channel's address - an e-mail address for an email channel, the Page's id (digits) for a messenger channel. */
             address: string | null;
             displayName?: string | null;
             /** @description The folder in the mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo"). */
@@ -808,11 +838,12 @@ export interface components {
             /** @description What closing a conversation on a channel on a mailbox provider (`entra`, `google`) does to its inbound messages in the mailbox: none (default), read or move. */
             onClose?: string | null;
             /**
-             * @description smtp, with the smtp block, or a mailbox provider (`entra`, `google`) that GET /channel-providers lists: a shared mailbox found by its address through that provider, with no credentials.
+             * @description smtp, with the smtp block, a mailbox provider (`entra`, `google`) that GET /channel-providers lists - a shared mailbox found by its address through that provider, with no credentials -, or, for a messenger channel, a messenger provider (`meta`) that lists the Page. The provider must serve the type: otherwise 422 provider_type_mismatch.
              * @default smtp
              */
             provider: string | null;
             smtp?: components["schemas"]["SmtpChannelCredentialRequest"] | null;
+            /** @description email or messenger. */
             type: string | null;
         };
         CreateConversationRequest: {
@@ -841,6 +872,71 @@ export interface components {
         EmailRecipientRequest: {
             email: string | null;
         };
+        /** @description The answer an inbound message is to an answer option or a card's choice of an earlier message of the conversation. */
+        MessageAnswer: {
+            /** @description The id of the option or choice; share-email for an e-mail address the person shared. */
+            choiceId: string;
+            /**
+             * Format: uuid
+             * @description The message the question was in.
+             */
+            messageId: string;
+            /** @description The title the person saw. */
+            title: string;
+        };
+        MessageComponentCard: {
+            /**
+             * Format: uuid
+             * @description Response only - the card's image, an attachment of role card.
+             */
+            attachmentId?: string | null;
+            /** @description 0 to 3 choices. */
+            choices?: components["schemas"]["MessageComponentChoice"][] | null;
+            /**
+             * Format: int32
+             * @description Request only - the product image the card shows, copied when the reply is made.
+             */
+            productImageId?: number | null;
+            /** @description At most 80 characters. */
+            subtitle?: string | null;
+            /** @description 1 to 80 characters. */
+            title: string;
+        };
+        MessageComponentChoice: {
+            /** @description [a-z0-9-], 1 to 40 characters, unique within the message. */
+            id: string;
+            /** @description 1 to 20 characters. */
+            title: string;
+        };
+        /** @description What a message on a channel may carry, as its provider says. */
+        MessageComponentLimits: {
+            /** Format: int32 */
+            maxAnswerOptions: number;
+            /** Format: int32 */
+            maxAnswerTitle: number;
+            /** Format: int32 */
+            maxCardChoices: number;
+            /** Format: int32 */
+            maxCardSubtitle: number;
+            /** Format: int32 */
+            maxCardTitle: number;
+            /** Format: int32 */
+            maxCards: number;
+            /** Format: int32 */
+            maxChoiceTitle: number;
+            /** Format: int32 */
+            maxText: number;
+            shareEmail: boolean;
+        };
+        /** @description What a message carries beside its text. Only a channel whose provider takes components accepts them; an e-mail channel answers 422 components_unsupported. */
+        MessageComponents: {
+            /** @description Quick replies, in the order given - 1 to 13, each title 1 to 20 characters. */
+            answerOptions?: components["schemas"]["MessageComponentChoice"][] | null;
+            /** @description A carousel, 1 to 10 cards. */
+            cards?: components["schemas"]["MessageComponentCard"][] | null;
+            /** @description Asks the person for their e-mail address, as a quick reply. */
+            shareEmail?: boolean | null;
+        };
         NoteRequest: {
             textBody: string | null;
         };
@@ -865,6 +961,8 @@ export interface components {
         };
         ReplyRequest: {
             attachmentIds?: string[] | null;
+            /** @description Answer options, a request for an e-mail address or cards, on a messenger conversation only. */
+            components?: components["schemas"]["MessageComponents"] | null;
             htmlBody?: string | null;
             /** @default reply */
             replyMode: string | null;
@@ -872,6 +970,16 @@ export interface components {
             sendFromPersonal?: boolean | null;
             subject?: string | null;
             textBody?: string | null;
+        };
+        /** @description Whether a reply may be sent in a messenger conversation now. The window is open for 24 hours after the participant's newest message - the platform's echoes do not count -, and runs to 7 days, the reply after the first 24 hours tagged, when the provider has the Human Agent permission. */
+        ReplyWindow: {
+            /**
+             * Format: date-time
+             * @description When the window closes; null when there is no inbound message to count from.
+             */
+            closesAt: string | null;
+            /** @description open, human_agent (the first 24 hours are over and the extension holds) or closed. */
+            state: string;
         };
         SmtpChannelCredentialRequest: {
             host: string | null;
@@ -1144,7 +1252,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict — channel_exists (the address already has a channel), mailbox_exists (for a mailbox provider, another channel already uses the mailbox on that provider), mail_channels_off (the mailbox provider is not available), default_channel_conflict. */
+            /** @description Conflict — channel_exists (the address already has a channel), mailbox_exists (for a mailbox provider, another channel already uses the mailbox on that provider), mail_channels_off (the mailbox provider is not available), messenger_off (the messenger provider is not available), default_channel_conflict. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1153,7 +1261,7 @@ export interface operations {
                     "application/json": components["schemas"]["CommunicationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity — for a mailbox provider, personal_mailbox (a person's own mailbox), group_address (the address is a group), mailbox_denied (outside the application's scope), mailbox_unknown. */
+            /** @description Unprocessable Entity — provider_type_mismatch (the provider does not serve the channel's type); for a mailbox provider, personal_mailbox (a person's own mailbox), group_address (the address is a group), mailbox_denied (outside the application's scope), mailbox_unknown; for a messenger provider, endpoint_unknown (no such Page is connected). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1576,7 +1684,7 @@ export interface operations {
                     "application/json": components["schemas"]["CommunicationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity — channel_invalid, customer_invalid, and channel_cannot_start for a messenger channel, which only the person writing first can start. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2268,7 +2376,7 @@ export interface operations {
                     "application/json": components["schemas"]["CommunicationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity — channel_inactive, recipients_missing, recipient_suppressed, too_large, and on a messenger conversation components_unsupported (the channel takes none), components_invalid (a limit broken, with fields), reply_window_closed, not_supported_on_channel (sendFromPersonal or replyMode all), text_too_long (more than 2000 characters). */
             422: {
                 headers: {
                     [name: string]: unknown;

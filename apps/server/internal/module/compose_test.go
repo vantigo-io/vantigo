@@ -2501,6 +2501,16 @@ type fakeChannelMailbox struct {
 
 func (f *fakeChannelMailbox) Key() string { return f.key }
 
+// fakeChannelMessenger is a contracts.ChannelMessenger that answers nothing
+// but its key. The embedded nil interface panics on any other call, which no
+// test here makes.
+type fakeChannelMessenger struct {
+	contracts.ChannelMessenger
+	key string
+}
+
+func (f *fakeChannelMessenger) Key() string { return f.key }
+
 // fakePersonalMailbox is a contracts.PersonalMailbox that answers nothing
 // but its key. The embedded nil interface panics on any other call, which no
 // test here makes.
@@ -2591,6 +2601,25 @@ func keyedSlotCases() []keyedSlotCase {
 			read: func(d Deps) []any {
 				var out []any
 				for _, p := range d.ChannelMailboxes {
+					out = append(out, p)
+				}
+				return out
+			},
+		},
+		{
+			name: "channel messengers", what: "a channel messenger",
+			provide: func(key string) (Module, any) {
+				p := &fakeChannelMessenger{key: key}
+				return Module{ChannelMessenger: func(Deps) contracts.ChannelMessenger { return p }}, p
+			},
+			preset: func(d *Deps, key string) any {
+				p := &fakeChannelMessenger{key: key}
+				d.ChannelMessengers = append(d.ChannelMessengers, p)
+				return p
+			},
+			read: func(d Deps) []any {
+				var out []any
+				for _, p := range d.ChannelMessengers {
 					out = append(out, p)
 				}
 				return out
@@ -2692,6 +2721,41 @@ func TestCompose_CollectsTheMailboxSlots(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A key filled in both the channel mailbox slot and the channel messenger
+// slot is refused (Messenger design N1), whichever module fills which and
+// whether the one is a preset: a channel's provider names one kind of
+// provider, so one key under both would be served by either.
+func TestCompose_RefusesAKeyInBothChannelSlots(t *testing.T) {
+	specs := map[string]string{"alpha": alphaContract, "beta": betaContract}
+	mailbox := func(key string) Module {
+		p := &fakeChannelMailbox{key: key}
+		return Module{ChannelMailbox: func(Deps) contracts.ChannelMailbox { return p }}
+	}
+	messenger := func(key string) Module {
+		p := &fakeChannelMessenger{key: key}
+		return Module{ChannelMessenger: func(Deps) contracts.ChannelMessenger { return p }}
+	}
+	t.Run("two modules", func(t *testing.T) {
+		_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(specs), named(mailbox("meta"), "alpha"), named(messenger("meta"), "beta"))
+		if err == nil || !strings.Contains(err.Error(), `"meta"`) || !strings.Contains(err.Error(), "channel mailbox") ||
+			!strings.Contains(err.Error(), "channel messenger") {
+			t.Errorf("compose = %v, want an error naming the key and both slots", err)
+		}
+	})
+	t.Run("a preset mailbox", func(t *testing.T) {
+		deps := Deps{Access: &fakeAccess{}, ChannelMailboxes: []contracts.ChannelMailbox{&fakeChannelMailbox{key: "meta"}}}
+		_, err := compose(deps, fakeLoad(specs), named(messenger("meta"), "beta"))
+		if err == nil || !strings.Contains(err.Error(), `"meta"`) {
+			t.Errorf("compose = %v, want an error naming the key", err)
+		}
+	})
+	t.Run("two keys are both kept", func(t *testing.T) {
+		if _, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(specs), named(mailbox("entra"), "alpha"), named(messenger("meta"), "beta")); err != nil {
+			t.Errorf("compose = %v, want none: the keys differ", err)
+		}
+	})
 }
 
 // fakeOutboundMail is a contracts.OutboundMail that answers nothing: these

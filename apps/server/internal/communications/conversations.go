@@ -420,6 +420,7 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 // OccurredAt ascending (from the query itself), each with its attachments
 // and deliveries batch-loaded by message id (inventory §1.2's `ToMessage`).
 func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, conversationID uuid.UUID, channelAddress string) ([]struct {
+	AnswerTo    *gen.MessageAnswer `json:"answerTo"`
 	Attachments []struct {
 		ContentId         *string            `json:"contentId"`
 		ContentType       string             `json:"contentType"`
@@ -429,12 +430,14 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 		FileName          string             `json:"fileName"`
 		Id                openapi_types.UUID `json:"id"`
 		IsInline          bool               `json:"isInline"`
+		Role              *string            `json:"role"`
 		ScanStatus        string             `json:"scanStatus"`
 		SizeBytes         int64              `json:"sizeBytes"`
 	} `json:"attachments"`
-	AuthorUserId  *openapi_types.UUID `json:"authorUserId"`
-	AutoSubmitted *bool               `json:"autoSubmitted"`
-	CreatedAt     time.Time           `json:"createdAt"`
+	AuthorUserId  *openapi_types.UUID    `json:"authorUserId"`
+	AutoSubmitted *bool                  `json:"autoSubmitted"`
+	Components    *gen.MessageComponents `json:"components"`
+	CreatedAt     time.Time              `json:"createdAt"`
 	Deliveries    []struct {
 		AcceptedAt    *time.Time         `json:"acceptedAt"`
 		Attempts      int32              `json:"attempts"`
@@ -445,6 +448,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 		Status        string             `json:"status"`
 	} `json:"deliveries"`
 	Direction       string             `json:"direction"`
+	Echo            *bool              `json:"echo"`
 	FromAddress     *string            `json:"fromAddress"`
 	FromDisplayName *string            `json:"fromDisplayName"`
 	HtmlBody        *string            `json:"htmlBody"`
@@ -486,6 +490,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 		FileName          string             `json:"fileName"`
 		Id                openapi_types.UUID `json:"id"`
 		IsInline          bool               `json:"isInline"`
+		Role              *string            `json:"role"`
 		ScanStatus        string             `json:"scanStatus"`
 		SizeBytes         int64              `json:"sizeBytes"`
 	}{}
@@ -499,6 +504,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			FileName          string             `json:"fileName"`
 			Id                openapi_types.UUID `json:"id"`
 			IsInline          bool               `json:"isInline"`
+			Role              *string            `json:"role"`
 			ScanStatus        string             `json:"scanStatus"`
 			SizeBytes         int64              `json:"sizeBytes"`
 		}{}
@@ -513,6 +519,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			FileName          string             `json:"fileName"`
 			Id                openapi_types.UUID `json:"id"`
 			IsInline          bool               `json:"isInline"`
+			Role              *string            `json:"role"`
 			ScanStatus        string             `json:"scanStatus"`
 			SizeBytes         int64              `json:"sizeBytes"`
 		}{
@@ -566,6 +573,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 	}
 
 	out := make([]struct {
+		AnswerTo    *gen.MessageAnswer `json:"answerTo"`
 		Attachments []struct {
 			ContentId         *string            `json:"contentId"`
 			ContentType       string             `json:"contentType"`
@@ -575,12 +583,14 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			FileName          string             `json:"fileName"`
 			Id                openapi_types.UUID `json:"id"`
 			IsInline          bool               `json:"isInline"`
+			Role              *string            `json:"role"`
 			ScanStatus        string             `json:"scanStatus"`
 			SizeBytes         int64              `json:"sizeBytes"`
 		} `json:"attachments"`
-		AuthorUserId  *openapi_types.UUID `json:"authorUserId"`
-		AutoSubmitted *bool               `json:"autoSubmitted"`
-		CreatedAt     time.Time           `json:"createdAt"`
+		AuthorUserId  *openapi_types.UUID    `json:"authorUserId"`
+		AutoSubmitted *bool                  `json:"autoSubmitted"`
+		Components    *gen.MessageComponents `json:"components"`
+		CreatedAt     time.Time              `json:"createdAt"`
 		Deliveries    []struct {
 			AcceptedAt    *time.Time         `json:"acceptedAt"`
 			Attempts      int32              `json:"attempts"`
@@ -591,6 +601,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			Status        string             `json:"status"`
 		} `json:"deliveries"`
 		Direction       string             `json:"direction"`
+		Echo            *bool              `json:"echo"`
 		FromAddress     *string            `json:"fromAddress"`
 		FromDisplayName *string            `json:"fromDisplayName"`
 		HtmlBody        *string            `json:"htmlBody"`
@@ -637,6 +648,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			}
 		}
 		out = append(out, struct {
+			AnswerTo    *gen.MessageAnswer `json:"answerTo"`
 			Attachments []struct {
 				ContentId         *string            `json:"contentId"`
 				ContentType       string             `json:"contentType"`
@@ -646,12 +658,14 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 				FileName          string             `json:"fileName"`
 				Id                openapi_types.UUID `json:"id"`
 				IsInline          bool               `json:"isInline"`
+				Role              *string            `json:"role"`
 				ScanStatus        string             `json:"scanStatus"`
 				SizeBytes         int64              `json:"sizeBytes"`
 			} `json:"attachments"`
-			AuthorUserId  *openapi_types.UUID `json:"authorUserId"`
-			AutoSubmitted *bool               `json:"autoSubmitted"`
-			CreatedAt     time.Time           `json:"createdAt"`
+			AuthorUserId  *openapi_types.UUID    `json:"authorUserId"`
+			AutoSubmitted *bool                  `json:"autoSubmitted"`
+			Components    *gen.MessageComponents `json:"components"`
+			CreatedAt     time.Time              `json:"createdAt"`
 			Deliveries    []struct {
 				AcceptedAt    *time.Time         `json:"acceptedAt"`
 				Attempts      int32              `json:"attempts"`
@@ -662,6 +676,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 				Status        string             `json:"status"`
 			} `json:"deliveries"`
 			Direction       string             `json:"direction"`
+			Echo            *bool              `json:"echo"`
 			FromAddress     *string            `json:"fromAddress"`
 			FromDisplayName *string            `json:"fromDisplayName"`
 			HtmlBody        *string            `json:"htmlBody"`

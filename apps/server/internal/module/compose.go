@@ -436,6 +436,15 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		return nil, err
 	}
 
+	// The channel messengers (contracts.ChannelMessenger, Messenger design
+	// N2), keyed as the channel mailboxes, are collected after them, by the
+	// helper Workers uses too: Communications' outbox and messenger sync
+	// run through them in worker mode as the API does. A key filled in both
+	// slots is refused.
+	if deps, err = withChannelMessengers(deps, mods); err != nil {
+		return nil, err
+	}
+
 	// The personal mailboxes (contracts.PersonalMailbox, Outlook connection
 	// design M20), keyed as the mailbox calendars, are collected after the
 	// channel mailboxes, by the helper Workers
