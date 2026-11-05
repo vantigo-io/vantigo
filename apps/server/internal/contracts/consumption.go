@@ -89,7 +89,8 @@ const (
 //     own, and it is named a command for it (readings on the record 7) —
 //     the first of the provider commands module-boundaries rule 5 allows a
 //     read contract to carry: a command that writes only the provider's own
-//     schema, on the provider's own transaction. Settlements writes the same
+//     schema, on the provider's own transaction (BillableOrders' Allocate
+//     and ReleaseAllocations are the others). Settlements writes the same
 //     way when a draft it recomputes has changed, so the revision it answers
 //     is the one stored.
 //   - A blocked settlement is still answered, with Blocked set and no lines,

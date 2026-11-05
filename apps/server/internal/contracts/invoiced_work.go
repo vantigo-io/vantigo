@@ -25,9 +25,12 @@ const (
 // milestones), then Expenses (the claims, then the lines), then Time (the
 // entries), then Energy (the settlements, energy consumption billing design
 // D6: an energy row never shares a transaction with work, so its place only
-// has to be fixed). Every transaction that locks rows of more than one of
-// these modules takes them in this order, so no two can wait on each other.
-var InvoicedWorkOrder = []WorkSourceKind{WorkSourceMilestone, WorkSourceExpense, WorkSourceHours, WorkSourceSettlement}
+// has to be fixed), then Orders (the orders, then their lines, then the
+// allocations, orders design O38: an invoice may mix a project's hours and an
+// order's lines, so Orders comes after every kind of work). Every transaction
+// that locks rows of more than one of these modules takes them in this order,
+// so no two can wait on each other.
+var InvoicedWorkOrder = []WorkSourceKind{WorkSourceMilestone, WorkSourceExpense, WorkSourceHours, WorkSourceSettlement, WorkSourceOrderAllocation}
 
 // InvoicedWorkHolder is a module whose rows an invoice is built from, and the
 // third sanctioned cross-module WRITE (module-boundaries rule 10), beside

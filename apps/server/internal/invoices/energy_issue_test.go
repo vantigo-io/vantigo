@@ -446,7 +446,8 @@ func TestEnergy_TheIssueNeedsNoProjects(t *testing.T) {
 }
 
 // A draft billing work and a settlement calls Energy's holder last, after
-// Projects', Expenses' and Time's — contracts.InvoicedWorkOrder.
+// Projects', Expenses' and Time's — contracts.InvoicedWorkOrder, where only
+// Orders' allocations come after it.
 func TestEnergy_TheSettlementsHolderIsCalledLast(t *testing.T) {
 	t.Parallel()
 	f := newFakeConsumption()
@@ -465,8 +466,8 @@ func TestEnergy_TheSettlementsHolderIsCalledLast(t *testing.T) {
 	if got, want := holders.calledOrder(), append(slices.Clone(workKinds), kindSettlement); !slices.Equal(got, want) {
 		t.Errorf("holders called = %v, want %v", got, want)
 	}
-	if got, want := contracts.InvoicedWorkOrder[len(contracts.InvoicedWorkOrder)-1], kindSettlement; got != want {
-		t.Errorf("the lock order ends with %s, want %s", got, want)
+	if got, want := contracts.InvoicedWorkOrder[len(contracts.InvoicedWorkOrder)-2:], []contracts.WorkSourceKind{kindSettlement, contracts.WorkSourceOrderAllocation}; !slices.Equal(got, want) {
+		t.Errorf("the lock order ends with %v, want %v", got, want)
 	}
 }
 
