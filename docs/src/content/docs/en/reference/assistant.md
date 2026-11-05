@@ -331,13 +331,14 @@ that replays the turn carries the same bytes. The person never sees it, and the 
 The route list the prompt carries is the host's route shapes (`appRoutes` in `prompt.go`): the same
 list `navigate` validates against. It names one prefix per app with the record screens under it — for
 Inventory, `/inventory` with a site, a location, a variant's stock and the movements, and for Orders,
-`/orders` with a quote, an order, the templates and the settings, beside the customer's `/orders` tab — so an app the
+`/orders` with a quote, an order, the templates, the settings and the sales analysis, beside the customer's `/orders` tab — so an app the
 list does not name cannot be linked to. Its targets join [the registry](#guided-tours) the same way:
 `@vantigo/inventory-ui` exports its own — the lookup, a new site, location, receipt,
 adjustment and move, bulk adding locations, printing labels, opening a count and the import's file — as
-`@vantigo/orders-ui` exports its sixteen — a new quote and order and their customer pickers, saving, sending
+`@vantigo/orders-ui` exports its twenty-one — a new quote and order and their customer pickers, saving, sending
 and accepting a quote, saving and confirming an order, a new template, the settings and the customer tab's
-New quote and New order ([Orders](/en/reference/orders/#assistant-tour-targets)) — and the host's `assist-targets.ts` collects them.
+New quote and New order, and since A2 a document's warnings, the settings' sales warnings, adding lines from
+the variant grid, and the analysis views and their CSV download ([Orders](/en/reference/orders/#assistant-tour-targets)) — and the host's `assist-targets.ts` collects them.
 
 ## Claude and preserved thinking
 
