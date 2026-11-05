@@ -190,6 +190,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/settings/tax-category-vat-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the tax categories' VAT codes
+         * @description Every Products tax category mapped to a VAT code (orders design O7), by the category's id. An unmapped category is absent.
+         */
+        get: operations["getInvoicesSettingsTaxCategoryVatCodes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/settings/tax-category-vat-codes/{taxCategoryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a tax category's VAT code
+         * @description Maps a Products tax category to a VAT code (orders design O7), replacing any code it had. The code must exist and be active; the tax category's id is not checked against Products.
+         */
+        put: operations["putInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId"];
+        post?: never;
+        /**
+         * Remove a tax category's VAT code
+         * @description Removes a tax category's VAT code (orders design O7). The category then has none, and an order line in it is refused at confirm. Removing what is not there is a 204 too.
+         */
+        delete: operations["deleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/collection-rates": {
         parameters: {
             query?: never;
@@ -2805,6 +2849,21 @@ export interface components {
             data: components["schemas"]["InvoicesReminderRun"][];
             pagination: components["schemas"]["PaginationMetadata"];
         };
+        /** @description One Products tax category mapped to one of Invoices' VAT codes (orders design O7). Invoices stores the tax category's id only and cannot name it: the settings page reads the names from the products API. A category with no mapping has no VAT code — there is no default. */
+        InvoicesTaxCategoryVatCode: {
+            /**
+             * Format: int32
+             * @description The tax category's id in Products.
+             */
+            taxCategoryId: number;
+            /** Format: int32 */
+            vatCodeId: number;
+        };
+        /** @description The VAT code a tax category maps to. It must exist and be active (400 on vatCodeId). */
+        InvoicesTaxCategoryVatCodeRequest: {
+            /** Format: int32 */
+            vatCodeId: number;
+        };
         /** @description One VAT code with every rate period it has had (D3). inUse is true once any line, draft or issued, carries the code; from then on its category and SAF-T code cannot change (409 vat_code_in_use). */
         InvoicesVatCode: {
             active: boolean;
@@ -5308,6 +5367,135 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesSettingsTaxCategoryVatCodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesTaxCategoryVatCode"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taxCategoryId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesTaxCategoryVatCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesTaxCategoryVatCode"];
+                };
+            };
+            /** @description Bad Request — taxCategoryId is not positive, or vatCodeId names no code or an inactive one; the errors name the field. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteInvoicesSettingsTaxCategoryVatCodesByTaxCategoryId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taxCategoryId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — the category has no VAT code. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };
