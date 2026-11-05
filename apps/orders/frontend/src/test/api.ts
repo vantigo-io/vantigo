@@ -103,6 +103,16 @@ export const commonAnswers = (call: Call, settings?: unknown, meta?: unknown): R
           city: "Oslo",
           country: "NO",
         },
+        {
+          id: 6,
+          type: "visiting",
+          isPrimary: true,
+          label: "Besøk",
+          line1: "Besøksveien 1",
+          postalCode: "0151",
+          city: "Oslo",
+          country: "NO",
+        },
       ],
     });
   if (/^\/api\/v1\/customers\/\d+\/contacts$/.test(url))

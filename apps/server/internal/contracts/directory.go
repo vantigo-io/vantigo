@@ -61,8 +61,8 @@ type ContactMatch struct {
 
 // CustomerAddressEntry is one resolved address, embedded in
 // CustomerBillingProfile.InvoiceAddress and listed in its DeliveryAddresses:
-// enough to print on a document, never the address's type — the profile has
-// already picked which ones apply.
+// enough to print on a document, and in DeliveryAddresses its type, since
+// a document may deliver to any of the customer's addresses.
 //
 // ID is the address's own id in a DeliveryAddresses entry, so a document's
 // chosen delivery address is found again on refresh (orders design O10), and
@@ -72,7 +72,11 @@ type ContactMatch struct {
 // it; a consumer compares it case-insensitively and prints it in whatever
 // case its own format wants.
 type CustomerAddressEntry struct {
-	ID                                                     int32
+	ID int32
+	// Type is the address's type in Customers — "delivery", "visiting",
+	// "postal" or "invoice" — on the entries of DeliveryAddresses, and "" on
+	// the resolved InvoiceAddress.
+	Type                                                   string
 	Label, Line1, Line2, PostalCode, City, Region, Country string
 }
 
@@ -136,9 +140,10 @@ type CustomerBillingProfile struct {
 	// tier, so nil means this customer decided nothing, and a consumer pricing
 	// hours (Time's rate chain) falls through to its next step.
 	DefaultBillRate *float64
-	// DeliveryAddresses are the customer's delivery addresses, the primary
-	// one first, then the others, each with its ID (orders design O10); empty
-	// when the customer has none. Filled only when the caller asks
+	// DeliveryAddresses are every address of the customer a delivery may go
+	// to, each with its ID and Type (orders design O10): the delivery
+	// addresses first, the primary one first, then the visiting, postal and
+	// invoice ones. Empty when the customer has none. Filled only when the caller asks
 	// (BillingProfileOptions.WithDelivery), nil otherwise.
 	DeliveryAddresses []CustomerAddressEntry
 	// Contacts are the customer's contacts, archived ones left out (orders

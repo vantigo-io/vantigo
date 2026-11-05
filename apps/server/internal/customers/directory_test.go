@@ -599,9 +599,11 @@ func TestDirectory_BillingProfile_DeliveryAndContactsOnlyWhenAsked(t *testing.T)
 	if err != nil || got == nil {
 		t.Fatalf("BillingProfile(both) = %+v, %v", got, err)
 	}
-	if len(got.DeliveryAddresses) != 2 || got.DeliveryAddresses[0].ID != primary || got.DeliveryAddresses[1].ID != other ||
-		got.DeliveryAddresses[0].City != "Oslo" {
-		t.Errorf("DeliveryAddresses = %+v, want %d (primary) then %d", got.DeliveryAddresses, primary, other)
+	// Every address a delivery may go to: the delivery addresses first, the
+	// primary one first, then the others — here the invoice address.
+	if len(got.DeliveryAddresses) != 3 || got.DeliveryAddresses[0].ID != primary || got.DeliveryAddresses[1].ID != other ||
+		got.DeliveryAddresses[0].City != "Oslo" || got.DeliveryAddresses[0].Type != "delivery" || got.DeliveryAddresses[2].Type != "invoice" {
+		t.Errorf("DeliveryAddresses = %+v, want %d (primary) then %d, then the invoice address", got.DeliveryAddresses, primary, other)
 	}
 	want := contracts.CustomerContactEntry{ID: contact, Name: "Kari Nordmann", Email: "kari.levering@example.com", Roles: []string{"billing"}}
 	if len(got.Contacts) != 1 || !reflect.DeepEqual(got.Contacts[0], want) {

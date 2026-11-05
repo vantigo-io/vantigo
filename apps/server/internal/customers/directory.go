@@ -239,7 +239,7 @@ func (d *directory) BillingProfile(ctx context.Context, id int32, opts contracts
 		resolved.DeliveryAddresses = make([]contracts.CustomerAddressEntry, 0, len(rows))
 		for _, a := range rows {
 			resolved.DeliveryAddresses = append(resolved.DeliveryAddresses, contracts.CustomerAddressEntry{
-				ID: a.ID, Label: deref(a.Label), Line1: a.Line1, Line2: deref(a.Line2),
+				ID: a.ID, Type: a.Type, Label: deref(a.Label), Line1: a.Line1, Line2: deref(a.Line2),
 				PostalCode: deref(a.PostalCode), City: deref(a.City), Region: deref(a.Region), Country: a.Country,
 			})
 		}

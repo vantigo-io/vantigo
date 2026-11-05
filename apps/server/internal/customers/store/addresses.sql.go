@@ -89,14 +89,16 @@ func (q *Queries) DeleteCustomerAddress(ctx context.Context, arg DeleteCustomerA
 }
 
 const directoryDeliveryAddresses = `-- name: DirectoryDeliveryAddresses :many
-SELECT id, label, line1, line2, postal_code, city, region, country
+SELECT id, type, label, line1, line2, postal_code, city, region, country
 FROM customers.customer_addresses
-WHERE customer_id = $1 AND type = 'delivery'
-ORDER BY is_primary DESC, id
+WHERE customer_id = $1
+ORDER BY CASE type WHEN 'delivery' THEN 0 WHEN 'visiting' THEN 1 WHEN 'postal' THEN 2 ELSE 3 END,
+         is_primary DESC, id
 `
 
 type DirectoryDeliveryAddressesRow struct {
 	ID         int32
+	Type       string
 	Label      *string
 	Line1      string
 	Line2      *string
@@ -107,8 +109,10 @@ type DirectoryDeliveryAddressesRow struct {
 }
 
 // DirectoryDeliveryAddresses is contracts.CustomerDirectory.BillingProfile's
-// delivery addresses, read only when the caller asks (orders design O10): the
-// primary one first, then the others by id, each with its id.
+// delivery addresses, read only when the caller asks (orders design O10):
+// every address of the customer a delivery may go to, the delivery addresses
+// first (the primary one first), then the visiting, postal and invoice ones,
+// each type's primary first, then by id, each with its id and type.
 func (q *Queries) DirectoryDeliveryAddresses(ctx context.Context, customerID int32) ([]DirectoryDeliveryAddressesRow, error) {
 	rows, err := q.db.Query(ctx, directoryDeliveryAddresses, customerID)
 	if err != nil {
@@ -120,6 +124,7 @@ func (q *Queries) DirectoryDeliveryAddresses(ctx context.Context, customerID int
 		var i DirectoryDeliveryAddressesRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.Type,
 			&i.Label,
 			&i.Line1,
 			&i.Line2,

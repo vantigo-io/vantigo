@@ -46,7 +46,9 @@ page instead. A disabled, archived or merged customer cannot get a new quote.
 ### The header
 
 While the quote is a draft you can change **Delivery address** (by default the customer's
-address), **Contact person**, **Your reference**, **Salesperson** (**Make me the
+primary delivery address; any of the customer's addresses may be chosen, and one that is not
+a delivery address on the customer — a visiting or postal address, say — is accepted with
+the yellow note *This is not a delivery address on the customer.*), **Contact person**, **Your reference**, **Salesperson** (**Make me the
 salesperson** sets you), **Project**, **Currency**, **Prices** (**excl. VAT** or **incl.
 VAT**), **Payment terms**, **Document language**, **Valid until**, **Delivery date** and
 **Show the discount on the PDF**, and under **Texts** the **Intro text**, the **Closing

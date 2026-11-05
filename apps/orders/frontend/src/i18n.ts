@@ -139,6 +139,8 @@ export const ordersCatalog = {
     // The header
     deliveryAddress: "Delivery address",
     deliveryAddressDefault: "The customer's address",
+    deliveryAddressNotDelivery: "This is not a delivery address on the customer.",
+    deliveryAddressUnknown: "The customer no longer has this address.",
     contactPerson: "Contact person",
     contactNone: "No contact",
     yourReference: "Your reference",
@@ -1068,6 +1070,8 @@ export const ordersCatalog = {
 
     deliveryAddress: "Leveringsadresse",
     deliveryAddressDefault: "Kundens adresse",
+    deliveryAddressNotDelivery: "Dette er ikke en leveringsadresse på kunden.",
+    deliveryAddressUnknown: "Kunden har ikke lenger denne adressen.",
     contactPerson: "Kontaktperson",
     contactNone: "Ingen kontaktperson",
     yourReference: "Deres referanse",
