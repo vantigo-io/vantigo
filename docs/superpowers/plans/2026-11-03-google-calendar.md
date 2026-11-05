@@ -174,7 +174,7 @@ Checked against `0bae1d8c` (`main`, deliveries 0–D merged).
 
 - [x] **1. Plan** — this file, `docs(google): the plan for calendar sync (Google E)`.
 - [x] **2. The tables and the contract** — `feat(google): the calendar's tables and the notifications endpoint's contract (Google E)`.
-  `00117_google_calendar.sql`, `queries/calendar.sql`, sqlc, `schema_test`; the sweep's
+  `00128_google_calendar.sql`, `queries/calendar.sql`, sqlc, `schema_test`; the sweep's
   channel rule; `openapi/google.yaml` (the endpoint); `go generate`; the frontend schema
   (`bun run gen:client`).
 - [x] **3. The provider** — `feat(google): calendar sync through the person's Google connection (Google E)`.
