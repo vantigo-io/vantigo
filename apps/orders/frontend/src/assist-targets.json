@@ -1,1 +1,146 @@
-[]
+[
+  {
+    "key": "orders.quotes.new",
+    "route": "/orders/quotes",
+    "label": { "en": "New quote", "nb": "Nytt tilbud" },
+    "description": {
+      "en": "The button above the quote list that starts a new quote.",
+      "nb": "Knappen over tilbudslisten som starter et nytt tilbud."
+    }
+  },
+  {
+    "key": "orders.new-quote.customer",
+    "route": "/orders/quotes/new",
+    "label": { "en": "Customer", "nb": "Kunde" },
+    "description": {
+      "en": "The customer picker a new quote starts from.",
+      "nb": "Kundevelgeren et nytt tilbud starter fra."
+    }
+  },
+  {
+    "key": "orders.new-quote.create",
+    "route": "/orders/quotes/new",
+    "label": { "en": "Create the quote", "nb": "Opprett tilbudet" },
+    "description": {
+      "en": "Creates the draft quote for the picked customer and opens its editor.",
+      "nb": "Oppretter tilbudsutkastet for den valgte kunden og åpner det."
+    }
+  },
+  {
+    "key": "orders.quote.save",
+    "route": "/orders/quotes/{quoteId}",
+    "label": { "en": "Save", "nb": "Lagre" },
+    "description": {
+      "en": "Saves a draft quote's header and lines; the server prices the lines and computes the totals.",
+      "nb": "Lagrer hodet og linjene i et tilbudsutkast; serveren priser linjene og beregner summene."
+    }
+  },
+  {
+    "key": "orders.quote.send",
+    "route": "/orders/quotes/{quoteId}",
+    "label": { "en": "Send", "nb": "Send" },
+    "description": {
+      "en": "Opens the send dialog that e-mails the quote's PDF to the customer and moves it to sent.",
+      "nb": "Åpner dialogen som sender tilbudets PDF på e-post til kunden og markerer det som sendt."
+    }
+  },
+  {
+    "key": "orders.quote.accept",
+    "route": "/orders/quotes/{quoteId}",
+    "label": { "en": "Accept", "nb": "Aksepter" },
+    "description": {
+      "en": "Records that the customer accepted a sent quote and makes an order of it.",
+      "nb": "Registrerer at kunden aksepterte et sendt tilbud og lager en ordre av det."
+    }
+  },
+  {
+    "key": "orders.quote.accept-into",
+    "route": "/orders/quotes/{quoteId}",
+    "label": { "en": "Accept the quote", "nb": "Aksepter tilbudet" },
+    "description": {
+      "en": "The accept dialog: the optional lines the customer took, and whether a draft or a confirmed order is made.",
+      "nb": "Akseptdialogen: de valgfrie linjene kunden tok, og om det lages et ordreutkast eller en bekreftet ordre."
+    }
+  },
+  {
+    "key": "orders.orders.new",
+    "route": "/orders/orders",
+    "label": { "en": "New order", "nb": "Ny ordre" },
+    "description": {
+      "en": "The button above the order list that starts a new order.",
+      "nb": "Knappen over ordrelisten som starter en ny ordre."
+    }
+  },
+  {
+    "key": "orders.new-order.customer",
+    "route": "/orders/orders/new",
+    "label": { "en": "Customer", "nb": "Kunde" },
+    "description": {
+      "en": "The customer picker a new order starts from.",
+      "nb": "Kundevelgeren en ny ordre starter fra."
+    }
+  },
+  {
+    "key": "orders.new-order.create",
+    "route": "/orders/orders/new",
+    "label": { "en": "Create the order", "nb": "Opprett ordren" },
+    "description": {
+      "en": "Creates the draft order for the picked customer and opens its editor.",
+      "nb": "Oppretter ordreutkastet for den valgte kunden og åpner det."
+    }
+  },
+  {
+    "key": "orders.order.save",
+    "route": "/orders/orders/{orderId}",
+    "label": { "en": "Save", "nb": "Lagre" },
+    "description": {
+      "en": "Saves an order's header and lines; a confirmed order takes changes to what is not delivered or invoiced.",
+      "nb": "Lagrer hodet og linjene i en ordre; en bekreftet ordre kan endres i det som ikke er levert eller fakturert."
+    }
+  },
+  {
+    "key": "orders.order.confirm",
+    "route": "/orders/orders/{orderId}",
+    "label": { "en": "Confirm", "nb": "Bekreft" },
+    "description": {
+      "en": "Confirms a draft order: freezes its prices and customer, and stores the order confirmation.",
+      "nb": "Bekrefter et ordreutkast: låser prisene og kunden, og lagrer ordrebekreftelsen."
+    }
+  },
+  {
+    "key": "orders.templates.new",
+    "route": "/orders/templates",
+    "label": { "en": "New template", "nb": "Ny mal" },
+    "description": {
+      "en": "Starts a new quote template with texts and lines a quote can start from.",
+      "nb": "Starter en ny tilbudsmal med tekster og linjer et tilbud kan starte fra."
+    }
+  },
+  {
+    "key": "orders.settings.save",
+    "route": "/orders/settings",
+    "label": { "en": "Save", "nb": "Lagre" },
+    "description": {
+      "en": "Saves the Orders settings: number series, validity, payment terms, the send channel and the mail texts.",
+      "nb": "Lagrer innstillingene for Ordre: nummerserier, gyldighet, betalingsbetingelser, avsenderkanal og e-posttekster."
+    }
+  },
+  {
+    "key": "orders.customer.new-quote",
+    "route": "/customers/{customerId}/orders",
+    "label": { "en": "New quote", "nb": "Nytt tilbud" },
+    "description": {
+      "en": "On the customer's Orders tab, starts a new quote for this customer.",
+      "nb": "På kundens Ordre-fane: starter et nytt tilbud til denne kunden."
+    }
+  },
+  {
+    "key": "orders.customer.new-order",
+    "route": "/customers/{customerId}/orders",
+    "label": { "en": "New order", "nb": "Ny ordre" },
+    "description": {
+      "en": "On the customer's Orders tab, starts a new order for this customer.",
+      "nb": "På kundens Ordre-fane: starter en ny ordre til denne kunden."
+    }
+  }
+]

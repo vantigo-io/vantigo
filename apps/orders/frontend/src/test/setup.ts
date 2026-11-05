@@ -59,3 +59,11 @@ Object.defineProperty(navigator, "clipboard", {
     writeText: async () => {},
   },
 });
+
+// Mantine's autosizing textarea listens for web fonts loading.
+if (!("fonts" in document)) {
+  Object.defineProperty(document, "fonts", {
+    value: { addEventListener: vi.fn(), removeEventListener: vi.fn() },
+    configurable: true,
+  });
+}
