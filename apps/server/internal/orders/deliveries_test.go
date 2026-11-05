@@ -352,7 +352,9 @@ func TestDelivery_PartialPostBackOrderAndRefusals(t *testing.T) {
 
 	res = c.Do(http.MethodGet, deliveryPath(d.Id, "pick-list"), nil)
 	mustStatus(t, res, http.StatusOK, "pick list")
-	if m, ok := pdfModels.find("Plukkliste", fmt.Sprintf("Leveranse %d – Ordre %d", d.Number, o.Number)); !ok ||
+	if m, ok := pdfModels.find("Plukkliste", fmt.Sprintf("Leveranse %d – Ordre %d", d.Number, o.Number), func(m orders.PDFModel) bool {
+		return len(m.Rows) == 2 && m.Rows[0][0] == "OSL-A-01"
+	}); !ok ||
 		len(m.Rows) != 2 || m.Rows[0][0] != "OSL-A-01" || m.Rows[1][0] != "OSL-A-02" {
 		t.Errorf("pick list %+v, %v; want the lines by location", m.Rows, ok)
 	}
@@ -392,7 +394,9 @@ func TestDelivery_PartialPostBackOrderAndRefusals(t *testing.T) {
 	}
 	res = c.Do(http.MethodGet, deliveryPath(d.Id, "packing-slip"), nil)
 	mustStatus(t, res, http.StatusOK, "packing slip")
-	if m, ok := pdfModels.find("Pakkseddel", fmt.Sprintf("Leveranse %d – Ordre %d", d.Number, o.Number)); !ok ||
+	if m, ok := pdfModels.find("Pakkseddel", fmt.Sprintf("Leveranse %d – Ordre %d", d.Number, o.Number), func(m orders.PDFModel) bool {
+		return len(m.Rows) == 2 && m.Rows[0][2] == "4"
+	}); !ok ||
 		len(m.Rows) != 2 || m.Rows[0][2] != "4" || m.Rows[0][3] != "6" {
 		t.Errorf("packing slip %+v, %v; want 4 delivered and 6 on back order", m.Rows, ok)
 	}
