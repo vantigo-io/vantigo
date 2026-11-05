@@ -76,9 +76,10 @@ WHERE id = @id;
 -- send takes (Outlook connection design M13): an 'smtp' channel sends over its
 -- credential row, a mailbox channel through the ChannelMailbox filled under
 -- its provider to the mailbox its settings name, and has no credential row;
--- send_provider names the PersonalMailbox a personal message goes through.
-SELECT m.id, m.author_user_id, m.send_as, m.send_provider, m.from_address, m.from_display_name,
-       m.subject, m.text_body, m.html_body, m.channel_metadata_json,
+-- send_provider names the PersonalMailbox a personal message goes through; on a
+-- Messenger channel the conversation (its reply window) and the components.
+SELECT m.id, m.conversation_id, m.author_user_id, m.send_as, m.send_provider, m.from_address, m.from_display_name,
+       m.subject, m.text_body, m.html_body, m.channel_metadata_json, m.components,
        c.subject AS conversation_subject,
        ch.type AS channel_type, ch.address AS channel_address,
        ch.display_name AS channel_display_name,
@@ -115,7 +116,7 @@ WHERE id = @id;
 -- §15.1, §15.5). scan_status comes back so the worker can refuse a message
 -- carrying any non-clean attachment; storage_key is what the object store is
 -- read by.
-SELECT id, file_name, content_type, content_id, is_inline, storage_key, scan_status
+SELECT id, file_name, content_type, content_id, is_inline, storage_key, scan_status, role
 FROM communications.message_attachments
 WHERE message_id = @message_id
 ORDER BY created_at ASC, id ASC;
@@ -233,3 +234,37 @@ SET channel_metadata_json = CASE
     END,
     sent_message_id = COALESCE(sqlc.narg('sent_message_id')::text, sent_message_id)
 WHERE id = @id;
+
+-- A message on a Messenger channel is sent as ordered parts (Messenger design
+-- N7), the progress of each kept in messenger_parts, each statement of it
+-- outside any transaction.
+
+-- name: RenewOutboxJobLease :execrows
+-- Before every part after the first: the job's lease another full lease from
+-- now, by a conditional update on its lease_id. 0 rows is a lease that was
+-- taken, and the job stops without sending.
+UPDATE communications.outbox_jobs
+SET lease_until = @lease_until
+WHERE id = @id AND lease_id = @lease_id AND status = 'processing';
+
+-- name: ListMessengerParts :many
+-- The parts of a message already attempted, for a job claimed again to skip
+-- the sent ones.
+SELECT part_index, attempted_at, platform_message_id, sent_at
+FROM communications.messenger_parts
+WHERE message_id = @message_id;
+
+-- name: StampMessengerPartAttempt :exec
+-- The part's marker, written immediately before its Send and committed on its
+-- own: a part with an attempt and no sent_at is the per-part possible
+-- duplicate. A part attempted before is stamped again.
+INSERT INTO communications.messenger_parts (message_id, part_index, attempted_at)
+VALUES (@message_id, @part_index, @attempted_at)
+ON CONFLICT (message_id, part_index) DO UPDATE SET attempted_at = excluded.attempted_at;
+
+-- name: RecordMessengerPartSent :exec
+-- What the platform answered of the part, immediately after its Send: the id
+-- that matches an answer or an echo to the message, and the time.
+UPDATE communications.messenger_parts
+SET platform_message_id = @platform_message_id, sent_at = @sent_at
+WHERE message_id = @message_id AND part_index = @part_index;

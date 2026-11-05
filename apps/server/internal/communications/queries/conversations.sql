@@ -172,11 +172,11 @@ RETURNING id;
 INSERT INTO communications.conversation_messages
  (id, conversation_id, direction, participant_id, author_user_id, subject, text_body, html_body,
   channel_metadata_json, occurred_at, created_at, rfc_message_id, send_as, from_address, from_display_name,
-  send_provider)
+  send_provider, components)
 VALUES (@id, @conversation_id, @direction, @participant_id, @author_user_id, @subject, @text_body, @html_body,
   @channel_metadata_json, @occurred_at, @created_at, @rfc_message_id,
   COALESCE(NULLIF(@send_as::text, ''), 'channel'), @from_address, @from_display_name,
-  sqlc.narg('send_provider')::text)
+  sqlc.narg('send_provider')::text, sqlc.narg('components')::jsonb)
 RETURNING id;
 
 -- name: UpdateConversationFields :one
@@ -419,4 +419,18 @@ SELECT occurred_at
 FROM communications.conversation_messages
 WHERE conversation_id = @conversation_id AND direction = 'inbound'
 ORDER BY occurred_at DESC, id DESC
+LIMIT 1;
+
+-- name: GetMessengerReplyParticipant :one
+-- Who a reply on a Messenger conversation answers (N7): the conversation's
+-- participant — the one whose message came last, when there are several. A
+-- conversation the Page started from the platform has one too, through its
+-- echo, though nothing of theirs was received.
+SELECT p.id, p.address
+FROM communications.conversation_participants cp
+JOIN communications.participants p ON p.id = cp.participant_id
+WHERE cp.conversation_id = @conversation_id
+ORDER BY (SELECT max(m.occurred_at) FROM communications.conversation_messages m
+          WHERE m.conversation_id = cp.conversation_id AND m.participant_id = p.id AND m.direction = 'inbound') DESC NULLS LAST,
+         p.created_at ASC, p.id ASC
 LIMIT 1;

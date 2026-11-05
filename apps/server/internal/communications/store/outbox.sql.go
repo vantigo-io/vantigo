@@ -173,8 +173,8 @@ func (q *Queries) FinishOutboxJob(ctx context.Context, arg FinishOutboxJobParams
 }
 
 const getOutboundMessageForSend = `-- name: GetOutboundMessageForSend :one
-SELECT m.id, m.author_user_id, m.send_as, m.send_provider, m.from_address, m.from_display_name,
-       m.subject, m.text_body, m.html_body, m.channel_metadata_json,
+SELECT m.id, m.conversation_id, m.author_user_id, m.send_as, m.send_provider, m.from_address, m.from_display_name,
+       m.subject, m.text_body, m.html_body, m.channel_metadata_json, m.components,
        c.subject AS conversation_subject,
        ch.type AS channel_type, ch.address AS channel_address,
        ch.display_name AS channel_display_name,
@@ -190,6 +190,7 @@ WHERE m.id = $1
 
 type GetOutboundMessageForSendRow struct {
 	ID                         uuid.UUID
+	ConversationID             uuid.UUID
 	AuthorUserID               *uuid.UUID
 	SendAs                     string
 	SendProvider               *string
@@ -199,6 +200,7 @@ type GetOutboundMessageForSendRow struct {
 	TextBody                   *string
 	HtmlBody                   *string
 	ChannelMetadataJson        []byte
+	Components                 []byte
 	ConversationSubject        *string
 	ChannelType                string
 	ChannelAddress             string
@@ -223,12 +225,14 @@ type GetOutboundMessageForSendRow struct {
 // send takes (Outlook connection design M13): an 'smtp' channel sends over its
 // credential row, a mailbox channel through the ChannelMailbox filled under
 // its provider to the mailbox its settings name, and has no credential row;
-// send_provider names the PersonalMailbox a personal message goes through.
+// send_provider names the PersonalMailbox a personal message goes through; on a
+// Messenger channel the conversation (its reply window) and the components.
 func (q *Queries) GetOutboundMessageForSend(ctx context.Context, id uuid.UUID) (GetOutboundMessageForSendRow, error) {
 	row := q.db.QueryRow(ctx, getOutboundMessageForSend, id)
 	var i GetOutboundMessageForSendRow
 	err := row.Scan(
 		&i.ID,
+		&i.ConversationID,
 		&i.AuthorUserID,
 		&i.SendAs,
 		&i.SendProvider,
@@ -238,6 +242,7 @@ func (q *Queries) GetOutboundMessageForSend(ctx context.Context, id uuid.UUID) (
 		&i.TextBody,
 		&i.HtmlBody,
 		&i.ChannelMetadataJson,
+		&i.Components,
 		&i.ConversationSubject,
 		&i.ChannelType,
 		&i.ChannelAddress,
@@ -335,7 +340,7 @@ func (q *Queries) LatestMessageEvent(ctx context.Context, messageID uuid.UUID) (
 }
 
 const listMessageAttachmentsForSend = `-- name: ListMessageAttachmentsForSend :many
-SELECT id, file_name, content_type, content_id, is_inline, storage_key, scan_status
+SELECT id, file_name, content_type, content_id, is_inline, storage_key, scan_status, role
 FROM communications.message_attachments
 WHERE message_id = $1
 ORDER BY created_at ASC, id ASC
@@ -349,6 +354,7 @@ type ListMessageAttachmentsForSendRow struct {
 	IsInline    bool
 	StorageKey  string
 	ScanStatus  string
+	Role        string
 }
 
 // Step 4's gate (`:145-146`) and the envelope's attachment list (inventory
@@ -372,6 +378,7 @@ func (q *Queries) ListMessageAttachmentsForSend(ctx context.Context, messageID u
 			&i.IsInline,
 			&i.StorageKey,
 			&i.ScanStatus,
+			&i.Role,
 		); err != nil {
 			return nil, err
 		}
@@ -418,6 +425,46 @@ func (q *Queries) ListMessageDeliveriesForSend(ctx context.Context, messageID uu
 			&i.RecipientType,
 			&i.Status,
 			&i.Attempts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMessengerParts = `-- name: ListMessengerParts :many
+SELECT part_index, attempted_at, platform_message_id, sent_at
+FROM communications.messenger_parts
+WHERE message_id = $1
+`
+
+type ListMessengerPartsRow struct {
+	PartIndex         int32
+	AttemptedAt       *time.Time
+	PlatformMessageID *string
+	SentAt            *time.Time
+}
+
+// The parts of a message already attempted, for a job claimed again to skip
+// the sent ones.
+func (q *Queries) ListMessengerParts(ctx context.Context, messageID uuid.UUID) ([]ListMessengerPartsRow, error) {
+	rows, err := q.db.Query(ctx, listMessengerParts, messageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMessengerPartsRow
+	for rows.Next() {
+		var i ListMessengerPartsRow
+		if err := rows.Scan(
+			&i.PartIndex,
+			&i.AttemptedAt,
+			&i.PlatformMessageID,
+			&i.SentAt,
 		); err != nil {
 			return nil, err
 		}
@@ -492,6 +539,31 @@ func (q *Queries) MarkMessageDeliverySuppressed(ctx context.Context, id uuid.UUI
 	return err
 }
 
+const recordMessengerPartSent = `-- name: RecordMessengerPartSent :exec
+UPDATE communications.messenger_parts
+SET platform_message_id = $1, sent_at = $2
+WHERE message_id = $3 AND part_index = $4
+`
+
+type RecordMessengerPartSentParams struct {
+	PlatformMessageID *string
+	SentAt            *time.Time
+	MessageID         uuid.UUID
+	PartIndex         int32
+}
+
+// What the platform answered of the part, immediately after its Send: the id
+// that matches an answer or an echo to the message, and the time.
+func (q *Queries) RecordMessengerPartSent(ctx context.Context, arg RecordMessengerPartSentParams) error {
+	_, err := q.db.Exec(ctx, recordMessengerPartSent,
+		arg.PlatformMessageID,
+		arg.SentAt,
+		arg.MessageID,
+		arg.PartIndex,
+	)
+	return err
+}
+
 const recordSentMessage = `-- name: RecordSentMessage :exec
 UPDATE communications.conversation_messages
 SET channel_metadata_json = CASE
@@ -516,6 +588,33 @@ type RecordSentMessageParams struct {
 func (q *Queries) RecordSentMessage(ctx context.Context, arg RecordSentMessageParams) error {
 	_, err := q.db.Exec(ctx, recordSentMessage, arg.ProviderThreadID, arg.SentMessageID, arg.ID)
 	return err
+}
+
+const renewOutboxJobLease = `-- name: RenewOutboxJobLease :execrows
+
+UPDATE communications.outbox_jobs
+SET lease_until = $1
+WHERE id = $2 AND lease_id = $3 AND status = 'processing'
+`
+
+type RenewOutboxJobLeaseParams struct {
+	LeaseUntil *time.Time
+	ID         uuid.UUID
+	LeaseID    *string
+}
+
+// A message on a Messenger channel is sent as ordered parts (Messenger design
+// N7), the progress of each kept in messenger_parts, each statement of it
+// outside any transaction.
+// Before every part after the first: the job's lease another full lease from
+// now, by a conditional update on its lease_id. 0 rows is a lease that was
+// taken, and the job stops without sending.
+func (q *Queries) RenewOutboxJobLease(ctx context.Context, arg RenewOutboxJobLeaseParams) (int64, error) {
+	result, err := q.db.Exec(ctx, renewOutboxJobLease, arg.LeaseUntil, arg.ID, arg.LeaseID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const selectClaimableOutboxJob = `-- name: SelectClaimableOutboxJob :one
@@ -567,6 +666,26 @@ func (q *Queries) SelectClaimableOutboxJob(ctx context.Context, now time.Time) (
 		&i.DeliveryAttemptedAt,
 	)
 	return i, err
+}
+
+const stampMessengerPartAttempt = `-- name: StampMessengerPartAttempt :exec
+INSERT INTO communications.messenger_parts (message_id, part_index, attempted_at)
+VALUES ($1, $2, $3)
+ON CONFLICT (message_id, part_index) DO UPDATE SET attempted_at = excluded.attempted_at
+`
+
+type StampMessengerPartAttemptParams struct {
+	MessageID   uuid.UUID
+	PartIndex   int32
+	AttemptedAt *time.Time
+}
+
+// The part's marker, written immediately before its Send and committed on its
+// own: a part with an attempt and no sent_at is the per-part possible
+// duplicate. A part attempted before is stamped again.
+func (q *Queries) StampMessengerPartAttempt(ctx context.Context, arg StampMessengerPartAttemptParams) error {
+	_, err := q.db.Exec(ctx, stampMessengerPartAttempt, arg.MessageID, arg.PartIndex, arg.AttemptedAt)
+	return err
 }
 
 const stampOutboxDeliveryAttempted = `-- name: StampOutboxDeliveryAttempted :execrows

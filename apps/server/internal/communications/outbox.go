@@ -150,14 +150,15 @@ func outboxTerminalCode(err error) string {
 	case errors.Is(err, errChannelNoCredentials):
 		return "channel_unavailable"
 	}
-	return ""
+	return messengerTerminalCode(err)
 }
 
-// outboxProviderHeld reports whether err is the mail channels provider being
-// unavailable — ErrMailboxUnavailable from Send, or no provider filled under
-// the channel's key — which holds the job rather than spending an attempt.
+// outboxProviderHeld reports whether err is the channel's provider being
+// unavailable — ErrMailboxUnavailable from a mailbox's Send,
+// ErrMessengerUnavailable from a messenger's, or no provider filled under the
+// channel's key — which holds the job rather than spending an attempt.
 func outboxProviderHeld(err error) bool {
-	return errors.Is(err, contracts.ErrMailboxUnavailable)
+	return errors.Is(err, contracts.ErrMailboxUnavailable) || errors.Is(err, contracts.ErrMessengerUnavailable)
 }
 
 // outboxProviderWait is the wait before the next try of a job held for its
@@ -293,6 +294,13 @@ func (w *OutboxWorker) ProcessOne(ctx context.Context) (bool, error) {
 		// cancellation propagates rather than burning an attempt.
 		if ctx.Err() != nil {
 			return true, err
+		}
+		// A Messenger job whose lease was taken between two parts stops: the new
+		// holder carries on from the parts recorded, and nothing is written here.
+		if errors.Is(err, errOutboxLeaseLost) {
+			w.logger().Info("outbound delivery stopped: another worker took the job's lease",
+				"worker", outboxWorkerName, "job", job.ID, "message", job.MessageID)
+			return true, nil
 		}
 		code := outboxTerminalCode(err)
 		held := code == "" && outboxProviderHeld(err)
@@ -460,6 +468,12 @@ func (w *OutboxWorker) deliver(ctx context.Context, job store.CommunicationsOutb
 		if suppressed {
 			return w.cancelSuppressed(ctx, job, sendable)
 		}
+	}
+
+	// A message on a Messenger channel is sent as ordered parts, each with a
+	// marker of its own in place of this job-level one (outbox_messenger.go).
+	if message.ChannelType == channelTypeMessenger {
+		return w.deliverMessenger(ctx, job, leaseID, message, sendable, attachments)
 	}
 
 	// Step 7: the marker, committed on its own before the send. Its
