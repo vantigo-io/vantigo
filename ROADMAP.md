@@ -64,20 +64,33 @@ Nothing is left to land. The [calendar module](#calendar), which depends on A an
 started on them: its delivery A reads every window in the viewer's zone and stores the
 zone each appointment was made in.
 
-### Cross-module domain events (deferred until Orders)
+### Cross-module domain events (done)
 
 Synchronous cross-module queries use in-process contracts from
 `internal/contracts` (e.g. `contracts.CustomerDirectory`) and need nothing more.
-For asynchronous "something happened" notifications the decided pattern is
+For asynchronous "something happened" notifications the pattern is
 **in-process domain events dispatched through a transactional outbox**: the
 publishing module writes the event in the same transaction as its state change,
-and a background worker dispatches to handlers with retries (the Communications
-outbox worker already proves the pattern). **No message broker** — Postgres is
-the queue, and every infrastructure piece multiplies per dedicated customer
-deployment. Build the event bus together with its first real consumer, most
-likely Orders (`OrderPlaced` → Communications sends confirmation, Inventory
-reserves stock). If a module is ever extracted, the outbox dispatcher targets a
+and a background worker dispatches to handlers with retries. **No message broker** —
+Postgres is the queue, and every infrastructure piece multiplies per dedicated
+customer deployment. If a module is ever extracted, the outbox dispatcher targets a
 transport instead of in-process handlers; event contracts stay unchanged.
+
+Built in [Orders](#orders)' delivery 0
+([design](docs/superpowers/specs/2026-11-05-orders-design.md), O1–O5): the platform
+package `internal/events` with `platform.events` and `platform.event_deliveries`,
+`events.Publish` on the publisher's own transaction, handlers as the many-provider slot
+`Module.EventHandlers` (module boundaries rule 23), the leased dispatcher
+`events.dispatch` with ordering per (handler, aggregate), backoff and death after eight
+failures, and the operator's list, retry and skip on the management listener
+([reference](docs/src/content/docs/en/contributing/platform-packages.md#the-domain-events-outbox)).
+No publisher or handler is composed yet; Orders' delivery A brings the first.
+
+**The outbox carries what may lag, never what must refuse.** Reserving stock for an
+order is **synchronous**, a contract call on the order's own transaction (Orders'
+delivery C), as the invoice stamp is (module boundaries rule 10): either can refuse,
+and a refusal must roll the order's change back. The outbox carries what may lag —
+the order confirmation Communications sends, the lines on the customer timeline.
 
 ### Integrations (in progress)
 
@@ -427,7 +440,7 @@ An overview panel per customer — open projects, unbilled hours and expenses, i
 revenue and outstanding once Invoices exists, last activity — host-composed from
 module contracts the same way the Energy and Projects tabs already are. Other
 modules writing to the customer timeline (project created/closed, invoice sent, supply
-period started), riding on the domain-events outbox deferred until Orders (see
+period started), riding on the domain-events outbox (built with Orders' delivery 0, see
 [Platform](#platform)). A customer default bill rate, slotted into the chain Projects
 and Time already resolve rates through (billing line → project → **customer** →
 person).
@@ -465,7 +478,8 @@ documents; two tiles and a **See invoices** link on the panel, and two more date
 [`docs/src/content/docs/en/reference/customers.md#customer-360`](docs/src/content/docs/en/reference/customers.md#customer-360).
 
 **Still ahead in this phase:** other modules writing to the customer timeline, riding
-on the outbox deferred until Orders.
+on the domain-events outbox, which Orders' delivery 0 built; Orders' own timeline lines
+come with its delivery A.
 
 *Unblocks:* the reason the customer page is meant to be the hub, not just a card.
 
@@ -519,7 +533,7 @@ Phase 6 is complete, and with it the Customers roadmap — this was its last del
 phase 5's delivery C landed after it, once Invoices existed, and phase 4's delivery E
 once the storage port had a model to copy. One thing is still deferred, waiting on
 another module rather than on Customers: the other modules' timeline writers (phase
-5), which ride on the domain-events outbox deferred until Orders.
+5), which ride on the domain-events outbox Orders' delivery 0 built.
 
 *Unblocks:* clean onboarding and offboarding, and a merge path that only gets more
 expensive the longer it waits.
@@ -853,7 +867,8 @@ it.
 
 **Transfers between sites** (sent, in transit, received) wait for Orders.
 **Reservations** — available is on hand less reserved, per site — with the
-`contracts.Stock` and `StockLedger` reads, wait for Orders and the domain-events outbox.
+`contracts.Stock` and `StockLedger` reads, come with Orders' delivery C; a reservation is
+made synchronously on the order's own transaction, not through the outbox.
 **Lots, serials, expiry, FEFO and traceability** wait for [Manufacturing](#manufacturing).
 **Negative stock**, allowed per site by an administrator, waits for Point of sale.
 **Placement** — a primary location, min and max, a low-stock list — waits for the
@@ -1082,8 +1097,9 @@ Moved to [Planning](#planning), which owns every booking of a person's time; Pro
   demand for a fourth role first.
 - **Project documents** — files on a project, once the object-storage scopes and a
   document model are settled (Communications' attachments are the working example).
-- **Domain events** — `ProjectCancelled` and friends once the event bus exists; see
-  [Platform](#cross-module-domain-events-deferred-until-orders). Until then every
+- **Domain events** — `ProjectCancelled` and friends, published through the
+  domain-events outbox, which now exists; see
+  [Platform](#cross-module-domain-events-done). Until a consumer needs them every
   consumer reads `contracts.ProjectDirectory` synchronously, which is enough.
 - **Assigning users who lack `projects:access`** — a manager can today only pick
   from the user directory, and a colleague without the permission would be assigned
@@ -1443,6 +1459,40 @@ charges outstanding · the invoice number on `InvoicesReminder`, so a letter lin
 number rather than by document id · `bankFileId` on `InvoicesPayment`, so an imported
 payment links to its file · a bulk confirm-duplicate per bank file (a `duplicate` line
 keeps the file's attention item alive until each is confirmed by hand).
+
+## Orders
+
+A new module for the sale before the invoice: quotes, sales orders, invoicing from
+orders, subscriptions, deliveries from stock and shipping. Researched in
+[`docs/superpowers/research/2026-11-04-orders-module.md`](docs/superpowers/research/2026-11-04-orders-module.md),
+decided in [`docs/superpowers/specs/2026-11-05-orders-design.md`](docs/superpowers/specs/2026-11-05-orders-design.md)
+and planned in [`docs/superpowers/plans/2026-11-05-orders-plan.md`](docs/superpowers/plans/2026-11-05-orders-plan.md),
+landing as one stack of pull requests, one delivery each. Orders requires Products,
+Customers and Invoices; Inventory and Communications stay optional.
+
+### Phase 1 — Quotes, orders, invoicing, subscriptions and deliveries (in progress)
+
+- **0 — Platform and seams (done).** The domain-events outbox and its dispatcher
+  ([Platform](#cross-module-domain-events-done)); the catalog contract's exact-decimal
+  list price, tax category and description on a variant, and a type filter on its
+  search; the variant holders told which write asks, with an `open_documents` hold;
+  Invoices' VAT code per Products tax category, edited on its VAT settings page, and
+  `contracts.SalesTax` (VAT codes on a day, the mapping, the seller); `internal/docmath`,
+  Invoices' arithmetic moved verbatim so both modules compute alike; and the customer
+  directory's delivery addresses and contacts on request.
+- **A — Quotes and orders.** The module, quotes and sales orders with their life,
+  PDFs and mail, the holders, the customer timeline through the outbox, and the
+  customer page's Orders tab; an order line in a tax category with no VAT code is
+  refused at confirm.
+- **A2 — Selling comfort.** Warnings with block and override, the variant grid,
+  packagings on lines, and the analysis.
+- **B — Invoicing from orders.** Allocations, `contracts.BillableOrders`, the
+  invoiced-work holder, the wizard and the billing run.
+- **S — Subscriptions.** Recurring lines invoiced per period.
+- **C — Deliveries and stock.** `contracts.Stock` and `StockLedger`, reservations made
+  synchronously on the order's transaction, and deliveries.
+- **D — Shipping.** Carriers (Bring first), shipments and the shipping line, revised
+  from the carrier research.
 
 ## Point of sale
 

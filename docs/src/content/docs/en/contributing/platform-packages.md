@@ -12,13 +12,15 @@ sources:
   - apps/server/internal/holidays
   - apps/server/internal/imagemeta
   - apps/server/internal/directoryaddress
+  - apps/server/internal/events
+  - apps/server/internal/docmath
 ---
 
 A module may import the platform but never another module (see
 [Module boundaries](/en/contributing/module-boundaries/)). This page describes the
 platform packages a module reaches for when it holds something it must not store in
 clear, when it sends a mail of its own, when it asks an AI model for something, when it takes a payment, when it counts days
-around the public holidays, when it stores a picture people will see, and when it makes an address for an account in a directory.
+around the public holidays, when it stores a picture people will see, when it makes an address for an account in a directory, when it tells other modules what happened to one of its own rows, and when it computes a sales document's amounts.
 
 ## The secrets box
 
@@ -508,3 +510,99 @@ uses.
 
 The package is pure — no context, no network, no database — and any module may import
 it.
+
+## The domain-events outbox
+
+[`apps/server/internal/events`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/events)
+is how a module tells others what happened to one of its rows when they may learn of it
+a little later — an order confirmed, an invoice issued — without calling them inside its
+own transaction. It was built for Orders
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-05-orders-design.md), O1–O5)
+and is owned by no module: its tables are `platform.events` and
+`platform.event_deliveries` (migration `00117_platform_events.sql`), beside
+`platform.rate_limit`.
+
+**The outbox carries what may lag, never what must refuse.** A reservation of stock or
+the stamp of invoiced work must be able to say no to the transaction that asks for it,
+so they stay synchronous contract calls on the caller's transaction
+([rule 10](/en/contributing/module-boundaries/#the-rules), rule 20). An event is a fact
+already committed: a confirmation, a line on a timeline.
+
+**Publishing.** An event is a DTO in `internal/contracts` (`contracts/events_<module>.go`)
+implementing `contracts.Event` — `EventName()` (`"<module>.<aggregate>.<what>"`, as
+`orders.sales_order.confirmed`), `EventVersion()` (from 1) and `AggregateID()` (the
+aggregate's id as text) — whose JSON tags are its wire form; a breaking change is a new
+version, and a handler names the versions it accepts. `events.Publish(ctx, tx, module,
+ev, occurredAt)` inserts it on the publisher's own transaction, so it commits with the
+state change that caused it or not at all; it never begins, commits or rolls back `tx`
+and never takes a pool. **A publisher publishes an aggregate's events only while it
+holds that aggregate's row lock**, so event ids follow commit order per aggregate —
+identity ids alone do not. **A payload carries ids, numbers, amounts and states, never
+personal data** — no names, addresses, e-mails or phones — so a person's erasure needs no
+sweep of the outbox; a handler that needs them reads its own copy, or a contract, after
+its transaction.
+
+**Handling.** A module declares `Module.EventHandlers`, a many-provider slot of
+`events.Handler{Name, Events, Handle}`: `Name` unique across the composition,
+`<module>.<what>`; `Events` the `{Name, Version}` pairs it takes; and `Handle(ctx, tx,
+ev)`, run on the delivery's own transaction. The handler writes only its own module's
+schema on `tx` — so a handler whose effects stay in the database runs exactly once —,
+never leaves the process (no `OutboundMail`, no HTTP inside `tx`; mail is queued in its
+own table for its module's own worker to send), locks only its own rows and reads no
+contract while `tx` holds locks, and never begins, commits or rolls back `tx`
+([rule 23](/en/contributing/module-boundaries/#the-rules)). An error rolls the delivery
+back and it is retried. Handlers are collected from every module given, **whatever
+`MODULES` says**, as the customer reference holders are: a handler that needs its module
+on checks the setting itself and does nothing. `module.EventHandlers` collects them and
+refuses a handler with no name, no events or no `Handle`, and a name two handlers share,
+naming both modules; `Compose` calls it to refuse such a binary at startup, and the
+process that runs workers calls it to build the dispatcher, since worker mode never
+composes.
+
+**The dispatcher**, `events.dispatch`, is the platform's own worker, run wherever the
+workers run — the `worker` command, or `api` with `WORKERS_IN_PROCESS=1` — with no
+setting of its own and no `MODULES` entry. Every 5 seconds it:
+
+1. fans the new events out, the lowest ids first, 100 a statement until none is left:
+   one `pending` row of `platform.event_deliveries` for every handler that takes the
+   event's name and version (an event no handler takes gets none);
+2. warns, `events deliveries wait for handlers that are not composed`, when undone
+   deliveries name a handler the binary no longer has — they stay for the operator to
+   skip;
+3. claims due deliveries, 100 at a time until none is left, under a 2-minute lease
+   (`SKIP LOCKED`, so any number of instances share the work) and handles each on its
+   own transaction, with a timeout of 1 minute, marking it `done` there; a handler's
+   panic is an error like any other. Deliveries to one handler are tried **in event
+   id order per aggregate**: a later one waits while an earlier one for the same
+   handler and aggregate is `pending`, `failed` or `dead`, so a timeline never shows
+   *changed* before *confirmed*; other aggregates are not held up;
+4. records a failure on a separate short statement — `failed`, retried after 1 minute,
+   then 5 minutes, 30 minutes, 2 hours and 12 hours, and 12 hours from then on, logged
+   at warn `events delivery failed` — and the eighth failure makes the delivery `dead`,
+   logged at error `events delivery is dead`, until the operator retries or skips it;
+5. prunes events more than 30 days old whose deliveries are all `done`, or that have
+   none, 1 000 a pass; their deliveries go with them.
+
+A pass that fails is logged at error, `events dispatch failed`, and the loop goes on. It
+never holds one pooled connection while it asks for another, so it runs on a pool of
+one. The operator's view — the stuck deliveries, a retry, a skip — is on the
+[management listener](/en/admin/management-listener/#the-events-outbox); no tenant
+permission reaches it.
+
+## The document arithmetic
+
+[`apps/server/internal/docmath`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/docmath)
+is a sales document's arithmetic, moved verbatim out of Invoices (orders design O17) so
+that Invoices and Orders compute the same numbers by construction. It is pure functions
+over exact decimals (`math/big.Rat`): no database, no request, no float, no clock.
+
+| Name | What it does |
+| --- | --- |
+| `Round2(v)` | `v` at two decimals, the half away from zero. |
+| `Line(quantity, unitPrice, discountPercent)` | the line rule: `gross = Round2(quantity × unitPrice)`, `allowance = Round2(gross × discount / 100)`, `net = gross − allowance` — a line stored as gross less allowance rather than one rounded product, so that its net is quantity × price as PEPPOL-EN16931-R120 holds it. |
+| `Summarize(lines, exchangeRate)` | the VAT summary: the lines grouped per (category, rate), VAT computed per row on the sum of the nets (Peppol BR-CO-17), never per line — `vat = Round2(taxable × rate / 100)`, `vatNOK = Round2(vat × exchangeRate)` — a 0 % category getting its row too; the four totals, with no øre rounding of the total; and `ambiguous` when two lines share a (category, rate) but carry different SAF-T codes (Invoices' `vat_codes_ambiguous`). |
+| `SortSummaries(rows)` | a document's order of the rows: the highest rate first, then by category. |
+
+Invoices' rules for the amounts are described where it applies them
+([The model](/en/reference/invoices/#the-model)). The package imports the standard
+library only, and any module may import it.

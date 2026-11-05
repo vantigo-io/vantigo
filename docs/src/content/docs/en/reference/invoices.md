@@ -8,6 +8,8 @@ sources:
   - apps/server/internal/db/migrations/00078_invoices_energy.sql
   - apps/server/internal/db/migrations/00079_invoices_billing_runs.sql
   - apps/server/internal/db/migrations/00096_invoices_send_channel.sql
+  - apps/server/internal/db/migrations/00118_invoices_tax_category_vat_codes.sql
+  - apps/server/internal/docmath
 ---
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
 becomes a numbered, immutable invoice or credit note, rendered to a PDF that is stored
@@ -128,6 +130,7 @@ registration in the day's CSV — it is told in the business time zone too.
 | `invoices.counters` | The one counter row, `documents`; it exists exactly when something has been issued. |
 | `invoices.vat_codes` | The tenant's codes: label, name, SAF-T code, UNCL5305 category, exemption reason, active. |
 | `invoices.vat_code_rates` | Each code's rates as dated periods that never overlap (an exclusion constraint). A rate change is a new period, not a new code. |
+| `invoices.tax_category_vat_codes` | One row per Products tax category that has a VAT code: `tax_category_id`, Products' id with **no foreign key** across schemas (rule 4), and `vat_code_id`, a code here (`ON DELETE RESTRICT`). A category with no row has no VAT code ([Tax categories and VAT codes](#tax-categories-and-vat-codes)). |
 | `invoices.invoices` | Drafts and issued documents: kind, status, number, customer, delivery, references, notes, the buyer snapshot and the seller snapshot (written at issue), the totals, the stored PDF's key and SHA-256, an invoice's `kid` with the `kid_algorithm` it was computed with (set at issue, both or neither, never on a credit note), the project its work belongs to — `project_id` and its code `project_reference`, both or neither (`ck_invoices_project`), derived by every save of an invoice draft and copied by a credit note ([The project](#the-project)) — and the `timesheet` flag (off by default). Every one of them is frozen at issue with the rest of the row. |
 | `invoices.lines` | Description, quantity (3 decimals), unit, unit price (8; a request gives at most 4 but on a line billing an energy settlement or a credit note's line), discount (2), VAT code, the computed gross, allowance and net, the credited line on a credit note, the invoice a deduction line deducts (`deducts_invoice_id` — an unconstrained reference, deliberately without a foreign key, whose `FOR KEY SHARE` on the deducted invoice would cycle with the newest-first lock of a customer's documents; the save and the issue accept only an issued invoice of the same customer, and an issued document is never deleted), and the VAT snapshot written at issue. The quantity is above 0, or below 0 on a deduction line or a correction line only (`ck_lines_quantity`); a deduction line carries no discount (`ck_lines_deduction_no_discount`), nor does a correction line (`correction`, set by the module from the line's sources; `ck_lines_correction`, which also keeps its `deducts_invoice_id` NULL). `(id, invoice_id)` is unique, so a child row names its line and its document together and the two never disagree. |
 | `invoices.line_sources` | The work a line bills: the source's kind (`time.entry`, `expenses.entry`, `projects.milestone` or `energy.settlement`; the CHECK is a shape, `^[a-z]+\.[a-z_]+$`) and id — opaque, the rows are other modules' — the revision it was taken at, an expense's kind (`source_subkind`, also set on a settlement), the project (NULL exactly for a settlement, `ck_line_sources_project`), the quantity, the source's exact amount (`numeric(22,8)`: an hour's amount carries up to eight decimals), the currency, the work's date, for a settlement its `line_count` and the snapshot `point_gsrn`, `point_address`, `price_area`, `contract_name`, `period_from`, `estimated` ([The lines of a settlement](#the-lines-of-a-settlement)), and the state: `held` from the draft, `invoiced` by the issue, `released` by the credit note that returns its line. Its line and document are one composite key, and the rows go with their line. A source is live — `held` or `invoiced` — on one row at most (`ux_line_sources_live`). A row is written `held`; under a draft its one change is to `invoiced`, under an issued document its one change is from `invoiced` to `released`, once, nothing else changed. A row is deleted only under a draft and only while `held`, so dropping a hold never frees an invoiced source. A trigger refuses the rest (`invoices: a line source is written held`, `invoices: a line source changes only its state`, `invoices: a line source is deleted only while held`, `invoices: issued document is immutable`). Every save of a draft deletes its lines and so its held rows, and inserts the rows it carries anew under the new lines, in one statement ordered by kind and id ([Invoicing work](#invoicing-work)). |
@@ -187,9 +190,60 @@ outside the VAT register) at 0 %.
 **Money.** Amounts arrive as JSON numbers and are read as the decimal text they were
 written as, never as a binary float. A line's gross is quantity × unit price rounded to
 øre, its allowance the discount of that rounded gross, rounded, and its net the
-difference — gross less allowance, as EHF expresses a discount. Every rounding is two
-decimals, the half away from zero; there is no øre rounding of the total. A line is at
-most 999 999 999.99, a document 99 999 999 999.99 gross, and at most 500 lines.
+difference — gross less allowance, as EHF expresses a discount
+(PEPPOL-EN16931-R120). VAT is computed per (category, rate) on the sum of the lines'
+nets, never per line, and rounded once per row. Every rounding is two decimals, the
+half away from zero; there is no øre rounding of the total. A line is at most
+999 999 999.99, a document 99 999 999 999.99 gross, and at most 500 lines.
+
+The arithmetic is not Invoices' own code: it lives in the platform package
+[`internal/docmath`](/en/contributing/platform-packages/#the-document-arithmetic) —
+`docmath.Line` for a line's three amounts, `docmath.Summarize` for the VAT rows and the
+four totals, `docmath.Round2` for the rounding — moved there verbatim so that Orders'
+quotes and orders compute the same numbers as the invoice they become, by
+construction. Invoices' drafts, its issue, its credit notes, its PDF and its EHF
+document all call it.
+
+## Tax categories and VAT codes
+
+Products classifies each product by a tax category; Invoices decides the VAT a sale is
+invoiced at. `invoices.tax_category_vat_codes` joins the two: each Products tax category
+maps to **one** of this module's VAT codes, or to none. **There is no default** — a
+category with no mapping has no VAT code, and whatever prices a line in it must say so
+rather than guess. Orders, its delivery A, refuses an order line in an unmapped category
+at confirm (`vat_code_unmapped`, naming the category) and warns of it on a draft. Today
+no invoice line reads the mapping: work and energy lines take their codes from the
+settings ([VAT codes for work](#vat-codes-for-work),
+[VAT codes for energy](#vat-codes-for-energy)).
+
+Invoices stores Products' category id and nothing else of it — the catalog contract
+carries no category names — so it cannot tell whether the id still exists in Products.
+The settings page reads the names from the products API and sends the ids.
+
+- `GET /settings/tax-category-vat-codes` (`invoices:access`) answers every mapping as
+  `{taxCategoryId, vatCodeId}`; an unmapped category is absent.
+- `PUT /settings/tax-category-vat-codes/{taxCategoryId}` (`invoices:manage`) with
+  `{vatCodeId}` maps the category, replacing any code it had, and answers the mapping.
+  A `taxCategoryId` that is not positive is a 400 on `taxCategoryId`; a code that does
+  not exist or is inactive a 400 on `vatCodeId`. The code is held `FOR SHARE` until the
+  mapping commits, so a deactivation cannot slip in between. The category's id is not
+  checked against Products.
+- `DELETE /settings/tax-category-vat-codes/{taxCategoryId}` (`invoices:manage`) removes
+  the mapping, 204 — and 204 too when there was none.
+
+Deactivating a code a category maps to is not refused: the mapping stays, but
+`contracts.SalesTax.ForTaxCategories` stops answering it, so the category reads as
+unmapped until a manager chooses another code. A code with no rate period on the day
+asked about is not answered either. A mapped code cannot be deleted while the mapping
+holds it (`ON DELETE RESTRICT`); codes are never deleted through the API anyway.
+
+The app's card "Products' tax categories" on the settings page, under the VAT codes,
+lists Products' categories with a code each, offers the active codes and a category's own
+code marked "(no longer offered)" when it has since been deactivated, saves a choice at
+once and removes the mapping when the choice is cleared. Naming the categories needs the
+products module on and `products:tax-categories-view`; without them the card says so
+and lists the mapped categories by id, and a mapped category Products no longer
+answers stays listed, "(no longer in Products)", so its mapping can be removed.
 
 ## The Peppol id and the KID agreement
 
@@ -4988,7 +5042,7 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
 
 ## What Invoices reports to other modules
 
-This module provides one single-provider contract,
+This module provides two single-provider contracts. The first is
 [`contracts.CustomerReceivables`](/en/reference/customers/#contractscustomerreceivables)
 (`receivables.go`, `Module().Receivables`): what one customer was invoiced and owes,
 for the customers module's [Customer 360](/en/reference/customers/#customer-360)
@@ -5010,6 +5064,31 @@ principal's, as everywhere here. The provider holds no transaction and never cal
 customer directory; it is given the pool and the clock and nothing else, and it fails
 rather than answers zeros when a query fails.
 
+The second is **`contracts.SalesTax`** (`sales_tax.go`, `Module().SalesTax`,
+`Deps.SalesTax`): this module's VAT codes, the mapping from Products' tax categories to
+them, and the seller, for a module that prices a sale before it becomes an invoice —
+Orders, which requires Invoices and so reads it as always present. Decided in
+[`docs/superpowers/specs/2026-11-05-orders-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-05-orders-design.md)
+(O7, O8). Nil when invoices is disabled.
+
+- **`VATCodes(ctx, at)`** — every active code, as `VATCodeEntry{ID, Code, Name,
+  RatePercent, Category, SAFT}`, with the rate valid on the day `at` falls on in the
+  workspace's business time zone ([The business day](#the-business-day)), the rate as
+  exact two-decimal text (`"25.00"`), never a float. A code with no rate period covering
+  that day is left out.
+- **`ForTaxCategories(ctx, ids, at)`** — `map[taxCategoryID]VATCodeEntry`, judged the
+  same way. An unmapped id is absent, and so is one whose code is inactive or has no rate
+  that day: absence is not an error, and there is no default
+  ([Tax categories and VAT codes](#tax-categories-and-vat-codes)).
+- **`Seller(ctx)`** — the seller block this module prints, read from `invoices.settings`,
+  the row the issue snapshots onto a document: legal name, organisation number, VAT
+  registration, Foretaksregisteret, address, e-mail, bank account, IBAN, BIC and footer
+  text. Invoices keeps no phone and no logo, so `Phone` and `LogoStorageKey` are `""`.
+
+Every method reads this module's own tables on the pool, holds no lock and opens no
+transaction, so a caller asks before it opens its own (rule 8's discipline); the
+provider is given the pool and the business calendar and nothing else.
+
 ## Permissions
 
 No built-in role holds any of these; Owner has the wildcard. Phase 4 adds no key (design
@@ -5021,7 +5100,7 @@ administrator reads when building a role, say so.
 | `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings, the payment settings and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; an invoice's pay link (its id and when it was made, not its address) and its Vipps payment attempts; the day's Vipps payments, their CSV and whether the day is reconciled (marking it is `invoices:payments`; [The day's Vipps payments](#the-days-vipps-payments)); the attention items about overdue invoices and refunds due ([Attention](#attention)); the billing runs and their items ([Billing runs](#billing-runs)). |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)); list a customer's consumption due and its settlements, and make a draft of them, or add them to one ([Invoicing consumption](#invoicing-consumption)); make and cancel a billing run — one that issues also needs `invoices:issue` ([Billing runs](#billing-runs)). |
 | `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one; record that an invoice was handed over or posted, and remove such a record with a reason ([The delivery fact](#the-delivery-fact)); make an invoice's pay link on demand or revoke it, and read its address and QR code while payment on site is available ([Pay links](#pay-links)); ask for a Vipps payment on site, read the request and cancel it ([Paid on site — kontantsalg](#paid-on-site--kontantsalg)). |
-| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the two VAT codes energy lines take, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the Vipps credentials and the payment settings, abandoning a stuck Vipps payment attempt ([Abandon](#abandon)), the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
+| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the two VAT codes energy lines take, the timesheet's default and person label, VAT codes and their rates, the VAT code each Products tax category maps to ([Tax categories and VAT codes](#tax-categories-and-vat-codes)), the access point's credentials, the Vipps credentials and the payment settings, abandoning a stuck Vipps payment attempt ([Abandon](#abandon)), the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
 | `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; work the exception queue — apply, dismiss, handle a reversal, confirm a duplicate, treat one as distinct, reopen ([The exception queue](#the-exception-queue)); set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), see the address each letter goes to, print paper letters, confirm them posted or reprint them, and withdraw or retry a letter ([Letters](#letters)); hold a disputed invoice and lift the hold, record a hand-off to a collection agency and withdraw it, and export the collection file ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)); mark a day's Vipps payments reconciled ([The day's Vipps payments](#the-days-vipps-payments)); the attention items about the bank lines, the letters, the print batches and the Vipps payments ([Attention](#attention)). |
 
 **The quick invoice needs `invoices:create` and `invoices:issue` both** ([The quick
@@ -5116,6 +5195,9 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `DELETE /settings/access-point` | `invoices:manage` | 409 `transmissions_active` |
 | `POST /settings/access-point/verify` | `invoices:manage` | 409 `ehf_unavailable`, no credentials; 503 `ehf_unavailable`, a stored key that cannot be opened |
 | `GET /settings/reminders` | | |
+| `GET /settings/tax-category-vat-codes` | | |
+| `PUT /settings/tax-category-vat-codes/{taxCategoryId}` | `invoices:manage` | 400 on `taxCategoryId` (not positive) or `vatCodeId` (no such code, or an inactive one) |
+| `DELETE /settings/tax-category-vat-codes/{taxCategoryId}` | `invoices:manage` | none: 204 whether or not a mapping existed |
 | `GET /settings/vipps` | `invoices:manage` | none: 200 with `hasCredentials: false` when nothing is stored |
 | `PUT /settings/vipps` | `invoices:manage` | 400 on `msn`, `clientId`, `clientSecret` or `subscriptionKey` (blank, too long, or omitted while none is stored); 409 `payment_attempts_active`, a change of `msn` while an attempt is live (new keys of the same `msn` are not refused); 503 `payments_unavailable`, a kept key that cannot be opened |
 | `DELETE /settings/vipps` | `invoices:manage` | 409 `payment_attempts_active` |

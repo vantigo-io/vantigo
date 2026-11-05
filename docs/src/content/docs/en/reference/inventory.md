@@ -77,7 +77,8 @@ The module reads six of its methods:
 - **`LookupSKUs(ctx, skus)`** — the [import](#the-opening-balance-import)'s SKU
   resolution: every distinct SKU of the file in one call, each matched
   case-insensitively against variant SKUs only.
-- **`SearchVariants(ctx, q, limit)`** — the line editor's picker: goods variants by SKU,
+- **`SearchVariants(ctx, q, VariantSearch{Types: ["Goods"], Limit, IncludeInactive: true})`**
+  — the line editor's picker: goods variants of products of every status by SKU,
   product name or barcode, case-insensitive, by SKU, at most 50, wildcards taken
   literally. It goes through the catalog so that a warehouse worker needs no Products
   permission to pick what they receive.
@@ -103,8 +104,10 @@ The module fills one many-provider slot, **`Module.VariantReferences`** with a
 - when a `PUT` turns a **Goods** product into a **Service**, for every variant of the
   product in id order.
 
-`VariantHeld(ctx, tx, variantID)` sums the variant's balances on Products' transaction
-and answers `nil` when it lies nowhere, or a `VariantHold`: the quantity as the shortest
+`VariantHeld(ctx, tx, variantID, purpose)` sums the variant's balances on Products'
+transaction and answers `nil` when it lies nowhere, or a `VariantHold` of kind `stock`
+— the same for either purpose, since stock stops a delete and a change to Service
+alike: the quantity as the shortest
 decimal that says it (`"34"`, `"2.5"`, `"0.125"`) and the number of locations it lies
 on. The first hold refuses Products' write with 409 — *Variant has stock* or *Product
 has stock* — with the unit from Products' own row. The holder locks nothing of its own:

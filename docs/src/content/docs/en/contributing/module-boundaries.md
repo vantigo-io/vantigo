@@ -33,9 +33,11 @@ Projects, Time, Expenses, Invoices, Staff, Calendar, Entra, Google, Planning, In
 by `cmd/vantigo`, on the Identity platform.
 
 Modules never reference each other directly. Synchronous cross-module needs go
-through the in-process contracts in `internal/contracts`; asynchronous ones use the
-transactional-outbox pattern described in [`ROADMAP.md`](https://github.com/vantigo-io/vantigo/blob/main/ROADMAP.md), of which
-Communications' outbox is the working example.
+through the in-process contracts in `internal/contracts`; asynchronous ones — what may
+lag, never what must refuse — go through the platform's domain-events outbox,
+`internal/events`, a transactional outbox whose handlers are a many-provider slot
+([rule 23](#the-rules),
+[The domain-events outbox](/en/contributing/platform-packages/#the-domain-events-outbox)).
 
 ## The rules
 
@@ -61,7 +63,11 @@ Communications' outbox is the working example.
    (rule 4) — `internal/fileimport` — the reader of an uploaded import file
    (encoding, separator, quoting, the formula guard, header keys), shared by the
    Customers and Energy imports; no SQL, each module keeps its own imports, worker
-   and caps — …) and its own subpackages, never another module's.
+   and caps — `internal/events` — the domain-events outbox, `events.Publish` and the
+   handler type of rule 23 — `internal/docmath` — a sales document's arithmetic,
+   shared by Invoices and Orders
+   ([The document arithmetic](/en/contributing/platform-packages/#the-document-arithmetic)) —
+   …) and its own subpackages, never another module's.
    `internal/payments/vipps/vippstest`, the adapter's fake, is imported by tests
    only.
 
@@ -93,7 +99,7 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are twenty single-provider slots, each filled by at most one enabled module:
+   There are twenty-one single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
    identity — the workspace's business time zone and the day an instant falls on in
@@ -108,13 +114,16 @@ Communications' outbox is the working example.
    hours a user logged in a week, consumer-gated), `Expenses`
    (`contracts.ProjectExpenses`, expenses), `Receivables`
    (`contracts.CustomerReceivables`, invoices — what a customer was invoiced and
-   owes, every state judged on the provider's own business day), and the three line-level reads an
+   owes, every state judged on the provider's own business day), `SalesTax`
+   (`contracts.SalesTax`, invoices — its VAT codes with the rate valid on a day, the VAT
+   code each of Products' tax categories maps to, and the seller block it prints; nil
+   when Invoices is off, and read as always present by Orders, which requires it), and the three line-level reads an
    invoice is built from — `BillableHours` (`contracts.BillableHours`, time),
    `BillableExpenses` (`contracts.BillableExpenses`, expenses) and
    `BillableMilestones` (`contracts.BillableMilestones`, projects) — `Consumption`
    (`contracts.ConsumptionProvider`, energy — the settlements a customer owes for its
    metering points, what a consumption invoice is built from; optional for its
-   consumer, nil when Energy is off), and `Workforce`
+   consumer, nil when Energy is off; its `Settle` is a provider command, below), and `Workforce`
    (`contracts.Workforce`, staff — the competence catalogue, who holds which competence
    valid on a date, the people in employment and their capacity over a window, the
    caller's own person, its own account in an external directory, and how a proposed
@@ -129,6 +138,14 @@ Communications' outbox is the working example.
    and no module calls; [The AI platform](#the-ai-platform)), and `AssistantGrants`
    (`contracts.AssistantGrants`, identity — issues and ends the grants the assistant acts
    under; rule 18; resolved by `Compose` after the AI slot, not by `Workers`).
+   **A provider's read may carry commands.** A single-provider read contract may hold
+   methods that write — **provider commands** — when each writes only the provider's
+   own schema, on the provider's own transaction, and is named a command for it; the
+   caller makes it on the provider's pool before it opens a transaction of its own, as
+   any contract call (rule 21), and nothing of the caller's is written by it. Energy's
+   `ConsumptionProvider.Settle` is the first; Orders' `BillableOrders.Allocate` and
+   `ReleaseAllocations` are the next ones planned. A write into another module's schema
+   is never a provider command: it is a sanctioned direction of its own, with its own rule here.
    `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
    `Mount` runs, so a module's `Deps` already carries what it consumes; `Calendar`,
@@ -136,7 +153,8 @@ Communications' outbox is the working example.
    accounts provider may read the user directory while it is built (`module.Workers`
    leaves `SSOConnections` nil: no worker connects anyone); `Actuals`, `Timesheets` (right after
    `Actuals`, the same module owning both),
-   `Expenses`, `Receivables` and the three `Billable*` are resolved last, after
+   `Expenses`, `Receivables`, `SalesTax` (right after `Receivables`, the same module
+   owning both, from its own tables only) and the three `Billable*` are resolved last, after
    `Projects` and `Directory`, so those providers' *constructors* are allowed to read
    the project directory or the customer directory (none does, but a future
    provider could), and `Consumption` right after the three `Billable*` (its provider
@@ -148,9 +166,10 @@ Communications' outbox is the working example.
    `Deps.ChannelMailboxes` while it is built. `CalendarBusy` is resolved by
    Compose last of all, after the mailbox slots, since its provider — the calendar's
    server — reads the rest of `Deps` while it is built; `module.Workers` leaves it nil,
-   as no worker reads it. Two providers are a compose error naming both, and a panic in
+   as no worker reads it; nor does it resolve `Receivables` or `SalesTax`, which no
+   worker reads either. Two providers are a compose error naming both, and a panic in
    Workers.
-   Eleven slots are *many-provider* instead — any number of modules may fill them,
+   Twelve slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
    the enabled modules), `CalendarSources` (`contracts.CalendarSource`, rule 12,
    from the enabled modules too), `IdentityProvisioners`
@@ -167,9 +186,16 @@ Communications' outbox is the working example.
    `CustomerReferences`
    (`contracts.CustomerReferenceHolder`, rule 8), `CustomerPersonalData`
    (`contracts.CustomerPersonalData`, rule 9), `InvoicedWork`
-   (`contracts.InvoicedWorkHolder`, rule 10) and `VariantReferences`
-   (`contracts.VariantReferenceHolder`, rule 20), the last four from every module
+   (`contracts.InvoicedWorkHolder`, rule 10), `VariantReferences`
+   (`contracts.VariantReferenceHolder`, rule 20) and `EventHandlers` (`events.Handler`,
+   the domain-events outbox's handlers, rule 23), the last five from every module
    Compose is given, enabled or not — see [Turning a module off](#turning-a-module-off).
+   `EventHandlers` is collected by `module.EventHandlers`, in module order, each
+   module's own in the order it returns them; a handler with no name, no events or no
+   `Handle`, and a name two handlers share, is refused, naming both modules. `Compose`
+   calls it only to refuse such a binary at startup — the API runs no handler — and the
+   process that runs workers calls it to build the dispatcher, `events.dispatch`, since
+   worker mode never composes.
    `CalendarSources` is collected from enabled modules only, by Compose and by
    Workers alike, because a source is a read under the module's own permission: a
    disabled module's permissions are not in the catalog, so its gate could only fail
@@ -337,7 +363,10 @@ Communications' outbox is the working example.
     its own SQL on its own schema from its own package, on the caller's `pgx.Tx`; it
     never begins or ends a transaction and never reads a directory, any other contract
     or a clock — every timestamp it writes is the issue's own (`InvoiceRef.IssuedAt`),
-    and the issuer's name arrives in `InvoiceRef.IssuedByDisplay`; the period lock
+    and the issuer's name arrives in `InvoiceRef.IssuedByDisplay`; it may publish a
+    domain event on the issue's transaction with `events.Publish`, its `occurredAt`
+    `InvoiceRef.IssuedAt` — a row of the platform's outbox, not of another module, that
+    commits or rolls back with the issue (rule 23); the period lock
     applies to neither direction, a stamp not being an edit of the work; its release
     takes the same locks as its mark and tolerates a source that no longer carries the
     stamp, writing nothing for it and logging a warning, because a credit note must
@@ -909,10 +938,16 @@ Communications' outbox is the working example.
     own transaction** — the one that deletes a variant, and the one that turns a Goods
     product into a Service — after it has locked the variants `FOR UPDATE` (the one
     variant; every variant of the product, in id order, for the type change) and before
-    it writes. `VariantHeld(ctx, tx, variantID)` answers nil or a `contracts.VariantHold`,
-    a quantity in the variant's own unit as a decimal and the number of places it lies
-    in; the first hold refuses the write with 409 (*Variant has stock*, *Product has
-    stock*), and the unit in the refusal comes from Products' own row. The holder keeps
+    it writes. `VariantHeld(ctx, tx, variantID, purpose)` is told which write asks —
+    `contracts.VariantHoldDelete` (`delete`) or `contracts.VariantHoldTypeChange`
+    (`type_change`) — because a holder may stop one and not the other: open orders stop a
+    delete, never a change to Service (orders design O30). It answers nil or a
+    `contracts.VariantHold` whose `Kind` says what holds it: `stock`, a quantity in the
+    variant's own unit as a decimal and the number of places it lies in, or
+    `open_documents`, the number of open quotes, orders and subscriptions that name it.
+    The first hold refuses the write with 409 — *Variant has stock* and *Product has
+    stock*, the unit in the refusal from Products' own row, or *Variant is on open
+    documents* and *Product is on open documents*, naming how many. The holder keeps
     rule 8's discipline: it runs its own SQL, on its own schema, from its own package —
     so rules 1, 4 and 6 hold as they do for any read — on the caller's `tx`, never on a
     pool; never begins, commits or rolls back a transaction; never reads a directory or
@@ -922,7 +957,8 @@ Communications' outbox is the working example.
     collected from every module Compose is given, enabled or not, as rule 8's holders
     are: every schema is migrated whatever `MODULES` says, and stock in a disabled
     module's schema is still stock. Only products calls the slot. Today's one holder is
-    inventory, which sums its balances
+    inventory, which sums its balances and answers the same for either purpose, stock
+    stopping both
     ([Products](/en/reference/products/#contracts-for-other-modules),
     [Inventory](/en/reference/inventory/)). A second question a variant's write must
     ask is a method on this holder, not a second slot — the roadmap already plans one,
@@ -971,6 +1007,37 @@ Communications' outbox is the working example.
     provider still reads `SSOConnections` for the candidates and the holders (rule 12), so
     identity's gatekeeping is unchanged. The first filler is `internal/entra`
     ([Microsoft Entra ID](/en/reference/entra/)).
+23. **An event handler writes its own schema, inside the platform's transaction.** The
+    twelfth sanctioned cross-module direction, made for what one module must learn of
+    another's change when it may learn of it a little later (orders design O1–O5):
+    the domain-events outbox, `internal/events`. A publisher calls
+    `events.Publish(ctx, tx, module, ev, occurredAt)` on its own transaction, so the event
+    commits with the change that caused it or not at all, and **publishes an aggregate's
+    events only while it holds that aggregate's row lock**, so their ids follow commit
+    order per aggregate; the event is a DTO of `internal/contracts` implementing
+    `contracts.Event`, whose payload carries ids, numbers, amounts and states and never
+    personal data. A module that reacts declares `Module.EventHandlers` (rule 5), and the
+    platform's dispatcher, `events.dispatch`, runs each handler on **a delivery's own
+    transaction**, which the platform opens and commits. The handler:
+    - writes only its own module's schema on that `tx`, so a handler whose effects stay
+      in the database runs exactly once;
+    - **never leaves the process** — no `OutboundMail`, no HTTP, no object store inside
+      `tx` (rule 10's restatement, and rule 17's); a handler that must cause mail queues
+      it in its own table for its module's own worker to send;
+    - locks only its own rows, never another module's, and reads no contract while
+      `tx` holds locks — what it needs of another module it reads after, or from its own
+      copy;
+    - never begins, commits or rolls back `tx`; an error rolls the delivery back and it
+      is retried, with backoff, until the eighth failure makes it dead for the operator
+      ([The events outbox](/en/admin/management-listener/#the-events-outbox));
+    - runs whatever `MODULES` says, as rule 8's holders do: a handler that needs its
+      module on checks the setting itself and does nothing.
+
+    **The outbox carries what may lag, never what must refuse.** Anything that must be
+    able to refuse the caller's transaction — a stock reservation, the stamp of invoiced
+    work (rule 10) — stays a synchronous contract call on that transaction. The first
+    publisher and handlers come with Orders; delivery 0 built the outbox, its dispatcher
+    and its operator calls with none composed.
 
 ## The AI platform
 
@@ -1130,8 +1197,9 @@ none is a numbered rule above because no module reaches into another.
   so rule 4's scan covers it. Products' tests ask a fake holder set by
   `modtest.WithVariantReferenceHolders` and prove the delete and the Goods→Service change
   are refused while it holds, and pass once it does not, that the last-variant 409 comes
-  before any holder is asked, and that a type change keeping or gaining Goods never asks
-  (`variant_holds_test.go`).
+  before any holder is asked, that a type change keeping or gaining Goods never asks, that
+  the holder is told the purpose, and that an `open_documents` hold refuses with its own
+  words (`variant_holds_test.go`).
 - **Rule 21**: by test. Products' `TestCatalog_LockVariants_AnswersAndHoldsOnTheCallersTransaction`
   proves the share lock is taken on the transaction it is handed and held until that
   transaction ends; `TestDeleteVariant_WaitsForAPostingHoldingTheVariant` holds it in a
@@ -1139,6 +1207,16 @@ none is a numbered rule above because no module reaches into another.
   posting left. Inventory's contract-call hook (`SetContractCallHook`, installed once in
   `main_test.go`) records every call out of the module made inside one of its
   transactions, and the harness fails the test on any but `Products.LockVariants`.
+- **Rule 23**: by shape and by test. `events.Handler.Handle` is handed the delivery's
+  `pgx.Tx` and never a pool, and `events.Publish` only the publisher's; `internal/events`
+  is a platform package and imports no module (rule 2, the depguard island). Its tests
+  prove a publish commits and rolls back with its caller's transaction, a handler's
+  error rolls its delivery back, the per-(handler, aggregate) order and the block behind
+  a failed or dead delivery, the backoff steps and the death on the eighth failure, a
+  skip that unblocks, the prune, two dispatchers never handling one delivery twice, and
+  a cycle on a pool of one (`events_test.go`, `dispatch_test.go`);
+  `internal/module/events_test.go` proves the slot is collected from disabled modules
+  too and that a duplicate name is refused by `EventHandlers` and by `Compose`.
 - **The harness**, `apps/server/internal/modtest`, is what these tests mount their
   modules through: an in-process installation on a real, migrated PostgreSQL database,
   the real server stack over `module.Compose` with identity beside the module under
@@ -1203,7 +1281,10 @@ the same way: stock in a switched-off Inventory's schema is still stock, and a v
 deleted under it would leave balances naming nothing. A holder needs only the caller's transaction and its
 own schema, both there whatever `MODULES` says. Its `CustomerPersonalData` (rule 9) is
 collected the same way and for the same reason: a switched-off module still holds what
-it held about a person, and an anonymisation must still take it out.
+it held about a person, and an anonymisation must still take it out. Its event handlers
+(rule 23) are composed the same way: an event already published still has to reach
+the module that takes it, and a handler that needs its module on checks the setting
+itself and does nothing.
 
 Some modules cannot be hosted alone. Energy, Communications and Projects read
 customer data through `contracts.CustomerDirectory`, which only Customers implements,
@@ -1419,8 +1500,10 @@ it was taken, on `GET` and before a refresh — a kind whose module is off is no
 judged), all on the pool and never under a lock; products and energy it does not
 read. Inside an issue's transaction it calls the invoiced-work holders of time,
 expenses and projects (rule 10) — the one call it makes under a lock. It sends mail
-only through the platform's SMTP seam, never under a lock, and provides no
-single-provider contract. It fills both many-provider slots: as a `CustomerReferenceHolder` it re-points every document of a
+only through the platform's SMTP seam, never under a lock, and provides two
+single-provider contracts, `Receivables` and `SalesTax` — its VAT codes, the VAT code
+each of Products' tax categories maps to, and its seller block, each read from its own
+tables on the pool ([What Invoices reports to other modules](/en/reference/invoices/#what-invoices-reports-to-other-modules)). It fills both many-provider slots: as a `CustomerReferenceHolder` it re-points every document of a
 merged-away customer, drafts and issued alike (`invoices.invoices`), the immutability
 trigger allowing exactly `customer_id` to change on an issued one; as
 `CustomerPersonalData` it exports a person's documents and drafts with their payments,
@@ -1622,7 +1705,10 @@ A module that fills a many-provider slot sets the field on its `module.Module` a
 keeps that slot's rule: `CustomerReferences`, `CustomerPersonalData` and `InvoicedWork`
 run on the caller's transaction (rules 8–10) and are collected whether or not the
 module is on, and so does `VariantReferences`, for a module keeping stock or another fact
-of a product variant, which only answers what it holds (rule 20); `CalendarSource`, for a module with time-bound rows about a person, is
+of a product variant, which only answers what it holds (rule 20), and `EventHandlers`, for a
+module that reacts to another's domain events, which writes only its own schema on the
+delivery's transaction and never leaves the process (rule 23), each with a name no
+other handler has; `CalendarSource`, for a module with time-bound rows about a person, is
 its own gatekeeper (rule 12), is collected from enabled modules only, and needs a
 `calendar_source_test.go` in the module proving it answers the caller's rows with its
 gate held and nothing without it; `IdentityProvisioner`, for a module driving an
