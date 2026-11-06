@@ -1,7 +1,7 @@
 # Communications — Messenger, answer options and product images: implementation plan
 
 This plan builds the design in
-`docs/superpowers/specs/2026-11-05-communications-messenger-design.md` (revision 3, decisions
+`docs/superpowers/specs/2026-11-05-communications-messenger-design.md` (revision 4, decisions
 N*n*), which is drawn from the research
 `docs/superpowers/research/2026-11-05-communications-messaging-channels.md` ("R").
 
@@ -33,6 +33,7 @@ The owner asked for stacked PRs so that work never waits for a merge.
 | 4 | `claude/meta-messenger` | B: the Meta module | `00132_meta_baseline` |
 | 5 | `claude/communications-messenger-c-products` | C: a product in a message, the public media route | — (C's columns are A1's `role` and P1) |
 | 6 | `claude/communications-messenger-d-contacts` | D: contacts on Messenger (spec §5a) | — (D uses `participants.contact_id`; one only if step 1 needs it) |
+| 7 | `claude/communications-side-panel` | E: conversations in the side panel (spec §5b) | — (one only if step 1 finds an index missing) |
 
 **Layer order.** P sits on A only to keep a single stack: it shares no code with A, and could
 land alone. If `main` takes one of these migration numbers first, renumber inside the owning
@@ -521,6 +522,60 @@ not C.
 4. the participant is linked to the contact;
 5. *Write on Messenger* on the customer page opens the conversation and sends;
 6. 24 h later, the action is disabled and says why.
+
+## Layer 7 — delivery E, conversations in the side panel
+
+This layer implements the spec's §5b (N24–N28). It needs only A. It sits last by the owner's
+ordering, and can be built beside B, C and D because it shares almost no files with them. If it
+is, `ConversationComposer` and the inbox hook are the likely points of conflict with C and D.
+
+### Step 1 — readings
+
+1. **The shortcut.** List the shell's shortcuts (`shortcut.ts`, spotlight, Mantine's) and
+   choose the Conversations shortcut. It must not collide with Chrome, Safari or Firefox on
+   macOS or Windows. Record the choice in the spec's N24.
+2. **The list's indexes.** Check that `GET /inbox/counts` can be served by existing indexes on
+   `communications.conversations`: `status`, `last_activity_at`, the read state, and the
+   assignee. Add an index in a migration only if one is missing. Claim the next free number at
+   that time.
+
+### Seam (by hand)
+
+- `packages/frontend-shell`: `SidePanelHost` and the `SidePanel` type, exported. The
+  `AppShellLayout` contract is unchanged.
+- `openapi/communications.yaml`: `GET /communications/inbox/counts`, with a `summary`, then
+  `make generate`.
+
+### Lanes
+
+**1. The shell and the host** (`packages/frontend-shell`, `apps/host/frontend/src/routes/__root.tsx`,
+`apps/assistant/frontend/src/lib/panel.ts` and `hooks/use-assistant-shell.tsx`):
+
+- `SidePanelHost`: tabs, *both* mode with the divider, the minimums, the breakpoints, lazy
+  mounting, and the remembered layout (try/catch, with the width migrated from the old key);
+- the Assistant reduced to a `SidePanel` entry, its button and its shortcut;
+- `__root` building the list, with gating by module and permission;
+- the current route's `customerId` handed to the Conversations panel.
+
+**Tests:** the Vitest list in spec §10 for E, and every existing Assistant test.
+
+**2. Communications, frontend** (`cfe/`):
+
+- `ConversationsPanel` and the lifted inbox hook, shared with `pages/inbox.tsx`;
+- the three filters, *This customer* and search;
+- the conversation view with *Back* and *Open in inbox*;
+- polling by visibility, in the panel and on the inbox page;
+- the button with its badge and the shortcut;
+- en and nb strings;
+- Vitest.
+
+**3. Communications, server**: `GET /inbox/counts`, its query and its tests, plus the migration
+from step 1 if it is needed.
+
+**4. Docs:** the spec's §7 for E, in English and Norwegian. Then `go generate ./...`.
+
+**Done when:** the gates pass and the spec's browser check for E is done. That check runs with
+an e-mail channel if no Messenger test Page exists yet.
 
 ## Gotchas carried from earlier deliveries
 

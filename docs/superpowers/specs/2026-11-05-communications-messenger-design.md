@@ -1,8 +1,9 @@
 # Communications — Messenger, answer options and product images (design)
 
-**Revision 3, 2026-11-06**: delivery D, a customer's contacts on Messenger (§5a), added at the
-owner's request. §11 lists what revision 2 changed, after a critic review, and §12 what revision
-3 adds.
+**Revision 4, 2026-11-06**: delivery E, conversations in the side panel beside the Assistant
+(§5b), added at the owner's request after revision 3's delivery D, a customer's contacts on
+Messenger (§5a). §11 lists what revision 2 changed, after a critic review, and §12 what
+revisions 3 and 4 add.
 
 This design is drawn from the research
 [`2026-11-05-communications-messaging-channels.md`](../research/2026-11-05-communications-messaging-channels.md)
@@ -45,7 +46,9 @@ These are settled:
 - **Buy is a choice that comes back to the agent.** It is not a checkout.
 - **A customer's contact can be linked to their Messenger identity** (2026-11-06), so that an
   agent can write to them on Messenger from the customer. This is delivery D, the last in the
-  phase.
+  phase but one.
+- **Conversations in the side panel** (2026-11-06): the inbox beside the Assistant, so that an
+  agent can answer a customer while navigating the system. This is delivery E, last.
 
 ### Deliveries
 
@@ -57,6 +60,7 @@ These are settled:
 | **P** | **Product images in Products.** Upload with normalisation, order, a primary image, alt text and the usage flags. Shown on the product page, and read by other modules through `contracts.ProductCatalog` | — |
 | **C** | **A product in a message.** *Attach product* in the composer. The carousel built from the product's images marked for Communications. The public media route Meta fetches images from. *Buy* coming back to the agent, with a link to a new order | A, B, P, and 0's answer on image caching |
 | **D** | **Contacts on Messenger.** Linking a Messenger participant to a customer's contact, by hand or through a signed `m.me` link the contact taps. The contact's Messenger identity on the customer page. *Write on Messenger* from the contact while the reply window is open | A, B (C only for ordering) |
+| **E** | **Conversations in the side panel.** The shell's right-hand panel becomes a host with two panels, the Assistant and Conversations, shown one at a time or both stacked. A compact inbox, thread and composer, polling while shown, and an unread badge | A only (last by ordering) |
 
 A and P can start at once. Delivery 0 runs beside them. A is neutral of the channel, so it is
 worth building whichever way 0 answers.
@@ -805,6 +809,139 @@ Both need their own Meta permission and their own design. D keeps the contact li
 window rules such that either adds on: a token per participant and topic, and a send path that
 bypasses the window only with a valid token.
 
+## 5b. Decisions — delivery E, conversations in the side panel (owner, 2026-11-06)
+
+**What it is for.** An agent answers customers while moving around the system. They look up an
+order, an invoice or a product in one app, and answer in the same window. Today the shell's
+right-hand panel is the Assistant's alone. `packages/frontend-shell`'s `AppShellLayout` has
+one `aside` prop, and `apps/host/frontend/src/routes/__root.tsx` hands it `assistant.aside`.
+E makes it a panel host with two panels, the Assistant and Conversations, which can be shown
+one at a time or both at once.
+
+E works for every channel, e-mail as well as Messenger. It depends on nothing after A. It is
+last by the owner's ordering only, and could be moved earlier.
+
+### N24 — The panel host
+
+**The shell.** `AppShellLayout` keeps its single `aside` prop.
+`packages/frontend-shell` adds a `SidePanelHost`, which renders inside the aside. It is given
+a list of panels:
+
+```ts
+type SidePanel = {
+  key: string;            // "assistant" | "conversations"
+  label: string;          // "Assistant", "Conversations" (the module's own i18n)
+  icon: ReactNode;
+  badge?: ReactNode;      // a count or a status dot
+  hidden?: boolean;       // e.g. the Assistant on /assistant
+  render: () => ReactNode;
+};
+```
+
+**The host.** `__root.tsx` builds the list from the modules that are enabled, and hides a panel
+whose module is off or whose view permission the user lacks. A panel is mounted the first time
+it is shown, and then stays mounted while it is hidden, the way the Assistant's is today. A
+half-written reply, the scroll position and the open conversation therefore survive both
+navigation and switching panels.
+
+**Two modes.**
+
+- **One panel.** The panel shows tabs at its top, one per panel, and one panel's content.
+- **Both.** On a screen of at least the `md` breakpoint, both panels are stacked: the Assistant
+  above, Conversations below. A divider between them can be dragged, and also moved with the
+  arrow keys. Each panel has a minimum of 200 px.
+
+A toggle in the panel's header switches between the modes. Below `md`, the mode is always *one
+panel*, and below `sm` the panel is the full-screen sheet it already is today.
+
+**Remembered per viewer** in `localStorage`, read and written inside try/catch:
+
+- the panel's width, which moves from `vantigo.assistant.panelWidth` to
+  `vantigo.sidePanel.width`, read from the old key once;
+- the mode;
+- the divider's ratio;
+- the panel last shown.
+
+Open or closed is not remembered, as today.
+
+**Opening.** The header has one button per panel, each with its own badge. A button opens the
+panel host at its own panel: in *both* mode it opens both, and in *one panel* mode it switches
+the tab. The shortcuts are:
+
+- **Cmd/Ctrl+J:** the Assistant, as today.
+- **Conversations:** a new shortcut, chosen in plan step 1 against the shell's existing
+  shortcuts and the browsers' own. It follows the same ignore rules as `shortcut.ts`.
+
+**The Assistant's own code moves.** `useAssistantPanel` and `useAssistantShell` stop owning
+the aside. They provide the Assistant's `SidePanel` entry and its button. The tour's "close on
+mobile" rule becomes a call to the host. The Assistant's behaviour is otherwise unchanged.
+
+### N25 — The Conversations panel
+
+`@vantigo/communications-ui` exports a `ConversationsPanel`. It is built from the existing
+components: `ConversationList`, `ConversationThread` and `ConversationComposer`.
+`ConversationThread`'s props are already independent of the router. The inbox page's mutations
+and invalidations (`pages/inbox.tsx`) are lifted into a hook that the page and the panel
+share, so both behave the same.
+
+**The list view.** It has a compact list with three filters: *Unread*, *Assigned to me* and
+*All open*. It defaults to *Assigned to me*, or to *All open* when nothing is assigned to the
+user. It also has a search box.
+
+**The conversation view.** Picking a row shows its thread and the composer in the panel, with:
+
+- *Back*, to return to the list;
+- *Open in inbox*, which navigates to `/communications/inbox?conversationId=…`;
+- the conversation's customer as a link, which navigates the main page and leaves the panel
+  as it is.
+
+**Context.** When the main page is a customer page, the list offers a *This customer* filter.
+It is chosen from the route's `customerId`, through the host, which passes the current route's
+`customerId` to the panel. It is offered and never forced.
+
+**Where the panel is hidden.** It is hidden on `/communications/inbox`, which is the same view.
+
+**Permissions:**
+
+- the panel needs `communications:conversations-view`, else it is not listed;
+- the composer needs `communications:conversations-reply`, else it is read-only;
+- the menus that assign, tag and close need `communications:conversations-manage`.
+
+These are the same checks the inbox makes.
+
+**Messenger.** Messenger's chat mode, its answer options, the reply window (N6) and *Attach
+product* (C) all work in the panel. They are the same components.
+
+**Width.** The thread renders at the panel's width. At 320 px it drops the side margins.
+E-mail HTML stays in its sandboxed iframe, scaled to fit.
+
+### N26 — Keeping it current
+
+There are no real-time updates today: changes arrive on invalidation and on *Refresh* only. In
+the panel, while it is shown and the tab is visible (`document.visibilityState`):
+
+- the list refetches every 15 s;
+- the open conversation refetches every 5 s;
+- polling stops when the panel or the tab is hidden, and resumes, with a refetch, when it is
+  shown again.
+
+The inbox page gains the same polling. This is not push: a server-sent stream is later (§9).
+
+### N27 — The badge
+
+`GET /api/v1/communications/inbox/counts` answers `{ unread, assignedToMeUnread }`.
+
+- **Permission:** `communications:conversations-view`.
+- **Query:** one indexed count each, with no per-row work.
+- **Read by** the Conversations button: every 30 s while the tab is visible, and on focus.
+- **The badge** shows `assignedToMeUnread` when it is above 0, else a dot when `unread` is above
+  0, else nothing. Its `aria-label` names the counts.
+
+### N28 — No new permissions, and what stays
+
+There are no new permissions. The inbox page is unchanged, apart from the shared hook and the
+polling. The Assistant's page (`/assistant`) is unchanged.
+
 ## 6. Permissions
 
 No new permissions.
@@ -820,6 +957,7 @@ No new permissions.
 | *Create order* | Orders' own create permission |
 | Linking a participant to a contact, and getting a contact's Messenger link (D) | `communications:conversations-manage` |
 | *Write on Messenger* from a contact (D) | `communications:conversations-reply` |
+| The Conversations panel and its badge (E) | `communications:conversations-view`, plus `-reply` to answer and `-manage` to assign, tag or close |
 
 ## 7. Documentation
 
@@ -871,6 +1009,16 @@ by one.
   or it is re-subscribed automatically (plan step 1 decides which).
 - `contributing/module-boundaries.md`: `contracts.ContactChannels`.
 
+**Delivery E:**
+
+- `U/assistant.md`: *The panel* becomes the shared panel. It covers the tabs, the *both*
+  mode, the divider and the remembered layout, and keeps Cmd/Ctrl+J.
+- `U/communications.md`: the Conversations panel, its filters, *This customer*, *Open in
+  inbox*, the badge, the shortcut and polling.
+- `Ref/communications.md`: `GET /inbox/counts` and the polling intervals.
+- `contributing/frontend-architecture.md`: `SidePanelHost` and how a module adds a panel. The
+  page's stale mention of `packages/module-registry` is corrected while there.
+
 After any docs edit, run `go generate` in `apps/server`, because the Assistant embeds the docs.
 
 ## 8. Open questions, answered by delivery 0
@@ -909,6 +1057,8 @@ create accounts.
 | The marketing flag | A marketing or advertising feature to read it |
 | Bots and automatic replies | Their own design |
 | Writing to a contact on Messenger outside the window (N23) | Meta's Marketing Messages permission and a design of its own |
+| Push updates (a server-sent stream) for the inbox and the panel (E) | A stream endpoint in the shell; E polls until then |
+| More panels in the host (E), such as notes or a timer | A module that needs one |
 | The Messenger link as a placeholder in Invoices', Orders' and Calendar's mail | D, and a shared placeholder for those modules' templates |
 
 ## 10. Testing
@@ -955,6 +1105,29 @@ create accounts.
 - **Merge and erasure:** a contact merge moving `contact_id`, and erasure.
 - **The browser check:** on the test Page from delivery 0. Tap the link, write, see the contact
   linked, then *Write on Messenger* from the customer page.
+
+**Delivery E:**
+
+- **Vitest for `SidePanelHost`:**
+  - tabs, and *both* mode with the divider by drag and by keyboard;
+  - the minimums;
+  - below `md` falling back to *one panel*;
+  - remembered layout, including the migration from the old width key and `localStorage`
+    throwing;
+  - lazy mounting, and staying mounted across a switch.
+- **The Conversations panel:**
+  - the filters and *This customer*;
+  - a half-written reply surviving navigation;
+  - permission gating;
+  - polling stopping when the panel or the tab is hidden.
+- **`/inbox/counts`:** the counts, and the permission.
+- **The Assistant:** its existing tests still pass, and the tour still closes the panel on a
+  narrow screen.
+- **The browser check:**
+  - open both panels;
+  - navigate Orders → Customers → Products while a Messenger reply is half written;
+  - send it from the panel;
+  - see the badge clear.
 
 **Delivery P:**
 
@@ -1021,7 +1194,7 @@ create accounts.
 - **Cut from scope:** images of a single variant, reordering options by dragging, product-list
   thumbnails, and the inbox filter by type.
 
-## 12. Revision 3 — delivery D, 2026-11-06
+## 12. Revisions 3 and 4 — deliveries D and E, 2026-11-06
 
 The owner asked whether a customer's contact can carry their Messenger identity, so that an
 agent can write to them directly. Revision 3 adds delivery D (§5a, N19–N23) as the phase's last
@@ -1033,6 +1206,16 @@ delivery:
 - the contact on the customer page through `contracts.ContactChannels`;
 - *Write on Messenger* within the window, with `participantId` on create;
 - outside the window, later (N23).
+
+**Revision 4** adds delivery E (§5b, N24–N28), last by the owner's ordering:
+
+- the shell's right-hand panel as a host for the Assistant and Conversations, shown one at a
+  time or stacked;
+- the Conversations panel from the inbox's own components;
+- polling while shown;
+- the badge from `GET /inbox/counts`.
+
+§6, §7, §9 and §10 gain E's rows.
 
 N7's refusal `channel_cannot_start` is narrowed by N22: a Messenger conversation can now be
 started for a known participant whose window is open. §6, §7, §9 and §10 gain D's rows.
