@@ -13,6 +13,16 @@ export const codeOf = (error: unknown): string | undefined => {
   return typeof code === "string" ? code : undefined;
 };
 
+/** The Pages a page_choice_required refusal lists; none for any other error. */
+export const choicesOf = (error: unknown): { id: string; name: string }[] => {
+  if (codeOf(error) !== "page_choice_required") return [];
+  const choices = (error as { problem?: { choices?: unknown } }).problem?.choices;
+  if (!Array.isArray(choices)) return [];
+  return choices.filter(
+    (c): c is { id: string; name: string } => typeof c?.id === "string" && typeof c?.name === "string",
+  );
+};
+
 /**
  * A refusal in the reader's words: a coded one by its code
  * (`refusal.<code>`), never the server's English; a validation error by its

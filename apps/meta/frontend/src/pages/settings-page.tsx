@@ -9,6 +9,7 @@ import {
   Group,
   Paper,
   PasswordInput,
+  Radio,
   Stack,
   Text,
   TextInput,
@@ -32,7 +33,7 @@ import {
   settingsQueryOptions,
   updateSettings,
 } from "../api/settings";
-import { graphErrorText, refusalText } from "../lib/words";
+import { choicesOf, graphErrorText, refusalText } from "../lib/words";
 
 const settingsKey = settingsQueryOptions().queryKey;
 
@@ -280,12 +281,17 @@ const PagesCard = ({ settings }: { settings: MetaSettings }) => {
   const queryClient = useQueryClient();
   const [token, setToken] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
+  // The Pages a token that manages several was refused for, and the one chosen.
+  const [choices, setChoices] = useState<{ id: string; name: string }[]>([]);
+  const [chosen, setChosen] = useState("");
   const add = useMutation({
-    mutationFn: () => addPage(token.trim()),
+    mutationFn: () => addPage(token.trim(), chosen || undefined),
     onSuccess: async (page) => {
       // The token leaves the page with the answer: nothing here holds it any longer.
       setToken("");
       setProblem(null);
+      setChoices([]);
+      setChosen("");
       notifications.show({
         color: "teal",
         title: t("pageAddedNotice"),
@@ -293,7 +299,12 @@ const PagesCard = ({ settings }: { settings: MetaSettings }) => {
       });
       await queryClient.invalidateQueries({ queryKey: [META_QUERY_KEY] });
     },
-    onError: (error) => setProblem(refusalText(error, t)),
+    onError: (error) => {
+      const listed = choicesOf(error);
+      setChoices(listed);
+      setChosen("");
+      setProblem(listed.length > 0 ? null : refusalText(error, t));
+    },
   });
 
   return (
@@ -318,6 +329,7 @@ const PagesCard = ({ settings }: { settings: MetaSettings }) => {
             setProblem(t("accessTokenRequired"));
             return;
           }
+          if (choices.length > 0 && !chosen) return;
           add.mutate();
         }}
       >
@@ -327,9 +339,34 @@ const PagesCard = ({ settings }: { settings: MetaSettings }) => {
             description={t("accessTokenDescription")}
             autoComplete="new-password"
             value={token}
-            onChange={(event) => setToken(event.currentTarget.value)}
+            onChange={(event) => {
+              setToken(event.currentTarget.value);
+              // Another token manages other Pages: the choice made for the last one is void.
+              setChoices([]);
+              setChosen("");
+            }}
             error={problem}
           />
+          {choices.length > 0 ? (
+            <Radio.Group
+              label={t("choosePage")}
+              description={t("choosePageDescription")}
+              value={chosen}
+              onChange={setChosen}
+              withAsterisk
+            >
+              <Stack gap="xs" mt="xs">
+                {choices.map((choice) => (
+                  <Radio
+                    key={choice.id}
+                    value={choice.id}
+                    label={choice.name}
+                    description={t("choicePageId", { id: choice.id })}
+                  />
+                ))}
+              </Stack>
+            </Radio.Group>
+          ) : null}
           <Group justify="flex-end">
             <Button type="submit" loading={add.isPending}>
               {t("addPage")}

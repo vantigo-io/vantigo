@@ -12,6 +12,7 @@ type Schemas = components["schemas"];
 export type MetaSettings = Schemas["MetaSettings"];
 export type MetaSettingsRequest = Schemas["MetaSettingsRequest"];
 export type MetaPage = Schemas["MetaPage"];
+export type MetaPageChoice = Schemas["MetaPageChoice"];
 export type MetaStatus = Schemas["MetaStatus"];
 
 const base = "/api/v1/meta";
@@ -29,8 +30,13 @@ export const updateSettings = (body: MetaSettingsRequest) =>
 /** Replaces the webhook's verify token with a new random one. */
 export const regenerateVerifyToken = () => request<MetaSettings>(`${base}/settings/verify-token`, { method: "POST" });
 
-/** Connects a Page by its access token, which Vantigo checks with Meta and seals at once. */
-export const addPage = (accessToken: string) => request<MetaPage>(`${base}/pages`, json("POST", { accessToken }));
+/**
+ * Connects a Page from a token, which Vantigo checks with Meta. A token that
+ * manages several Pages is refused with page_choice_required until `pageId`
+ * names one of them.
+ */
+export const addPage = (accessToken: string, pageId?: string) =>
+  request<MetaPage>(`${base}/pages`, json("POST", pageId ? { accessToken, pageId } : { accessToken }));
 
 export const removePage = (pageId: string) =>
   request<void>(`${base}/pages/${encodeURIComponent(pageId)}`, { method: "DELETE" });

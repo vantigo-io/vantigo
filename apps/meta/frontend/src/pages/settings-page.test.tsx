@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { problemResponse, sent, sentAll } from "../test/api";
+import { jsonResponse, problemResponse, sent, sentAll } from "../test/api";
 import { renderWithProviders } from "../test/render";
 import {
   type MetaServer,
@@ -101,31 +101,85 @@ describe("MetaSettingsPage", () => {
 
   it("adds a Page by its access token and empties the field", async () => {
     const { fetchMock } = await openPage({ settings: settings({ appId: "42", appSecretSet: true }) });
-    await userEvent.type(screen.getByLabelText("Page access token"), "EAAB-token");
+    await userEvent.type(screen.getByLabelText("Access token"), "EAAB-token");
     await userEvent.click(screen.getByRole("button", { name: "Add Page" }));
 
     expect(await within(screen.getByRole("region", { name: "Pages" })).findByText("Contoso Salg")).toBeInTheDocument();
     expect(sent(fetchMock, "POST")).toMatchObject({ url: "/api/v1/meta/pages", body: { accessToken: "EAAB-token" } });
-    expect(screen.getByLabelText("Page access token")).toHaveValue("");
+    expect(screen.getByLabelText("Access token")).toHaveValue("");
   });
 
   it.each([
-    [422, "page_token_insufficient", "This token is not a Page's, or may not message the Page."],
+    [422, "page_token_insufficient", "The token is neither a Page's access token nor a user's or system user's token"],
     [422, "not_configured", "Save the app ID and app secret first, then add the Page."],
     [503, "meta_unreachable", "Meta did not answer. Try again in a while."],
   ])("says %s %s in words when adding a Page", async (status, code, sentence) => {
     await openPage({ addPage: () => problemResponse(status, "refused", { code }) });
-    await userEvent.type(screen.getByLabelText("Page access token"), "EAAB-token");
+    await userEvent.type(screen.getByLabelText("Access token"), "EAAB-token");
     await userEvent.click(screen.getByRole("button", { name: "Add Page" }));
 
     expect(await screen.findByText(new RegExp(`^${sentence}`))).toBeInTheDocument();
-    expect(screen.getByLabelText("Page access token")).toHaveValue("EAAB-token");
+    expect(screen.getByLabelText("Access token")).toHaveValue("EAAB-token");
+  });
+
+  it("lists the Pages of a token that manages several, and connects the chosen one", async () => {
+    let calls = 0;
+    const { fetchMock } = await openPage({
+      addPage: () => {
+        calls += 1;
+        return calls === 1
+          ? problemResponse(422, "choose", {
+              code: "page_choice_required",
+              choices: [
+                { id: "111", name: "Contoso Salg" },
+                { id: "222", name: "Contoso Støtte" },
+              ],
+            })
+          : jsonResponse(201, page({ name: "Contoso Støtte", pageId: "222" }));
+      },
+    });
+    await userEvent.type(screen.getByLabelText("Access token"), "EAAB-system");
+    await userEvent.click(screen.getByRole("button", { name: "Add Page" }));
+
+    expect(await screen.findByText("Choose the Page to connect")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Contoso Salg/)).toBeInTheDocument();
+    expect(screen.getByText("Page ID 222")).toBeInTheDocument();
+    expect(screen.getByLabelText("Access token")).toHaveValue("EAAB-system");
+
+    await userEvent.click(screen.getByRole("button", { name: "Add Page" }));
+    expect(sentAll(fetchMock, "POST")).toHaveLength(1);
+
+    await userEvent.click(screen.getByLabelText(/Contoso Støtte/));
+    await userEvent.click(screen.getByRole("button", { name: "Add Page" }));
+
+    await waitFor(() => expect(sentAll(fetchMock, "POST")).toHaveLength(2));
+    expect(sentAll(fetchMock, "POST")[1]).toMatchObject({
+      url: "/api/v1/meta/pages",
+      body: { accessToken: "EAAB-system", pageId: "222" },
+    });
+    await waitFor(() => expect(screen.queryByText("Choose the Page to connect")).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Access token")).toHaveValue("");
+  });
+
+  it("drops the choice when the token is edited", async () => {
+    await openPage({
+      addPage: () =>
+        problemResponse(422, "choose", {
+          code: "page_choice_required",
+          choices: [{ id: "111", name: "Contoso Salg" }],
+        }),
+    });
+    await userEvent.type(screen.getByLabelText("Access token"), "EAAB-a");
+    await userEvent.click(screen.getByRole("button", { name: "Add Page" }));
+    expect(await screen.findByText("Choose the Page to connect")).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Access token"), "b");
+    expect(screen.queryByText("Choose the Page to connect")).not.toBeInTheDocument();
   });
 
   it("asks for a token before it calls the server", async () => {
     const { fetchMock } = await openPage();
     await userEvent.click(screen.getByRole("button", { name: "Add Page" }));
-    expect(await screen.findByText("Enter the Page's access token.")).toBeInTheDocument();
+    expect(await screen.findByText("Enter the access token.")).toBeInTheDocument();
     expect(sentAll(fetchMock, "POST")).toHaveLength(0);
   });
 
