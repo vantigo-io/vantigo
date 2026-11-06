@@ -1,15 +1,19 @@
+import { Box } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
-import type { AssistTarget } from "@vantigo/frontend-shell";
-import { useEffect } from "react";
+import { IconMessageChatbot } from "@tabler/icons-react";
+import { type AssistTarget, type SidePanel, type SidePanelController, useI18n } from "@vantigo/frontend-shell";
 import { AssistantButton } from "../components/assistant-button";
 import { AssistantPanel } from "../components/assistant-panel";
 import { TourRunner } from "../components/tour-runner";
 import type { AssistantChip } from "../lib/context";
-import { useAssistantPanel } from "../lib/panel";
+import { ASSISTANT_PANEL_KEY, useAssistantPanel } from "../lib/panel";
+import { useAssistantRunStatus } from "../lib/run-status";
 import { useAssistantShortcut } from "../lib/shortcut";
 import { useAssistantAvailability } from "./use-availability";
 
 export interface UseAssistantShellOptions {
+  /** The shell's shared side panel; the Assistant is one entry in it (Messenger design N24). */
+  side: SidePanelController;
   /** The host's own gate: signed in, not held at MFA enrolment, the module on. */
   enabled: boolean;
   /** The Assistant app is on screen: it shows the conversations itself, so the panel and its shortcut stand down. */
@@ -27,12 +31,13 @@ export interface UseAssistantShellOptions {
 /**
  * Everything the shell needs of the assistant, in one hook: whether the person
  * has it (so the button and the panel exist at all), the header button, the
- * panel for the layout's aside, the Cmd/Ctrl+J shortcut and `ask`, which opens
- * the panel with a question to send (Spotlight's fallback). The panel's state
- * lives where this hook is called, so call it from the layout that persists
- * across apps.
+ * panel's entry for the shared side panel (`sidePanel`), the Cmd/Ctrl+J
+ * shortcut and `ask`, which opens the panel with a question to send
+ * (Spotlight's fallback). The state lives where this hook is called, so call
+ * it from the layout that persists across apps.
  */
 export const useAssistantShell = ({
+  side,
   enabled,
   onAssistantPage = false,
   context,
@@ -41,17 +46,15 @@ export const useAssistantShell = ({
   onOpenInAssistant,
 }: UseAssistantShellOptions) => {
   const availability = useAssistantAvailability(enabled);
-  const panel = useAssistantPanel();
+  const { t } = useI18n("assistant");
+  const status = useAssistantRunStatus();
+  const panel = useAssistantPanel(side);
   const available = availability.available;
   const visible = available && !onAssistantPage;
   useAssistantShortcut(panel.toggle, visible);
 
-  const { open, setOpen } = panel;
   // Below the shell's "sm" breakpoint the panel is a full-screen sheet and would cover the controls a tour points at.
   const sheet = useMediaQuery("(max-width: 48em)") === true;
-  useEffect(() => {
-    if (!visible && open) setOpen(false);
-  }, [visible, open, setOpen]);
 
   return {
     /** The person has the assistant: Spotlight may offer to ask it, the Assistant app is offered. */
@@ -67,36 +70,45 @@ export const useAssistantShell = ({
         targets={tourTargets}
         onNavigate={onNavigate}
         onStart={() => {
-          if (sheet) setOpen(false);
+          if (sheet) side.close();
         }}
       />
     ) : null,
     /** For `headerActions`; null when the person does not have the assistant. */
     button: visible ? <AssistantButton open={panel.open} onClick={panel.toggle} /> : null,
-    /** For `AppShellLayout`'s `aside`; undefined until the panel is first opened. */
-    aside:
-      visible && panel.mounted
-        ? {
-            opened: panel.open,
-            width: panel.width,
-            children: (
-              <AssistantPanel
-                open={panel.open}
-                width={panel.width}
-                onWidthChange={panel.setWidth}
-                onClose={() => panel.setOpen(false)}
-                context={context}
-                onNavigate={onNavigate}
-                onOpenInAssistant={(id) => {
-                  panel.setOpen(false);
-                  onOpenInAssistant(id);
+    /** The Assistant's entry for the side panel; undefined when the person does not have the assistant. Hidden on the Assistant's own page. */
+    sidePanel: available
+      ? ({
+          key: ASSISTANT_PANEL_KEY,
+          label: t("assistant"),
+          icon: <IconMessageChatbot size={16} stroke={1.5} />,
+          badge:
+            status === "idle" ? undefined : (
+              <Box
+                w={8}
+                h={8}
+                data-status={status}
+                style={{
+                  borderRadius: "50%",
+                  background: `var(--mantine-color-${status === "done" ? "teal" : status === "waiting" ? "orange" : "blue"}-6)`,
                 }}
-                pendingQuestion={panel.pending}
-                onQuestionSent={panel.consumeQuestion}
               />
             ),
-          }
-        : undefined,
+          hidden: !visible,
+          render: () => (
+            <AssistantPanel
+              context={context}
+              onNavigate={onNavigate}
+              onOpenInAssistant={(id) => {
+                panel.setOpen(false);
+                onOpenInAssistant(id);
+              }}
+              pendingQuestion={panel.pending}
+              onQuestionSent={panel.consumeQuestion}
+            />
+          ),
+        } satisfies SidePanel)
+      : undefined,
     /** Opens the panel with this question sent into a fresh conversation. */
     ask: panel.ask,
   };

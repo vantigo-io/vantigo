@@ -128,6 +128,8 @@ const useSidePanelState = () => {
     },
     [open, stacked, active, show],
   );
+  /** Whether this panel is in front now: open, and shown (alone in front, or stacked). */
+  const isShown = useCallback((key: string) => open && (stacked || active === key), [open, stacked, active]);
   const setWidth = useCallback((next: number) => {
     const clamped = clampSidePanelWidth(next);
     setWidthState(clamped);
@@ -157,6 +159,7 @@ const useSidePanelState = () => {
     show,
     close,
     toggle,
+    isShown,
     setWidth,
     setMode,
     setRatio,
