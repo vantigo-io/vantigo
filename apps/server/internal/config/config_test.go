@@ -955,7 +955,7 @@ func TestLoad_TrustedProxyHopsRequireCIDRsOutsideDevelopment(t *testing.T) {
 }
 
 func TestLoad_Modules(t *testing.T) {
-	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "inventory", "orders", "knowledge", "calendar", "entra", "google", "assistant"}) {
+	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "inventory", "orders", "knowledge", "calendar", "entra", "google", "meta", "assistant"}) {
 		t.Errorf("Modules = %v, want the default customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,calendar,entra,google,assistant when MODULES is unset", cfg.Modules)
 	}
 
@@ -964,7 +964,7 @@ func TestLoad_Modules(t *testing.T) {
 		t.Errorf("Modules = %v, want trimmed, lower-cased entries with empties dropped", cfg.Modules)
 	}
 
-	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, knowledge, calendar, entra, google, assistant") {
+	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, knowledge, calendar, entra, google, meta, assistant") {
 		t.Errorf("error = %q, want it to name the bad value and the known set", msg)
 	}
 
@@ -1042,6 +1042,17 @@ func TestLoad_Modules(t *testing.T) {
 	cfg = mustLoad(t, with(validEnv(), "MODULES", "staff,google"))
 	if !slices.Equal(cfg.Modules, []string{"staff", "google"}) {
 		t.Errorf("Modules = %v, want exactly staff,google", cfg.Modules)
+	}
+
+	// meta fills contracts.ChannelMessenger, which only Communications calls
+	// (Messenger design N9): meta without communications is refused, naming
+	// both, and meta beside communications is valid.
+	if msg := loadError(t, with(validEnv(), "MODULES", "customers,meta")); !strings.Contains(msg, "MODULES: meta requires communications") {
+		t.Errorf("error = %q, want meta without communications named", msg)
+	}
+	cfg = mustLoad(t, with(validEnv(), "MODULES", "customers,communications,meta"))
+	if !slices.Equal(cfg.Modules, []string{"customers", "communications", "meta"}) {
+		t.Errorf("Modules = %v, want exactly customers,communications,meta", cfg.Modules)
 	}
 
 	// planning books Staff's people on Projects' projects (planning design

@@ -29,6 +29,7 @@ describe("gen:client", () => {
       calendar: "apps/calendar/frontend/src/api-schema.d.ts",
       entra: "apps/entra/frontend/src/api-schema.d.ts",
       google: "apps/google/frontend/src/api-schema.d.ts",
+      meta: "apps/meta/frontend/src/api-schema.d.ts",
       assistant: "apps/assistant/frontend/src/api-schema.d.ts",
     });
   });

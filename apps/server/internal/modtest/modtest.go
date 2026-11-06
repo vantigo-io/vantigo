@@ -663,6 +663,10 @@ func WithEnv(key, value string) Option {
 // config.go rejects "inventory" without "products", and inventory's own tests
 // stand in a fake catalog (WithProducts) rather than compose products.
 //
+// "communications" is likewise included whenever "meta" is among mods:
+// config.go rejects "meta" without it (Messenger design N9), and meta's own
+// tests stand in a fake ChannelMessenger consumer rather than compose it.
+//
 // "products" and "invoices" are likewise included whenever "orders" is among
 // mods: config.go rejects "orders" without either (orders design O9), and
 // orders' own tests stand in fakes of the catalog and the sales tax rather
@@ -691,6 +695,9 @@ func modulesEnv(mods []module.Module, stubbed ...string) string {
 	}
 	if moduleSet["entra"] || moduleSet["google"] {
 		moduleSet["staff"] = true
+	}
+	if moduleSet["meta"] {
+		moduleSet["communications"] = true
 	}
 	if moduleSet["inventory"] {
 		moduleSet["products"] = true

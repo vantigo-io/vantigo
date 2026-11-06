@@ -20,6 +20,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/inventory"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/knowledge"
+	"github.com/vantigo-io/vantigo/server/internal/meta"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
@@ -45,7 +46,7 @@ func everyModule() []module.Module {
 	return []module.Module{
 		customers.Module(), products.Module(), energy.Module(), communications.Module(),
 		projects.Module(), timetracking.Module(), expenses.Module(), invoices.Module(),
-		staff.Module(), planning.Module(), inventory.Module(), orders.Module(), knowledge.Module(), calendar.Module(), entra.Module(), google.Module(), assistant.Module(),
+		staff.Module(), planning.Module(), inventory.Module(), orders.Module(), knowledge.Module(), calendar.Module(), entra.Module(), google.Module(), meta.Module(), assistant.Module(),
 	}
 }
 
