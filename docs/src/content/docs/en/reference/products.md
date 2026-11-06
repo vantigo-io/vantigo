@@ -271,7 +271,9 @@ when they are deleted one by one.
 4. The picture is decoded, scaled so its longer side is at most **2048 px** (Catmull-Rom,
    never upscaled), turned upright and encoded again: JPEG at quality 90, or PNG. This
    drops every piece of metadata — Exif, XMP, IPTC, a PNG's text chunks — so no camera
-   location reaches a customer.
+   location reaches a customer. The ICC colour profile goes with it, so a wide-gamut photo
+   may look slightly less saturated. An orientation that cannot be read is taken as 1
+   (upright): the picture has already decoded.
 5. A **320 px** thumbnail of the same type is made in the same pass, with
    `golang.org/x/image/draw`.
 
@@ -280,7 +282,15 @@ The two files go in the object store under the scope **`products-images`**, keys
 and written before the row's transaction and removed again if it does not commit. A store
 that cannot be written is **503 `storage_unavailable`** with nothing recorded. A body
 that is no multipart form, has no file or more than one is 400. The router's body cap for
-the upload is 10 MiB and the framing. Image refusals are the one place Products' problems
+the upload is 10 MiB and the framing.
+
+**Bounds on the cost of an upload.** A 40 megapixel picture needs hundreds of megabytes
+to decode, so at most **3 uploads are normalised at once** per process (a semaphore
+around the normalisation alone, never held while the store or the database is called);
+the others **wait on the request's own context** rather than failing, and a client that
+goes away stops waiting. The upload also carries the rate-limit policy
+`ProductsImageUpload`: **600 uploads an hour per client address** (staff's document
+upload's number; an office behind one address shares it), 429 with `Retry-After`. Image refusals are the one place Products' problems
 carry a `code`.
 
 ### The primary image and the order
