@@ -293,6 +293,7 @@ change: both operations keep using that model until an Owner chooses another.
 | The account rules, sign-in and provisioning, the groups Vantigo keeps in the tenant | **Integrations** › **Microsoft Entra ID** › **Accounts** | `entra:manage` (sign-in and provisioning: an Owner) |
 | The Outlook connection, calendar sync on it, and Mail channels | **Integrations** › **Microsoft Entra ID** › **Outlook and mail** | `entra:manage` |
 | The Google Workspace connection: the service account's keys, the admin to impersonate, the Internal web client and the test | **Workspace admin** › **Integrations** › **Google Workspace** › **Connection** ([guide](/en/user/google-workspace/#where-it-is-and-the-four-tabs)) | an Owner (`google:manage` reads it) |
+| The Meta app, the webhook's verify token, the Human Agent setting and the Facebook Pages | **Workspace admin** › **Integrations** › **Meta** ([guide](/en/admin/meta/)) | an Owner |
 | The model each AI task uses, among the models the plan allows | **Workspace admin** › **Integrations** › **AI models** ([guide](/en/user/workspace-administration/#ai-models)) | an Owner |
 | Who has the assistant, how long conversations are kept and what the assistant may use | **Workspace admin** › **Integrations** › **Assistant** ([guide](/en/user/workspace-administration/#assistant)); each person's own switch in **Users** › **Edit details** | an Owner |
 | The mailboxes Communications sends from, and the SMTP accounts it uses | **Communications** › **Channels** | `communications:channels-manage` |
