@@ -111,8 +111,8 @@ to it:
 | **B** | Accounts, groups, licences, photos through `IdentityProvisioner` | google, entra (address package), staff docs | 00115 |
 | **C** | Connect existing users: directory search, matches, announced links, the SSO card | google, host | — |
 | **D** | The personal Google connection | google, host | 00116 |
-| **E** | Calendar sync on the connection | google | 00117 |
-| **F** | Gmail mail channels | google | 00118 |
+| **E** | Calendar sync on the connection | google | 00128 |
+| **F** | Gmail mail channels | google | 00129 |
 | **G** | Personal sending through Gmail | google | — |
 
 Each is a pull request against `main` once the one before it has landed; 0 may land
@@ -1014,7 +1014,7 @@ the *own* calendar's scope, verifying, change notifications, a leaver's copies),
 
 ### G33 — The switch and the scopes (Q6, Q7)
 
-`google.connection.mail_channels boolean` (00118). Turning it on adds `gmail.modify`
+`google.connection.mail_channels boolean` (00129). Turning it on adds `gmail.modify`
 and `gmail.send` to the scopes the page lists to delegate, and *Test connection* checks
 them by a token for a channel mailbox when one exists, else for `admin_subject`. While
 it is off, a Gmail scope still granted is **unexpected** (G15). The guide states the
@@ -1077,7 +1077,7 @@ Workspace"`, every call impersonating the channel's mailbox through DWD.
 - Gmail's quota is charged to the impersonated mailbox (`quotaUser` set too); a
   `messages.send` costs 100 units, so a channel sends at most ~60 a minute.
 
-The migration is `00118_google_mail_channels.sql` (the switch,
+The migration is `00129_google_mail_channels.sql` (the switch,
 `google.channel_mailboxes`). **F's operations:** `PUT /google/connection/mail-channels`.
 **F's pages:** `U/communications.md` (adding a Google Workspace channel, a licensed
 mailbox, why a group is refused, the 25 MB budget, marks as labels),

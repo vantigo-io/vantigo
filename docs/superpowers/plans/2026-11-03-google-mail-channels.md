@@ -21,7 +21,7 @@ status, the footing of a call, `Check`, `Forget`, `Send`, the refusal mapping),
 Every Gmail call impersonates the channel's mailbox through domain-wide delegation —
 `keyring.tokenSource(scope, address)` — with `quotaUser` the mailbox's Directory id; the
 Directory reads of `Check` impersonate `admin_subject`. The switch is
-`google.connection.mail_channels`, the mailboxes `google.channel_mailboxes` (00118); the
+`google.connection.mail_channels`, the mailboxes `google.channel_mailboxes` (00129); the
 Owner's `PUT /google/connection/mail-channels` turns it on and off, and *Test connection*
 probes the Gmail scopes while it is on.
 
@@ -32,7 +32,7 @@ probes the Gmail scopes while it is on.
 
 Checked against `5eb44be4` (`feat/google-calendar`, delivery E on `main`'s 0–D).
 
-1. **The migration is `00118`.** `main` holds 00114–00116 for Google and E took 00117;
+1. **The migration is `00129`** (first `00118`, renumbered after `main`'s 00117–00128). `main` holds 00114–00116 for Google and E took 00128;
    the design's and the brief's `00116` is stale. `srv/google/sqlc.yaml` follows.
 2. **The slot is many-provider already** (delivery 0): `module.Module.ChannelMailbox`
    builds the module's, Compose and Workers collect it into `Deps.ChannelMailboxes`, and
@@ -148,7 +148,7 @@ Checked against `5eb44be4` (`feat/google-calendar`, delivery E on `main`'s 0–D
 
 - [x] **1. Plan** — this file, `docs(google): the plan for Gmail channels (Google F)`.
 - [x] **2. The switch** — `feat(google): the Mail channels switch and the Gmail scopes (Google F)`.
-  `00118_google_mail_channels.sql` (`connection.mail_channels`, `google.channel_mailboxes`),
+  `00129_google_mail_channels.sql` (`connection.mail_channels`, `google.channel_mailboxes`),
   `queries/channel_mailboxes.sql`, sqlc; `openapi/google.yaml` (the operation,
   `GoogleMailChannels`); `go generate`; the scopes in the test and the connection; tests:
   the switch, the scopes listed, the probe's subject, unexpected while off.

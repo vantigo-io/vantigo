@@ -10,7 +10,7 @@ sql:
       - ../db/migrations/00115_google_accounts.sql
       - ../db/migrations/00116_google_connections.sql
       - ../db/migrations/00128_google_calendar.sql
-      - ../db/migrations/00118_google_mail_channels.sql
+      - ../db/migrations/00129_google_mail_channels.sql
     queries: queries
     gen:
       go:
