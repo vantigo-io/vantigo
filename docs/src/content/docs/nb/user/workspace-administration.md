@@ -13,7 +13,7 @@ Administrasjon av arbeidsområdet er der en **Eier** styrer hvem som kan bruke
 Vantigo og hva de kan gjøre. Åpne avatar-menyen øverst til høyre og velg
 **Administrer arbeidsområde**; sidemenyen har **Oversikt**, **Brukere**,
 **Invitasjoner** og **Roller og tilgang**, og, under **Integrasjoner**, **Microsoft Entra ID**,
-**Google Workspace**, **Frakt** og, når Vantigo har satt opp KI for installasjonen, **KI-modeller** og **Assistent**.
+**Google Workspace**, **Meta**, **Frakt** og, når Vantigo har satt opp KI for installasjonen, **KI-modeller** og **Assistent**.
 
 Alt her krever eierrollen, med ett unntak: den en eier har delegert
 rolleadministrasjon til, ser bare **Roller og tilgang**, både i avatar-menyen og i
@@ -531,6 +531,9 @@ selskapets Google Workspace-organisasjon; siden har fire faner — **Status**,
 **Tilkobling**, **Kontoer** og **Kalender og Gmail** — beskrevet i [Google
 Workspace](/nb/user/google-workspace/#hvor-den-er-og-de-fire-fanene). Det er der bare mens
 modulen Google Workspace er på, og bare for den som har `google:manage`.
+**Meta** kobler til Facebook Messenger: Meta-appen, webhooken, innstillingen for Human Agent
+og Facebook-sidene, beskrevet i [Meta](/nb/admin/meta/). Den er bare eierens, og er der bare
+mens modulen Meta er på.
 **Frakt** holder fraktkontoene Ordre bestiller sendinger med — Mybring-brukeren og
 API-nøkkelen hos Bring, kundenumrene, testmodus — og standardkontoen per lagersted, beskrevet i
 [Frakt](/nb/admin/shipping/). Det er der bare mens modulen Ordre er på, og bare for den som har

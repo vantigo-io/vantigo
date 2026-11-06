@@ -12,7 +12,7 @@ sources:
 Workspace administration is where an **Owner** manages who can use Vantigo and what
 they may do. Open the avatar menu at the top right and choose **Workspace admin**;
 its sidebar has **Overview**, **Users**, **Invitations** and **Roles & access**, and,
-under **Integrations**, **Microsoft Entra ID**, **Google Workspace**, **Shipping** and, once Vantigo has set up AI for the
+under **Integrations**, **Microsoft Entra ID**, **Google Workspace**, **Meta**, **Shipping** and, once Vantigo has set up AI for the
 installation, **AI models** and **Assistant**.
 
 Everything here needs the Owner role, with one exception: a person to whom an Owner
@@ -520,6 +520,9 @@ Vantigo to the company's Google Workspace organisation; its page has four tabs �
 **Status**, **Connection**, **Accounts** and **Calendar and Gmail** — described in [Google
 Workspace](/en/user/google-workspace/#where-it-is-and-the-four-tabs). It is there only
 while the Google Workspace module is on, and only for someone who holds `google:manage`.
+**Meta** connects Facebook Messenger: the Meta app, the webhook, the Human Agent setting and
+the Facebook Pages, described in [Meta](/en/admin/meta/). It is an Owner's alone, and is
+there only while the Meta module is on.
 **Shipping** (*Frakt*) keeps the carrier accounts Orders books shipments with — Bring's
 Mybring user and API key, the customer numbers, the test mode — and the default account per
 site, described in [Shipping](/en/admin/shipping/). It is there only while the Orders module
