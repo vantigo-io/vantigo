@@ -5,6 +5,7 @@ sidebar:
   order: 80
 sources:
   - apps/communications/frontend
+  - packages/frontend-shell/src/side-panel.tsx
   - apps/host/frontend/src/routes/communications
 ---
 
@@ -44,7 +45,7 @@ Verktøylinjen filtrerer listen:
 Endrer du et filter, forsvinner den valgte samtalen, siden den kanskje ikke lenger er i
 listen, og filtrene ligger i adressefeltet slik at en filtrert visning kan bokmerkes
 eller deles med en kollega. Når ingenting samsvarer, ser du «Ingen samtaler samsvarer
-med disse filtrene.» Feltet **Søk i samtaler** i verktøylinjen er ikke i bruk ennå.
+med disse filtrene.» Feltet **Søk i samtaler** i verktøylinjen er ikke i bruk ennå ([Samtaler-panelet](#samtaler-panelet) har et eget søk).
 Hakeikonet ved siden av antallet laster listen på nytt.
 
 Når du åpner Innboks, velges den første samtalen i listen; klikk på en rad for å lese
@@ -57,6 +58,40 @@ en kollega svarer, lukker, merker eller tildeler en samtale, endrer listen og sa
 åpen seg i løpet av et øyeblikk. Har ikke administratoren gjort sanntidsoppdateringer
 tilgjengelige, eller mistes forbindelsen en stund, oppdateres listen i stedet av seg selv
 hvert minutt, og hakeikonet ved siden av antallet laster den fortsatt på nytt med en gang.
+
+## Samtaler-panelet
+
+Du trenger ikke være i Innboksen for å svare en kunde. Knappen **Samtaler** i toppfeltet (den heter
+*Åpne samtaler*) åpner Samtaler-panelet i sidepanelet til høyre, på alle skjermbilder, ved siden av
+Assistenten: ett om gangen under faner, eller begge stablet, slik det står under
+[Panelet](/nb/user/assistant/#panelet) i veiledningen for Assistenten. **Cmd+Shift+U** på Mac,
+**Ctrl+Shift+U** ellers, åpner og lukker det også; tasten lar vi være mens du skriver i en
+kodeeditor. (Microsoft Edge på Windows bruker Ctrl+Shift+U til *Les høyt* og kan beholde tasten selv;
+bruk knappen der.) Knappen og panelet krever `communications:conversations-view` og vises ikke i selve
+Innboksen, som er den samme visningen.
+
+**Merket** på knappen teller åpne samtaler som er tildelt deg og som du ikke har lest. Er ingen av dem
+ulest, men andre åpne samtaler er det, viser det en prikk. Hold over knappen, eller lytt til den, for å få
+begge tallene. Tallene leses hvert 30. sekund mens nettleserfanen er synlig, og når du kommer tilbake til fanen.
+
+**Listen** er kompakt. Filtrene er **Tildelt meg**, **Uleste** og **Alle åpne**; den starter på Tildelt meg,
+eller på Alle åpne når ingenting er tildelt deg. På en kundes side tilbyr den også **Denne kunden**, som viser
+alle samtaler knyttet til kunden, åpne eller ikke; den tilbys, og velges aldri for deg. Søkefeltet treffer
+emnet, forhåndsvisningen og navn og adresser i samtalene som allerede er lastet i listen (de 30 nyeste for
+filteret) — det søker ikke i resten av e-posten.
+
+**En samtale** åpnes i panelet med samme tråd og skrivefelt som i Innboksen, Messenger-chatter
+medregnet, med svaralternativer og svarvindu. Øverst går **Tilbake** til listen, **Åpne i innboksen** åpner den
+i Innboksen på hovedsiden, og kundelenken (*Kunde nr. 42*) åpner kunden på hovedsiden mens panelet blir som det er.
+Å åpne en samtale markerer den som lest, og det er slik merket forsvinner. Et svar du har halvskrevet er der
+fortsatt når du går til en annen app og tilbake, eller lukker panelet og åpner det igjen. Hva du kan gjøre følger
+tilgangene dine, som i Innboksen: uten `communications:conversations-reply` er skrivefeltet skrivebeskyttet; uten
+`communications:conversations-manage` vises ikke kontrollene for status, tagger og kunde.
+
+**Det holder seg oppdatert.** Mens panelet er åpent og fanen synlig, lastes listen på nytt hvert 15. sekund og
+den åpne samtalen hvert 5. sekund; begge stopper når panelet lukkes eller fanen skjules, og lastes én gang til
+når det vises igjen. Innboksen laster på samme måte. Dette er polling, ikke push: en melding kan bruke noen
+sekunder på å dukke opp.
 
 ## Les en samtale
 

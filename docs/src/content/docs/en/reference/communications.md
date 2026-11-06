@@ -1,6 +1,6 @@
 ---
 title: "Communications module"
-description: "Business email from shared mailboxes: the channels' providers — SMTP, and the shared mailboxes of every mailbox provider (Microsoft 365 through the Microsoft Entra ID module, and Google Workspace's licensed Gmail mailboxes through the Google Workspace module), named by key, created by address or switched from SMTP, with an optional import window and Outlook on-close behavior — the outbox and its delivery through either, the size a mailbox channel takes; the OutboundMail slot, through which Invoices and Calendar send customer mail from a channel an Owner chose, and the end of any fall-back to the installation's SMTP; receiving into a mailbox channel — the mailbox sync, change notifications, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all, and Outlook state on close —; sending from one's own address — Outlook or Gmail — through the provider that answers for the person; Messenger channels — the channel types and the default of each, the ChannelMessenger slot, the messenger sync worker, components, answers and the reply window, sending a message in parts, and the new refusals —; retention and the operator's configuration."
+description: "Business email from shared mailboxes: the channels' providers — SMTP, and the shared mailboxes of every mailbox provider (Microsoft 365 through the Microsoft Entra ID module, and Google Workspace's licensed Gmail mailboxes through the Google Workspace module), named by key, created by address or switched from SMTP, with an optional import window and Outlook on-close behavior — the outbox and its delivery through either, the size a mailbox channel takes; the OutboundMail slot, through which Invoices and Calendar send customer mail from a channel an Owner chose, and the end of any fall-back to the installation's SMTP; receiving into a mailbox channel — the mailbox sync, change notifications, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all, and Outlook state on close —; sending from one's own address — Outlook or Gmail — through the provider that answers for the person; Messenger channels — the channel types and the default of each, the ChannelMessenger slot, the messenger sync worker, components, answers and the reply window, sending a message in parts, and the new refusals —; the inbox counts behind the side panel's badge and the polling intervals; retention and the operator's configuration."
 sources:
   - apps/server/internal/communications
   - apps/communications/frontend
@@ -12,6 +12,7 @@ sources:
   - apps/server/internal/db/migrations/00095_communications_personal_sending.sql
   - apps/server/internal/db/migrations/00111_communications_provider_neutral.sql
   - apps/server/internal/db/migrations/00130_communications_messaging.sql
+  - apps/server/internal/db/migrations/00133_communications_inbox_counts.sql
   - apps/server/internal/contracts/outbound_mail.go
   - apps/server/internal/contracts/channel_mailbox.go
   - apps/server/internal/contracts/channel_messenger.go
@@ -1434,6 +1435,41 @@ choose **Send from my address** on both new conversations and replies
   job is re-queued first, conditionally on its status still being `failed` — a retry that loses that
   race writes nothing and answers `queued` all the same —, then its `submission_failed` deliveries go
   back to `queued` with an event each.
+
+## The inbox counts and polling
+
+`GET /api/v1/communications/inbox/counts` (`communications:conversations-view`) answers
+`{ unread, assignedToMeUnread }` for the caller, and backs the badge on the Conversations button in the
+shell's side panel.
+
+- **`unread`** is the number of **open** conversations the caller has not read: no
+  `conversation_read_states` row for the caller with `last_read_at >= last_activity_at`, the same rule
+  that marks a row `unread` in the list. **`assignedToMeUnread`** is those of them whose
+  `assigned_user_id` is the caller. Closed and archived conversations are not counted, whoever they are
+  assigned to. A conversation with new activity after the caller read it is unread again, and the
+  caller's own reply counts as activity until the conversation is read again (the side panel reads it by
+  opening it).
+- **One query, no per-row work** (`CountInboxUnread`): the open conversations are found through the
+  `(status, last_activity_at)` index, the read state through its primary key, and the assignee through
+  `ix_conversations_assigned_user_open`, a partial index on `assigned_user_id WHERE status = 'open'`
+  (migration `00133_communications_inbox_counts.sql`). The answer is per caller, never cached on the
+  server, and has no other filter: a client wanting a count of a filtered list asks the list.
+- **Errors.** 401 without a session and 403 without `conversations-view`; it has no 404.
+
+**Polling.** There is no push yet; the frontend asks again on a timer, and only while someone is looking
+(`apps/communications/frontend/src/lib/polling.ts`):
+
+| What | Interval | While |
+| --- | --- | --- |
+| The Conversations button's counts | 30 s, and on window focus | the browser tab is visible |
+| The side panel's list | 15 s | the panel is in front and the tab visible |
+| The open conversation in the panel | 5 s | the panel is in front and the tab visible |
+| The Inbox page's list and open conversation | 15 s and 5 s | the tab is visible |
+
+Polling stops when the panel or the tab is hidden, and a panel that is shown again refetches at once. The
+panel's search is client-side, over the list page already loaded (30 rows of the chosen filter);
+`GET /conversations` has no free-text parameter yet, and a server-side `q` is later. A server-sent stream
+for the inbox and the panel is later too.
 
 ## AI draft and customer suggestion
 
