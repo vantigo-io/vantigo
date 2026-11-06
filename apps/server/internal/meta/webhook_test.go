@@ -1,11 +1,14 @@
 package meta_test
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/meta"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -207,4 +210,89 @@ func whPost(t *testing.T, h *harness, body []byte, secret string) *modtest.Respo
 	t.Helper()
 	return h.Client(t).Do(http.MethodPost, webhookPath, nil,
 		modtest.RawBody("application/octet-stream", body), modtest.Header("X-Hub-Signature-256", signature(secret, body)))
+}
+
+func TestWebhook_KeepsABodyJSONBRefusesAndAnswers200(t *testing.T) {
+	h := newHarness(t)
+	o, _ := owner(t, h)
+	configure(t, o)
+
+	// Valid JSON; an escaped NUL is what Postgres will not hold as jsonb.
+	body := []byte(`{"object":"page","entry":[{"id":"1","messaging":[{"message":{"mid":"m","text":"a\u0000b"}}]}]}`)
+	if r := whPost(t, h, body, appSecret); r.Status != http.StatusOK {
+		t.Fatalf("an unstorable body: status %d, want 200", r.Status)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM meta.webhook_events WHERE state = 'failed' AND last_error = 'unstorable_json' AND payload IS NULL AND raw = $1`, body); n != 1 {
+		t.Fatalf("%d failed rows with the raw body, want 1", n)
+	}
+	if strings.Contains(h.Logs(), `u0000`) || !strings.Contains(h.Logs(), "jsonb cannot hold") {
+		t.Error("the body was logged, or the event was not")
+	}
+
+	// The splitter never claims it.
+	d := h.Deps()
+	if err := meta.NewSplitWorker(d).RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM meta.webhook_events WHERE attempts = 0 AND state = 'failed'`); n != 1 {
+		t.Error("the splitter touched the failed row")
+	}
+
+	// A database that is down is still a 503, whatever the body.
+	h.Exec(t, `ALTER TABLE meta.webhook_events RENAME TO webhook_events_away`)
+	t.Cleanup(func() { h.Exec(t, `ALTER TABLE IF EXISTS meta.webhook_events_away RENAME TO webhook_events`) })
+	if r := whPost(t, h, body, appSecret); r.Status != http.StatusServiceUnavailable {
+		t.Fatalf("database down, unstorable body: status %d, want 503", r.Status)
+	}
+}
+
+func TestWebhook_AcceptsMetasRealContentType(t *testing.T) {
+	h := newHarness(t)
+	o, _ := owner(t, h)
+	configure(t, o)
+
+	body := []byte(`{"object":"page","entry":[]}`)
+	r := h.Client(t).Do(http.MethodPost, webhookPath, nil,
+		modtest.RawBody("application/json", body), modtest.Header("X-Hub-Signature-256", signature(appSecret, body)),
+		modtest.SkipContract("the contract declares octet-stream; Meta sends application/json"))
+	if r.Status != http.StatusOK {
+		t.Fatalf("application/json: status %d, want 200", r.Status)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM meta.webhook_events WHERE state = 'pending'`); n != 1 {
+		t.Errorf("%d events stored", n)
+	}
+}
+
+func TestWebhook_LogsARefusedSignatureOncePerMinutePerClient(t *testing.T) {
+	h := newHarness(t)
+	o, _ := owner(t, h)
+	configure(t, o)
+
+	body := []byte(`{"object":"page","entry":[]}`)
+	post := func(c *modtest.Client) {
+		t.Helper()
+		r := c.Do(http.MethodPost, webhookPath, nil, modtest.RawBody("application/octet-stream", body),
+			modtest.Header("X-Hub-Signature-256", "sha256=00"))
+		if r.Status != http.StatusUnauthorized {
+			t.Fatalf("status %d, want 401", r.Status)
+		}
+	}
+	const line = "signature did not hold"
+	noisy, other := h.Client(t), h.Client(t)
+	for range 4 {
+		post(noisy)
+	}
+	post(other)
+	if n := strings.Count(h.Logs(), line); n != 2 {
+		t.Fatalf("%d warnings for 4+1 refusals from two clients, want 2", n)
+	}
+	h.Advance(61 * time.Second)
+	post(noisy)
+	logs := h.Logs()
+	if n := strings.Count(logs, line); n != 3 || !strings.Contains(logs, `"suppressed":3`) {
+		t.Errorf("after a minute: %d warnings, suppressed 3 present: %v", n, strings.Contains(logs, `"suppressed":3`))
+	}
+	if strings.Contains(logs, "sha256=00") {
+		t.Error("the log carries a signature")
+	}
 }

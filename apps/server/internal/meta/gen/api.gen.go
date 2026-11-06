@@ -58,14 +58,25 @@ type MetaPage struct {
 // MetaPageState active, or token_rejected when Meta refused the Page's token (code 190) — a channel on the Page is then unavailable until the Page is added again with a new token.
 type MetaPageState string
 
-// MetaPageRequest A Page access token, which Vantigo checks with Meta before it keeps the Page (Messenger design N10).
-type MetaPageRequest struct {
-	// AccessToken The Page's access token — a system user's token that does not expire is recommended. Sealed under meta/page-token; never answered.
-	AccessToken string `json:"accessToken"`
+// MetaPageChoice A Page a system user's or a user's token manages and may message — one of the choices of a page_choice_required refusal.
+type MetaPageChoice struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
 }
 
-// MetaProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: public_host_required (422: the instance has no public host, so the webhook has no address), not_configured (422: the app id and secret are not set), page_token_insufficient (422: the token is not a Page's, or may not message it), meta_unreachable (503: Meta could not be asked), page_not_found (404). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// MetaPageRequest A token Vantigo checks with Meta before it keeps the Page (Messenger design N10) — a system user's or a user's token that manages the Page, or the Page's own access token.
+type MetaPageRequest struct {
+	// AccessToken A system user's token that does not expire is recommended; a user's token, or the Page's own access token, also works. Never stored when it is not the Page's own; the Page's access token is sealed under meta/page-token and never answered.
+	AccessToken string `json:"accessToken"`
+
+	// PageId Which Page to connect when the token manages several; the id of one of the choices a page_choice_required refusal listed. Optional.
+	PageId *string `json:"pageId,omitempty"`
+}
+
+// MetaProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: public_host_required (422: the instance has no public host, so the webhook has no address), not_configured (422: the app id and secret are not set), page_token_insufficient (422: the token is neither a Page's own token nor a user's or system user's token that manages a Page with permission to message it, or the pageId asked for is not such a Page), page_choice_required (422: the token manages several Pages that may be messaged and no pageId was given; choices lists them), meta_unreachable (503: Meta could not be asked), page_not_found (404). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type MetaProblem struct {
+	// Choices The Pages to choose from, on a page_choice_required refusal.
+	Choices  *[]MetaPageChoice    `json:"choices,omitempty"`
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
 	Errors   *map[string][]string `json:"errors,omitempty"`

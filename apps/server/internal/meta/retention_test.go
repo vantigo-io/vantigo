@@ -2,8 +2,12 @@ package meta_test
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 const inbDay = 24 * time.Hour
@@ -74,5 +78,37 @@ func TestRetention_RawEventsAndProfiles(t *testing.T) {
 	}
 	if n := f.h.Count(t, `SELECT count(*) FROM meta.profiles`); n != 0 {
 		t.Errorf("%d profiles after 37 days", n)
+	}
+}
+
+func TestRetention_SweepsStagedFilesNoRowNamesAfterADay(t *testing.T) {
+	f := newInbFixture(t)
+	ctx := context.Background()
+	// A split that crashed between the write and its transaction: a staged
+	// key, an object, no row.
+	orphan := inbPage + "/" + "0123456789abcdef0123456789abcdef" + "/0"
+	if err := f.files.Put(ctx, orphan, strings.NewReader("lost"), "image/png"); err != nil {
+		t.Fatal(err)
+	}
+	f.h.Exec(t, `INSERT INTO meta.pending_files (storage_key, created_at) VALUES ($1, $2)`, orphan, f.h.Now())
+	// A staged key that a row does name (the unstage was lost, say).
+	f.post(t, inbEnvelope(inbPage, inbText("m.st", "kept", map[string]any{"attachments": inbImage(inbImageURL)})))
+	f.cycle(t)
+	kept := f.h.Count(t, `SELECT count(*) FROM meta.inbound`)
+	keptKey := modtest.One[string](t, f.h.Harness, `SELECT storage_keys[1] FROM meta.inbound`)
+	f.h.Exec(t, `INSERT INTO meta.pending_files (storage_key, created_at) VALUES ($1, $2)`, keptKey, f.h.Now())
+
+	f.h.Advance(23 * time.Hour)
+	f.retain(t)
+	if n := f.h.Count(t, `SELECT count(*) FROM meta.pending_files`); n != 2 || !slices.Contains(f.files.keys(), orphan) {
+		t.Fatalf("before a day: %d staged, files %v", n, f.files.keys())
+	}
+	f.h.Advance(2 * time.Hour)
+	f.retain(t)
+	if n := f.h.Count(t, `SELECT count(*) FROM meta.pending_files`); n != 0 {
+		t.Errorf("%d staging rows after a day", n)
+	}
+	if got := f.files.keys(); !slices.Equal(got, []string{keptKey}) || kept != 1 {
+		t.Errorf("files %v, want only the one a row names (%s)", got, keptKey)
 	}
 }

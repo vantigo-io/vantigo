@@ -3,9 +3,10 @@
 // http.RoundTripper standing in for graph.facebook.com and nothing else,
 // handed to the module as Deps.HTTPTransport (modtest.WithTransport).
 //
-// It knows Pages (AddPage), each with the access token that reaches it and the
-// tasks Meta lists for it, and people who wrote to a Page (AddUser). It answers
-// GET /me, POST and DELETE /{page}/subscribed_apps, POST /{page}/messages (as
+// It knows Pages (AddPage), each with its own Page access token and the tasks
+// Meta lists for it, user and system-user tokens that manage Pages
+// (AddUserToken), and people who wrote to a Page (AddUser). It answers
+// GET /me, GET /me/accounts, POST and DELETE /{page}/subscribed_apps, POST /{page}/messages (as
 // JSON and as multipart, with a filedata part) and GET /{psid}; checks the
 // bearer token of every call as Meta does (an unknown or revoked token is
 // Graph error 190); records every call (Calls) and every message it took
@@ -99,6 +100,10 @@ type pageRec struct {
 	subscribedSet   bool
 }
 
+type managerRec struct {
+	pages []string
+}
+
 type userRec struct {
 	name, first, last string
 }
@@ -107,6 +112,7 @@ type userRec struct {
 type FakeGraph struct {
 	mu       sync.Mutex
 	pages    map[string]*pageRec
+	managers map[string]*managerRec
 	users    map[string]userRec
 	revoked  map[string]bool
 	calls    []Call
@@ -118,16 +124,25 @@ type FakeGraph struct {
 
 // NewFakeGraph is a fake with no Page and no person.
 func NewFakeGraph() *FakeGraph {
-	return &FakeGraph{pages: map[string]*pageRec{}, users: map[string]userRec{}, revoked: map[string]bool{}}
+	return &FakeGraph{pages: map[string]*pageRec{}, managers: map[string]*managerRec{}, users: map[string]userRec{}, revoked: map[string]bool{}}
 }
 
-// AddPage registers a Page reached by token. tasks are what GET /me lists for
-// it (Meta lists them for a Page token only): give "MESSAGING" for a token
-// that may message the Page, none to be a user's or a system user's token.
+// AddPage registers a Page with its own Page access token. tasks are what
+// GET /me/accounts lists for it to a user's or a system user's token (Meta
+// lists them there only): give "MESSAGING" for a Page that may be messaged.
 func (g *FakeGraph) AddPage(id, name, token string, tasks ...string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.pages[id] = &pageRec{id: id, name: name, token: token, tasks: tasks}
+}
+
+// AddUserToken registers a user's or a system user's token that manages the
+// Pages (already added with AddPage): GET /me/accounts lists each with its id,
+// name, tasks and its own access token. GET /me answers the user, not a Page.
+func (g *FakeGraph) AddUserToken(token string, pages ...string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.managers[token] = &managerRec{pages: pages}
 }
 
 // AddUser registers a person who wrote to the Pages, by page-scoped id, with
@@ -300,14 +315,19 @@ func (g *FakeGraph) answer(req *http.Request, call Call, body []byte) (int, any,
 		}
 	}
 
-	page := g.pageOf(call.Token)
-	if page == nil {
+	page, manager := g.pageOf(call.Token), g.managerOf(call.Token)
+	if page == nil && manager == nil {
 		return graphErr(400, 190, 0, "Invalid OAuth access token.")
 	}
 	parts := strings.Split(strings.Trim(call.Path, "/"), "/")
 	switch {
 	case len(parts) == 1 && parts[0] == "me" && call.Method == http.MethodGet:
 		return g.me(page, call)
+	case len(parts) == 2 && parts[0] == "me" && parts[1] == "accounts" && call.Method == http.MethodGet:
+		return g.accounts(manager)
+	case page == nil:
+		// Only a Page's own token reaches a Page's edges.
+		return graphErr(403, 200, 0, "A Page access token is required.")
 	case len(parts) == 2 && parts[1] == "subscribed_apps":
 		return g.subscription(page, parts[0], call)
 	case len(parts) == 2 && parts[1] == "messages" && call.Method == http.MethodPost:
@@ -329,7 +349,8 @@ func failureOf(f Failure) (int, any, error) {
 	return graphErr(status, f.Code, f.Subcode, f.Message)
 }
 
-// pageOf is the Page a token reaches; nil for an unknown or revoked token.
+// pageOf is the Page a Page access token reaches; nil for an unknown or
+// revoked token, or a user's.
 func (g *FakeGraph) pageOf(token string) *pageRec {
 	if token == "" || g.revoked[token] {
 		return nil
@@ -342,20 +363,55 @@ func (g *FakeGraph) pageOf(token string) *pageRec {
 	return nil
 }
 
+// managerOf is the user's or system user's token record; nil for an unknown
+// or revoked token.
+func (g *FakeGraph) managerOf(token string) *managerRec {
+	if token == "" || g.revoked[token] {
+		return nil
+	}
+	return g.managers[token]
+}
+
+// me answers GET /me: the Page for a Page token, the user for a user's token.
+// tasks is no field of either node (Meta lists tasks on /me/accounts), so asking
+// for it is error 100.
 func (g *FakeGraph) me(p *pageRec, call Call) (int, any, error) {
-	fields := strings.Split(call.Query.Get("fields"), ",")
-	out := map[string]any{"id": p.id}
-	for _, f := range fields {
+	out := map[string]any{"id": "9000"}
+	if p != nil {
+		out["id"] = p.id
+	}
+	for _, f := range strings.Split(call.Query.Get("fields"), ",") {
 		switch f {
 		case "name":
-			out["name"] = p.name
-		case "tasks":
-			if len(p.tasks) > 0 {
-				out["tasks"] = p.tasks
+			if p != nil {
+				out["name"] = p.name
+			} else {
+				out["name"] = "System user"
 			}
+		case "tasks":
+			node := "User"
+			if p != nil {
+				node = "Page"
+			}
+			return graphErr(400, 100, 0, "(#100) Tried accessing nonexisting field (tasks) on node type ("+node+")")
 		}
 	}
 	return 200, out, nil
+}
+
+// accounts answers GET /me/accounts for a user's token; a Page's token has no
+// such edge.
+func (g *FakeGraph) accounts(m *managerRec) (int, any, error) {
+	if m == nil {
+		return graphErr(400, 100, 0, "(#100) Tried accessing nonexisting field (accounts) on node type (Page)")
+	}
+	data := []map[string]any{}
+	for _, id := range m.pages {
+		if pg := g.pages[id]; pg != nil {
+			data = append(data, map[string]any{"id": pg.id, "name": pg.name, "tasks": pg.tasks, "access_token": pg.token})
+		}
+	}
+	return 200, map[string]any{"data": data}, nil
 }
 
 func (g *FakeGraph) subscription(p *pageRec, id string, call Call) (int, any, error) {

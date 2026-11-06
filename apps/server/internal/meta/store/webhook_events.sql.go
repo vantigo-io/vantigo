@@ -90,6 +90,22 @@ func (q *Queries) DeleteOldWebhookEvents(ctx context.Context, before time.Time) 
 	return result.RowsAffected(), nil
 }
 
+const extendWebhookEventLease = `-- name: ExtendWebhookEventLease :exec
+UPDATE meta.webhook_events SET next_attempt_at = $1 WHERE id = $2 AND state = 'pending'
+`
+
+type ExtendWebhookEventLeaseParams struct {
+	LeaseUntil time.Time
+	ID         int64
+}
+
+// Moves a claimed event's lease to @lease_until, so work that outlasts the
+// claim's lease (a slow file fetch) is not claimed again by another replica.
+func (q *Queries) ExtendWebhookEventLease(ctx context.Context, arg ExtendWebhookEventLeaseParams) error {
+	_, err := q.db.Exec(ctx, extendWebhookEventLease, arg.LeaseUntil, arg.ID)
+	return err
+}
+
 const failWebhookEvent = `-- name: FailWebhookEvent :exec
 UPDATE meta.webhook_events SET state = 'failed', last_error = $1 WHERE id = $2
 `
@@ -101,6 +117,22 @@ type FailWebhookEventParams struct {
 
 func (q *Queries) FailWebhookEvent(ctx context.Context, arg FailWebhookEventParams) error {
 	_, err := q.db.Exec(ctx, failWebhookEvent, arg.LastError, arg.ID)
+	return err
+}
+
+const insertRejectedWebhookEvent = `-- name: InsertRejectedWebhookEvent :exec
+INSERT INTO meta.webhook_events (received_at, raw, state, last_error, next_attempt_at)
+VALUES ($1, $2, 'failed', 'unstorable_json', $1)
+`
+
+type InsertRejectedWebhookEventParams struct {
+	Now time.Time
+	Raw []byte
+}
+
+// A body Postgres refuses as jsonb: kept as bytes, born failed, never claimed.
+func (q *Queries) InsertRejectedWebhookEvent(ctx context.Context, arg InsertRejectedWebhookEventParams) error {
+	_, err := q.db.Exec(ctx, insertRejectedWebhookEvent, arg.Now, arg.Raw)
 	return err
 }
 

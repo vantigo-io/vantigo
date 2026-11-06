@@ -39,3 +39,23 @@ DELETE FROM meta.inbound WHERE id = ANY(@ids::bigint[]);
 
 -- name: DeleteInboundForPage :many
 DELETE FROM meta.inbound WHERE page_id = @page_id RETURNING storage_keys;
+
+-- name: PageExistsForShare :one
+-- The Page's row, locked against its removal until the transaction ends.
+SELECT page_id FROM meta.pages WHERE page_id = @page_id FOR SHARE;
+
+-- name: StageFile :exec
+INSERT INTO meta.pending_files (storage_key, created_at) VALUES (@storage_key, @now)
+ON CONFLICT (storage_key) DO UPDATE SET created_at = excluded.created_at;
+
+-- name: UnstageFiles :exec
+DELETE FROM meta.pending_files WHERE storage_key = ANY(@keys::text[]);
+
+-- name: ListStaleStagedFiles :many
+-- Staged keys older than @before, and whether an inbound row names each.
+SELECT p.storage_key,
+       EXISTS (SELECT 1 FROM meta.inbound i WHERE i.storage_keys @> ARRAY[p.storage_key]) AS referenced
+FROM meta.pending_files p
+WHERE p.created_at < @before
+ORDER BY p.created_at
+LIMIT @max_rows;

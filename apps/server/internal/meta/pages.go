@@ -29,22 +29,38 @@ var pageIDPattern = regexp.MustCompile(`^[0-9]{1,30}$`)
 // subscribedFields are the webhook fields the app subscribes a Page to.
 const subscribedFields = "messages,messaging_postbacks,message_reads,message_deliveries,message_echoes"
 
-// pageAnswer is what GET /me answers for a Page access token.
+// pageAnswer is a Page as Meta answers it: GET /me for a Page's token, an
+// entry of GET /me/accounts for a user's or a system user's.
 type pageAnswer struct {
-	ID    string   `json:"id"`
-	Name  string   `json:"name"`
-	Tasks []string `json:"tasks"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Tasks       []string `json:"tasks"`
+	AccessToken string   `json:"access_token"`
+}
+
+// accountsAnswer is GET /me/accounts: the Pages a user manages. One page of
+// results is read; a paging cursor is not followed.
+type accountsAnswer struct {
+	Data []pageAnswer `json:"data"`
 }
 
 // PostMetaPages connects a Page from its access token. (POST /api/v1/meta/pages)
 func (s *server) PostMetaPages(ctx context.Context, req gen.PostMetaPagesRequestObject) (gen.PostMetaPagesResponseObject, error) {
-	token := ""
+	token, wanted := "", ""
 	if req.Body != nil {
 		token = strings.TrimSpace(req.Body.AccessToken)
+		if req.Body.PageId != nil {
+			wanted = strings.TrimSpace(*req.Body.PageId)
+		}
 	}
+	var f fieldErrors
 	if token == "" {
-		var f fieldErrors
-		f.add("accessToken", "Paste the Page's access token.")
+		f.add("accessToken", "Paste the access token.")
+	}
+	if wanted != "" && !pageIDPattern.MatchString(wanted) {
+		f.add("pageId", "The Page's id is digits.")
+	}
+	if f.failed() {
 		return gen.PostMetaPages400ApplicationProblemPlusJSONResponse(invalid("Invalid Page", f)), nil
 	}
 	settings, err := s.settings(ctx)
@@ -61,19 +77,16 @@ func (s *server) PostMetaPages(ctx context.Context, req gen.PostMetaPagesRequest
 		return nil, err
 	}
 
-	var me pageAnswer
-	if err := s.graph.get(ctx, token, "/me", url.Values{"fields": {"id,name,tasks"}}, &me); err != nil {
-		return pageRefusal(err), nil
+	me, pageToken, refusal := s.resolvePage(ctx, token, wanted)
+	if refusal != nil {
+		return refusal, nil
 	}
-	if !pageIDPattern.MatchString(me.ID) || !slices.Contains(me.Tasks, "MESSAGING") {
-		return gen.PostMetaPages422ApplicationProblemPlusJSONResponse(insufficientToken()), nil
-	}
-	err = s.graph.postForm(ctx, token, pagePath(me.ID, "/subscribed_apps"), url.Values{"subscribed_fields": {subscribedFields}}, nil)
+	err = s.graph.postForm(ctx, pageToken, pagePath(me.ID, "/subscribed_apps"), url.Values{"subscribed_fields": {subscribedFields}}, nil)
 	if err != nil {
 		return pageRefusal(err), nil
 	}
 
-	sealed, err := s.deps.Secrets.Seal(purposePageToken, []byte(token))
+	sealed, err := s.deps.Secrets.Seal(purposePageToken, []byte(pageToken))
 	if err != nil {
 		return nil, fmt.Errorf("meta: seal a Page's token: %w", err)
 	}
@@ -88,11 +101,62 @@ func (s *server) PostMetaPages(ctx context.Context, req gen.PostMetaPagesRequest
 	return gen.PostMetaPages201JSONResponse(pageBody(row)), nil
 }
 
+// resolvePage finds the Page a pasted token connects and the token to keep for
+// it. A user's or a system user's token lists the Pages it manages
+// (GET /me/accounts); the one that may be messaged is used, with its own access
+// token. A token Meta does not let list Pages is taken for a Page's own: the
+// Page is read from /me, and the subscription that follows proves the token may
+// act for it. A non-nil refusal is the response.
+func (s *server) resolvePage(ctx context.Context, token, wanted string) (pageAnswer, string, gen.PostMetaPagesResponseObject) {
+	var list accountsAnswer
+	err := s.graph.get(ctx, token, "/me/accounts", url.Values{"fields": {"id,name,tasks,access_token"}, "limit": {"100"}}, &list)
+	if err == nil {
+		var usable []pageAnswer
+		for _, p := range list.Data {
+			if pageIDPattern.MatchString(p.ID) && p.AccessToken != "" && slices.Contains(p.Tasks, "MESSAGING") && (wanted == "" || p.ID == wanted) {
+				usable = append(usable, p)
+			}
+		}
+		switch len(usable) {
+		case 0:
+			return pageAnswer{}, "", gen.PostMetaPages422ApplicationProblemPlusJSONResponse(insufficientToken())
+		case 1:
+			return usable[0], usable[0].AccessToken, nil
+		}
+		choices := make([]gen.MetaPageChoice, 0, len(usable))
+		for _, p := range usable {
+			name := strings.TrimSpace(p.Name)
+			if name == "" {
+				name = p.ID
+			}
+			choices = append(choices, gen.MetaPageChoice{Id: p.ID, Name: name})
+		}
+		pr := problem(422, codePageChoiceRequired, "Choose a Page",
+			"The token manages several Pages that can be messaged; choose the one to connect.")
+		pr.Choices = &choices
+		return pageAnswer{}, "", gen.PostMetaPages422ApplicationProblemPlusJSONResponse(pr)
+	}
+	var ge graphError
+	if isTemporaryGraph(err) || !errors.As(err, &ge) || ge.Code == codeTokenRejected {
+		return pageAnswer{}, "", pageRefusal(err)
+	}
+
+	// Meta refused the listing: the token may be a Page's own.
+	var me pageAnswer
+	if err := s.graph.get(ctx, token, "/me", url.Values{"fields": {"id,name"}}, &me); err != nil {
+		return pageAnswer{}, "", pageRefusal(err)
+	}
+	if !pageIDPattern.MatchString(me.ID) || (wanted != "" && wanted != me.ID) {
+		return pageAnswer{}, "", gen.PostMetaPages422ApplicationProblemPlusJSONResponse(insufficientToken())
+	}
+	return me, token, nil
+}
+
 // insufficientToken is the 422 for a token that is not a Page's, or may not
 // message it.
 func insufficientToken() gen.MetaProblem {
 	return problem(422, codePageTokenInsufficient, "The token cannot message the Page",
-		"Use a Page access token, or a system user's token with the Page's Messenger task, from Meta Business Suite.")
+		"The token is neither a Page's access token nor a user's or system user's token that manages a Page with permission to message it.")
 }
 
 // pageRefusal is the response to a failed call to Meta while a Page is added:
