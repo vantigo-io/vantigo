@@ -5,6 +5,8 @@ sidebar:
   order: 3
 sources:
   - apps/assistant/frontend
+  - packages/frontend-shell/src/side-panel.tsx
+  - apps/host/frontend/src/routes/__root.tsx
   - apps/host/frontend/src/routes/assistant
   - apps/host/frontend/src/routes/assistant.tsx
 ---
@@ -37,11 +39,26 @@ Knappen og appen vises bare for de som har assistenten
 
 ## Panelet
 
-Panelet åpnes til høyre og **skyver siden til side** i stedet for å dekke den, så du kan
-lese et skjermbilde mens du spør om det. Dra i kanten for å gjøre det bredere eller
-smalere; bredden huskes i denne nettleseren. På en smal skjerm fyller det hele skjermen.
-Det er lukket hver gang du åpner Vantigo, og det **blir stående åpent når du går mellom
-apper**.
+Panelet er sidepanelet Vantigo deler mellom to ting: **Assistenten** og, for de som kan lese
+samtaler, [Samtaler-panelet](/nb/user/communications/#samtaler-panelet). Det åpnes til høyre og
+**skyver siden til side** i stedet for å dekke den, så du kan lese et skjermbilde mens du spør
+om det. Dra i kanten, eller sett fokus på kanten og bruk venstre- og høyrepiltasten, for å gjøre
+det bredere eller smalere. På en smal skjerm fyller det hele skjermen. Det er lukket hver gang du
+åpner Vantigo, og det **blir stående åpent når du går mellom apper**.
+
+**Ett panel eller begge.** Har du begge panelene, viser toppen av sidepanelet en fane for hvert,
+og ett panel om gangen fyller det. Knappen **Vis begge panelene** i den raden (i et vindu på rundt
+990 piksler eller mer) stabler dem i stedet: Assistenten øverst, Samtaler under, med en skillelinje
+mellom. Dra i skillelinjen, eller sett fokus på den og bruk opp- og nedpiltasten; hvert panel beholder
+minst 200 piksler. **Vis ett panel om gangen** tar deg tilbake til fanene. I et smalere vindu er det
+alltid ett panel om gangen. Assistent-knappen og **Cmd/Ctrl+J** åpner sidepanelet på Assistenten, eller
+åpner begge panelene når det er modusen du har valgt; samme tast lukker det igjen.
+
+Et panel lastes første gang du viser det og blir så liggende, uansett hvilken fane som er foran og
+hvor du går i Vantigo, så et halvskrevet svar, stedet du hadde rullet til og samtalen du hadde åpen
+er der fortsatt når du kommer tilbake. Bredden, modusen, skillelinjens plass og panelet du brukte sist
+huskes i denne nettleseren; om panelet er åpent huskes ikke. Sidepanelet lukkes av seg selv på
+Assistent-appens egen side og, for Samtaler, i Innboksen, som viser det samme.
 
 - **Det åpnes på den siste samtalen din**, på hvilken som helst enhet: den du hadde åpen
   sist. **Ny samtale** er den eneste måten å begynne på en fersk.

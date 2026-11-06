@@ -1,10 +1,12 @@
 ---
 title: Assistant
-description: Ask the assistant how to do something, about your data, or to change something — opening it from the header, with Cmd/Ctrl+J or from search, the docked panel and the context chip, the Assistant app with every conversation, the changes it proposes and you confirm, a change to many records at once (preview, the first five, the rest in the background, the failed items), what is private and kept, what is sent to the AI provider, and why it might not be there.
+description: Ask the assistant how to do something, about your data, or to change something — opening it from the header, with Cmd/Ctrl+J or from search, the side panel shared with Conversations and the context chip, the Assistant app with every conversation, the changes it proposes and you confirm, a change to many records at once (preview, the first five, the rest in the background, the failed items), what is private and kept, what is sent to the AI provider, and why it might not be there.
 sidebar:
   order: 3
 sources:
   - apps/assistant/frontend
+  - packages/frontend-shell/src/side-panel.tsx
+  - apps/host/frontend/src/routes/__root.tsx
   - apps/host/frontend/src/routes/assistant
   - apps/host/frontend/src/routes/assistant.tsx
 ---
@@ -37,10 +39,26 @@ The button and the app are shown only to people who have the assistant
 
 ## The panel
 
-The panel opens on the right and **pushes the page** aside rather than covering it, so you can read a
-screen while you ask about it. Drag its edge to make it wider or narrower; the width is
-remembered in this browser. On a narrow screen it fills the screen instead. It starts
+The panel is the side panel Vantigo shares between two things: the **Assistant** and, for people who
+may read conversations, the [Conversations panel](/en/user/communications/#the-conversations-panel).
+It opens on the right and **pushes the page** aside rather than covering it, so you can read a
+screen while you ask about it. Drag its edge, or focus the edge and press the left and right arrow
+keys, to make it wider or narrower. On a narrow screen it fills the screen instead. It starts
 closed every time you open Vantigo, and it **stays open as you move between apps**.
+
+**One panel or both.** When you have both panels, the top of the side panel shows a tab for each, and
+one panel at a time fills it. The **Show both panels** button in that row (on a window about 990 pixels
+wide or more) stacks them instead: the Assistant above, Conversations below, with a divider between them.
+Drag the divider, or focus it and press the up and down arrow keys; each panel keeps at least 200 pixels.
+**Show one panel at a time** takes you back to the tabs. On a narrower window it is always one panel at a time.
+The Assistant button and **Cmd/Ctrl+J** open the side panel on the Assistant, or open both panels when
+that is the mode you have chosen; the same key closes it again.
+
+A panel is loaded the first time you show it and then stays loaded, whichever tab is in front and
+wherever you go in Vantigo, so a half-written reply, the place you had scrolled to and the conversation you had open are
+still there when you come back. The width, the mode, the divider's place and the panel you used last are
+remembered in this browser; whether the panel is open is not. The side panel closes by itself on
+the Assistant app's own page and, for Conversations, on the Inbox, which show the same thing.
 
 - **It opens on your last conversation**, on any device: the one you had open last.
   **New conversation** is the only way to start a fresh one.
