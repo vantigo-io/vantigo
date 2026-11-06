@@ -186,7 +186,8 @@ filvelgeren (**Legg til bilder**) og velger dem; flere samtidig går fint. En fi
 en **JPEG eller PNG** på høyst **10 MiB** og minst 200 × 200 piksler. Vantigo beholder
 ikke filen slik den ble sendt: bildet snus rett etter orienteringen kameraet registrerte,
 krympes til høyst 2048 piksler på den lengste siden, og lagres på nytt **uten noen
-kameradata** — verken sted, enhet eller tidspunkt når en kunde. En liten versjon lages til
+kameradata** — verken sted, enhet eller tidspunkt når en kunde. Fargeprofilen (ICC)
+fjernes sammen med resten, så et bilde med bredt fargerom kan se litt mindre mettet ut. En liten versjon lages til
 miniatyrbildene på kortet.
 
 Hvert bilde vises som et miniatyrbilde, i den rekkefølgen en kunde vil se dem, med:

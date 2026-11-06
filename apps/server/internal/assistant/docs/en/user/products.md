@@ -186,7 +186,8 @@ To add images, drop JPEG or PNG files on the card, or press the file picker
 PNG** of at most **10 MiB** and at least 200 × 200 pixels. Vantigo does not keep the file
 as it was sent: it turns the picture upright by the orientation the camera recorded,
 shrinks it to at most 2048 pixels on the longer side, and saves it again **without any
-camera data** — no location, device or time reaches a customer. A small version is made
+camera data** — no location, device or time reaches a customer. The colour profile (ICC)
+is dropped with the rest, so a wide-gamut photo may look slightly less saturated. A small version is made
 for the card's thumbnails.
 
 Each image is shown as a thumbnail, in the order a customer will see them, with:
