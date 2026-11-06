@@ -1068,6 +1068,21 @@ components:
                 - choiceId
                 - title
             type: object
+        InboxCountsResponse:
+            description: The caller's unread open conversations.
+            properties:
+                assignedToMeUnread:
+                    description: Open conversations assigned to the caller that the caller has not read.
+                    format: int32
+                    type: integer
+                unread:
+                    description: Open conversations, assigned to anyone or no one, that the caller has not read.
+                    format: int32
+                    type: integer
+            required:
+                - unread
+                - assignedToMeUnread
+            type: object
         MessageComponentCard:
             properties:
                 attachmentId:
@@ -2572,6 +2587,33 @@ paths:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
                     description: Service Unavailable — attachment_storage_unavailable, the object store did not answer.
             summary: Download a message as it was received
+            tags:
+                - ConversationEndpoints
+            x-vantigo-access: permission:communications:conversations-view
+    /api/v1/communications/inbox/counts:
+        get:
+            description: How many open conversations the caller has not read, and how many of those are assigned to the caller. A conversation is unread for the caller when they have no read state at or after its last activity. Closed and archived conversations are not counted. Read by the Conversations button's badge in the side panel (Messenger design N27).
+            operationId: getCommunicationsInboxCounts
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InboxCountsResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the caller's unread conversation counts
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-view
