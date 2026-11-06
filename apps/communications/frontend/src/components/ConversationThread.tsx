@@ -45,6 +45,10 @@ export type ConversationThreadProps = {
   suggestionPending: boolean;
   suggestionError: Error | null;
   connectionButton?: (props: ConnectionButtonProps) => ReactNode;
+  /** Whether the person may reply (communications:conversations-reply); without it the composer is read-only. Default true. */
+  canReply?: boolean;
+  /** Whether the person may close, tag and confirm customers (communications:conversations-manage). Default true. */
+  canManage?: boolean;
 };
 
 export function ConversationThread({
@@ -58,6 +62,8 @@ export function ConversationThread({
   suggestionPending,
   suggestionError,
   connectionButton,
+  canReply = true,
+  canManage = true,
 }: ConversationThreadProps) {
   const { t } = useI18n("communications");
   const [drafting, setDrafting] = useState(false);
@@ -98,15 +104,17 @@ export function ConversationThread({
                 <Badge color="yellow">
                   {t("customerCandidates", { count: conversation.candidateCustomerIds.length })}
                 </Badge>
-                <Button
-                  size="xs"
-                  variant="light"
-                  loading={suggestionPending}
-                  onClick={onSuggest}
-                  leftSection={<IconSparkles size={13} />}
-                >
-                  {t("suggestCustomer")}
-                </Button>
+                {canManage && (
+                  <Button
+                    size="xs"
+                    variant="light"
+                    loading={suggestionPending}
+                    onClick={onSuggest}
+                    leftSection={<IconSparkles size={13} />}
+                  >
+                    {t("suggestCustomer")}
+                  </Button>
+                )}
               </Group>
             ) : (
               <Text size="xs" c="dimmed">
@@ -114,7 +122,7 @@ export function ConversationThread({
               </Text>
             )}
           </Group>
-          {conversation.suggestedCustomerId && !conversation.customerId && (
+          {canManage && conversation.suggestedCustomerId && !conversation.customerId && (
             <Group gap="xs" mt="xs">
               <Text size="xs" c="dimmed">
                 {conversation.suggestedCustomerReasoning || t("aiSuggestion")}
@@ -135,6 +143,7 @@ export function ConversationThread({
             aria-label={t("statusLabel")}
             value={conversation.status}
             data={["open", "closed", "archived"]}
+            disabled={!canManage}
             onChange={(value) => value && onWorkflow({ status: value as ConversationStatus })}
           />
           <Menu>
@@ -147,9 +156,11 @@ export function ConversationThread({
               <Menu.Item leftSection={<IconCheck size={14} />} onClick={onRead}>
                 {t("markRead")}
               </Menu.Item>
-              <Menu.Item leftSection={<IconArchive size={14} />} onClick={() => onWorkflow({ status: "archived" })}>
-                {t("archive")}
-              </Menu.Item>
+              {canManage && (
+                <Menu.Item leftSection={<IconArchive size={14} />} onClick={() => onWorkflow({ status: "archived" })}>
+                  {t("archive")}
+                </Menu.Item>
+              )}
             </Menu.Dropdown>
           </Menu>
         </Group>
@@ -160,23 +171,27 @@ export function ConversationThread({
             key={tag.id}
             color={tag.color || "indigo"}
             rightSection={
-              <button type="button" className="tag-remove" onClick={() => onTag(tag.id, true)}>
-                ×
-              </button>
+              canManage ? (
+                <button type="button" className="tag-remove" onClick={() => onTag(tag.id, true)}>
+                  ×
+                </button>
+              ) : undefined
             }
           >
             {tag.name}
           </Badge>
         ))}
-        <Select
-          size="xs"
-          placeholder={t("addTag")}
-          data={tags
-            .filter((tag) => !conversation.tags.some((existing) => existing.id === tag.id))
-            .map((tag) => ({ value: tag.id, label: tag.name }))}
-          onChange={(value) => value && onTag(value)}
-          leftSection={<IconTag size={13} />}
-        />
+        {canManage && (
+          <Select
+            size="xs"
+            placeholder={t("addTag")}
+            data={tags
+              .filter((tag) => !conversation.tags.some((existing) => existing.id === tag.id))
+              .map((tag) => ({ value: tag.id, label: tag.name }))}
+            onChange={(value) => value && onTag(value)}
+            leftSection={<IconTag size={13} />}
+          />
+        )}
       </div>
       <ScrollArea className="thread-messages">
         {conversation.messages.map((message) =>
@@ -198,6 +213,7 @@ export function ConversationThread({
         onSent={onSent}
         connectionButton={connectionButton}
         onDraftingChange={setDrafting}
+        canReply={canReply}
       />
     </div>
   );
