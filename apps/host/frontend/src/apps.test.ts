@@ -28,7 +28,7 @@ import {
 } from "./apps";
 import { navigationCatalog } from "./catalogs/navigation";
 import { connectionProviders } from "./lib/connections";
-import { type NavVisibilityContext, visibleNavSections } from "./navigation";
+import { type ModuleKey, type NavVisibilityContext, visibleNavSections } from "./navigation";
 
 const allModules = [
   "assistant",
@@ -187,6 +187,16 @@ describe("the app registry", () => {
     expect(allNavSections.flatMap((section) => section.items).some((item) => item.to.startsWith("/google"))).toBe(
       false,
     );
+  });
+
+  // The Messenger connection (Messenger design N9) is a page of Workspace admin too, the Owner's.
+  it("gives Meta no app: no tile, whoever asks", () => {
+    expect(apps.some((app) => app.key === ("meta" as never) || app.module === "meta")).toBe(false);
+    expect(() => appForKey("meta" as never)).toThrow(/meta/);
+    const tiles = (permissions: string[]) => switcherTiles(permissions, allModules, "home").map((tile) => tile.app.key);
+    expect(tiles(["*"])).not.toContain("meta");
+    expect(navigationCatalog.en["navigation.meta"]).toBe("Meta");
+    expect(navigationCatalog.nb["navigation.meta"]).toBe("Meta");
   });
 
   it("requires, for a tile, any permission that unlocks one of its sidebar entries", () => {
@@ -758,6 +768,7 @@ describe("the administration areas", () => {
         const owner: Record<string, string> = {
           "/workspace/entra": "entra",
           "/workspace/google": "google",
+          "/workspace/meta": "meta",
           "/workspace/shipping": "orders",
           "/workspace/assistant": "assistant",
         };
@@ -836,7 +847,7 @@ describe("the administration areas", () => {
     const integrations = areaForKey("workspace").navSections.find(
       (section) => section.label === "navigation.integrations",
     );
-    expect(integrations?.items).toHaveLength(5);
+    expect(integrations?.items).toHaveLength(6);
     expect(integrations?.items[0]).toMatchObject({
       label: "navigation.entra",
       to: "/workspace/entra",
@@ -849,8 +860,15 @@ describe("the administration areas", () => {
       module: "google",
       requiredPermissions: ["google:manage"],
     });
-    // Orders' carrier accounts (orders design O51), behind orders:carriers-manage.
+    // Meta (Messenger design N9), the Owner's.
     expect(integrations?.items[2]).toMatchObject({
+      label: "navigation.meta",
+      to: "/workspace/meta",
+      module: "meta",
+      ownerOnly: true,
+    });
+    // Orders' carrier accounts (orders design O51), behind orders:carriers-manage.
+    expect(integrations?.items[3]).toMatchObject({
       label: "navigation.shipping",
       to: "/workspace/shipping",
       module: "orders",
@@ -912,6 +930,30 @@ describe("the administration areas", () => {
         "/workspace/assistant",
       ]);
       expect(sections.map((section) => section.label)).toEqual([undefined, "navigation.integrations"]);
+    });
+  });
+
+  // Meta (Messenger design N9): the Owner's page, present while the module is on; it has no permission.
+  describe("the Meta item", () => {
+    const withMeta: readonly ModuleKey[] = [...allModules, "meta"];
+    const metaItem = (context: NavVisibilityContext, modules: readonly ModuleKey[] = withMeta) =>
+      workspacePaths(
+        appNavSections(areaForKey("workspace"), modules, { ...context, enabledModules: modules }),
+      ).includes("/workspace/meta");
+
+    it("is the Owner's, behind the module, and has no permission of its own", () => {
+      const item = areaForKey("workspace")
+        .navSections.flatMap((section) => section.items)
+        .find((one) => one.to === "/workspace/meta");
+      expect(item).toMatchObject({ label: "navigation.meta", module: "meta", ownerOnly: true });
+      expect(item?.requiredPermissions).toBeUndefined();
+      expect(metaItem(ownerOnWorkspace)).toBe(true);
+      expect(metaItem(ownerOnWorkspace, allModules)).toBe(false);
+    });
+
+    it("is not offered to anyone but an Owner, whatever they hold", () => {
+      expect(metaItem({ ...visibility, permissions: ["*"] })).toBe(false);
+      expect(metaItem({ ...visibility, permissions: ["*"], canManageAuthorization: true })).toBe(false);
     });
   });
 
