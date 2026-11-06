@@ -152,3 +152,21 @@ func TestModulesEnv_ListsProductsAndInvoicesBesideOrders(t *testing.T) {
 		t.Errorf("modulesEnv(orders) = %q, want exactly %q", got, "customers,invoices,orders,products")
 	}
 }
+
+// TestModulesEnv_MetaBringsCommunications: config.go rejects "meta" without
+// "communications" (Messenger design N9), and meta's own tests compose the
+// provider alone, so the harness lists communications as enabled beside it.
+func TestModulesEnv_MetaBringsCommunications(t *testing.T) {
+	t.Parallel()
+
+	got := strings.Split(modulesEnv([]module.Module{{Name: "meta"}}), ",")
+	want := map[string]bool{"meta": true, "communications": true, "customers": true}
+	if len(got) != len(want) {
+		t.Fatalf("modulesEnv(meta) = %v, want exactly %v", got, want)
+	}
+	for _, name := range got {
+		if !want[name] {
+			t.Errorf("modulesEnv(meta) contains unexpected module %q", name)
+		}
+	}
+}

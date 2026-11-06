@@ -44,6 +44,9 @@ var publicHostAllowed = []gateRequest{
 	{http.MethodPost, "/api/v1/entra/mailbox-notifications"},
 	{http.MethodPost, "/api/v1/entra/mailbox-notifications?validationToken=x"},
 	{http.MethodPost, "/api/v1/google/calendar-notifications"},
+	{http.MethodGet, "/api/v1/meta/webhook"},
+	{http.MethodGet, "/api/v1/meta/webhook?hub.mode=subscribe&hub.verify_token=x&hub.challenge=1"},
+	{http.MethodPost, "/api/v1/meta/webhook"},
 }
 
 // A sample of every other kind: the SPA's other paths, sign-in and setup,
@@ -106,6 +109,13 @@ var publicHostRefused = []gateRequest{
 	{http.MethodPost, "/api/v1/entra/mailbox-notifications/"},
 	{http.MethodGet, "/api/v1/google/calendar-notifications"},
 	{http.MethodPost, "/api/v1/google/calendar-notifications/x"},
+	{http.MethodPut, "/api/v1/meta/webhook"},
+	{http.MethodDelete, "/api/v1/meta/webhook"},
+	{http.MethodHead, "/api/v1/meta/webhook"},
+	{http.MethodGet, "/api/v1/meta/webhook/x"},
+	{http.MethodPost, "/api/v1/meta/webhook/"},
+	{http.MethodGet, "/api/v1/meta/settings"},
+	{http.MethodPost, "/api/v1/meta/pages"},
 	{http.MethodPost, "/api/v1/google/connect/callback"},
 	{http.MethodGet, "/api/v1/entra/connection"},
 	{http.MethodPost, "/api/v1/entra/connection/test"},
