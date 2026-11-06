@@ -76,6 +76,23 @@ export { vantigoLogo } from "./logo";
 export { type PageBreadcrumb, PageHeader, type PageHeaderProps } from "./page-header";
 export { type PageTab, PageTabs, type PageTabsProps } from "./page-tabs";
 export { PROFILE_QUERY_KEY } from "./profile-query";
+export {
+  clampSidePanelWidth,
+  clampSplit,
+  readSidePanelWidth,
+  SIDE_PANEL_DEFAULT_WIDTH,
+  SIDE_PANEL_MAX_WIDTH,
+  SIDE_PANEL_MIN_PANE_HEIGHT,
+  SIDE_PANEL_MIN_WIDTH,
+  type SidePanel,
+  type SidePanelController,
+  SidePanelHost,
+  type SidePanelHostProps,
+  type SidePanelMode,
+  useSidePanelActions,
+  useSidePanelController,
+  useSidePanelShown,
+} from "./side-panel";
 export { SpotlightSearchBox } from "./spotlight-search-box";
 export { SpotlightSearchButton } from "./spotlight-search-button";
 export { vantigoTheme } from "./theme";
