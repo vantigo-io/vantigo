@@ -419,8 +419,16 @@ paths:
                 - Meta
             x-vantigo-access: anonymous
         post:
-            description: 'Meta''s webhook events (Messenger design N11), on the public host and the app''s host alike. Anonymous: Meta sends no session. A hand-written handler: the operation declares no request body, so the strict wrapper decodes nothing and the handler reads the raw body itself, at most 1 MiB (413 above). It checks X-Hub-Signature-256, sha256=<hex>, an HMAC-SHA256 under the app secret over the bytes exactly as received, compared in constant time — a missing or wrong signature is 401 and is logged, and an app secret not yet set is 503 — then stores the body in meta.webhook_events and answers 200 with no body. A database that cannot be written is 503, so Meta retries. Nothing is parsed for routing before the answer: Meta wants one within five seconds. Rate limited to 1200 per client address a minute (meta-webhook).'
+            description: 'Meta''s webhook events (Messenger design N11), on the public host and the app''s host alike. Anonymous: Meta sends no session. A hand-written handler: the contract declares the body as raw bytes (application/octet-stream, binary), which the strict wrapper hands on undecoded, whatever content type Meta sends, and the handler reads the raw body itself, at most 1 MiB (413 above). It checks X-Hub-Signature-256, sha256=<hex>, an HMAC-SHA256 under the app secret over the bytes exactly as received, compared in constant time — a missing or wrong signature is 401 and is logged, and an app secret not yet set is 503 — then stores the body in meta.webhook_events and answers 200 with no body. A database that cannot be written is 503, so Meta retries. Nothing is parsed for routing before the answer: Meta wants one within five seconds. Rate limited to 1200 per client address a minute (meta-webhook).'
             operationId: postMetaWebhook
+            requestBody:
+                content:
+                    application/octet-stream:
+                        schema:
+                            format: binary
+                            type: string
+                description: The event as Meta sent it, application/json in practice, read raw by the handler and never decoded by the strict wrapper.
+                required: true
             responses:
                 "200":
                     description: OK — the event is stored.

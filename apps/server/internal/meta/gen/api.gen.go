@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -933,6 +934,7 @@ func (response GetMetaWebhook429JSONResponse) VisitGetMetaWebhookResponse(w http
 }
 
 type PostMetaWebhookRequestObject struct {
+	Body io.Reader
 }
 
 type PostMetaWebhookResponseObject interface {
@@ -1232,6 +1234,8 @@ func (sh *strictHandler) GetMetaWebhook(w http.ResponseWriter, r *http.Request, 
 // PostMetaWebhook operation middleware
 func (sh *strictHandler) PostMetaWebhook(w http.ResponseWriter, r *http.Request) {
 	var request PostMetaWebhookRequestObject
+
+	request.Body = r.Body
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.PostMetaWebhook(ctx, request.(PostMetaWebhookRequestObject))

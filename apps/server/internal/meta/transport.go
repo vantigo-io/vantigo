@@ -1,7 +1,6 @@
 package meta
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -123,21 +122,6 @@ func newHTTPClient(d module.Deps, allow func(string) bool, timeout time.Duration
 		Transport:     hostGuard{next: rt, allow: allow},
 		Timeout:       timeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-}
-
-// sleepContext waits d, or answers ctx's error when it ends first.
-func sleepContext(ctx context.Context, d time.Duration) error {
-	if d <= 0 {
-		return ctx.Err()
-	}
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
 	}
 }
 
