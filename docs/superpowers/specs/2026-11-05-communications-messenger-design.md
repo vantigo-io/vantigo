@@ -1,6 +1,8 @@
 # Communications — Messenger, answer options and product images (design)
 
-**Revision 2, 2026-11-05**, after a critic review. §11 lists what changed.
+**Revision 3, 2026-11-06**: delivery D, a customer's contacts on Messenger (§5a), added at the
+owner's request. §11 lists what revision 2 changed, after a critic review, and §12 what revision
+3 adds.
 
 This design is drawn from the research
 [`2026-11-05-communications-messaging-channels.md`](../research/2026-11-05-communications-messaging-channels.md)
@@ -41,6 +43,9 @@ These are settled:
 - **Product images carry usage flags:** whether an image may be shown in Communications, and
   whether it may be shown in marketing.
 - **Buy is a choice that comes back to the agent.** It is not a checkout.
+- **A customer's contact can be linked to their Messenger identity** (2026-11-06), so that an
+  agent can write to them on Messenger from the customer. This is delivery D, the last in the
+  phase.
 
 ### Deliveries
 
@@ -51,6 +56,7 @@ These are settled:
 | **B** | **Messenger.** A new integration module, **Meta** (`meta`): the app settings under Integrations, the webhook with its signature, Pages, sending and receiving text and attachments, answer options, echoes, and read and delivery events | A, and 0's answers |
 | **P** | **Product images in Products.** Upload with normalisation, order, a primary image, alt text and the usage flags. Shown on the product page, and read by other modules through `contracts.ProductCatalog` | — |
 | **C** | **A product in a message.** *Attach product* in the composer. The carousel built from the product's images marked for Communications. The public media route Meta fetches images from. *Buy* coming back to the agent, with a link to a new order | A, B, P, and 0's answer on image caching |
+| **D** | **Contacts on Messenger.** Linking a Messenger participant to a customer's contact, by hand or through a signed `m.me` link the contact taps. The contact's Messenger identity on the customer page. *Write on Messenger* from the contact while the reply window is open | A, B (C only for ordering) |
 
 A and P can start at once. Delivery 0 runs beside them. A is neutral of the channel, so it is
 worth building whichever way 0 answers.
@@ -70,6 +76,8 @@ worth building whichever way 0 answers.
 - An inbox filter by channel type.
 - Anything that reads the marketing flag. It is stored and edited only, because the owner asked
   for it.
+- Writing to a contact on Messenger outside the reply window: Meta's notification opt-in
+  (Marketing Messages) and templates (N23).
 
 §9 says what each of these waits for.
 
@@ -322,7 +330,8 @@ matched to the message.
 - `mailEstimate` is not run;
 - text over 2000 characters gets 422 `text_too_long`.
 
-Conversation create refuses a Messenger `channelId` with 422 `channel_cannot_start`, because
+Conversation create refuses a Messenger `channelId` with 422 `channel_cannot_start` (delivery D
+narrows this, N22), because
 the person always writes first.
 
 **Suppressions** stay e-mail only. A person who blocks the Page shows as the terminal failure
@@ -659,6 +668,143 @@ used to probe.
 
 **Logging.** Each fetch is logged with the attachment id, never the token.
 
+## 5a. Decisions — delivery D, contacts on Messenger (owner, 2026-11-06)
+
+**The question.** Can a customer's contact carry their Messenger identity, so that an agent can
+write to them on Messenger from the customer? Yes, with two limits that the platform sets and
+the design does not hide:
+
+- **The identity is a page-scoped id (PSID)**: one per person *and Page*. It exists only after
+  the person has written to the Page. It cannot be looked up from a name, a phone number or an
+  e-mail address.
+- **Writing first is bounded by the reply window (N6).** It is free for 24 h after the person's
+  newest message, and up to 7 days for a human agent's answer. Beyond that, Meta's only paths
+  are the person's opt-in to notifications (Marketing Messages) and approved templates. Meta
+  removed the update tags in April 2026 (R §2.1). Those paths are later (N23).
+
+### N19 — Where the link lives
+
+The link is the existing column `communications.participants.contact_id` (`mig/00006`), set on
+the Messenger participant. It is a reference to Customers resolved through
+`contracts.CustomerDirectory`, never a foreign key, as for an e-mail participant today.
+
+- **No new storage in Customers.** The PSID belongs to a Page, so it is Communications' data.
+- **A contact may be linked on several channels.** There is one participant per Page. A
+  participant is linked to at most one contact.
+- **The existing rule that a participant is never reassigned on insert** (design divergence 13)
+  is unchanged. Linking is an explicit act of its own (N20).
+- **Erasure and merge.** Communications' `CustomerPersonalData` erasure already covers
+  participants of an erased customer. Plan step 1 confirms that a contact merge in Customers
+  moves `contact_id` through the existing references contract. If it does not, D adds it.
+
+### N20 — Linking by hand
+
+`PUT /communications/participants/{id}/contact` sets the participant's contact, with body
+`{ contactId }`. `DELETE` on the same path clears it.
+
+- **Permission:** `communications:conversations-manage`, the permission that already links a
+  conversation to a customer.
+- **Checks:**
+  - the contact must exist, through `CustomerDirectory`, else 422 `contact_unknown`;
+  - when the conversation is linked to a customer, the contact must be one of that customer's,
+    else 422 `contact_not_of_customer`.
+- **Idempotent.** Setting the same contact again is 200.
+- **In the thread.** When a Messenger conversation is linked to a customer, its participant
+  header offers *Link to contact*, a picker of that customer's contacts. Once linked, the header
+  shows the contact's name, with *Unlink*.
+- **Suggested, never automatic.** A `user_email` answer (N3a, N5) runs through the contact
+  linker. When it finds exactly one contact, the thread offers *Link to <contact>* as a
+  suggestion. Nothing is linked without a click.
+
+### N21 — Linking through a link the contact taps
+
+**The link.** Vantigo can make a per-contact link of the form
+`https://m.me/<page>?ref=<token>`. When the contact taps it and writes, Meta's webhook carries
+the PSID together with the `ref`.
+
+**The token** is `v1.<contactId>.<channelId>.<expiresAt>.<mac>`:
+
+- the MAC comes from the secrets Box's `MAC` under the purpose `communications/messenger-ref`;
+- it expires after 90 days;
+- it holds no personal data beyond the contact id;
+- it is URL-safe.
+
+`ref` is at most 2083 characters *(unverified; delivery D checks Meta's documentation and
+caps the length well under it)*.
+
+**Getting a link.**
+`POST /communications/channels/{id}/contact-links` with `{ contactId }` answers `{ url,
+expiresAt }`.
+
+- **Permission:** `communications:conversations-manage`.
+- **Channel check:** a Messenger channel only, else 422 `not_supported_on_channel`.
+- **Where it is shown:** the customer page's contact row offers *Copy Messenger link* (N22).
+- **Mail placeholders** in Invoices, Orders and Calendar are later (§9).
+
+**Receiving it.** The Meta module subscribes the Page to `messaging_referrals`, in addition to
+N10's fields. It passes a referral to Communications as the `ref` on the `MessengerEvent`. The
+referral can arrive in three ways:
+
+- a `referral` event on an existing thread;
+- the `referral` of a *Get Started* postback on a new thread;
+- the `referral` on the first message.
+
+The slot gains `MessengerEvent.Ref string`, which is additive.
+
+**Applying it.** The messenger sync applies a verified, unexpired `ref` for the same channel
+(the Page the link was made for) in the import transaction.
+
+- **The participant has no contact yet:** the contact is linked.
+- **The participant has another contact:** the link is left alone, and the thread shows a
+  notice: "This person used <contact>'s Messenger link".
+- **The ref is bad** (it fails the MAC, has expired, or names another channel): it is ignored
+  and logged at info.
+
+A ref is a claim made by whoever holds the link, so a forwarded link can link the wrong person.
+That is why a ref never overrides an existing link, and why `U/customers.md` tells the user to
+send the link only to the contact it names.
+
+### N22 — The contact on the customer page
+
+**The read.** Communications exposes a new contract read, which Customers calls:
+`contracts.ContactChannels.ForContacts(ctx, contactIDs []int32)
+(map[int32][]ContactChannelEntry, error)`.
+
+- A `ContactChannelEntry` carries the channel id, the type, the channel's name, and
+  `lastInboundAt`.
+- It never carries the PSID itself. The PSID never leaves Communications.
+- A deployment without Communications leaves the slot empty, and the customer page shows nothing.
+
+**On the customer page**, each contact row gains a Messenger mark when linked. Its menu has:
+
+- **Write on Messenger.** This opens a new conversation, or the open one, on that channel with
+  that participant. It is enabled only while the window of N6 is open, measured from
+  `lastInboundAt`. When it is closed, the menu says "<name> must write to <Page> first. Send
+  them your Messenger link". It needs `communications:conversations-reply`.
+- **Copy Messenger link** (N21), for each Messenger channel.
+- **Unlink**, which needs `communications:conversations-manage`.
+
+**Conversation create.** `POST /conversations` gains `participantId` as an alternative to
+`to`/`recipients`, for a Messenger channel only. It replaces N7's blanket
+`channel_cannot_start`:
+
+- a participant whose window is open starts or reuses the conversation;
+- a closed window answers 422 `reply_window_closed`.
+
+The first message rides the same outbox path as a reply.
+
+### N23 — Outside the window, later
+
+Writing to a linked contact outside the window needs one of two things:
+
+- **Meta's notification opt-in** (Marketing Messages). The person taps *Get messages*, and Meta
+  issues a token with its own frequency and topic rules.
+- **Approved templates.**
+
+Both need their own Meta permission and their own design. D keeps the contact link and the
+window rules such that either adds on: a token per participant and topic, and a send path that
+bypasses the window only with a valid token.
+
 ## 6. Permissions
 
 No new permissions.
@@ -672,6 +818,8 @@ No new permissions.
 | Changing product images | `products:products-manage` |
 | Seeing product images | `products:products-view` |
 | *Create order* | Orders' own create permission |
+| Linking a participant to a contact, and getting a contact's Messenger link (D) | `communications:conversations-manage` |
+| *Write on Messenger* from a contact (D) | `communications:conversations-reply` |
 
 ## 7. Documentation
 
@@ -710,6 +858,19 @@ by one.
 - `Ref/communications.md`: the copy at reply time, and the public media route and its token.
 - `A/installation.md` and `A/payments.md`: the media route on the public host.
 
+**Delivery D:**
+
+- `U/communications.md`: *Link to contact*, the suggestion from a shared e-mail, and the
+  referral notice.
+- `U/customers.md`: the Messenger mark on a contact, *Write on Messenger* and when it is
+  disabled, *Copy Messenger link*, and that a link is sent only to its contact.
+- `Ref/communications.md`: participant linking, the endpoints and their 422s, the ref token,
+  referrals, `participantId` on create, and `contracts.ContactChannels`.
+- `Ref/meta.md`: `messaging_referrals`, and the three shapes of a referral.
+- `A/meta.md`: the Page's new subscribed field. A Page connected before D needs *Re-subscribe*,
+  or it is re-subscribed automatically (plan step 1 decides which).
+- `contributing/module-boundaries.md`: `contracts.ContactChannels`.
+
 After any docs edit, run `go generate` in `apps/server`, because the Assistant embeds the docs.
 
 ## 8. Open questions, answered by delivery 0
@@ -747,6 +908,8 @@ create accounts.
 | Reordering answer options by dragging, and an inbox filter by type | Use |
 | The marketing flag | A marketing or advertising feature to read it |
 | Bots and automatic replies | Their own design |
+| Writing to a contact on Messenger outside the window (N23) | Meta's Marketing Messages permission and a design of its own |
+| The Messenger link as a placeholder in Invoices', Orders' and Calendar's mail | D, and a shared placeholder for those modules' templates |
 
 ## 10. Testing
 
@@ -778,6 +941,20 @@ create accounts.
 - **Pages:** adding and removing a Page, and the token checks.
 - **Echoes:** an echo of our own being ignored, and a foreign one imported.
 - **Retention.**
+
+**Delivery D:**
+
+- **Linking by hand:** setting, clearing and idempotency; `contact_unknown` and
+  `contact_not_of_customer`.
+- **Suggestions:** a shared e-mail suggesting a contact, and never linking one on its own.
+- **The ref token:** a valid token; a bad MAC; an expired token; a token for another channel.
+- **Referrals:** each of the three referral shapes, on a participant with no contact and on one
+  with another contact (the notice).
+- **`contracts.ContactChannels`:** carries no PSID.
+- **Create with `participantId`:** inside the window, and closed with `reply_window_closed`.
+- **Merge and erasure:** a contact merge moving `contact_id`, and erasure.
+- **The browser check:** on the test Page from delivery 0. Tap the link, write, see the contact
+  linked, then *Write on Messenger* from the customer page.
 
 **Delivery P:**
 
@@ -843,3 +1020,20 @@ create accounts.
   and `A/meta.md` in nb are added. The rule for `sources` frontmatter is stated.
 - **Cut from scope:** images of a single variant, reordering options by dragging, product-list
   thumbnails, and the inbox filter by type.
+
+## 12. Revision 3 — delivery D, 2026-11-06
+
+The owner asked whether a customer's contact can carry their Messenger identity, so that an
+agent can write to them directly. Revision 3 adds delivery D (§5a, N19–N23) as the phase's last
+delivery:
+
+- the link on the existing `participants.contact_id`;
+- linking by hand, and through a signed `m.me` link;
+- `messaging_referrals` in the Meta module;
+- the contact on the customer page through `contracts.ContactChannels`;
+- *Write on Messenger* within the window, with `participantId` on create;
+- outside the window, later (N23).
+
+N7's refusal `channel_cannot_start` is narrowed by N22: a Messenger conversation can now be
+started for a known participant whose window is open. §6, §7, §9 and §10 gain D's rows.
+
