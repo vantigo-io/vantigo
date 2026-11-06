@@ -1211,10 +1211,16 @@ message sent from Meta Business Suite or another app on the Page: it is imported
 the participant it was sent to. An echo can arrive before the part that caused it has its
 id recorded, so while the channel has a part whose `Send` began in the last minute and has no
 `sent_at`, an echo that matches no part holds the cycle at it (the cursor stays, the channel
-is due again in 5 seconds). A `delivered` or `read` watermark moves every delivery of an
-outbound message in the participant's conversations of the channel whose `accepted_at` is at
-or before it, from `relay_accepted` (and, for `read`, `delivered`) to `delivered` or `read`,
-writing a message event for each; it is monotonic and so idempotent, and goes through no
+is due again in 5 seconds). A `delivered` or `read` watermark is a platform time. It moves every delivery of an
+outbound message in the participant's conversations of the channel whose **newest part** the
+platform stamped at or before it — the part's `platform_at`, which `Send` answers as
+`MessengerSent.At`, else the time its `Send` began — from `relay_accepted` (and, for `read`,
+`delivered`) to `delivered` or `read`, writing a message event for each. It is **not** compared
+with `accepted_at`, which is written after the last part and so always later than the
+platform's stamp. The newest watermark of each kind a participant has had is kept in
+`messenger_watermarks`, and the outbox applies it again after a message's completion: one that
+arrived while the message was still being sent found its deliveries `sending` and moved
+nothing, and is not lost. The effect is monotonic and so idempotent, and goes through no
 receipt, whose `outcome` CHECK is shaped by the mailbox.
 
 ### Components, answers and the window
@@ -1226,7 +1232,8 @@ reply) and `cards` (a carousel: a title of 1 to 80 characters, a subtitle of at 
 to 3 choices of 1 to 20 characters each, and the card's image, an attachment of role `card`).
 An `id` is `[a-z0-9-]{1,40}`, unique within its message; the payload the platform carries is
 `v1:<messageId>:<id>`. The limits are the provider's `Capabilities`, which the conversation
-detail answers as `componentLimits`. Cards are in the contract and rendered by the thread, but
+detail answers as `componentLimits`. The provider's `Capabilities` also carry `MaxAttachmentBytes`, answered in `componentLimits`
+as `maxAttachmentBytes`. Cards are in the contract and rendered by the thread, but
 a reply carrying any is refused (`components_invalid`, under `cards`) until the delivery that
 attaches a product's images copies them.
 
