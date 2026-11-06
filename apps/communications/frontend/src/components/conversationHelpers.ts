@@ -1,5 +1,5 @@
 import { getTimeZones, type useI18n } from "@vantigo/frontend-shell";
-import type { Participant, PersonalSender } from "../api/conversations";
+import type { ConversationListItem, Participant, PersonalSender } from "../api/conversations";
 
 /** A message's instant in the viewer's time zone (time zones design D8), as the shell holds it. */
 export const relative = (date: string) =>
@@ -29,3 +29,12 @@ export const personalSenderLabel = (
   sender.providerDisplayName
     ? t("sendFromPersonalVia", { provider: sender.providerDisplayName, address: sender.address ?? "" })
     : t("sendFromPersonal", { address: sender.address ?? "" });
+
+/** The search box matches the subject, the preview and the participants of the conversations already loaded. */
+export const matchesSearch = (item: ConversationListItem, query: string) => {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [item.subject ?? "", item.previewText ?? "", ...item.participants.map(participantName)].some((text) =>
+    text.toLowerCase().includes(needle),
+  );
+};
