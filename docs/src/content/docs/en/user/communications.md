@@ -5,6 +5,7 @@ sidebar:
   order: 80
 sources:
   - apps/communications/frontend
+  - packages/frontend-shell/src/side-panel.tsx
   - apps/host/frontend/src/routes/communications
 ---
 
@@ -56,6 +57,43 @@ closes, tags or assigns a conversation, the list and the conversation you have o
 within a moment. If your administrator has not made live updates available, or the
 connection is lost for a while, the list refreshes by itself every minute instead, and the
 tick icon next to the count still reloads it at once.
+
+## The Conversations panel
+
+You do not have to be in the Inbox to answer a customer. The **Conversations** button in the
+header (its label is *Open conversations*) opens the Conversations panel in the side panel on
+the right, on any screen, beside the Assistant: one at a time under tabs, or both stacked, as
+described under [The panel](/en/user/assistant/#the-panel) in the Assistant guide. **Cmd+Shift+U** on
+a Mac, **Ctrl+Shift+U** elsewhere, opens and closes it too; the key is left alone while you are
+typing in a code editor. (Microsoft Edge on Windows uses Ctrl+Shift+U for *Read aloud* and may keep the
+key for itself; use the button there.) The button and the panel need `communications:conversations-view`
+and are not shown on the Inbox itself, which is the same view.
+
+**The badge** on the button counts the open conversations assigned to you that you have not read.
+When none of those is unread but other open conversations are, it shows a dot. Hover or listen to
+the button to hear both numbers. The counts are read every 30 seconds while the browser tab is visible,
+and when you come back to the tab.
+
+**The list** is compact. Its filters are **Assigned to me**, **Unread** and **All open**; it starts on
+Assigned to me, or on All open when nothing is assigned to you. On a customer's page it also offers
+**This customer**, which shows every conversation linked to that customer, open or not; it is offered,
+never chosen for you. The search box matches the subject, the preview and the names and addresses of the
+conversations that are already loaded in the list (the newest 30 of the filter) — it does not search the
+rest of the mail.
+
+**A conversation** opens in the panel with the same thread and composer as the Inbox, Messenger chats
+included, with their answer options and reply window. At the top, **Back** returns to the list, **Open in
+Inbox** opens it in the Inbox on the main page, and the customer's link (*Customer #42*) opens the
+customer on the main page while the panel stays as it is. Opening a conversation marks it read, which is
+how the badge clears. A reply you have half written is still there when you go to another app and
+come back, or close the panel and open it again. What you may do follows your permissions, as in the
+Inbox: without `communications:conversations-reply` the composer is read-only; without
+`communications:conversations-manage` the status, tag and customer controls are not shown.
+
+**It stays current.** While the panel is open and the tab is visible, the list reloads every 15 seconds
+and the open conversation every 5 seconds; both stop when the panel is closed or the tab is hidden, and
+reload once when it is shown again. The Inbox reloads the same way. This is polling, not push: a message
+can take a few seconds to appear.
 
 ## Read a conversation
 

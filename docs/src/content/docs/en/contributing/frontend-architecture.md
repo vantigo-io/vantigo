@@ -1,8 +1,11 @@
 ---
 title: "Frontend architecture"
-description: "Workspace layout, module manifests, API client generation, i18n, tour targets for the Assistant, and UI conventions."
+description: "Workspace layout, how a module reaches the host, the side panel host and how a module adds a panel, API client generation, i18n, tour targets for the Assistant, and UI conventions."
 sources:
   - packages/frontend-shell/src/assist-targets.ts
+  - packages/frontend-shell/src/side-panel.tsx
+  - apps/host/frontend/src/routes/__root.tsx
+  - apps/communications/frontend/src/hooks/useConversationsShell.tsx
   - packages/frontend-shell/src/ui
   - packages/frontend-shell/src/live
   - apps/host/frontend/src/lib/assist-targets.ts
@@ -33,27 +36,61 @@ apps/
   entra/frontend/              # @vantigo/entra-ui — Microsoft Entra ID's wizard
 packages/
   frontend-api-client/         # @vantigo/frontend-api-client — the fetch client every module's API calls go through
-  frontend-shell/              # @vantigo/frontend-shell — the shell's layout, app switcher, spotlight and i18n catalog registry
+  frontend-shell/              # @vantigo/frontend-shell — the shell's layout, side panel host, app switcher, spotlight and i18n catalog registry
 ```
 
-## Module manifests (`@vantigo/module-registry`)
+## How a module reaches the host
 
-Every module under `modules/<name>/frontend` exports a `FrontendModuleManifest` (defined in
-`packages/module-registry/src/index.ts`) and registers no global state of its own. The host
-shell imports the manifests and filters them against the enabled modules reported by
-`GET /api/v1/system/modules` and the signed-in user's permission set.
+There is no manifest package. A module frontend (`apps/<name>/frontend`, `@vantigo/<name>-ui`) is a
+plain package whose `package.json` `exports` name what the host may import: `.` for its `index.ts`
+(components, query options, hooks), `./i18n` for its catalog, and `./pages/*`, `./components/*`,
+`./api/*` for the files the host imports by path. The host (`apps/host/frontend`) does the wiring:
 
-A manifest declares:
+- **Routes.** File-based TanStack Router routes under `src/routes/<module>/`, each a few lines that
+  render the module's page and validate the URL's search parameters.
+- **Navigation and apps.** `src/apps.ts` lists the apps, their sidebar items and the permissions that
+  unlock them; `src/navigation.ts` filters them against the enabled modules (`moduleKeys`) and the
+  signed-in person's permissions (`hasPermissions`).
+- **Translations.** `src/i18n.ts` imports each module's `./i18n`, which registers the module's `en`
+  and `nb` catalog.
+- **The layout.** `src/routes/__root.tsx` renders `AppShellLayout` from `@vantigo/frontend-shell`,
+  with the header actions, the sidebar, Spotlight and the side panel.
 
-- **`id`** — module identifier matching the backend module name (`customers`, `projects`, …).
-- **`navGroups` / `navItems`** — sidebar navigation entries with `requiredPermissions` gates.
-- **`routes`** — React Router route definitions mounted inside the authenticated shell.
-  Heavy route views should use `React.lazy(...)` so each module splits into on-demand chunks,
-  and every top-level module route is wrapped in `<ModuleErrorBoundary>` by the host shell.
-- **`settingsPanels` / `personalPanels`** — sections contributed to `/settings` and `/profile`.
-- **`quickCreateActions`** — global "New …" actions surfaced in the header and command palette.
-- **`translations`** — `en` and `nb` translation trees registered under the module's i18next
-  namespace.
+Modules never import each other. What one module needs of another goes through the host or through a
+`contracts` slot on the server.
+
+## The side panel (`SidePanelHost`)
+
+The shell has one right-hand panel, `AppShellLayout`'s `aside`, and `packages/frontend-shell`
+(`src/side-panel.tsx`) turns it into a host for several panels: today the Assistant
+(`@vantigo/assistant-ui`) and Conversations (`@vantigo/communications-ui`).
+
+- **The seam.** A panel is a `SidePanel`: `key`, `label`, `icon`, an optional `badge`, an optional
+  `hidden` (listed, not shown now: the Assistant on its own page, Conversations in the Inbox) and
+  `render()`. The layout owns the state with `useSidePanelController()` and gives the aside to the shell with
+  `controller.aside(panels)`; `SidePanelHost` renders it. The controller holds whether the panel is open,
+  the panel in front, the mode (`one` or `both`), the width, the divider's ratio and which panels have
+  been mounted.
+- **Behaviour the host owns.** One panel at a time under tabs, or from the `md` breakpoint both stacked
+  with a divider (drag, or the arrow keys; `clampSplit` keeps 200 px for each); below `md` it is always
+  one panel, and below `sm` the aside is the full-screen sheet. A panel is mounted the first time it is
+  shown and then stays mounted, hidden with `display: none` and `inert` when another is in front, so
+  its state survives navigation and switching. When the panel in front becomes `hidden`, the host
+  closes. Width, mode, ratio and the last panel are remembered in `localStorage`
+  (`vantigo.sidePanel.width|mode|ratio|last`) inside try/catch; the width is read once from the
+  Assistant's old key `vantigo.assistant.panelWidth`.
+- **What a panel gets.** Inside `render()`, `useSidePanelShown()` says whether the panel is open and in
+  front (stop polling and timers when it is false) and `useSidePanelActions()` closes the panel or
+  brings another forward. Everything else, including the width handle and the tabs, is the host's.
+
+**Adding a panel.** (1) In the module package, export a panel component and a hook, like
+`useConversationsShell`, that takes the `SidePanelController` and returns its `SidePanel` entry (`undefined` when
+the person cannot use it), a header button, and a shortcut that calls `controller.toggle(key)`. (2) In
+`__root.tsx`, call the hook with the module-on and permission checks the entry needs, put the button in
+`headerActions` and the entry in the list given to `controller.aside([...])`. (3) Add the module's tabs strings
+to its own catalog, and a test that renders the hook inside a `useSidePanelController()` harness
+(see `ConversationsPanel.test.tsx`). Pick a shortcut that collides with neither the shell's (Cmd/Ctrl+J, Cmd/Ctrl+K)
+nor the browsers'; the Conversations panel uses Cmd/Ctrl+Shift+U, which Edge's *Read aloud* shares on Windows.
 
 ## Generated API client (`@vantigo/api-client`)
 
