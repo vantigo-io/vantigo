@@ -769,6 +769,13 @@ From N §6 and §6.1, held by this design:
 3. Should the receipts list be its own page, or the movements list filtered by
    `kind=receipt`? Recommended filtered, with a sidebar entry *Receipts* that opens it.
    **Answered: the filtered list, with its own sidebar entry.**
+4. After a person is erased, should the ledger keep a movement's
+   `posted_by_user_id`/`posted_by_display` and an event's actor, or should a sweep blank
+   the display name? Recommended keep, as rule 19's exception for ledger records.
+   **Answered (2026-11-07): keep both; the module has no erasure worker.**
+5. Should printing labels need `locations-view` or `locations-manage`? Recommended
+   view, since printing changes nothing. **Answered (2026-11-07): `locations-view`, as
+   built.**
 
 ## 14. Revision 2 — the critic review, 2026-10-27
 

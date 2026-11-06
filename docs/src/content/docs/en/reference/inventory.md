@@ -1058,8 +1058,9 @@ import](#the-opening-balance-import), the [stock totals](#stock) for the product
 One thing of the design was left out: the notice that a printed label's text is stale
 after a rename or a recode (I7, §9); the print dialog says instead that a label keeps
 scanning and needs reprinting only when its text should change. Labels are chosen in the
-print dialog from a searchable list, not by ticking locations in the tree, and the count
-screen draws every line of the scope it shows, without virtualisation.
+print dialog from a searchable list, not by ticking locations in the tree. The count
+screen holds every line of the scope it shows but draws only those near the window, so a
+whole site's count of thousands of lines scrolls with the page.
 
 **Reservations**, `contracts.Stock` and `contracts.StockLedger`, the `issue` kind and
 the *fulfils orders* flag came with Orders' delivery C ([reservations and
