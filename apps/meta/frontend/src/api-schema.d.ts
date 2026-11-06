@@ -13,7 +13,7 @@ export interface paths {
         put?: never;
         /**
          * Connect a Page
-         * @description Connects a Facebook Page by its access token (Messenger design N10). Vantigo reads /me with the token and requires a Page whose tasks include MESSAGING, else 422 page_token_insufficient; subscribes the app to the Page's messages, messaging_postbacks, message_reads, message_deliveries and message_echoes; seals the token under meta/page-token and keeps the Page's id and name. The same Page added again replaces its token and clears a rejection. The Owner's. 422 not_configured while the app id and secret are not set; 503 meta_unreachable when Meta could not be asked. Rate limited to 30 per client address a minute, shared with every Owner operation of the module.
+         * @description Connects a Facebook Page from a token (Messenger design N10). Vantigo lists the Pages the token manages (GET /me/accounts, for a system user's or a user's token) and keeps those whose tasks include MESSAGING: none, or a pageId that is not one of them, is 422 page_token_insufficient; several and no pageId is 422 page_choice_required with the choices; the chosen Page's own access token, not the pasted one, is what is used and sealed under meta/page-token. A token Meta does not let list Pages is taken for a Page's own token: the Page is read from /me and the token is accepted when subscribing the app succeeds. Vantigo subscribes the app to the Page's messages, messaging_postbacks, message_reads, message_deliveries and message_echoes and keeps the Page's id and name. The same Page added again replaces its token and clears a rejection. The Owner's. 422 not_configured while the app id and secret are not set; 503 meta_unreachable when Meta could not be asked. Rate limited to 30 per client address a minute, shared with every Owner operation of the module.
          */
         post: operations["postMetaPages"];
         delete?: never;
@@ -101,7 +101,7 @@ export interface paths {
         put?: never;
         /**
          * Meta's webhook events
-         * @description Meta's webhook events (Messenger design N11), on the public host and the app's host alike. Anonymous: Meta sends no session. A hand-written handler: the operation declares no request body, so the strict wrapper decodes nothing and the handler reads the raw body itself, at most 1 MiB (413 above). It checks X-Hub-Signature-256, sha256=<hex>, an HMAC-SHA256 under the app secret over the bytes exactly as received, compared in constant time — a missing or wrong signature is 401 and is logged, and an app secret not yet set is 503 — then stores the body in meta.webhook_events and answers 200 with no body. A database that cannot be written is 503, so Meta retries. Nothing is parsed for routing before the answer: Meta wants one within five seconds. Rate limited to 1200 per client address a minute (meta-webhook).
+         * @description Meta's webhook events (Messenger design N11), on the public host and the app's host alike. Anonymous: Meta sends no session. A hand-written handler: the contract declares the body as raw bytes (application/octet-stream, binary), which the strict wrapper hands on undecoded, whatever content type Meta sends, and the handler reads the raw body itself, at most 1 MiB (413 above). It checks X-Hub-Signature-256, sha256=<hex>, an HMAC-SHA256 under the app secret over the bytes exactly as received, compared in constant time — a missing or wrong signature is 401 and is logged, and an app secret not yet set is 503 — then stores the body in meta.webhook_events and answers 200 with no body. A database that cannot be written is 503, so Meta retries. Nothing is parsed for routing before the answer: Meta wants one within five seconds. Rate limited to 1200 per client address a minute (meta-webhook).
          */
         post: operations["postMetaWebhook"];
         delete?: never;
@@ -134,13 +134,22 @@ export interface components {
              */
             state: "active" | "token_rejected";
         };
-        /** @description A Page access token, which Vantigo checks with Meta before it keeps the Page (Messenger design N10). */
-        MetaPageRequest: {
-            /** @description The Page's access token — a system user's token that does not expire is recommended. Sealed under meta/page-token; never answered. */
-            accessToken: string;
+        /** @description A Page a system user's or a user's token manages and may message — one of the choices of a page_choice_required refusal. */
+        MetaPageChoice: {
+            id: string;
+            name: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: public_host_required (422: the instance has no public host, so the webhook has no address), not_configured (422: the app id and secret are not set), page_token_insufficient (422: the token is not a Page's, or may not message it), meta_unreachable (503: Meta could not be asked), page_not_found (404). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description A token Vantigo checks with Meta before it keeps the Page (Messenger design N10) — a system user's or a user's token that manages the Page, or the Page's own access token. */
+        MetaPageRequest: {
+            /** @description A system user's token that does not expire is recommended; a user's token, or the Page's own access token, also works. Never stored when it is not the Page's own; the Page's access token is sealed under meta/page-token and never answered. */
+            accessToken: string;
+            /** @description Which Page to connect when the token manages several; the id of one of the choices a page_choice_required refusal listed. Optional. */
+            pageId?: string | null;
+        };
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: public_host_required (422: the instance has no public host, so the webhook has no address), not_configured (422: the app id and secret are not set), page_token_insufficient (422: the token is neither a Page's own token nor a user's or system user's token that manages a Page with permission to message it, or the pageId asked for is not such a Page), page_choice_required (422: the token manages several Pages that may be messaged and no pageId was given; choices lists them), meta_unreachable (503: Meta could not be asked), page_not_found (404). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         MetaProblem: {
+            /** @description The Pages to choose from, on a page_choice_required refusal. */
+            choices?: components["schemas"]["MetaPageChoice"][];
             code?: string | null;
             detail?: string | null;
             errors?: {
@@ -263,7 +272,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity — not_configured, or page_token_insufficient. */
+            /** @description Unprocessable Entity — not_configured, page_token_insufficient, or page_choice_required (choices lists the Pages). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -555,7 +564,12 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        /** @description The event as Meta sent it, application/json in practice, read raw by the handler and never decoded by the strict wrapper. */
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
         responses: {
             /** @description OK — the event is stored. */
             200: {
