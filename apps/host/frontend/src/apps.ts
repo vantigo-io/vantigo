@@ -5,6 +5,7 @@ import {
   IconBook,
   IconBook2,
   IconBrandGoogle,
+  IconBrandMessenger,
   IconBrandWindows,
   IconBriefcase,
   IconBuildingBank,
@@ -76,13 +77,14 @@ import {
 } from "./navigation";
 
 /**
- * The modules that own an app (a switcher tile and a sidebar). Entra and Google
- * are modules without one: their pages are Microsoft Entra ID and Google
- * Workspace under *Integrations* in Workspace admin (Integrations design T2,
- * Google Workspace design G9, G16), so they are not here and
- * `appForKey("entra")` and `appForKey("google")` are type errors.
+ * The modules that own an app (a switcher tile and a sidebar). Entra, Google
+ * and Meta are modules without one: their pages are Microsoft Entra ID, Google
+ * Workspace and Meta under *Integrations* in Workspace admin (Integrations
+ * design T2, Google Workspace design G9, G16, Messenger design N9), so they
+ * are not here and `appForKey("entra")`, `appForKey("google")` and
+ * `appForKey("meta")` are type errors.
  */
-export type ModuleWithApp = Exclude<ModuleKey, "entra" | "google">;
+export type ModuleWithApp = Exclude<ModuleKey, "entra" | "google" | "meta">;
 
 export type AppKey = "home" | ModuleWithApp;
 
@@ -736,6 +738,15 @@ export const areas: readonly AreaDefinition[] = [
             icon: IconBrandGoogle,
             module: "google",
             requiredPermissions: ["google:manage"],
+          },
+          // Meta is the connection to Facebook Messenger (Messenger design N9): the Owner's, while
+          // the module is on. It has no permission of its own.
+          {
+            label: "navigation.meta",
+            to: "/workspace/meta",
+            icon: IconBrandMessenger,
+            ownerOnly: true,
+            module: "meta",
           },
           // The carrier accounts Orders books shipments with (orders design O51), behind
           // orders:carriers-manage while the module is on.
