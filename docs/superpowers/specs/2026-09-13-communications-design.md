@@ -310,8 +310,22 @@ that make a concurrent path safe without changing any sequential behaviour:
     remains the real invariant, and a future write path that forgets the lock must not resurface the
     bare RFC 7807 409.
 
+16. **The default channel is the default of its type** (Messenger design N1,
+    `docs/superpowers/specs/2026-11-05-communications-messenger-design.md`). The three statements
+    14 and 15 describe as type-unfiltered — `ClearDefaultChannels`, `ClearOtherDefaultChannels`
+    and `AnyChannelExists` — now filter by `channels.type`: the first channel of a type is its
+    default, and making one the default demotes only the others of its type. Without it the first
+    Messenger default would demote the e-mail default Invoices and Calendar send through. This
+    changes what 15 reasoned from — that both demotes were type-unfiltered, faithfully to .NET — and
+    so what a lock per type could cover; the **global advisory lock stays one slot all the same**,
+    because channel writes are rare and one key serialises every writer whichever type it writes, so
+    no writer has to be shown disjoint from another. 14's reasoning about the missing `is_default`
+    term is unchanged within a type. It is a behaviour change, recorded in `Ref/communications.md`
+    and tested by `TestChannels_DefaultsArePerType`; the existing concurrency tests of 14 and 15
+    pass unchanged.
+
 **A note on numbering, because this list is meant to be cited.** Entries 1–6 predate task 14 and are
-unchanged. Task 14 added 7–12 (12 is the `MODULES` default), then 13–15 from its constraint audit. The
+unchanged. Task 14 added 7–12 (12 is the `MODULES` default), then 13–15 from its constraint audit; 16 is Messenger's. The
 bracketed inline `Content-ID` change is **not** a numbered divergence — it is recorded in the fidelity
 fixes below, because it removes a difference from .NET rather than adding one. An earlier dispatch
 referred to it as "item 12"; the committed numbering here is what should be cited.

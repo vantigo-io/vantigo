@@ -1,6 +1,6 @@
 ---
 title: Kommunikasjon
-description: Delte postkasser, samtaler med kunder, mottak og sending av e-post og blokkeringer — kanaler på SMTP eller på en delt postboks i Microsoft 365, e-post mottatt i en Microsoft 365-kanal, svar og svar alle, å bytte en kanal til Microsoft 365, og størrelsen en Microsoft 365-kanal sender.
+description: Delte postkasser, samtaler med kunder, mottak og sending av e-post og blokkeringer — kanaler på SMTP eller på en delt postboks i Microsoft 365, e-post mottatt i en Microsoft 365-kanal, svar og svar alle, å bytte en kanal til Microsoft 365, og størrelsen en Microsoft 365-kanal sender — og chat-samtaler på en Facebook Messenger-kanal, med svaralternativer og vinduet et svar kan sendes i.
 sidebar:
   order: 80
 sources:
@@ -8,8 +8,9 @@ sources:
   - apps/host/frontend/src/routes/communications
 ---
 
-Kommunikasjon-appen er en delt innboks: alle e-postsamtaler organisasjonen din har
-med kundene sine, på ett sted, besvart fra delte postkasser som kalles **kanaler**.
+Kommunikasjon-appen er en delt innboks: alle e-postsamtaler — og, der en Facebook
+Messenger-kanal er satt opp, alle chatter — organisasjonen din har med kundene sine, på
+ett sted, besvart fra delte postkasser som kalles **kanaler**.
 Sidemenyen har tre områder: **Innboks**, der samtaler leses og besvares; **Kanaler**,
 der postkassene settes opp; og **Blokkeringer**, listen over adresser Vantigo nekter å
 skrive til. Åpner du appen, havner du i Innboks, og dashbordet Hjem viser et
@@ -22,12 +23,17 @@ sendt fra Vantigo og notatene som er skrevet i dem, og de kan ikke besvares. Hvo
 mottaket virker, er beskrevet under
 [Receiving](/en/reference/communications/#receiving) i referansen.
 
+En **Facebook Messenger**-kanal er en Facebook-side virksomheten din eier, og samtalene
+på den er chatter: de ser annerledes ut og besvares annerledes enn e-post, som beskrevet
+under [Messenger-samtaler](#messenger-samtaler).
+
 ## Finn en samtale
 
 Åpne **Innboks**. Den venstre ruten lister samtalene, nyeste aktivitet først, med et
-antall øverst. Hver rad viser motparten (navnet, eller adressen når navnet er ukjent),
-når noe sist skjedde, emnet, en forhåndsvisning av den siste teksten, samtalens tagger
-og statusen dens. En ulest samtale vises i fet skrift.
+antall øverst. Hver rad viser motparten (navnet, eller adressen når navnet er ukjent) ved siden av et
+lite ikon for kanalen — en konvolutt for e-post, Messenger-logoen for en chat —, når noe
+sist skjedde, emnet (en chat har ikke noe, og viser **Facebook Messenger** i stedet),
+en forhåndsvisning av den siste teksten, samtalens tagger og statusen dens. En ulest samtale vises i fet skrift.
 
 Verktøylinjen filtrerer listen:
 
@@ -191,6 +197,79 @@ KI-modell som skriver utkastet, og hvilken som foreslår kunder, er en eiers val
 ([KI-modeller](/nb/user/workspace-administration/#ki-modeller)); valget endrer ingenting
 av det du gjør her.
 
+## Messenger-samtaler
+
+En samtale på en Messenger-kanal begynner når en person skriver til Facebook-siden din; du
+kan ikke begynne en selv. **Start en samtale** bruker alltid en e-postkanal. Personens
+meldinger kommer inn i Innboks av seg selv, noen sekunder etter at de er sendt, og
+samtalens tittel er personens navn — Messenger gir verken emne eller e-postadresse. En
+ny melding fra personen havner i den åpne samtalen deres; har du lukket samtalen, begynner
+neste melding en ny.
+
+Tråden er en chat. Hver melding er en boble, kundens til venstre og din til høyre. Bilder
+kunden sender, vises i boblen, og andre filer listes under den, som nedlastinger. En
+melding du har sendt, sier hvor den står — **Sender**, **Sendt**, **Levert**, **Lest** —
+eller **Ikke sendt**, med årsaken når det finnes en: *kunden kan ikke nås* (de har
+blokkert siden), *kunden må skrive først*, *Human Agent er ikke gitt til appen* eller
+*Messenger avviste meldingen*. En melding sendt fra Meta Business Suite eller en annen app
+på siden vises også, merket **Sendt fra Meta**, så tråden er hel. Knytt samtalen til en
+kunde med de samme knappene som for en e-postsamtale; Vantigo kan ikke gjøre det selv,
+siden Messenger ikke gir en e-postadresse.
+
+### Svar en kunde i en chat
+
+Skrivefeltet er et chat-felt: ren tekst, uten emne, uten Cc og uten formatering, og
+**Legg ved fil**. En teller under feltet viser tegnene mot Messengers grense på 2000; over
+den er **Send svar** deaktivert. Sending krever `communications:conversations-reply`.
+
+**Svarvinduet.** Messenger lar deg bare svare en som har skrevet til deg de siste 24
+timene. Skrivefeltet viser hvor vinduet står:
+
+- *Du kan svare til …* mens det er åpent.
+- **Mer enn 24 timer siden kunden skrev**, når meldingsleverandøren har fått Metas
+  **Human Agent**-tillatelse: svaret sendes med Messengers Human Agent-merke, og du kan
+  svare i opptil 7 dager.
+- **Samtalen er stengt for svar**, med *Kunden må skrive på nytt før du kan svare her*,
+  når vinduet er over. **Send svar** er deaktivert. Du kan fortsatt skrive et internt
+  notat. Når kunden skriver igjen, åpnes vinduet på nytt. En melding sendt fra Meta
+  Business Suite åpner det ikke.
+
+### Legg til svaralternativer
+
+En melding kan ha svaralternativer kunden trykker på i stedet for å skrive. Under
+tekstfeltet har **Svaralternativer**:
+
+- **Legg til Ja / Nei** legger til to alternativer, **Ja** og **Nei** på språket ditt. Gi
+  dem andre navn om du vil.
+- **Legg til alternativ** legger til ett tomt alternativ. En melding tar høyst 13.
+- Hvert alternativ har et felt for tittelen, en teller mot grensen på 20 tegn og en **×**
+  for å fjerne det. Alternativene sendes i den rekkefølgen de ble lagt til. Et alternativ
+  uten tittel, eller med mer enn 20 tegn, hindrer at meldingen sendes.
+- **Be om e-postadresse** legger til en knapp som lar kunden dele e-postadressen sin med
+  ett trykk.
+
+Når kunden trykker på et alternativ, kommer svaret som en melding vist som en brikke med
+hake — **✓ Ja** — og spørsmålet markerer alternativet de valgte. En e-postadresse kunden
+deler, kommer som en melding som sier **Delte en e-postadresse**; har en kontakt i Kunder
+den adressen, tilbys kontaktens kunder som kandidater for samtalen, og du avgjør hvilken
+som knyttes. Et alternativ det er trykket på som Vantigo ikke kan plassere — det hører til
+en annen samtale — vises som vanlig tekst.
+
+### Sett opp en Messenger-kanal
+
+En kanal på Messenger trenger en meldingsleverandør som er tilgjengelig på installasjonen,
+med en Facebook-side koblet til. Først da åpnes **Legg til kanal** med et valg først:
+**E-post** eller **Facebook Messenger**; uten en er det bare e-postdialogen. Med
+**Facebook Messenger** spør dialogen etter **Facebook-side** — valgt blant sidene som er
+koblet til, der en side som ikke kan brukes nå, står deaktivert med årsaken — og et valgfritt
+**Visningsnavn**, som er sidens navn når det ikke fylles ut. **Opprett kanal** legger til
+kanalen. Å legge den til krever `communications:channels-manage`, som for en e-postkanal.
+En Messenger-kanal har ingen egen legitimasjon og ingen postboks: raden i **Kanaler** sier
+**Mottar** eller hvorfor ikke, og en side eller leverandør som svikter, viser **Utilgjengelig**.
+Messenger-kanaler har sin egen standard: den første Messenger-kanalen er standard
+Messenger-kanal, og å gjøre en annen kanal til standard endrer aldri standarden for den
+andre typen.
+
 ## Legg til et internt notat
 
 **Legg til notat** bytter skrivefeltet til **Internt notat**. Et notat ligger i samtalen
@@ -224,7 +303,8 @@ En kanal er en delt postkasse: adressen svarene dine sendes fra. Åpne **Kanaler
 tabellen over kanaler med **Adresse** (visningsnavnet, med adressen under),
 **Leverandør**, **Status** (**Aktiv** eller **Inaktiv**) og **Handlinger**. Kanalen
 merket **Standard** er den en samtale opprettes på når ingen er oppgitt; den første
-kanalen du oppretter, blir standard.
+kanalen du oppretter, blir standard — for sin type: e-postkanaler og Messenger-kanaler har
+hver sin standard.
 
 Kolonnen **Mottaksstatus** sier om en kanal mottar e-post: **Mottar**, med *Sist
 synkronisert …*; **Venter på første synkronisering** rett etter at kanalen ble lagt til
