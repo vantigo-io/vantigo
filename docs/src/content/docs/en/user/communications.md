@@ -300,9 +300,10 @@ another conversation — is shown as plain text.
 A channel on Messenger needs a messaging provider that is available on the installation,
 with a Facebook Page connected to it. Only then does **Add channel** open with a choice
 first: **E-mail** or **Facebook Messenger**; without one, it is the email dialog alone.
-With **Facebook Messenger** the dialog asks for the **Facebook Page** — picked from the
-Pages that have been connected, one that cannot be used now listed disabled with its
-reason — and an optional **Display name**, which defaults to the Page's name. **Create
+**Facebook Messenger** is offered once Meta is configured. The dialog asks for the **Facebook
+Page** — picked from the Pages connected under **Integrations** › **Meta** (an Owner
+connects them; see [Meta](/en/admin/meta/)), one that cannot be used now listed disabled
+with its reason, a Page whose token Meta rejected showing as **Unavailable** — and an optional **Display name**, which defaults to the Page's name. **Create
 channel** adds the channel. Adding it needs `communications:channels-manage`, as an email
 channel does. A Messenger channel has no credentials of its own and no mailbox: its row in
 **Channels** says **Receiving** or why it is not, and a failing Page or provider shows

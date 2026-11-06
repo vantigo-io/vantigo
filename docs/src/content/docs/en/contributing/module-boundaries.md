@@ -16,6 +16,7 @@ sources:
   - apps/energy/frontend/eslint.config.js
   - apps/entra/frontend/eslint.config.js
   - apps/google/frontend/eslint.config.js
+  - apps/meta/frontend/eslint.config.js
   - apps/expenses/frontend/eslint.config.js
   - apps/invoices/frontend/eslint.config.js
   - apps/planning/frontend/eslint.config.js
@@ -31,7 +32,7 @@ sources:
 Vantigo is a modular monolith: one Go binary, one container, one PostgreSQL
 database — with strict module boundaries so any module can later be extracted into
 its own deployable without a rewrite. Customers, Products, Energy, Communications,
-Projects, Time, Expenses, Invoices, Staff, Calendar, Entra, Google, Planning, Inventory, Orders and Assistant are vertical-slice modules composed only
+Projects, Time, Expenses, Invoices, Staff, Calendar, Entra, Google, Meta, Planning, Inventory, Orders and Assistant are vertical-slice modules composed only
 by `cmd/vantigo`, on the Identity platform.
 
 Modules never reference each other directly. Synchronous cross-module needs go
@@ -97,7 +98,7 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    type, never a store type, and the reason is rules 8, 9 and 10's.
 4. **One schema per module.** Each module maps tables only into its own PostgreSQL
    schema (`identity`, `customers`, `products`, `energy`, `communications`,
-   `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar`, `entra`, `google`, `planning`, `inventory`, `orders`, `knowledge`, `assistant`), and no module's migrations or queries reference
+   `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar`, `entra`, `google`, `meta`, `planning`, `inventory`, `orders`, `knowledge`, `assistant`), and no module's migrations or queries reference
    another's. **No cross-schema foreign keys or joins** — reference other modules'
    data by opaque ID only. That is what keeps a future "move this schema to its own
    server" a connection-string change instead of a data migration.
@@ -339,7 +340,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    in. Entra's item, **Microsoft Entra ID** at `/workspace/entra` (`routes/workspace/entra.tsx`),
    carries `module: "entra"` and `requiredPermissions: ["entra:manage"]`, and Google's,
    **Google Workspace** at `/workspace/google` (`routes/workspace/google.tsx`),
-   `module: "google"` and `requiredPermissions: ["google:manage"]`; the area's
+   `module: "google"` and `requiredPermissions: ["google:manage"]`, and Meta's, **Meta** at
+   `/workspace/meta` (`routes/workspace/meta.tsx`), `module: "meta"` and an Owner's
+   alone (the module has no permission of its own); the area's
    layout (`routes/workspace.tsx`) admits a holder of that permission while the module is
    on, the item's route asks the module and the permission again, and the section hides
    itself when none of its items shows. A module that takes such an item owns no app: it
@@ -863,7 +866,7 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     which Communications checks a reply against. A channel names its provider by `Key` and its
     Page by address, and is never served by a provider under another key. Communications'
     tests run against a fake (`fake_messenger_test.go`), set by
-    `modtest.WithChannelMessenger`; no module fills the slot yet, and Compose tests pin that
+    `modtest.WithChannelMessenger`; Meta fills the slot under the key `meta` and Compose tests pin that
     a key two modules claim, a reserved one and one filled in both slots are refused.
 
 16. **Communications sends through a person's delegated mailbox.** The eighth sanctioned
@@ -1372,7 +1375,7 @@ MODULES=customers,products
 ```
 
 Unset enables every module this binary can mount
-(`customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,calendar,entra,google,assistant`). Identity is always mounted and
+(`customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,calendar,entra,google,meta,assistant`). Identity is always mounted and
 is never listed. Entries are trimmed and lower-cased, empty entries are ignored, and a
 name the binary does not know fails startup naming both the value and the known set.
 
@@ -1406,7 +1409,9 @@ called only by Staff's accounts worker, the slot's one consumer, so `entra` with
 `staff` would hold a tenant's credential nothing uses and is rejected too (`entra
 requires staff`). Google is rejected without `staff` for the same reason (`google
 requires staff`): the accounts it will keep are Staff's decisions, made by its accounts
-worker. Planning books Staff's people on Projects' projects, so `planning`
+worker. Meta hands Facebook Messenger to Communications' channels and is useless without
+them, so `meta` without `communications` is rejected (`meta requires communications`).
+Planning books Staff's people on Projects' projects, so `planning`
 requires both `projects` and `staff` (`planning requires projects`, `planning requires
 staff`). Inventory keeps stock of the catalog's variants and reads and locks them
 through `contracts.ProductCatalog`, so `inventory` without `products` is rejected
@@ -1792,6 +1797,17 @@ client, the transport and the token cache are built once per process, and
 `Deps.HTTPTransport` is the test seam, which its fake Google, `internal/google/googletest`,
 comes in through — only `_test.go` files may import it. Every later delivery takes its
 token from the one seam, `tokenSource`. See [Google Workspace](/en/reference/google/#the-guarded-client).
+
+**Meta imports nothing.** It writes nothing outside the `meta` schema; it fills
+`ChannelMessenger` under the key `meta` and reads no other module's data. Its two
+workers, `meta-split` and `meta-retention`, claim their rows under a lease or in one
+statement each and call Meta, or write to the object store, outside any transaction. The
+Owner policy is the router's; its one anonymous pair, the webhook's `GET` and `POST`, is
+on the public host's list (`security.PayRoutes()`). It reaches the network in one place,
+its guarded client, through `internal/netguard` with no proxy and no redirect, to
+`graph.facebook.com` and the hosts of Meta's file servers, and `Deps.HTTPTransport` is the
+test seam, which its fake Meta, `internal/meta/metatest`, comes in through — only
+`_test.go` files may import it. See [Meta](/en/reference/meta/).
 
 ## Adding a module
 

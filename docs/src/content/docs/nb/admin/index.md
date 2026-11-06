@@ -79,6 +79,13 @@ applikasjonen.
   sending fra Gmail-adressen sin, og kanalene i Kommunikasjon kan bruke lisensierte
   Gmail-postbokser. Ingenting av det står i
   `vantigo.env`; siden ligger under **Integrasjoner** i Administrer arbeidsområde.
+- **Meta.** [Meta](/nb/admin/meta/) kobler Vantigo til Facebook Messenger gjennom din egen
+  Meta-app: `meta` i `MODULES` ved siden av `communications`, som den krever; en offentlig
+  vert for Metas webhook; appen opprettet i Metas utviklerportal, med App Review og
+  Business Verification der Meta ber om det; app-ID, hemmelighet, verifiseringstoken og
+  innstillingen for Human Agent som en eier skriver inn; og hver Facebook-side lagt til med
+  et token som ikke utløper. Ingenting av det står i `vantigo.env`; siden ligger under
+  **Integrasjoner** i Administrer arbeidsområde.
 - **Frakt.** [Frakt](/nb/admin/shipping/) setter opp fraktkontoene Ordre bestiller sendinger
   med: Mybring-brukeren og API-nøkkelen hos Bring — med økonomirollen for priser —,
   kundenumrene, testmodus, standardkontoen per lagersted, fraktproduktet og påslaget.
