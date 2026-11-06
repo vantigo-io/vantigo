@@ -280,7 +280,7 @@ func corners(img image.Image) [4]func(color.RGBA) bool {
 }
 
 // TestImages_OrientationAppliedAndMetadataGone uploads a phone's photo, held
-// turned (EXIF orientation 6 and 8) and carrying the camera's make: the
+// turned (EXIF orientation 6 and 8, and every other of 2 to 8) and carrying the camera's make: the
 // stored picture is upright and none of the metadata is in it or its
 // thumbnail.
 func TestImages_OrientationAppliedAndMetadataGone(t *testing.T) {
@@ -295,6 +295,10 @@ func TestImages_OrientationAppliedAndMetadataGone(t *testing.T) {
 		{8, [4]color.RGBA{green, yellow, red, blue}},
 		{3, [4]color.RGBA{yellow, blue, green, red}},
 		{1, [4]color.RGBA{red, green, blue, yellow}},
+		{2, [4]color.RGBA{green, red, yellow, blue}},
+		{4, [4]color.RGBA{blue, yellow, red, green}},
+		{5, [4]color.RGBA{red, blue, green, yellow}},
+		{7, [4]color.RGBA{yellow, green, blue, red}},
 	}
 	for _, tc := range cases {
 		t.Run(fmt.Sprintf("orientation %d", tc.orientation), func(t *testing.T) {
@@ -309,7 +313,7 @@ func TestImages_OrientationAppliedAndMetadataGone(t *testing.T) {
 			img := upload(t, c, productID, raw)
 
 			wantW, wantH := int32(300), int32(200)
-			if tc.orientation == 6 || tc.orientation == 8 {
+			if tc.orientation >= 5 {
 				wantW, wantH = 200, 300
 			}
 			if img.Width != wantW || img.Height != wantH || img.ContentType != "image/jpeg" {

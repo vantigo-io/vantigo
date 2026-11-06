@@ -45,6 +45,8 @@ const (
 	// and of its thumbnail.
 	maxImageSide = 2048
 	thumbSide    = 320
+	// maxConcurrentNormalisations is how many uploads are normalised at once.
+	maxConcurrentNormalisations = 3
 	// jpegQuality is the quality the stored JPEG and its thumbnail are
 	// encoded at.
 	jpegQuality = 90
@@ -105,9 +107,11 @@ func normaliseImage(raw []byte) (*normalisedImage, *imageRefusal) {
 		return nil, &imageRefusal{codeImageTooSmall, "Image too small",
 			"The picture must be at least 200 by 200 pixels."}
 	}
+	// DecodeConfig has read the picture, so an orientation that cannot be read
+	// is no reason to refuse it: it is taken as upright.
 	orientation, err := imagemeta.Orientation(raw)
 	if err != nil {
-		return nil, broken
+		orientation = 1
 	}
 	src, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {

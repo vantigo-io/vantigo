@@ -198,6 +198,41 @@ describe("ProductImages", () => {
     expect(sentFile(writes(fetchMock)[0])).toBe("front.jpg");
   });
 
+  it("sends a file the browser gave no type, for the server to judge", async () => {
+    const fetchMock = stubImages([], () => jsonResponse(201, first));
+    renderImages();
+
+    const input = await screen.findByLabelText("Add images");
+    fireEvent.change(input, { target: { files: [new File(["a"], "IMG_0001", { type: "" })] } });
+
+    await waitFor(() => expect(writes(fetchMock)).toHaveLength(1));
+    expect(sentFile(writes(fetchMock)[0])).toBe("IMG_0001");
+  });
+
+  it("holds the controls while a change is on its way", async () => {
+    let release: (response: Response) => void = () => {};
+    stubImages([first, second], () => new Response(null, { status: 500 }));
+    renderImages();
+    const [, b] = await cards();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: RequestInfo | URL, init?: RequestInit) =>
+        init?.method === "PATCH"
+          ? new Promise<Response>((resolve) => {
+              release = resolve;
+            })
+          : Promise.resolve(jsonResponse(200, [first, second])),
+      ),
+    );
+
+    fireEvent.click(within(b).getByRole("button", { name: "Move left" }));
+
+    await waitFor(() => expect(within(b).getByRole("button", { name: "Delete image" })).toBeDisabled());
+    expect(within(b).getByRole("checkbox", { name: "Show in marketing" })).toBeDisabled();
+    release(jsonResponse(200, second));
+    await waitFor(() => expect(within(b).getByRole("button", { name: "Delete image" })).toBeEnabled());
+  });
+
   it("turns away a file that is no JPEG or PNG, or over 10 MiB, without sending it", async () => {
     const fetchMock = stubImages([]);
     renderImages();

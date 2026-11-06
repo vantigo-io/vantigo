@@ -1116,6 +1116,16 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProductImageProblem"];
                 };
             };
+            /** @description Too Many Requests — at most 600 image uploads an hour from one client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
             /** @description Service Unavailable — storage_unavailable, the object store could not be written; nothing was recorded. */
             503: {
                 headers: {
