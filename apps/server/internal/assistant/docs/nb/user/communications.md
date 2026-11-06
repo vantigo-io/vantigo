@@ -303,8 +303,10 @@ en annen samtale — vises som vanlig tekst.
 En kanal på Messenger trenger en meldingsleverandør som er tilgjengelig på installasjonen,
 med en Facebook-side koblet til. Først da åpnes **Legg til kanal** med et valg først:
 **E-post** eller **Facebook Messenger**; uten en er det bare e-postdialogen. Med
-**Facebook Messenger** spør dialogen etter **Facebook-side** — valgt blant sidene som er
-koblet til, der en side som ikke kan brukes nå, står deaktivert med årsaken — og et valgfritt
+**Facebook Messenger** tilbys når Meta er satt opp. Dialogen spør etter **Facebook-side** —
+valgt blant sidene som er koblet til under **Integrasjoner** › **Meta** (en eier kobler dem
+til; se [Meta](/nb/admin/meta/)), der en side som ikke kan brukes nå, står deaktivert med
+årsaken, og en side Meta har avvist tokenet til, vises som **Utilgjengelig** — og et valgfritt
 **Visningsnavn**, som er sidens navn når det ikke fylles ut. **Opprett kanal** legger til
 kanalen. Å legge den til krever `communications:channels-manage`, som for en e-postkanal.
 En Messenger-kanal har ingen egen legitimasjon og ingen postboks: raden i **Kanaler** sier

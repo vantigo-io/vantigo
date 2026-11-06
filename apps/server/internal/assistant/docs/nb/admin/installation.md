@@ -300,7 +300,10 @@ kalendermodulens avlysningsjobb `calendar-cancellations` med mindre
 postbokssynkronisering `calendar-mailbox-sync` med mindre `CALENDAR_MAILBOX_SYNC_ENABLED=0`,
 og Microsoft Entra ID-modulens `entra-outlook-sweep`, alltid, som rydder i folks
 Outlook-tilkoblinger hver time, Google Workspace-modulens `google-sweep`, alltid, som gjør
-det samme for folks Google-tilkoblinger, og Assistentens `assistant-runs`, alltid, som feiler en
+det samme for folks Google-tilkoblinger, Meta-modulens `meta-split`, alltid, som deler
+Metas lagrede webhook-hendelser opp i innboksen til Messenger-kanalene og henter filene
+folk sendte fra Metas tjenere, og `meta-retention`, alltid, som hver time sletter det modulen
+oppbevarer forbi periodene sine, og Assistentens `assistant-runs`, alltid, som feiler en
 kjøring en omstart etterlot som pågående, og `assistant-retention`, alltid, som sletter samtaler
 som er eldre enn oppbevaringstiden én gang i døgnet — og plattformens hendelsesutsender
 `events.dispatch`, alltid, uansett hva `MODULES` sier) inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
@@ -334,6 +337,8 @@ instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben
 `invoices-billing`-jobben, `invoices-payments`-jobben, `communications-mailbox-sync`,
 `communications-messenger-sync`, kalenderens abonnements- og postboksjobb og `events.dispatch` tar i stedet én rad om gangen under en tidsbegrenset lås, så
 et hvilket som helst antall instanser deler arbeidet uten å sende noe to ganger.
+`meta-split` tar de lagrede hendelsene under en lease og `meta-retention` sletter i grupper,
+så begge er trygge på et hvilket som helst antall instanser.
 `google-sweep` og `invoices.allocation_reconcile` tar ingen av delene: hvert av stegene
 deres tar radene sine i én setning, så to instanser behandler aldri samme rad. Purrejobben sender ett brev om
 gangen, høyst ett i sekundet per instans, og hver sending må bli ferdig godt innenfor
@@ -748,7 +753,11 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   Google poster dem over HTTPS til `PUBLIC_BASE_URL`, med et sertifikat Google stoler på,
   og den samme bryteren slår dem av
   ([Google Workspace](/nb/admin/google-workspace/#kalendersynkronisering),
-  [Kalender](/nb/admin/calendar/#google-kalender)).
+  [Kalender](/nb/admin/calendar/#google-kalender)). Den bærer også Meta-modulens webhook
+  for Facebook Messenger, `GET` og `POST /api/v1/meta/webhook`, som proxyen må slippe
+  gjennom som to ruter: Metas håndtrykk og hendelsene dens, der signaturen sjekkes over
+  kroppen nøyaktig slik Meta sendte den, så proxyen må ikke skrive om kroppen
+  ([Meta](/nb/admin/meta/#rutene-på-den-offentlige-verten)).
 - `vantigo.env.example` dokumenterer også `STAFF_IMPORT_MAX_ROWS`, hvor mange personer
   én import i Ansatte tar og én eksport skriver
   ([Ansatte](/nb/admin/staff/#importer-og-eksporter-registeret)), og

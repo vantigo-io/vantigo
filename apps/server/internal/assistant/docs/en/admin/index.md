@@ -77,6 +77,13 @@ application.
   each person connects their own Google account for calendar sync and sending from their
   Gmail address, and Communications' channels can use licensed Gmail mailboxes. Nothing of it is in `vantigo.env`; its page
   is under **Integrations** in Workspace admin.
+- **Meta.** [Meta](/en/admin/meta/) connects Vantigo to Facebook Messenger through your own
+  Meta app: `meta` in `MODULES` beside `communications`, which it requires; a public host
+  for Meta's webhook; the app created in Meta's developer portal, with App Review and
+  Business Verification where Meta asks for them; the app ID and secret, the verify token
+  and the Human Agent setting entered by an Owner; and each Facebook Page added with a
+  token that does not expire. Nothing of it is in `vantigo.env`; its page is under
+  **Integrations** in Workspace admin.
 - **Shipping.** [Shipping](/en/admin/shipping/) sets up the carrier accounts Orders books
   shipments with: Bring's Mybring user and API key — with the financial role for prices —,
   the customer numbers, the test mode, the default account per site, the freight product
