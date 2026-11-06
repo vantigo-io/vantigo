@@ -219,7 +219,8 @@ siden Messenger ikke gir en e-postadresse.
 ### Svar en kunde i en chat
 
 Skrivefeltet er et chat-felt: ren tekst, uten emne, uten Cc og uten formatering, og
-**Legg ved fil**. En teller under feltet viser tegnene mot Messengers grense på 2000; over
+**Legg ved fil**. Et svar kan være en fil alene, uten tekst; en fil som er større enn
+Messenger tar (25 MB), avvises. En teller under feltet viser tegnene mot Messengers grense på 2000; over
 den er **Send svar** deaktivert. Sending krever `communications:conversations-reply`.
 
 **Svarvinduet.** Messenger lar deg bare svare en som har skrevet til deg de siste 24
@@ -246,7 +247,8 @@ tekstfeltet har **Svaralternativer**:
   for å fjerne det. Alternativene sendes i den rekkefølgen de ble lagt til. Et alternativ
   uten tittel, eller med mer enn 20 tegn, hindrer at meldingen sendes.
 - **Be om e-postadresse** legger til en knapp som lar kunden dele e-postadressen sin med
-  ett trykk.
+  ett trykk. Den er ett av Messengers 13 hurtigsvar, så med den på kan du legge til 12
+  alternativer.
 
 Når kunden trykker på et alternativ, kommer svaret som en melding vist som en brikke med
 hake — **✓ Ja** — og spørsmålet markerer alternativet de valgte. En e-postadresse kunden

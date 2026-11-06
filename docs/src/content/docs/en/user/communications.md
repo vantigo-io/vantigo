@@ -221,7 +221,8 @@ does not give an email address.
 ### Answer a customer in a chat
 
 The composer is a chat composer: plain text, with no subject, no Cc and no formatting, and
-**Attach file**. A counter under the box shows the characters against Messenger's limit of
+**Attach file**. A reply can be a file alone, with no text; a file larger than Messenger takes
+(25 MB) is refused. A counter under the box shows the characters against Messenger's limit of
 2000; past it, **Send reply** is disabled. Sending needs `communications:conversations-reply`.
 
 **The reply window.** Messenger only lets you answer someone who wrote to you in the last
@@ -248,7 +249,7 @@ box, **Answer options** has:
   a **×** to remove it. The options are sent in the order they were added in. An option
   with no title, or one longer than 20 characters, stops the message from being sent.
 - **Ask for e-mail** adds a button that lets the customer share their email address with
-  one tap.
+  one tap. It is one of Messenger's 13 quick replies, so with it on you can add 12 options.
 
 When the customer taps an option, their answer arrives as a message shown as a chip with a
 check — **✓ Yes** — and the question marks the option they chose. An email address the
