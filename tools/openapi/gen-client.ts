@@ -24,6 +24,7 @@ export const targets = [
   { module: "calendar", output: "apps/calendar/frontend/src/api-schema.d.ts" },
   { module: "entra", output: "apps/entra/frontend/src/api-schema.d.ts" },
   { module: "google", output: "apps/google/frontend/src/api-schema.d.ts" },
+  { module: "meta", output: "apps/meta/frontend/src/api-schema.d.ts" },
   { module: "assistant", output: "apps/assistant/frontend/src/api-schema.d.ts" },
 ] as const;
 

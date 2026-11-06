@@ -44,6 +44,7 @@ package server
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-calendar.yaml ../../openapi/calendar.yaml
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-entra.yaml ../../openapi/entra.yaml
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-google.yaml ../../openapi/google.yaml
+//go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-meta.yaml ../../openapi/meta.yaml
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-assistant.yaml ../../openapi/assistant.yaml
 
 // sqlc's typed query layer. Pinned in mise.toml ("aqua:sqlc-dev/sqlc"), so it
@@ -65,4 +66,5 @@ package server
 //go:generate sqlc generate -f internal/calendar/sqlc.yaml
 //go:generate sqlc generate -f internal/entra/sqlc.yaml
 //go:generate sqlc generate -f internal/google/sqlc.yaml
+//go:generate sqlc generate -f internal/meta/sqlc.yaml
 //go:generate sqlc generate -f internal/assistant/sqlc.yaml
