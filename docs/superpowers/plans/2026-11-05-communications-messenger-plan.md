@@ -1,7 +1,7 @@
 # Communications — Messenger, answer options and product images: implementation plan
 
 This plan builds the design in
-`docs/superpowers/specs/2026-11-05-communications-messenger-design.md` (revision 2, decisions
+`docs/superpowers/specs/2026-11-05-communications-messenger-design.md` (revision 3, decisions
 N*n*), which is drawn from the research
 `docs/superpowers/research/2026-11-05-communications-messaging-channels.md` ("R").
 
@@ -32,6 +32,7 @@ The owner asked for stacked PRs so that work never waits for a merge.
 | 3 | `claude/products-images` | P: product images | `00131_products_images` |
 | 4 | `claude/meta-messenger` | B: the Meta module | `00132_meta_baseline` |
 | 5 | `claude/communications-messenger-c-products` | C: a product in a message, the public media route | — (C's columns are A1's `role` and P1) |
+| 6 | `claude/communications-messenger-d-contacts` | D: contacts on Messenger (spec §5a) | — (D uses `participants.contact_id`; one only if step 1 needs it) |
 
 **Layer order.** P sits on A only to keep a single stack: it shares no code with A, and could
 land alone. If `main` takes one of these migration numbers first, renumber inside the owning
@@ -435,6 +436,91 @@ all of this working:
 - *Create order* opening with the customer and the variant filled in;
 - after the image token has expired, the carousel still showing, or Q2's long expiry
   configured.
+
+## Layer 6 — delivery D, contacts on Messenger
+
+This layer adds the spec's §5a (N19–N23). It sits on C, for ordering only: it needs A and B,
+not C.
+
+### Step 1 — readings, before the seam
+
+1. **Contact merge.** Find how a contact merge in Customers reaches Communications'
+   `participants.contact_id`. The candidates are `contracts/references.go` and Customers'
+   merge, which `-customer-merge-modal.tsx` drives. If nothing moves `contact_id`, D adds it.
+2. **Meta's referrals.** Read Meta's documentation on `m.me` links with `ref` and on
+   `messaging_referrals`:
+   - the `ref` character set and maximum length;
+   - the three referral shapes (a referral event, the referral of a *Get Started* postback, a
+     referral on the first message);
+   - whether the subscribed field can be added to a Page that is already subscribed without
+     re-consent.
+
+   Then decide between *Re-subscribe* in the Meta settings and an automatic re-subscribe on
+   boot.
+3. **The customer page.** Find where the customer page lists contacts, so that the Messenger
+   mark and its menu go there. Find how the page reads optional modules, as
+   `contracts.Timesheets` does for Staff.
+
+### Seam (by hand)
+
+- **The contract:** `srv/contracts/contact_channels.go`, with `ContactChannels` and
+  `ContactChannelEntry` (N22), and the slot `Deps.ContactChannels` filled by Communications.
+  It is optional: nil without Communications.
+- **The messenger event:** `MessengerEvent.Ref string` in `contracts/channel_messenger.go`.
+- **`openapi/communications.yaml`:**
+  - `PUT` and `DELETE /communications/participants/{id}/contact`;
+  - `POST /communications/channels/{id}/contact-links`;
+  - `participantId` on `CreateConversationRequest`;
+  - the 422s `contact_unknown` and `contact_not_of_customer`.
+- **`openapi/customers.yaml`**, if the contact rows are served by Customers' API: `channels` on
+  a contact.
+- **No migration**, unless step 1 finds one is needed.
+
+### Lanes
+
+**1. Communications** (the new `participant_contacts.go`, `contact_links.go` and
+`contact_channels.go`, `messenger_sync.go`, `conversations_create.go`):
+
+- linking by hand (N20) and the suggestion from a shared e-mail;
+- the ref token, through the Box's `MAC` under `communications/messenger-ref`;
+- applying a ref in the import transaction (N21);
+- create with `participantId` and the window;
+- `ContactChannels`;
+- the contact merge, if step 1 needs it.
+
+**Tests:** the spec's §10 list for D.
+
+**2. Meta** (`srv/meta`):
+
+- `messaging_referrals` among the subscribed fields;
+- the three referral shapes mapped to `Ref`;
+- step 1's choice for Pages connected before D.
+
+**Tests:** fixtures for each shape.
+
+**3. Customers** (the server, if it serves the contact rows, and `apps/customers/frontend`):
+
+- the Messenger mark, with *Write on Messenger* (enabled while the window is open),
+  *Copy Messenger link* and *Unlink*;
+- the permission gating;
+- en and nb strings.
+
+**4. The Communications frontend** (`cfe/`):
+
+- *Link to contact* and *Unlink* in the Messenger thread header;
+- the suggestion;
+- the referral notice.
+
+**5. Docs:** the spec's §7 for D, in English and Norwegian. Then `go generate ./...`.
+
+**Done when:** the gates pass, and a browser check on the test Page from delivery 0 shows:
+
+1. *Copy Messenger link* is used for a contact;
+2. the link is tapped from the account that has no role on the app;
+3. that account writes a message;
+4. the participant is linked to the contact;
+5. *Write on Messenger* on the customer page opens the conversation and sends;
+6. 24 h later, the action is disabled and says why.
 
 ## Gotchas carried from earlier deliveries
 
