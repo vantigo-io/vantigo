@@ -64,7 +64,8 @@ A limited request is answered 429 with `Retry-After`.
 | --- | --- |
 | `meta.settings` | The installation's one row (`id = 1`, seeded by the migration): `app_id`, `app_secret_sealed`, `verify_token` (generated), `human_agent_granted`, and the status line: `last_webhook_at`, `last_rejected_at`, `last_graph_error_code`, `last_graph_error`, `last_graph_error_at`, with `updated_at` and `updated_by_user_id`. |
 | `meta.pages` | A connected Page: `page_id` (digits), `name`, `token_sealed`, `state` (`active` or `token_rejected`), `last_error`, `added_at`, `added_by_user_id`, `checked_at`. |
-| `meta.webhook_events` | The raw queue: each post whose signature held, as `payload` (jsonb), with `state` (`pending`, `split` or `failed`), `attempts`, `next_attempt_at` (the lease and the backoff), `split_at` and `last_error`. |
+| `meta.webhook_events` | The raw queue: each post whose signature held, as `payload` (jsonb), with `state` (`pending`, `split` or `failed`), `attempts`, `next_attempt_at` (the lease and the backoff), `split_at` and `last_error`. A body Postgres refuses as jsonb has no `payload`: its bytes are in `raw`, with `state = 'failed'` and `last_error = 'unstorable_json'`. |
+| `meta.pending_files` | The object-store keys of attachments written and not yet named by an inbound row: `storage_key` and `created_at`. See [Splitting](#splitting). |
 | `meta.inbound` | The provider's inbox Communications reads: one row per message, postback, delivery or read event. See [The inbound queue](#the-inbound-queue). |
 | `meta.profiles` | A participant's cached name by (`page_id`, `psid`), with `fetched_at`. |
 
@@ -122,10 +123,17 @@ reads up to **1 MiB** (the router's cap, named in the operation) and then:
    that fails, or **no app secret stored**, is **503**; Meta retries a 503.
 3. `X-Hub-Signature-256` must be `sha256=` and the hex **HMAC-SHA256 of the body under the
    app secret**, compared in constant time. If not, **401**, and `last_rejected_at` is
-   noted. Neither the body, the signature nor the secret is logged.
+   noted. Neither the body, the signature nor the secret is logged, and the warning is
+   written at most **once a minute per client address**; the refusals held back are
+   counted and the count is in the next warning.
 4. A body that is not valid JSON is **400**. Nothing else is parsed.
 5. The body is stored in `meta.webhook_events` (`pending`), `last_webhook_at` is noted, and
-   Meta is answered **200**. A failing insert is **503**.
+   Meta is answered **200**. A failing insert is **503**, except when Postgres refuses the
+   body as jsonb (SQLSTATE `22P05` or `22021`, as for an escaped `\u0000` in a string):
+   Meta would retry that for ever, so the bytes are kept in `raw` in a row that is born
+   `failed` with `last_error` `unstorable_json`, a warning without the body is logged, and
+   the answer is **200**. The splitting worker never claims such a row; retention deletes
+   it with the other raw events.
 
 Nothing is parsed for routing before the answer: **store, then 200**. What the body
 means is the splitting worker's work, so a payload the module cannot read costs one event
@@ -154,8 +162,8 @@ the object store; a ref that names nothing is refused.
 
 ### Splitting
 
-The worker `meta-split` runs every second. It claims up to 20 due events under a 60-second
-lease, and for each:
+The worker `meta-split` runs every second. A cycle claims due events **one at a time**
+(up to 20 a cycle), each under a 60-second lease, and for each:
 
 1. **Plans** the rows. Only `object: page` payloads count; an entry for a Page that is not
    connected is dropped. Each messaging item becomes at most one row, by its kind:
@@ -175,12 +183,23 @@ lease, and for each:
    the event; from the fifth attempt the file is left out of the row, and a message of
    nothing but files none of which could be kept is skipped. The files are written to the
    object store under the scope `meta-inbound` **before** any transaction: no provider call
-   or storage write happens inside one.
+   or storage write happens inside one. Before each fetch the event's lease is **extended
+   to the fetch's budget plus 60 seconds**, so another replica never takes an event that
+   is only slow and its attempts are not burned. A type the CDN names is stored as given
+   only if it is an image, video or audio type of the common kinds, a PDF, a common office
+   document, `text/plain`, `text/csv` or `application/zip` (parameters such as `charset`
+   are ignored); anything else, `text/html` and `image/svg+xml` included, is stored as
+   `application/octet-stream`. The key is **staged** in `meta.pending_files` before each
+   write.
 3. **Stores** the rows and marks the event split, in one transaction that first takes an
    **advisory lock**. The ids are handed out at insert, and without the lock a transaction
    that took id 7 could commit after one that took id 8, so a reader at cursor 8 would skip
    7 for good. Holding the lock from the first insert to the commit makes ids commit in
-   order.
+   order. The Page is read `FOR SHARE` in the same transaction, so a split racing Remove
+   Page inserts nothing for the removed Page and deletes the files it wrote. The
+   transaction clears the staging rows of the keys its rows name. A split that crashes or
+   rolls back leaves its keys staged; [retention](#retention-and-personal-data) deletes
+   those objects.
 
 A failed attempt is deferred with a growing wait (5 s, 30 s, 2 min, 10 min, 30 min); a
 payload that cannot be read at all is marked `failed`. Nothing a person wrote is stored
@@ -240,15 +259,26 @@ recipient and the text are never logged or kept. Later sends to a Page set to
 
 ## Pages
 
-- **Add** (`POST /pages`, body `accessToken`, at most 1024 characters). 400 on `accessToken`
-  when empty. 422 `not_configured` while the app is not configured. Then `GET /me` with
-  `fields=id,name,tasks` on the token: the id must be digits and `tasks` must include
-  `MESSAGING`, else 422 `page_token_insufficient`; a Graph refusal that is not temporary is
-  the same 422, and a call that could not be made or a temporary refusal is **503**
-  `meta_unreachable`. Then `POST /{page}/subscribed_apps` with `messages`,
-  `messaging_postbacks`, `message_reads`, `message_deliveries` and `message_echoes`. Only
-  then is the token sealed and the Page stored: **201** with the Page. The same Page added
-  again replaces its token and clears a rejection.
+- **Add** (`POST /pages`, body `accessToken`, at most 1024 characters, and an optional
+  `pageId`, digits). 400 on `accessToken` when empty and on a `pageId` that is not digits.
+  422 `not_configured` while the app is not configured. Then
+  `GET /me/accounts?fields=id,name,tasks,access_token&limit=100` with the token (one page
+  of 100; `paging.next` is not followed), which a user's or a system user's token answers
+  with the Pages it manages. The Pages whose id is digits, that carry an `access_token` and
+  whose `tasks` include `MESSAGING` are kept (only `pageId`, when given). None kept is 422
+  `page_token_insufficient`; several kept and no `pageId` is 422 `page_choice_required`
+  with `choices` (`{id, name}` each); one is used. That Page's own `access_token`, never
+  the pasted one, is what is subscribed with and sealed. When Meta refuses the listing
+  with a refusal that is neither temporary nor error 190, the token is taken for a Page's
+  own: `GET /me?fields=id,name` reads the Page (`tasks` is not read; the id must be digits
+  and equal `pageId` when given), and that the subscription below succeeds is the proof
+  that the token may act for it. Error 190 and any other non-temporary refusal of these
+  reads or of the subscription is 422 `page_token_insufficient`; a call that could not be
+  made or a temporary refusal is **503** `meta_unreachable`. Then
+  `POST /{page}/subscribed_apps` with `messages`, `messaging_postbacks`, `message_reads`,
+  `message_deliveries` and `message_echoes`. Only then is the token sealed and the Page
+  stored: **201** with the Page. The same Page added again replaces its token and clears a
+  rejection.
 - **Remove** (`DELETE /pages/{pageId}`, **204**; **404** `page_not_found`). The app's
   subscription is withdrawn on a best-effort basis; the Page's inbox rows and cached
   names, the Page and then the files of its rows are deleted.
@@ -286,11 +316,15 @@ The module holds PSIDs, names, message text and files, and nothing for longer th
 | Acknowledged `meta.inbound` rows, with their files | 7 days from acknowledgement |
 | Any `meta.inbound` row, acknowledged or not, with its files | 30 days from creation |
 | `meta.profiles` rows | 30 days from fetch |
+| Staged files no inbound row names (a split that crashed or rolled back) | 1 day from staging |
 
 The worker `meta-retention` runs hourly. Rows are deleted in batches of 200, files first:
 a row goes only once every one of its files is gone, so a failure leaves it for the next
-pass. Acknowledging deletes nothing, so a read that failed after the acknowledgement can be
-made again.
+pass. Acknowledging deletes nothing: the provider keeps its copy, rows and files, for the 7 days
+after the acknowledgement, so a read that failed after it can be made again. A staged key
+older than a day that no `meta.inbound.storage_keys` contains has its object deleted (a
+missing one counts as deleted) and its staging row removed; one that a row does name just
+loses the staging row.
 
 The module knows **no customer ids**, so it implements no customer erasure: retention is
 its only bound. Communications' copies are covered by its own erasure, and a participant
@@ -312,7 +346,7 @@ work.
 The module reaches the network in one place, a guarded client that goes through
 `internal/netguard` with no proxy and no redirect, to `graph.facebook.com` (version
 `v21.0`) and to Meta's CDN (`*.fbcdn.net`, `*.fbsbx.com`). A call is bounded to 30 seconds,
-and a file's fetch or upload to 2 minutes.
+and a file's fetch or upload to 3 minutes (Communications' longest per-part send), and every call carries an `appsecret_proof`, the hex HMAC-SHA256 of the access token under the app secret, so Meta can refuse a leaked token used without the secret.
 
 ## Testing
 

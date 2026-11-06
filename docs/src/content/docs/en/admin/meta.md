@@ -114,22 +114,27 @@ data](#retention-and-personal-data), and your policy has to describe that.
 
 ## Add a Page
 
-A **Page access token** that does not expire is the recommended way. A token from a
+A **system user's token** that does not expire is the recommended way. A token from a
 person's own login stops working when their password or permissions change.
 
 1. In Meta's **Business Settings**, create a **system user** (**Users** › **System
    users**), and assign it the Page with the task to manage and message it.
 2. Generate a token for that system user for the app, with the `pages_messaging`
    permission, and with **Never** as the expiry where Meta offers it.
-3. In Vantigo, under **Pages**, paste the token in **Page access token** and choose
+3. In Vantigo, under **Pages**, paste the token in **Access token** and choose
    **Add Page**.
 
-Vantigo checks the token against Meta. It reads the Page the token belongs to and
-requires that the token's tasks include **MESSAGING**; otherwise the Page is refused
-(*This token is not a Page's, or may not message the Page*). Then it subscribes the app
-to the Page's `messages`, `messaging_postbacks`, `message_reads`, `message_deliveries`
-and `message_echoes`, stores the token sealed, and lists the Page by its name and id. The
-token is never shown again.
+Vantigo asks Meta which Pages the token manages and keeps those whose tasks include
+**MESSAGING**. With one, that Page is connected. With several, Vantigo asks you to
+**Choose the Page to connect**: select one and choose **Add Page** again. Then it
+subscribes the app to the Page's `messages`, `messaging_postbacks`, `message_reads`,
+`message_deliveries` and `message_echoes`, and stores the **Page's own token**, sealed,
+not the token you pasted. The Page is listed by its name and id, and no token is shown
+again.
+
+A Page's own access token pasted directly also works. Meta does not list Pages for such a
+token, so Vantigo reads the Page from the token and checks that it may act for it by
+subscribing the app; if Meta refuses that, the Page is refused.
 
 **Remove** a Page to disconnect it. Its token, its queued events and their files are
 deleted, and channels on the Page become unavailable. Vantigo also withdraws the app's
@@ -209,4 +214,6 @@ re-encoding, a body filter) breaks the signature, and every post is refused with
 | A Page shows **Token rejected** | See [A rejected token](#add-a-page). |
 | The settings cannot be saved | The instance has no public host. Set `PUBLIC_BASE_URL` and restart the server. |
 | A file is missing from a conversation | Meta's file addresses expire; `meta-split` fetches the file at once, and gives up on it after repeated failures (outbound https to Meta's file servers is needed). |
+| Adding a Page says *The token is neither a Page's access token nor a user's or system user's token…* | The token is expired or revoked, belongs to a user or system user who manages no Page with the **MESSAGING** task, or is a Page token Meta refused the subscription for. Assign the Page to the system user with the task to message it, generate the token again, or paste a valid Page token. |
+| Adding a Page says *The token manages several Pages* | Select the Page to connect in the list that appears and choose **Add Page** again. Add each Page in turn. |
 | Adding a Page says Meta did not answer | `graph.facebook.com` is unreachable from the server; try again in a while. |

@@ -1208,7 +1208,7 @@ slot's are. **The cursor** is the provider's own insertion id, a bigserial and n
 timestamp, because webhooks arrive out of order; an event's time only orders the display.
 **Attachments** cross the boundary through `OpenAttachment`, never as a storage key: the
 import copies the bytes into Communications' own storage before its transaction, and after
-`Ack` the provider deletes its own copy. An event is a `message` (text, attachments, an
+`Ack` the provider keeps its own copy for 7 days (acknowledging deletes nothing; the provider's retention does), so a read that failed after the acknowledgement can be made again. An event is a `message` (text, attachments, an
 optional answer, the participant's platform id, a time and the platform's message id; an
 **echo** is a `message` marked `echo`), a `delivered` or a `read`, each of the last two
 carrying a watermark. The errors are `ErrMessengerUnavailable`, `ErrMessengerEndpointUnknown`,
