@@ -827,3 +827,19 @@ func rawDownloadPath(id uuid.UUID, has bool) *string {
 	}
 	return apicommon.Ptr(fmt.Sprintf("/api/v1/communications/messages/%s/raw", id))
 }
+
+// GetCommunicationsInboxCounts answers the caller's unread open conversations
+// and how many of those are assigned to them (messenger design N27): two
+// counts in one indexed query, with no per-row work. Closed and archived
+// conversations are not counted.
+func (s *server) GetCommunicationsInboxCounts(ctx context.Context, _ gen.GetCommunicationsInboxCountsRequestObject) (gen.GetCommunicationsInboxCountsResponseObject, error) {
+	caller, err := callerUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	row, err := store.New(s.deps.Pool).CountInboxUnread(ctx, caller)
+	if err != nil {
+		return nil, fmt.Errorf("communications: count inbox unread: %w", err)
+	}
+	return gen.GetCommunicationsInboxCounts200JSONResponse{Unread: row.Unread, AssignedToMeUnread: row.AssignedToMeUnread}, nil
+}

@@ -12,6 +12,33 @@ import (
 	"github.com/google/uuid"
 )
 
+const countInboxUnread = `-- name: CountInboxUnread :one
+SELECT count(*)::int AS unread,
+       (count(*) FILTER (WHERE c.assigned_user_id = $1::uuid))::int AS assigned_to_me_unread
+FROM communications.conversations c
+WHERE c.status = 'open'
+  AND NOT EXISTS (
+        SELECT 1 FROM communications.conversation_read_states rs
+        WHERE rs.conversation_id = c.id AND rs.user_id = $1::uuid
+          AND rs.last_read_at >= c.last_activity_at)
+`
+
+type CountInboxUnreadRow struct {
+	Unread             int32
+	AssignedToMeUnread int32
+}
+
+// CountInboxUnread backs GET /inbox/counts (messenger design N27): the open
+// conversations the user has not read (no read state at or after the last
+// activity), and how many of those are assigned to the user. Open only; the
+// assignee is found through ix_conversations_assigned_user_open.
+func (q *Queries) CountInboxUnread(ctx context.Context, userID uuid.UUID) (CountInboxUnreadRow, error) {
+	row := q.db.QueryRow(ctx, countInboxUnread, userID)
+	var i CountInboxUnreadRow
+	err := row.Scan(&i.Unread, &i.AssignedToMeUnread)
+	return i, err
+}
+
 const deleteConversationCustomerCandidates = `-- name: DeleteConversationCustomerCandidates :exec
 DELETE FROM communications.conversation_customer_candidates WHERE conversation_id = $1
 `

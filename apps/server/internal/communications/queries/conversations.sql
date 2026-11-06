@@ -439,3 +439,17 @@ LIMIT 1;
 -- The conversation a message is in, for the live notification of a write that
 -- names only the message: the outbox's delivery outcomes (live design L18).
 SELECT conversation_id FROM communications.conversation_messages WHERE id = @id;
+
+-- name: CountInboxUnread :one
+-- CountInboxUnread backs GET /inbox/counts (messenger design N27): the open
+-- conversations the user has not read (no read state at or after the last
+-- activity), and how many of those are assigned to the user. Open only; the
+-- assignee is found through ix_conversations_assigned_user_open.
+SELECT count(*)::int AS unread,
+       (count(*) FILTER (WHERE c.assigned_user_id = @user_id::uuid))::int AS assigned_to_me_unread
+FROM communications.conversations c
+WHERE c.status = 'open'
+  AND NOT EXISTS (
+        SELECT 1 FROM communications.conversation_read_states rs
+        WHERE rs.conversation_id = c.id AND rs.user_id = @user_id::uuid
+          AND rs.last_read_at >= c.last_activity_at);

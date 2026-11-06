@@ -430,6 +430,15 @@ type EmailRecipientRequest struct {
 	Email *string `json:"email"`
 }
 
+// InboxCountsResponse The caller's unread open conversations.
+type InboxCountsResponse struct {
+	// AssignedToMeUnread Open conversations assigned to the caller that the caller has not read.
+	AssignedToMeUnread int32 `json:"assignedToMeUnread"`
+
+	// Unread Open conversations, assigned to anyone or no one, that the caller has not read.
+	Unread int32 `json:"unread"`
+}
+
 // MessageAnswer The answer an inbound message is to an answer option or a card's choice of an earlier message of the conversation.
 type MessageAnswer struct {
 	// ChoiceId The id of the option or choice; share-email for an e-mail address the person shared.
@@ -794,6 +803,9 @@ type ServerInterface interface {
 	// PutCommunicationsConversationsByIdTagsByTagId Put a tag on a conversation
 	// (PUT /api/v1/communications/conversations/{id}/tags/{tagId})
 	PutCommunicationsConversationsByIdTagsByTagId(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, tagId openapi_types.UUID)
+	// GetCommunicationsInboxCounts Get the caller's unread conversation counts
+	// (GET /api/v1/communications/inbox/counts)
+	GetCommunicationsInboxCounts(w http.ResponseWriter, r *http.Request)
 	// GetCommunicationsMessagesByIdRaw Download a message as it was received
 	// (GET /api/v1/communications/messages/{id}/raw)
 	GetCommunicationsMessagesByIdRaw(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -1570,6 +1582,20 @@ func (siw *ServerInterfaceWrapper) PutCommunicationsConversationsByIdTagsByTagId
 	handler.ServeHTTP(w, r)
 }
 
+// GetCommunicationsInboxCounts operation middleware
+func (siw *ServerInterfaceWrapper) GetCommunicationsInboxCounts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCommunicationsInboxCounts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCommunicationsMessagesByIdRaw operation middleware
 func (siw *ServerInterfaceWrapper) GetCommunicationsMessagesByIdRaw(w http.ResponseWriter, r *http.Request) {
 
@@ -1980,6 +2006,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/tags/{tagId}", wrapper.DeleteCommunicationsConversationsByIdTagsByTagId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/tags/{tagId}", wrapper.PutCommunicationsConversationsByIdTagsByTagId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/messages/{id}/raw", wrapper.GetCommunicationsMessagesByIdRaw)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/inbox/counts", wrapper.GetCommunicationsInboxCounts)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/personal-sender", wrapper.GetCommunicationsPersonalSender)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/stats/attention", wrapper.GetCommunicationsStatsAttention)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/stats/summary", wrapper.GetCommunicationsStatsSummary)
@@ -3829,6 +3856,55 @@ func (response PutCommunicationsConversationsByIdTagsByTagId404Response) VisitPu
 	return nil
 }
 
+type GetCommunicationsInboxCountsRequestObject struct {
+}
+
+type GetCommunicationsInboxCountsResponseObject interface {
+	VisitGetCommunicationsInboxCountsResponse(w http.ResponseWriter) error
+}
+
+type GetCommunicationsInboxCounts200JSONResponse InboxCountsResponse
+
+func (response GetCommunicationsInboxCounts200JSONResponse) VisitGetCommunicationsInboxCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommunicationsInboxCounts401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCommunicationsInboxCounts401JSONResponse) VisitGetCommunicationsInboxCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommunicationsInboxCounts403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCommunicationsInboxCounts403JSONResponse) VisitGetCommunicationsInboxCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCommunicationsMessagesByIdRawRequestObject struct {
 	Id openapi_types.UUID `json:"id"`
 }
@@ -4573,6 +4649,9 @@ type StrictServerInterface interface {
 	// PutCommunicationsConversationsByIdTagsByTagId Put a tag on a conversation
 	// (PUT /api/v1/communications/conversations/{id}/tags/{tagId})
 	PutCommunicationsConversationsByIdTagsByTagId(ctx context.Context, request PutCommunicationsConversationsByIdTagsByTagIdRequestObject) (PutCommunicationsConversationsByIdTagsByTagIdResponseObject, error)
+	// GetCommunicationsInboxCounts Get the caller's unread conversation counts
+	// (GET /api/v1/communications/inbox/counts)
+	GetCommunicationsInboxCounts(ctx context.Context, request GetCommunicationsInboxCountsRequestObject) (GetCommunicationsInboxCountsResponseObject, error)
 	// GetCommunicationsMessagesByIdRaw Download a message as it was received
 	// (GET /api/v1/communications/messages/{id}/raw)
 	GetCommunicationsMessagesByIdRaw(ctx context.Context, request GetCommunicationsMessagesByIdRawRequestObject) (GetCommunicationsMessagesByIdRawResponseObject, error)
@@ -5296,6 +5375,30 @@ func (sh *strictHandler) PutCommunicationsConversationsByIdTagsByTagId(w http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCommunicationsConversationsByIdTagsByTagIdResponseObject); ok {
 		if err := validResponse.VisitPutCommunicationsConversationsByIdTagsByTagIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCommunicationsInboxCounts operation middleware
+func (sh *strictHandler) GetCommunicationsInboxCounts(w http.ResponseWriter, r *http.Request) {
+	var request GetCommunicationsInboxCountsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCommunicationsInboxCounts(ctx, request.(GetCommunicationsInboxCountsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCommunicationsInboxCounts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCommunicationsInboxCountsResponseObject); ok {
+		if err := validResponse.VisitGetCommunicationsInboxCountsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
