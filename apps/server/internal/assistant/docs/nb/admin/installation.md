@@ -284,7 +284,10 @@ Standardoppsettet med én container kjører bakgrunnsjobbene til hver aktivert m
 (utboks-levering, oppbevaring, opprydding av vedlegg, Kommunikasjons
 postbokssynkronisering `communications-mailbox-sync`, alltid, som leser innboksen til hver
 Microsoft 365-kanal hvert 30. sekund — den trenger objektlageret og utgående https til
-`graph.microsoft.com` —, kundemodulens registerjobber,
+`graph.microsoft.com` —, Kommunikasjons meldingssynkronisering `communications-messenger-sync`,
+alltid, som hvert 2. sekund spør meldingsleverandørene hvilke sider som har nye hendelser og
+leser hendelsesinnboksen til hver Messenger-kanal — den trenger objektlageret, og når ingenting
+på nettverket selv: meldingsleverandørens egen modul holder forbindelsen —, kundemodulens registerjobber,
 kundemodulens importjobb `customers-import`, energimodulens importjobb `energy-import`, energimodulens spotprisjobb
 `energy-spot-prices` når `ENERGY_SPOT_PRICE_SERVICE_URL` er satt eller `ENERGY_SPOT_PRICE_FEED_ENABLED=1`, fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
 `INVOICES_EHF_ENABLED` er på, fakturamodulens purrejobb `invoices-reminders`, alltid,
@@ -329,7 +332,7 @@ Uansett topologi tar oppbevaringsoppryddingen, registerjobbene, EHF-hendelsesjob
 kalenderens avlysningsjobb, `entra-outlook-sweep` og `assistant-retention` en rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
 instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben,
 `invoices-billing`-jobben, `invoices-payments`-jobben, `communications-mailbox-sync`,
-kalenderens abonnements- og postboksjobb og `events.dispatch` tar i stedet én rad om gangen under en tidsbegrenset lås, så
+`communications-messenger-sync`, kalenderens abonnements- og postboksjobb og `events.dispatch` tar i stedet én rad om gangen under en tidsbegrenset lås, så
 et hvilket som helst antall instanser deler arbeidet uten å sende noe to ganger.
 `google-sweep` og `invoices.allocation_reconcile` tar ingen av delene: hvert av stegene
 deres tar radene sine i én setning, så to instanser behandler aldri samme rad. Purrejobben sender ett brev om
