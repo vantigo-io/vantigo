@@ -1,6 +1,6 @@
 ---
 title: Communications
-description: Shared mailboxes, conversations with customers, receiving and sending email and suppressions — channels on SMTP or on a Microsoft 365 shared mailbox, mail received into a Microsoft 365 channel, reply and reply all, switching a channel to Microsoft 365, and the size a Microsoft 365 channel sends.
+description: Shared mailboxes, conversations with customers, receiving and sending email and suppressions — channels on SMTP or on a Microsoft 365 shared mailbox, mail received into a Microsoft 365 channel, reply and reply all, switching a channel to Microsoft 365, and the size a Microsoft 365 channel sends — and chat conversations on a Facebook Messenger channel, with answer options and the window in which a reply can be sent.
 sidebar:
   order: 80
 sources:
@@ -8,9 +8,9 @@ sources:
   - apps/host/frontend/src/routes/communications
 ---
 
-The Communications app is a shared inbox: every email conversation your organisation
-has with its customers, in one place, answered from shared mailboxes called
-**channels**. Its sidebar has three areas: **Inbox**, where conversations are read and
+The Communications app is a shared inbox: every email conversation — and, where a
+Facebook Messenger channel is set up, every chat — your organisation has with its
+customers, in one place, answered from shared mailboxes called **channels**. Its sidebar has three areas: **Inbox**, where conversations are read and
 answered; **Channels**, where the mailboxes are set up; and **Suppressions**, the list
 of addresses Vantigo refuses to write to. Opening the app lands you in the Inbox, and
 the Home dashboard shows a Communications card with open, new and closed conversations.
@@ -21,11 +21,17 @@ mail arrives through it, so its conversations hold only what was sent from Vanti
 notes written in them, and they cannot be replied to. How receiving works is described
 under [Receiving](/en/reference/communications/#receiving) in the reference.
 
+A **Facebook Messenger** channel is a Facebook Page your business owns, and its
+conversations are chats: they look and are answered differently from email, as described
+under [Messenger conversations](#messenger-conversations).
+
 ## Find a conversation
 
 Open **Inbox**. The left pane lists the conversations, newest activity first, with a
 count at the top. Each row shows the other party (their name, or their address when
-no name is known), when something last happened, the subject, a preview of the latest
+no name is known) beside a small icon for the channel — an envelope for email, the
+Messenger logo for a chat —, when something last happened, the subject (a chat has none,
+and shows **Facebook Messenger** in its place), a preview of the latest
 text, the conversation's tags and its status. An unread conversation is shown in bold.
 
 The toolbar filters the list:
@@ -192,6 +198,80 @@ model writes the draft, and which one suggests customers, is an Owner's choice u
 ([AI models](/en/user/workspace-administration/#ai-models)); the choice changes nothing
 you do here.
 
+## Messenger conversations
+
+A conversation on a Messenger channel starts when a person writes to your Facebook Page;
+you cannot start one. **Start a conversation** only ever uses an email channel. The
+person's messages come into the Inbox by themselves, a few seconds after they are sent,
+and the conversation's title is the person's name — Messenger gives no subject and no
+email address. A person's new message joins their open conversation; once you have
+closed the conversation, their next message starts a new one.
+
+The thread is a chat. Each message is a bubble, the customer's on the left and yours on
+the right. Pictures the customer sends are shown in the bubble and other files are listed
+below it, as downloads. A message you sent says where it stands — **Sending**, **Sent**,
+**Delivered**, **Read** — or **Not sent**, with the reason when there is one: *the
+customer cannot be reached* (they blocked the Page), *the customer has to write again
+first*, *Human Agent is not granted to the app* or *Messenger refused the message*. A
+message sent from Meta Business Suite or another app on the Page is shown too, marked
+**Sent from Meta**, so the thread is whole. Link the conversation to a customer with the
+same buttons as an email conversation; Vantigo cannot do it by itself, since Messenger
+does not give an email address.
+
+### Answer a customer in a chat
+
+The composer is a chat composer: plain text, with no subject, no Cc and no formatting, and
+**Attach file**. A counter under the box shows the characters against Messenger's limit of
+2000; past it, **Send reply** is disabled. Sending needs `communications:conversations-reply`.
+
+**The reply window.** Messenger only lets you answer someone who wrote to you in the last
+24 hours. The composer shows where the window stands:
+
+- *You can answer until …* while it is open.
+- **More than 24 hours since the customer wrote**, when the messaging provider has been
+  granted Meta's **Human Agent** permission: the reply is sent with Messenger's Human Agent
+  tag, and you can answer for up to 7 days.
+- **The conversation is closed for replies**, with *The customer must write again before
+  you can answer here*, once the window has passed. **Send reply** is disabled. You can
+  still write an internal note. When the customer writes again, the window opens again.
+  A message sent from Meta Business Suite does not open it.
+
+### Add answer options
+
+A message can carry answer options the customer taps instead of typing. Under the text
+box, **Answer options** has:
+
+- **Add Yes / No** adds two options, **Yes** and **No** in your language. Rename them if you
+  like.
+- **Add option** adds one empty option. A message takes at most 13.
+- Each option has a field for its title, a counter against its limit of 20 characters, and
+  a **×** to remove it. The options are sent in the order they were added in. An option
+  with no title, or one longer than 20 characters, stops the message from being sent.
+- **Ask for e-mail** adds a button that lets the customer share their email address with
+  one tap.
+
+When the customer taps an option, their answer arrives as a message shown as a chip with a
+check — **✓ Yes** — and the question marks the option they chose. An email address the
+customer shares arrives as a message saying **Shared an e-mail address**; if a contact in
+Customers has that address, its customers are offered as candidates for the conversation,
+and you decide which one to link. A tapped option Vantigo cannot place — it belongs to
+another conversation — is shown as plain text.
+
+### Set up a Messenger channel
+
+A channel on Messenger needs a messaging provider that is available on the installation,
+with a Facebook Page connected to it. Only then does **Add channel** open with a choice
+first: **E-mail** or **Facebook Messenger**; without one, it is the email dialog alone.
+With **Facebook Messenger** the dialog asks for the **Facebook Page** — picked from the
+Pages that have been connected, one that cannot be used now listed disabled with its
+reason — and an optional **Display name**, which defaults to the Page's name. **Create
+channel** adds the channel. Adding it needs `communications:channels-manage`, as an email
+channel does. A Messenger channel has no credentials of its own and no mailbox: its row in
+**Channels** says **Receiving** or why it is not, and a failing Page or provider shows
+**Unavailable**. Messenger channels have their own default: the first Messenger channel is
+the default Messenger channel, and making another channel default never changes the
+default of the other type.
+
 ## Add an internal note
 
 **Add note** switches the composer to **Internal note**. A note is kept in the
@@ -225,7 +305,8 @@ A channel is a shared mailbox: the address your replies are sent from. Open **Ch
 for the table of channels with **Address** (the display name, with the address beneath
 it), **Provider**, **Status** (**Active** or **Inactive**) and **Actions**. The channel
 marked **Default** is the one a conversation is created on when none is named; the first
-channel you create becomes the default.
+channel you create becomes the default — of its type: email channels and Messenger channels
+each have a default of their own.
 
 The **Receive status** column says whether a channel receives mail: **Receiving**, with
 *Last synced …*; **Waiting for first sync** just after the channel was added or switched;
