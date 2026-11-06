@@ -109,14 +109,25 @@ func (w *OutboxWorker) deliverMessenger(ctx context.Context, job store.Communica
 		if attempted && prior.SentAt != nil {
 			continue
 		}
+		// A part carrying a file is given time for the upload (M2): the base
+		// timeout and outboxMailboxPerMB for each megabyte begun, at most
+		// outboxMailboxSendCap, and the job's lease is kept at twice it, so the
+		// send ends before the lease does and nobody else claims the job meanwhile.
+		timeout := outboxMessengerSendTimeout(part.MessengerPart)
+		lease := max(outboxLeaseDuration, 2*timeout)
 		if !first {
-			leaseUntil := w.now().Add(outboxLeaseDuration)
+			leaseUntil := w.now().Add(lease)
 			rows, err := q.RenewOutboxJobLease(ctx, store.RenewOutboxJobLeaseParams{LeaseUntil: &leaseUntil, ID: job.ID, LeaseID: &leaseID})
 			if err != nil {
 				return fmt.Errorf("communications: renew the outbox job's lease: %w", err)
 			}
 			if rows == 0 {
 				return errOutboxLeaseLost
+			}
+		} else if lease > outboxLeaseDuration {
+			until := w.now().Add(lease)
+			if _, err := q.ExtendOutboxJobLease(ctx, store.ExtendOutboxJobLeaseParams{LeaseUntil: &until, ID: job.ID, LeaseID: &leaseID}); err != nil {
+				return fmt.Errorf("communications: extend the outbox job's lease: %w", err)
 			}
 		}
 		first = false
@@ -132,7 +143,7 @@ func (w *OutboxWorker) deliverMessenger(ctx context.Context, job store.Communica
 		}); err != nil {
 			return fmt.Errorf("communications: stamp a part's attempt: %w", err)
 		}
-		sendCtx, cancel := context.WithTimeout(ctx, outboxSendTimeout)
+		sendCtx, cancel := context.WithTimeout(ctx, timeout)
 		sent, err := messengerSend(sendCtx, provider, message.ChannelAddress, part.MessengerPart)
 		cancel()
 		if err != nil {
@@ -315,4 +326,24 @@ func messengerTerminalCode(err error) string {
 		return "rejected"
 	}
 	return ""
+}
+
+// outboxMessengerSendTimeout is the timeout of one part's Send: outboxSendTimeout,
+// and outboxMailboxPerMB for each megabyte begun of the files the part carries,
+// at most outboxMailboxSendCap (a 25 MB upload fits).
+func outboxMessengerSendTimeout(part contracts.MessengerPart) time.Duration {
+	var size int64
+	if part.Attachment != nil {
+		size += int64(len(part.Attachment.Content))
+	}
+	for _, c := range part.Cards {
+		if c.Image != nil {
+			size += int64(len(c.Image.Content))
+		}
+	}
+	if size <= 0 {
+		return outboxSendTimeout
+	}
+	mb := (size + 999_999) / 1_000_000
+	return min(outboxSendTimeout+time.Duration(mb)*outboxMailboxPerMB, outboxMailboxSendCap)
 }
