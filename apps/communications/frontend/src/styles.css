@@ -145,7 +145,7 @@
   padding: 9px 13px;
   border: 1px solid var(--mantine-color-default-border);
   border-radius: 16px;
-  background: var(--mantine-color-white);
+  background: var(--mantine-color-body);
 }
 .chat-bubble.inbound {
   border-bottom-left-radius: 4px;
