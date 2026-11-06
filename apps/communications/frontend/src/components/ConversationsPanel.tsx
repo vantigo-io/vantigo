@@ -16,7 +16,7 @@ import { CONVERSATION_POLL_MS, LIST_POLL_MS, usePageVisible, useRefetchOnResume 
 import type { ConnectionButtonProps } from "./ConversationComposer";
 import { ConversationList } from "./ConversationList";
 import { ConversationThread } from "./ConversationThread";
-import { participantName } from "./conversationHelpers";
+import { matchesSearch } from "./conversationHelpers";
 import "../i18n";
 import "../styles.css";
 
@@ -55,15 +55,6 @@ const filtersFor = (
   }
 };
 
-/** The search box matches the subject, the preview and the participants of the conversations already loaded. */
-export const matchesSearch = (item: ConversationListItem, query: string) => {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return true;
-  return [item.subject ?? "", item.previewText ?? "", ...item.participants.map(participantName)].some((text) =>
-    text.toLowerCase().includes(needle),
-  );
-};
-
 /**
  * The Conversations panel for the shell's side panel (Messenger design N25): a
  * compact list with the filters Assigned to me, Unread and All open (and This
@@ -99,12 +90,17 @@ export function ConversationsPanel({
     }),
   );
   useRefetchOnResume(active, () => void list.refetch());
-  // The default is Assigned to me, or All open when nothing is assigned to the person.
-  useEffect(() => {
-    if (choice === undefined && !autoAll && filter === "mine" && list.isSuccess && !list.isPlaceholderData) {
-      if (list.data.pagination.totalCount === 0) setAutoAll(true);
-    }
-  }, [choice, autoAll, filter, list.isSuccess, list.isPlaceholderData, list.data]);
+  // The default is Assigned to me, or All open when nothing is assigned to the person (state set while rendering, from the list).
+  if (
+    choice === undefined &&
+    !autoAll &&
+    filter === "mine" &&
+    list.isSuccess &&
+    !list.isPlaceholderData &&
+    list.data.pagination.totalCount === 0
+  ) {
+    setAutoAll(true);
+  }
 
   const shownData: Page<ConversationListItem> | undefined = list.data && {
     ...list.data,
