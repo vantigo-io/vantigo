@@ -12,7 +12,7 @@ sources:
   - apps/server/internal/db/migrations/00115_google_accounts.sql
   - apps/server/internal/db/migrations/00116_google_connections.sql
   - apps/server/internal/db/migrations/00128_google_calendar.sql
-  - apps/server/internal/db/migrations/00118_google_mail_channels.sql
+  - apps/server/internal/db/migrations/00129_google_mail_channels.sql
   - apps/server/internal/directoryaddress
 ---
 The Google Workspace module connects one installation to one Google Workspace
@@ -945,7 +945,7 @@ switch is off). `MaxMessage()` is **25 000 000** bytes of MIME (P4, Gmail's 25 M
 
 ### The table
 
-`00118_google_mail_channels.sql` adds `connection.mail_channels` (`boolean`, false) and
+`00129_google_mail_channels.sql` adds `connection.mail_channels` (`boolean`, false) and
 **`channel_mailboxes`**: `google_user_id` (32, the primary key, the Directory id),
 `address` (320, the primary address in lower case, the subject the Gmail calls
 impersonate) and `checked_at` (when the mailbox was last resolved: by `Check`, or again
