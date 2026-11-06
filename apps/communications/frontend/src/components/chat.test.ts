@@ -96,3 +96,16 @@ describe("a Messenger conversation's limits and window", () => {
     expect(textWithinLimit("a".repeat(2001), limits)).toBe(false);
   });
 });
+
+describe("the request for an e-mail address among the quick replies", () => {
+  it("takes one of the 13 slots", () => {
+    let options = addOption([], limits, 1);
+    for (let i = 1; i < 12; i++) options = addOption(options, limits, 1);
+    expect(options).toHaveLength(12);
+    expect(addOption(options, limits, 1)).toHaveLength(12);
+    expect(addYesNo(options.slice(0, 11), yesNo, limits, 1)).toHaveLength(11);
+    const titled = options.map((option) => ({ ...option, title: "Ok" }));
+    expect(optionsProblem(titled, limits, 1)).toBeNull();
+    expect(optionsProblem([...titled, { id: "x", title: "Ok" }], limits, 1)).toBe("count");
+  });
+});

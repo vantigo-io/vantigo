@@ -223,7 +223,9 @@ func (w *MessengerSyncWorker) importMessage(ctx context.Context, c *messengerCyc
 // skipWithReceipt writes a skipped receipt for an echo of a part we sent and
 // advances the cursor past it, in one transaction.
 func (w *MessengerSyncWorker) skipWithReceipt(ctx context.Context, c *messengerCycle, event contracts.MessengerEvent, key string, now time.Time) error {
-	err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	locked := context.WithValue(ctx, lockedTxKey{}, true)
+	err := db.WithTx(locked, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		ctx := locked
 		txq := store.New(tx)
 		if err := txq.InsertInboundReceipt(ctx, store.InsertInboundReceiptParams{
 			ID: uuid.New(), ChannelID: c.channelID, ProviderMessageID: key, Outcome: receiptSkipped,
@@ -434,7 +436,14 @@ func (w *MessengerSyncWorker) placeAnswer(ctx context.Context, txq *store.Querie
 			return nil, fmt.Errorf("communications: look for the question an answer is to: %w", err)
 		}
 		if ours {
-			question = id
+			// The choice has to be one the question offered.
+			raw, err := txq.GetMessageComponents(ctx, id)
+			if err != nil {
+				return nil, fmt.Errorf("communications: read the question's components: %w", err)
+			}
+			if componentsOffer(raw, answer.ChoiceID) {
+				question = id
+			}
 		}
 	} else if answer.MessageID == "" && answer.ChoiceID == shareEmailChoiceID {
 		id, err := txq.LatestShareEmailQuestion(ctx, conversationID)
@@ -491,7 +500,9 @@ func (w *MessengerSyncWorker) importWatermark(ctx context.Context, c *messengerC
 	if watermark.IsZero() {
 		watermark = event.At
 	}
-	err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	locked := context.WithValue(ctx, lockedTxKey{}, true)
+	return db.WithTx(locked, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		ctx := locked
 		txq := store.New(tx)
 		participant, err := txq.FindParticipantByChannelAndAddress(ctx, store.FindParticipantByChannelAndAddressParams{
 			ChannelID: c.channelID, Address: event.Participant,
@@ -502,23 +513,68 @@ func (w *MessengerSyncWorker) importWatermark(ctx context.Context, c *messengerC
 		case err != nil:
 			return fmt.Errorf("communications: find a participant: %w", err)
 		default:
-			moved, err := txq.AdvanceMessengerDeliveries(ctx, store.AdvanceMessengerDeliveriesParams{
-				Status: status, ChannelID: c.channelID, ParticipantID: participant.ID,
-				Watermark: &watermark, FromStatuses: from,
-			})
-			if err != nil {
-				return fmt.Errorf("communications: advance the deliveries: %w", err)
+			// Kept, so a message still being sent when it arrives gets it at
+			// its completion (reapplyWatermarks).
+			if err := txq.UpsertMessengerWatermark(ctx, store.UpsertMessengerWatermarkParams{
+				ParticipantID: participant.ID, Kind: status, Watermark: watermark,
+			}); err != nil {
+				return fmt.Errorf("communications: keep a watermark: %w", err)
 			}
-			for _, d := range moved {
-				deliveryID := d.ID
-				if err := txq.InsertMessageEvent(ctx, store.InsertMessageEventParams{
-					ID: uuid.New(), MessageID: d.MessageID, DeliveryID: &deliveryID, EventType: status, OccurredAt: now,
-				}); err != nil {
-					return fmt.Errorf("communications: write a %s event: %w", status, err)
-				}
+			if err := applyWatermark(ctx, txq, c.channelID, participant.ID, status, from, watermark, now); err != nil {
+				return err
 			}
 		}
 		return w.advanceCursor(ctx, txq, c, event.Cursor, now)
 	})
-	return err
+}
+
+// applyWatermark moves the deliveries a watermark covers to status, from the
+// statuses in from, writing an event for each (AdvanceMessengerDeliveries).
+func applyWatermark(ctx context.Context, txq *store.Queries, channelID, participantID uuid.UUID,
+	status string, from []string, watermark, now time.Time) error {
+	moved, err := txq.AdvanceMessengerDeliveries(ctx, store.AdvanceMessengerDeliveriesParams{
+		Status: status, ChannelID: channelID, ParticipantID: participantID,
+		Watermark: &watermark, FromStatuses: from,
+	})
+	if err != nil {
+		return fmt.Errorf("communications: advance the deliveries: %w", err)
+	}
+	for _, d := range moved {
+		deliveryID := d.ID
+		if err := txq.InsertMessageEvent(ctx, store.InsertMessageEventParams{
+			ID: uuid.New(), MessageID: d.MessageID, DeliveryID: &deliveryID, EventType: status, OccurredAt: now,
+		}); err != nil {
+			return fmt.Errorf("communications: write a %s event: %w", status, err)
+		}
+	}
+	return nil
+}
+
+// componentsOffer reports whether a message's stored components offer choiceID:
+// an answer option or a card's choice with that id, or the request for an e-mail
+// address when choiceID is the one a shared address carries.
+func componentsOffer(raw []byte, choiceID string) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var stored storedComponents
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return false
+	}
+	if choiceID == shareEmailChoiceID {
+		return stored.ShareEmail
+	}
+	for _, o := range stored.AnswerOptions {
+		if o.ID == choiceID {
+			return true
+		}
+	}
+	for _, card := range stored.Cards {
+		for _, ch := range card.Choices {
+			if ch.ID == choiceID {
+				return true
+			}
+		}
+	}
+	return false
 }

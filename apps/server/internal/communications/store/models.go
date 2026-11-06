@@ -237,6 +237,7 @@ type CommunicationsMessengerPart struct {
 	PartIndex         int32
 	AttemptedAt       *time.Time
 	PlatformMessageID *string
+	PlatformAt        *time.Time
 	SentAt            *time.Time
 }
 
@@ -252,6 +253,12 @@ type CommunicationsMessengerSync struct {
 	Attempts     int32
 	LastSyncedAt *time.Time
 	UpdatedAt    time.Time
+}
+
+type CommunicationsMessengerWatermark struct {
+	ParticipantID uuid.UUID
+	Kind          string
+	Watermark     time.Time
 }
 
 type CommunicationsOutboxJob struct {

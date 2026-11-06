@@ -6,11 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 )
 
 // This file is the outbox's messenger branch (Messenger design N6, N7, N12):
@@ -133,16 +136,73 @@ func (w *OutboxWorker) deliverMessenger(ctx context.Context, job store.Communica
 		sent, err := messengerSend(sendCtx, provider, message.ChannelAddress, part.MessengerPart)
 		cancel()
 		if err != nil {
+			// A part the provider held — it is unavailable — was never handed over:
+			// its marker is cleared, as the e-mail path clears the job's, so the next
+			// run counts no possible duplicate.
+			if errors.Is(err, contracts.ErrMessengerUnavailable) {
+				if cerr := q.ClearMessengerPartAttempt(ctx, store.ClearMessengerPartAttemptParams{MessageID: job.MessageID, PartIndex: index}); cerr != nil {
+					w.logger().Warn("could not clear a held part's attempt marker",
+						"worker", outboxWorkerName, "job", job.ID, "part", index, "error", cerr)
+				}
+			}
 			return fmt.Errorf("communications: send part %d of the outbound message: %w", index, err)
 		}
 		sentAt := w.now()
+		var platformAt *time.Time
+		if !sent.At.IsZero() {
+			platformAt = ptrTime(sent.At.UTC())
+		}
 		if err := q.RecordMessengerPartSent(ctx, store.RecordMessengerPartSentParams{
-			MessageID: job.MessageID, PartIndex: index, PlatformMessageID: &sent.PlatformMessageID, SentAt: &sentAt,
+			MessageID: job.MessageID, PartIndex: index, PlatformMessageID: &sent.PlatformMessageID, PlatformAt: platformAt, SentAt: &sentAt,
 		}); err != nil {
 			return fmt.Errorf("communications: record a part as sent: %w", err)
 		}
 	}
-	return w.complete(ctx, job, leaseID, sendable, contracts.SentMessage{})
+	if err := w.complete(ctx, job, leaseID, sendable, contracts.SentMessage{}); err != nil {
+		return err
+	}
+	// A watermark that arrived while the message was still being sent found its
+	// deliveries 'sending' and moved nothing: the newest of each kind the
+	// participant has had is applied now (N2).
+	w.reapplyWatermarks(ctx, message.ChannelID, recipient)
+	return nil
+}
+
+// reapplyWatermarks applies the newest delivered and read watermark of a
+// participant again, after a message's completion. A failure is logged: the next
+// watermark covers it.
+func (w *OutboxWorker) reapplyWatermarks(ctx context.Context, channelID uuid.UUID, address string) {
+	q := store.New(w.deps.Pool)
+	participant, err := q.FindParticipantIDByAddress(ctx, store.FindParticipantIDByAddressParams{ChannelID: channelID, Address: address})
+	if err != nil {
+		return
+	}
+	marks, err := q.ListMessengerWatermarks(ctx, participant)
+	if err != nil {
+		w.logger().Warn("could not read a participant's watermarks", "worker", outboxWorkerName, "error", err)
+		return
+	}
+	now := w.now()
+	byKind := map[string]time.Time{}
+	for _, m := range marks {
+		byKind[m.Kind] = m.Watermark
+	}
+	// delivered first, then read, as the sync's events arrive.
+	for _, step := range []struct {
+		kind string
+		from []string
+	}{{"delivered", []string{"relay_accepted"}}, {"read", []string{"relay_accepted", "delivered"}}} {
+		mark, ok := byKind[step.kind]
+		if !ok {
+			continue
+		}
+		err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			return applyWatermark(ctx, store.New(tx), channelID, participant, step.kind, step.from, mark, now)
+		})
+		if err != nil {
+			w.logger().Warn("could not apply a participant's watermark", "worker", outboxWorkerName, "kind", step.kind, "error", err)
+		}
+	}
 }
 
 // messengerRecipient is the participant the message goes to: the address of the

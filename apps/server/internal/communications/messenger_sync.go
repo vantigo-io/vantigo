@@ -370,7 +370,9 @@ func (w *MessengerSyncWorker) giveUp(ctx context.Context, c *messengerCycle, eve
 	w.logger().Warn("messenger sync gave an event up: its import fails each time",
 		"worker", messengerSyncWorkerName, "channel", c.channelID, "code", reasonImportFailed, "error", cause)
 	now := w.now()
-	err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	locked := context.WithValue(ctx, lockedTxKey{}, true)
+	err := db.WithTx(locked, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		ctx := locked
 		txq := store.New(tx)
 		if event.Kind == contracts.MessengerEventMessage {
 			if err := txq.InsertInboundReceipt(ctx, store.InsertInboundReceiptParams{

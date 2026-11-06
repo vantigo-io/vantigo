@@ -58,6 +58,10 @@ CREATE TABLE communications.messenger_parts (
     part_index           integer      NOT NULL,
     attempted_at         timestamptz,
     platform_message_id  varchar(400),
+    -- The platform's own time for the part, when it answered one: a delivered or
+    -- read watermark is a platform time, so it is compared with this and, until
+    -- the part is sent, with attempted_at.
+    platform_at          timestamptz,
     sent_at              timestamptz,
     PRIMARY KEY (message_id, part_index)
 );
@@ -65,7 +69,19 @@ CREATE INDEX ix_messenger_parts_platform_message
     ON communications.messenger_parts (platform_message_id)
     WHERE platform_message_id IS NOT NULL;
 
+-- The newest delivered and read watermark of each Messenger participant (N2),
+-- kept so a watermark that arrives while a message is still being sent is applied
+-- when the send completes, and not lost.
+CREATE TABLE communications.messenger_watermarks (
+    participant_id  uuid        NOT NULL REFERENCES communications.participants (id) ON DELETE CASCADE,
+    kind            varchar(10) NOT NULL,
+    watermark       timestamptz NOT NULL,
+    PRIMARY KEY (participant_id, kind),
+    CONSTRAINT ck_messenger_watermarks_kind CHECK (kind IN ('delivered', 'read'))
+);
+
 -- +goose Down
+DROP TABLE communications.messenger_watermarks;
 DROP TABLE communications.messenger_parts;
 DROP TABLE communications.messenger_sync;
 DROP TABLE communications.participant_profiles;

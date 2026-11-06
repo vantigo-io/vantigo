@@ -183,10 +183,14 @@ SELECT EXISTS (
 
 -- name: AdvanceMessengerDeliveries :many
 -- The watermark of a delivered or read event (N2): every delivery of an
--- outbound message in the participant's conversations of the channel that the
--- platform accepted at or before it, and is in one of from_statuses, moves to
--- status. Monotonic — a delivery already further along is not in from_statuses
--- — and so idempotent. It answers the deliveries it moved, for their events.
+-- outbound message in the participant's conversations of the channel whose
+-- newest part the platform stamped at or before it — a part's platform time,
+-- else the time its Send began — and that is in one of from_statuses, moves to
+-- status. A message with no part, or still being sent (its deliveries are
+-- 'sending'), is left for the watermark kept per participant to reach when the
+-- send completes. Monotonic — a delivery already further along is not in
+-- from_statuses — and so idempotent. It answers the deliveries it moved, for
+-- their events.
 UPDATE communications.message_deliveries d
 SET status = @status
 FROM communications.conversation_messages m
@@ -196,9 +200,26 @@ WHERE d.message_id = m.id
   AND EXISTS (
       SELECT 1 FROM communications.conversation_participants cp
       WHERE cp.conversation_id = c.id AND cp.participant_id = @participant_id)
-  AND d.accepted_at IS NOT NULL AND d.accepted_at <= @watermark
+  AND (SELECT max(COALESCE(p.platform_at, p.attempted_at))
+       FROM communications.messenger_parts p WHERE p.message_id = m.id) <= @watermark
   AND d.status = ANY(@from_statuses::text[])
 RETURNING d.id, d.message_id;
+
+-- name: UpsertMessengerWatermark :exec
+-- The newest watermark of a kind a participant has had, never backwards.
+INSERT INTO communications.messenger_watermarks (participant_id, kind, watermark)
+VALUES (@participant_id, @kind, @watermark)
+ON CONFLICT (participant_id, kind) DO UPDATE SET watermark = GREATEST(messenger_watermarks.watermark, excluded.watermark);
+
+-- name: ListMessengerWatermarks :many
+SELECT kind, watermark FROM communications.messenger_watermarks WHERE participant_id = @participant_id;
+
+-- name: GetMessageComponents :one
+-- The components of a message, for an answer to be checked against its question.
+SELECT components FROM communications.conversation_messages WHERE id = @id;
+
+-- name: FindParticipantIDByAddress :one
+SELECT id FROM communications.participants WHERE channel_id = @channel_id AND address = @address;
 
 -- name: LatestShareEmailQuestion :one
 -- The newest message of the conversation that asked the person for an e-mail

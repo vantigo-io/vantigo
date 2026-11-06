@@ -107,11 +107,13 @@ export function ChatComposer({ conversation, onSent }: ChatComposerProps) {
   });
 
   const windowClosed = !canReplyInWindow(window);
-  const problem = optionsProblem(options, limits);
+  // The request for an e-mail address is a quick reply too: it takes one of the slots.
+  const reserved = shareEmail ? 1 : 0;
+  const problem = optionsProblem(options, limits, reserved);
   const blocked = noteMode
     ? !text.trim()
     : windowClosed ||
-      !text.trim() ||
+      (!text.trim() && currentUploads.length === 0) ||
       !textWithinLimit(text, limits) ||
       problem !== null ||
       waitingForScan ||
@@ -169,8 +171,8 @@ export function ChatComposer({ conversation, onSent }: ChatComposerProps) {
               <Button
                 size="compact-xs"
                 variant="light"
-                disabled={options.length + 2 > limits.maxAnswerOptions}
-                onClick={() => setOptions((items) => addYesNo(items, { yes: t("yes"), no: t("no") }, limits))}
+                disabled={options.length + reserved + 2 > limits.maxAnswerOptions}
+                onClick={() => setOptions((items) => addYesNo(items, { yes: t("yes"), no: t("no") }, limits, reserved))}
               >
                 {t("addYesNo")}
               </Button>
@@ -178,8 +180,8 @@ export function ChatComposer({ conversation, onSent }: ChatComposerProps) {
                 size="compact-xs"
                 variant="light"
                 leftSection={<IconPlus size={12} />}
-                disabled={options.length >= limits.maxAnswerOptions}
-                onClick={() => setOptions((items) => addOption(items, limits))}
+                disabled={options.length + reserved >= limits.maxAnswerOptions}
+                onClick={() => setOptions((items) => addOption(items, limits, reserved))}
               >
                 {t("addOption")}
               </Button>
@@ -188,6 +190,7 @@ export function ChatComposer({ conversation, onSent }: ChatComposerProps) {
                   size="xs"
                   label={t("askForEmail")}
                   checked={shareEmail}
+                  disabled={!shareEmail && options.length >= limits.maxAnswerOptions}
                   onChange={(event) => setShareEmail(event.currentTarget.checked)}
                 />
               )}

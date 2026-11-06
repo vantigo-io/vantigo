@@ -129,6 +129,9 @@ type MessengerCapabilities struct {
 	MaxCardTitle    int
 	MaxCardSubtitle int
 	MaxChoiceTitle  int
+	// MaxAttachmentBytes is the largest file one part carries (Messenger: 25 MB);
+	// zero when the provider names none.
+	MaxAttachmentBytes int64
 	// Window is how long after the participant's newest message a reply may
 	// be sent (Messenger: 24 h).
 	Window time.Duration
@@ -202,6 +205,9 @@ type MessengerPart struct {
 // the part.
 type MessengerSent struct {
 	PlatformMessageID string
+	// At is the platform's time for the part, which a delivered or read watermark
+	// is compared with; the zero value when the platform answered none.
+	At time.Time
 }
 
 // The kinds of MessengerEvent.Kind.

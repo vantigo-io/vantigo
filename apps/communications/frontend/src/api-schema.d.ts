@@ -910,10 +910,18 @@ export interface components {
         };
         /** @description What a message on a channel may carry, as its provider says. */
         MessageComponentLimits: {
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description The most quick replies one message holds; the request for an e-mail address counts as one.
+             */
             maxAnswerOptions: number;
             /** Format: int32 */
             maxAnswerTitle: number;
+            /**
+             * Format: int64
+             * @description The largest file one message carries, in bytes; absent when the provider names none. A larger staged attachment is refused with 422 too_large.
+             */
+            maxAttachmentBytes?: number;
             /** Format: int32 */
             maxCardChoices: number;
             /** Format: int32 */
@@ -2376,7 +2384,7 @@ export interface operations {
                     "application/json": components["schemas"]["CommunicationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity — channel_inactive, recipients_missing, recipient_suppressed, too_large, and on a messenger conversation components_unsupported (the channel takes none), components_invalid (a limit broken, with fields), reply_window_closed, not_supported_on_channel (sendFromPersonal or replyMode all), text_too_long (more than 2000 characters). */
+            /** @description Unprocessable Entity — channel_inactive, recipients_missing, recipient_suppressed, too_large, and on a messenger conversation components_unsupported (the channel takes none), components_invalid (a limit broken, with fields), reply_window_closed, not_supported_on_channel (sendFromPersonal or replyMode all), text_too_long (more than 2000 characters), and too_large (a staged attachment above the provider's limit). */
             422: {
                 headers: {
                     [name: string]: unknown;

@@ -507,3 +507,134 @@ func TestOutboxMessenger_ConcurrentWorkersSendEachPartOnce(t *testing.T) {
 		t.Errorf("job = %+v, want completed on the one attempt", job)
 	}
 }
+
+// partTimes sets the platform's time for each of a message's parts, in index
+// order, and the time its Send began to the same.
+func (f chatFixture) partTimes(t *testing.T, message uuid.UUID) []time.Time {
+	t.Helper()
+	rows, err := f.h.Pool().Query(context.Background(), `
+		SELECT platform_at FROM communications.messenger_parts WHERE message_id = $1 ORDER BY part_index`, message)
+	if err != nil {
+		t.Fatalf("read part times: %v", err)
+	}
+	defer rows.Close()
+	var out []time.Time
+	for rows.Next() {
+		var at *time.Time
+		if err := rows.Scan(&at); err != nil || at == nil {
+			t.Fatalf("a part has no platform time: %v", err)
+		}
+		out = append(out, *at)
+	}
+	return out
+}
+
+func (f chatFixture) pushWatermark(kind string, at time.Time) {
+	f.fake.Push(f.channel.Address, contracts.MessengerEvent{Kind: kind, Participant: "4242", At: at, Watermark: at})
+}
+
+// TestOutboxMessenger_AWatermarkAtTheMomentOfTheSendCoversTheMessage: the part's
+// platform time is what a watermark is compared with — not the time the outbox
+// finished — so one equal to the moment of the send marks the newest message, and
+// one a moment before it does not.
+func TestOutboxMessenger_AWatermarkAtTheMomentOfTheSendCoversTheMessage(t *testing.T) {
+	t.Parallel()
+	f := newChat(t)
+	conv := f.chat(t)
+	message := f.mustReply(t, conv, map[string]any{"textBody": "Hello"})
+	f.h.Advance(10 * time.Second)
+	f.drainOutbox(t, f.outbox())
+	f.h.Advance(30 * time.Second) // the completion is later than the platform's stamp
+	moment := f.partTimes(t, message)[0]
+	_, delivery := readDeliveryID(t, f, message)
+
+	f.pushWatermark(contracts.MessengerEventDelivered, moment.Add(-time.Millisecond))
+	f.sync(t)
+	if got := f.deliveryStatus(t, delivery); got != "relay_accepted" {
+		t.Fatalf("a watermark before the send moved the delivery to %s", got)
+	}
+	f.h.Advance(2 * time.Minute)
+	f.pushWatermark(contracts.MessengerEventDelivered, moment)
+	f.sync(t)
+	if got := f.deliveryStatus(t, delivery); got != "delivered" {
+		t.Errorf("a watermark at the moment of the send: %s, want delivered", got)
+	}
+	f.h.Advance(2 * time.Minute)
+	f.pushWatermark(contracts.MessengerEventRead, moment)
+	f.sync(t)
+	if got := f.deliveryStatus(t, delivery); got != "read" {
+		t.Errorf("a read watermark at the moment of the send: %s, want read", got)
+	}
+}
+
+func readDeliveryID(t *testing.T, f chatFixture, message uuid.UUID) (uuid.UUID, uuid.UUID) {
+	t.Helper()
+	d := readDeliveries(t, f.h, message)
+	return message, d[0].id
+}
+
+// TestOutboxMessenger_AWatermarkBetweenPartsIsNotLost: a watermark that arrives
+// while a message is still being sent finds its deliveries 'sending' and moves
+// nothing — and is applied when the send completes, to the message it covers and
+// not to a part sent after it.
+func TestOutboxMessenger_AWatermarkBetweenPartsIsNotLost(t *testing.T) {
+	t.Parallel()
+	f := newChat(t)
+	conv := f.chat(t)
+	file := f.stage(t, conv, "one.png", []byte("ONE"))
+	covered := f.mustReply(t, conv, map[string]any{"textBody": "One part"})
+	f.drainOutbox(t, f.outbox())
+	_, firstDelivery := readDeliveryID(t, f, covered)
+
+	// A second message of two parts; the watermark arrives after its first part.
+	f.h.Advance(time.Minute)
+	second := f.mustReply(t, conv, map[string]any{"textBody": "Two parts", "attachmentIds": []string{file}})
+	_, secondDelivery := readDeliveryID(t, f, second)
+	var between time.Time
+	f.fake.OnSend(func(context.Context, string, contracts.MessengerPart) error {
+		if f.fake.CallCount("Send") == 2 { // the second message's second part
+			between = f.h.Now()
+			f.fake.Push(f.channel.Address, contracts.MessengerEvent{
+				Kind: contracts.MessengerEventRead, Participant: "4242", At: between, Watermark: between,
+			})
+			f.sync(t) // the sync sees the watermark while the message is being sent
+		}
+		return nil
+	})
+	f.drainOutbox(t, f.outbox())
+
+	if got := f.deliveryStatus(t, firstDelivery); got != "read" {
+		t.Errorf("the first message = %s, want read: the watermark covers it", got)
+	}
+	// The second message's last part was sent at the moment the watermark was
+	// stamped, which arrived before the send was recorded: covered, and applied
+	// at the completion.
+	if got := f.deliveryStatus(t, secondDelivery); got != "read" {
+		t.Errorf("the second message = %s, want read: applied when its send completed", got)
+	}
+}
+
+// TestOutboxMessenger_AHeldSendClearsThePartsAttempt: a part the provider held —
+// it is unavailable — was never handed over, so its marker is cleared and the next
+// run counts no possible duplicate.
+func TestOutboxMessenger_AHeldSendClearsThePartsAttempt(t *testing.T) {
+	t.Parallel()
+	f := newChat(t)
+	conv := f.chat(t)
+	message := f.mustReply(t, conv, map[string]any{"textBody": "Hello"})
+	f.fake.FailSend(1, contracts.ErrMessengerUnavailable)
+	meter := newMeterHarness(t)
+	w := communications.NewOutboxWorkerWithMeterForTest(f.h.Deps(), meter.provider)
+	f.drainOutbox(t, w)
+	if parts := f.parts(t, message); len(parts) != 1 || parts[0].attempted || parts[0].sent {
+		t.Fatalf("parts after a held send = %+v, want the attempt cleared", parts)
+	}
+	f.h.Advance(time.Hour)
+	f.drainOutbox(t, w)
+	if got := meter.count(t, possibleDuplicateSendsMetric); got != 0 {
+		t.Errorf("possible duplicates = %d, want none: nothing was handed over", got)
+	}
+	if job := readOutboxJob(t, f.h, message); job.status != "completed" {
+		t.Errorf("job = %q, want completed", job.status)
+	}
+}

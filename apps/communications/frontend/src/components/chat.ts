@@ -44,16 +44,20 @@ export const addYesNo = (
   options: DraftOption[],
   titles: { yes: string; no: string },
   limits: ComponentLimits,
+  reserved = 0,
 ): DraftOption[] => {
-  if (options.length + 2 > limits.maxAnswerOptions) return options;
+  if (options.length + reserved + 2 > limits.maxAnswerOptions) return options;
   const yes = { id: uniqueOptionId(options, "yes"), title: titles.yes };
   const withYes = [...options, yes];
   return [...withYes, { id: uniqueOptionId(withYes, "no"), title: titles.no }];
 };
 
-/** *Add option*: one empty option, up to the provider's limit. */
-export const addOption = (options: DraftOption[], limits: ComponentLimits): DraftOption[] => {
-  if (options.length >= limits.maxAnswerOptions) return options;
+/**
+ * *Add option*: one empty option, up to the provider's limit. `reserved` is the quick replies already
+ * taken beside the options — one when *Ask for e-mail* is on, since it is a quick reply too.
+ */
+export const addOption = (options: DraftOption[], limits: ComponentLimits, reserved = 0): DraftOption[] => {
+  if (options.length + reserved >= limits.maxAnswerOptions) return options;
   return [...options, { id: uniqueOptionId(options, "option"), title: "" }];
 };
 
@@ -64,8 +68,12 @@ export const validOptionTitle = (title: string, limits: ComponentLimits): boolea
 };
 
 /** What stops a draft from being sent, as a code: a title out of bounds, or more options than the limit. */
-export const optionsProblem = (options: DraftOption[], limits: ComponentLimits): "title" | "count" | null => {
-  if (options.length > limits.maxAnswerOptions) return "count";
+export const optionsProblem = (
+  options: DraftOption[],
+  limits: ComponentLimits,
+  reserved = 0,
+): "title" | "count" | null => {
+  if (options.length + reserved > limits.maxAnswerOptions) return "count";
   return options.some((option) => !validOptionTitle(option.title, limits)) ? "title" : null;
 };
 

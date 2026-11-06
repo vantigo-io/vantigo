@@ -316,3 +316,62 @@ func TestReplyMessenger_AnEchoDoesNotOpenTheWindow(t *testing.T) {
 	f.sync(t)
 	f.mustReply(t, conv, map[string]any{"textBody": "Hello"})
 }
+
+// TestReplyMessenger_TheRequestForAnEmailCountsAmongTheQuickReplies: Messenger's
+// 13 quick replies include the request for an e-mail address.
+func TestReplyMessenger_TheRequestForAnEmailCountsAmongTheQuickReplies(t *testing.T) {
+	t.Parallel()
+	f := newChat(t)
+	conv := f.chat(t)
+	options := func(n int) []map[string]any {
+		var out []map[string]any
+		for i := range n {
+			out = append(out, map[string]any{"id": "o" + strings.Repeat("x", i), "title": "Option"})
+		}
+		return out
+	}
+	r := f.reply(conv, uuid.NewString(), map[string]any{"textBody": "Hi", "components": map[string]any{"answerOptions": options(13), "shareEmail": true}})
+	wantCode(t, r, http.StatusUnprocessableEntity, "components_invalid")
+	f.mustReply(t, conv, map[string]any{"textBody": "Hi", "components": map[string]any{"answerOptions": options(12), "shareEmail": true}})
+}
+
+// TestReplyMessenger_AttachmentsAlone: a Messenger reply may be attachments with
+// no text, and is refused only when both are missing; an e-mail reply still needs
+// its body; a file above the provider's limit is refused with the size refusal.
+func TestReplyMessenger_AttachmentsAlone(t *testing.T) {
+	t.Parallel()
+	f := newChat(t)
+	conv := f.chat(t)
+	file := f.stage(t, conv, "one.png", []byte("ONE"))
+	f.mustReply(t, conv, map[string]any{"attachmentIds": []string{file}})
+	r := f.reply(conv, uuid.NewString(), map[string]any{"components": yesNo()})
+	if r.Status != http.StatusBadRequest {
+		t.Errorf("neither text nor attachment: status %d body %s, want 400", r.Status, r.Body)
+	}
+
+	// Above the provider's largest file.
+	f.fake.SetCapabilities(contracts.MessengerCapabilities{
+		MaxText: 2000, MaxAnswerOptions: 13, MaxAnswerTitle: 20, ShareEmail: true,
+		Window: 24 * time.Hour, MaxAttachmentBytes: 2,
+	})
+	big := f.stage(t, conv, "big.png", []byte("TOO LARGE"))
+	wantCode(t, f.reply(conv, uuid.NewString(), map[string]any{"textBody": "Hi", "attachmentIds": []string{big}}),
+		http.StatusUnprocessableEntity, "too_large")
+	d := f.detail(t, conv)
+	if d.ComponentLimits == nil {
+		t.Fatal("no componentLimits")
+	}
+}
+
+// TestReplyMessenger_AnEmailReplyStillNeedsABody: attachments alone are Messenger's.
+func TestReplyMessenger_AnEmailReplyStillNeedsABody(t *testing.T) {
+	t.Parallel()
+	h, _ := messengerHarness(t)
+	c := h.SignIn(t, "communications:channels-manage", "communications:conversations-reply", "communications:conversations-view")
+	setupChannel(t, h)
+	conv := createConversation(t, c, newConversationBody("someone@example.test")).ConversationId
+	up := mustStageAttachment(t, c, conv, []byte("x"))
+	r := c.Do(http.MethodPost, "/api/v1/communications/conversations/"+conv+"/reply",
+		map[string]any{"attachmentIds": []string{up.Id}}, modtest.Header("Idempotency-Key", uuid.NewString()))
+	wantCode(t, r, http.StatusBadRequest, "invalid_request")
+}
