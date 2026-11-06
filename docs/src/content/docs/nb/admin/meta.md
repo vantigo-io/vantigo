@@ -114,22 +114,26 @@ erklæringen din må beskrive det.
 
 ## Legg til en side
 
-Et **tilgangstoken for siden** som ikke utløper, er den anbefalte måten. Et token fra en
+Et **token for en systembruker** som ikke utløper, er den anbefalte måten. Et token fra en
 persons egen innlogging slutter å virke når personens passord eller tillatelser endres.
 
 1. Opprett en **systembruker** i Metas **Business Settings** (**Users** › **System
    users**), og gi den siden med oppgaven å administrere den og sende meldinger.
 2. Lag et token for systembrukeren for appen, med tillatelsen `pages_messaging`, og med
    **Never** som utløp der Meta tilbyr det.
-3. Lim tokenet inn i **Tilgangstoken for siden** under **Sider** i Vantigo og velg **Legg
-   til side**.
+3. Lim tokenet inn i **Tilgangstoken** under **Sider** i Vantigo og velg **Legg til
+   side**.
 
-Vantigo sjekker tokenet hos Meta. Det leser siden tokenet tilhører, og krever at tokenets
-oppgaver omfatter **MESSAGING**; ellers avvises siden (*Dette tokenet tilhører ikke en
-side, eller har ikke lov til å sende meldinger til siden*). Så abonnerer Vantigo appen på
-sidens `messages`, `messaging_postbacks`, `message_reads`, `message_deliveries` og
-`message_echoes`, lagrer tokenet kryptert og viser siden med navn og ID. Tokenet vises
-aldri igjen.
+Vantigo spør Meta hvilke sider tokenet forvalter, og beholder de hvis oppgaver omfatter
+**MESSAGING**. Er det én, kobles den siden til. Er det flere, ber Vantigo deg om å **Velge
+siden som skal kobles til**: velg en og velg **Legg til side** på nytt. Så abonnerer
+Vantigo appen på sidens `messages`, `messaging_postbacks`, `message_reads`,
+`message_deliveries` og `message_echoes`, og lagrer **sidens eget token** kryptert, ikke
+tokenet du limte inn. Siden vises med navn og ID, og ingen token vises igjen.
+
+Et tilgangstoken for selve siden, limt inn direkte, fungerer også. Meta lister ikke sider
+for et slikt token, så Vantigo leser siden fra tokenet og sjekker at det har lov til å
+handle for den ved å abonnere appen; avviser Meta det, avvises siden.
 
 **Fjern** en side for å koble den fra. Tokenet, de køede hendelsene og filene deres
 slettes, og kanaler på siden blir utilgjengelige. Vantigo trekker også appens abonnement
@@ -210,4 +214,6 @@ omkoding, et kroppsfilter) ødelegger signaturen, og hver innsending avvises med
 | En side viser **Token avvist** | Se [Et avvist token](#legg-til-en-side). |
 | Innstillingene kan ikke lagres | Instansen har ingen offentlig vert. Sett `PUBLIC_BASE_URL` og start serveren på nytt. |
 | En fil mangler i en samtale | Metas filadresser utløper; `meta-split` henter filen med en gang, og gir opp den etter gjentatte feil (utgående https til Metas filtjenere trengs). |
+| Å legge til en side sier *Tokenet er verken tilgangstokenet til en side eller et token for en bruker eller systembruker…* | Tokenet er utløpt eller trukket tilbake, tilhører en bruker eller systembruker som ikke forvalter noen side med oppgaven **MESSAGING**, eller er et sidetoken Meta avviste abonnementet for. Gi systembrukeren siden med oppgaven å sende meldinger, lag tokenet på nytt, eller lim inn et gyldig sidetoken. |
+| Å legge til en side sier *Tokenet forvalter flere sider* | Velg siden som skal kobles til i listen som vises, og velg **Legg til side** på nytt. Legg til hver side for seg. |
 | Å legge til en side sier at Meta ikke svarte | `graph.facebook.com` kan ikke nås fra serveren; prøv igjen om litt. |
