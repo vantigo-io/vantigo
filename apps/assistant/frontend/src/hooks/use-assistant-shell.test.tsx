@@ -1,10 +1,11 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { AppShellLayout } from "@vantigo/frontend-shell";
+import { AppShellLayout, type AssistTarget, useSidePanelController } from "@vantigo/frontend-shell";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssistantConversationDetail } from "../api/types";
 import type { AssistantChip } from "../lib/context";
 import { setAssistantRunStatus } from "../lib/run-status";
+import { endTour, startTour } from "../lib/tour";
 import { sent, sentAll } from "../test/api";
 import { renderWithProviders } from "../test/render";
 import {
@@ -33,12 +34,15 @@ const Harness = ({
   context = customerChip,
   onNavigate = () => {},
   onOpenInAssistant = () => {},
+  tourTargets,
 }: {
+  tourTargets?: readonly AssistTarget[];
   context?: AssistantChip;
   onNavigate?: (route: string) => void;
   onOpenInAssistant?: (id: string | null) => void;
 }) => {
-  const shell = useAssistantShell({ enabled: true, context, onNavigate, onOpenInAssistant });
+  const side = useSidePanelController();
+  const shell = useAssistantShell({ side, enabled: true, context, onNavigate, onOpenInAssistant, tourTargets });
   return (
     <AppShellLayout
       headerActions={
@@ -49,8 +53,12 @@ const Harness = ({
           </button>
         </>
       }
-      aside={shell.aside}
+      aside={side.aside(shell.sidePanel ? [shell.sidePanel] : [])}
     >
+      {shell.tour}
+      <button type="button" data-assist="home.screen.control">
+        a control
+      </button>
       <div>the page</div>
       <input aria-label="plain input" />
       <div contentEditable suppressContentEditableWarning data-testid="rich-editor" />
@@ -86,7 +94,8 @@ describe("the assistant in the shell", () => {
     stubAssistantApi();
     renderWithProviders(<Harness />);
     const button = await openButton();
-    expect(screen.queryByRole("complementary", { hidden: true })).not.toBeInTheDocument();
+    // Not mounted until it is first opened.
+    expect(screen.queryByRole("complementary", { name: "Assistant panel", hidden: true })).not.toBeInTheDocument();
 
     await userEvent.click(button);
     await waitFor(() => expect(isOpen()).toBe(true));
@@ -189,16 +198,16 @@ describe("the assistant in the shell", () => {
     expect(isOpen()).toBe(false);
   });
 
-  it("keeps the panel's width in localStorage, and works when storage throws", async () => {
+  it("keeps the panel's width in localStorage (moved from the old key), and works when storage throws", async () => {
     stubAssistantApi();
     window.localStorage.setItem("vantigo.assistant.panelWidth", "520");
     renderWithProviders(<Harness />);
     await userEvent.click(await openButton());
     await waitFor(() => expect(isOpen()).toBe(true));
-    const handle = within(panel()).getByRole("separator", { name: "Resize the assistant panel" });
+    const handle = screen.getByRole("separator", { name: "Resize the side panel" });
     expect(handle).toHaveAttribute("aria-valuenow", "520");
     fireEvent.keyDown(handle, { key: "ArrowLeft" });
-    expect(window.localStorage.getItem("vantigo.assistant.panelWidth")).toBe("544");
+    expect(window.localStorage.getItem("vantigo.sidePanel.width")).toBe("544");
   });
 
   it("falls back to the default width when storage cannot be read", async () => {
@@ -211,10 +220,53 @@ describe("the assistant in the shell", () => {
     });
     renderWithProviders(<Harness />);
     await userEvent.click(await openButton());
-    const handle = await within(panel()).findByRole("separator", { name: "Resize the assistant panel" });
+    const handle = await screen.findByRole("separator", { name: "Resize the side panel" });
     expect(handle).toHaveAttribute("aria-valuenow", "400");
     fireEvent.keyDown(handle, { key: "ArrowLeft" });
     expect(handle).toHaveAttribute("aria-valuenow", "424");
+  });
+});
+
+describe("a guided tour", () => {
+  const tourTarget: AssistTarget = {
+    key: "home.screen.control",
+    route: "/",
+    label: { en: "Control", nb: "Kontroll" },
+    description: { en: "Control", nb: "Kontroll" },
+  };
+  const startIt = () =>
+    act(() => startTour([{ target: "home.screen.control", title: "Here", body: "Press the control." }]));
+
+  afterEach(() => {
+    act(() => endTour());
+  });
+
+  it("closes the panel when it starts on a narrow screen, where the panel is a sheet", async () => {
+    stubAssistantApi();
+    const matchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      ...matchMedia(query),
+      matches: query.includes("max-width"),
+    })) as typeof window.matchMedia;
+    try {
+      renderWithProviders(<Harness tourTargets={[tourTarget]} />);
+      await userEvent.click(await openButton());
+      await waitFor(() => expect(isOpen()).toBe(true));
+      startIt();
+      await waitFor(() => expect(isOpen()).toBe(false));
+    } finally {
+      window.matchMedia = matchMedia;
+    }
+  });
+
+  it("leaves the panel open on a wide screen", async () => {
+    stubAssistantApi();
+    renderWithProviders(<Harness tourTargets={[tourTarget]} />);
+    await userEvent.click(await openButton());
+    await waitFor(() => expect(isOpen()).toBe(true));
+    startIt();
+    await screen.findByRole("dialog");
+    expect(isOpen()).toBe(true);
   });
 });
 
