@@ -25,12 +25,12 @@ The owner asked for stacked PRs so that work never waits for a merge.
 - **Layers.** Each layer is one PR whose diff is its delivery alone, and its body says what it
   sits on.
 
-| # | Branch | Delivery | Migrations claimed (main at `3928eb8b`, latest `00128`) |
+| # | Branch | Delivery | Migrations claimed (main after Google's Gmail channels, latest `00129`) |
 | --- | --- | --- | --- |
 | 1 | `claude/communications-channel-expansion-1f26f9` | R, the spec and this plan (docs only) | — |
-| 2 | `claude/communications-messenger-a-groundwork` | A: types, the slot, the sync, components, sending in parts, chat UI | `00129_communications_messaging` |
-| 3 | `claude/products-images` | P: product images | `00130_products_images` |
-| 4 | `claude/meta-messenger` | B: the Meta module | `00131_meta_baseline` |
+| 2 | `claude/communications-messenger-a-groundwork` | A: types, the slot, the sync, components, sending in parts, chat UI | `00130_communications_messaging` |
+| 3 | `claude/products-images` | P: product images | `00131_products_images` |
+| 4 | `claude/meta-messenger` | B: the Meta module | `00132_meta_baseline` |
 | 5 | `claude/communications-messenger-c-products` | C: a product in a message, the public media route | — (C's columns are A1's `role` and P1) |
 
 **Layer order.** P sits on A only to keep a single stack: it shares no code with A, and could
@@ -112,7 +112,7 @@ bottom of the stack.
 
 ### Seam (by hand)
 
-**The migration**, `mig/00129_communications_messaging.sql`:
+**The migration**, `mig/00130_communications_messaging.sql`:
 
 - `conversation_messages.components jsonb`;
 - `message_attachments.role varchar(10) NOT NULL DEFAULT 'file'` with CHECK `file`/`card`;
@@ -232,7 +232,7 @@ import side of `inbound_threading.go`):
   the participant orphan note;
 - `A/installation.md` (en, nb), for the worker;
 - `contributing/module-boundaries.md`, for the new contract slot;
-- the `sources` frontmatter, which gains `00129` and the new files.
+- the `sources` frontmatter, which gains `00130` and the new files.
 
 **Done when:** a conversation on the fake provider receives, threads, answers and sends in
 parts in the integration tests, and the gates pass. There is no browser check yet, since there
@@ -242,7 +242,7 @@ is no real provider.
 
 ### Seam (by hand)
 
-- `mig/00130_products_images.sql`: `products.product_images` (N13), with the partial unique
+- `mig/00131_products_images.sql`: `products.product_images` (N13), with the partial unique
   index on `is_primary` and the CHECK on `uses`.
 - `openapi/products.yaml`: the five operations of N13, with their summaries; content and upload
   are file operations.
@@ -284,7 +284,7 @@ The integration test's `filesOrRedirects` lists the upload and content operation
 **3. Docs:**
 
 - `U/products.md` (en, nb);
-- `Ref/products.md`, including `00130` in `sources`;
+- `Ref/products.md`, including `00131` in `sources`;
 - `contributing/module-boundaries.md`, for the catalog calls.
 
 **Done when:** the gates pass, and a browser check uploads a rotated phone photo and shows it
@@ -297,7 +297,7 @@ is "Advanced Access needed".
 
 ### Seam (by hand)
 
-- `mig/00131_meta_baseline.sql`: schema `meta` with:
+- `mig/00132_meta_baseline.sql`: schema `meta` with:
   - `settings`: the app id, the sealed secret, the verify token and the human-agent flag;
   - `pages`: the Page id, the name, the sealed token, the state and the last error;
   - `webhook_events`;
