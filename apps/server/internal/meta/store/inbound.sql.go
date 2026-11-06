@@ -219,6 +219,46 @@ func (q *Queries) ListPendingInbound(ctx context.Context, arg ListPendingInbound
 	return items, nil
 }
 
+const listStaleStagedFiles = `-- name: ListStaleStagedFiles :many
+SELECT p.storage_key,
+       EXISTS (SELECT 1 FROM meta.inbound i WHERE i.storage_keys @> ARRAY[p.storage_key]) AS referenced
+FROM meta.pending_files p
+WHERE p.created_at < $1
+ORDER BY p.created_at
+LIMIT $2
+`
+
+type ListStaleStagedFilesParams struct {
+	Before  time.Time
+	MaxRows int32
+}
+
+type ListStaleStagedFilesRow struct {
+	StorageKey string
+	Referenced bool
+}
+
+// Staged keys older than @before, and whether an inbound row names each.
+func (q *Queries) ListStaleStagedFiles(ctx context.Context, arg ListStaleStagedFilesParams) ([]ListStaleStagedFilesRow, error) {
+	rows, err := q.db.Query(ctx, listStaleStagedFiles, arg.Before, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListStaleStagedFilesRow
+	for rows.Next() {
+		var i ListStaleStagedFilesRow
+		if err := rows.Scan(&i.StorageKey, &i.Referenced); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockInbound = `-- name: LockInbound :exec
 SELECT pg_advisory_xact_lock(7340113501)
 `
@@ -253,4 +293,40 @@ func (q *Queries) NotifiedPages(ctx context.Context, since time.Time) ([]string,
 		return nil, err
 	}
 	return items, nil
+}
+
+const pageExistsForShare = `-- name: PageExistsForShare :one
+SELECT page_id FROM meta.pages WHERE page_id = $1 FOR SHARE
+`
+
+// The Page's row, locked against its removal until the transaction ends.
+func (q *Queries) PageExistsForShare(ctx context.Context, pageID string) (string, error) {
+	row := q.db.QueryRow(ctx, pageExistsForShare, pageID)
+	var page_id string
+	err := row.Scan(&page_id)
+	return page_id, err
+}
+
+const stageFile = `-- name: StageFile :exec
+INSERT INTO meta.pending_files (storage_key, created_at) VALUES ($1, $2)
+ON CONFLICT (storage_key) DO UPDATE SET created_at = excluded.created_at
+`
+
+type StageFileParams struct {
+	StorageKey string
+	Now        time.Time
+}
+
+func (q *Queries) StageFile(ctx context.Context, arg StageFileParams) error {
+	_, err := q.db.Exec(ctx, stageFile, arg.StorageKey, arg.Now)
+	return err
+}
+
+const unstageFiles = `-- name: UnstageFiles :exec
+DELETE FROM meta.pending_files WHERE storage_key = ANY($1::text[])
+`
+
+func (q *Queries) UnstageFiles(ctx context.Context, keys []string) error {
+	_, err := q.db.Exec(ctx, unstageFiles, keys)
+	return err
 }

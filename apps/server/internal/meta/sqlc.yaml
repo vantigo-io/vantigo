@@ -6,6 +6,7 @@ sql:
   - engine: postgresql
     schema:
       - ../db/migrations/00132_meta_baseline.sql
+      - ../db/migrations/00133_meta_raw_events.sql
     queries: queries
     gen:
       go:

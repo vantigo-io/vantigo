@@ -41,31 +41,173 @@ func TestGraphPages_AddAPage(t *testing.T) {
 	}
 }
 
-func TestGraphPages_RefuseATokenThatCannotMessage(t *testing.T) {
+const grSysToken = "EAAB-system-user"
+
+func (e *grEnv) addPageChoosing(token, pageID string) *modtest.Response {
+	return e.owner.Do(http.MethodPost, pagesPath, map[string]any{"accessToken": token, "pageId": pageID})
+}
+
+func grNoPageKept(t *testing.T, e *grEnv) {
+	t.Helper()
+	if n := e.h.Count(t, `SELECT count(*) FROM meta.pages`); n != 0 {
+		t.Fatalf("%d Pages kept", n)
+	}
+	if len(e.fake.CallsTo("subscribed_apps")) != 0 {
+		t.Fatal("subscribed_apps was called")
+	}
+}
+
+func TestGraphPages_ASystemUserTokenConnectsThePagesOwnToken(t *testing.T) {
+	e := newGrEnv(t)
+	e.fake.AddPage(grPageID, grPageName, grPageToken, "MANAGE", "MESSAGING")
+	e.fake.AddUserToken(grSysToken, grPageID)
+	r := e.addPage(grSysToken)
+	if r.Status != http.StatusCreated {
+		t.Fatalf("status %d body %s", r.Status, r.Body)
+	}
+	if calls := e.fake.CallsTo("POST /" + grPageID + "/subscribed_apps"); len(calls) != 1 || calls[0].Token != grPageToken {
+		t.Fatalf("subscribe calls: %+v", calls)
+	}
+	// The stored token is the Page's own: Check reads /me with it.
+	e.fake.ResetCalls()
+	if ep, err := e.m.Check(context.Background(), grPageID); err != nil || !ep.Available {
+		t.Fatalf("check: %+v %v", ep, err)
+	}
+	if calls := e.fake.CallsTo("GET /me"); len(calls) != 1 || calls[0].Token != grPageToken {
+		t.Fatalf("check calls: %+v", calls)
+	}
+	sealed := modtest.One[[]byte](t, e.h.Harness, `SELECT token_sealed FROM meta.pages WHERE page_id = $1`, grPageID)
+	if strings.Contains(string(sealed), grSysToken) || strings.Contains(string(sealed), grPageToken) {
+		t.Fatalf("a token is stored in the clear: %q", sealed)
+	}
+	if strings.Contains(string(r.Body), grSysToken) || strings.Contains(string(r.Body), grPageToken) {
+		t.Fatal("a token is answered")
+	}
+}
+
+func TestGraphPages_SeveralPagesAskForAChoice(t *testing.T) {
+	e := newGrEnv(t)
+	e.fake.AddPage(grPageID, grPageName, grPageToken, "MESSAGING")
+	e.fake.AddPage("200", "Bakeri", "EAAB-b", "MESSAGING")
+	e.fake.AddPage("300", "Uten melding", "EAAB-c", "MANAGE")
+	e.fake.AddUserToken(grSysToken, "300", grPageID, "200")
+
+	r := e.addPage(grSysToken)
+	if r.Status != http.StatusUnprocessableEntity || grProblemCode(t, r) != "page_choice_required" {
+		t.Fatalf("status %d body %s", r.Status, r.Body)
+	}
+	var p gen.MetaProblem
+	r.JSON(&p)
+	if p.Choices == nil || len(*p.Choices) != 2 {
+		t.Fatalf("choices: %s", r.Body)
+	}
+	got := map[string]string{}
+	for _, c := range *p.Choices {
+		got[c.Id] = c.Name
+	}
+	if got[grPageID] != grPageName || got["200"] != "Bakeri" {
+		t.Fatalf("choices: %+v", got)
+	}
+	grNoPageKept(t, e)
+
+	r = e.addPageChoosing(grSysToken, "200")
+	if r.Status != http.StatusCreated {
+		t.Fatalf("status %d body %s", r.Status, r.Body)
+	}
+	var page gen.MetaPage
+	r.JSON(&page)
+	if page.PageId != "200" || page.Name != "Bakeri" {
+		t.Fatalf("page: %+v", page)
+	}
+	if calls := e.fake.CallsTo("subscribed_apps"); len(calls) != 1 || calls[0].Token != "EAAB-b" {
+		t.Fatalf("subscribe calls: %+v", calls)
+	}
+}
+
+func TestGraphPages_RefuseWhatTheTokenDoesNotManage(t *testing.T) {
 	for _, tc := range []struct {
-		name  string
-		tasks []string
+		name   string
+		tasks  []string
+		pageID string
 	}{
-		{"a user's token answers no tasks", nil},
-		{"tasks without MESSAGING", []string{"MANAGE", "CREATE_CONTENT"}},
+		{"a Page without MESSAGING", []string{"MANAGE", "CREATE_CONTENT"}, ""},
+		{"a Page with no tasks", nil, ""},
+		{"a pageId the token does not manage", []string{"MESSAGING"}, "999"},
+		{"a pageId of a Page that cannot be messaged", []string{"MESSAGING"}, "300"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newGrEnv(t)
 			e.fake.AddPage(grPageID, grPageName, grPageToken, tc.tasks...)
-			r := e.addPage(grPageToken)
+			e.fake.AddPage("300", "Uten melding", "EAAB-c", "MANAGE")
+			e.fake.AddUserToken(grSysToken, grPageID, "300")
+			r := e.addPageChoosing(grSysToken, tc.pageID)
+			if tc.pageID == "" {
+				r = e.addPage(grSysToken)
+			}
 			if r.Status != http.StatusUnprocessableEntity || grProblemCode(t, r) != "page_token_insufficient" {
 				t.Fatalf("status %d body %s", r.Status, r.Body)
 			}
-			if n := e.h.Count(t, `SELECT count(*) FROM meta.pages`); n != 0 {
-				t.Fatalf("%d Pages kept", n)
-			}
-			if _, ok := e.fake.Subscribed(grPageID); ok {
-				t.Fatal("the Page was subscribed")
-			}
-			if len(e.fake.CallsTo("subscribed_apps")) != 0 {
-				t.Fatal("subscribed_apps was called")
-			}
+			grNoPageKept(t, e)
 		})
+	}
+}
+
+func TestGraphPages_APageTokenIsCheckedBySubscribing(t *testing.T) {
+	e := newGrEnv(t)
+	e.fake.AddPage(grPageID, grPageName, grPageToken)
+	r := e.addPageChoosing(grPageToken, grPageID)
+	if r.Status != http.StatusCreated {
+		t.Fatalf("status %d body %s", r.Status, r.Body)
+	}
+	if calls := e.fake.CallsTo("subscribed_apps"); len(calls) != 1 || calls[0].Token != grPageToken {
+		t.Fatalf("subscribe calls: %+v", calls)
+	}
+	for _, c := range e.fake.CallsTo("GET /me") {
+		if q := c.Query.Get("fields"); strings.Contains(q, "tasks") && c.Path == "/me" {
+			t.Fatalf("tasks read from /me: %v", c.Query)
+		}
+	}
+
+	e = newGrEnv(t)
+	e.fake.AddPage(grPageID, grPageName, grPageToken)
+	r = e.addPageChoosing(grPageToken, "999")
+	if r.Status != http.StatusUnprocessableEntity || grProblemCode(t, r) != "page_token_insufficient" {
+		t.Fatalf("a pageId mismatch: status %d body %s", r.Status, r.Body)
+	}
+	grNoPageKept(t, e)
+
+	e = newGrEnv(t)
+	e.fake.AddPage(grPageID, grPageName, grPageToken)
+	e.fake.FailNext("POST /"+grPageID+"/subscribed_apps", metatest.Failure{Status: 403, Code: 200, Message: "no permission"})
+	r = e.addPage(grPageToken)
+	if r.Status != http.StatusUnprocessableEntity || grProblemCode(t, r) != "page_token_insufficient" {
+		t.Fatalf("a subscription refused: status %d body %s", r.Status, r.Body)
+	}
+	if n := e.h.Count(t, `SELECT count(*) FROM meta.pages`); n != 0 {
+		t.Fatalf("%d Pages kept", n)
+	}
+}
+
+func TestGraphPages_AUserTokenWithoutAPageIsRefused(t *testing.T) {
+	e := newGrEnv(t)
+	e.fake.AddUserToken(grSysToken)
+	r := e.addPage(grSysToken)
+	if r.Status != http.StatusUnprocessableEntity || grProblemCode(t, r) != "page_token_insufficient" {
+		t.Fatalf("status %d body %s", r.Status, r.Body)
+	}
+	grNoPageKept(t, e)
+}
+
+func TestGraphPages_RefuseAPageIdThatIsNotDigits(t *testing.T) {
+	e := newGrEnv(t)
+	r := e.addPageChoosing(grSysToken, "abc")
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s", r.Status, r.Body)
+	}
+	var p gen.MetaProblem
+	r.JSON(&p)
+	if p.Errors == nil || len((*p.Errors)["pageId"]) == 0 {
+		t.Fatalf("no field error: %s", r.Body)
 	}
 }
 
@@ -88,7 +230,7 @@ func TestGraphPages_RefuseWhatMetaRefuses(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newGrEnv(t)
 			e.fake.AddPage(grPageID, grPageName, grPageToken, "MESSAGING")
-			e.fake.FailNext(tc.match, tc.failure)
+			e.fake.FailAll(tc.match, tc.failure)
 			r := e.addPage(grPageToken)
 			if r.Status != tc.wantState || grProblemCode(t, r) != tc.wantCode {
 				t.Fatalf("status %d body %s", r.Status, r.Body)

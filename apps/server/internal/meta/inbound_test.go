@@ -140,9 +140,16 @@ type inbFixture struct {
 
 func newInbFixture(t *testing.T) *inbFixture {
 	t.Helper()
+	return newInbFixtureWith(t, func(c *inbCDN) http.RoundTripper { return c })
+}
+
+// newInbFixtureWith is newInbFixture with the transport the splitter sees
+// built over the fake CDN, for a test that holds or hooks a fetch.
+func newInbFixtureWith(t *testing.T, wrap func(*inbCDN) http.RoundTripper) *inbFixture {
+	t.Helper()
 	cdn := &inbCDN{body: []byte("PNGDATA"), ctype: "image/png"}
 	files := newInbMemStore()
-	h := newHarness(t, modtest.WithTransport(cdn), modtest.WithObjectStore(files))
+	h := newHarness(t, modtest.WithTransport(wrap(cdn)), modtest.WithObjectStore(files))
 	o, _ := owner(t, h)
 	configure(t, o)
 	for _, id := range []string{inbPage, inbOther} {
@@ -555,5 +562,153 @@ func TestInbound_OpenAttachment(t *testing.T) {
 		if _, _, err := f.m.OpenAttachment(ctx, tc.page, tc.ref); err == nil {
 			t.Errorf("%s ref opened", name)
 		}
+	}
+}
+
+// inbHook is a CDN transport that runs before on each request, before the
+// fake CDN answers.
+type inbHook struct {
+	next   http.RoundTripper
+	before func()
+}
+
+func (h inbHook) RoundTrip(req *http.Request) (*http.Response, error) {
+	h.before()
+	return h.next.RoundTrip(req)
+}
+
+func TestSplit_StoresOnlyAllowListedContentTypes(t *testing.T) {
+	f := newInbFixture(t)
+	for i, tc := range []struct{ served, want string }{
+		{"image/jpeg", "image/jpeg"},
+		{"image/png; charset=binary", "image/png"},
+		{"IMAGE/WEBP", "image/webp"},
+		{"application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+		{"application/pdf", "application/pdf"},
+		{"text/html; charset=utf-8", "application/octet-stream"},
+		{"image/svg+xml", "application/octet-stream"},
+		{"application/x-msdownload", "application/octet-stream"},
+	} {
+		f.cdn.set(func(c *inbCDN) { c.ctype = tc.served })
+		f.post(t, inbEnvelope(inbPage, inbText(fmt.Sprintf("m.ct%d", i), "x", map[string]any{"attachments": inbImage(inbImageURL)})))
+		f.cycle(t)
+		events := f.pending(t, inbPage, 0)
+		if got := events[len(events)-1].Attachments[0].ContentType; got != tc.want {
+			t.Errorf("%q stored as %q, want %q", tc.served, got, tc.want)
+		}
+	}
+	for key, ct := range f.files.types {
+		if ct == "text/html" || ct == "image/svg+xml" {
+			t.Errorf("%s stored as %s", key, ct)
+		}
+	}
+}
+
+func TestSplit_TwoWorkersNeverSplitTheSameEvent(t *testing.T) {
+	f := newInbFixture(t)
+	for i := range 12 {
+		f.post(t, inbEnvelope(inbPage, inbText(fmt.Sprintf("m.race%d", i), fmt.Sprintf("race %d", i), nil)))
+	}
+	other := meta.NewSplitWorker(f.h.Deps())
+	var wg sync.WaitGroup
+	for _, w := range []*meta.SplitWorker{f.split, other} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := w.RunOnce(context.Background()); err != nil {
+				t.Errorf("split: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	f.cycle(t)
+	if n := f.h.Count(t, `SELECT count(*) FROM meta.webhook_events WHERE state = 'split' AND attempts = 1`); n != 12 {
+		t.Errorf("%d events split in one attempt, want 12 (one worker took an event twice)", n)
+	}
+	if n := f.h.Count(t, `SELECT count(*) FROM meta.inbound`); n != 12 {
+		t.Errorf("%d rows, want 12", n)
+	}
+}
+
+func TestSplit_ASlowFetchKeepsItsLease(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	f := newInbFixtureWith(t, func(c *inbCDN) http.RoundTripper {
+		return inbHook{next: c, before: func() {
+			once.Do(func() { close(entered) })
+			<-release
+		}}
+	})
+	f.post(t, inbEnvelope(inbPage, inbText("m.slow", "slow", map[string]any{"attachments": inbImage(inbImageURL)})))
+
+	done := make(chan error, 1)
+	go func() { done <- f.split.RunOnce(context.Background()) }()
+	<-entered
+
+	// Past the claim's 60 s lease, well inside the fetch's budget: another
+	// replica must find nothing due.
+	f.h.Advance(2 * time.Minute)
+	other := meta.NewSplitWorker(f.h.Deps())
+	if err := other.RunOnce(context.Background()); err != nil {
+		t.Fatalf("second worker: %v", err)
+	}
+	if n := f.h.Count(t, `SELECT attempts FROM meta.webhook_events`); n != 1 {
+		t.Fatalf("a slow fetch was claimed again (%d attempts)", n)
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("split: %v", err)
+	}
+	if n := f.h.Count(t, `SELECT count(*) FROM meta.inbound`); n != 1 {
+		t.Fatalf("%d rows after the slow fetch", n)
+	}
+	if n := f.h.Count(t, `SELECT count(*) FROM meta.webhook_events WHERE state = 'split' AND attempts = 1`); n != 1 {
+		t.Error("the slow event burned an attempt")
+	}
+}
+
+func TestSplit_ARolledBackSplitLeavesItsStagingRow(t *testing.T) {
+	f := newInbFixture(t)
+	f.h.Exec(t, `ALTER TABLE meta.inbound ADD CONSTRAINT zz_refuse CHECK (false) NOT VALID`)
+	f.post(t, inbEnvelope(inbPage, inbText("m.rb", "rolled back", map[string]any{"attachments": inbImage(inbImageURL)})))
+	f.cycle(t)
+	if n := f.h.Count(t, `SELECT count(*) FROM meta.inbound`); n != 0 {
+		t.Fatalf("%d rows despite the refusal", n)
+	}
+	if n := f.h.Count(t, `SELECT count(*) FROM meta.pending_files`); n != 1 || len(f.files.keys()) != 1 {
+		t.Fatalf("after the rollback: %d staged, files %v", n, f.files.keys())
+	}
+
+	f.h.Exec(t, `ALTER TABLE meta.inbound DROP CONSTRAINT zz_refuse`)
+	f.h.Advance(31 * time.Minute)
+	f.cycle(t)
+	if n := f.h.Count(t, `SELECT count(*) FROM meta.inbound`); n != 1 {
+		t.Fatalf("the retry stored %d rows", n)
+	}
+	if n := f.h.Count(t, `SELECT count(*) FROM meta.pending_files`); n != 0 || len(f.files.keys()) != 1 {
+		t.Errorf("after the retry: %d staged, files %v", n, f.files.keys())
+	}
+}
+
+func TestSplit_APageRemovedMidSplitGetsNoRowAndLeavesNoFile(t *testing.T) {
+	var f *inbFixture
+	f = newInbFixtureWith(t, func(c *inbCDN) http.RoundTripper {
+		return inbHook{next: c, before: func() {
+			f.h.Exec(t, `DELETE FROM meta.pages WHERE page_id = $1`, inbPage)
+		}}
+	})
+	f.post(t, inbEnvelope(inbPage, inbText("m.gone", "to a removed Page", map[string]any{"attachments": inbImage(inbImageURL)})))
+	f.cycle(t)
+	if n := f.h.Count(t, `SELECT count(*) FROM meta.inbound`); n != 0 {
+		t.Fatalf("%d rows for a removed Page", n)
+	}
+	if keys := f.files.keys(); len(keys) != 0 {
+		t.Errorf("files left behind: %v", keys)
+	}
+	if n := f.h.Count(t, `SELECT count(*) FROM meta.pending_files`); n != 0 {
+		t.Errorf("%d staging rows left", n)
+	}
+	if n := f.h.Count(t, `SELECT count(*) FROM meta.webhook_events WHERE state = 'split'`); n != 1 {
+		t.Error("the event was not settled")
 	}
 }

@@ -34,6 +34,11 @@ type MetaPage struct {
 	CheckedAt     *time.Time
 }
 
+type MetaPendingFile struct {
+	StorageKey string
+	CreatedAt  time.Time
+}
+
 type MetaProfile struct {
 	PageID      string
 	Psid        string
@@ -65,4 +70,5 @@ type MetaWebhookEvent struct {
 	NextAttemptAt time.Time
 	SplitAt       *time.Time
 	LastError     *string
+	Raw           []byte
 }

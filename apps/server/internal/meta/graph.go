@@ -3,6 +3,9 @@ package meta
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,6 +37,9 @@ type graphClient struct {
 	calls *http.Client
 	files *http.Client
 	log   *slog.Logger
+	// proofKey reads the app secret the appsecret_proof is made with; nil
+	// sends none (a client built without settings).
+	proofKey func(ctx context.Context) ([]byte, bool)
 }
 
 // newGraphClient builds the client over d.
@@ -42,7 +48,28 @@ func newGraphClient(d module.Deps) *graphClient {
 		calls: newHTTPClient(d, graphOnly, callBudget),
 		files: newHTTPClient(d, graphOnly, fileBudget),
 		log:   loggerOf(d),
+		proofKey: func(ctx context.Context) ([]byte, bool) {
+			c := newCore(d)
+			row, err := c.settings(ctx)
+			if err != nil {
+				return nil, false
+			}
+			secret, ok, err := c.appSecret(row)
+			if err != nil || !ok {
+				return nil, false
+			}
+			return secret, true
+		},
 	}
+}
+
+// appSecretProof is the hex HMAC-SHA256 of the access token under the app
+// secret, which Meta checks on an app that requires it: a leaked token alone
+// then cannot call the Graph API.
+func appSecretProof(secret []byte, token string) string {
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte(token))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // graphError is Meta's refusal of a call: the HTTP status and the error body's
@@ -106,6 +133,15 @@ type graphErrorBody struct {
 
 // send issues req on c and decodes a 2xx answer into out (nil: discard it).
 func (g *graphClient) send(ctx context.Context, c *http.Client, req *http.Request, out any) error {
+	if g.proofKey != nil {
+		if token, ok := strings.CutPrefix(req.Header.Get("Authorization"), "Bearer "); ok && token != "" {
+			if secret, ok := g.proofKey(ctx); ok {
+				q := req.URL.Query()
+				q.Set("appsecret_proof", appSecretProof(secret, token))
+				req.URL.RawQuery = q.Encode()
+			}
+		}
+	}
 	res, err := c.Do(req.WithContext(ctx))
 	if err != nil {
 		g.log.WarnContext(ctx, "meta: a call to the Graph API failed", "method", req.Method)

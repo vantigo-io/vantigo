@@ -43,8 +43,9 @@ const (
 	// callBudget bounds one exchange: the connection, the request, the headers
 	// and the body together.
 	callBudget = 30 * time.Second
-	// fileBudget bounds a file's fetch or upload, which moves megabytes.
-	fileBudget = 2 * time.Minute
+	// fileBudget bounds a file's fetch or upload, which moves megabytes; it is
+	// Communications' outboxMailboxSendCap, the most a part's send is given.
+	fileBudget = 3 * time.Minute
 )
 
 // processTransport is the production transport, built once for the process.

@@ -27,6 +27,9 @@ const (
 	// codePageTokenInsufficient is a token that is not a Page's, or may not
 	// message it (422).
 	codePageTokenInsufficient = "page_token_insufficient"
+	// codePageChoiceRequired is a token that manages several Pages that may
+	// be messaged, added without a pageId (422); the problem lists them.
+	codePageChoiceRequired = "page_choice_required"
 	// codeMetaUnreachable is a call to Meta that could not be made (503).
 	codeMetaUnreachable = "meta_unreachable"
 	// codePageNotFound is a Page that is not connected (404).

@@ -37,9 +37,15 @@ import (
 // The splitting worker's figures.
 const (
 	splitInterval = time.Second
-	splitBatch    = 20
+	// splitPerCycle bounds the events one cycle takes, one claim each: an event
+	// is claimed only when the worker is ready for it, so a lease never runs
+	// while the event waits behind others.
+	splitPerCycle = 20
 	// splitLease is how long a claimed event belongs to the worker that
-	// claimed it: a replica that dies lets go of it by itself.
+	// claimed it: a replica that dies lets go of it by itself. Work that can
+	// outlast it (a file fetch, up to fileBudget) extends the lease first, to
+	// fileBudget + splitLease, so another replica never takes an event that is
+	// merely slow and attempts are not burned by it.
 	splitLease = 60 * time.Second
 	// maxSplitAttempts is the attempt after which an event whose attachment
 	// cannot be fetched is split without it rather than lost.
@@ -195,19 +201,22 @@ func (w *SplitWorker) Run(ctx context.Context) error {
 	}
 }
 
-// RunOnce is one cycle: it claims the due events and splits each. Tests drive
-// a cycle with it.
+// RunOnce is one cycle: it claims the due events, one at a time, and splits
+// each, up to splitPerCycle. Tests drive a cycle with it.
 func (w *SplitWorker) RunOnce(ctx context.Context) error {
-	now := w.now()
-	events, err := w.q.ClaimWebhookEvents(ctx, store.ClaimWebhookEventsParams{Now: now, LeaseUntil: now.Add(splitLease), Batch: splitBatch})
-	if err != nil {
-		return fmt.Errorf("meta: claim webhook events: %w", err)
-	}
-	for _, e := range events {
+	for range splitPerCycle {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		w.splitEvent(ctx, e)
+		now := w.now()
+		events, err := w.q.ClaimWebhookEvents(ctx, store.ClaimWebhookEventsParams{Now: now, LeaseUntil: now.Add(splitLease), Batch: 1})
+		if err != nil {
+			return fmt.Errorf("meta: claim webhook events: %w", err)
+		}
+		if len(events) == 0 {
+			return nil
+		}
+		w.splitEvent(ctx, events[0])
 	}
 	return nil
 }
@@ -231,7 +240,7 @@ func (w *SplitWorker) splitEvent(ctx context.Context, e store.ClaimWebhookEvents
 	}
 	fetched := make([]fetchedRow, 0, len(rows))
 	for _, r := range rows {
-		f, err := w.fetchFiles(ctx, r, e.Attempts >= maxSplitAttempts)
+		f, err := w.fetchFiles(ctx, e.ID, r, e.Attempts >= maxSplitAttempts)
 		if err != nil {
 			w.settleDeferred(ctx, e, "an attachment could not be fetched", err)
 			return
@@ -387,14 +396,14 @@ func occurredAt(ts, entryTime int64, fallback time.Time) time.Time {
 // before any transaction: the URLs expire, and no provider call or storage
 // write happens inside a transaction. A failure is returned — the event is
 // deferred — unless last is set, when the file is left out of the row.
-func (w *SplitWorker) fetchFiles(ctx context.Context, r plannedRow, last bool) (fetchedRow, error) {
+func (w *SplitWorker) fetchFiles(ctx context.Context, eventID int64, r plannedRow, last bool) (fetchedRow, error) {
 	out := fetchedRow{plannedRow: r}
 	out.payload.Attachments = nil
 	sum := sha256.Sum256([]byte(r.dedupKey))
 	prefix := r.pageID + "/" + hex.EncodeToString(sum[:])[:32] + "/"
 	for i, f := range r.files {
 		key := prefix + strconv.Itoa(i)
-		att, err := w.fetchOne(ctx, f, key, i)
+		att, err := w.fetchOne(ctx, eventID, f, key, i)
 		if err != nil {
 			if !last {
 				return fetchedRow{}, err
@@ -413,11 +422,17 @@ func (w *SplitWorker) fetchFiles(ctx context.Context, r plannedRow, last bool) (
 }
 
 // fetchOne fetches one file, refuses more than the attachment limit and keeps
-// it under key.
-func (w *SplitWorker) fetchOne(ctx context.Context, f plannedFile, key string, index int) (inboundAttachment, error) {
+// it under key. The event's lease is extended first, so the fetch may take its
+// whole budget without another replica claiming the event; and the key is
+// staged before the write, so a file whose transaction never happens is found
+// by retention (see store).
+func (w *SplitWorker) fetchOne(ctx context.Context, eventID int64, f plannedFile, key string, index int) (inboundAttachment, error) {
 	objects, err := w.objects()
 	if err != nil {
 		return inboundAttachment{}, err
+	}
+	if err := w.q.ExtendWebhookEventLease(ctx, store.ExtendWebhookEventLeaseParams{ID: eventID, LeaseUntil: w.now().Add(fileBudget + splitLease)}); err != nil {
+		return inboundAttachment{}, fmt.Errorf("meta: extend an event's lease: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.url, nil)
 	if err != nil {
@@ -443,12 +458,35 @@ func (w *SplitWorker) fetchOne(ctx context.Context, f plannedFile, key string, i
 	}
 	contentType := fallbackContentType(f.kind)
 	if mt, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type")); err == nil && mt != "" {
-		contentType = mt
+		contentType = safeContentType(mt)
+	}
+	if err := w.q.StageFile(ctx, store.StageFileParams{StorageKey: key, Now: w.now()}); err != nil {
+		return inboundAttachment{}, fmt.Errorf("meta: stage an attachment: %w", err)
 	}
 	if err := objects.Put(ctx, key, bytes.NewReader(data), contentType); err != nil {
 		return inboundAttachment{}, fmt.Errorf("meta: keep an attachment: %w", err)
 	}
 	return inboundAttachment{FileName: fileNameOf(f.url, contentType, index), ContentType: contentType, Size: int64(len(data))}, nil
+}
+
+// storedContentTypes are the types kept as the CDN gave them. Anything else
+// (text/html, image/svg+xml, ...) is a file a browser might run, and is stored
+// as application/octet-stream.
+var storedContentTypes = map[string]bool{
+	"image/jpeg": true, "image/png": true, "image/gif": true, "image/webp": true, "image/heic": true,
+	"video/mp4": true, "video/quicktime": true, "video/webm": true,
+	"audio/mpeg": true, "audio/mp4": true, "audio/aac": true, "audio/ogg": true, "audio/wav": true, "audio/webm": true,
+	"application/pdf": true, "application/msword": true, "application/vnd.ms-excel": true, "application/vnd.ms-powerpoint": true,
+	"text/plain": true, "text/csv": true, "application/zip": true,
+}
+
+// safeContentType is mt (parameters already stripped by mime.ParseMediaType)
+// when it is in the allow-list, else application/octet-stream.
+func safeContentType(mt string) string {
+	if storedContentTypes[mt] || strings.HasPrefix(mt, "application/vnd.openxmlformats-officedocument.") {
+		return mt
+	}
+	return "application/octet-stream"
 }
 
 // scrubURL drops the URL a transport error carries: it is the person's file's
@@ -517,34 +555,84 @@ func fileNameOf(rawURL, contentType string, index int) string {
 // transaction that took id 7 could commit after one that took id 8, so a
 // reader at cursor 8 would skip 7 for good. Holding the advisory lock from the
 // first insert to the commit makes ids commit in order.
+//
+// Files were written before this transaction, their keys staged in
+// meta.pending_files. A row's keys are unstaged here, in the transaction that
+// inserts the row that names them; a key whose transaction rolls back or never
+// runs stays staged, and retention deletes the object after a day. A row for a
+// Page removed meanwhile is not inserted (the Page row is read FOR SHARE, so
+// Remove Page cannot slip in before the commit), and its files are deleted
+// after the commit.
 func (w *SplitWorker) store(ctx context.Context, eventID int64, rows []fetchedRow) error {
-	ctx, cancel := context.WithTimeout(ctx, splitDBBudget)
-	defer cancel()
-	return db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		q := w.q.WithTx(tx)
-		if err := q.LockInbound(ctx); err != nil {
-			return err
-		}
-		now := w.now()
-		for _, r := range rows {
-			if r.skip {
-				continue
-			}
-			payload, err := json.Marshal(r.payload)
-			if err != nil {
+	var orphans []string
+	err := func() error {
+		ctx, cancel := context.WithTimeout(ctx, splitDBBudget)
+		defer cancel()
+		return db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			orphans = nil
+			q := w.q.WithTx(tx)
+			if err := q.LockInbound(ctx); err != nil {
 				return err
 			}
-			keys := r.keys
-			if keys == nil {
-				keys = []string{}
+			now := w.now()
+			var kept []string
+			for _, r := range rows {
+				if r.skip {
+					continue
+				}
+				if _, err := q.PageExistsForShare(ctx, r.pageID); err != nil {
+					if !errors.Is(err, pgx.ErrNoRows) {
+						return err
+					}
+					orphans = append(orphans, r.keys...)
+					continue
+				}
+				payload, err := json.Marshal(r.payload)
+				if err != nil {
+					return err
+				}
+				keys := r.keys
+				if keys == nil {
+					keys = []string{}
+				}
+				if _, err := q.InsertInbound(ctx, store.InsertInboundParams{
+					PageID: r.pageID, Kind: r.kind, DedupKey: r.dedupKey, Participant: r.participant,
+					OccurredAt: r.at, Payload: payload, StorageKeys: keys, Now: now,
+				}); err != nil {
+					return err
+				}
+				kept = append(kept, keys...)
 			}
-			if _, err := q.InsertInbound(ctx, store.InsertInboundParams{
-				PageID: r.pageID, Kind: r.kind, DedupKey: r.dedupKey, Participant: r.participant,
-				OccurredAt: r.at, Payload: payload, StorageKeys: keys, Now: now,
-			}); err != nil {
+			if err := q.UnstageFiles(ctx, kept); err != nil {
 				return err
 			}
+			return q.MarkWebhookEventSplit(ctx, store.MarkWebhookEventSplitParams{ID: eventID, Now: &now})
+		})
+	}()
+	if err != nil || len(orphans) == 0 {
+		return err
+	}
+	w.dropOrphans(ctx, orphans)
+	return nil
+}
+
+// dropOrphans deletes the files of rows that were not inserted and unstages
+// their keys. A file that cannot be deleted stays staged for retention.
+func (w *SplitWorker) dropOrphans(ctx context.Context, keys []string) {
+	objects, err := w.objects()
+	if err != nil {
+		w.logger.WarnContext(ctx, "meta: the files of a removed Page's event could not be deleted", "err", err)
+		return
+	}
+	var gone []string
+	for _, k := range keys {
+		if err := objects.Delete(ctx, k); err != nil && !errors.Is(err, storage.ErrNotExist) {
+			w.logger.WarnContext(ctx, "meta: a file of a removed Page's event could not be deleted; retention will", "err", err)
+			continue
 		}
-		return q.MarkWebhookEventSplit(ctx, store.MarkWebhookEventSplitParams{ID: eventID, Now: &now})
-	})
+		gone = append(gone, k)
+	}
+	if err := w.q.UnstageFiles(ctx, gone); err != nil {
+		w.logger.WarnContext(ctx, "meta: staged files could not be cleared", "err", err)
+	}
 }

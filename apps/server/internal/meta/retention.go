@@ -25,6 +25,9 @@ const (
 	unackedRetention = 30 * 24 * time.Hour
 	// profileRetention is how long a cached name is kept.
 	profileRetention = 30 * 24 * time.Hour
+	// stagedGrace is how long a staged file may wait for its transaction before
+	// it is taken for an orphan.
+	stagedGrace = 24 * time.Hour
 	// retentionBatch is how many expired rows one delete takes.
 	retentionBatch = 200
 )
@@ -66,8 +69,8 @@ func (w *RetentionWorker) Run(ctx context.Context) error {
 	}
 }
 
-// RunOnce is one pass: raw events, inbound rows with their files, then cached
-// profiles. A step that fails does not stop the ones after it; the errors are
+// RunOnce is one pass: raw events, inbound rows with their files, staged files
+// no row names, then cached profiles. A step that fails does not stop the ones after it; the errors are
 // joined.
 func (w *RetentionWorker) RunOnce(ctx context.Context) error {
 	now := w.now()
@@ -76,6 +79,9 @@ func (w *RetentionWorker) RunOnce(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("meta: delete old webhook events: %w", err))
 	}
 	if err := w.deleteExpiredInbound(ctx, now); err != nil {
+		errs = append(errs, err)
+	}
+	if err := w.deleteOrphanFiles(ctx, now); err != nil {
 		errs = append(errs, err)
 	}
 	if _, err := w.q.DeleteOldProfiles(ctx, now.Add(-profileRetention)); err != nil {
@@ -144,4 +150,41 @@ func (w *RetentionWorker) deleteFiles(ctx context.Context, keys []string) error 
 		}
 	}
 	return nil
+}
+
+// deleteOrphanFiles deletes the objects of staged keys older than stagedGrace
+// that no inbound row names (the split that wrote them crashed or rolled
+// back), and clears every such staging row; a key that a row does name just
+// loses its staging row. A file that cannot be deleted keeps its row for the
+// next pass.
+func (w *RetentionWorker) deleteOrphanFiles(ctx context.Context, now time.Time) error {
+	before := now.Add(-stagedGrace)
+	for {
+		rows, err := w.q.ListStaleStagedFiles(ctx, store.ListStaleStagedFilesParams{Before: before, MaxRows: retentionBatch})
+		if err != nil {
+			return fmt.Errorf("meta: list stale staged files: %w", err)
+		}
+		var done []string
+		var failed error
+		for _, r := range rows {
+			if !r.Referenced {
+				if err := w.deleteFiles(ctx, []string{r.StorageKey}); err != nil {
+					failed = err
+					continue
+				}
+			}
+			done = append(done, r.StorageKey)
+		}
+		if len(done) > 0 {
+			if err := w.q.UnstageFiles(ctx, done); err != nil {
+				return fmt.Errorf("meta: clear staged files: %w", err)
+			}
+		}
+		if failed != nil {
+			w.logger.WarnContext(ctx, "meta: an orphan file could not be deleted; it stays for the next pass", "err", failed)
+		}
+		if len(done) == 0 || len(rows) < retentionBatch {
+			return failed
+		}
+	}
 }

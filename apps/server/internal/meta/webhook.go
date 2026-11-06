@@ -11,9 +11,13 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/httpx"
 	"github.com/vantigo-io/vantigo/server/internal/meta/gen"
 	"github.com/vantigo-io/vantigo/server/internal/meta/store"
 )
@@ -52,9 +56,10 @@ func (s *server) GetMetaWebhook(ctx context.Context, req gen.GetMetaWebhookReque
 	return gen.GetMetaWebhook200TextResponse(hubParam(req.Params.HubChallenge)), nil
 }
 
-// PostMetaWebhook stores Meta's event. The contract declares no request body,
-// so the raw bytes are read from the request itself: the signature is over the
-// bytes as Meta sent them, and a body decoded and encoded again is other
+// PostMetaWebhook stores Meta's event. The contract declares the body as raw
+// octet-stream, so the strict wrapper hands over r.Body undecoded whatever
+// Content-Type Meta sent (it sends application/json): the signature is over
+// the bytes as Meta sent them, and a body decoded and encoded again is other
 // bytes. Nothing is parsed for routing before the answer, and nothing before
 // the signature held. (POST /api/v1/meta/webhook)
 func (s *server) PostMetaWebhook(ctx context.Context, _ gen.PostMetaWebhookRequestObject) (gen.PostMetaWebhookResponseObject, error) {
@@ -89,7 +94,7 @@ func (s *server) PostMetaWebhook(ctx context.Context, _ gen.PostMetaWebhookReque
 
 	if !validSignature(secret, r.Header.Get("X-Hub-Signature-256"), body) {
 		// Neither the body, the signature nor the secret is logged.
-		s.logger.WarnContext(ctx, "meta: a webhook post was refused: its signature did not hold")
+		s.warnRefused(ctx, httpx.ClientIP(r))
 		now := s.now()
 		olderThan := now.Add(-touchEvery)
 		if err := s.q.TouchRejected(dbCtx, store.TouchRejectedParams{Now: &now, OlderThan: &olderThan}); err != nil {
@@ -102,8 +107,18 @@ func (s *server) PostMetaWebhook(ctx context.Context, _ gen.PostMetaWebhookReque
 	}
 
 	if _, err := s.q.InsertWebhookEvent(dbCtx, store.InsertWebhookEventParams{Now: s.now(), Payload: body}); err != nil {
-		s.logger.WarnContext(ctx, "meta: a webhook event could not be stored", "err", err)
-		return gen.PostMetaWebhook503Response{}, nil
+		if !unstorableJSON(err) {
+			s.logger.WarnContext(ctx, "meta: a webhook event could not be stored", "err", err)
+			return gen.PostMetaWebhook503Response{}, nil
+		}
+		// Valid JSON that Postgres refuses as jsonb (an escaped NUL): Meta would
+		// retry it for ever on a 503, so the bytes are kept as they are, in a row
+		// that is born failed. The body is not logged.
+		s.logger.WarnContext(ctx, "meta: a webhook body that jsonb cannot hold was kept as bytes", "bytes", len(body))
+		if err := s.q.InsertRejectedWebhookEvent(dbCtx, store.InsertRejectedWebhookEventParams{Now: s.now(), Raw: body}); err != nil {
+			s.logger.WarnContext(ctx, "meta: a webhook event could not be stored", "err", err)
+			return gen.PostMetaWebhook503Response{}, nil
+		}
 	}
 	now := s.now()
 	olderThan := now.Add(-touchEvery)
@@ -111,6 +126,72 @@ func (s *server) PostMetaWebhook(ctx context.Context, _ gen.PostMetaWebhookReque
 		s.logger.WarnContext(ctx, "meta: the last webhook time could not be noted", "err", err)
 	}
 	return gen.PostMetaWebhook200Response{}, nil
+}
+
+// unstorableJSON is whether err is Postgres refusing the text as jsonb:
+// untranslatable character (22P05) or invalid byte sequence (22021).
+func unstorableJSON(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && (pgErr.Code == "22P05" || pgErr.Code == "22021")
+}
+
+// refusedLog rate-limits the warning for a refused signature: a bad actor
+// posting in a loop must not fill the log. One warning per client address per
+// minute; the ones held back are counted and the count goes in the next.
+type refusedLog struct {
+	mu      sync.Mutex
+	clients map[string]*refusedClient
+}
+
+type refusedClient struct {
+	last       time.Time
+	suppressed int
+}
+
+const (
+	refusedLogEvery = time.Minute
+	// refusedLogMax bounds the map; an address idle for a minute is dropped, and
+	// at the bound all of them are, which only lets a warning through early.
+	refusedLogMax = 4096
+)
+
+// allow reports whether a warning for client may be written now, and how many
+// were held back since the last one.
+func (l *refusedLog) allow(client string, now time.Time) (bool, int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.clients == nil {
+		l.clients = map[string]*refusedClient{}
+	}
+	c, ok := l.clients[client]
+	if ok && now.Sub(c.last) < refusedLogEvery {
+		c.suppressed++
+		return false, 0
+	}
+	if !ok {
+		if len(l.clients) >= refusedLogMax {
+			for k, v := range l.clients {
+				if now.Sub(v.last) >= refusedLogEvery {
+					delete(l.clients, k)
+				}
+			}
+			if len(l.clients) >= refusedLogMax {
+				clear(l.clients)
+			}
+		}
+		c = &refusedClient{}
+		l.clients[client] = c
+	}
+	held := c.suppressed
+	c.last, c.suppressed = now, 0
+	return true, held
+}
+
+// warnRefused logs a refused signature, at most once a minute per client.
+func (s *server) warnRefused(ctx context.Context, client string) {
+	if ok, held := s.refused.allow(client, s.now()); ok {
+		s.logger.WarnContext(ctx, "meta: a webhook post was refused: its signature did not hold", "suppressed", held)
+	}
 }
 
 // validSignature reports whether header is "sha256=" and the hex HMAC-SHA256

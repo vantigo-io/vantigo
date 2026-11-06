@@ -11,6 +11,8 @@ import (
 type server struct {
 	core
 	graph *graphClient
+	// refused rate-limits the log of refused webhook signatures.
+	refused refusedLog
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
