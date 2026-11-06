@@ -280,7 +280,10 @@ The single-container default hosts every enabled module's background workers (ou
 delivery, retention, attachment cleanup, Communications' mailbox sync
 `communications-mailbox-sync`, always, which reads each Microsoft 365 channel's Inbox
 every 30 seconds — the object store and outbound https to `graph.microsoft.com` are what
-it needs —, the customers registry workers, the
+it needs —, Communications' messenger sync `communications-messenger-sync`, always, which
+asks the messaging providers every 2 seconds which Pages have new events and reads each
+Messenger channel's inbox of events — it needs the object store, and reaches nothing on the
+network itself: the messaging provider's own module holds the connection —, the customers registry workers, the
 customers import worker `customers-import`, the energy import worker `energy-import`, the energy spot price worker
 `energy-spot-prices` when `ENERGY_SPOT_PRICE_SERVICE_URL` is set or `ENERGY_SPOT_PRICE_FEED_ENABLED=1`, the invoices EHF workers `invoices-ehf` and `invoices-ehf-events` when
 `INVOICES_EHF_ENABLED` is on, the invoices reminder worker `invoices-reminders`,
@@ -323,7 +326,7 @@ instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever 
 you use, retention cleanup, the registry workers, the EHF events worker, the
 calendar cancellations worker, `entra-outlook-sweep` and `assistant-retention` take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
 the `invoices-ehf` worker, the `invoices-reminders` worker, the `invoices-billing` worker,
-the `invoices-payments` worker, `communications-mailbox-sync`, the calendar subscriptions and mailbox sync workers and `events.dispatch` instead take one row at a time under a time-limited lease, so any number of
+the `invoices-payments` worker, `communications-mailbox-sync`, `communications-messenger-sync`, the calendar subscriptions and mailbox sync workers and `events.dispatch` instead take one row at a time under a time-limited lease, so any number of
 instances share the work without sending anything twice. `google-sweep` and
 `invoices.allocation_reconcile` take neither: each of their steps claims its rows in one
 statement, so two instances never handle the same row. The reminder worker sends one letter at a time, at most one a

@@ -197,10 +197,14 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    reads their busy time from; rule 14), `ChannelMailboxes` (`contracts.ChannelMailbox`,
    entra — a provider's mailboxes as Communications' channels send from; rule 15) and
    `PersonalMailboxes` (`contracts.PersonalMailbox`, entra — a person's delegated
-   mailbox to send from in Communications; rule 16) —, `DirectorySearches`
+   mailbox to send from in Communications; rule 16) —, `ChannelMessengers`
+   (`contracts.ChannelMessenger` — a messaging provider as Communications' Messenger
+   channels send and receive through; rule 15, the messenger slot; no provider fills
+   it yet but the tests' fake) with the same keyed collection, whose key no mailbox
+   provider may also claim, `DirectorySearches`
    (`contracts.DirectorySearch`, entra — a directory's accounts as identity offers them
    to an Owner connecting existing users; rule 22; Compose only, as no worker searches),
-   all four keyed and from the enabled modules too,
+   all five keyed and from the enabled modules too,
    `CustomerReferences`
    (`contracts.CustomerReferenceHolder`, rule 8), `CustomerPersonalData`
    (`contracts.CustomerPersonalData`, rule 9), `InvoicedWork`
@@ -235,11 +239,13 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    `modtest.WithIdentityProvisioners`, which `modtest.FakeIdentityProvisioner` fills)
    come first and keep their place. The three mailbox slots and `DirectorySearches` are
    collected by the same rule — one generic helper, `collectKeyed`, behind
-   `withMailboxCalendars`, `withChannelMailboxes`, `withPersonalMailboxes` (Compose and
+   `withMailboxCalendars`, `withChannelMailboxes`, `withChannelMessengers`,
+   `withPersonalMailboxes` (Compose and
    Workers, after the identity provisioners) and the directory searches (Compose) —:
    presets first (`modtest.WithMailboxCalendar`, `WithChannelMailbox`,
-   `WithPersonalMailbox`, `WithDirectorySearch` append), a duplicate or reserved key
-   refused. A consumer never iterates them to call out except where its rule says: it
+   `WithChannelMessenger`, `WithPersonalMailbox`, `WithDirectorySearch` append), a duplicate
+   or reserved key refused — and, for the messengers, a key also filled in
+   `ChannelMailboxes`, since a channel's provider names one kind of provider. A consumer never iterates them to call out except where its rule says: it
    picks the provider by a key it already holds — the calendar by the person's
    `DirectoryAccount.Provider`, Communications by the channel's `provider` and by the
    `send_provider` it recorded, identity by the configured OIDC provider — through one
@@ -826,6 +832,24 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     ([Communications](/en/reference/communications/#receiving)). The provider's ids are
     opaque and case-sensitive; Communications keeps them in its own receipts.
 
+    **The messenger slot.** A second slot of the same direction serves a channel of type
+    `messenger` (Messenger design N1, N2): `contracts.ChannelMessenger`, in the many-provider
+    slot `ChannelMessengers` (rule 5), collected through `module.Module.ChannelMessenger` by
+    `withChannelMessengers` — which refuses a key filled in both this slot and
+    `ChannelMailboxes`, so a provider key names one kind. Where a mailbox is read as a delta of
+    mail, a messenger is a chat: the provider queues what it receives under its own insertion
+    id, which Communications reads from a cursor (`Pending`) and acknowledges (`Ack`), copies
+    attachments through `OpenAttachment` and never as a storage key, learns of new events from
+    `Notified`, and sends one part of a message at a time (`Send`) — every call but `Key`,
+    `DisplayName`, `Status` and `Capabilities`, which make no network call, a provider call,
+    made outside any transaction through an accessor in `contractscalls.go` that refuses one
+    inside. `Capabilities` carries the limits of a message's components and the reply window,
+    which Communications checks a reply against. A channel names its provider by `Key` and its
+    Page by address, and is never served by a provider under another key. Communications'
+    tests run against a fake (`fake_messenger_test.go`), set by
+    `modtest.WithChannelMessenger`; no module fills the slot yet, and Compose tests pin that
+    a key two modules claim, a reserved one and one filled in both slots are refused.
+
 16. **Communications sends through a person's delegated mailbox.** The eighth sanctioned
     cross-module direction, Communications → a provider module, made for personal sending
     (Outlook connection and Microsoft 365 mail design M20): `contracts.PersonalMailbox`, in
@@ -1243,7 +1267,11 @@ none is a numbered rule above because no module reaches into another.
   `Check` recorded without a call, and `TestCompose_CollectsTheMailboxSlots` (with
   `TestWorkers_CollectTheMailboxSlots`) that two providers under two keys are both kept
   while a key two claim, or a reserved one, is refused. Communications' tests run two
-  fakes under two keys, so a channel is proven served by its own provider only.
+  fakes under two keys, so a channel is proven served by its own provider only. The
+  messenger slot is held to the same tests (`TestCompose_CollectsTheMailboxSlots` runs it
+  too, and `TestCompose_RefusesAKeyInBothChannelSlots` pins the cross-slot refusal), and
+  Communications' Messenger tests run a fake `ChannelMessenger` whose Profile, Send and
+  OpenAttachment calls the same hook proves were never made inside a transaction.
 - **Rule 18**: by depguard and by test. depguard forbids every import of `internal/operations`
   but `internal/assistant`, `internal/module`, `internal/server` and the test harnesses; a
   `module` test composes a module called `alpha` and one called `assistant` and proves which is

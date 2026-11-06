@@ -1,6 +1,6 @@
 ---
 title: "Communications module"
-description: "Business email from shared mailboxes: the channels' providers — SMTP, and the shared mailboxes of every mailbox provider (Microsoft 365 through the Microsoft Entra ID module, and Google Workspace's licensed Gmail mailboxes through the Google Workspace module), named by key, created by address or switched from SMTP, with an optional import window and Outlook on-close behavior — the outbox and its delivery through either, the size a mailbox channel takes; the OutboundMail slot, through which Invoices and Calendar send customer mail from a channel an Owner chose, and the end of any fall-back to the installation's SMTP; receiving into a mailbox channel — the mailbox sync, change notifications, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all, and Outlook state on close —; sending from one's own address through the provider that answers for the person; retention and the operator's configuration."
+description: "Business email from shared mailboxes: the channels' providers — SMTP, and the shared mailboxes of every mailbox provider (Microsoft 365 through the Microsoft Entra ID module, and Google Workspace's licensed Gmail mailboxes through the Google Workspace module), named by key, created by address or switched from SMTP, with an optional import window and Outlook on-close behavior — the outbox and its delivery through either, the size a mailbox channel takes; the OutboundMail slot, through which Invoices and Calendar send customer mail from a channel an Owner chose, and the end of any fall-back to the installation's SMTP; receiving into a mailbox channel — the mailbox sync, change notifications, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all, and Outlook state on close —; sending from one's own address through the provider that answers for the person; Messenger channels — the channel types and the default of each, the ChannelMessenger slot, the messenger sync worker, components, answers and the reply window, sending a message in parts, and the new refusals —; retention and the operator's configuration."
 sources:
   - apps/server/internal/communications
   - apps/communications/frontend
@@ -11,8 +11,10 @@ sources:
   - apps/server/internal/db/migrations/00094_communications_mailbox_marks.sql
   - apps/server/internal/db/migrations/00095_communications_personal_sending.sql
   - apps/server/internal/db/migrations/00111_communications_provider_neutral.sql
+  - apps/server/internal/db/migrations/00130_communications_messaging.sql
   - apps/server/internal/contracts/outbound_mail.go
   - apps/server/internal/contracts/channel_mailbox.go
+  - apps/server/internal/contracts/channel_messenger.go
   - apps/server/internal/contracts/personal_mailbox.go
 ---
 Communications is a module inside the single Vantigo binary, not a separately
@@ -139,6 +141,11 @@ Mailbox providers are called a *mailbox channel*'s
 below. Mailgun, which this port never created, has left the contract; a create or update
 naming a provider that is neither `smtp` nor a filled key is a 400 under `smtp` (*SMTP
 credentials require the smtp provider.*).
+
+A channel also has a **type**, `email` or `messenger` ([Messenger channels](#messenger-channels)):
+an `email` channel's provider is `smtp` or a mailbox provider's key, a `messenger` channel's the
+key of a `contracts.ChannelMessenger`, and everything this section says of providers is of
+`email` channels unless it says otherwise.
 
 **Only a mailbox channel receives.** Its shared mailbox's Inbox is read by the
 `communications-mailbox-sync` worker ([Receiving](#receiving)), which writes each message
@@ -551,9 +558,11 @@ has connections deadlock it, and readiness with them — and it calls no other m
 
 ### Background workers
 
-The module contributes four background workers: outbox delivery, retention, attachment
-cleanup and `communications-mailbox-sync`, which reads each mailbox channel's Inbox
-([Receiving](#receiving)). `worker` mode always runs them, `server`
+The module contributes five background workers: outbox delivery, retention, attachment
+cleanup, `communications-mailbox-sync`, which reads each mailbox channel's Inbox
+([Receiving](#receiving)), and `communications-messenger-sync`, which reads each Messenger
+channel's inbox of events ([The messenger sync worker](#the-messenger-sync-worker)).
+`worker` mode always runs them, `server`
 mode never does, and `api` mode runs them when `WORKERS_IN_PROCESS=1` (the default).
 A deployment that scales the API horizontally should set `WORKERS_IN_PROCESS=0` on
 the API replicas and run one dedicated `worker` container, so extra HTTP replicas do
@@ -566,7 +575,7 @@ attributes. Five are the outbox's: `communications.outbox.possible_duplicate_sen
 `.jobs_completed`, `.jobs_retried`, `.jobs_held` (a try of a mailbox channel's job
 put back while its provider is unavailable, spending no attempt) and `.jobs_failed`.
 **Alert on the last one: every increment is undelivered customer email.** The sixth is
-the mailbox sync's, `communications.inbound.cycles_failed`: one per cycle whose failure was
+the mailbox sync's and the messenger sync's, `communications.inbound.cycles_failed`: one per cycle whose failure was
 written on its channel — a refusal (`mailbox_denied`, `mailbox_gone`, `mailbox_unknown`)
 or any other failure to read or import (`sync_failed`) — and not a cycle held for an
 unavailable provider, nor one that lost its lease. A rise means a channel's mail is not
@@ -1080,6 +1089,235 @@ message delta; whether Graph honours 50 messages a page; whether a message moved
 Inbox from another folder arrives as created or updated (the worker imports either);
 `$value`'s ceiling, whether it ever redirects (the client follows none), and how fast
 25 MiB arrives inside the read's 90 seconds.
+
+## Messenger channels
+
+Communications has a second kind of channel beside e-mail: **Messenger**, a chat through a
+Facebook Page the business owns (Messenger design, delivery A: the groundwork, proven
+against a fake provider). Nothing in Communications names Facebook or Meta: a Messenger
+channel is served by whatever fills the `contracts.ChannelMessenger` slot.
+
+### Types, providers and the default of each
+
+`channels.type` is `email` or `messenger`; `POST /channels` takes either, and any other
+type is a 400 under `type` (*Only the email and messenger channels are currently
+supported.*). The address rule depends on the type: an `email` channel's address stays
+RFC 5322, a `messenger` channel's is the **Page id**, 1 to 30 digits (a 400 under `address`,
+*A valid Facebook Page id is required.*). A `messenger` channel takes no `smtp` block and no
+mailbox options.
+
+**The provider has to serve the type.** A `messenger` channel's `provider` is the key of a
+filled `ChannelMessenger`; an `email` channel's stays `smtp` or the key of a filled
+`ChannelMailbox`. Naming one that serves the other type — a messenger key for an e-mail
+channel, `smtp` (the default when none is named) or a mailbox key for a Messenger one — is
+**422 `provider_type_mismatch`**, on create, on `POST /channels/{id}/provider` and, as a 400
+under `provider`, on `PUT /channels/{id}`; a Messenger channel's provider cannot be changed
+or switched at all. A key filled in neither slot is no mismatch: it is a provider that is off,
+and a create answers **409 `messenger_off`** (*Messenger channels
+through … are not available.*). `module.Compose` and `module.Workers` refuse a key filled in
+both slots, so a key names one kind of provider. Dispatch is by the channel's type and the slot
+that fills its key: `isMailboxProvider` (anything but SMTP) is asked only of an `email`
+channel's provider.
+
+**Creating one** (`channels-manage`) checks the provider before any transaction opens,
+as a mailbox channel does: the provider filled and its `Status` available (else 409
+`messenger_off`), then `Check(address)` — a Page it has connected, and that is available. An
+unknown Page is **422 `endpoint_unknown`**, an unavailable one **422 `endpoint_unavailable`**,
+and a provider that does not answer **503 `provider_unreachable`**. The channel is stored
+with the address `Check` answered, `settings` `{}`, no credential row and — when no
+`displayName` was given — the Page's name as its display name, and a `messenger_sync` row at
+cursor 0 is made in the same transaction. `POST /channels/{id}/verify` runs the same check
+again, every refusal a 422.
+
+**The default is the default of its type (design divergence 16).** `ClearDefaultChannels`,
+`ClearOtherDefaultChannels` and `AnyChannelExists` were type-unfiltered, so the first
+Messenger default would have demoted the e-mail default Invoices and Calendar send through.
+All three now filter by `type`: the first channel of a type is its default, making a channel
+default demotes only the others of its type, and a PUT with `isDefault` does the same.
+The global advisory lock of divergences 14 and 15 stays, one slot for every writer whichever
+type it writes. Conversation create with no channel named still uses the default
+`email` channel, and with a Messenger `channelId` is **422 `channel_cannot_start`**: the
+person always writes first.
+
+`GET /channel-providers` lists, after SMTP and the mailbox providers, **every filled
+messenger provider**: `{key, displayName, type: "messenger", available, reason?, endpoints}`,
+`endpoints` each Page the provider has connected, `{address, displayName, available,
+reason?}`; every other entry carries `type: "email"` and `endpoints: null`. `GET /channels`
+answers a Messenger channel's `available` as the provider offered **and** its Page available,
+and its `sync` as its `messenger_sync` row's state, the code of its last failure and when it
+last finished.
+
+### The ChannelMessenger slot
+
+`contracts.ChannelMessenger` is a many-provider slot keyed by `Key()`, filled through
+`module.Module.ChannelMessenger` and collected into `Deps.ChannelMessengers` by `Compose` and
+`Workers`, after the channel mailboxes (`modtest.WithChannelMessenger` presets one). Its
+methods are `Status`, `Capabilities`, `Endpoints`, `Check`, `Send`, `Notified`, `Pending`,
+`OpenAttachment`, `Ack` and `Profile`; every one but `Key`, `DisplayName`, `Status` and
+`Capabilities` is a provider call, made through an accessor in `contractscalls.go` that
+refuses it inside a transaction of the module (`errCallInsideTransaction`), as the mailbox
+slot's are. **The cursor** is the provider's own insertion id, a bigserial and never a
+timestamp, because webhooks arrive out of order; an event's time only orders the display.
+**Attachments** cross the boundary through `OpenAttachment`, never as a storage key: the
+import copies the bytes into Communications' own storage before its transaction, and after
+`Ack` the provider deletes its own copy. An event is a `message` (text, attachments, an
+optional answer, the participant's platform id, a time and the platform's message id; an
+**echo** is a `message` marked `echo`), a `delivered` or a `read`, each of the last two
+carrying a watermark. The errors are `ErrMessengerUnavailable`, `ErrMessengerEndpointUnknown`,
+`ErrRecipientUnreachable`, `ErrReplyWindowClosed`, `ErrHumanAgentNotPermitted`,
+`ErrMessengerRejected` and the wrapper `MessengerTemporary`.
+
+### The messenger sync worker
+
+`communications-messenger-sync` is a worker of its own, not a rename of the mailbox sync
+(whose queries now also filter on `type = 'email'`, so a Messenger channel is never claimed by
+the mailbox cycle and has no `channel_sync` row). Its state is `communications.messenger_sync`:
+the `channel_id`, the `cursor`, `notified`, `next_sync_at`, `lease_id` and `lease_until`, a
+`state` of `active`, `failed` or `stopped`, `last_error` and `attempts`.
+
+**The cycle.** Every 2 seconds the worker asks each provider for `Notified(since)` and marks
+the active channels on the Pages named notified and due; a channel is due every 60 seconds
+regardless. It claims one due channel by a conditional update on its lease (two minutes,
+renewed before each event; the notice is taken with the claim, so one that arrives during
+the cycle makes the channel due at once at its end), reads `Pending(cursor, 100)` and, for
+each event, outside any transaction opens each attachment through `OpenAttachment` into
+storage — an object reserved first, as staging does, so a rollback leaves a
+`attachment_cleanup_records` row — and reads the participant's `Profile` when the participant
+is new or its name is older than 30 days (`participant_profiles` holds when). One
+transaction then writes the receipt, which dedupes by `(channel_id, provider_message_id)`,
+the participant, the threading, the message, its attachments and **the cursor's advance, which
+the lease guards**: an import by a worker that lost its lease rolls back. The cycle ends with
+`Ack(cursor)` — called every cycle, idempotent, so one whose `Ack` failed acknowledges the
+next time. A `Pending` or `Ack` failure backs the channel off exactly as the mailbox sync
+does (a minute, doubled per attempt, at most an hour; `sync_failed`), an unavailable provider
+holds it five minutes without spending an attempt (`provider_unavailable`), and an event
+Postgres refuses is given up on with a failed `import_failed` receipt while the cursor goes
+on.
+
+**Threading by participant.** A Messenger participant's `address` is the platform's id for the
+person, matched exactly, and its `display_name` is the profile's. An inbound message joins the
+newest **open** conversation of the channel the participant is in; otherwise it starts one,
+with **no subject** — the conversation's title is the participant's name. A closed
+conversation stays closed. The customer link is manual: Messenger gives no e-mail address,
+so the e-mail linker does not run, except on an address shared in answer to *Ask for e-mail*,
+which feeds it as a **suggestion** (the customers its contacts belong to become
+`conversation_customer_candidates` of a conversation with no customer, and the participant
+gets the one contact), never a link.
+
+**Echoes and watermarks.** An echo whose platform id is in `messenger_parts` is a message of
+ours: its receipt is `skipped` (`own_message`) and nothing is imported. Any other echo is a
+message sent from Meta Business Suite or another app on the Page: it is imported as an
+**outbound** message with no participant and `channel_metadata_json.echo`, in the thread of
+the participant it was sent to. An echo can arrive before the part that caused it has its
+id recorded, so while the channel has a part whose `Send` began in the last minute and has no
+`sent_at`, an echo that matches no part holds the cycle at it (the cursor stays, the channel
+is due again in 5 seconds). A `delivered` or `read` watermark moves every delivery of an
+outbound message in the participant's conversations of the channel whose `accepted_at` is at
+or before it, from `relay_accepted` (and, for `read`, `delivered`) to `delivered` or `read`,
+writing a message event for each; it is monotonic and so idempotent, and goes through no
+receipt, whose `outcome` CHECK is shaped by the mailbox.
+
+### Components, answers and the window
+
+**Components** are what a message carries beside its text (`conversation_messages.components`,
+and `message_attachments.role`, `file` or `card`, default `file`): `answerOptions` (1 to 13,
+the order given; a title of 1 to 20 characters), `shareEmail` (Messenger's `user_email` quick
+reply) and `cards` (a carousel: a title of 1 to 80 characters, a subtitle of at most 80, up
+to 3 choices of 1 to 20 characters each, and the card's image, an attachment of role `card`).
+An `id` is `[a-z0-9-]{1,40}`, unique within its message; the payload the platform carries is
+`v1:<messageId>:<id>`. The limits are the provider's `Capabilities`, which the conversation
+detail answers as `componentLimits`. Cards are in the contract and rendered by the thread, but
+a reply carrying any is refused (`components_invalid`, under `cards`) until the delivery that
+attaches a product's images copies them.
+
+**Answers.** A tapped answer option or card choice comes back as a `message` event with
+`answer: {messageId, choiceId}` and the title the customer saw as its text. The inbound
+message stores the answer in `channel_metadata_json.answer` and the detail answers it as
+`answerTo: {messageId, choiceId, title}`; the thread shows it as a chip under its question,
+which marks the chosen option. A payload the server cannot place — the message is not an
+outbound message of this conversation — becomes plain text and is logged at info. An e-mail
+address shared in answer to *Ask for e-mail* carries `choiceId` `share-email` and is placed
+under the newest message of the conversation that asked.
+
+**The window** is open for 24 hours after the participant's newest inbound message — an
+echo is outbound and does not count — and a reply made at the very instant it closes is
+inside it. When the provider's `Capabilities` give a longer `HumanAgentWindow` (Meta's Human
+Agent permission), the window runs to 7 days and a reply after the first 24 hours is sent
+tagged. The conversation detail answers `replyWindow: {state: open | human_agent | closed,
+closesAt}`, `null` for an e-mail conversation. A reply to a closed window is **422
+`reply_window_closed`**, checked after the idempotency replay, so a reply that was accepted
+inside the window is still answered when it is replayed outside it. The outbox checks the
+window again at send time: a job that missed it fails terminally as `reply_window_closed`,
+and does not retry.
+
+### Reply on a Messenger conversation
+
+`POST /conversations/{id}/reply` takes the same steps with the e-mail-only inputs refused or
+ignored. After the channel's `channel_inactive` check, and before the idempotency replay:
+
+| Refusal | When |
+| --- | --- |
+| 422 `not_supported_on_channel` | `sendFromPersonal` is true, or `replyMode` is `reply_all` |
+| 400 `invalid_request`, `textBody` | the text is blank (the HTML is ignored) |
+| 422 `text_too_long` | the text is longer than the provider's `MaxText` characters (2000) |
+| 422 `components_unsupported` | there are components and the provider takes none — and on every e-mail channel |
+| 422 `components_invalid`, with `fields` | a limit is broken: `answerOptions` (empty, over the limit), `answerOptions[i].title` or `.id`, `shareEmail` where the provider has none, `cards` |
+
+The subject is ignored (a chat has none), `mailEstimate` is not run, and no Cc exists. The
+person answered is the conversation's participant (the one whose message came last), and one
+`to` delivery to the participant's platform id is written. `replyFingerprint` includes the
+components: a replay with other components under the same `Idempotency-Key` is the existing
+409 `idempotency_key_reused`, and a reply with none keeps the fingerprint it had. Suppressions
+stay e-mail only; a person who blocks the Page shows as the terminal failure
+`recipient_unreachable`.
+
+### Sending in parts
+
+The outbox has a messenger branch beside SMTP and the mailbox (`outbox_messenger.go`).
+Messenger takes one attachment per message, so a message is sent as **ordered parts**: the
+text, if any; each `file` attachment, in a stable order (when attached, then by id — the order the parts
+are counted in, so a job claimed again counts them alike); then the
+carousel, built from the `card` attachments and the stored cards. The answer options and the
+request for an e-mail address ride on the last part. A `card` attachment is never a part of
+its own.
+
+**Progress per part** is `communications.messenger_parts`, keyed by `(message_id,
+part_index)` with `ON DELETE CASCADE` from the message: `attempted_at`, `platform_message_id`
+and `sent_at`. Each is written in its own statement, outside any transaction —
+`attempted_at` immediately before `Send`, the platform's id and `sent_at` immediately after.
+The job-level marker `delivery_attempted_at` is not stamped on this path. **A job claimed
+again skips the parts already sent.** A part with `attempted_at` and no `sent_at` is the
+per-part possible duplicate: it is logged, counted in
+`communications.outbox.possible_duplicate_sends`, and sent again. **The lease** is renewed
+by a conditional update on `lease_id` before every part after the first of a run; a renewal
+that finds the lease taken stops the job without sending or writing a failure, and the new
+holder carries on from the parts recorded. Each `Send` has the `outboxSendTimeout`
+(30 seconds). When every part is sent, the e-mail path's completion runs: the job is
+`completed`, every delivery `relay_accepted` with a `relay_accepted` event.
+
+The provider's errors map onto the outbox's outcomes:
+
+| Error | Outcome |
+| --- | --- |
+| `ErrRecipientUnreachable` | terminal, `recipient_unreachable` |
+| `ErrReplyWindowClosed` | terminal, `reply_window_closed` |
+| `ErrHumanAgentNotPermitted` | terminal, `human_agent_not_permitted` |
+| `ErrMessengerRejected` | terminal, `rejected` |
+| `ErrMessengerUnavailable`, or no provider filled | held: back to retry without spending an attempt, failed as `provider_unavailable` 24 hours after it was queued |
+| `MessengerTemporary`, or any error the contract does not name | retried on the backoff, up to 8 attempts |
+
+A terminal code is carried by the failure event and shown as the delivery's error; the
+job's `last_error` stays the constant `Outbound delivery failed.`.
+
+### Participants and personal data
+
+A Messenger participant row holds the platform's id for the person and its name, as an e-mail
+participant holds an address. **Communications' erasure of a customer's personal data covers
+its own copies — the conversations, their messages, attachments and parts — but the
+participant rows outlive it until retention's orphan sweep (`DeleteOrphanParticipants`), the
+same as an e-mail participant does today.** Retention deletes messages by its window as for
+e-mail, `messenger_parts` going with them, and the receipts' sweep deletes a receipt whose
+message is gone.
 
 ## Sending from one's own address
 
