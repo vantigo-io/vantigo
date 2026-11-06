@@ -204,19 +204,35 @@ const queryString = (filters: ConversationFilters) => {
   const query = params.toString();
   return query ? `?${query}` : "";
 };
-export const conversationsQueryOptions = (filters: ConversationFilters = {}) =>
+/** Polling: how often a query refetches while it is on screen (Messenger design N26); false for never. */
+export type PollingOptions = { refetchInterval?: number | false };
+
+export const conversationsQueryOptions = (filters: ConversationFilters = {}, polling: PollingOptions = {}) =>
   queryOptions({
     queryKey: ["conversations", filters],
+    refetchInterval: polling.refetchInterval ?? false,
     queryFn: ({ signal }) =>
       request<Page<ConversationListItem>>(`/api/v1/communications/conversations${queryString(filters)}`, { signal }),
     placeholderData: keepPreviousData,
   });
-export const conversationQueryOptions = (id: string) =>
+export const conversationQueryOptions = (id: string, polling: PollingOptions = {}) =>
   queryOptions({
     queryKey: ["conversation", id],
+    refetchInterval: polling.refetchInterval ?? false,
     queryFn: ({ signal }) =>
       request<ConversationDetail>(`/api/v1/communications/conversations/${encodeURIComponent(id)}`, { signal }),
     enabled: Boolean(id),
+  });
+/** The caller's unread open conversations, and those assigned to them (Messenger design N27). */
+export type InboxCounts = { unread: number; assignedToMeUnread: number };
+export const inboxCountsQueryKey = ["inbox-counts"] as const;
+export const inboxCountsQueryOptions = (polling: PollingOptions & { enabled?: boolean } = {}) =>
+  queryOptions({
+    queryKey: inboxCountsQueryKey,
+    queryFn: ({ signal }) => request<InboxCounts>("/api/v1/communications/inbox/counts", { signal }),
+    enabled: polling.enabled ?? true,
+    refetchInterval: polling.refetchInterval ?? false,
+    refetchOnWindowFocus: true,
   });
 export const personalSenderQueryOptions = () =>
   queryOptions({

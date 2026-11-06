@@ -34,17 +34,32 @@ export type ConversationComposerProps = {
   connectionButton?: (props: ConnectionButtonProps) => ReactNode;
   /** Called with true while the composer has focus and text, so the thread announces "replying". */
   onDraftingChange?: (drafting: boolean) => void;
+  /** Whether the person may reply (communications:conversations-reply); without it the composer is read-only. Default true. */
+  canReply?: boolean;
 };
 
 /**
  * The composer of a conversation by its channel's type: a chat composer on Messenger (design N8), the
  * e-mail composer on every other channel, unchanged.
  */
-export function ConversationComposer(props: ConversationComposerProps) {
+export function ConversationComposer({ canReply = true, ...props }: ConversationComposerProps) {
+  if (!canReply) return <ReadOnlyComposer />;
   return isChat(props.conversation) ? (
     <ChatComposer conversation={props.conversation} onSent={props.onSent} onDraftingChange={props.onDraftingChange} />
   ) : (
     <EmailComposer {...props} />
+  );
+}
+
+/** What the composer is for a person who may read a conversation but not answer it. */
+function ReadOnlyComposer() {
+  const { t } = useI18n("communications");
+  return (
+    <footer className="composer">
+      <Text size="sm" c="dimmed">
+        {t("readOnlyComposer")}
+      </Text>
+    </footer>
   );
 }
 
