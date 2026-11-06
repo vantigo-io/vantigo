@@ -72,7 +72,9 @@ export const ProductImages = ({ productId }: ProductImagesProps) => {
   const send = async (files: File[]) => {
     const failed: Refusal[] = [];
     for (const file of files) {
-      if (file.type !== "image/jpeg" && file.type !== "image/png") {
+      // A file the browser gives no type — some platforms do not for a photo —
+      // goes to the server, which judges the bytes and not the name.
+      if (file.type !== "" && file.type !== "image/jpeg" && file.type !== "image/png") {
         failed.push({ name: file.name, message: t("images.wrongType", { name: file.name }) });
         continue;
       }
@@ -185,6 +187,7 @@ export const ProductImages = ({ productId }: ProductImagesProps) => {
                 position={index + 1}
                 first={index === 0}
                 last={index === images.length - 1}
+                busy={change.isPending || remove.isPending}
                 onChange={(input) => change.mutate({ image, input })}
                 onDelete={() => confirmDelete(image)}
               />
@@ -209,11 +212,13 @@ interface ImageCardProps {
   position: number;
   first: boolean;
   last: boolean;
+  /** A change or a delete is on its way: the controls wait, so two cannot cross. */
+  busy: boolean;
   onChange: (input: ProductImageUpdate) => void;
   onDelete: () => void;
 }
 
-const ImageCard = ({ image, position, first, last, onChange, onDelete }: ImageCardProps) => {
+const ImageCard = ({ image, position, first, last, busy, onChange, onDelete }: ImageCardProps) => {
   const { t } = useI18n("products");
   const [altText, setAltText] = useState(image.altText ?? "");
   const toggleUse = (use: ProductImageUse, on: boolean) =>
@@ -235,7 +240,7 @@ const ImageCard = ({ image, position, first, last, onChange, onDelete }: ImageCa
             <ActionIcon
               variant="subtle"
               aria-label={t("images.moveLeft")}
-              disabled={first}
+              disabled={first || busy}
               onClick={() => onChange({ sortOrder: position - 2 })}
             >
               <IconArrowLeft size={16} />
@@ -243,7 +248,7 @@ const ImageCard = ({ image, position, first, last, onChange, onDelete }: ImageCa
             <ActionIcon
               variant="subtle"
               aria-label={t("images.moveRight")}
-              disabled={last}
+              disabled={last || busy}
               onClick={() => onChange({ sortOrder: position })}
             >
               <IconArrowRight size={16} />
@@ -255,12 +260,12 @@ const ImageCard = ({ image, position, first, last, onChange, onDelete }: ImageCa
               color="yellow"
               aria-label={image.isPrimary ? t("images.primary") : t("images.makePrimary")}
               aria-pressed={image.isPrimary}
-              disabled={image.isPrimary}
+              disabled={image.isPrimary || busy}
               onClick={() => onChange({ isPrimary: true })}
             >
               {image.isPrimary ? <IconStarFilled size={16} /> : <IconStar size={16} />}
             </ActionIcon>
-            <ActionIcon variant="subtle" color="red" aria-label={t("images.delete")} onClick={onDelete}>
+            <ActionIcon variant="subtle" color="red" aria-label={t("images.delete")} disabled={busy} onClick={onDelete}>
               <IconTrash size={16} />
             </ActionIcon>
           </Group>
@@ -278,12 +283,14 @@ const ImageCard = ({ image, position, first, last, onChange, onDelete }: ImageCa
         <Checkbox
           label={t("images.showInCommunications")}
           checked={image.uses.includes("communications")}
+          disabled={busy}
           onChange={(event) => toggleUse("communications", event.currentTarget.checked)}
         />
         <Checkbox
           label={t("images.showInMarketing")}
           description={t("images.marketingHelp")}
           checked={image.uses.includes("marketing")}
+          disabled={busy}
           onChange={(event) => toggleUse("marketing", event.currentTarget.checked)}
         />
       </Stack>

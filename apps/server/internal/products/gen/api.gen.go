@@ -3224,6 +3224,30 @@ func (response PostProductsByIdImages422ApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type PostProductsByIdImages429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostProductsByIdImages429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostProductsByIdImages429ResponseHeaders
+}
+
+func (response PostProductsByIdImages429JSONResponse) VisitPostProductsByIdImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostProductsByIdImages503ApplicationProblemPlusJSONResponse ProductImageProblem
 
 func (response PostProductsByIdImages503ApplicationProblemPlusJSONResponse) VisitPostProductsByIdImagesResponse(w http.ResponseWriter) error {

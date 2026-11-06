@@ -55,6 +55,11 @@ const (
 // stored.
 var imageUses = []string{useCommunications, useMarketing}
 
+// normaliseSlots bounds how many uploads are decoded and re-encoded at once in
+// this process (maxConcurrentNormalisations): a semaphore, held for the
+// normalisation alone and never while the store or the database is called.
+var normaliseSlots = make(chan struct{}, maxConcurrentNormalisations)
+
 // imageForm is the multipart upload as read: how many files it carried, the
 // bytes of the one, and whether the body was too large or unreadable.
 type imageForm struct {
@@ -192,7 +197,16 @@ func (s *server) PostProductsByIdImages(ctx context.Context, req gen.PostProduct
 		return gen.PostProductsByIdImages400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(invalidImageTitle,
 			map[string][]string{"file": {"An image file is required."}})), nil
 	}
+	// Decoding a 40 megapixel picture takes hundreds of megabytes, so only
+	// normaliseSlots uploads are normalised at once; the others wait, on the
+	// request's own context, so a client that goes away stops waiting.
+	select {
+	case normaliseSlots <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 	img, refusal := normaliseImage(form.data)
+	<-normaliseSlots
 	if refusal != nil {
 		return gen.PostProductsByIdImages422ApplicationProblemPlusJSONResponse(
 			imageProblem(http.StatusUnprocessableEntity, refusal.code, refusal.title, refusal.detail)), nil

@@ -5,6 +5,7 @@ package products
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -32,10 +33,27 @@ var permissions = []contracts.Permission{
 	{Key: "products:tax-categories-manage", Display: "Manage tax categories", Description: "Create, update, and delete product tax categories.", Category: "Tax categories", Sensitive: false, Delegable: true},
 }
 
-// limits maps each rate-limited operationId to its policy. It is empty and
-// stays empty: no Products endpoint calls RequireRateLimiting (products
-// inventory §5), unlike identity's nine authentication policies.
-var limits = map[string]ratelimit.Policy{}
+// imageUploadsPerHour is how many images one client address may upload:
+// keyed by client address, as every policy is, so an office behind one address
+// shares it — staff's document upload's six hundred.
+const imageUploadsPerHour = 600
+
+// policyImageUpload is that bound as the platform states one. An upload costs
+// a decode and two writes to the object store, which nothing else bounds.
+var policyImageUpload = ratelimit.Policy{
+	Name:    "ProductsImageUpload",
+	Limit:   imageUploadsPerHour,
+	Window:  time.Hour,
+	Message: "Too many image uploads. Please wait a little before adding more.",
+}
+
+// limits maps each rate-limited operationId to its policy: only the image
+// upload (messenger design N13). No other Products endpoint calls
+// RequireRateLimiting (products inventory §5), unlike identity's nine
+// authentication policies.
+var limits = map[string]ratelimit.Policy{
+	"postProductsByIdImages": policyImageUpload,
+}
 
 // bodyLimits raises the router's request-body cap for the image upload — the
 // file at most 10 MiB, and room for the multipart framing (messenger design

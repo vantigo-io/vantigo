@@ -968,6 +968,16 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ProductImageProblem'
                     description: Unprocessable Entity — image_type_unsupported, image_too_large, image_too_small or image_invalid.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — at most 600 image uploads an hour from one client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
                 "503":
                     content:
                         application/problem+json:
