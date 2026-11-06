@@ -471,15 +471,19 @@ type MessageComponentChoice struct {
 
 // MessageComponentLimits What a message on a channel may carry, as its provider says.
 type MessageComponentLimits struct {
+	// MaxAnswerOptions The most quick replies one message holds; the request for an e-mail address counts as one.
 	MaxAnswerOptions int32 `json:"maxAnswerOptions"`
 	MaxAnswerTitle   int32 `json:"maxAnswerTitle"`
-	MaxCardChoices   int32 `json:"maxCardChoices"`
-	MaxCardSubtitle  int32 `json:"maxCardSubtitle"`
-	MaxCardTitle     int32 `json:"maxCardTitle"`
-	MaxCards         int32 `json:"maxCards"`
-	MaxChoiceTitle   int32 `json:"maxChoiceTitle"`
-	MaxText          int32 `json:"maxText"`
-	ShareEmail       bool  `json:"shareEmail"`
+
+	// MaxAttachmentBytes The largest file one message carries, in bytes; absent when the provider names none. A larger staged attachment is refused with 422 too_large.
+	MaxAttachmentBytes *int64 `json:"maxAttachmentBytes,omitempty"`
+	MaxCardChoices     int32  `json:"maxCardChoices"`
+	MaxCardSubtitle    int32  `json:"maxCardSubtitle"`
+	MaxCardTitle       int32  `json:"maxCardTitle"`
+	MaxCards           int32  `json:"maxCards"`
+	MaxChoiceTitle     int32  `json:"maxChoiceTitle"`
+	MaxText            int32  `json:"maxText"`
+	ShareEmail         bool   `json:"shareEmail"`
 }
 
 // MessageComponents What a message carries beside its text. Only a channel whose provider takes components accepts them; an e-mail channel answers 422 components_unsupported.

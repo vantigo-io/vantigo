@@ -140,7 +140,7 @@ func TestCommunicationsMessaging_AppliesAndIsIdempotent(t *testing.T) {
 	}
 	if got := staffCollect(t, ctx, pool, "the tables after the down", `
 		SELECT table_name FROM information_schema.tables
-		WHERE table_schema = 'communications' AND table_name IN ('messenger_sync', 'messenger_parts', 'participant_profiles')`); len(got) != 0 {
+		WHERE table_schema = 'communications' AND table_name IN ('messenger_sync', 'messenger_parts', 'participant_profiles', 'messenger_watermarks')`); len(got) != 0 {
 		t.Errorf("tables after the down = %v, want none", got)
 	}
 }

@@ -78,7 +78,7 @@ WHERE id = @id;
 -- its provider to the mailbox its settings name, and has no credential row;
 -- send_provider names the PersonalMailbox a personal message goes through; on a
 -- Messenger channel the conversation (its reply window) and the components.
-SELECT m.id, m.conversation_id, m.author_user_id, m.send_as, m.send_provider, m.from_address, m.from_display_name,
+SELECT m.id, m.conversation_id, ch.id AS channel_id, m.author_user_id, m.send_as, m.send_provider, m.from_address, m.from_display_name,
        m.subject, m.text_body, m.html_body, m.channel_metadata_json, m.components,
        c.subject AS conversation_subject,
        ch.type AS channel_type, ch.address AS channel_address,
@@ -264,7 +264,16 @@ ON CONFLICT (message_id, part_index) DO UPDATE SET attempted_at = excluded.attem
 
 -- name: RecordMessengerPartSent :exec
 -- What the platform answered of the part, immediately after its Send: the id
--- that matches an answer or an echo to the message, and the time.
+-- that matches an answer or an echo to the message, the platform's own time for
+-- it (NULL when it answered none), and the time.
 UPDATE communications.messenger_parts
-SET platform_message_id = @platform_message_id, sent_at = @sent_at
+SET platform_message_id = @platform_message_id, platform_at = sqlc.narg('platform_at')::timestamptz, sent_at = @sent_at
 WHERE message_id = @message_id AND part_index = @part_index;
+
+-- name: ClearMessengerPartAttempt :exec
+-- A part whose Send was held because the provider is unavailable: nothing was
+-- handed over, so its marker is cleared — as DeferOutboxJob clears the job's —
+-- and the next run counts no possible duplicate.
+UPDATE communications.messenger_parts
+SET attempted_at = NULL
+WHERE message_id = @message_id AND part_index = @part_index AND sent_at IS NULL;

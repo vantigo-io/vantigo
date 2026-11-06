@@ -84,7 +84,7 @@ func newFakeMessenger() *fakeMessenger {
 		caps: contracts.MessengerCapabilities{
 			MaxText: 2000, MaxAnswerOptions: 13, MaxAnswerTitle: 20, ShareEmail: true,
 			MaxCards: 10, MaxCardChoices: 3, MaxCardTitle: 80, MaxCardSubtitle: 80, MaxChoiceTitle: 20,
-			Window: 24 * time.Hour,
+			Window: 24 * time.Hour, MaxAttachmentBytes: 25 << 20,
 		},
 		now:      time.Now,
 		pages:    map[string]contracts.MessengerEndpoint{},
@@ -333,7 +333,7 @@ func (f *fakeMessenger) Send(ctx context.Context, address string, part contracts
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	sent := contracts.MessengerSent{PlatformMessageID: fmt.Sprintf("m_fake_%d", n)}
+	sent := contracts.MessengerSent{PlatformMessageID: fmt.Sprintf("m_fake_%d", n), At: f.now().UTC()}
 	f.sent = append(f.sent, fakeSentPart{Address: address, Part: part, Sent: sent})
 	return sent, nil
 }

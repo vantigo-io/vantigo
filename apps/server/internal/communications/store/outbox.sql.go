@@ -56,6 +56,25 @@ func (q *Queries) ClaimOutboxJob(ctx context.Context, arg ClaimOutboxJobParams) 
 	return result.RowsAffected(), nil
 }
 
+const clearMessengerPartAttempt = `-- name: ClearMessengerPartAttempt :exec
+UPDATE communications.messenger_parts
+SET attempted_at = NULL
+WHERE message_id = $1 AND part_index = $2 AND sent_at IS NULL
+`
+
+type ClearMessengerPartAttemptParams struct {
+	MessageID uuid.UUID
+	PartIndex int32
+}
+
+// A part whose Send was held because the provider is unavailable: nothing was
+// handed over, so its marker is cleared — as DeferOutboxJob clears the job's —
+// and the next run counts no possible duplicate.
+func (q *Queries) ClearMessengerPartAttempt(ctx context.Context, arg ClearMessengerPartAttemptParams) error {
+	_, err := q.db.Exec(ctx, clearMessengerPartAttempt, arg.MessageID, arg.PartIndex)
+	return err
+}
+
 const countSuppressedRecipients = `-- name: CountSuppressedRecipients :one
 SELECT count(*) FROM communications.suppressions
 WHERE normalized_email_address = ANY($1::text[])
@@ -173,7 +192,7 @@ func (q *Queries) FinishOutboxJob(ctx context.Context, arg FinishOutboxJobParams
 }
 
 const getOutboundMessageForSend = `-- name: GetOutboundMessageForSend :one
-SELECT m.id, m.conversation_id, m.author_user_id, m.send_as, m.send_provider, m.from_address, m.from_display_name,
+SELECT m.id, m.conversation_id, ch.id AS channel_id, m.author_user_id, m.send_as, m.send_provider, m.from_address, m.from_display_name,
        m.subject, m.text_body, m.html_body, m.channel_metadata_json, m.components,
        c.subject AS conversation_subject,
        ch.type AS channel_type, ch.address AS channel_address,
@@ -191,6 +210,7 @@ WHERE m.id = $1
 type GetOutboundMessageForSendRow struct {
 	ID                         uuid.UUID
 	ConversationID             uuid.UUID
+	ChannelID                  uuid.UUID
 	AuthorUserID               *uuid.UUID
 	SendAs                     string
 	SendProvider               *string
@@ -233,6 +253,7 @@ func (q *Queries) GetOutboundMessageForSend(ctx context.Context, id uuid.UUID) (
 	err := row.Scan(
 		&i.ID,
 		&i.ConversationID,
+		&i.ChannelID,
 		&i.AuthorUserID,
 		&i.SendAs,
 		&i.SendProvider,
@@ -541,22 +562,25 @@ func (q *Queries) MarkMessageDeliverySuppressed(ctx context.Context, id uuid.UUI
 
 const recordMessengerPartSent = `-- name: RecordMessengerPartSent :exec
 UPDATE communications.messenger_parts
-SET platform_message_id = $1, sent_at = $2
-WHERE message_id = $3 AND part_index = $4
+SET platform_message_id = $1, platform_at = $2::timestamptz, sent_at = $3
+WHERE message_id = $4 AND part_index = $5
 `
 
 type RecordMessengerPartSentParams struct {
 	PlatformMessageID *string
+	PlatformAt        *time.Time
 	SentAt            *time.Time
 	MessageID         uuid.UUID
 	PartIndex         int32
 }
 
 // What the platform answered of the part, immediately after its Send: the id
-// that matches an answer or an echo to the message, and the time.
+// that matches an answer or an echo to the message, the platform's own time for
+// it (NULL when it answered none), and the time.
 func (q *Queries) RecordMessengerPartSent(ctx context.Context, arg RecordMessengerPartSentParams) error {
 	_, err := q.db.Exec(ctx, recordMessengerPartSent,
 		arg.PlatformMessageID,
+		arg.PlatformAt,
 		arg.SentAt,
 		arg.MessageID,
 		arg.PartIndex,

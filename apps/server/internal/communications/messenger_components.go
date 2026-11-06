@@ -189,6 +189,7 @@ func componentLimitsOf(c contracts.MessengerCapabilities) *gen.MessageComponentL
 		MaxText: int32(c.MaxText), MaxAnswerOptions: int32(c.MaxAnswerOptions), MaxAnswerTitle: int32(c.MaxAnswerTitle),
 		ShareEmail: c.ShareEmail, MaxCards: int32(c.MaxCards), MaxCardChoices: int32(c.MaxCardChoices),
 		MaxCardTitle: int32(c.MaxCardTitle), MaxCardSubtitle: int32(c.MaxCardSubtitle), MaxChoiceTitle: int32(c.MaxChoiceTitle),
+		MaxAttachmentBytes: attachmentLimit(c.MaxAttachmentBytes),
 	}
 }
 
@@ -294,8 +295,9 @@ func validateComponents(c *gen.MessageComponents, caps contracts.MessengerCapabi
 		switch {
 		case len(options) == 0:
 			errs["answerOptions"] = []string{"At least one answer option is required."}
-		case len(options) > caps.MaxAnswerOptions:
-			errs["answerOptions"] = []string{fmt.Sprintf("At most %d answer options are allowed.", caps.MaxAnswerOptions)}
+		case len(options)+shareEmailSlots(c) > caps.MaxAnswerOptions:
+			// The request for an e-mail address is a quick reply too (N4): it counts.
+			errs["answerOptions"] = []string{fmt.Sprintf("At most %d answer options are allowed, the request for an e-mail address counting as one.", caps.MaxAnswerOptions)}
 		}
 		errs = validateChoices(errs, seen, "answerOptions", options, caps.MaxAnswerTitle)
 	}
@@ -347,4 +349,22 @@ func validateChoices(errs map[string][]string, seen map[string]bool, key string,
 		}
 	}
 	return errs
+}
+
+// shareEmailSlots is how many of a message's quick replies the request for an
+// e-mail address takes: one when it is asked, else none.
+func shareEmailSlots(c *gen.MessageComponents) int {
+	if c != nil && c.ShareEmail != nil && *c.ShareEmail {
+		return 1
+	}
+	return 0
+}
+
+// attachmentLimit is a provider's largest file as the contract names it: nil
+// when it names none.
+func attachmentLimit(n int64) *int64 {
+	if n <= 0 {
+		return nil
+	}
+	return &n
 }

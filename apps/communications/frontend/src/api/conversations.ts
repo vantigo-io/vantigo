@@ -79,6 +79,8 @@ export type ComponentLimits = {
   maxCardTitle: number;
   maxCardSubtitle: number;
   maxChoiceTitle: number;
+  /** The largest file one message carries, in bytes; absent when the provider names none. */
+  maxAttachmentBytes?: number;
 };
 /** Whether a reply may be sent in a Messenger conversation now (design N6). */
 export type ReplyWindow = {

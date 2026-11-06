@@ -22,7 +22,8 @@ WHERE d.message_id = m.id
   AND EXISTS (
       SELECT 1 FROM communications.conversation_participants cp
       WHERE cp.conversation_id = c.id AND cp.participant_id = $3)
-  AND d.accepted_at IS NOT NULL AND d.accepted_at <= $4
+  AND (SELECT max(COALESCE(p.platform_at, p.attempted_at))
+       FROM communications.messenger_parts p WHERE p.message_id = m.id) <= $4
   AND d.status = ANY($5::text[])
 RETURNING d.id, d.message_id
 `
@@ -41,10 +42,14 @@ type AdvanceMessengerDeliveriesRow struct {
 }
 
 // The watermark of a delivered or read event (N2): every delivery of an
-// outbound message in the participant's conversations of the channel that the
-// platform accepted at or before it, and is in one of from_statuses, moves to
-// status. Monotonic — a delivery already further along is not in from_statuses
-// — and so idempotent. It answers the deliveries it moved, for their events.
+// outbound message in the participant's conversations of the channel whose
+// newest part the platform stamped at or before it — a part's platform time,
+// else the time its Send began — and that is in one of from_statuses, moves to
+// status. A message with no part, or still being sent (its deliveries are
+// 'sending'), is left for the watermark kept per participant to reach when the
+// send completes. Monotonic — a delivery already further along is not in
+// from_statuses — and so idempotent. It answers the deliveries it moved, for
+// their events.
 func (q *Queries) AdvanceMessengerDeliveries(ctx context.Context, arg AdvanceMessengerDeliveriesParams) ([]AdvanceMessengerDeliveriesRow, error) {
 	rows, err := q.db.Query(ctx, advanceMessengerDeliveries,
 		arg.Status,
@@ -197,6 +202,22 @@ func (q *Queries) FindOpenMessengerConversation(ctx context.Context, arg FindOpe
 	return i, err
 }
 
+const findParticipantIDByAddress = `-- name: FindParticipantIDByAddress :one
+SELECT id FROM communications.participants WHERE channel_id = $1 AND address = $2
+`
+
+type FindParticipantIDByAddressParams struct {
+	ChannelID uuid.UUID
+	Address   string
+}
+
+func (q *Queries) FindParticipantIDByAddress(ctx context.Context, arg FindParticipantIDByAddressParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, findParticipantIDByAddress, arg.ChannelID, arg.Address)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const findParticipantProfile = `-- name: FindParticipantProfile :one
 
 SELECT fetched_at
@@ -251,6 +272,18 @@ func (q *Queries) FinishMessengerSync(ctx context.Context, arg FinishMessengerSy
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const getMessageComponents = `-- name: GetMessageComponents :one
+SELECT components FROM communications.conversation_messages WHERE id = $1
+`
+
+// The components of a message, for an answer to be checked against its question.
+func (q *Queries) GetMessageComponents(ctx context.Context, id uuid.UUID) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getMessageComponents, id)
+	var components []byte
+	err := row.Scan(&components)
+	return components, err
 }
 
 const getMessengerSyncByChannelIDs = `-- name: GetMessengerSyncByChannelIDs :many
@@ -451,6 +484,35 @@ func (q *Queries) LatestShareEmailQuestion(ctx context.Context, conversationID u
 	return id, err
 }
 
+const listMessengerWatermarks = `-- name: ListMessengerWatermarks :many
+SELECT kind, watermark FROM communications.messenger_watermarks WHERE participant_id = $1
+`
+
+type ListMessengerWatermarksRow struct {
+	Kind      string
+	Watermark time.Time
+}
+
+func (q *Queries) ListMessengerWatermarks(ctx context.Context, participantID uuid.UUID) ([]ListMessengerWatermarksRow, error) {
+	rows, err := q.db.Query(ctx, listMessengerWatermarks, participantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMessengerWatermarksRow
+	for rows.Next() {
+		var i ListMessengerWatermarksRow
+		if err := rows.Scan(&i.Kind, &i.Watermark); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markMessengerSyncNotified = `-- name: MarkMessengerSyncNotified :execrows
 UPDATE communications.messenger_sync s
 SET notified = true, next_sync_at = LEAST(s.next_sync_at, $1), updated_at = $1
@@ -599,6 +661,24 @@ type SetParticipantDisplayNameParams struct {
 // A name the platform gave, on a participant: the profile's read.
 func (q *Queries) SetParticipantDisplayName(ctx context.Context, arg SetParticipantDisplayNameParams) error {
 	_, err := q.db.Exec(ctx, setParticipantDisplayName, arg.DisplayName, arg.ID)
+	return err
+}
+
+const upsertMessengerWatermark = `-- name: UpsertMessengerWatermark :exec
+INSERT INTO communications.messenger_watermarks (participant_id, kind, watermark)
+VALUES ($1, $2, $3)
+ON CONFLICT (participant_id, kind) DO UPDATE SET watermark = GREATEST(messenger_watermarks.watermark, excluded.watermark)
+`
+
+type UpsertMessengerWatermarkParams struct {
+	ParticipantID uuid.UUID
+	Kind          string
+	Watermark     time.Time
+}
+
+// The newest watermark of a kind a participant has had, never backwards.
+func (q *Queries) UpsertMessengerWatermark(ctx context.Context, arg UpsertMessengerWatermarkParams) error {
+	_, err := q.db.Exec(ctx, upsertMessengerWatermark, arg.ParticipantID, arg.Kind, arg.Watermark)
 	return err
 }
 

@@ -1322,8 +1322,9 @@ func TestCommunicationsBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"message_attachments",
 		"message_deliveries",
 		"message_events",
-		"messenger_parts", // 00130's
-		"messenger_sync",  // 00130's
+		"messenger_parts",      // 00130's
+		"messenger_sync",       // 00130's
+		"messenger_watermarks", // 00130's
 		"outbox_jobs",
 		"participant_profiles", // 00130's
 		"participants",

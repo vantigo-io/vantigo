@@ -225,6 +225,19 @@ describe("the chat composer", () => {
       expect(mocks.replyToConversation.mock.calls[0]?.[1]).toMatchObject({ components: { shareEmail: true } });
     });
 
+    it("counts the request for an e-mail address among the 13 and stops the checkbox at the limit", () => {
+      renderComposer(conversation());
+      fireEvent.click(screen.getByLabelText("Ask for e-mail"));
+      const add = screen.getByRole("button", { name: "Add option" });
+      for (let i = 0; i < 13; i++) fireEvent.click(add);
+      expect(screen.getAllByLabelText(/Answer option/)).toHaveLength(12);
+      expect(add).toBeDisabled();
+      fireEvent.click(screen.getByLabelText("Ask for e-mail"));
+      for (let i = 0; i < 2; i++) fireEvent.click(add);
+      expect(screen.getAllByLabelText(/Answer option/)).toHaveLength(13);
+      expect(screen.getByLabelText("Ask for e-mail")).toBeDisabled();
+    });
+
     it("hides the request for an e-mail address when the provider has none", () => {
       const base = conversation();
       renderComposer({

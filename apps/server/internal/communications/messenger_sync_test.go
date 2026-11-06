@@ -194,6 +194,12 @@ func (f chatFixture) outbound(t *testing.T, conversation, text, components strin
 	f.h.Exec(t, `
 		INSERT INTO communications.message_deliveries (id, message_id, recipient_address, recipient_type, status, attempts, accepted_at, created_at)
 		VALUES ($1, $2, '4242', 'to', 'relay_accepted', 1, $3, now())`, delivery, message, at)
+	if !accepted.IsZero() {
+		// The one part it was sent as, stamped by the platform when it was accepted.
+		f.h.Exec(t, `
+			INSERT INTO communications.messenger_parts (message_id, part_index, attempted_at, platform_at, sent_at)
+			VALUES ($1, 0, $2, $2, $2)`, message, accepted)
+	}
 	return message, delivery
 }
 
@@ -531,9 +537,7 @@ func TestMessengerSync_Echoes(t *testing.T) {
 	f.sync(t)
 	conv := f.conversations(t)[0]
 	sent, _ := f.outbound(t, conv, "Our reply", "", f.h.Now())
-	f.h.Exec(t, `
-		INSERT INTO communications.messenger_parts (message_id, part_index, attempted_at, platform_message_id, sent_at)
-		VALUES ($1, 0, now(), 'm_ours', now())`, sent)
+	f.h.Exec(t, `UPDATE communications.messenger_parts SET platform_message_id = 'm_ours' WHERE message_id = $1`, sent)
 
 	echo := func(id, text string) {
 		f.fake.Push(f.channel.Address, contracts.MessengerEvent{
@@ -626,6 +630,7 @@ func TestMessengerSync_Answers(t *testing.T) {
 	answer("a1", "Yes", &contracts.MessengerAnswer{MessageID: question.String(), ChoiceID: "yes"})
 	answer("a2", "Whatever", &contracts.MessengerAnswer{MessageID: other.String(), ChoiceID: "yes"})
 	answer("a3", "Odd", &contracts.MessengerAnswer{MessageID: "not-a-uuid", ChoiceID: "yes"})
+	answer("a5", "Maybe", &contracts.MessengerAnswer{MessageID: question.String(), ChoiceID: "maybe"})
 	answer("a4", "kari@example.test", &contracts.MessengerAnswer{ChoiceID: contracts.MessengerShareEmail})
 
 	d := f.detail(t, conv)
@@ -637,6 +642,9 @@ func TestMessengerSync_Answers(t *testing.T) {
 	}
 	if a := byText["Yes"].AnswerTo; a == nil || a.MessageId != question.String() || a.ChoiceId != "yes" || a.Title != "Yes" {
 		t.Errorf("answer to the question = %+v, want yes under it with the title the person saw", a)
+	}
+	if byText["Maybe"].AnswerTo != nil {
+		t.Errorf("an answer naming a choice the question never offered is placed: %+v", byText["Maybe"].AnswerTo)
 	}
 	if byText["Whatever"].AnswerTo != nil || byText["Odd"].AnswerTo != nil {
 		t.Errorf("an answer that cannot be placed stands as an answer: %+v %+v", byText["Whatever"].AnswerTo, byText["Odd"].AnswerTo)

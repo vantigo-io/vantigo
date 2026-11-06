@@ -283,7 +283,14 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 			}
 		}
 	}
-	if errs := validateReply(body, replyModeExplicitlyNull); len(errs) > 0 {
+	errs := validateReply(body, replyModeExplicitlyNull)
+	// A Messenger reply may be attachments alone (N7: "the text, if any"): the
+	// body's refusal alone, with attachments named, waits for the channel's type.
+	var deferredBody map[string][]string
+	if _, only := errs["body"]; only && len(errs) == 1 && body.AttachmentIds != nil && len(*body.AttachmentIds) > 0 {
+		deferredBody, errs = errs, map[string][]string{}
+	}
+	if len(errs) > 0 {
 		return gen.PostCommunicationsConversationsByIdReply400JSONResponse(validationErrorBody(errs)), nil
 	}
 
@@ -320,6 +327,9 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 	// channel cannot take (N4, N7); a reply on an e-mail channel what only
 	// Messenger takes.
 	messenger := conv.ChannelType == channelTypeMessenger
+	if deferredBody != nil && !messenger {
+		return gen.PostCommunicationsConversationsByIdReply400JSONResponse(validationErrorBody(deferredBody)), nil
+	}
 	var state messengerConversationState
 	if messenger {
 		if state, err = s.messengerStateOf(ctx, q, req.Id, conv.ChannelProvider, s.deps.Clock()); err != nil {
@@ -412,7 +422,7 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 		conversationID: req.Id, channelType: conv.ChannelType, channelProvider: conv.ChannelProvider, caller: caller, key: key,
 		fingerprint: fingerprint, body: body, messageSubject: messageSubject,
 		primaryAddress: source.senderAddress, ccAddresses: ccAddresses, metadata: metadata, components: components,
-		now: s.deps.Clock(),
+		attachmentMax: state.caps.MaxAttachmentBytes, now: s.deps.Clock(),
 	})
 }
 
@@ -442,9 +452,9 @@ func messengerReplyRefusal(body gen.ReplyRequest, caps contracts.MessengerCapabi
 	if body.TextBody != nil {
 		text = *body.TextBody
 	}
-	if strings.TrimSpace(text) == "" {
+	if strings.TrimSpace(text) == "" && (body.AttachmentIds == nil || len(*body.AttachmentIds) == 0) {
 		return gen.PostCommunicationsConversationsByIdReply400JSONResponse(validationErrorBody(map[string][]string{
-			"textBody": {"TextBody is required."},
+			"textBody": {"TextBody is required when there is no attachment."},
 		}))
 	}
 	limit := caps.MaxText
@@ -504,7 +514,9 @@ type replyQueueParams struct {
 	// components is a Messenger reply's conversation_messages.components, nil for
 	// none.
 	components []byte
-	now        time.Time
+	// attachmentMax is a Messenger provider's largest file in bytes, 0 for none.
+	attachmentMax int64
+	now           time.Time
 }
 
 // queueReply is QueueOutboundAsync's steps 8-10 (`:291-336`): the
@@ -536,6 +548,18 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 	if len(stagedRows) != len(staged) {
 		return gen.PostCommunicationsConversationsByIdReply409JSONResponse(flatErrorBody(
 			"attachments_not_ready", "One or more attachments are still being scanned or are unavailable.")), nil
+	}
+
+	// Step 8a: a Messenger channel's largest file (N7): a staged attachment above
+	// the provider's limit is refused as a channel's budget is, before anything
+	// is written.
+	if p.attachmentMax > 0 {
+		for _, row := range stagedRows {
+			if row.SizeBytes > p.attachmentMax {
+				return gen.PostCommunicationsConversationsByIdReply422JSONResponse(flatErrorBody(
+					"too_large", "The message and its attachments are larger than this channel can send.")), nil
+			}
+		}
 	}
 
 	// Step 8b: a mailbox channel's budget (M13) -> 422 too_large,
