@@ -241,8 +241,10 @@ av det du gjør her.
 
 ## Messenger-samtaler
 
-En samtale på en Messenger-kanal begynner når en person skriver til Facebook-siden din; du
-kan ikke begynne en selv. **Start en samtale** bruker alltid en e-postkanal. Personens
+En samtale på en Messenger-kanal begynner når en person skriver til Facebook-siden din.
+**Start en samtale** bruker alltid en e-postkanal. Den ene måten å skrive først på er fra
+en kundes kontakt, mens personens vindu er åpent: se
+[Skriv på Messenger](/nb/user/customers/#messenger-på-en-kontakt). Personens
 meldinger kommer inn i Innboks av seg selv, noen sekunder etter at de er sendt, og
 samtalens tittel er personens navn — Messenger gir verken emne eller e-postadresse. En
 ny melding fra personen havner i den åpne samtalen deres; har du lukket samtalen, begynner
@@ -256,7 +258,8 @@ blokkert siden), *kunden må skrive først*, *Human Agent er ikke gitt til appen
 *Messenger avviste meldingen*. En melding sendt fra Meta Business Suite eller en annen app
 på siden vises også, merket **Sendt fra Meta**, så tråden er hel. Knytt samtalen til en
 kunde med de samme knappene som for en e-postsamtale; Vantigo kan ikke gjøre det selv,
-siden Messenger ikke gir en e-postadresse.
+siden Messenger ikke gir en e-postadresse. Du kan også knytte personen til en kontakt hos
+den kunden: se [Knytt personen til en kontakt](#knytt-personen-til-en-kontakt).
 
 ### Svar en kunde i en chat
 
@@ -296,7 +299,8 @@ Når kunden trykker på et alternativ, kommer svaret som en melding vist som en 
 hake — **✓ Ja** — og spørsmålet markerer alternativet de valgte. En e-postadresse kunden
 deler, kommer som en melding som sier **Delte en e-postadresse**; har en kontakt i Kunder
 den adressen, tilbys kontaktens kunder som kandidater for samtalen, og du avgjør hvilken
-som knyttes. Et alternativ det er trykket på som Vantigo ikke kan plassere — det hører til
+som knyttes. Har nøyaktig én kontakt adressen, tilbyr toppen også **Koble til** den
+kontakten (se under). Et alternativ det er trykket på som Vantigo ikke kan plassere — det hører til
 en annen samtale — vises som vanlig tekst.
 
 ### Legg ved et produkt
@@ -337,6 +341,32 @@ siden for en ny ordre med samtalens kunde, når en er knyttet, og med produktet:
 variant blir ordrens første linje, og har produktet flere varianter, velger du hvilken.
 Ingenting opprettes før du velger **Opprett ordren**. En ekstra knapp det trykkes på, kommer
 som en vanlig svarbrikke.
+
+### Knytt personen til en kontakt
+
+En person som skriver til siden din, kjenner Messenger bare ved en ID som hører til siden,
+så Vantigo kan ikke vite hvem de er. Du kan fortelle det ved å knytte personen til en
+kontakt i Kunder. En knyttet person vises i kundens kontaktliste med et Messenger-merke, og
+du kan skrive til dem derfra ([Messenger på en kontakt](/nb/user/customers/#messenger-på-en-kontakt)).
+Å knytte og å fjerne koblingen krever `communications:conversations-manage`.
+
+I toppen av en Messenger-samtale:
+
+- **Koble til kontakt** — når samtalen er knyttet til en kunde, en liste over kundens
+  kontakter og en knapp som knytter personen til den du velger. Bare en kontakt hos
+  samtalens kunde godtas. Uten kunde på samtalen finnes ingen liste: knytt kunden først.
+- **Koble til *navn*** — vises når e-postadressen personen delte, tilhører nøyaktig én
+  kontakt. Det er bare et forslag: Vantigo knytter aldri noen av seg selv, så ingenting
+  knyttes før du klikker.
+- **Knyttet til *navn***, med **Fjern kobling**, når personen er knyttet. En kontakt kan
+  være knyttet på flere sider, og en person er knyttet til høyst én kontakt.
+
+En kontakts **Messenger-lenke** er den andre måten. Når noen åpner den og skriver, knytter
+Vantigo dem til kontakten lenken ble laget for. Er personen allerede knyttet til en annen
+kontakt, blir koblingen som den var, og toppen sier **Denne personen brukte *navn*s
+Messenger-lenke**, så du kan se at lenken kan være sendt videre. Å knytte på nytt eller å
+fjerne koblingen fjerner varselet. Hvor du får lenken og hvorfor den bare skal sendes til
+kontakten: [Messenger på en kontakt](/nb/user/customers/#messenger-på-en-kontakt).
 
 ### Sett opp en Messenger-kanal
 
@@ -643,7 +673,7 @@ annen e-post, og adressen må legges til her for hånd. Blokkeringer krever
 | --- | --- |
 | Åpne Innboks, lese samtaler, markere dem som lest, laste ned vedlegg og originaler | `communications:conversations-view` |
 | Svare, legge ved filer, skrive utkast med KI | `communications:conversations-reply`, sammen med view |
-| Endre status, tagger og kundekobling, legge til notater, be om et kundeforslag | `communications:conversations-manage`, sammen med view |
+| Endre status, tagger og kundekobling, legge til notater, be om et kundeforslag, knytte en Messenger-person til en kontakt og hente en kontakts Messenger-lenke | `communications:conversations-manage`, sammen med view |
 | Se og administrere Kanaler | `communications:channels-manage` |
 | Se og administrere Blokkeringer | `communications:suppressions-manage` |
 

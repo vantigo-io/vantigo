@@ -238,8 +238,10 @@ you do here.
 
 ## Messenger conversations
 
-A conversation on a Messenger channel starts when a person writes to your Facebook Page;
-you cannot start one. **Start a conversation** only ever uses an email channel. The
+A conversation on a Messenger channel starts when a person writes to your Facebook Page.
+**Start a conversation** only ever uses an email channel. The one way to write first is from
+a customer's contact, while the person's window is open: see
+[Write on Messenger](/en/user/customers/#messenger-on-a-contact). The
 person's messages come into the Inbox by themselves, a few seconds after they are sent,
 and the conversation's title is the person's name — Messenger gives no subject and no
 email address. A person's new message joins their open conversation; once you have
@@ -254,7 +256,8 @@ first*, *Human Agent is not granted to the app* or *Messenger refused the messag
 message sent from Meta Business Suite or another app on the Page is shown too, marked
 **Sent from Meta**, so the thread is whole. Link the conversation to a customer with the
 same buttons as an email conversation; Vantigo cannot do it by itself, since Messenger
-does not give an email address.
+does not give an email address. You can also link the person to a contact of that
+customer: see [Link the person to a contact](#link-the-person-to-a-contact).
 
 ### Answer a customer in a chat
 
@@ -293,7 +296,8 @@ When the customer taps an option, their answer arrives as a message shown as a c
 check — **✓ Yes** — and the question marks the option they chose. An email address the
 customer shares arrives as a message saying **Shared an e-mail address**; if a contact in
 Customers has that address, its customers are offered as candidates for the conversation,
-and you decide which one to link. A tapped option Vantigo cannot place — it belongs to
+and you decide which one to link. If exactly one contact has the address, the header also
+offers **Link to** that contact (see below). A tapped option Vantigo cannot place — it belongs to
 another conversation — is shown as plain text.
 
 ### Attach a product
@@ -334,6 +338,33 @@ It opens the new-order page with the conversation's customer, when one is linked
 the product: its only variant becomes the order's first line, and when the product has
 several variants you pick which one. Nothing is created until you choose **Create the
 order**. A tapped second button arrives as an ordinary answer chip.
+
+### Link the person to a contact
+
+A person who writes to your Page is known to Messenger only by an id that belongs to the
+Page, so Vantigo cannot tell who they are. You can tell it, by linking the person to a
+contact in Customers. A linked person shows in the customer's contact list with a Messenger
+mark, and you can write to them from there ([Messenger on a contact](/en/user/customers/#messenger-on-a-contact)).
+Linking, and unlinking, need `communications:conversations-manage`.
+
+In the header of a Messenger conversation:
+
+- **Link to contact** — once the conversation is linked to a customer, a list of that
+  customer's contacts and a button to link the person to the one you pick. Only a contact of
+  the conversation's customer is accepted. Without a customer on the conversation there is no
+  list: link the customer first.
+- **Link to *name*** — shown when the email address the person shared belongs to exactly one
+  contact. It is a suggestion only: Vantigo never links anyone by itself, so nothing is
+  linked until you click it.
+- **Linked to *name***, with **Unlink**, once the person is linked. One contact can be
+  linked on several Pages, and a person is linked to one contact at most.
+
+A contact's **Messenger link** is the other way. When someone opens it and writes, Vantigo
+links them to the contact it was made for. If the person is linked to another contact
+already, the link is left as it was and the header says **This person used *name*'s Messenger
+link**, so you can see that the link may have been passed on. Linking again, or unlinking,
+clears that notice. Where to get the link and why it should be sent to its contact only:
+[Messenger on a contact](/en/user/customers/#messenger-on-a-contact).
 
 ### Set up a Messenger channel
 
@@ -635,7 +666,7 @@ Suppressions need `communications:suppressions-manage`.
 | --- | --- |
 | Open the Inbox, read conversations, mark them read, download attachments and originals | `communications:conversations-view` |
 | Reply, attach files, draft with AI | `communications:conversations-reply`, with view |
-| Change status, tags and customer link, add notes, ask for a customer suggestion | `communications:conversations-manage`, with view |
+| Change status, tags and customer link, add notes, ask for a customer suggestion, link a Messenger person to a contact and get a contact's Messenger link | `communications:conversations-manage`, with view |
 | See and manage Channels | `communications:channels-manage` |
 | See and manage Suppressions | `communications:suppressions-manage` |
 

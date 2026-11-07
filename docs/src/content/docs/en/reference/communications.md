@@ -12,6 +12,8 @@ sources:
   - apps/server/internal/db/migrations/00095_communications_personal_sending.sql
   - apps/server/internal/db/migrations/00111_communications_provider_neutral.sql
   - apps/server/internal/db/migrations/00130_communications_messaging.sql
+  - apps/server/internal/db/migrations/00134_communications_contact_hints.sql
+  - apps/server/internal/contracts/contact_channels.go
   - apps/server/internal/contracts/outbound_mail.go
   - apps/server/internal/contracts/channel_mailbox.go
   - apps/server/internal/contracts/channel_messenger.go
@@ -1184,8 +1186,9 @@ All three now filter by `type`: the first channel of a type is its default, maki
 default demotes only the others of its type, and a PUT with `isDefault` does the same.
 The global advisory lock of divergences 14 and 15 stays, one slot for every writer whichever
 type it writes. Conversation create with no channel named still uses the default
-`email` channel, and with a Messenger `channelId` is **422 `channel_cannot_start`**: the
-person always writes first.
+`email` channel, and with a Messenger `channelId` and no `participantId` is **422 `channel_cannot_start`**: the
+person writes first. A request that names a `participantId` is the exception, see
+[Contacts on Messenger](#contacts-on-messenger).
 
 `GET /channel-providers` lists, after SMTP and the mailbox providers, **every filled
 messenger provider**: `{key, displayName, type: "messenger", available, reason?, endpoints}`,
@@ -1249,8 +1252,9 @@ with **no subject** — the conversation's title is the participant's name. A cl
 conversation stays closed. The customer link is manual: Messenger gives no e-mail address,
 so the e-mail linker does not run, except on an address shared in answer to *Ask for e-mail*,
 which feeds it as a **suggestion** (the customers its contacts belong to become
-`conversation_customer_candidates` of a conversation with no customer, and the participant
-gets the one contact), never a link.
+`conversation_customer_candidates` of a conversation with no customer, and the one contact
+becomes the participant's `suggested_contact_id`), never a link: `participants.contact_id` is
+only ever set by an explicit act, see [Contacts on Messenger](#contacts-on-messenger).
 
 **Echoes and watermarks.** An echo whose platform id is in `messenger_parts` is a message of
 ours: its receipt is `skipped` (`own_message`) and nothing is imported. Any other echo is a
@@ -1441,6 +1445,94 @@ participant rows outlive it until retention's orphan sweep (`DeleteOrphanPartici
 same as an e-mail participant does today.** Retention deletes messages by its window as for
 e-mail, `messenger_parts` going with them, and the receipts' sweep deletes a receipt whose
 message is gone.
+
+### Contacts on Messenger
+
+A Messenger participant can carry the Messenger identity of a contact of Customers (Messenger
+design N19-N23, delivery D). **The link is `communications.participants.contact_id`**, a
+reference to Customers resolved through `contracts.CustomerDirectory` and never a foreign key;
+Customers stores nothing of it, since the person's page-scoped id (PSID) belongs to a Page. A
+contact may be linked on several channels, one participant each, and a participant is linked to
+at most one contact. A participant is never reassigned on insert (the rule of divergence 13);
+linking is an explicit act of its own.
+
+**Merge and erasure.** A customer merge moves no `contact_id`: contacts are shared between
+customers and keep their ids when customers merge (Customers moves the *associations*), so
+nothing here needs repointing, and the conversation's own customer is moved by the existing
+`communications.conversations` holder. Erasing a customer erases its conversations as before;
+the participant rows outlive them until the orphan sweep. A contact deleted in Customers leaves
+`contact_id` pointing at nothing, which every read treats as unlinked: the thread shows the
+number and `GET /customers/{id}/contacts` never lists it.
+
+**Linking by hand.** `PUT /participants/{id}/contact` with `{contactId, conversationId?}` links;
+`DELETE` clears. Both need `communications:conversations-manage`. The contact must exist in
+`CustomerDirectory` (422 `contact_unknown`, also when Customers is off) and, when
+`conversationId` names a conversation linked to a customer, be one of that customer's contacts
+(422 `contact_not_of_customer`). A participant that does not exist, or a conversation named that
+does not, is 404. Setting the contact the participant has is 200 and `DELETE` is 204 whether or
+not there was a link. Both lock the participant's row, replace the link whatever it was and
+delete the participant's hints.
+
+**Hints.** `communications.participant_contact_hints` (migration `00134`) keeps, per
+participant, what is only suggested or noted, so that it cannot be mistaken for the link:
+`suggested_contact_id`, the one contact the address shared in answer to *Ask for e-mail*
+names (written only while the participant has no contact), and `referral_contact_id`, below.
+The conversation detail answers `messengerLink: {participantId, contactId, suggestedContactId,
+referralContactId}` for a Messenger conversation (null for e-mail). `suggestedContactId` is
+answered only while there is no contact, and `referralContactId` only when it differs from it.
+
+**The ref token.** `POST /channels/{id}/contact-links` with `{contactId}` answers `{url,
+expiresAt}`, needs `communications:conversations-manage`, and refuses a channel that is not
+Messenger (422 `not_supported_on_channel`), is inactive (422 `channel_inactive`) or a contact
+that does not exist (422 `contact_unknown`). The url is `https://m.me/<page id>?ref=<token>`. The
+token is `v1.<contactId>.<channelId>.<expiresAt>.<mac>`: the channel id in 32-character hex form,
+the expiry in Unix seconds 90 days ahead, and the MAC the secrets Box's `MAC` under the purpose
+`communications/messenger-ref` over the four fields before it, base64url without padding. It
+holds no personal data beyond the contact id, uses only characters Meta accepts in a `ref`, and
+is about 100 characters (Meta's limit is 2083). Verification checks the shape, the MAC in
+constant time, the expiry and that the channel is the one the token names.
+
+**Referrals.** The provider passes a referral as `MessengerEvent.Ref`: on a `message` event (the
+referral of a Get Started postback, or of the person's first message) or on an event of kind
+`referral`, which has no text and shows nothing. The messenger sync verifies the ref before the
+import's transaction, asking the customer directory whether the contact exists (a directory
+that fails makes the event be tried again, never dropped), and applies it **in the import's
+transaction**: a participant with no contact is linked and its suggestion cleared; one with
+another contact is left alone and gets `referral_contact_id`; one already linked to that very
+contact changes nothing. **A ref never overrides a link.** A ref that fails its MAC, has
+expired, names another channel, is not ours or names a contact that is gone is ignored and
+logged at info without its value, and the message is imported as if it had none. A referral
+event for a person Communications does not know yet is ignored; the person's first message
+brings the referral again.
+
+**Conversation create with `participantId`.** `POST /conversations` takes `participantId` as
+an alternative to `to` and `recipients`, for a Messenger participant only, with `textBody` as
+the first message; `subject` is not used and no longer required by the contract (an e-mail
+conversation still gets 400 without one). The refusals are 400 for a blank or over-long text,
+422 `participant_invalid` (no such participant, or not of `channelId`), 422
+`not_supported_on_channel` (an e-mail participant), 422 `channel_invalid` (inactive channel or
+no provider), 422 `customer_invalid`, and **422 `reply_window_closed`** when the window of the
+participant is closed. The window counts from the participant's newest inbound message in *any*
+of its conversations (`LatestInboundOccurredAt` now reads the participant's messages, which
+changes nothing for a conversation that has its own), so a conversation started from a customer
+has the person's window. The conversation is the participant's newest open one, else a new one
+with no subject, made with its participant link in one transaction; the first message then goes
+through `POST /conversations/{id}/reply` itself (limits, components checks, the window at send
+time, the outbox), with the request's `Idempotency-Key`. A refusal by the reply takes a
+conversation made for it back. A replay of an accepted key is 200 with the original ids; the
+same key with another text is 409.
+
+**`contracts.ContactChannels`.** The read Customers calls for its contact rows:
+`ForContacts(ctx, contactIDs []int32) (map[int32][]ContactChannelEntry, error)`, a
+sole-provider slot (`Module.ContactChannels`, `Deps.ContactChannels`, `modtest.WithContactChannels`),
+nil without Communications, consumer-gated and never called inside a transaction. For each
+contact it answers **one entry per active Messenger channel**, so that a contact that cannot
+be linked yet can still be given its Messenger link: `{channelId, type, name, linked,
+participantId, lastInboundAt, replyWindowClosesAt}`, the last three only while `linked`.
+`replyWindowClosesAt` is computed by Communications from the provider's `Capabilities`
+(including the Human Agent extension) and is absent once the window has closed, so a consumer
+counts no hours. If two participants of a channel are linked to one contact, the one who wrote
+last is the entry. **It never carries the PSID**, or any other address.
 
 ## Sending from one's own address
 
