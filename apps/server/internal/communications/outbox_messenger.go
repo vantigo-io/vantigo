@@ -38,6 +38,11 @@ import (
 // on from the parts recorded.
 var errOutboxLeaseLost = errors.New("communications: the outbox job's lease was taken between two parts")
 
+// errPublicHostMissing is a carousel whose provider fetches the images from the
+// public host, sent by an instance that no longer has one: terminal, because no
+// retry gives it an address (N18).
+var errPublicHostMissing = errors.New("communications: the instance has no public host for a card's image")
+
 // messengerPart is one part of a message before it is handed to the provider:
 // what the provider is sent, with whether it is the carousel.
 type messengerPart struct {
@@ -88,7 +93,7 @@ func (w *OutboxWorker) deliverMessenger(ctx context.Context, job store.Communica
 	if recipient == "" {
 		return errChannelMisconfigured
 	}
-	parts, err := w.messengerParts(ctx, message, attachments, recipient, window.state == windowHumanAgent)
+	parts, err := w.messengerParts(ctx, message, attachments, recipient, window.state == windowHumanAgent, caps.PublicMedia)
 	if err != nil {
 		return err
 	}
@@ -232,7 +237,7 @@ func messengerRecipient(sendable []store.ListMessageDeliveriesForSendRow) string
 // and the stored cards. The answer options and the request for an e-mail address
 // ride on the last part. A card attachment is never a part of its own.
 func (w *OutboxWorker) messengerParts(ctx context.Context, message store.GetOutboundMessageForSendRow,
-	attachments []store.ListMessageAttachmentsForSendRow, recipient string, humanAgent bool) ([]messengerPart, error) {
+	attachments []store.ListMessageAttachmentsForSendRow, recipient string, humanAgent, publicMedia bool) ([]messengerPart, error) {
 	var components storedComponents
 	if len(message.Components) > 0 {
 		if err := json.Unmarshal(message.Components, &components); err != nil {
@@ -263,6 +268,7 @@ func (w *OutboxWorker) messengerParts(ctx context.Context, message store.GetOutb
 	}
 	if len(components.Cards) > 0 {
 		p := base
+		var err error
 		for _, card := range components.Cards {
 			c := contracts.MessengerCard{Title: card.Title, Subtitle: card.Subtitle, Choices: choicesOf(card.Choices)}
 			if card.AttachmentID != nil {
@@ -270,11 +276,23 @@ func (w *OutboxWorker) messengerParts(ctx context.Context, message store.GetOutb
 				if !ok {
 					return nil, errAttachmentsUnavailable
 				}
-				content, err := w.attachmentContent(ctx, image.StorageKey)
-				if err != nil {
-					return nil, err
+				if publicMedia {
+					// The provider fetches the image from the public host, under a
+					// token made now, so a retry gets a fresh expiry (N18).
+					c.ImageURL, err = publicMediaURL(w.deps, image.ID, w.now())
+					if err != nil {
+						return nil, err
+					}
+					if c.ImageURL == "" {
+						return nil, errPublicHostMissing
+					}
+				} else {
+					content, err := w.attachmentContent(ctx, image.StorageKey)
+					if err != nil {
+						return nil, err
+					}
+					c.Image = &contracts.MessengerAttachment{FileName: image.FileName, ContentType: image.ContentType, Content: content}
 				}
-				c.Image = &contracts.MessengerAttachment{FileName: image.FileName, ContentType: image.ContentType, Content: content}
 			}
 			p.Cards = append(p.Cards, c)
 		}

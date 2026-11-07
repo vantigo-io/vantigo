@@ -6,6 +6,7 @@ sidebar:
 sources:
   - apps/communications/frontend
   - apps/host/frontend/src/routes/communications
+  - apps/host/frontend/src/lib/product-messaging.ts
 ---
 
 The Communications app is a shared inbox: every email conversation — and, where a
@@ -294,6 +295,45 @@ customer shares arrives as a message saying **Shared an e-mail address**; if a c
 Customers has that address, its customers are offered as candidates for the conversation,
 and you decide which one to link. A tapped option Vantigo cannot place — it belongs to
 another conversation — is shown as plain text.
+
+### Attach a product
+
+**Attach product** in the chat composer shows a product to the customer as a row of cards
+they can swipe through. It is offered when Products is on and you may see products
+(`products:products-view`); without them the button is not there.
+
+1. Choose **Attach product** and search for the product by name. Each product in the list
+   says how many of its images can be shown. A product that has no image marked **Show in
+   Communications** on its page cannot be attached, and the list says so: open the product
+   and mark an image first (see [Images](/en/user/products/#images)).
+2. Choose the product. Its images marked for Communications become the cards, in the order
+   they have on the product, at most 10. Each card has the product's name as its title, the
+   image, and a **subtitle** — with `products:pricing-view` it starts as the product's price
+   excluding VAT, as the product page shows it, and without that permission it starts empty.
+   Edit the subtitle or clear it; it is text of at most 80 characters, and Vantigo does not
+   work out a price itself.
+3. Remove a card with its **×** to leave that picture out; removing the last one removes the
+   product. **Change product** replaces the product, since a message shows one product.
+4. Every card carries a **Buy button**, titled **Kjøp** in Norwegian and **Buy** otherwise.
+   You can rename it and add a **Second button** of your own, such as *Tell me more*; a
+   button's title is 1 to 20 characters.
+5. Write the message text as usual and choose **Send reply**. Answer options can be added
+   to the same message.
+
+The message keeps the pictures as they were when it was sent: changing or deleting the
+product's images afterwards changes nothing in the conversation. If an image has been
+removed or unmarked since you picked the product, sending says so and you attach the product
+again. Messenger fetches the pictures from the installation's public address, so sending
+cards needs one to be set up ([The public host](/en/admin/payments/#the-public-host));
+without it, sending is refused with *The instance has no public host*.
+
+When the customer taps **Buy** (or **Kjøp**) on a card, their answer arrives as **Wants to
+buy: &lt;product&gt;** with the card's picture. If Orders is on and you may create orders
+(`orders:access` and `orders:sales-manage`), the answer carries a **Create order** link.
+It opens the new-order page with the conversation's customer, when one is linked, and with
+the product: its only variant becomes the order's first line, and when the product has
+several variants you pick which one. Nothing is created until you choose **Create the
+order**. A tapped second button arrives as an ordinary answer chip.
 
 ### Set up a Messenger channel
 

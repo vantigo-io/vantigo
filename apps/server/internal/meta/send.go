@@ -48,9 +48,6 @@ func (m *messenger) Send(ctx context.Context, address string, part contracts.Mes
 	if err != nil {
 		return contracts.MessengerSent{}, err
 	}
-	if len(part.Cards) > 0 {
-		return contracts.MessengerSent{}, fmt.Errorf("%w: carousel not supported yet", contracts.ErrMessengerRejected)
-	}
 	if part.Participant == "" {
 		return contracts.MessengerSent{}, fmt.Errorf("%w: no recipient", contracts.ErrMessengerRejected)
 	}
@@ -95,6 +92,26 @@ func (m *messenger) Send(ctx context.Context, address string, part contracts.Mes
 		if err != nil {
 			return contracts.MessengerSent{}, m.sendFailed(ctx, page.PageID, err, part.HumanAgent)
 		}
+	} else if len(part.Cards) > 0 {
+		template, err := genericTemplate(part)
+		if err != nil {
+			return contracts.MessengerSent{}, err
+		}
+		message := map[string]any{"attachment": template}
+		if len(replies) > 0 {
+			message["quick_replies"] = replies
+		}
+		body := map[string]any{
+			"recipient":      json.RawMessage(recipient),
+			"messaging_type": messagingType(part),
+			"message":        message,
+		}
+		if part.HumanAgent {
+			body["tag"] = "HUMAN_AGENT"
+		}
+		if err := m.graph.postJSON(ctx, token, path, body, &answer); err != nil {
+			return contracts.MessengerSent{}, m.sendFailed(ctx, page.PageID, err, part.HumanAgent)
+		}
 	} else {
 		if part.Text == "" {
 			return contracts.MessengerSent{}, fmt.Errorf("%w: the part carries nothing", contracts.ErrMessengerRejected)
@@ -122,6 +139,59 @@ func (m *messenger) Send(ctx context.Context, address string, part contracts.Mes
 		return contracts.MessengerSent{}, errors.New("meta: the Graph API answered a send with no message id")
 	}
 	return contracts.MessengerSent{PlatformMessageID: answer.MessageID}, nil
+}
+
+// templateButton is one button of a card: a postback that carries the payload
+// the answer is matched by (N4).
+type templateButton struct {
+	Type    string `json:"type"`
+	Title   string `json:"title"`
+	Payload string `json:"payload"`
+}
+
+// templateElement is one card of the generic template.
+type templateElement struct {
+	Title    string           `json:"title"`
+	Subtitle string           `json:"subtitle,omitempty"`
+	ImageURL string           `json:"image_url,omitempty"`
+	Buttons  []templateButton `json:"buttons,omitempty"`
+}
+
+// genericTemplate is the carousel of a part as the Send API's generic template
+// (N12): an element per card, its choices as postback buttons whose payload is
+// v1:<messageId>:<choiceId>. What Meta would refuse is refused here, before any
+// call: more than 10 cards, more than 3 buttons on one, an empty or over-long
+// title, and an image that is not an https address.
+func genericTemplate(part contracts.MessengerPart) (map[string]any, error) {
+	if len(part.Cards) > maxCards {
+		return nil, fmt.Errorf("%w: more than %d cards", contracts.ErrMessengerRejected, maxCards)
+	}
+	elements := make([]templateElement, 0, len(part.Cards))
+	for _, card := range part.Cards {
+		if n := utf8.RuneCountInString(card.Title); n < 1 || n > maxCardTitle {
+			return nil, fmt.Errorf("%w: a card's title is 1 to %d characters", contracts.ErrMessengerRejected, maxCardTitle)
+		}
+		if utf8.RuneCountInString(card.Subtitle) > maxCardSubtitle {
+			return nil, fmt.Errorf("%w: a card's subtitle is over %d characters", contracts.ErrMessengerRejected, maxCardSubtitle)
+		}
+		if len(card.Choices) > maxCardChoices {
+			return nil, fmt.Errorf("%w: a card has more than %d choices", contracts.ErrMessengerRejected, maxCardChoices)
+		}
+		if card.ImageURL != "" && !strings.HasPrefix(card.ImageURL, "https://") {
+			return nil, fmt.Errorf("%w: a card's image must be an https address", contracts.ErrMessengerRejected)
+		}
+		e := templateElement{Title: card.Title, Subtitle: card.Subtitle, ImageURL: card.ImageURL}
+		for _, c := range card.Choices {
+			if n := utf8.RuneCountInString(c.Title); n < 1 || n > maxChoiceTitle {
+				return nil, fmt.Errorf("%w: a choice's title is 1 to %d characters", contracts.ErrMessengerRejected, maxChoiceTitle)
+			}
+			e.Buttons = append(e.Buttons, templateButton{Type: "postback", Title: c.Title, Payload: contracts.MessengerPayload(part.MessageID, c.ID)})
+		}
+		elements = append(elements, e)
+	}
+	return map[string]any{"type": "template", "payload": map[string]any{
+		"template_type": "generic", "elements": elements,
+	}}, nil
 }
 
 // sendablePage opens the Page address and its token, or answers

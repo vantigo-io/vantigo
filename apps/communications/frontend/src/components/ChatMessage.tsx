@@ -1,11 +1,20 @@
-import { Badge, Group, Text } from "@mantine/core";
+import { Anchor, Badge, Group, Text } from "@mantine/core";
 import { IconCheck } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
-import { type Attachment, type ConversationMessage, fetchInlineImage, inlineImageTypes } from "../api/conversations";
+import { useNavigate } from "@tanstack/react-router";
+import { appUrl, useI18n } from "@vantigo/frontend-shell";
+import {
+  type Attachment,
+  type ConversationMessage,
+  fetchInlineImage,
+  inlineImageTypes,
+  type MessageAnswer,
+} from "../api/conversations";
+import { type NewOrderTarget, useProductMessaging } from "../lib/product-messaging";
 import { AttachmentLinks } from "./AttachmentLinks";
-import { ChatCarousel } from "./ChatCarousel";
+import { CardImage, ChatCarousel } from "./ChatCarousel";
 import { participantName, relative } from "./conversationHelpers";
+import { isBuyChoice } from "./productDraft";
 
 const isImage = (file: Attachment) =>
   file.role !== "card" &&
@@ -49,19 +58,69 @@ export type ChatMessageProps = {
   message: ConversationMessage;
   /** The whole thread: an option is marked chosen by the answer that names it. */
   messages: ConversationMessage[];
+  /** The conversation's linked customer, which a *Create order* link carries; none when it has none. */
+  customerId?: number | null;
 };
+
+/** A "Wants to buy" answer (Messenger design N17): the Buy choice of a card of a product the message showed. */
+function WantsToBuy({
+  answer,
+  messages,
+  customerId,
+}: {
+  answer: MessageAnswer & { product: NonNullable<MessageAnswer["product"]> };
+  messages: ConversationMessage[];
+  customerId: number | null;
+}) {
+  const { t } = useI18n("communications");
+  const { newOrder } = useProductMessaging();
+  const question = messages.find((other) => other.id === answer.messageId);
+  const image = question?.attachments.find((file) => file.id === answer.product.attachmentId);
+  const target = newOrder?.({ customerId, productId: answer.product.productId });
+  return (
+    <Group gap="sm" mt={4} wrap="nowrap" align="center" className="wants-to-buy">
+      {image && <CardImage attachment={image} />}
+      <div>
+        <Text fw={600} size="sm">
+          {t("wantsToBuy", { product: answer.product.name })}
+        </Text>
+        {target && <CreateOrderLink target={target} label={t("createOrder")} />}
+      </div>
+    </Group>
+  );
+}
+
+/** The link to Orders' new-order page (N17): a real address, followed inside the app. */
+function CreateOrderLink({ target, label }: { target: NewOrderTarget; label: string }) {
+  const navigate = useNavigate() as (options: unknown) => void;
+  const query = new URLSearchParams(Object.entries(target.search).map(([key, value]) => [key, String(value)]));
+  return (
+    <Anchor
+      size="sm"
+      href={appUrl(`${target.to}?${query.toString()}`)}
+      onClick={(event) => {
+        event.preventDefault();
+        navigate(target);
+      }}
+    >
+      {label}
+    </Anchor>
+  );
+}
 
 /**
  * One message of a Messenger conversation as a chat bubble (design N8): text, its images inline, its cards
  * as a carousel, its answer options as chips — the chosen one marked — and an answer as a chip with a
  * check ("✓ Yes") under its question. An echo of the Page's own, sent from elsewhere, says so.
  */
-export function ChatMessage({ message, messages }: ChatMessageProps) {
+export function ChatMessage({ message, messages, customerId = null }: ChatMessageProps) {
   const { t } = useI18n("communications");
   const note = message.direction === "internal_note";
   const outbound = message.direction === "outbound";
   const answer = message.answerTo ?? null;
   const sharedEmail = answer?.choiceId === "share-email";
+  const wantsToBuy =
+    answer && isBuyChoice(answer.choiceId) && answer.product ? { ...answer, product: answer.product } : null;
   const options = message.components?.answerOptions ?? [];
   const cards = message.components?.cards ?? [];
   const chosen = (optionId: string) =>
@@ -88,7 +147,9 @@ export function ChatMessage({ message, messages }: ChatMessageProps) {
             {relative(message.occurredAt)}
           </Text>
         </Group>
-        {answer && !sharedEmail ? (
+        {wantsToBuy ? (
+          <WantsToBuy answer={wantsToBuy} messages={messages} customerId={customerId} />
+        ) : answer && !sharedEmail ? (
           <Badge mt={4} size="lg" variant="light" leftSection={<IconCheck size={12} />}>
             {answer.title}
           </Badge>

@@ -530,6 +530,7 @@ kodet `/`, `%2F`), står ikke på noen liste.
 | `GET` | `/api/v1/calendar/feed/{token}.ics` (kalenderstrømmen i Kalender, en kalenderadresse; nøyaktig ett segment) |
 | `POST` | `/api/v1/entra/mailbox-notifications` (Microsofts endringsvarsler for Outlook-synkroniseringen i Kalender, anonym; nøyaktig denne stien) |
 | `POST` | `/api/v1/google/calendar-notifications` (Google Kalenders push-varsler for synkroniseringen med Google Kalender i Kalender, anonym; nøyaktig denne stien) |
+| `GET`, `HEAD` | `/api/v1/communications/public-media/{token}` (et korts bilde som Meta henter, anonym, signert av tokenet; nøyaktig ett segment) |
 | `GET` | `/api/v1/meta/webhook` (Metas håndtrykk for Facebook Messenger, anonym; nøyaktig denne stien) |
 | `POST` | `/api/v1/meta/webhook` (Metas hendelser for Facebook Messenger, anonym; nøyaktig denne stien) |
 | `GET`, `HEAD` | `/health/…` (prober) |

@@ -2,8 +2,23 @@
 export const isPositiveId = (value: string) =>
   /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0;
 
-/** The search a new quote's or order's editor takes: the customer, when opened from the customer page (O31a). */
-export const validateNewDocumentSearch = (search: Record<string, unknown>): { customerId?: number } => {
-  const id = Number(search.customerId);
-  return Number.isSafeInteger(id) && id > 0 ? { customerId: id } : {};
+const positiveId = (value: unknown): number | undefined => {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : undefined;
+};
+
+/**
+ * The search a new quote's or order's editor takes: the customer, when opened from the customer page
+ * (O31a), and, when opened from a message in Communications that showed a product, the product the
+ * order starts with (Messenger design N17).
+ */
+export const validateNewDocumentSearch = (
+  search: Record<string, unknown>,
+): { customerId?: number; productId?: number } => {
+  const customerId = positiveId(search.customerId);
+  const productId = positiveId(search.productId);
+  return {
+    ...(customerId !== undefined ? { customerId } : {}),
+    ...(productId !== undefined ? { productId } : {}),
+  };
 };

@@ -430,4 +430,97 @@ describe("the new order", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/orders/orders/2077"));
     expect(fake.sent("POST", "/api/v1/orders/orders")?.body).toMatchObject({ customerId: 43 });
   });
+
+  it("waits for the product's variants before it lets the order be created", async () => {
+    fakeServer((call) => {
+      if (call.method === "GET" && call.url.startsWith("/api/v1/orders/products/7/grid"))
+        return jsonResponse(200, {
+          productId: 7,
+          productName: "Chair",
+          currency: "NOK",
+          mode: "list",
+          options: [],
+          cells: [],
+          variants: [{ variantId: 71, sku: "CH-1", unit: "stk", values: {}, price: 100 }],
+        });
+      return commonAnswers(call, settings());
+    });
+    renderRoute("/orders/orders/new?customerId=43&productId=7");
+
+    // Before the variants are read the button is not to be pressed: the order would start without the line.
+    expect(await screen.findByRole("button", { name: "Create the order" })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create the order" })).toBeEnabled());
+  });
+
+  it("says when the product could not be read, and starts the order empty", async () => {
+    const fake = fakeServer((call) => {
+      if (call.method === "GET" && call.url.startsWith("/api/v1/orders/products/7/grid")) return refusal(500, "failed");
+      if (call.method === "POST" && call.url === "/api/v1/orders/orders") return jsonResponse(201, order({ id: 2081 }));
+      if (call.method === "GET" && call.url === "/api/v1/orders/orders/2081")
+        return jsonResponse(200, order({ id: 2081 }));
+      return commonAnswers(call, settings());
+    });
+    renderRoute("/orders/orders/new?customerId=43&productId=7");
+
+    expect(await screen.findByText("The product could not be read; the order starts empty.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Create the order" }));
+    await waitFor(() => expect(fake.sent("POST", "/api/v1/orders/orders")).toBeDefined());
+    expect(fake.sent("POST", "/api/v1/orders/orders")?.body).not.toHaveProperty("lines");
+  });
+
+  it("takes the only variant of the product a message showed", async () => {
+    const fake = fakeServer((call) => {
+      if (call.method === "GET" && call.url.startsWith("/api/v1/orders/products/7/grid"))
+        return jsonResponse(200, {
+          productId: 7,
+          productName: "Chair",
+          currency: "NOK",
+          mode: "list",
+          options: [],
+          cells: [],
+          variants: [{ variantId: 71, sku: "CH-1", unit: "stk", values: {}, price: 100 }],
+        });
+      if (call.method === "POST" && call.url === "/api/v1/orders/orders") return jsonResponse(201, order({ id: 2079 }));
+      if (call.method === "GET" && call.url === "/api/v1/orders/orders/2079")
+        return jsonResponse(200, order({ id: 2079 }));
+      return commonAnswers(call, settings());
+    });
+    renderRoute("/orders/orders/new?customerId=43&productId=7");
+
+    expect(await screen.findByText("The order starts with one line for Chair.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Create the order" }));
+    await waitFor(() =>
+      expect(fake.sent("POST", "/api/v1/orders/orders")?.body).toMatchObject({ lines: [{ variantId: 71 }] }),
+    );
+  });
+
+  it("lets the person pick among the variants of the product a message showed", async () => {
+    const fake = fakeServer((call) => {
+      if (call.method === "GET" && call.url.startsWith("/api/v1/orders/products/7/grid"))
+        return jsonResponse(200, {
+          productId: 7,
+          productName: "Chair",
+          currency: "NOK",
+          mode: "list",
+          options: [],
+          cells: [],
+          variants: [
+            { variantId: 71, sku: "CH-RED", unit: "stk", values: { Colour: "Red" }, price: 100 },
+            { variantId: 72, sku: "CH-BLUE", unit: "stk", values: { Colour: "Blue" }, price: 100 },
+          ],
+        });
+      if (call.method === "POST" && call.url === "/api/v1/orders/orders") return jsonResponse(201, order({ id: 2080 }));
+      if (call.method === "GET" && call.url === "/api/v1/orders/orders/2080")
+        return jsonResponse(200, order({ id: 2080 }));
+      return commonAnswers(call, settings());
+    });
+    renderRoute("/orders/orders/new?customerId=43&productId=7");
+
+    await userEvent.click(await screen.findByRole("combobox", { name: "Start with a variant of Chair" }));
+    await userEvent.click(await screen.findByRole("option", { name: "CH-BLUE · Blue" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create the order" }));
+    await waitFor(() =>
+      expect(fake.sent("POST", "/api/v1/orders/orders")?.body).toMatchObject({ lines: [{ variantId: 72 }] }),
+    );
+  });
 });

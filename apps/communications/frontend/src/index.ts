@@ -19,6 +19,7 @@ export {
 } from "./api/conversations";
 export * from "./api/suppressions";
 export { communicationsCatalog } from "./i18n";
+export type { NewOrderTarget, ProductMessaging } from "./lib/product-messaging";
 export { ChannelsPage } from "./pages/admin.channels";
 export { SuppressionsPage } from "./pages/admin.suppressions";
 export { InboxPage } from "./pages/inbox";

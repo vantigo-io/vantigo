@@ -11,7 +11,7 @@ import {
   Textarea,
   TextInput,
 } from "@mantine/core";
-import { IconNote, IconPaperclip, IconPlus, IconSend, IconX } from "@tabler/icons-react";
+import { IconNote, IconPackage, IconPaperclip, IconPlus, IconSend, IconX } from "@tabler/icons-react";
 import { useMutation, useQueries } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
@@ -24,6 +24,7 @@ import {
   replyToConversation,
   stageConversationAttachment,
 } from "../api/conversations";
+import { useProductMessaging } from "../lib/product-messaging";
 import {
   addOption,
   addYesNo,
@@ -35,6 +36,9 @@ import {
   textWithinLimit,
 } from "./chat";
 import { relative } from "./conversationHelpers";
+import { ProductDraftEditor } from "./ProductDraftEditor";
+import { ProductPicker } from "./ProductPicker";
+import { draftCards, draftProblem, newProductDraft, type ProductDraft } from "./productDraft";
 import { useDraftingSignal } from "./useDraftingSignal";
 
 const errorCode = (error: Error) => ("code" in error && typeof error.code === "string" ? error.code : undefined);
@@ -45,6 +49,8 @@ const replyErrors: Record<string, string> = {
   text_too_long: "chatErrorTextTooLong",
   components_invalid: "chatErrorComponentsInvalid",
   components_unsupported: "chatErrorComponentsUnsupported",
+  product_image_unavailable: "chatErrorProductImageUnavailable",
+  public_url_missing: "chatErrorPublicUrlMissing",
 };
 
 export type ChatComposerProps = {
@@ -62,7 +68,8 @@ export type ChatComposerProps = {
  * still be added.
  */
 export function ChatComposer({ conversation, onSent, onDraftingChange }: ChatComposerProps) {
-  const { t } = useI18n("communications");
+  const { t, locale, formatters } = useI18n("communications");
+  const { canAttachProduct, canViewPricing } = useProductMessaging();
   const limits = limitsOf(conversation);
   const window = conversation.replyWindow ?? null;
   const [noteMode, setNoteMode] = useState(false);
@@ -70,6 +77,8 @@ export function ChatComposer({ conversation, onSent, onDraftingChange }: ChatCom
   const drafting = useDraftingSignal(text.trim() !== "", onDraftingChange);
   const [options, setOptions] = useState<DraftOption[]>([]);
   const [shareEmail, setShareEmail] = useState(false);
+  const [product, setProduct] = useState<ProductDraft | null>(null);
+  const [picking, setPicking] = useState(false);
   const [uploads, setUploads] = useState<AttachmentUpload[]>([]);
   const statusQueries = useQueries({
     queries: uploads.map((item) => attachmentUploadStatusQueryOptions(conversation.id, item.id)),
@@ -85,6 +94,7 @@ export function ChatComposer({ conversation, onSent, onDraftingChange }: ChatCom
           ? { answerOptions: options.map((option) => ({ id: option.id, title: option.title.trim() })) }
           : {}),
         ...(shareEmail ? { shareEmail: true } : {}),
+        ...(product ? { cards: draftCards(product) } : {}),
       };
       return replyToConversation(
         conversation.id,
@@ -101,6 +111,7 @@ export function ChatComposer({ conversation, onSent, onDraftingChange }: ChatCom
       setText("");
       setOptions([]);
       setShareEmail(false);
+      setProduct(null);
       setUploads([]);
       await onSent();
     },
@@ -120,6 +131,7 @@ export function ChatComposer({ conversation, onSent, onDraftingChange }: ChatCom
       (!text.trim() && currentUploads.length === 0) ||
       !textWithinLimit(text, limits) ||
       problem !== null ||
+      (product !== null && draftProblem(product, limits) !== null) ||
       waitingForScan ||
       !conversation.replyRecipients.canReply;
   const closesAt = window?.closesAt ? relative(window.closesAt) : "";
@@ -239,6 +251,39 @@ export function ChatComposer({ conversation, onSent, onDraftingChange }: ChatCom
             </Stack>
           )}
         </Card>
+      )}
+      {!noteMode && product && (
+        <ProductDraftEditor draft={product} limits={limits} onChange={setProduct} onRemove={() => setProduct(null)} />
+      )}
+      {!noteMode && canAttachProduct && limits.maxCards > 0 && (
+        <>
+          <ProductPicker
+            opened={picking}
+            onClose={() => setPicking(false)}
+            onPick={(picked, images) => {
+              setProduct(
+                newProductDraft(picked, images, {
+                  limits,
+                  locale,
+                  pricing: canViewPricing,
+                  format: (amount, currency) => formatters.formatCurrency(amount, currency),
+                  exVat: t("exVat"),
+                }),
+              );
+              setPicking(false);
+            }}
+          />
+          <Group mt="xs">
+            <Button
+              size="compact-xs"
+              variant="light"
+              leftSection={<IconPackage size={12} />}
+              onClick={() => setPicking(true)}
+            >
+              {product ? t("changeProduct") : t("attachProduct")}
+            </Button>
+          </Group>
+        </>
       )}
       <Group justify="space-between" mt="xs">
         <Button component="label" size="xs" variant="subtle" leftSection={<IconPaperclip size={14} />}>

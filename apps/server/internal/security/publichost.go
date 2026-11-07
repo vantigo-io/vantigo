@@ -57,7 +57,10 @@ func (rt Route) matches(method, p string) bool {
 // path and Google's one path are admitted, under POST alone and exactly. Meta
 // is the third: its webhook's handshake (GET) and its events (POST) are two
 // routes of one path, admitted exactly and under their own method each
-// (Messenger design N11). No maintenance poll: the
+// (Messenger design N11). Communications' public media is the fourth: the
+// image of a card, which Meta fetches by an address that carries its own
+// signed token, admitted under GET and HEAD as one segment (Messenger design
+// N18). No maintenance poll: the
 // root layout makes none on the pay page. No Vipps webhook path: webhooks are
 // deferred (the plan's Task 11) and nothing serves one. The list names only
 // what is served. The paths are base-relative: the gate runs after
@@ -79,6 +82,7 @@ func PayRoutes() []Route {
 		{Methods: get, Path: "/api/v1/calendar/feed/", OneSegment: true},
 		{Methods: post, Path: "/api/v1/entra/mailbox-notifications"},
 		{Methods: post, Path: "/api/v1/google/calendar-notifications"},
+		{Methods: getHead, Path: "/api/v1/communications/public-media/", OneSegment: true},
 		{Methods: get, Path: "/api/v1/meta/webhook"},
 		{Methods: post, Path: "/api/v1/meta/webhook"},
 		{Methods: getHead, Path: "/health/", Prefix: true},

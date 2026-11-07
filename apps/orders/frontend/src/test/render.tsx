@@ -64,10 +64,11 @@ export const fullAccess: OrdersAccess = {
 
 export { noOrdersAccess };
 
-const searchCustomer = (search: Record<string, unknown>) => {
-  const id = Number(search.customerId);
+const searchId = (value: unknown) => {
+  const id = Number(value);
   return Number.isSafeInteger(id) && id > 0 ? id : undefined;
 };
+const searchCustomer = (search: Record<string, unknown>) => searchId(search.customerId);
 
 /**
  * Stands in for the host's routes: the same paths, each page handed the
@@ -121,8 +122,14 @@ const routeTree = (access: OrdersAccess, extra?: ReactNode) => {
   const newOrder = createRoute({
     getParentRoute: () => root,
     path: NEW_SALES_ORDER_ROUTE_PATH,
-    validateSearch: (search: Record<string, unknown>) => ({ customerId: searchCustomer(search) }),
-    component: () => <OrderEditorPage customerId={newOrder.useSearch().customerId} access={access} />,
+    validateSearch: (search: Record<string, unknown>) => ({
+      customerId: searchCustomer(search),
+      productId: searchId(search.productId),
+    }),
+    component: () => {
+      const { customerId, productId } = newOrder.useSearch();
+      return <OrderEditorPage customerId={customerId} productId={productId} access={access} />;
+    },
   });
   return root.addChildren([
     route(QUOTES_ROUTE_PATH, () => <QuotesPage access={access} />),

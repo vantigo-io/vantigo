@@ -226,9 +226,16 @@ in `last_error`.
 as a bearer header (never in a URL).
 
 - **Refused before a call.** A provider not configured, an unknown Page, or a Page whose
-  state is `token_rejected` answers *unavailable* (the outbox holds the job). A part with a
-  card is refused (`Capabilities.MaxCards` is 0 until delivery C); so are a part with no
-  recipient, nothing to send, text over 2000 characters, and an empty or over-25-MB file.
+  state is `token_rejected` answers *unavailable* (the outbox holds the job). A part with
+  more than 10 cards, a card with an empty or over-80-character title, a subtitle over 80, more
+  than 3 choices or a choice title outside 1 to 20 characters, or an image that is not an `https`
+  address is refused with `ErrMessengerRejected`; so are a part with no recipient, nothing to
+  send, text over 2000 characters, and an empty or over-25-MB file.
+- **Cards** go as JSON, a **generic template**: `attachment: {type: "template", payload:
+  {template_type: "generic", elements}}`, an element per card with `title`, `subtitle`,
+  `image_url` (the public media address Communications gave, which Meta fetches) and
+  `buttons` — each choice a `postback` button whose payload is `v1:<messageId>:<choiceId>`.
+  Quick replies may ride beside the template.
 - **Text** goes as JSON; **a file** as `multipart/form-data` with the `filedata` part and
   `is_reusable` false. The attachment type is `image`, `audio` or `video` by the content
   type, else `file`.
@@ -302,7 +309,7 @@ against and which makes no network call):
 | Answer options | 13, each title at most 20 characters |
 | E-mail request | allowed |
 | Attachment | 25 MB |
-| Cards | none (0) until delivery C |
+| Cards | 10 per carousel, a title and a subtitle of at most 80 characters, at most 3 choices of at most 20 characters; `PublicMedia` is true: images are fetched from the public host |
 | Reply window | 24 hours |
 | Human Agent window | 7 days, **only while the Human Agent setting is on**; a settings row that cannot be read gives the 24-hour window |
 

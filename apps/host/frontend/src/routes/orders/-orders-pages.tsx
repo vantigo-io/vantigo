@@ -48,8 +48,8 @@ const OrderEditor = ({ access }: { access: OrdersAccess }) => {
   return <OrderEditorPage orderId={Number(orderId)} access={access} />;
 };
 const NewOrder = ({ access }: { access: OrdersAccess }) => {
-  const { customerId } = useSearch({ from: "/orders/orders/new" });
-  return <OrderEditorPage customerId={customerId} access={access} />;
+  const { customerId, productId } = useSearch({ from: "/orders/orders/new" });
+  return <OrderEditorPage customerId={customerId} productId={productId} access={access} />;
 };
 
 export const QuoteRoutePage = withAccess((access) => <QuoteEditor access={access} />);

@@ -863,7 +863,12 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     `DisplayName`, `Status` and `Capabilities`, which make no network call, a provider call,
     made outside any transaction through an accessor in `contractscalls.go` that refuses one
     inside. `Capabilities` carries the limits of a message's components and the reply window,
-    which Communications checks a reply against. A channel names its provider by `Key` and its
+    which Communications checks a reply against, and `PublicMedia`, whether the provider
+    fetches a card's image from the public host: a `MessengerCard` then carries `ImageURL`,
+    an address on the public media route (Messenger design N18), and otherwise `Image`, the
+    bytes. Communications also reads the product catalog's images (`ProductImages`,
+    `OpenProductImage`) to copy a card's picture into its own storage, before the reply's
+    transaction. A channel names its provider by `Key` and its
     Page by address, and is never served by a provider under another key. Communications'
     tests run against a fake (`fake_messenger_test.go`), set by
     `modtest.WithChannelMessenger`; Meta fills the slot under the key `meta` and Compose tests pin that

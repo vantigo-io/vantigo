@@ -200,7 +200,10 @@ aldri er sendt. Nummeret til et slettet tilbud brukes ikke igjen.
 Når et tilbud aksepteres, lages en ordre. For å lage en direkte velger du **Ny ordre** i
 **Ordre** eller på kundens fane **Ordre**, velger **Kunde** og velger **Opprett ordren**.
 En ordre har samme hode og linjer som et tilbud, bortsett fra at den ikke har valgfrie
-linjer eller gyldighetsdato.
+linjer eller gyldighetsdato. Kommer du til siden fra **Opprett ordre** på et *Vil kjøpe*-svar
+i en Messenger-samtale, åpnes den med kunden og produktet kunden ba om: produktets eneste
+variant blir ordrens første linje (antall 1), og for et produkt med flere varianter velger du
+én — eller ingen — før du velger **Opprett ordren**.
 
 Når Lager fører beholdning, får en ny ordre også et **Lagersted** — lageret varene
 reserveres på og leveres fra — fra **Standard lagersted** i innstillingene for Ordre. Endre

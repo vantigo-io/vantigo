@@ -254,6 +254,7 @@ SELECT m.id, m.direction, m.author_user_id, m.subject, m.text_body, m.html_body,
        m.components,
        COALESCE((m.channel_metadata_json->>'echo')::boolean, false)::boolean AS echo,
        (m.channel_metadata_json->'answer')::jsonb AS answer,
+       COALESCE((m.channel_metadata_json->>'productId')::int, 0)::int AS product_id,
        (m.raw_payload_storage_key IS NOT NULL)::boolean AS has_raw_payload,
        COALESCE((m.channel_metadata_json->>'autoSubmitted')::boolean, false)::boolean AS auto_submitted,
        COALESCE((m.channel_metadata_json->>'unreadable')::boolean, false)::boolean AS unreadable,
@@ -280,6 +281,7 @@ type GetConversationMessagesByConversationIDRow struct {
 	Components             []byte
 	Echo                   bool
 	Answer                 []byte
+	ProductID              int32
 	HasRawPayload          bool
 	AutoSubmitted          bool
 	Unreadable             bool
@@ -321,6 +323,7 @@ func (q *Queries) GetConversationMessagesByConversationID(ctx context.Context, c
 			&i.Components,
 			&i.Echo,
 			&i.Answer,
+			&i.ProductID,
 			&i.HasRawPayload,
 			&i.AutoSubmitted,
 			&i.Unreadable,

@@ -143,7 +143,8 @@ func TestReplyMessenger_Refusals(t *testing.T) {
 		{"an id out of shape", map[string]any{"textBody": "Hi", "components": map[string]any{"answerOptions": []map[string]any{{"id": "Yes!", "title": "Yes"}}}}, 422, "components_invalid", "answerOptions[0].id"},
 		{"an id of 41 characters", map[string]any{"textBody": "Hi", "components": map[string]any{"answerOptions": []map[string]any{{"id": strings.Repeat("a", 41), "title": "Yes"}}}}, 422, "components_invalid", "answerOptions[0].id"},
 		{"a repeated id", map[string]any{"textBody": "Hi", "components": map[string]any{"answerOptions": []map[string]any{{"id": "a", "title": "A"}, {"id": "a", "title": "B"}}}}, 422, "components_invalid", "answerOptions[1].id"},
-		{"cards", map[string]any{"textBody": "Hi", "components": map[string]any{"cards": []map[string]any{{"title": "Card"}}}}, 422, "components_invalid", "cards"},
+		{"a card with no product image", map[string]any{"textBody": "Hi", "components": map[string]any{"cards": []map[string]any{{"title": "Card"}}}}, 422, "components_invalid", "cards[0].productImageId"},
+		{"an empty list of cards", map[string]any{"textBody": "Hi", "components": map[string]any{"cards": []any{}}}, 422, "components_invalid", "cards"},
 	}
 	for _, tc := range cases {
 		r := f.reply(conv, uuid.NewString(), tc.body)

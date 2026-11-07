@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -162,9 +163,37 @@ type storedAnswer struct {
 	Title     string `json:"title"`
 }
 
+// productQuestion is a message of the thread that showed a product in cards
+// (N16): the product, and the cards as they were sent, which an answer to one
+// of their choices is resolved against (N17).
+type productQuestion struct {
+	productID int32
+	cards     []storedCard
+}
+
+// productQuestions are the thread's messages with cards and a product, by id.
+func productQuestions(rows []store.GetConversationMessagesByConversationIDRow) (map[uuid.UUID]productQuestion, error) {
+	out := map[uuid.UUID]productQuestion{}
+	for _, r := range rows {
+		if r.ProductID == 0 || len(r.Components) == 0 {
+			continue
+		}
+		var stored storedComponents
+		if err := json.Unmarshal(r.Components, &stored); err != nil {
+			return nil, fmt.Errorf("communications: decode a message's components: %w", err)
+		}
+		if len(stored.Cards) > 0 {
+			out[r.ID] = productQuestion{productID: r.ProductID, cards: stored.Cards}
+		}
+	}
+	return out, nil
+}
+
 // answerResponse is the stored answer as the thread reads it: nil for a message
-// that is no answer, or whose answer cannot be read.
-func answerResponse(raw []byte) *gen.MessageAnswer {
+// that is no answer, or whose answer cannot be read. An answer to a choice of a
+// card of a product the question showed carries the product (N17): its id, the
+// card's title and the card's image.
+func answerResponse(raw []byte, products map[uuid.UUID]productQuestion) *gen.MessageAnswer {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil
 	}
@@ -176,7 +205,17 @@ func answerResponse(raw []byte) *gen.MessageAnswer {
 	if err != nil {
 		return nil
 	}
-	return &gen.MessageAnswer{MessageId: id, ChoiceId: stored.ChoiceID, Title: stored.Title}
+	answer := &gen.MessageAnswer{MessageId: id, ChoiceId: stored.ChoiceID, Title: stored.Title}
+	if q, ok := products[id]; ok {
+		for _, card := range q.cards {
+			if !slices.ContainsFunc(card.Choices, func(c storedChoice) bool { return c.ID == stored.ChoiceID }) {
+				continue
+			}
+			answer.Product = &gen.MessageAnswerProduct{ProductId: q.productID, Name: card.Title, AttachmentId: card.AttachmentID}
+			break
+		}
+	}
+	return answer
 }
 
 // componentLimitsOf is what a message may carry on a channel whose provider has
@@ -281,14 +320,15 @@ func latestInbound(ctx context.Context, q *store.Queries, conversationID uuid.UU
 // validateComponents checks a reply's components against the provider's
 // Capabilities (N4): every limit it breaks is a field of the 422
 // components_invalid, keyed by where it is. Cards are checked for their shape;
-// that a card's image is a product's belongs to the delivery that copies it.
+// that a card's image is a product's belongs to the copy (reply_cards.go).
 func validateComponents(c *gen.MessageComponents, caps contracts.MessengerCapabilities) map[string][]string {
 	errs := map[string][]string{}
 	if c == nil {
 		return errs
 	}
 	// An id is unique within its message, answer options and card choices alike:
-	// it is what the payload names (N4).
+	// it is what the payload names (N4). A product's cards each carry their own
+	// Buy, buy-<card index>, so an answer names the card it was given on.
 	seen := map[string]bool{}
 	if c.AnswerOptions != nil {
 		options := *c.AnswerOptions

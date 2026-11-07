@@ -34,6 +34,9 @@ type messengerMetadata struct {
 	PlatformMessageID string        `json:"platformMessageId,omitempty"`
 	Echo              bool          `json:"echo,omitempty"`
 	Answer            *storedAnswer `json:"answer,omitempty"`
+	// ProductID is the product a reply with cards showed (N16), which a Buy
+	// answer is resolved to (N17).
+	ProductID *int32 `json:"productId,omitempty"`
 }
 
 // receiptKeyOf is the id an event's receipt is written under: the platform's
