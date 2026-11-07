@@ -14,7 +14,7 @@ import { type NewOrderTarget, useProductMessaging } from "../lib/product-messagi
 import { AttachmentLinks } from "./AttachmentLinks";
 import { CardImage, ChatCarousel } from "./ChatCarousel";
 import { participantName, relative } from "./conversationHelpers";
-import { BUY_CHOICE_ID } from "./productDraft";
+import { isBuyChoice } from "./productDraft";
 
 const isImage = (file: Attachment) =>
   file.role !== "card" &&
@@ -120,7 +120,7 @@ export function ChatMessage({ message, messages, customerId = null }: ChatMessag
   const answer = message.answerTo ?? null;
   const sharedEmail = answer?.choiceId === "share-email";
   const wantsToBuy =
-    answer?.choiceId === BUY_CHOICE_ID && answer.product ? { ...answer, product: answer.product } : null;
+    answer && isBuyChoice(answer.choiceId) && answer.product ? { ...answer, product: answer.product } : null;
   const options = message.components?.answerOptions ?? [];
   const cards = message.components?.cards ?? [];
   const chosen = (optionId: string) =>

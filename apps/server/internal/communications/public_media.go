@@ -166,8 +166,10 @@ func publicMediaHeaders() (cache, referrer, nosniff *string) {
 // It serves a card attachment of an outbound message on a channel whose
 // provider asks for public media, and nothing else. An expired, wrong or
 // foreign token, a file attachment, an inbound one and a missing object are the
-// same bare 404, never a 401, so the route cannot be used to probe. A fetch is
-// logged with the attachment id, never the token.
+// same bare 404, never a 401, so the route cannot be used to probe. The
+// module's own log line for a fetch carries the attachment id and never the
+// token; the request log records every path as it is, so the proxy's access log
+// is kept to the path without the token, or to nothing (the Meta admin page).
 func (s *server) GetCommunicationsPublicMediaByToken(ctx context.Context, req gen.GetCommunicationsPublicMediaByTokenRequestObject) (gen.GetCommunicationsPublicMediaByTokenResponseObject, error) {
 	notFound := gen.GetCommunicationsPublicMediaByToken404Response{}
 	media, err := s.publicMediaOf(ctx, req.Token)
@@ -194,13 +196,22 @@ func (s *server) GetCommunicationsPublicMediaByToken(ctx context.Context, req ge
 // HeadCommunicationsPublicMediaByToken A card image's headers for Meta
 // (HEAD /api/v1/communications/public-media/{token})
 //
-// GET's answer without the body: the same checks and the same bare 404, the
-// image's content type and length, and the same headers.
+// GET's answer without the body: the same checks and the same bare 404 (the
+// object is looked for, not read), the image's content type and length, and
+// the same headers.
 func (s *server) HeadCommunicationsPublicMediaByToken(ctx context.Context, req gen.HeadCommunicationsPublicMediaByTokenRequestObject) (gen.HeadCommunicationsPublicMediaByTokenResponseObject, error) {
 	notFound := gen.HeadCommunicationsPublicMediaByToken404Response{}
 	media, err := s.publicMediaOf(ctx, req.Token)
 	if err != nil || media == nil {
 		return notFound, err
+	}
+	// The object is looked for, so HEAD and GET agree: a missing one is 404 for both.
+	exists, err := s.store.Exists(ctx, media.storageKey)
+	if err != nil {
+		return nil, fmt.Errorf("communications: look for a card image: %w", err)
+	}
+	if !exists {
+		return notFound, nil
 	}
 	cache, referrer, nosniff := publicMediaHeaders()
 	return gen.HeadCommunicationsPublicMediaByToken200AsteriskResponse{

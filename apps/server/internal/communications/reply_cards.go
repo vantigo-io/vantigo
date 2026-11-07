@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -139,6 +140,11 @@ func (s *server) copyCardImages(ctx context.Context, conversationID uuid.UUID, c
 			return fail(gen.PostCommunicationsConversationsByIdReply422JSONResponse(fieldsErrorBody(
 				"components_invalid", "The answer options or cards break the channel's limits.",
 				map[string][]string{fmt.Sprintf("cards[%d].productImageId", i): {"The cards of a message show one product."}})), nil)
+		}
+		// Only what Messenger shows as a picture and the catalog normalises to (N13).
+		if ct := strings.ToLower(strings.TrimSpace(strings.SplitN(image.ContentType, ";", 2)[0])); ct != "image/png" && ct != "image/jpeg" {
+			_ = body.Close()
+			return fail(unavailable, nil)
 		}
 		out.productID = image.ProductID
 		content, err := io.ReadAll(io.LimitReader(body, cardImageMaxBytes+1))

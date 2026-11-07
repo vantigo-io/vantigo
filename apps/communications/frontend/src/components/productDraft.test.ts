@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultComponentLimits } from "./chat";
-import { buyTitleFor, draftCards, draftProblem, newProductDraft, priceSubtitle } from "./productDraft";
+import { buyTitleFor, draftCards, draftProblem, isBuyChoice, newProductDraft, priceSubtitle } from "./productDraft";
 
 const format = (amount: number, currency: string) => `${currency} ${amount}`;
 const product = (overrides = {}) => ({
@@ -78,12 +78,26 @@ describe("a product draft", () => {
     const [card] = draft.cards;
     if (!card) throw new Error("no card");
     draft.cards = [{ ...card, subtitle: "  " }];
-    expect(draftCards(draft)).toEqual([{ title: "Chair", productImageId: 1, choices: [{ id: "buy", title: "Buy" }] }]);
+    expect(draftCards(draft)).toEqual([
+      { title: "Chair", productImageId: 1, choices: [{ id: "buy-0", title: "Buy" }] },
+    ]);
     draft.secondTitle = " More ";
     expect(draftCards(draft)[0]?.choices).toEqual([
-      { id: "buy", title: "Buy" },
-      { id: "second", title: "More" },
+      { id: "buy-0", title: "Buy" },
+      { id: "second-0", title: "More" },
     ]);
+  });
+
+  it("gives each card its own Buy, so an answer names the card", () => {
+    const draft = newProductDraft(
+      product(),
+      [image(1, 0, ["communications"]), image(2, 1, ["communications"])],
+      options,
+    );
+    expect(draftCards(draft).map((card) => card.choices?.[0]?.id)).toEqual(["buy-0", "buy-1"]);
+    expect(isBuyChoice("buy-7")).toBe(true);
+    expect(isBuyChoice("buy")).toBe(false);
+    expect(isBuyChoice("second-0")).toBe(false);
   });
 
   it("is held back for a subtitle or a choice title out of bounds", () => {
