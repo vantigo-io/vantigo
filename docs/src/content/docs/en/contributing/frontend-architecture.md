@@ -7,6 +7,7 @@ sources:
   - packages/frontend-shell/src/live
   - apps/host/frontend/src/lib/assist-targets.ts
   - apps/host/frontend/src/api/session-handlers.ts
+  - apps/host/frontend/vite.config.ts
   - tools/assist
 ---
 
