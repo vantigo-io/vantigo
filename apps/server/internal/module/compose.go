@@ -506,6 +506,18 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.CalendarBusy = busyProvider.CalendarBusy(deps)
 	}
 
+	// A contact's messaging channels (contracts.ContactChannels, Messenger
+	// design N22) resolve after the channel messengers its provider,
+	// Communications, reads. Workers does not resolve them — no worker reads
+	// them.
+	channelsProvider, err := soleProvider(mods, "contact channels", func(m Module) bool { return m.ContactChannels != nil })
+	if err != nil {
+		return nil, err
+	}
+	if channelsProvider != nil {
+		deps.ContactChannels = channelsProvider.ContactChannels(deps)
+	}
+
 	// The operations dispatcher (module boundaries rule 18) exists before any
 	// module mounts, so the assistant module can hold it, and is bound once the
 	// router it dispatches through exists, below. Only the module named
