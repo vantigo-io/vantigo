@@ -1,7 +1,7 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { AppShellLayout, setLanguagePreference, useSidePanelController } from "@vantigo/frontend-shell";
+import { AppShellLayout, LiveProvider, setLanguagePreference, useSidePanelController } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type UseConversationsShellOptions, useConversationsShell } from "../hooks/useConversationsShell";
@@ -172,14 +172,51 @@ const Harness = (props: Partial<UseConversationsShellOptions> & { children?: Rea
   );
 };
 
-const mount = (props: Partial<UseConversationsShellOptions> = {}) =>
-  render(
+type Frame = Record<string, unknown>;
+const sockets: {
+  sent: Frame[];
+  onopen: (() => void) | null;
+  onclose: null;
+  onmessage: ((event: { data: unknown }) => void) | null;
+  send: (data: string) => void;
+  close: () => void;
+}[] = [];
+const createSocket = () => {
+  const socket = {
+    sent: [] as Frame[],
+    onopen: null as (() => void) | null,
+    onclose: null,
+    onmessage: null as ((event: { data: unknown }) => void) | null,
+    send: (data: string) => void socket.sent.push(JSON.parse(data)),
+    close: () => undefined,
+  };
+  sockets.push(socket);
+  return socket;
+};
+const receive = (frame: Frame) => act(() => sockets[0]?.onmessage?.({ data: JSON.stringify(frame) }));
+const sent = () => sockets[0]?.sent ?? [];
+
+/** Mounts the harness; with `live`, under a LiveProvider whose fake socket is open. */
+const mount = (props: Partial<UseConversationsShellOptions> = {}, live = false) => {
+  sockets.length = 0;
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const harness = <Harness {...props} />;
+  const result = render(
     <MantineProvider env="test">
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <Harness {...props} />
+      <QueryClientProvider client={client}>
+        {live ? (
+          <LiveProvider userId="me" url="ws://test" createSocket={createSocket}>
+            {harness}
+          </LiveProvider>
+        ) : (
+          harness
+        )}
       </QueryClientProvider>
     </MantineProvider>,
   );
+  if (live) act(() => sockets[0]?.onopen?.());
+  return result;
+};
 
 const openPanel = async () => {
   fireEvent.click(screen.getByRole("button", { name: /^Open conversations/ }));
@@ -385,7 +422,6 @@ describe("a poll that fails", () => {
     });
 
   it("keeps the thread, and the half-written reply, and says so inline", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
     let failing = false;
     mocks.request.mockImplementation((url: string) => {
       if (url.startsWith("/api/v1/communications/conversations?"))
@@ -395,13 +431,13 @@ describe("a poll that fails", () => {
       if (url.startsWith("/api/v1/communications/inbox/counts")) return Promise.resolve(counts);
       return Promise.resolve([]);
     });
-    mount();
+    mount({}, true);
     await openPanel();
     fireEvent.click(await screen.findByRole("button", { name: /Preview for/ }));
     fireEvent.change(await screen.findByRole("textbox", { name: "Message" }), { target: { value: "still typing" } });
 
     failing = true;
-    await act(async () => void (await vi.advanceTimersByTimeAsync(5_200)));
+    receive({ type: "event", topic: "communications.conversation:c-1", kind: "message.added", id: "m-2" });
     expect(await screen.findByText("Could not refresh; showing what was loaded last.")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("still typing");
     expect(screen.queryByText("Could not load this conversation.")).not.toBeInTheDocument();
@@ -422,61 +458,118 @@ describe("a poll that fails", () => {
   });
 });
 
-describe("polling by visibility", () => {
-  const tick = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
+describe("live updates", () => {
+  const detailCalls = () => urls().filter((url) => url.endsWith("/conversations/c-1")).length;
+  const countCalls = () => urls().filter((url) => url.includes("/inbox/counts")).length;
 
-  it("refetches the list every 15 s and the open conversation every 5 s while shown, and stops when hidden", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+  it("follows the inbox and the open conversation live while the panel is in front, and lets go when it is not", async () => {
     lists.mine = [];
-    mount();
+    mount({}, true);
     await openPanel();
     await screen.findByText("First question");
+    expect(sent()).toContainEqual({ type: "sub", topic: "communications.inbox" });
+
+    const lists0 = listCalls().length;
+    receive({ type: "event", topic: "communications.inbox", kind: "conversation.changed", id: "c-2" });
+    await waitFor(() => expect(listCalls().length).toBeGreaterThan(lists0));
+
     fireEvent.click(screen.getByRole("button", { name: /First question/ }));
     await screen.findByText("Could you help me with this?");
-    const detailCalls = () => urls().filter((url) => url.endsWith("/conversations/c-1")).length;
+    expect(sent()).toContainEqual({ type: "sub", topic: "communications.conversation:c-1" });
+    expect(sent()).toContainEqual({ type: "presence", topic: "communications.conversation:c-1", state: "viewing" });
 
     const d0 = detailCalls();
-    await tick(5_100);
-    expect(detailCalls()).toBeGreaterThan(d0);
+    receive({ type: "event", topic: "communications.conversation:c-1", kind: "message.added", id: "m-2" });
+    await waitFor(() => expect(detailCalls()).toBeGreaterThan(d0));
 
-    // The panel is closed: nothing more is asked of the list or the conversation.
+    // The panel is closed: it stops listening to the conversation and the list.
     fireEvent.click(screen.getByRole("button", { name: "close panel" }));
-    await tick(100);
+    await act(async () => void (await new Promise((resolve) => setTimeout(resolve, 300))));
     const d1 = detailCalls();
     const l1 = listCalls().length;
-    await tick(40_000);
+    receive({ type: "event", topic: "communications.conversation:c-1", kind: "message.added", id: "m-3" });
+    receive({ type: "event", topic: "communications.inbox", kind: "conversation.changed", id: "c-2" });
+    await act(async () => void (await new Promise((resolve) => setTimeout(resolve, 400))));
     expect(detailCalls()).toBe(d1);
     expect(listCalls().length).toBe(l1);
 
     // Shown again: it resumes with a refetch.
     fireEvent.click(screen.getByRole("button", { name: "show panel" }));
-    await tick(100);
-    expect(detailCalls()).toBeGreaterThan(d1);
-
-    // The tab is hidden: it stops again.
-    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
-    act(() => void document.dispatchEvent(new Event("visibilitychange")));
-    await tick(100);
-    const d2 = detailCalls();
-    await tick(40_000);
-    expect(detailCalls()).toBe(d2);
-
-    // Visible again: a refetch.
-    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
-    act(() => void document.dispatchEvent(new Event("visibilitychange")));
-    await tick(100);
-    expect(detailCalls()).toBeGreaterThan(d2);
+    await waitFor(() => expect(detailCalls()).toBeGreaterThan(d1));
   });
 
-  it("refreshes the list every 15 s while the panel is shown", async () => {
+  it("shows who else is in the open conversation", async () => {
+    lists.mine = [];
+    mount({}, true);
+    await openPanel();
+    fireEvent.click(await screen.findByRole("button", { name: /First question/ }));
+    await screen.findByText("Could you help me with this?");
+    receive({
+      type: "presence",
+      topic: "communications.conversation:c-1",
+      members: [{ userId: "u-kari", name: "Kari", state: "viewing", since: "2026-01-01T10:00:00Z" }],
+    });
+    expect(await screen.findByText("Also here: Kari")).toBeInTheDocument();
+  });
+
+  it("falls back to a minute's poll while the topics are not live, and only while the panel is in front", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     lists.mine = [];
     mount();
     await openPanel();
     await screen.findByText("First question");
+    const tick = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
     const before = listCalls().length;
-    await tick(15_100);
+    await tick(60_100);
     expect(listCalls().length).toBeGreaterThan(before);
+
+    fireEvent.click(screen.getByRole("button", { name: "close panel" }));
+    await tick(100);
+    const closed = listCalls().length;
+    await tick(130_000);
+    expect(listCalls().length).toBe(closed);
+  });
+
+  it("does not poll while the topic is live", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    lists.mine = [];
+    mount({}, true);
+    await openPanel();
+    await screen.findByText("First question");
+    receive({ type: "ok", topic: "communications.inbox" });
+    // Becoming live resyncs once (a refetch); after that nothing polls.
+    await act(async () => void (await vi.advanceTimersByTimeAsync(1_000)));
+    const before = listCalls().length;
+    // Two minutes, the server answering the socket's pings as it would.
+    for (let step = 0; step < 26; step++) {
+      await act(async () => void (await vi.advanceTimersByTimeAsync(5_000)));
+      receive({ type: "pong" });
+    }
+    expect(listCalls().length).toBe(before);
+  });
+
+  it("refreshes the badge on the inbox topic, and polls for it only while that topic is not live", async () => {
+    counts = { unread: 1, assignedToMeUnread: 0 };
+    mount({}, true);
+    expect(
+      await screen.findByRole("button", { name: "Open conversations. Unread conversations: 1" }),
+    ).toBeInTheDocument();
+    counts = { unread: 3, assignedToMeUnread: 2 };
+    receive({ type: "event", topic: "communications.inbox", kind: "conversation.changed", id: "c-9" });
+    expect(
+      await screen.findByRole("button", {
+        name: "Open conversations. Unread conversations assigned to you: 2. Unread conversations: 3",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("polls the badge every minute where there is no live connection", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mount();
+    await screen.findByRole("button", { name: "Open conversations" });
+    const before = countCalls();
+    await act(async () => void (await vi.advanceTimersByTimeAsync(60_100)));
+    expect(countCalls()).toBeGreaterThan(before);
   });
 });
 
@@ -503,16 +596,6 @@ describe("the button and its badge", () => {
     mount();
     expect(await screen.findByRole("button", { name: "Open conversations" })).toBeInTheDocument();
     await waitFor(() => expect(urls()).toContain("/api/v1/communications/inbox/counts"));
-  });
-
-  it("reads the counts every 30 s while the tab is visible", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    mount();
-    await screen.findByRole("button", { name: "Open conversations" });
-    const countCalls = () => urls().filter((url) => url.includes("/inbox/counts")).length;
-    const before = countCalls();
-    await act(async () => void (await vi.advanceTimersByTimeAsync(30_100)));
-    expect(countCalls()).toBeGreaterThan(before);
   });
 
   it("has no button for a person who cannot use it, and none on the inbox page", () => {

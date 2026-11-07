@@ -72,7 +72,8 @@ Innboksen, som er den samme visningen.
 
 **Merket** på knappen teller åpne samtaler som er tildelt deg og som du ikke har lest. Er ingen av dem
 ulest, men andre åpne samtaler er det, viser det en prikk. En skjermleser leser opp begge tallene når det er to:
-de tildelt deg, så alle uleste. Tallene leses hvert 30. sekund mens nettleserfanen er synlig, og når du kommer tilbake til fanen.
+de tildelt deg, så alle uleste. Tallene endrer seg i løpet av et øyeblikk når det kommer e-post eller en kollega endrer en samtale, og når du
+kommer tilbake til nettleserfanen. At du leste en samtale i en annen nettleserfane ses først da.
 
 **Listen** er kompakt. Filtrene er **Tildelt meg**, **Uleste** og **Alle åpne**; den starter på Tildelt meg,
 eller på Alle åpne når ingenting er tildelt deg. På en kundes side tilbyr den også **Denne kunden**, som viser
@@ -90,11 +91,12 @@ fortsatt når du går til en annen app og tilbake, eller lukker panelet og åpne
 tilgangene dine, som i Innboksen: uten `communications:conversations-reply` er skrivefeltet skrivebeskyttet; uten
 `communications:conversations-manage` er statusvalget deaktivert, og kontrollene for tagger, arkivering og kunde vises ikke.
 
-**Det holder seg oppdatert.** Mens panelet er åpent og fanen synlig, lastes listen på nytt hvert 15. sekund og
-den åpne samtalen hvert 5. sekund; begge stopper når panelet lukkes eller fanen skjules, og lastes én gang til
-når det vises igjen. Mislykkes en lasting, blir tråden du har åpen som den var, med en merknad om at den ikke kunne
-oppdateres, så et svar du skriver går ikke tapt. Innboksen laster på samme måte. Dette er polling, ikke push: en melding kan bruke noen
-sekunder på å dukke opp.
+**Det holder seg oppdatert.** Som Innboksen er panelet sanntid (se [Innboks oppdaterer seg selv](#innboks-oppdaterer-seg-selv)):
+mens det er foran, endrer listen og den åpne samtalen seg i løpet av et øyeblikk når det kommer en ny melding eller en
+kollega gjør en endring, og samtalen viser hvem andre som har den åpen og hvem som svarer. Ingenting lyttes til mens panelet er
+lukket eller på en annen fane, og det lastes én gang til når det vises igjen. Der sanntidsoppdateringer ikke er tilgjengelige,
+oppdateres listen og samtalen hvert minutt i stedet. Mislykkes en lasting, blir tråden du har åpen som den var, med en merknad om at den ikke kunne
+oppdateres, så et svar du skriver går ikke tapt.
 
 ## Les en samtale
 

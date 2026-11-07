@@ -1,5 +1,8 @@
 # Communications — Messenger, answer options and product images (design)
 
+**Revision 5, 2026-11-07**: delivery E follows the live-updates design (`2026-11-07-knowledge-and-live-design.md`)
+instead of N26's polling (§12).
+
 **Revision 4, 2026-11-06**: delivery E, conversations in the side panel beside the Assistant
 (§5b), added at the owner's request after revision 3's delivery D, a customer's contacts on
 Messenger (§5a). §11 lists what revision 2 changed, after a critic review, and §12 what
@@ -1220,3 +1223,19 @@ delivery:
 N7's refusal `channel_cannot_start` is narrowed by N22: a Messenger conversation can now be
 started for a known participant whose window is open. §6, §7, §9 and §10 gain D's rows.
 
+**Revision 5** (2026-11-07) changes how delivery E keeps its screens current. Live updates landed on
+`main` after revision 4 (one WebSocket per tab, Postgres NOTIFY fan-out, `useLiveTopic` and
+`usePresence`; see `2026-11-07-knowledge-and-live-design.md`), so E uses them in place of N26's
+15 s and 5 s polling:
+
+- the Conversations panel follows `communications.inbox` for its list and
+  `communications.conversation:{id}` for the open conversation, only while the panel is in front,
+  and announces presence only then;
+- the badge refetches `GET /inbox/counts` on `communications.inbox` events and on window focus;
+- the fallback is the live design's: a 60 s poll, only while the topic is not live (L13, L19);
+- the inbox page keeps main's live wiring; E adds no polling to it;
+- a failed refetch that still has data keeps the thread and the half-written reply, with a small
+  inline note (E's own review finding);
+- N26's "stops when hidden" becomes "does not listen while hidden"; N27's 30 s read becomes the events
+  above. Read state is a person's own and notifies nothing, so a read in another tab of the same person
+  reaches the badge at the next event, focus or fallback poll.
