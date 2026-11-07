@@ -13,6 +13,11 @@ const (
 	maxAnswerOptions   = 13
 	maxAnswerTitle     = 20
 	maxAttachmentBytes = 25 << 20
+	maxCards           = 10
+	maxCardChoices     = 3
+	maxCardTitle       = 80
+	maxCardSubtitle    = 80
+	maxChoiceTitle     = 20
 	replyWindow        = 24 * time.Hour
 	humanAgentWindow   = 7 * 24 * time.Hour
 )
@@ -36,9 +41,10 @@ func (m *messenger) Status(ctx context.Context) (contracts.MessengerStatus, erro
 }
 
 // Capabilities is what a message on Messenger may carry and how long a reply
-// may follow the person's last message. No carousel until Communications can
-// serve Meta an image's address (MaxCards stays zero); the Human Agent window
-// is there only while the Owner has ticked the setting. A settings row that
+// may follow the person's last message. A carousel is the generic template
+// (N12), whose images Meta fetches from an address on the public host
+// (PublicMedia, N18); the Human Agent window is there only while the Owner has
+// ticked the setting. A settings row that
 // cannot be read is no Human Agent window: the shorter, safer one.
 func (m *messenger) Capabilities() contracts.MessengerCapabilities {
 	caps := contracts.MessengerCapabilities{
@@ -46,7 +52,13 @@ func (m *messenger) Capabilities() contracts.MessengerCapabilities {
 		MaxAnswerOptions:   maxAnswerOptions,
 		MaxAnswerTitle:     maxAnswerTitle,
 		ShareEmail:         true,
+		MaxCards:           maxCards,
+		MaxCardChoices:     maxCardChoices,
+		MaxCardTitle:       maxCardTitle,
+		MaxCardSubtitle:    maxCardSubtitle,
+		MaxChoiceTitle:     maxChoiceTitle,
 		MaxAttachmentBytes: maxAttachmentBytes,
+		PublicMedia:        true,
 		Window:             replyWindow,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), capabilitiesTimeout)
