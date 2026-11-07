@@ -1449,10 +1449,12 @@ shell's side panel.
   assigned to. A conversation with new activity after the caller read it is unread again, and the
   caller's own reply counts as activity until the conversation is read again (the side panel reads it by
   opening it).
-- **One query, no per-row work** (`CountInboxUnread`): the open conversations are found through the
-  `(status, last_activity_at)` index, the read state through its primary key, and the assignee through
-  `ix_conversations_assigned_user_open`, a partial index on `assigned_user_id WHERE status = 'open'`
-  (migration `00133_communications_inbox_counts.sql`). The answer is per caller, never cached on the
+- **Two queries, honestly.** `unread` (`CountInboxUnread`) walks the open conversations through the
+  `(status, last_activity_at)` index and probes each one's read state by primary key with a `NOT EXISTS`, so
+  it costs O(open conversations) per call; nothing narrows it by assignee. `assignedToMeUnread`
+  (`CountInboxAssignedUnread`) is its own query with `status = 'open' AND assigned_user_id = $caller`, which
+  `ix_conversations_assigned_user_open` (a partial index on `assigned_user_id WHERE status = 'open'`,
+  migration `00133_communications_inbox_counts.sql`) serves. The answer is per caller, never cached on the
   server, and has no other filter: a client wanting a count of a filtered list asks the list.
 - **Errors.** 401 without a session and 403 without `conversations-view`; it has no 404.
 
