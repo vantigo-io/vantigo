@@ -543,6 +543,18 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.ordersSettings",
     descriptionKey: "admin.permission.ordersSettingsDescription",
   },
+  "knowledge:articles": {
+    moduleKey: "admin.permission.module.knowledge",
+    categoryKey: "admin.permission.category.knowledge",
+    displayNameKey: "admin.permission.knowledgeArticles",
+    descriptionKey: "admin.permission.knowledgeArticlesDescription",
+  },
+  "knowledge:manage": {
+    moduleKey: "admin.permission.module.knowledge",
+    categoryKey: "admin.permission.category.knowledge",
+    displayNameKey: "admin.permission.knowledgeManage",
+    descriptionKey: "admin.permission.knowledgeManageDescription",
+  },
   "calendar:access": {
     moduleKey: "admin.permission.module.calendar",
     categoryKey: "admin.permission.category.calendar",
@@ -794,6 +806,7 @@ const en = {
   "admin.permission.module.planning": "Planning",
   "admin.permission.module.inventory": "Inventory",
   "admin.permission.module.orders": "Orders",
+  "admin.permission.module.knowledge": "Knowledge",
   "admin.permission.category.administration": "Administration",
   "admin.permission.category.customers": "Customers",
   "admin.permission.category.legalIdentity": "Legal identity",
@@ -818,6 +831,7 @@ const en = {
   "admin.permission.category.planning": "Planning",
   "admin.permission.category.inventory": "Inventory",
   "admin.permission.category.orders": "Orders",
+  "admin.permission.category.knowledge": "Knowledge",
   "admin.permission.identityManage": "Manage identity",
   "admin.permission.identityManageDescription": "Manage accounts, roles, and access.",
   "admin.permission.customersView": "View customers",
@@ -1032,6 +1046,12 @@ const en = {
   "admin.permission.ordersSettings": "Manage Orders settings",
   "admin.permission.ordersSettingsDescription":
     "Change the settings, the number series, the templates and the warnings, and override a warning's block.",
+  "admin.permission.knowledgeArticles": "Use Knowledge",
+  "admin.permission.knowledgeArticlesDescription":
+    "See the Knowledge app, and read and write articles as each article's access allows.",
+  "admin.permission.knowledgeManage": "Administer Knowledge",
+  "admin.permission.knowledgeManageDescription":
+    "See and change the access of every article that is not private, restore anyone's trashed article and empty the trash. Private articles stay private.",
   "admin.permission.calendarAccess": "Use Calendar",
   "admin.permission.calendarAccessDescription":
     "Use the Calendar app: your own calendar, your appointments and your answers to them, and the dashboard's agenda.",
@@ -1509,6 +1529,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.module.planning": "Bemanning",
   "admin.permission.module.inventory": "Lager",
   "admin.permission.module.orders": "Ordre",
+  "admin.permission.module.knowledge": "Kunnskap",
   "admin.permission.category.administration": "Administrasjon",
   "admin.permission.category.customers": "Kunder",
   "admin.permission.category.legalIdentity": "Juridisk identitet",
@@ -1533,6 +1554,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.category.planning": "Bemanning",
   "admin.permission.category.inventory": "Lager",
   "admin.permission.category.orders": "Ordre",
+  "admin.permission.category.knowledge": "Kunnskap",
   "admin.permission.identityManage": "Administrer identitet",
   "admin.permission.identityManageDescription": "Administrer kontoer, roller og tilgang.",
   "admin.permission.customersView": "Se kunder",
@@ -1752,6 +1774,12 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.ordersSettings": "Håndtere innstillinger for Ordre",
   "admin.permission.ordersSettingsDescription":
     "Endre innstillingene, nummerseriene, malene og varslene, og overstyre blokkeringen fra et varsel.",
+  "admin.permission.knowledgeArticles": "Bruke Kunnskap",
+  "admin.permission.knowledgeArticlesDescription":
+    "Se Kunnskap-appen, og lese og skrive artikler slik tilgangen til hver artikkel tillater.",
+  "admin.permission.knowledgeManage": "Administrere Kunnskap",
+  "admin.permission.knowledgeManageDescription":
+    "Se og endre tilgangen til alle artikler som ikke er private, gjenopprette andres artikler fra papirkurven og tømme papirkurven. Private artikler forblir private.",
   "admin.permission.calendarAccess": "Bruk Kalender",
   "admin.permission.calendarAccessDescription":
     "Bruk Kalender-appen: din egen kalender, avtalene dine og svarene dine på dem, og agendaen på kontrollpanelet.",

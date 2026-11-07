@@ -19,6 +19,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/google"
 	"github.com/vantigo-io/vantigo/server/internal/inventory"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
+	"github.com/vantigo-io/vantigo/server/internal/knowledge"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
@@ -44,7 +45,7 @@ func everyModule() []module.Module {
 	return []module.Module{
 		customers.Module(), products.Module(), energy.Module(), communications.Module(),
 		projects.Module(), timetracking.Module(), expenses.Module(), invoices.Module(),
-		staff.Module(), planning.Module(), inventory.Module(), orders.Module(), calendar.Module(), entra.Module(), google.Module(), assistant.Module(),
+		staff.Module(), planning.Module(), inventory.Module(), orders.Module(), knowledge.Module(), calendar.Module(), entra.Module(), google.Module(), assistant.Module(),
 	}
 }
 
@@ -101,6 +102,29 @@ var markedByHand = map[string]string{
 	"putAssistantPermission":        "never",
 	"getAssistantPerson":            "never",
 	"putAssistantPerson":            "never",
+
+	// Knowledge reaches the Assistant only through searchKnowledge and
+	// getKnowledgeArticleText, the two reads that apply ai_hidden (knowledge
+	// design K14, K16); every other operation, reads included, says never.
+	"listKnowledgeTree":              "never",
+	"createKnowledgeArticle":         "never",
+	"getKnowledgeArticle":            "never",
+	"updateKnowledgeArticle":         "never",
+	"updateKnowledgeArticleContent":  "never",
+	"moveKnowledgeArticle":           "never",
+	"getKnowledgeArticleAccess":      "never",
+	"updateKnowledgeArticleAccess":   "never",
+	"listKnowledgeArticleVersions":   "never",
+	"getKnowledgeArticleVersion":     "never",
+	"restoreKnowledgeArticleVersion": "never",
+	"trashKnowledgeArticle":          "never",
+	"listKnowledgeTrash":             "never",
+	"restoreKnowledgeArticle":        "never",
+	"emptyKnowledgeTrash":            "never",
+	"listKnowledgeFavourites":        "never",
+	"addKnowledgeFavourite":          "never",
+	"removeKnowledgeFavourite":       "never",
+	"moveKnowledgeFavourite":         "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {
@@ -194,6 +218,19 @@ func TestOperations_TheRealContract(t *testing.T) {
 			marked[id] = d.mark
 		}
 	}
+	// Of Knowledge's operations exactly two are callable, both auto (K14):
+	// the contract leaves them unmarked GETs, and this pins that no other
+	// becomes callable by losing its mark.
+	knowledgeCallable := map[string]string{}
+	for _, info := range all {
+		if strings.HasPrefix(info.Path, "/api/v1/knowledge/") && info.Mode != operations.ModeNever {
+			knowledgeCallable[info.ID] = string(info.Mode)
+		}
+	}
+	if want := map[string]string{"searchKnowledge": "auto", "getKnowledgeArticleText": "auto"}; !equalMaps(knowledgeCallable, want) {
+		t.Errorf("Knowledge's callable operations = %v, want exactly %v", sortedPairs(knowledgeCallable), sortedPairs(want))
+	}
+
 	if !equalMaps(marked, markedByHand) {
 		t.Errorf("x-vantigo-assistant is written on %v\nwant exactly %v\n(add an operation here only when its mode is meant to differ from S4's default)", sortedPairs(marked), sortedPairs(markedByHand))
 	}

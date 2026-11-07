@@ -4,6 +4,7 @@ import { Spotlight } from "@mantine/spotlight";
 import {
   IconBarcode,
   IconBolt,
+  IconBook2,
   IconBriefcase,
   IconBuilding,
   IconCalendarEvent,
@@ -33,6 +34,7 @@ import { formatContactName } from "@vantigo/customers-ui/lib/format-contact-name
 import { meteringPointsQueryOptions } from "@vantigo/energy-ui";
 import { useI18n } from "@vantigo/frontend-shell";
 import { COUNTS_ROUTE_PATH, INVENTORY_HOME_ROUTE_PATH } from "@vantigo/inventory-ui/lib/routes";
+import { KNOWLEDGE_HOME_ROUTE_PATH } from "@vantigo/knowledge-ui/lib/routes";
 import { NEW_QUOTE_ROUTE_PATH } from "@vantigo/orders-ui/lib/routes";
 import { BOARD_ROUTE_PATH, REQUESTS_ROUTE_PATH } from "@vantigo/planning-ui/lib/routes";
 import { projectSearchQueryOptions } from "@vantigo/projects-ui/api/projects";
@@ -236,6 +238,12 @@ export const AppSpotlight = ({
     hasPermissions(permissions, ["orders:access"]) &&
     hasPermissions(permissions, ["orders:quotes-manage"])
       ? [{ label: t("dashboard.newQuote"), icon: IconFileDollar, path: NEW_QUOTE_ROUTE_PATH, search: undefined }]
+      : []),
+    // New article opens Knowledge with the new-article form (the package's
+    // `new` seam, knowledge design K4): anyone with knowledge:articles may
+    // write a root in the workspace or in private.
+    ...(enabledModules?.includes("knowledge") && hasPermissions(permissions, ["knowledge:articles"])
+      ? [{ label: t("dashboard.newArticle"), icon: IconBook2, path: KNOWLEDGE_HOME_ROUTE_PATH, search: { new: 1 } }]
       : []),
     // New appointment is everyone's in the app, for themselves: the calendar
     // opens the appointment sheet on arrival (the package's `new` seam).

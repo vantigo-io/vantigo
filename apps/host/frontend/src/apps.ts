@@ -3,6 +3,7 @@ import {
   IconAdjustments,
   IconBolt,
   IconBook,
+  IconBook2,
   IconBrandGoogle,
   IconBrandWindows,
   IconBriefcase,
@@ -49,6 +50,7 @@ import {
   IconTelescope,
   IconTemplate,
   IconTransfer,
+  IconTrash,
   IconTruckDelivery,
   IconUser,
   IconUserPlus,
@@ -58,6 +60,7 @@ import {
   IconUsersGroup,
 } from "@tabler/icons-react";
 import { type InventoryNavItem, inventoryNavItems } from "@vantigo/inventory-ui";
+import { type KnowledgeNavItem, knowledgeNavItems } from "@vantigo/knowledge-ui";
 import { type OrdersNavItem, ordersNavItems } from "@vantigo/orders-ui";
 import { type PlanningNavItem, planningNavItems } from "@vantigo/planning-ui";
 import { type StaffNavItem, staffNavItems } from "@vantigo/staff-ui";
@@ -199,6 +202,17 @@ const ordersNavPresentation: Record<OrdersNavItem["key"], Pick<NavItem, "label" 
   analysis: { label: "navigation.ordersAnalysis", icon: IconChartBar },
   templates: { label: "navigation.ordersTemplates", icon: IconTemplate },
   settings: { label: "navigation.ordersSettings", icon: IconAdjustments },
+};
+
+/**
+ * The host's half of a Knowledge sidebar entry, as Planning's above: where
+ * each destination is and which permission offers it are the package's
+ * (`knowledgeNavItems`); the label and the icon are the host's. The trash is
+ * "Knowledge trash" in English for the reason Orders' comment gives.
+ */
+const knowledgeNavPresentation: Record<KnowledgeNavItem["key"], Pick<NavItem, "label" | "icon">> = {
+  articles: { label: "navigation.knowledgeArticles", icon: IconBook2 },
+  trash: { label: "navigation.knowledgeTrash", icon: IconTrash },
 };
 
 /**
@@ -541,6 +555,19 @@ export const apps: readonly AppDefinition[] = [
       requiredPermissions: ["communications:suppressions-manage"],
     },
   ]),
+  // Every Knowledge call asks for knowledge:articles (knowledge design K2);
+  // what a person may do with an article is the article's own access (K4).
+  moduleApp(
+    "knowledge",
+    "navigation.knowledge",
+    IconBook2,
+    "/knowledge",
+    knowledgeNavItems.map(({ key, to, requiredPermissions }) => ({
+      ...knowledgeNavPresentation[key],
+      to,
+      requiredPermissions,
+    })),
+  ),
   moduleApp("products", "navigation.products", IconPackage, "/products", [
     {
       label: "navigation.products",

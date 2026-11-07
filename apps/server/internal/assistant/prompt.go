@@ -11,7 +11,7 @@ import (
 // promptVersion names the system prompt below. It is bumped with any change of
 // the rules, so a conversation's behaviour can be traced to the prompt it ran
 // under.
-const promptVersion = "2026-11-05.3"
+const promptVersion = "2026-11-07.1"
 
 // appRoutes are the host's route shapes the assistant links records with: the
 // in-app routes of apps.ts and routes/, kept here because the prompt states
@@ -31,6 +31,7 @@ var appRoutes = []struct{ prefix, shape, what string }{
 	{"/planning", "/planning, /planning/unbooked", "planning"},
 	{"/inventory", "/inventory/sites/{siteId}, /inventory/locations/{locationId}, /inventory/variants/{variantId}, /inventory/movements", "inventory: sites, locations, stock and movements"},
 	{"/orders", "/orders/quotes/{quoteId}, /orders/orders/{orderId}, /orders/deliveries/{deliveryId}, /orders/subscriptions/{subscriptionId}, /orders/templates, /orders/settings", "orders: quotes, sales orders, deliveries, subscriptions and quote templates"},
+	{"/knowledge", "/knowledge/articles/{articleId}", "a Knowledge article: the company's own routines and how-tos"},
 	{"/calendar", "/calendar", "the calendar"},
 	{"/assistant", "/assistant", "the Assistant app"},
 	{"/settings", "/settings", "the person's own settings"},

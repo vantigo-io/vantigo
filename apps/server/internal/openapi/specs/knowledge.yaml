@@ -1,0 +1,1598 @@
+components:
+    schemas:
+        KnowledgeAccess:
+            additionalProperties: false
+            description: "An article's access (K4): its default for everyone, and its members, with what is inherited."
+            properties:
+                articleId:
+                    format: uuid
+                    type: string
+                canManage:
+                    description: "The caller may change this access: a writer, or knowledge:manage on an article that is not private."
+                    type: boolean
+                effectivePermission:
+                    $ref: "#/components/schemas/KnowledgeAccessLevel"
+                inheritedFrom:
+                    allOf:
+                        - $ref: "#/components/schemas/KnowledgePathItem"
+                    description: The ancestor the effective default comes from, when inherited and readable by the caller.
+                    nullable: true
+                internalPermission:
+                    allOf:
+                        - $ref: "#/components/schemas/KnowledgeAccessLevel"
+                    description: "The article's own default; null inherits the parent's. A root's is never null."
+                    nullable: true
+                members:
+                    items:
+                        $ref: "#/components/schemas/KnowledgeMember"
+                    type: array
+                section:
+                    $ref: "#/components/schemas/KnowledgeSection"
+            required:
+                - articleId
+                - section
+                - internalPermission
+                - effectivePermission
+                - inheritedFrom
+                - canManage
+                - members
+            type: object
+        KnowledgeAccessLevel:
+            description: "A level of access (K4): write reads and writes, read only reads, none shuts out."
+            enum:
+                - write
+                - read
+                - none
+            type: string
+        KnowledgeAccessUpdate:
+            additionalProperties: false
+            description: "An article's access, replacing its own default and its own member rows (K4). The last writer cannot be removed (last_writer); a change that moves the article between private and the workspace needs confirmVisibility."
+            properties:
+                confirmVisibility:
+                    type: boolean
+                internalPermission:
+                    allOf:
+                        - $ref: "#/components/schemas/KnowledgeAccessLevel"
+                    description: "The article's own default; null inherits. A root's is required."
+                    nullable: true
+                members:
+                    items:
+                        $ref: "#/components/schemas/KnowledgeMemberInput"
+                    maxItems: 500
+                    type: array
+            required:
+                - internalPermission
+                - members
+            type: object
+        KnowledgeActor:
+            additionalProperties: false
+            description: A person who did something, as the user directory names them now.
+            properties:
+                displayName:
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+            type: object
+        KnowledgeArticle:
+            additionalProperties: false
+            description: An article (K3) with what the caller may do with it.
+            properties:
+                aiHidden:
+                    description: Hidden from the Assistant on the article itself (K16).
+                    type: boolean
+                aiHiddenInherited:
+                    description: "Hidden from the Assistant through an ancestor; the article cannot un-hide itself (K16)."
+                    type: boolean
+                content:
+                    $ref: "#/components/schemas/KnowledgeDocument"
+                createdAt:
+                    format: date-time
+                    type: string
+                createdBy:
+                    allOf:
+                        - $ref: "#/components/schemas/KnowledgeActor"
+                    description: Null for a former user (K17).
+                    nullable: true
+                icon:
+                    nullable: true
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                locked:
+                    description: "A writer locked the content (K11a): content saves answer 409 article_locked."
+                    type: boolean
+                parentId:
+                    description: "The parent; null for a root."
+                    format: uuid
+                    nullable: true
+                    type: string
+                path:
+                    description: The ancestors from the top down, stopping below the first the caller cannot read (K12).
+                    items:
+                        $ref: "#/components/schemas/KnowledgePathItem"
+                    type: array
+                permission:
+                    $ref: "#/components/schemas/KnowledgePermission"
+                position:
+                    description: The fractional-index key that orders it among its siblings.
+                    type: string
+                section:
+                    $ref: "#/components/schemas/KnowledgeSection"
+                title:
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                updatedBy:
+                    allOf:
+                        - $ref: "#/components/schemas/KnowledgeActor"
+                    description: Null for a former user (K17).
+                    nullable: true
+                version:
+                    description: The concurrency token a content save sends back as expectedVersion (K9).
+                    format: int32
+                    minimum: 1
+                    type: integer
+            required:
+                - id
+                - parentId
+                - position
+                - title
+                - icon
+                - content
+                - version
+                - locked
+                - aiHidden
+                - aiHiddenInherited
+                - permission
+                - section
+                - path
+                - createdBy
+                - createdAt
+                - updatedBy
+                - updatedAt
+            type: object
+        KnowledgeArticleCreate:
+            additionalProperties: false
+            description: "A new article (K3, K4): under a parent the caller may write, where it inherits, or a root in section."
+            properties:
+                afterId:
+                    description: "The sibling the new article comes after; null or absent puts it first."
+                    format: uuid
+                    nullable: true
+                    type: string
+                content:
+                    $ref: "#/components/schemas/KnowledgeDocument"
+                icon:
+                    description: One emoji, or empty for none.
+                    maxLength: 16
+                    type: string
+                parentId:
+                    description: "The parent; null or absent for a root."
+                    format: uuid
+                    nullable: true
+                    type: string
+                section:
+                    $ref: "#/components/schemas/KnowledgeRootSection"
+                title:
+                    description: "The article's title; empty is shown as Untitled."
+                    maxLength: 200
+                    type: string
+            type: object
+        KnowledgeArticleText:
+            additionalProperties: false
+            description: "A piece of an article's plain text for the Assistant (K14): at most 12 000 characters from offset."
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                nextOffset:
+                    description: "The offset of the next piece; null when this is the last."
+                    format: int32
+                    minimum: 0
+                    nullable: true
+                    type: integer
+                path:
+                    description: The ancestors from the top down, stopping below the first the caller cannot read or the Assistant may not see (K12, K16).
+                    items:
+                        $ref: "#/components/schemas/KnowledgePathItem"
+                    type: array
+                text:
+                    type: string
+                title:
+                    type: string
+            required:
+                - id
+                - title
+                - path
+                - text
+                - nextOffset
+            type: object
+        KnowledgeArticleUpdate:
+            additionalProperties: false
+            description: A change of an article's own fields, each optional (K3, K11a, K16). The content is saved with updateKnowledgeArticleContent.
+            properties:
+                aiHidden:
+                    type: boolean
+                icon:
+                    description: One emoji, or empty for none.
+                    maxLength: 16
+                    type: string
+                locked:
+                    type: boolean
+                title:
+                    description: "The article's title; empty is shown as Untitled."
+                    maxLength: 200
+                    type: string
+            type: object
+        KnowledgeContentUpdate:
+            additionalProperties: false
+            description: "An autosave (K9): the title and the document, with the version the editor last read."
+            properties:
+                content:
+                    $ref: "#/components/schemas/KnowledgeDocument"
+                expectedVersion:
+                    format: int32
+                    minimum: 1
+                    type: integer
+                title:
+                    description: "The article's title; empty is shown as Untitled."
+                    maxLength: 200
+                    type: string
+            required:
+                - title
+                - content
+                - expectedVersion
+            type: object
+        KnowledgeDocument:
+            additionalProperties: true
+            description: "A ProseMirror document as the editor stores it (K8): {type: doc, content: [...]}. Only the allowlisted nodes, marks and attributes are accepted (invalid_document names the JSON path of the first one refused), and a document over 2 MiB is refused with 413 document_too_large. HTML is never stored."
+            type: object
+        KnowledgeFavouriteList:
+            additionalProperties: false
+            description: "The caller's favourites in their order (K11); one the caller can no longer read is left out."
+            properties:
+                items:
+                    items:
+                        $ref: "#/components/schemas/KnowledgeTreeNode"
+                    type: array
+            required:
+                - items
+            type: object
+        KnowledgeFavouriteMove:
+            additionalProperties: false
+            description: A favourite's new place.
+            properties:
+                afterId:
+                    description: "The favourite it comes after; null puts it first."
+                    format: uuid
+                    nullable: true
+                    type: string
+            required:
+                - afterId
+            type: object
+        KnowledgeMember:
+            additionalProperties: false
+            description: A person's access to an article through a membership (K4).
+            properties:
+                displayName:
+                    description: Null when the user directory no longer knows them.
+                    nullable: true
+                    type: string
+                inherited:
+                    description: The row is on an ancestor, not on this article.
+                    type: boolean
+                inheritedFrom:
+                    allOf:
+                        - $ref: "#/components/schemas/KnowledgePathItem"
+                    description: The ancestor the row is on, when inherited and readable by the caller.
+                    nullable: true
+                permission:
+                    $ref: "#/components/schemas/KnowledgeAccessLevel"
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+                - permission
+                - inherited
+                - inheritedFrom
+            type: object
+        KnowledgeMemberInput:
+            additionalProperties: false
+            description: One explicit member of this article.
+            properties:
+                permission:
+                    $ref: "#/components/schemas/KnowledgeAccessLevel"
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - permission
+            type: object
+        KnowledgeMoveInput:
+            additionalProperties: false
+            description: "A move (K3, K4): the new parent and the sibling to come after. A move between private and the workspace changes who can read the article and needs confirmVisibility."
+            properties:
+                afterId:
+                    description: "The sibling it comes after; null puts it first."
+                    format: uuid
+                    nullable: true
+                    type: string
+                confirmVisibility:
+                    description: "The caller confirmed that the move changes who can read the article; without it such a move answers 409 visibility_change."
+                    type: boolean
+                parentId:
+                    description: "The new parent; null makes the article a root."
+                    format: uuid
+                    nullable: true
+                    type: string
+                section:
+                    $ref: "#/components/schemas/KnowledgeRootSection"
+            required:
+                - parentId
+                - afterId
+            type: object
+        KnowledgePathItem:
+            additionalProperties: false
+            description: One article on a path, from the root down.
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                title:
+                    type: string
+            required:
+                - id
+                - title
+            type: object
+        KnowledgePermission:
+            description: "What the caller may do with an article (K4, K6): an article the caller cannot read is never answered."
+            enum:
+                - write
+                - read
+            type: string
+        KnowledgeProblem:
+            description: "An RFC 9457 problem with this module's refusal code (knowledge design K4–K10). code names the rule that refused and is what a client keys off, never the words: move_into_descendant (400: the new parent is the article itself or below it), too_deep (400: the tree would be more than 10 levels deep), parent_invalid (400: the parent is unknown to the caller or trashed), after_invalid (400: afterId is not a sibling under the parent), invalid_document (400: a node, mark or attribute outside the allowlist; path names it), root_permission_required (400: a root's internal permission cannot be null), last_writer (400: the change would leave the article without a writer), article_read_only (403: the caller can read the article but not write it), version_conflict (409: expectedVersion is not the current version; currentVersion, updatedAt and updatedBy say who saved it), article_locked (409: a content save to a locked article), visibility_change (409: the change moves the article between private and the workspace and confirmVisibility was not given), not_trashed (409: a restore of an article that is not in the trash) and document_too_large (413: the document is over 2 MiB). errors carries the field errors of a 400, keyed by the request's camelCase field. An article the caller cannot read answers a bare 404, never 403 (K6)."
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                currentVersion:
+                    description: "version_conflict: the article's current version."
+                    format: int32
+                    type: integer
+                detail:
+                    nullable: true
+                    type: string
+                errors:
+                    additionalProperties:
+                        items:
+                            type: string
+                        type: array
+                    type: object
+                instance:
+                    nullable: true
+                    type: string
+                path:
+                    description: "invalid_document: the JSON path of what was refused, such as $.content[2].marks[0]."
+                    type: string
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+                updatedAt:
+                    description: "version_conflict: when the current version was saved."
+                    format: date-time
+                    type: string
+                updatedBy:
+                    allOf:
+                        - $ref: "#/components/schemas/KnowledgeActor"
+                    description: "version_conflict: who saved the current version; null for a former user."
+                    nullable: true
+            type: object
+        KnowledgeRestoreVersionInput:
+            additionalProperties: false
+            description: "A restore of a version (K9): it is saved as a new version over expectedVersion."
+            properties:
+                expectedVersion:
+                    format: int32
+                    minimum: 1
+                    type: integer
+            required:
+                - expectedVersion
+            type: object
+        KnowledgeRestored:
+            additionalProperties: false
+            description: What a restore brought back (K10).
+            properties:
+                groupRestored:
+                    description: The article named was inside a trash group trashed from an ancestor, and the whole group came back.
+                    type: boolean
+                id:
+                    description: The trash root restored.
+                    format: uuid
+                    type: string
+                movedToRoot:
+                    description: The old parent is gone or trashed, so the group went to the root of its old section.
+                    type: boolean
+                restoredCount:
+                    format: int32
+                    minimum: 1
+                    type: integer
+            required:
+                - id
+                - restoredCount
+                - groupRestored
+                - movedToRoot
+            type: object
+        KnowledgeRootSection:
+            description: "Where a new root goes (K4): workspace (internal permission write) or private (none, with the caller as its write member)."
+            enum:
+                - workspace
+                - private
+            type: string
+        KnowledgeSaved:
+            additionalProperties: false
+            description: "What a save made: the new version and who saved it."
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                updatedBy:
+                    allOf:
+                        - $ref: "#/components/schemas/KnowledgeActor"
+                    nullable: true
+                version:
+                    format: int32
+                    minimum: 1
+                    type: integer
+            required:
+                - id
+                - version
+                - updatedAt
+                - updatedBy
+            type: object
+        KnowledgeSearchHit:
+            additionalProperties: false
+            description: One search hit (K12).
+            properties:
+                excerpt:
+                    description: A ts_headline excerpt, plain text.
+                    type: string
+                icon:
+                    nullable: true
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                path:
+                    description: The ancestors from the top down, stopping below the first the caller cannot read, and for the Assistant below the first hidden one.
+                    items:
+                        $ref: "#/components/schemas/KnowledgePathItem"
+                    type: array
+                title:
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - title
+                - icon
+                - path
+                - excerpt
+                - updatedAt
+            type: object
+        KnowledgeSearchResult:
+            additionalProperties: false
+            description: The hits, best first.
+            properties:
+                items:
+                    items:
+                        $ref: "#/components/schemas/KnowledgeSearchHit"
+                    type: array
+            required:
+                - items
+            type: object
+        KnowledgeSection:
+            description: "The sidebar section an article sits in for the caller, derived, not stored (K4): workspace (the effective default is not none), shared (readable through a membership under a default of none, not the caller's own) and private (a default of none, the caller its only writer)."
+            enum:
+                - workspace
+                - shared
+                - private
+            type: string
+        KnowledgeTrashItem:
+            additionalProperties: false
+            description: "A trash group (K10): the article trashed and its subtree."
+            properties:
+                articleCount:
+                    description: How many articles the group holds, the article included.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                icon:
+                    nullable: true
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                parent:
+                    allOf:
+                        - $ref: "#/components/schemas/KnowledgePathItem"
+                    description: The parent it is restored under, when that is still there and readable.
+                    nullable: true
+                purgeAt:
+                    description: When knowledge.retention deletes it for good.
+                    format: date-time
+                    type: string
+                title:
+                    type: string
+                trashedAt:
+                    format: date-time
+                    type: string
+                trashedBy:
+                    allOf:
+                        - $ref: "#/components/schemas/KnowledgeActor"
+                    nullable: true
+            required:
+                - id
+                - title
+                - icon
+                - articleCount
+                - trashedAt
+                - trashedBy
+                - parent
+                - purgeAt
+            type: object
+        KnowledgeTrashList:
+            additionalProperties: false
+            description: The trash groups the caller could write, newest first.
+            properties:
+                items:
+                    items:
+                        $ref: "#/components/schemas/KnowledgeTrashItem"
+                    type: array
+            required:
+                - items
+            type: object
+        KnowledgeTree:
+            additionalProperties: false
+            description: "Articles in sidebar order: the topmost of every section, or the children of one article."
+            properties:
+                items:
+                    items:
+                        $ref: "#/components/schemas/KnowledgeTreeNode"
+                    type: array
+            required:
+                - items
+            type: object
+        KnowledgeTreeNode:
+            additionalProperties: false
+            description: One article in the sidebar.
+            properties:
+                hasChildren:
+                    description: It has children the caller can read.
+                    type: boolean
+                icon:
+                    nullable: true
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                locked:
+                    type: boolean
+                parentId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                permission:
+                    $ref: "#/components/schemas/KnowledgePermission"
+                position:
+                    type: string
+                section:
+                    $ref: "#/components/schemas/KnowledgeSection"
+                title:
+                    type: string
+            required:
+                - id
+                - parentId
+                - position
+                - title
+                - icon
+                - hasChildren
+                - locked
+                - section
+                - permission
+            type: object
+        KnowledgeVersion:
+            additionalProperties: false
+            description: One saved version, with its document.
+            properties:
+                content:
+                    $ref: "#/components/schemas/KnowledgeDocument"
+                createdAt:
+                    format: date-time
+                    type: string
+                createdBy:
+                    allOf:
+                        - $ref: "#/components/schemas/KnowledgeActor"
+                    description: Null for a former user (K17).
+                    nullable: true
+                title:
+                    type: string
+                version:
+                    format: int32
+                    minimum: 1
+                    type: integer
+            required:
+                - version
+                - title
+                - content
+                - createdBy
+                - createdAt
+            type: object
+        KnowledgeVersionList:
+            additionalProperties: false
+            description: An article's versions, newest first.
+            properties:
+                items:
+                    items:
+                        $ref: "#/components/schemas/KnowledgeVersionSummary"
+                    type: array
+            required:
+                - items
+            type: object
+        KnowledgeVersionSummary:
+            additionalProperties: false
+            description: One saved version (K9).
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                createdBy:
+                    allOf:
+                        - $ref: "#/components/schemas/KnowledgeActor"
+                    description: Null for a former user (K17).
+                    nullable: true
+                current:
+                    description: It is the article's current version.
+                    type: boolean
+                title:
+                    type: string
+                version:
+                    format: int32
+                    minimum: 1
+                    type: integer
+            required:
+                - version
+                - title
+                - createdBy
+                - createdAt
+                - current
+            type: object
+info:
+    title: Vantigo Knowledge API
+    version: "1"
+openapi: "3.0.3"
+paths:
+    /api/v1/knowledge/articles:
+        post:
+            description: A child of an article the caller may write, inheriting its access, or a root in the workspace or in private (K3, K4).
+            operationId: createKnowledgeArticle
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/KnowledgeArticleCreate"
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeArticle"
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Bad Request — field errors, parent_invalid, after_invalid, too_deep, invalid_document."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Forbidden — the permission is missing (application/json), or article_read_only: the caller can read the article but not write it."
+                "413":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Payload Too Large — document_too_large."
+            summary: Create an article
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+    /api/v1/knowledge/articles/{id}:
+        get:
+            description: The article with its document, as the editor reads it. The Assistant reads getKnowledgeArticleText instead (K14).
+            operationId: getKnowledgeArticle
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeArticle"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: "Not Found — no article the caller can read. The body is empty."
+            summary: Get an article
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+        patch:
+            description: Any writer may lock and unlock (K11a) and hide the article from the Assistant (K16).
+            operationId: updateKnowledgeArticle
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/KnowledgeArticleUpdate"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeArticle"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Bad Request — field errors."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Forbidden — the permission is missing (application/json), or article_read_only: the caller can read the article but not write it."
+                "404":
+                    description: "Not Found — no article the caller can read. The body is empty."
+            summary: Change an article's title, icon, lock or Assistant visibility
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+    /api/v1/knowledge/articles/{id}/access:
+        get:
+            description: Its default and its members, with what is inherited (K4).
+            operationId: getKnowledgeArticleAccess
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeAccess"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: "Not Found — no article the caller can read. The body is empty."
+            summary: Get an article's access
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+        put:
+            description: A writer of the article may change it, and so may knowledge:manage on an article that is not private (K4). The effective access of the subtree is recomputed in the same transaction (K5).
+            operationId: updateKnowledgeArticleAccess
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/KnowledgeAccessUpdate"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeAccess"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Bad Request — field errors, last_writer, root_permission_required."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Forbidden — the permission is missing (application/json), or article_read_only: the caller can read the article but not write it."
+                "404":
+                    description: "Not Found — no article the caller can read. The body is empty."
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Conflict — visibility_change."
+            summary: Change an article's access
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+    /api/v1/knowledge/articles/{id}/content:
+        put:
+            description: "The editor's autosave (K9). A save by the same person less than 10 minutes after their previous one replaces that version; any other adds one."
+            operationId: updateKnowledgeArticleContent
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/KnowledgeContentUpdate"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeSaved"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Bad Request — field errors, invalid_document."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Forbidden — the permission is missing (application/json), or article_read_only: the caller can read the article but not write it."
+                "404":
+                    description: "Not Found — no article the caller can read. The body is empty."
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Conflict — version_conflict, article_locked."
+                "413":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Payload Too Large — document_too_large."
+            summary: Save an article's title and content
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+    /api/v1/knowledge/articles/{id}/move:
+        post:
+            description: Under a new parent, after a sibling (K3). The article's access is recomputed for its subtree in the same transaction (K5).
+            operationId: moveKnowledgeArticle
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/KnowledgeMoveInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeTreeNode"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Bad Request — field errors, move_into_descendant, too_deep, parent_invalid, after_invalid."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Forbidden — the permission is missing (application/json), or article_read_only: the caller can read the article but not write it."
+                "404":
+                    description: "Not Found — no article the caller can read. The body is empty."
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Conflict — visibility_change."
+            summary: Move an article
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+    /api/v1/knowledge/articles/{id}/restore:
+        post:
+            description: "Brings back the article's whole trash group under its old parent, or to the root of its old section when that parent is gone or trashed (K10). The caller must be able to write the group's root; knowledge:manage restores anyone's."
+            operationId: restoreKnowledgeArticle
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeRestored"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: "Not Found — no trashed article the caller could write. The body is empty."
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Conflict — not_trashed."
+            summary: Restore an article from the trash
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+    /api/v1/knowledge/articles/{id}/text:
+        get:
+            description: The article as plain text, in pieces of 12 000 characters from offset, so a long article is read in parts (K14). An article hidden from the Assistant answers 404 to the Assistant (K16).
+            operationId: getKnowledgeArticleText
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+                - in: query
+                  name: offset
+                  required: false
+                  schema:
+                      default: 0
+                      format: int32
+                      minimum: 0
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeArticleText"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: "Not Found — no article the caller can read. The body is empty."
+            summary: Read an article's text
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+    /api/v1/knowledge/articles/{id}/trash:
+        post:
+            description: Trashes the article and its subtree in one transaction, as one trash group (K10).
+            operationId: trashKnowledgeArticle
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Forbidden — the permission is missing (application/json), or article_read_only: the caller can read the article but not write it."
+                "404":
+                    description: "Not Found — no article the caller can read. The body is empty."
+            summary: Move an article to the trash
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+    /api/v1/knowledge/articles/{id}/versions:
+        get:
+            operationId: listKnowledgeArticleVersions
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeVersionList"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: "Not Found — no article the caller can read. The body is empty."
+            summary: List an article's versions
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+    /api/v1/knowledge/articles/{id}/versions/{version}:
+        get:
+            operationId: getKnowledgeArticleVersion
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+                - in: path
+                  name: version
+                  required: true
+                  schema:
+                      format: int32
+                      minimum: 1
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeVersion"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: "Not Found — no article the caller can read, or no such version. The body is empty."
+            summary: Get one version of an article
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+    /api/v1/knowledge/articles/{id}/versions/{version}/restore:
+        post:
+            description: "Saves the version's title and content as a new version; the history keeps every one before it (K9)."
+            operationId: restoreKnowledgeArticleVersion
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+                - in: path
+                  name: version
+                  required: true
+                  schema:
+                      format: int32
+                      minimum: 1
+                      type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/KnowledgeRestoreVersionInput"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeSaved"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Forbidden — the permission is missing (application/json), or article_read_only: the caller can read the article but not write it."
+                "404":
+                    description: "Not Found — no article the caller can read, or no such version. The body is empty."
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Conflict — version_conflict, article_locked."
+            summary: Restore a version of an article
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+    /api/v1/knowledge/favourites:
+        get:
+            operationId: listKnowledgeFavourites
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeFavouriteList"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+            summary: List my favourite articles
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+    /api/v1/knowledge/favourites/{id}:
+        delete:
+            operationId: removeKnowledgeFavourite
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: "Not Found — the article is not among the caller's favourites. The body is empty."
+            summary: Remove an article from my favourites
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+        put:
+            description: "Puts it last; adding one already there changes nothing."
+            operationId: addKnowledgeFavourite
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: "Not Found — no article the caller can read. The body is empty."
+            summary: Add an article to my favourites
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+    /api/v1/knowledge/favourites/{id}/move:
+        post:
+            operationId: moveKnowledgeFavourite
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/KnowledgeFavouriteMove"
+                required: true
+            responses:
+                "204":
+                    description: No Content
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Bad Request — after_invalid: afterId is not among the caller's favourites."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: "Not Found — the article is not among the caller's favourites. The body is empty."
+            summary: Reorder my favourites
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+    /api/v1/knowledge/search:
+        get:
+            description: Full-text search over titles and text in Norwegian and English at once, the last word matched as a prefix (K12). Only articles the caller can read are found, and for the Assistant none hidden from it (K16).
+            operationId: searchKnowledge
+            parameters:
+                - in: query
+                  name: q
+                  required: true
+                  schema:
+                      maxLength: 200
+                      minLength: 1
+                      type: string
+                - in: query
+                  name: limit
+                  required: false
+                  schema:
+                      default: 20
+                      format: int32
+                      maximum: 50
+                      minimum: 1
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeSearchResult"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Bad Request — field errors."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+            summary: Search articles
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+    /api/v1/knowledge/trash:
+        delete:
+            description: Deletes every trashed article for good, with its versions (K10). The interface confirms first.
+            operationId: emptyKnowledgeTrash
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+            summary: Empty the trash
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:manage
+            x-vantigo-assistant: never
+        get:
+            description: "The trash groups whose root the caller could write; with knowledge:manage, every one that is not private (K10)."
+            operationId: listKnowledgeTrash
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeTrashList"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+            summary: List the trash
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+    /api/v1/knowledge/tree:
+        get:
+            description: "Without parentId, the topmost readable article of every section (K4); with it, that article's readable children. Trashed articles are left out."
+            operationId: listKnowledgeTree
+            parameters:
+                - in: query
+                  name: parentId
+                  required: false
+                  schema:
+                      format: uuid
+                      type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeTree"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+                "404":
+                    description: "Not Found — parentId names no article the caller can read. The body is empty."
+            summary: List the sidebar's articles
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+servers:
+    - url: "/"

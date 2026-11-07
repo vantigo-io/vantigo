@@ -20,6 +20,7 @@ export const targets = [
   { module: "planning", output: "apps/planning/frontend/src/api-schema.d.ts" },
   { module: "inventory", output: "apps/inventory/frontend/src/api-schema.d.ts" },
   { module: "orders", output: "apps/orders/frontend/src/api-schema.d.ts" },
+  { module: "knowledge", output: "apps/knowledge/frontend/src/api-schema.d.ts" },
   { module: "calendar", output: "apps/calendar/frontend/src/api-schema.d.ts" },
   { module: "entra", output: "apps/entra/frontend/src/api-schema.d.ts" },
   { module: "google", output: "apps/google/frontend/src/api-schema.d.ts" },
