@@ -70,8 +70,8 @@ key for itself; use the button there.) The button and the panel need `communicat
 and are not shown on the Inbox itself, which is the same view.
 
 **The badge** on the button counts the open conversations assigned to you that you have not read.
-When none of those is unread but other open conversations are, it shows a dot. Hover or listen to
-the button to hear both numbers. The counts are read every 30 seconds while the browser tab is visible,
+When none of those is unread but other open conversations are, it shows a dot. A screen reader hears both numbers when
+there are two: the ones assigned to you, then all unread. The counts are read every 30 seconds while the browser tab is visible,
 and when you come back to the tab.
 
 **The list** is compact. Its filters are **Assigned to me**, **Unread** and **All open**; it starts on
@@ -84,15 +84,17 @@ rest of the mail.
 **A conversation** opens in the panel with the same thread and composer as the Inbox, Messenger chats
 included, with their answer options and reply window. At the top, **Back** returns to the list, **Open in
 Inbox** opens it in the Inbox on the main page, and the customer's link (*Customer #42*) opens the
-customer on the main page while the panel stays as it is. Opening a conversation marks it read, which is
-how the badge clears. A reply you have half written is still there when you go to another app and
+customer on the main page while the panel stays as it is. Opening a conversation in the panel marks it read, which is
+how the badge clears; the Inbox page does not mark a conversation read just because you opened it (use **Mark read**). An
+e-mail wider than the panel is shown scaled down to fit. A reply you have half written is still there when you go to another app and
 come back, or close the panel and open it again. What you may do follows your permissions, as in the
 Inbox: without `communications:conversations-reply` the composer is read-only; without
-`communications:conversations-manage` the status, tag and customer controls are not shown.
+`communications:conversations-manage` the status control is disabled and the tag, archive and customer controls are not shown.
 
 **It stays current.** While the panel is open and the tab is visible, the list reloads every 15 seconds
 and the open conversation every 5 seconds; both stop when the panel is closed or the tab is hidden, and
-reload once when it is shown again. The Inbox reloads the same way. This is polling, not push: a message
+reload once when it is shown again. If a reload fails, the thread you have open stays as it was, with a note that it
+could not be refreshed, so a reply you are writing is not lost. The Inbox reloads the same way. This is polling, not push: a message
 can take a few seconds to appear.
 
 ## Read a conversation

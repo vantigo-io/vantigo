@@ -71,8 +71,8 @@ bruk knappen der.) Knappen og panelet krever `communications:conversations-view`
 Innboksen, som er den samme visningen.
 
 **Merket** på knappen teller åpne samtaler som er tildelt deg og som du ikke har lest. Er ingen av dem
-ulest, men andre åpne samtaler er det, viser det en prikk. Hold over knappen, eller lytt til den, for å få
-begge tallene. Tallene leses hvert 30. sekund mens nettleserfanen er synlig, og når du kommer tilbake til fanen.
+ulest, men andre åpne samtaler er det, viser det en prikk. En skjermleser leser opp begge tallene når det er to:
+de tildelt deg, så alle uleste. Tallene leses hvert 30. sekund mens nettleserfanen er synlig, og når du kommer tilbake til fanen.
 
 **Listen** er kompakt. Filtrene er **Tildelt meg**, **Uleste** og **Alle åpne**; den starter på Tildelt meg,
 eller på Alle åpne når ingenting er tildelt deg. På en kundes side tilbyr den også **Denne kunden**, som viser
@@ -83,14 +83,17 @@ filteret) — det søker ikke i resten av e-posten.
 **En samtale** åpnes i panelet med samme tråd og skrivefelt som i Innboksen, Messenger-chatter
 medregnet, med svaralternativer og svarvindu. Øverst går **Tilbake** til listen, **Åpne i innboksen** åpner den
 i Innboksen på hovedsiden, og kundelenken (*Kunde nr. 42*) åpner kunden på hovedsiden mens panelet blir som det er.
-Å åpne en samtale markerer den som lest, og det er slik merket forsvinner. Et svar du har halvskrevet er der
+Å åpne en samtale i panelet markerer den som lest, og det er slik merket forsvinner; Innboks-siden markerer ikke en
+samtale som lest bare fordi du åpnet den (bruk **Marker som lest**). En e-post som er bredere enn panelet vises
+forminsket så den passer. Et svar du har halvskrevet er der
 fortsatt når du går til en annen app og tilbake, eller lukker panelet og åpner det igjen. Hva du kan gjøre følger
 tilgangene dine, som i Innboksen: uten `communications:conversations-reply` er skrivefeltet skrivebeskyttet; uten
-`communications:conversations-manage` vises ikke kontrollene for status, tagger og kunde.
+`communications:conversations-manage` er statusvalget deaktivert, og kontrollene for tagger, arkivering og kunde vises ikke.
 
 **Det holder seg oppdatert.** Mens panelet er åpent og fanen synlig, lastes listen på nytt hvert 15. sekund og
 den åpne samtalen hvert 5. sekund; begge stopper når panelet lukkes eller fanen skjules, og lastes én gang til
-når det vises igjen. Innboksen laster på samme måte. Dette er polling, ikke push: en melding kan bruke noen
+når det vises igjen. Mislykkes en lasting, blir tråden du har åpen som den var, med en merknad om at den ikke kunne
+oppdateres, så et svar du skriver går ikke tapt. Innboksen laster på samme måte. Dette er polling, ikke push: en melding kan bruke noen
 sekunder på å dukke opp.
 
 ## Les en samtale

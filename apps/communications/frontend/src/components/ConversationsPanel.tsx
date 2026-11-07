@@ -8,6 +8,7 @@ import {
   type ConversationListItem,
   conversationQueryOptions,
   conversationsQueryOptions,
+  inboxCountsQueryOptions,
   type Page,
   tagsQueryOptions,
 } from "../api/conversations";
@@ -74,7 +75,8 @@ export function ConversationsPanel({
 }: ConversationsPanelProps) {
   const { t } = useI18n("communications");
   const shown = useSidePanelShown();
-  const { close } = useSidePanelActions();
+  const { close, hostHasClose } = useSidePanelActions();
+  const counts = useQuery(inboxCountsQueryOptions());
   const visible = usePageVisible();
   const active = shown && visible;
   const [openId, setOpenId] = useState<string | null>(null);
@@ -90,6 +92,8 @@ export function ConversationsPanel({
     }),
   );
   useRefetchOnResume(active, () => void list.refetch());
+  // Something is assigned to the person after all (the badge's count): the default goes back to Assigned to me.
+  if (autoAll && choice === undefined && (counts.data?.assignedToMeUnread ?? 0) > 0) setAutoAll(false);
   // The default is Assigned to me, or All open when nothing is assigned to the person (state set while rendering, from the list).
   if (
     choice === undefined &&
@@ -150,11 +154,13 @@ export function ConversationsPanel({
             <Text fw={600} size="sm">
               {t("panelConversations")}
             </Text>
-            <Tooltip label={t("closePanel")}>
-              <ActionIcon variant="subtle" color="gray" aria-label={t("closePanel")} onClick={close}>
-                <IconX size={18} />
-              </ActionIcon>
-            </Tooltip>
+            {!hostHasClose && (
+              <Tooltip label={t("closePanel")}>
+                <ActionIcon variant="subtle" color="gray" aria-label={t("closePanel")} onClick={close}>
+                  <IconX size={18} />
+                </ActionIcon>
+              </Tooltip>
+            )}
           </Group>
           <Stack gap="xs" p="sm">
             <Chip.Group multiple={false} value={filter} onChange={(value) => setChosen(value as Filter)}>
@@ -179,7 +185,7 @@ export function ConversationsPanel({
             <ConversationList
               data={shownData}
               isPending={list.isPending}
-              isError={list.isError}
+              isError={list.isError && !list.data}
               error={list.error}
               selectedId=""
               onSelect={setOpenId}
@@ -211,6 +217,7 @@ function PanelConversation({
   connectionButton?: (props: ConnectionButtonProps) => ReactNode;
 }) {
   const { t } = useI18n("communications");
+  const { close, hostHasClose } = useSidePanelActions();
   const detail = useQuery(conversationQueryOptions(id, { refetchInterval: active ? CONVERSATION_POLL_MS : false }));
   useRefetchOnResume(active, () => void detail.refetch());
   const tags = useQuery(tagsQueryOptions());
@@ -264,42 +271,58 @@ function PanelConversation({
             </Anchor>
           ) : null}
         </Group>
-        <Tooltip label={t("openInInbox")}>
-          <Anchor
-            href={inboxRoute}
-            onClick={go(inboxRoute)}
-            aria-label={t("openInInbox")}
-            style={{ display: "inline-flex" }}
-          >
-            <ActionIcon component="span" variant="subtle" color="gray">
-              <IconExternalLink size={18} />
-            </ActionIcon>
-          </Anchor>
-        </Tooltip>
+        <Group gap={2} wrap="nowrap">
+          <Tooltip label={t("openInInbox")}>
+            <Anchor
+              href={inboxRoute}
+              onClick={go(inboxRoute)}
+              aria-label={t("openInInbox")}
+              style={{ display: "inline-flex" }}
+            >
+              <ActionIcon component="span" variant="subtle" color="gray">
+                <IconExternalLink size={18} />
+              </ActionIcon>
+            </Anchor>
+          </Tooltip>
+          {!hostHasClose && (
+            <Tooltip label={t("closePanel")}>
+              <ActionIcon variant="subtle" color="gray" aria-label={t("closePanel")} onClick={close}>
+                <IconX size={18} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+        </Group>
       </Group>
       <Box className="panel-thread" style={{ flex: 1, minHeight: 0 }}>
         {detail.isPending ? (
           <ContentSkeleton rows={5} p="md" />
-        ) : detail.isError ? (
+        ) : detail.isError && !conversation ? (
           <Alert m="md" color="red">
             {t("couldNotLoadConversation")}
           </Alert>
         ) : (
           conversation && (
-            <ConversationThread
-              conversation={conversation}
-              tags={tags.data || []}
-              onRead={() => markRead.mutate()}
-              onWorkflow={(body) => workflow.mutate(body)}
-              onTag={(tagId, remove) => tagMutation.mutate({ tagId, remove })}
-              onSent={invalidate}
-              onSuggest={() => suggest.mutate()}
-              suggestionPending={suggest.isPending}
-              suggestionError={suggest.error}
-              connectionButton={connectionButton}
-              canReply={canReply}
-              canManage={canManage}
-            />
+            <>
+              {detail.isError && (
+                <Alert color="yellow" py={4} px="sm" role="status">
+                  {t("refreshFailed")}
+                </Alert>
+              )}
+              <ConversationThread
+                conversation={conversation}
+                tags={tags.data || []}
+                onRead={() => markRead.mutate()}
+                onWorkflow={(body) => workflow.mutate(body)}
+                onTag={(tagId, remove) => tagMutation.mutate({ tagId, remove })}
+                onSent={invalidate}
+                onSuggest={() => suggest.mutate()}
+                suggestionPending={suggest.isPending}
+                suggestionError={suggest.error}
+                connectionButton={connectionButton}
+                canReply={canReply}
+                canManage={canManage}
+              />
+            </>
           )
         )}
       </Box>

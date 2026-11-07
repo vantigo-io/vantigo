@@ -117,7 +117,7 @@ export function InboxPage({ connectionButton }: InboxPageProps = {}) {
           <ConversationList
             data={list.data}
             isPending={list.isPending}
-            isError={list.isError}
+            isError={list.isError && !list.data}
             error={list.error}
             selectedId={selectedId}
             onSelect={select}
@@ -132,25 +132,32 @@ export function InboxPage({ connectionButton }: InboxPageProps = {}) {
               </Stack>
             ) : detail.isPending ? (
               <ContentSkeleton rows={5} p="md" />
-            ) : detail.isError ? (
+            ) : detail.isError && !active ? (
               <Alert m="md" color="red">
                 {t("couldNotLoadConversation")}
               </Alert>
             ) : (
               active && (
-                <ConversationThread
-                  key={active.id}
-                  conversation={active}
-                  tags={tags.data || []}
-                  onRead={() => markRead.mutate()}
-                  onWorkflow={(body) => workflow.mutate(body)}
-                  onTag={(tagId, remove) => tagMutation.mutate({ tagId, remove })}
-                  onSent={invalidate}
-                  onSuggest={() => suggest.mutate()}
-                  suggestionPending={suggest.isPending}
-                  suggestionError={suggest.error}
-                  connectionButton={connectionButton}
-                />
+                <>
+                  {detail.isError && (
+                    <Alert color="yellow" py={4} px="sm" role="status">
+                      {t("refreshFailed")}
+                    </Alert>
+                  )}
+                  <ConversationThread
+                    key={active.id}
+                    conversation={active}
+                    tags={tags.data || []}
+                    onRead={() => markRead.mutate()}
+                    onWorkflow={(body) => workflow.mutate(body)}
+                    onTag={(tagId, remove) => tagMutation.mutate({ tagId, remove })}
+                    onSent={invalidate}
+                    onSuggest={() => suggest.mutate()}
+                    suggestionPending={suggest.isPending}
+                    suggestionError={suggest.error}
+                    connectionButton={connectionButton}
+                  />
+                </>
               )
             )}
           </main>

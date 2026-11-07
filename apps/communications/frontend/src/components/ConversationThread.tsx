@@ -33,6 +33,7 @@ import { ChatMessage } from "./ChatMessage";
 import { type ConnectionButtonProps, ConversationComposer } from "./ConversationComposer";
 import { isChat } from "./chat";
 import { participantName, relative, returnHere } from "./conversationHelpers";
+import { FittedHtml } from "./FittedHtml";
 
 export type ConversationThreadProps = {
   conversation: ConversationDetail;
@@ -369,12 +370,7 @@ function MessageCard({
           )}
         </Group>
       ) : html && !asText ? (
-        <iframe
-          title={t("messageHtml")}
-          sandbox=""
-          srcDoc={safeHtmlSrcDoc(withImages.data ?? html)}
-          className="message-html"
-        />
+        <FittedHtml title={t("messageHtml")} srcDoc={safeHtmlSrcDoc(withImages.data ?? html)} />
       ) : (
         message.textBody && (
           <Text mt="xs" style={{ whiteSpace: "pre-wrap" }}>
