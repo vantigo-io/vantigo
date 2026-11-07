@@ -150,7 +150,15 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    Communications is off, which they read as "sending is disabled"),
    `CalendarBusy` (`contracts.CalendarBusy`, calendar — people's busy
    time, which Planning's board shows; provider-gated, rule 12; optional for its
-   consumer, nil when the calendar is off), and `AIModels` (`contracts.AIModels`,
+   consumer, nil when the calendar is off),
+   `ContactChannels` (`contracts.ContactChannels`, communications — a contact's Messenger
+   channels, which Customers' contact rows show: one entry per active channel, linked or not,
+   with the participant's id in Communications, the newest message and when the reply window
+   closes; consumer-gated — Customers asks for `communications:conversations-view` before it
+   calls; it never carries the person's page-scoped id, which belongs to a Page; optional for
+   its consumer, nil when Communications is off, which it reads as "no channels"; resolved by
+   Compose after the channel messengers its provider reads, never by `module.Workers`;
+   `modtest.WithContactChannels` presets one), and `AIModels` (`contracts.AIModels`,
    identity — the model an Owner chose for each AI task, which the platform AI client asks
    and no module calls; [The AI platform](#the-ai-platform)), and `AssistantGrants`
    (`contracts.AssistantGrants`, identity — issues and ends the grants the assistant acts

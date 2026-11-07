@@ -56,6 +56,7 @@ A purpose is a constant the calling module owns, never input from a request, wri
 | `identity/totp` | a user's TOTP secret |
 | `identity/oidc-state`, `identity/oidc-external` | the OIDC flow's state and external-identity cookies |
 | `communications/channel-smtp-credential` | a channel's SMTP password |
+| `communications/messenger-ref` | the MAC in the ref of a contact's Messenger link, `v1.<contactId>.<channelId>.<expiresAt>.<mac>`: it makes the link unforgeable and says which contact and channel it was made for ([contacts on Messenger](/en/reference/communications/#contacts-on-messenger)) |
 | `invoices/access-point-credential` | the e-invoicing access point's API key |
 | `calendar/rsvp-link` | an outside attendee's answer link, sealed so every later mail carries the same link ([the answer by link](/en/reference/calendar/#the-token-and-the-link)) |
 | `calendar/feed-address` | a person's calendar address, sealed so the settings screen can show it again; the request is matched by the token's plain hash ([the feed](/en/reference/calendar/#the-address-and-its-two-variants)) |
