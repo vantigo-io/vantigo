@@ -528,6 +528,7 @@ on no list.
 | `GET` | `/api/v1/calendar/feed/{token}.ics` (Calendar's feed, a calendar address; exactly one segment) |
 | `POST` | `/api/v1/entra/mailbox-notifications` (Microsoft's change notifications for Calendar's Outlook sync, anonymous; exactly this path) |
 | `POST` | `/api/v1/google/calendar-notifications` (Google Calendar's push notifications for Calendar's Google Calendar sync, anonymous; exactly this path) |
+| `GET`, `HEAD` | `/api/v1/communications/public-media/{token}` (a card's image for Meta to fetch, anonymous, signed by its token; exactly one segment) |
 | `GET` | `/api/v1/meta/webhook` (Meta's handshake for Facebook Messenger, anonymous; exactly this path) |
 | `POST` | `/api/v1/meta/webhook` (Meta's events for Facebook Messenger, anonymous; exactly this path) |
 | `GET`, `HEAD` | `/health/…` (probes) |

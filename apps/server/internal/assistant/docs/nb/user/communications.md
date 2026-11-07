@@ -7,6 +7,7 @@ sources:
   - apps/communications/frontend
   - packages/frontend-shell/src/side-panel.tsx
   - apps/host/frontend/src/routes/communications
+  - apps/host/frontend/src/lib/product-messaging.ts
 ---
 
 Kommunikasjon-appen er en delt innboks: alle e-postsamtaler — og, der en Facebook
@@ -337,6 +338,45 @@ deler, kommer som en melding som sier **Delte en e-postadresse**; har en kontakt
 den adressen, tilbys kontaktens kunder som kandidater for samtalen, og du avgjør hvilken
 som knyttes. Et alternativ det er trykket på som Vantigo ikke kan plassere — det hører til
 en annen samtale — vises som vanlig tekst.
+
+### Legg ved et produkt
+
+**Legg ved produkt** i chat-skrivefeltet viser kunden et produkt som en rad med kort de kan
+bla gjennom. Knappen er der når Produkter er på og du har lov til å se produkter
+(`products:products-view`); uten dem finnes den ikke.
+
+1. Velg **Legg ved produkt** og søk etter produktet på navn. Hvert produkt i listen sier
+   hvor mange av bildene som kan vises. Et produkt som ikke har noe bilde merket **Vis i
+   Kommunikasjon** på produktsiden, kan ikke legges ved, og listen sier det: åpne produktet
+   og merk et bilde først (se [Bilder](/nb/user/products/#bilder)).
+2. Velg produktet. Bildene merket for Kommunikasjon blir kortene, i den rekkefølgen de har
+   på produktet, høyst 10. Hvert kort har produktets navn som tittel, bildet og en
+   **undertittel** — med `products:pricing-view` starter den som produktets pris ekskl. mva,
+   slik produktsiden viser den, og uten den tillatelsen starter den tom. Rediger
+   undertittelen eller tøm den; den er tekst på høyst 80 tegn, og Vantigo regner ikke ut noen
+   pris selv.
+3. Fjern et kort med **×** for å utelate det bildet; fjerner du det siste, fjernes produktet.
+   **Bytt produkt** bytter produktet, siden en melding viser ett produkt.
+4. Hvert kort har en **Kjøp-knapp**, med tittelen **Kjøp** på norsk og **Buy** ellers. Du kan
+   gi den et annet navn og legge til en **Ekstra knapp** av ditt eget, for eksempel *Fortell
+   meg mer*; en knapps tittel er 1 til 20 tegn.
+5. Skriv meldingsteksten som vanlig og velg **Send svar**. Svaralternativer kan legges til
+   samme melding.
+
+Meldingen beholder bildene slik de var da den ble sendt: endres eller slettes produktets
+bilder etterpå, endres ingenting i samtalen. Er et bilde fjernet eller avmerket siden du
+valgte produktet, sier sendingen fra om det, og du legger ved produktet på nytt. Messenger
+henter bildene fra installasjonens offentlige adresse, så for å sende kort må en være satt
+opp ([Den offentlige verten](/nb/admin/payments/#den-offentlige-verten)); uten den avvises
+sendingen med *Instansen har ingen offentlig vert*.
+
+Når kunden trykker **Kjøp** (eller **Buy**) på et kort, kommer svaret som **Vil kjøpe:
+&lt;produkt&gt;** med kortets bilde. Er Ordre på og du har lov til å lage ordrer
+(`orders:access` og `orders:sales-manage`), har svaret en lenke **Opprett ordre**. Den åpner
+siden for en ny ordre med samtalens kunde, når en er knyttet, og med produktet: dets eneste
+variant blir ordrens første linje, og har produktet flere varianter, velger du hvilken.
+Ingenting opprettes før du velger **Opprett ordren**. En ekstra knapp det trykkes på, kommer
+som en vanlig svarbrikke.
 
 ### Sett opp en Messenger-kanal
 
