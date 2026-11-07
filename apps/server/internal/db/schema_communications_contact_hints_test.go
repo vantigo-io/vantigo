@@ -10,10 +10,10 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
 )
 
-// communicationsContactHintsVersion is 00134_communications_contact_hints.sql:
+// communicationsContactHintsVersion is 00139_communications_contact_hints.sql:
 // the contact a Messenger participant is suggested for and the contact whose
 // link it used (Messenger design N20, N21).
-const communicationsContactHintsVersion = 134
+const communicationsContactHintsVersion = 139
 
 // TestCommunicationsContactHints_AppliesAndIsIdempotent proves the migration
 // applies, rolls back and re-applies cleanly, that a hint row holds something,
