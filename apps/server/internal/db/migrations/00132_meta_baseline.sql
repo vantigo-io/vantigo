@@ -106,6 +106,34 @@ CREATE INDEX ix_meta_profiles_fetched ON meta.profiles (fetched_at);
 INSERT INTO meta.settings (id, verify_token, updated_at)
 VALUES (1, replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''), now());
 
+-- Two repairs to the meta module's queues (code review of the Messenger delivery).
+--
+-- A webhook body whose signature held and that is valid JSON can still be one
+-- Postgres refuses as jsonb (an escaped NUL in a string is "untranslatable").
+-- Answering 503 would make Meta retry it for ever, so the bytes are kept in
+-- raw instead, in a row that is born failed ('unstorable_json') and is never
+-- claimed; retention deletes it with the other raw events. payload is
+-- therefore nullable, and one of the two is always set.
+--
+-- meta.pending_files stages the key of an attachment before it is written to
+-- the object store, and is cleared in the transaction that inserts the
+-- meta.inbound row that names it. A key that stays staged for a day with no
+-- inbound row naming it is a file whose transaction never happened (a crash, a
+-- rollback): retention deletes the object. The GIN index is for that "does a
+-- row name this key" question.
+ALTER TABLE meta.webhook_events
+    ALTER COLUMN payload DROP NOT NULL,
+    ADD COLUMN raw bytea,
+    ADD CONSTRAINT webhook_events_body_check CHECK (payload IS NOT NULL OR raw IS NOT NULL);
+
+CREATE TABLE meta.pending_files (
+    storage_key  text         PRIMARY KEY,
+    created_at   timestamptz  NOT NULL
+);
+
+CREATE INDEX ix_meta_pending_files_created ON meta.pending_files (created_at);
+CREATE INDEX ix_meta_inbound_storage_keys ON meta.inbound USING gin (storage_keys);
+
 -- +goose Down
 -- The schema goes whole: the app's settings, the sealed secret and tokens, the
 -- queued events and the cached names. Nothing at Meta is touched; the app and
