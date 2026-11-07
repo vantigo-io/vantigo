@@ -233,6 +233,38 @@ En kobling trenger en tittel eller minst én rolle. Blyanten på en rad åpner
 og begge beholdes. Se
 [Contacts and associations](/en/reference/customers/#contacts-and-associations).
 
+### Messenger på en kontakt
+
+Har Kommunikasjon en Messenger-kanal og du har `communications:conversations-view`, får hver
+kontakt i kortet **Kontakter** et Messenger-ikon ved navnet når en person på en Facebook-side
+er knyttet til den, og en **Messenger**-meny i raden med:
+
+- **Skriv på Messenger** — åpner en boks for den første meldingen; **Send** begynner så
+  kontaktens samtale på den siden, eller fortsetter den åpne, og tar deg til den i Innboks.
+  Messenger lar en side skrive først bare mens personens vindu er åpent (24 timer etter at
+  de sist skrev, 7 dager om siden har Metas Human Agent-tillatelse), så valget er deaktivert
+  når det er over, og sier at kontakten må skrive til siden først og at du skal sende dem
+  Messenger-lenken din. Å skrive krever `communications:conversations-reply`, og valget vises ikke uten den.
+- **Kopier Messenger-lenke** — lager en lenke, `https://m.me/…`, for den siden og kopierer
+  den. Det er slik en kontakt knyttes i utgangspunktet: når kontakten åpner den og skriver
+  til siden, knytter Vantigo dem. Lenken gjelder i 90 dager. **Send den bare til kontakten
+  den gjelder**: den som åpner den, knyttes til den kontakten, så en lenke som sendes
+  videre kan knytte feil person (den erstatter aldri en kobling personen allerede har;
+  samtalen sier fra om det). Krever `communications:conversations-manage`.
+- **Fjern kobling til Messenger** — fjerner koblingen. Krever
+  `communications:conversations-manage`.
+
+Menyen viser bare det du har lov til: med bare `communications:conversations-reply`, **Skriv på
+Messenger**; med bare `communications:conversations-manage`, lenken og **Fjern kobling**; med
+ingen av dem, ingen meny. Den finnes også på en kunde som er slått sammen med en annen, og som
+ellers har et skrivebeskyttet kort.
+
+Med flere sider har menyen en overskrift for hver. En person knyttes i Kommunikasjon, og du
+kan knytte dem fra samtalen også:
+[Knytt personen til en kontakt](/nb/user/communications/#knytt-personen-til-en-kontakt). En
+installasjon uten Kommunikasjon, eller en bruker uten `communications:conversations-view`,
+ser ingenting av dette.
+
 **Kontakter** i sidemenyen lister alle kontakter med **Navn**, **Telefon**, **E-post**
 og **Kunder**, søkbare etter navn, telefon eller e-post; **Opprett ny kontakt**
 oppretter en uten kunde, blyanten redigerer den, søppelkassen sletter den direkte.

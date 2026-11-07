@@ -38,5 +38,9 @@ export const regenerateVerifyToken = () => request<MetaSettings>(`${base}/settin
 export const addPage = (accessToken: string, pageId?: string) =>
   request<MetaPage>(`${base}/pages`, json("POST", pageId ? { accessToken, pageId } : { accessToken }));
 
+/** Subscribes the app to the Page's webhook fields again with the stored token: how a Page connected before a new field gets it. */
+export const resubscribePage = (pageId: string) =>
+  request<MetaPage>(`${base}/pages/${encodeURIComponent(pageId)}/resubscribe`, { method: "POST" });
+
 export const removePage = (pageId: string) =>
   request<void>(`${base}/pages/${encodeURIComponent(pageId)}`, { method: "DELETE" });

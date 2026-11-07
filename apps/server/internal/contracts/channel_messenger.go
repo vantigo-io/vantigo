@@ -227,6 +227,10 @@ const (
 	MessengerEventDelivered = "delivered"
 	// MessengerEventRead is MessengerEventDelivered's for read.
 	MessengerEventRead = "read"
+	// MessengerEventReferral is a person opening the Page's thread through a
+	// link with a ref, outside any message of theirs (Messenger design N21): it
+	// carries Participant and Ref, and nothing is shown of it.
+	MessengerEventReferral = "referral"
 )
 
 // MessengerAnswer is the answer to a question Communications asked, parsed from
@@ -274,6 +278,13 @@ type MessengerEvent struct {
 	Echo bool
 	// Watermark is the time a delivered or read event is about.
 	Watermark time.Time
+	// Ref is the referral the person arrived with, when the event carries one
+	// (Messenger design N21): the ref of the m.me link they tapped, verbatim.
+	// A referral can be an event of its own, with Kind MessengerEventReferral
+	// and no text; the referral of a Get Started postback, or of the person's
+	// first message, rides on that message. Communications verifies it; a
+	// provider never interprets it. "" for an event with none.
+	Ref string
 }
 
 // MessengerFile is what OpenAttachment knows of the file it opened.

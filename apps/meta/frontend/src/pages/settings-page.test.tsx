@@ -194,6 +194,22 @@ describe("MetaSettingsPage", () => {
     expect(sent(fetchMock, "DELETE").url).toBe("/api/v1/meta/pages/104200000000001");
   });
 
+  it("re-subscribes a Page without asking for its token", async () => {
+    const { fetchMock } = await openPage({ settings: settings({ pages: [page()] }) });
+    await userEvent.click(screen.getByRole("button", { name: "Re-subscribe Contoso Støtte" }));
+    expect(await screen.findByText("Page re-subscribed")).toBeInTheDocument();
+    expect(sent(fetchMock, "POST").url).toBe("/api/v1/meta/pages/104200000000001/resubscribe");
+  });
+
+  it("says that a Page could not be re-subscribed", async () => {
+    await openPage({
+      settings: settings({ pages: [page()] }),
+      resubscribe: () => problemResponse(422, "page_token_insufficient"),
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Re-subscribe Contoso Støtte" }));
+    expect(await screen.findByText("The Page could not be re-subscribed")).toBeInTheDocument();
+  });
+
   it("tells the Owner to add a Page again when Meta rejected its token", async () => {
     await openPage({ settings: settings({ pages: [page({ state: "token_rejected" })] }) });
     expect(screen.getByText("Token rejected")).toBeInTheDocument();

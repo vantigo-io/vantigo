@@ -432,12 +432,12 @@ func (s *server) anonymiseOne(ctx context.Context, tx pgx.Tx, txq *store.Queries
 	if err != nil {
 		return fmt.Errorf("detach customer %d's contacts: %w", id, err)
 	}
-	var orphans int64
+	var deleted []int32
 	if len(contactIDs) > 0 {
 		if err := txq.LockContactsForAnonymisation(ctx, contactIDs); err != nil {
 			return fmt.Errorf("lock customer %d's detached contacts: %w", id, err)
 		}
-		if orphans, err = txq.DeleteOrphanedContacts(ctx, contactIDs); err != nil {
+		if deleted, err = txq.DeleteOrphanedContacts(ctx, contactIDs); err != nil {
 			return fmt.Errorf("delete the contacts only customer %d had: %w", id, err)
 		}
 	}
@@ -467,7 +467,7 @@ func (s *server) anonymiseOne(ctx context.Context, tx pgx.Tx, txq *store.Queries
 	erased := []contracts.ErasedData{
 		{Kind: anonymiseKindAddresses, Count: addresses},
 		{Kind: anonymiseKindContactAssociations, Count: int64(len(contactIDs))},
-		{Kind: anonymiseKindContacts, Count: orphans},
+		{Kind: anonymiseKindContacts, Count: int64(len(deleted))},
 		{Kind: anonymiseKindTimelineEntries, Count: entries},
 		{Kind: anonymiseKindAttachments, Count: int64(len(objectKeys))},
 	}
@@ -477,6 +477,14 @@ func (s *server) anonymiseOne(ctx context.Context, tx pgx.Tx, txq *store.Queries
 			return fmt.Errorf("erase %s's data about customer %d: %w", holder.Module, id, err)
 		}
 		erased = append(erased, kinds...)
+		// A holder of contact ids is told which contacts went (Messenger design N19).
+		if eraser, ok := holder.Data.(contracts.ContactDataEraser); ok {
+			kinds, err := eraser.EraseContactData(ctx, tx, deleted)
+			if err != nil {
+				return fmt.Errorf("erase %s's references to customer %d's contacts: %w", holder.Module, id, err)
+			}
+			erased = append(erased, kinds...)
+		}
 	}
 
 	if err := txq.AnonymiseCustomerRow(ctx, store.AnonymiseCustomerRowParams{ID: id, Name: anonymisedName, AnonymiseOn: on, Now: now}); err != nil {

@@ -75,8 +75,29 @@ const roleRank = (role: string) => {
   return index === -1 ? CONTACT_ROLES.length : index;
 };
 
+/**
+ * One Messenger channel as a contact's row reads it (Messenger design N22): linked when a person on the
+ * channel is linked to the contact. The person's platform id is Communications' and never reaches here.
+ */
+export interface ContactChannel {
+  channelId: string;
+  type: string;
+  name: string;
+  linked: boolean;
+  /** Whether the caller may write to the person (communications:conversations-reply). */
+  canWrite?: boolean;
+  /** Whether the caller may get the contact's Messenger link and unlink the person (communications:conversations-manage). */
+  canManage?: boolean;
+  participantId?: string | null;
+  lastInboundAt?: string | null;
+  /** When the person's reply window closes; absent when it is closed, and they must write first. */
+  replyWindowClosesAt?: string | null;
+}
+
 export interface CustomerContactResponse {
   contact: ContactResponse;
+  /** The contact's Messenger channels; absent without Communications, or for a caller who may not view conversations. */
+  channels?: ContactChannel[];
   /** What this person is called at this customer, or null when the association has no title. */
   title: string | null;
   /** Every typed role held for this customer, in the fixed order. */

@@ -160,6 +160,7 @@ type setup struct {
 	directorySearches []contracts.DirectorySearch
 	outboundMail      contracts.OutboundMail
 	calendarBusy      contracts.CalendarBusy
+	contactChannels   contracts.ContactChannels
 	hours             contracts.BillableHours
 	billExpenses      contracts.BillableExpenses
 	milestones        contracts.BillableMilestones
@@ -489,6 +490,15 @@ func WithCalendarBusy(b contracts.CalendarBusy) Option {
 	return func(s *setup) { s.calendarBusy = b }
 }
 
+// WithContactChannels sets Deps.ContactChannels, for Customers' contact rows to
+// be tested against a fake (a test's own contracts.ContactChannels) without
+// composing Communications beside them: depguard keeps it out of their tests.
+// module.Compose keeps a value set here when no enabled module provides the
+// slot (Messenger design N22); a composed Communications' own replaces it.
+func WithContactChannels(c contracts.ContactChannels) Option {
+	return func(s *setup) { s.contactChannels = c }
+}
+
 // WithBillableHours sets Deps.BillableHours directly to p, for a module under
 // test that reads time's billable entries (contracts.BillableHours) without
 // composing time beside it, for WithActuals' reason. module.Compose only ever
@@ -810,6 +820,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		DirectorySearches:        s.directorySearches,
 		OutboundMail:             s.outboundMail,
 		CalendarBusy:             s.calendarBusy,
+		ContactChannels:          s.contactChannels,
 		BillableHours:            s.hours,
 		BillableExpenses:         s.billExpenses,
 		BillableMilestones:       s.milestones,

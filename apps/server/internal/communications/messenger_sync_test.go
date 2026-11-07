@@ -663,8 +663,14 @@ func TestMessengerSync_Answers(t *testing.T) {
 	if got := f.h.Count(t, `SELECT count(*) FROM communications.conversations WHERE id = $1 AND customer_id IS NULL`, conv); got != 1 {
 		t.Error("the conversation was linked to a customer: an address is a suggestion")
 	}
-	if got := modtest.One[int32](t, f.h, `SELECT contact_id FROM communications.participants WHERE channel_id = $1 AND address = '4242'`, f.channel.Id); got != 2001 {
-		t.Errorf("participant contact = %d, want the one contact with the address", got)
+	if got := modtest.One[*int32](t, f.h, `SELECT contact_id FROM communications.participants WHERE channel_id = $1 AND address = '4242'`, f.channel.Id); got != nil {
+		t.Errorf("participant contact = %d, want none: an address is a suggestion (N20)", *got)
+	}
+	if got := modtest.One[int32](t, f.h, `
+		SELECT h.suggested_contact_id FROM communications.participant_contact_hints h
+		JOIN communications.participants p ON p.id = h.participant_id
+		WHERE p.channel_id = $1 AND p.address = '4242'`, f.channel.Id); got != 2001 {
+		t.Errorf("suggested contact = %d, want the one contact with the address", got)
 	}
 }
 

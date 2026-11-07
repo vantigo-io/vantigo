@@ -64,6 +64,10 @@ func (m *messenger) Pending(ctx context.Context, address string, after int64, li
 			PlatformMessageID: p.MID,
 			Text:              p.Text,
 			Echo:              p.Echo,
+			Ref:               p.Ref,
+		}
+		if p.ReferralOnly {
+			ev.Kind = contracts.MessengerEventReferral
 		}
 		if p.Answer != nil {
 			ev.Answer = &contracts.MessengerAnswer{MessageID: p.Answer.MessageID, ChoiceID: p.Answer.ChoiceID}

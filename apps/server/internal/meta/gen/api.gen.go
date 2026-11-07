@@ -159,6 +159,9 @@ type ServerInterface interface {
 	// DeleteMetaPagesByPageId Remove a Page
 	// (DELETE /api/v1/meta/pages/{pageId})
 	DeleteMetaPagesByPageId(w http.ResponseWriter, r *http.Request, pageId string)
+	// PostMetaPagesByPageIdResubscribe Subscribe a Page again
+	// (POST /api/v1/meta/pages/{pageId}/resubscribe)
+	PostMetaPagesByPageIdResubscribe(w http.ResponseWriter, r *http.Request, pageId string)
 	// GetMetaSettings Get the Meta settings
 	// (GET /api/v1/meta/settings)
 	GetMetaSettings(w http.ResponseWriter, r *http.Request)
@@ -216,6 +219,32 @@ func (siw *ServerInterfaceWrapper) DeleteMetaPagesByPageId(w http.ResponseWriter
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteMetaPagesByPageId(w, r, pageId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostMetaPagesByPageIdResubscribe operation middleware
+func (siw *ServerInterfaceWrapper) PostMetaPagesByPageIdResubscribe(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "pageId" -------------
+	var pageId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "pageId", r.PathValue("pageId"), &pageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostMetaPagesByPageIdResubscribe(w, r, pageId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -462,6 +491,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/meta/pages", wrapper.PostMetaPages)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/meta/pages/{pageId}", wrapper.DeleteMetaPagesByPageId)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/meta/pages/{pageId}/resubscribe", wrapper.PostMetaPagesByPageIdResubscribe)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/meta/settings", wrapper.GetMetaSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/meta/settings", wrapper.PutMetaSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/meta/settings/verify-token", wrapper.PostMetaSettingsVerifyToken)
@@ -665,6 +695,122 @@ func (response DeleteMetaPagesByPageId429JSONResponse) VisitDeleteMetaPagesByPag
 		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
 	}
 	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostMetaPagesByPageIdResubscribeRequestObject struct {
+	PageId string `json:"pageId"`
+}
+
+type PostMetaPagesByPageIdResubscribeResponseObject interface {
+	VisitPostMetaPagesByPageIdResubscribeResponse(w http.ResponseWriter) error
+}
+
+type PostMetaPagesByPageIdResubscribe200JSONResponse MetaPage
+
+func (response PostMetaPagesByPageIdResubscribe200JSONResponse) VisitPostMetaPagesByPageIdResubscribeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostMetaPagesByPageIdResubscribe401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostMetaPagesByPageIdResubscribe401JSONResponse) VisitPostMetaPagesByPageIdResubscribeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostMetaPagesByPageIdResubscribe403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostMetaPagesByPageIdResubscribe403JSONResponse) VisitPostMetaPagesByPageIdResubscribeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostMetaPagesByPageIdResubscribe404ApplicationProblemPlusJSONResponse MetaProblem
+
+func (response PostMetaPagesByPageIdResubscribe404ApplicationProblemPlusJSONResponse) VisitPostMetaPagesByPageIdResubscribeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostMetaPagesByPageIdResubscribe422ApplicationProblemPlusJSONResponse MetaProblem
+
+func (response PostMetaPagesByPageIdResubscribe422ApplicationProblemPlusJSONResponse) VisitPostMetaPagesByPageIdResubscribeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostMetaPagesByPageIdResubscribe429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostMetaPagesByPageIdResubscribe429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostMetaPagesByPageIdResubscribe429ResponseHeaders
+}
+
+func (response PostMetaPagesByPageIdResubscribe429JSONResponse) VisitPostMetaPagesByPageIdResubscribeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostMetaPagesByPageIdResubscribe503ApplicationProblemPlusJSONResponse MetaProblem
+
+func (response PostMetaPagesByPageIdResubscribe503ApplicationProblemPlusJSONResponse) VisitPostMetaPagesByPageIdResubscribeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1024,6 +1170,9 @@ type StrictServerInterface interface {
 	// DeleteMetaPagesByPageId Remove a Page
 	// (DELETE /api/v1/meta/pages/{pageId})
 	DeleteMetaPagesByPageId(ctx context.Context, request DeleteMetaPagesByPageIdRequestObject) (DeleteMetaPagesByPageIdResponseObject, error)
+	// PostMetaPagesByPageIdResubscribe Subscribe a Page again
+	// (POST /api/v1/meta/pages/{pageId}/resubscribe)
+	PostMetaPagesByPageIdResubscribe(ctx context.Context, request PostMetaPagesByPageIdResubscribeRequestObject) (PostMetaPagesByPageIdResubscribeResponseObject, error)
 	// GetMetaSettings Get the Meta settings
 	// (GET /api/v1/meta/settings)
 	GetMetaSettings(ctx context.Context, request GetMetaSettingsRequestObject) (GetMetaSettingsResponseObject, error)
@@ -1130,6 +1279,32 @@ func (sh *strictHandler) DeleteMetaPagesByPageId(w http.ResponseWriter, r *http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DeleteMetaPagesByPageIdResponseObject); ok {
 		if err := validResponse.VisitDeleteMetaPagesByPageIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostMetaPagesByPageIdResubscribe operation middleware
+func (sh *strictHandler) PostMetaPagesByPageIdResubscribe(w http.ResponseWriter, r *http.Request, pageId string) {
+	var request PostMetaPagesByPageIdResubscribeRequestObject
+
+	request.PageId = pageId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostMetaPagesByPageIdResubscribe(ctx, request.(PostMetaPagesByPageIdResubscribeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostMetaPagesByPageIdResubscribe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostMetaPagesByPageIdResubscribeResponseObject); ok {
+		if err := validResponse.VisitPostMetaPagesByPageIdResubscribeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

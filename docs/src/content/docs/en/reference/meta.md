@@ -174,6 +174,7 @@ The worker `meta-split` runs every second. A cycle claims due events **one at a 
    | A postback | `message` (its title as text) | `p:<postback mid>`, or a hash of Page, PSID, timestamp and payload when it has none |
    | A delivery watermark | `delivered` | `d:<PSID>:<watermark>` |
    | A read watermark | `read` | `r:<PSID>:<watermark>` |
+   | A referral event (`messaging_referrals`) | `message`, referral only | `f:` and a hash of Page, PSID, timestamp and ref |
 
    Duplicates (Meta delivers at least once) collide on (`page_id`, `dedup_key`) and are
    ignored. An item with no id, no content or no participant becomes no row.
@@ -204,6 +205,27 @@ The worker `meta-split` runs every second. A cycle claims due events **one at a 
 A failed attempt is deferred with a growing wait (5 s, 30 s, 2 min, 10 min, 30 min); a
 payload that cannot be read at all is marked `failed`. Nothing a person wrote is stored
 in `last_error`.
+
+### Referrals
+
+`messaging_referrals` is the Page field that tells the app a person opened the thread through
+an `m.me` link with a `ref` (Messenger design N21). The ref reaches Communications as
+`MessengerEvent.Ref`, **verbatim and uninterpreted**: this module reads no ref and links no
+one; Communications verifies and applies it. A referral comes in three shapes, all read:
+
+| Shape | Where it is in the payload | The event |
+| --- | --- | --- |
+| A thread that already exists: the link sends a `messaging_referrals` event | `messaging[].referral.ref` | an event of kind `referral` (`MessengerEventReferral`) with the PSID and the ref, and no text |
+| A new thread: the **Get Started** postback | `postback.referral.ref` | the postback's `message`, with `Ref`; one with no title is a `referral` event |
+| The first message | `message.referral.ref` | the `message`, with `Ref` |
+
+A `referral` event is stored as a `message` row with no text and the payload fields `ref`
+and `referralOnly`, since `inbound_kind_check` has no word for it; `Pending` answers it as
+kind `referral`. A ref that is empty or longer than 1024 characters is dropped (Meta allows
+2083; a ref of Vantigo's is about 100). The ref of an echo is not read. Meta documents
+the first two shapes; the third is read defensively and **is to be confirmed against a real
+Page**, as is the `Ref` of a referral that arrives as an ad's (`source: ADS`, which carries
+no ref of ours and so does nothing).
 
 ### Echoes, postbacks and quick replies
 
@@ -282,10 +304,22 @@ recipient and the text are never logged or kept. Later sends to a Page set to
   that the token may act for it. Error 190 and any other non-temporary refusal of these
   reads or of the subscription is 422 `page_token_insufficient`; a call that could not be
   made or a temporary refusal is **503** `meta_unreachable`. Then
-  `POST /{page}/subscribed_apps` with `messages`, `messaging_postbacks`, `message_reads`,
+  `POST /{page}/subscribed_apps` with `messages`, `messaging_postbacks`, `messaging_referrals`, `message_reads`,
   `message_deliveries` and `message_echoes`. Only then is the token sealed and the Page
   stored: **201** with the Page. The same Page added again replaces its token and clears a
   rejection.
+- **Re-subscribe** (`POST /pages/{pageId}/resubscribe`, **200** with the Page; the Owner's,
+  with the module's Owner rate limit). It posts the subscribed fields again with the stored
+  token, which Meta takes as the Page's whole list: a Page connected before
+  `messaging_referrals` was added gets it, and a repeat changes nothing. **No consent is asked
+  of the Page by this call**: it is the same `subscribed_apps` edge, with the Page's own
+  token, that connecting a Page uses, and only the list of what the app is delivered
+  changes. Meta's documentation does not say that adding a field needs more, which **is to
+  be confirmed on the test Page**. The Page is set `active`. **404**
+  `page_not_found`; 422 `not_configured`; 422 `page_token_insufficient` when Meta refuses
+  the token, which also sets the Page `token_rejected` on error 190; **503** `meta_unreachable`.
+  The settings page has it as **Re-subscribe** on each Page. It is a button and not a start-up
+  step so that nothing the Owner did not do changes what a Page delivers.
 - **Remove** (`DELETE /pages/{pageId}`, **204**; **404** `page_not_found`). The app's
   subscription is withdrawn on a best-effort basis; the Page's inbox rows and cached
   names, the Page and then the files of its rows are deleted.

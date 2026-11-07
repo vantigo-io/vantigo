@@ -1125,6 +1125,74 @@ func TestCompose_InjectsTimesheetsProvider(t *testing.T) {
 	}
 }
 
+type fakeContactChannels struct{}
+
+func (*fakeContactChannels) ForContacts(context.Context, []int32) (map[int32][]contracts.ContactChannelEntry, error) {
+	return nil, nil
+}
+
+// ContactChannels (Messenger design N22) is a sole-provider slot like Timesheets:
+// resolved before any Mount runs, onto every module's Deps; nil when its provider
+// is disabled; a preset value survives when no module provides it; two
+// providers are a compose error naming both.
+func TestCompose_ContactChannelsSlot(t *testing.T) {
+	provided := &fakeContactChannels{}
+	var got Deps
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", ContactChannels: func(Deps) contracts.ContactChannels { return provided }, Mount: staticHandler("beta")},
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.ContactChannels != provided {
+		t.Errorf("Deps.ContactChannels = %v, want the provider's", got.ContactChannels)
+	}
+
+	got = Deps{}
+	_, err = compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+		Module{Name: "beta", ContactChannels: func(Deps) contracts.ContactChannels { return provided }, Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose with the provider disabled: %v", err)
+	}
+	if got.ContactChannels != nil {
+		t.Errorf("Deps.ContactChannels = %v, want nil: the provider is disabled", got.ContactChannels)
+	}
+
+	preset := &fakeContactChannels{}
+	got = Deps{}
+	_, err = compose(Deps{Access: &fakeAccess{}, ContactChannels: preset}, fakeLoad(map[string]string{"alpha": alphaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose with a preset: %v", err)
+	}
+	if got.ContactChannels != preset {
+		t.Errorf("Deps.ContactChannels = %v, want the preset to survive with no provider", got.ContactChannels)
+	}
+
+	_, err = compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", ContactChannels: func(Deps) contracts.ContactChannels { return &fakeContactChannels{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", ContactChannels: func(Deps) contracts.ContactChannels { return &fakeContactChannels{} }, Mount: staticHandler("beta")},
+	)
+	if err == nil || !strings.Contains(err.Error(), "contact channels") || !strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+		t.Errorf("two providers: error %v, want one naming the slot and both modules", err)
+	}
+}
+
 // Two modules both declaring Timesheets is a compose error naming both.
 func TestCompose_DuplicateTimesheetsProvider_Fails(t *testing.T) {
 	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
