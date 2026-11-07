@@ -1,10 +1,10 @@
 import { QueryClient } from "@tanstack/react-query";
+import { clampSidePanelWidth, SIDE_PANEL_MAX_WIDTH, SIDE_PANEL_MIN_WIDTH } from "@vantigo/frontend-shell";
 import { describe, expect, it } from "vitest";
 import { conversation } from "../test/server";
 import { createAssistantContextRegistry, templateCovers } from "./context";
 import { groupConversations } from "./groups";
 import { classifyLink } from "./links";
-import { clampPanelWidth, PANEL_MAX_WIDTH, PANEL_MIN_WIDTH } from "./panel";
 import { filterGroups } from "./permissions";
 import { isAssistantShortcut, shouldIgnoreAssistantShortcut } from "./shortcut";
 
@@ -133,9 +133,9 @@ describe("classifyLink", () => {
 
 describe("the panel's width", () => {
   it("stays between its limits", () => {
-    expect(clampPanelWidth(10)).toBe(PANEL_MIN_WIDTH);
-    expect(clampPanelWidth(5000)).toBe(PANEL_MAX_WIDTH);
-    expect(clampPanelWidth(433.4)).toBe(433);
+    expect(clampSidePanelWidth(10)).toBe(SIDE_PANEL_MIN_WIDTH);
+    expect(clampSidePanelWidth(5000)).toBe(SIDE_PANEL_MAX_WIDTH);
+    expect(clampSidePanelWidth(433.4)).toBe(433);
   });
 });
 

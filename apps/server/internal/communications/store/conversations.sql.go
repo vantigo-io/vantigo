@@ -12,6 +12,52 @@ import (
 	"github.com/google/uuid"
 )
 
+const countInboxAssignedUnread = `-- name: CountInboxAssignedUnread :one
+SELECT count(*)::int AS assigned_to_me_unread
+FROM communications.conversations c
+WHERE c.status = 'open'
+  AND c.assigned_user_id = $1::uuid
+  AND NOT EXISTS (
+        SELECT 1 FROM communications.conversation_read_states rs
+        WHERE rs.conversation_id = c.id AND rs.user_id = $1::uuid
+          AND rs.last_read_at >= c.last_activity_at)
+`
+
+// CountInboxAssignedUnread is the other half of GET /inbox/counts: the unread
+// open conversations assigned to the user. The assignee predicate is the
+// partial index ix_conversations_assigned_user_open's own (status = 'open'),
+// so the planner starts from the user's open conversations and probes the
+// read state only for those.
+func (q *Queries) CountInboxAssignedUnread(ctx context.Context, userID uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countInboxAssignedUnread, userID)
+	var assigned_to_me_unread int32
+	err := row.Scan(&assigned_to_me_unread)
+	return assigned_to_me_unread, err
+}
+
+const countInboxUnread = `-- name: CountInboxUnread :one
+SELECT count(*)::int AS unread
+FROM communications.conversations c
+WHERE c.status = 'open'
+  AND NOT EXISTS (
+        SELECT 1 FROM communications.conversation_read_states rs
+        WHERE rs.conversation_id = c.id AND rs.user_id = $1::uuid
+          AND rs.last_read_at >= c.last_activity_at)
+`
+
+// CountInboxUnread backs the unread half of GET /inbox/counts (messenger
+// design N27): the open conversations the user has not read (no read state
+// at or after the last activity). It is O(open conversations): the open ones
+// are found through the (status, last_activity_at) index and each is checked
+// with a NOT EXISTS probe of its read state by primary key. Nothing narrows it
+// by assignee, so ix_conversations_assigned_user_open does not serve it.
+func (q *Queries) CountInboxUnread(ctx context.Context, userID uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countInboxUnread, userID)
+	var unread int32
+	err := row.Scan(&unread)
+	return unread, err
+}
+
 const deleteConversationCustomerCandidates = `-- name: DeleteConversationCustomerCandidates :exec
 DELETE FROM communications.conversation_customer_candidates WHERE conversation_id = $1
 `

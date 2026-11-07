@@ -6,23 +6,18 @@ import { ContentSkeleton, PageHeader, PageSection, useI18n, useLiveTopic } from 
 import type { ReactNode } from "react";
 import { useState } from "react";
 import {
-  addTag,
-  type ConversationStatus,
   conversationQueryOptions,
   conversationsQueryOptions,
   createConversation,
-  markConversationRead,
   personalSenderQueryOptions,
-  removeTag,
-  suggestConversationCustomerWithAi,
   tagsQueryOptions,
-  updateConversation,
 } from "../api/conversations";
 import type { ConnectionButtonProps } from "../components/ConversationComposer";
 import { ConversationList } from "../components/ConversationList";
 import { ConversationThread } from "../components/ConversationThread";
 import { personalSenderLabel, returnHere } from "../components/conversationHelpers";
 import { InboxFilters, type InboxSearch } from "../components/InboxFilters";
+import { useConversationActions } from "../hooks/useConversationActions";
 import "../i18n";
 import "../styles.css";
 
@@ -69,28 +64,9 @@ export function InboxPage({ connectionButton }: InboxPageProps = {}) {
     refetchInterval: conversationLive ? false : 60_000,
   });
   const tags = useQuery(tagsQueryOptions());
-  const invalidate = () =>
-    Promise.all([
-      client.invalidateQueries({ queryKey: ["conversations"] }),
-      client.invalidateQueries({ queryKey: ["conversation", selectedId] }),
-    ]);
+  const { invalidate, markRead, workflow, tagMutation, suggest } = useConversationActions(selectedId);
   const select = (id: string) => void navigate({ search: { ...search, conversationId: id } });
   const active = detail.data;
-  const markRead = useMutation({ mutationFn: () => markConversationRead(selectedId), onSuccess: invalidate });
-  const workflow = useMutation({
-    mutationFn: (body: { status?: ConversationStatus; assignedUserId?: string | null; customerId?: number | null }) =>
-      updateConversation(selectedId, body),
-    onSuccess: invalidate,
-  });
-  const tagMutation = useMutation({
-    mutationFn: ({ tagId, remove }: { tagId: string; remove?: boolean }) =>
-      remove ? removeTag(selectedId, tagId) : addTag(selectedId, tagId),
-    onSuccess: invalidate,
-  });
-  const suggest = useMutation({
-    mutationFn: () => suggestConversationCustomerWithAi(selectedId),
-    onSuccess: invalidate,
-  });
   const create = useMutation({
     mutationFn: () =>
       createConversation(
@@ -109,6 +85,7 @@ export function InboxPage({ connectionButton }: InboxPageProps = {}) {
       setNewBody("");
       setSendFromPersonal(false);
       await client.invalidateQueries({ queryKey: ["conversations"] });
+      await client.invalidateQueries({ queryKey: ["inbox-counts"] });
       if (answer.conversationId) {
         select(answer.conversationId);
       }
@@ -140,7 +117,7 @@ export function InboxPage({ connectionButton }: InboxPageProps = {}) {
           <ConversationList
             data={list.data}
             isPending={list.isPending}
-            isError={list.isError}
+            isError={list.isError && !list.data}
             error={list.error}
             selectedId={selectedId}
             onSelect={select}
@@ -155,25 +132,32 @@ export function InboxPage({ connectionButton }: InboxPageProps = {}) {
               </Stack>
             ) : detail.isPending ? (
               <ContentSkeleton rows={5} p="md" />
-            ) : detail.isError ? (
+            ) : detail.isError && !active ? (
               <Alert m="md" color="red">
                 {t("couldNotLoadConversation")}
               </Alert>
             ) : (
               active && (
-                <ConversationThread
-                  key={active.id}
-                  conversation={active}
-                  tags={tags.data || []}
-                  onRead={() => markRead.mutate()}
-                  onWorkflow={(body) => workflow.mutate(body)}
-                  onTag={(tagId, remove) => tagMutation.mutate({ tagId, remove })}
-                  onSent={invalidate}
-                  onSuggest={() => suggest.mutate()}
-                  suggestionPending={suggest.isPending}
-                  suggestionError={suggest.error}
-                  connectionButton={connectionButton}
-                />
+                <>
+                  {detail.isError && (
+                    <Alert color="yellow" py={4} px="sm" role="status">
+                      {t("refreshFailed")}
+                    </Alert>
+                  )}
+                  <ConversationThread
+                    key={active.id}
+                    conversation={active}
+                    tags={tags.data || []}
+                    onRead={() => markRead.mutate()}
+                    onWorkflow={(body) => workflow.mutate(body)}
+                    onTag={(tagId, remove) => tagMutation.mutate({ tagId, remove })}
+                    onSent={invalidate}
+                    onSuggest={() => suggest.mutate()}
+                    suggestionPending={suggest.isPending}
+                    suggestionError={suggest.error}
+                    connectionButton={connectionButton}
+                  />
+                </>
               )
             )}
           </main>

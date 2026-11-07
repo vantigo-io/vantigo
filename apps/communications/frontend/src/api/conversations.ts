@@ -218,6 +218,17 @@ export const conversationQueryOptions = (id: string) =>
       request<ConversationDetail>(`/api/v1/communications/conversations/${encodeURIComponent(id)}`, { signal }),
     enabled: Boolean(id),
   });
+/** The caller's unread open conversations, and those assigned to them (Messenger design N27). */
+export type InboxCounts = { unread: number; assignedToMeUnread: number };
+export const inboxCountsQueryKey = ["inbox-counts"] as const;
+export const inboxCountsQueryOptions = (options: { enabled?: boolean; refetchInterval?: number | false } = {}) =>
+  queryOptions({
+    queryKey: inboxCountsQueryKey,
+    queryFn: ({ signal }) => request<InboxCounts>("/api/v1/communications/inbox/counts", { signal }),
+    enabled: options.enabled ?? true,
+    refetchInterval: options.refetchInterval ?? false,
+    refetchOnWindowFocus: true,
+  });
 export const personalSenderQueryOptions = () =>
   queryOptions({
     queryKey: ["communications-personal-sender"],

@@ -243,6 +243,27 @@ describe("inbox", () => {
     expect(await screen.findByRole("heading", { name: "Second question" })).toBeTruthy();
   });
 
+  it("keeps the open thread when a refetch of it fails, and says so", async () => {
+    const first = conversation("c-1", "First question");
+    mocks.fetchConversations.mockResolvedValue(page([first]));
+    mocks.fetchConversation.mockResolvedValueOnce(detail("c-1", first.subject));
+    mocks.search = { conversationId: "c-1" };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MantineProvider env="test">
+        <QueryClientProvider client={client}>
+          <InboxPage />
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+    expect(await screen.findByText("Could you help me with this?")).toBeTruthy();
+    mocks.fetchConversation.mockRejectedValue(new Error("offline"));
+    await client.refetchQueries({ queryKey: ["conversation", "c-1"] });
+    expect(await screen.findByText("Could not refresh; showing what was loaded last.")).toBeTruthy();
+    expect(screen.getByText("Could you help me with this?")).toBeTruthy();
+    expect(screen.queryByText("Could not load this conversation.")).toBeNull();
+  });
+
   it("shows a Messenger conversation as a chat, with its channel's icon on its row and a chat composer", async () => {
     const chat = { ...conversation("c-chat", ""), subject: null, channelType: "messenger" as const };
     const mail = { ...conversation("c-mail", "A mail"), channelType: "email" as const };

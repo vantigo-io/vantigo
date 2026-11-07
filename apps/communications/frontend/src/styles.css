@@ -190,3 +190,51 @@
 .thread-presence {
   min-height: 22px;
 }
+
+/* The Conversations panel in the shell's side panel (Messenger design N25). */
+.conversations-panel {
+  container-type: inline-size;
+}
+.conversations-panel .conversation-list {
+  border-right: 0;
+}
+.conversations-panel .conversation-row {
+  padding: 10px 12px;
+}
+.conversations-panel .panel-thread {
+  overflow: hidden;
+}
+.conversations-panel .thread-layout {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+.conversations-panel .thread-header {
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.conversations-panel .thread-tags {
+  padding: 8px 12px;
+}
+.conversations-panel .thread-messages {
+  padding: 12px;
+}
+.conversations-panel .message-card {
+  max-width: 100%;
+}
+.conversations-panel .composer {
+  padding: 10px 12px;
+}
+.conversations-panel .message-html {
+  max-width: 100%;
+}
+/* At the narrowest the thread drops its side margins. */
+@container (max-width: 340px) {
+  .conversations-panel .thread-messages {
+    padding: 8px 0;
+  }
+  .conversations-panel .message-card {
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+  }
+}

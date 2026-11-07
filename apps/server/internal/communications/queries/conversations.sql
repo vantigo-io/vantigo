@@ -439,3 +439,33 @@ LIMIT 1;
 -- The conversation a message is in, for the live notification of a write that
 -- names only the message: the outbox's delivery outcomes (live design L18).
 SELECT conversation_id FROM communications.conversation_messages WHERE id = @id;
+
+-- name: CountInboxUnread :one
+-- CountInboxUnread backs the unread half of GET /inbox/counts (messenger
+-- design N27): the open conversations the user has not read (no read state
+-- at or after the last activity). It is O(open conversations): the open ones
+-- are found through the (status, last_activity_at) index and each is checked
+-- with a NOT EXISTS probe of its read state by primary key. Nothing narrows it
+-- by assignee, so ix_conversations_assigned_user_open does not serve it.
+SELECT count(*)::int AS unread
+FROM communications.conversations c
+WHERE c.status = 'open'
+  AND NOT EXISTS (
+        SELECT 1 FROM communications.conversation_read_states rs
+        WHERE rs.conversation_id = c.id AND rs.user_id = @user_id::uuid
+          AND rs.last_read_at >= c.last_activity_at);
+
+-- name: CountInboxAssignedUnread :one
+-- CountInboxAssignedUnread is the other half of GET /inbox/counts: the unread
+-- open conversations assigned to the user. The assignee predicate is the
+-- partial index ix_conversations_assigned_user_open's own (status = 'open'),
+-- so the planner starts from the user's open conversations and probes the
+-- read state only for those.
+SELECT count(*)::int AS assigned_to_me_unread
+FROM communications.conversations c
+WHERE c.status = 'open'
+  AND c.assigned_user_id = @user_id::uuid
+  AND NOT EXISTS (
+        SELECT 1 FROM communications.conversation_read_states rs
+        WHERE rs.conversation_id = c.id AND rs.user_id = @user_id::uuid
+          AND rs.last_read_at >= c.last_activity_at);

@@ -13,6 +13,7 @@ import {
 } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { useAssistantShell } from "@vantigo/assistant-ui";
+import { useConversationsShell } from "@vantigo/communications-ui";
 import {
   AccountMenu,
   AppShellLayout,
@@ -23,6 +24,7 @@ import {
   SpotlightSearchBox,
   SpotlightSearchButton,
   useI18n,
+  useSidePanelController,
 } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import "../i18n";
@@ -45,11 +47,19 @@ import {
   screenNameKey,
   useRecordLabel,
 } from "../lib/assistant-context";
+import { connectionButtonFor } from "../lib/connections";
 import { enabledModuleKeys } from "../lib/enabled-modules";
 import { mfaEnrolmentRedirect } from "../lib/mfa-enrolment-gate";
 import { useOpenRoute } from "../lib/open-route";
 import { publicPaths, sessionlessPaths } from "../lib/public-paths";
-import { activeNavItem, type NavFeature, type NavSection, navItemKey, visibleNavSections } from "../navigation";
+import {
+  activeNavItem,
+  hasPermissions,
+  type NavFeature,
+  type NavSection,
+  navItemKey,
+  visibleNavSections,
+} from "../navigation";
 
 registerAssistantContexts();
 
@@ -143,18 +153,36 @@ const RootLayout = () => {
   const routeInfo = routeInfoFrom(matches as never);
   const recordLabel = useRecordLabel(routeInfo);
   const screenKey = screenNameKey(activeKey, pathname);
+  // The side panel (Messenger design N24): the shell's one right-hand panel, with the Assistant and Conversations in it.
+  const sidePanel = useSidePanelController();
+  const permissions = authorization.data?.permissions;
+  const shellReady =
+    !isPublic && !!session && session.mfaEnrollmentRequired !== true && !sessionlessPaths.has(pathname);
   const assistant = useAssistantShell({
-    enabled:
-      !isPublic &&
-      !!session &&
-      session.mfaEnrollmentRequired !== true &&
-      !sessionlessPaths.has(pathname) &&
-      enabledModuleKeys().includes("assistant"),
+    side: sidePanel,
+    enabled: shellReady && enabledModuleKeys().includes("assistant"),
     onAssistantPage: pathname === "/assistant" || pathname.startsWith("/assistant/"),
     context: assistantChipFor(routeInfo, activeKey, recordLabel, screenKey ? t(screenKey) : undefined),
     onNavigate: openRoute,
     tourTargets: assistTargets,
     onOpenInAssistant: (id) => void navigate({ to: id ? `/assistant/${id}` : "/assistant" } as never),
+  });
+  // Conversations: the module on and the view permission, like the inbox. The customer page the person is on is offered as a filter.
+  const customerParam = pathname.startsWith("/customers/") ? Number(routeInfo?.params.customerId) : Number.NaN;
+  const conversations = useConversationsShell({
+    side: sidePanel,
+    enabled:
+      shellReady &&
+      enabledModuleKeys().includes("communications") &&
+      !!permissions &&
+      hasPermissions(permissions, ["communications:conversations-view"]),
+    onInboxPage: pathname === "/communications/inbox" || pathname.startsWith("/communications/inbox/"),
+    userId: session?.user.id,
+    customerId: Number.isSafeInteger(customerParam) && customerParam > 0 ? customerParam : undefined,
+    canReply: hasPermissions(permissions, ["communications:conversations-reply"]),
+    canManage: hasPermissions(permissions, ["communications:conversations-manage"]),
+    onNavigate: openRoute,
+    connectionButton: connectionButtonFor(),
   });
   const logout = useMutation({
     mutationFn: signOut,
@@ -178,7 +206,6 @@ const RootLayout = () => {
   // offers nothing that leads out of /settings: no sidebar, no app switcher,
   // no spotlight. The account menu stays, so sign-out still works.
   const gated = session.mfaEnrollmentRequired === true;
-  const permissions = authorization.data?.permissions;
   const canManageAuthorization = authorization.data?.canManageAuthorization === true;
   const enabledModules = enabledModuleKeys();
   const features: readonly NavFeature[] = [
@@ -217,6 +244,7 @@ const RootLayout = () => {
             {!gated && (
               <>
                 <SpotlightSearchButton />
+                {conversations.button}
                 {assistant.button}
                 <AppSwitcher
                   apps={switcherTiles(permissions, enabledModules, activeKey, features).map((tile) => ({
@@ -255,7 +283,11 @@ const RootLayout = () => {
             ? (close) => renderNavSections(navSections, pathname, location.search, close, t)
             : undefined
         }
-        aside={gated ? undefined : assistant.aside}
+        aside={
+          gated
+            ? undefined
+            : sidePanel.aside([assistant.sidePanel, conversations.sidePanel].filter((panel) => panel !== undefined))
+        }
         linkComponent={Link as ShellLinkComponent}
       >
         <Stack gap="md">

@@ -18,7 +18,18 @@ export {
   updateConversation,
 } from "./api/conversations";
 export * from "./api/suppressions";
+export { ConversationsPanel, type ConversationsPanelProps } from "./components/ConversationsPanel";
+export {
+  CONVERSATIONS_PANEL_KEY,
+  type UseConversationsShellOptions,
+  useConversationsShell,
+} from "./hooks/useConversationsShell";
 export { communicationsCatalog } from "./i18n";
+export {
+  isConversationsShortcut,
+  shouldIgnoreConversationsShortcut,
+  useConversationsShortcut,
+} from "./lib/shortcut";
 export { ChannelsPage } from "./pages/admin.channels";
 export { SuppressionsPage } from "./pages/admin.suppressions";
 export { InboxPage } from "./pages/inbox";

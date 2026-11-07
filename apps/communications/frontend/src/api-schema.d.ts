@@ -328,6 +328,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/communications/inbox/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the caller's unread conversation counts
+         * @description How many open conversations the caller has not read, and how many of those are assigned to the caller. A conversation is unread for the caller when they have no read state at or after its last activity. Closed and archived conversations are not counted. Read by the Conversations button's badge in the side panel (Messenger design N27).
+         */
+        get: operations["getCommunicationsInboxCounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/communications/personal-sender": {
         parameters: {
             query?: never;
@@ -883,6 +903,19 @@ export interface components {
             messageId: string;
             /** @description The title the person saw. */
             title: string;
+        };
+        /** @description The caller's unread open conversations. */
+        InboxCountsResponse: {
+            /**
+             * Format: int32
+             * @description Open conversations assigned to the caller that the caller has not read.
+             */
+            assignedToMeUnread: number;
+            /**
+             * Format: int32
+             * @description Open conversations, assigned to anyone or no one, that the caller has not read.
+             */
+            unread: number;
         };
         MessageComponentCard: {
             /**
@@ -2541,6 +2574,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+        };
+    };
+    getCommunicationsInboxCounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxCountsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };

@@ -2,7 +2,7 @@ import { ActionIcon, Box, Group, Loader, Menu, Text, Tooltip } from "@mantine/co
 import { notifications } from "@mantine/notifications";
 import { IconExternalLink, IconHistory, IconPlus, IconX } from "@tabler/icons-react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { useI18n, useSidePanelActions, useSidePanelShown } from "@vantigo/frontend-shell";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   conversationQueryOptions,
@@ -13,16 +13,12 @@ import {
 } from "../api/assistant";
 import type { AssistantConversation, AssistantPendingAction } from "../api/types";
 import type { AssistantChip } from "../lib/context";
-import { clampPanelWidth, type PendingQuestion } from "../lib/panel";
+import type { PendingQuestion } from "../lib/panel";
 import { setAssistantRunStatus } from "../lib/run-status";
 import { ConversationView } from "./conversation-view";
 import "../i18n";
 
 export interface AssistantPanelProps {
-  open: boolean;
-  width: number;
-  onWidthChange: (width: number) => void;
-  onClose: () => void;
   /** The screen or record the person is on, for the chip and a new conversation's origin. */
   context?: AssistantChip;
   /** Opens an in-app route. The host's router does it, so the panel stays open. */
@@ -78,60 +74,16 @@ const RecentMenu = ({
   );
 };
 
-/** The drag handle on the panel's left edge. Arrow keys resize it too. */
-const ResizeHandle = ({ width, onWidthChange }: { width: number; onWidthChange: (width: number) => void }) => {
-  const { t } = useI18n("assistant");
-  const start = useRef<{ x: number; width: number } | undefined>(undefined);
-  return (
-    <Box
-      role="separator"
-      aria-orientation="vertical"
-      aria-label={t("resizePanel")}
-      aria-valuenow={width}
-      tabIndex={0}
-      visibleFrom="sm"
-      style={{
-        position: "absolute",
-        left: -3,
-        top: 0,
-        bottom: 0,
-        width: 6,
-        cursor: "col-resize",
-        zIndex: 2,
-        touchAction: "none",
-      }}
-      onPointerDown={(event) => {
-        start.current = { x: event.clientX, width };
-        event.currentTarget.setPointerCapture(event.pointerId);
-      }}
-      onPointerMove={(event) => {
-        if (start.current) onWidthChange(clampPanelWidth(start.current.width + (start.current.x - event.clientX)));
-      }}
-      onPointerUp={() => {
-        start.current = undefined;
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "ArrowLeft") onWidthChange(clampPanelWidth(width + 24));
-        if (event.key === "ArrowRight") onWidthChange(clampPanelWidth(width - 24));
-      }}
-    />
-  );
-};
-
 /**
  * The panel in the shell (design S10): the conversation view with a header of
  * its own. It opens on the conversation the person had open last, remembered
  * on the server so it follows them between devices, shows the context chip for
  * the screen or record they are on, and goes on working when it is closed. The
- * host mounts it in the shell's aside, so it stays open across apps; it is
+ * host mounts it in the shell's side panel, so it stays open across apps; it is
  * mounted from the first time it is opened and kept, so a run's progress
  * reaches the button's badge while the panel is shut.
  */
 export const AssistantPanel = ({
-  open,
-  width,
-  onWidthChange,
-  onClose,
   context,
   onNavigate,
   onOpenInAssistant,
@@ -139,8 +91,15 @@ export const AssistantPanel = ({
   onQuestionSent,
 }: AssistantPanelProps) => {
   const { t } = useI18n("assistant");
+  // Whether the shared side panel is open with this panel in front; the host owns the width, the tabs and closing.
+  const open = useSidePanelShown();
+  const { close: onClose, hostHasClose } = useSidePanelActions();
   const queryClient = useQueryClient();
   const me = useQuery(meQueryOptions());
+  // Opening the panel counts as looking at a finished run: the button's badge clears.
+  useEffect(() => {
+    if (open) setAssistantRunStatus("idle");
+  }, [open]);
   // The person's own choice in this panel; until they make one, the last conversation the server remembers.
   // undefined: no choice yet; null: a fresh conversation; a string: that conversation.
   const [chosen, setChosen] = useState<string | null | undefined>(undefined);
@@ -220,7 +179,6 @@ export const AssistantPanel = ({
       h="100%"
       style={{ position: "relative", display: "flex", flexDirection: "column", minHeight: 0, width: "100%" }}
     >
-      <ResizeHandle width={width} onWidthChange={onWidthChange} />
       <Group
         justify="space-between"
         wrap="nowrap"
@@ -249,11 +207,13 @@ export const AssistantPanel = ({
               <IconExternalLink size={18} />
             </ActionIcon>
           </Tooltip>
-          <Tooltip label={t("close")}>
-            <ActionIcon variant="subtle" color="gray" aria-label={t("close")} onClick={onClose}>
-              <IconX size={18} />
-            </ActionIcon>
-          </Tooltip>
+          {!hostHasClose && (
+            <Tooltip label={t("close")}>
+              <ActionIcon variant="subtle" color="gray" aria-label={t("close")} onClick={onClose}>
+                <IconX size={18} />
+              </ActionIcon>
+            </Tooltip>
+          )}
         </Group>
       </Group>
       <Box flex={1} style={{ minHeight: 0 }}>
