@@ -28,6 +28,8 @@ export type SidePanel = {
   icon: ReactNode;
   /** A count or a status dot beside the label. */
   badge?: ReactNode;
+  /** What the badge says, for a screen reader: "3 unread". */
+  badgeLabel?: string;
   /** Listed but not shown now, e.g. the Assistant on its own page. */
   hidden?: boolean;
   /** The panel's content. Called while the panel is mounted; it is mounted the first time it is shown and then kept. */
@@ -112,7 +114,8 @@ const useSidePanelState = () => {
   const [mounted, setMounted] = useState<ReadonlySet<string>>(() => new Set());
   // md: the stacked mode needs room; below it the mode is always one panel.
   const mdUp = useMediaQuery("(min-width: 62em)") === true;
-  const visibleCount = useRef(0);
+  // How many panels the host shows, told by the host once it has the list.
+  const [visibleCount, setVisibleCount] = useState(0);
 
   const show = useCallback((key: string) => {
     setActive(key);
@@ -120,7 +123,7 @@ const useSidePanelState = () => {
     setOpen(true);
   }, []);
   const close = useCallback(() => setOpen(false), []);
-  const stacked = mode === "both" && mdUp && visibleCount.current >= 2;
+  const stacked = mode === "both" && mdUp && visibleCount >= 2;
   const toggle = useCallback(
     (key: string) => {
       if (open && (stacked || active === key)) setOpen(false);
@@ -165,6 +168,7 @@ const useSidePanelState = () => {
     setRatio,
     markMounted,
     visibleCount,
+    setVisibleCount,
   };
 };
 
@@ -181,10 +185,9 @@ export const useSidePanelController = () => {
     ...controller,
     /** For `AppShellLayout`'s `aside`; undefined while no module offers a panel. */
     aside: (panels: readonly SidePanel[]) => {
-      controller.visibleCount.current = panels.filter((panel) => !panel.hidden).length;
       if (panels.length === 0) return undefined;
       return {
-        opened: controller.open && controller.visibleCount.current > 0,
+        opened: controller.open && panels.some((panel) => !panel.hidden),
         width: controller.width,
         children: <SidePanelHost controller={controller} panels={panels} />,
       };
@@ -195,15 +198,20 @@ export const useSidePanelController = () => {
 export type SidePanelController = ReturnType<typeof useSidePanelController>;
 
 const ShownContext = createContext(true);
-const ActionsContext = createContext<{ close: () => void; show: (key: string) => void } | undefined>(undefined);
+type Actions = { close: () => void; show: (key: string) => void; hostHasClose: boolean };
+const ActionsContext = createContext<Actions | undefined>(undefined);
 
 /** Whether the panel being rendered is in front now: open, and shown (not on a hidden tab). Panels stop polling when it is false. */
 export const useSidePanelShown = () => useContext(ShownContext);
 
-/** Closes the side panel or brings another panel forward, from inside a panel. */
+/**
+ * Closes the side panel or brings another panel forward, from inside a panel.
+ * `hostHasClose` says the host's own header has a close button (when more than one
+ * panel is offered), so a panel should not add a second.
+ */
 export const useSidePanelActions = () => {
   const actions = useContext(ActionsContext);
-  return actions ?? { close: () => undefined, show: () => undefined };
+  return actions ?? { close: () => undefined, show: () => undefined, hostHasClose: false };
 };
 
 /** The drag handle on the panel's left edge. Arrow keys resize it too. */
@@ -241,8 +249,14 @@ const WidthHandle = ({ width, onWidthChange }: { width: number; onWidthChange: (
         start.current = undefined;
       }}
       onKeyDown={(event) => {
-        if (event.key === "ArrowLeft") onWidthChange(width + 24);
-        if (event.key === "ArrowRight") onWidthChange(width - 24);
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          onWidthChange(width + 24);
+        }
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          onWidthChange(width - 24);
+        }
       }}
     />
   );
@@ -319,25 +333,34 @@ export type SidePanelHostProps = { controller: HostController; panels: readonly 
  */
 export const SidePanelHost = ({ controller, panels }: SidePanelHostProps) => {
   const { t } = useI18n("shell");
-  const { open, mode, mdUp, close, show, markMounted } = controller;
+  const { open, mode, mdUp, close, show, markMounted, setVisibleCount } = controller;
   const visible = panels.filter((panel) => !panel.hidden);
   const stacked = mode === "both" && mdUp && visible.length >= 2;
   const frontKey = visible.find((panel) => panel.key === controller.active)?.key ?? visible[0]?.key;
-  const shownKeys = stacked ? visible.slice(0, 2).map((panel) => panel.key) : frontKey ? [frontKey] : [];
+  // The panel in front is hidden by the route: nothing is shown (and the host closes) rather than another one flashing up.
+  const activeHidden = panels.find((panel) => panel.key === controller.active)?.hidden === true;
+  const shownKeys = stacked
+    ? visible.slice(0, 2).map((panel) => panel.key)
+    : frontKey && !activeHidden
+      ? [frontKey]
+      : [];
   const shownKey = shownKeys.join(",");
   const bodyRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    setVisibleCount(visible.length);
+  }, [visible.length, setVisibleCount]);
   // Mount what is shown, and keep it mounted.
   useEffect(() => {
     if (open && shownKey) markMounted(shownKey.split(","));
   }, [open, shownKey, markMounted]);
   // The panel in front is not available here (the Assistant on its own page; Conversations in the inbox): close, as before.
-  const activeHidden = panels.find((panel) => panel.key === controller.active)?.hidden === true;
   useEffect(() => {
     if (open && !stacked && (visible.length === 0 || activeHidden)) close();
   }, [open, stacked, visible.length, activeHidden, close]);
 
-  const actions = useMemo(() => ({ close, show }), [close, show]);
+  const hostHasClose = visible.length > 1;
+  const actions = useMemo(() => ({ close, show, hostHasClose }), [close, show, hostHasClose]);
   const mountedKeys = new Set(controller.mounted);
   if (open) for (const key of shownKeys) mountedKeys.add(key);
 
@@ -351,7 +374,7 @@ export const SidePanelHost = ({ controller, panels }: SidePanelHostProps) => {
         style={{ position: "relative", display: "flex", flexDirection: "column", minHeight: 0, width: "100%" }}
       >
         <WidthHandle width={controller.width} onWidthChange={controller.setWidth} />
-        {visible.length > 1 && (
+        {hostHasClose && (
           <Group
             gap="xs"
             wrap="nowrap"
@@ -360,13 +383,33 @@ export const SidePanelHost = ({ controller, panels }: SidePanelHostProps) => {
             justify="space-between"
             style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}
           >
-            <Group gap={4} wrap="nowrap" role="tablist" aria-label={t("sidePanels")} style={{ minWidth: 0 }}>
+            <Group
+              gap={4}
+              wrap="nowrap"
+              role="tablist"
+              aria-label={t("sidePanels")}
+              style={{ minWidth: 0 }}
+              onKeyDown={(event) => {
+                const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+                if (!step) return;
+                event.preventDefault();
+                const at = visible.findIndex((panel) => panel.key === frontKey);
+                const next = visible[(at + step + visible.length) % visible.length];
+                if (!next) return;
+                show(next.key);
+                requestAnimationFrame(() => document.getElementById(`side-panel-tab-${next.key}`)?.focus());
+              }}
+            >
               {!stacked &&
                 visible.map((panel) => (
                   <UnstyledButton
                     key={panel.key}
+                    id={`side-panel-tab-${panel.key}`}
                     role="tab"
                     aria-selected={panel.key === frontKey}
+                    aria-controls={`side-panel-pane-${panel.key}`}
+                    aria-label={panel.badgeLabel ? `${panel.label}, ${panel.badgeLabel}` : undefined}
+                    tabIndex={panel.key === frontKey ? 0 : -1}
                     onClick={() => show(panel.key)}
                     px="xs"
                     py={4}
@@ -408,12 +451,13 @@ export const SidePanelHost = ({ controller, panels }: SidePanelHostProps) => {
           </Group>
         )}
         <Box ref={bodyRef} flex={1} style={{ minHeight: 0, display: "flex", flexDirection: "column" }}>
-          {visible.map((panel, index) => {
+          {panels.map((panel) => {
             const shown = shownKeys.includes(panel.key);
-            const first = stacked && index === 0;
+            const visibleIndex = visible.findIndex((item) => item.key === panel.key);
+            const first = stacked && visibleIndex === 0;
             return (
               <Fragment key={panel.key}>
-                {index === 1 && (
+                {visibleIndex === 1 && (
                   <SplitHandle
                     ratio={controller.ratio}
                     onRatioChange={controller.setRatio}
@@ -422,6 +466,8 @@ export const SidePanelHost = ({ controller, panels }: SidePanelHostProps) => {
                   />
                 )}
                 <Box
+                  id={`side-panel-pane-${panel.key}`}
+                  role={hostHasClose ? "tabpanel" : undefined}
                   data-side-panel-pane={panel.key}
                   inert={!shown}
                   style={{
