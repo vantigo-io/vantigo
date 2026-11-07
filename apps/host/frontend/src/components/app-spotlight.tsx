@@ -34,7 +34,8 @@ import { formatContactName } from "@vantigo/customers-ui/lib/format-contact-name
 import { meteringPointsQueryOptions } from "@vantigo/energy-ui";
 import { useI18n } from "@vantigo/frontend-shell";
 import { COUNTS_ROUTE_PATH, INVENTORY_HOME_ROUTE_PATH } from "@vantigo/inventory-ui/lib/routes";
-import { KNOWLEDGE_HOME_ROUTE_PATH } from "@vantigo/knowledge-ui/lib/routes";
+import { searchQueryOptions as knowledgeSearchQueryOptions } from "@vantigo/knowledge-ui/api/articles";
+import { ARTICLE_ROUTE_PATH, KNOWLEDGE_HOME_ROUTE_PATH } from "@vantigo/knowledge-ui/lib/routes";
 import { NEW_QUOTE_ROUTE_PATH } from "@vantigo/orders-ui/lib/routes";
 import { BOARD_ROUTE_PATH, REQUESTS_ROUTE_PATH } from "@vantigo/planning-ui/lib/routes";
 import { projectSearchQueryOptions } from "@vantigo/projects-ui/api/projects";
@@ -111,6 +112,8 @@ export const AppSpotlight = ({
     enabledModules?.includes("energy") === true && hasPermissions(permissions, ["energy:metering-points-view"]);
   const canSearchProjects =
     enabledModules?.includes("projects") === true && hasPermissions(permissions, ["projects:access"]);
+  const canSearchKnowledge =
+    enabledModules?.includes("knowledge") === true && hasPermissions(permissions, ["knowledge:articles"]);
   const handleNavigate = (action: () => void) => {
     onNavigate?.();
     action();
@@ -269,6 +272,12 @@ export const AppSpotlight = ({
     enabled: searchEnabled && canSearchProjects,
   });
 
+  // Knowledge's articles (knowledge design K12): the server finds only what the caller may read.
+  const articles = useQuery({
+    ...knowledgeSearchQueryOptions(search, MAX_RESULTS),
+    enabled: searchEnabled && canSearchKnowledge,
+  });
+
   const matchingNavigation = navigationActions.filter((action) =>
     t(action.label).toLowerCase().includes(query.trim().toLowerCase()),
   );
@@ -276,15 +285,22 @@ export const AppSpotlight = ({
   const contactResults = searchEnabled && canSearchContacts ? (contacts.data?.data ?? []) : [];
   const meteringPointResults = searchEnabled && canSearchMeteringPoints ? (meteringPoints.data?.data ?? []) : [];
   const projectResults = searchEnabled && canSearchProjects ? (projects.data ?? []) : [];
+  const articleResults = searchEnabled && canSearchKnowledge ? (articles.data ?? []) : [];
 
   const isSearching =
-    searchEnabled && (customers.isFetching || contacts.isFetching || meteringPoints.isFetching || projects.isFetching);
+    searchEnabled &&
+    (customers.isFetching ||
+      contacts.isFetching ||
+      meteringPoints.isFetching ||
+      projects.isFetching ||
+      articles.isFetching);
   const isEmpty =
     matchingNavigation.length === 0 &&
     customerResults.length === 0 &&
     contactResults.length === 0 &&
     meteringPointResults.length === 0 &&
-    projectResults.length === 0;
+    projectResults.length === 0 &&
+    articleResults.length === 0;
 
   const question = query.trim();
   const askable = assistantAvailable && onAskAssistant !== undefined && question.length >= MIN_SEARCH_LENGTH;
@@ -417,6 +433,25 @@ export const AppSpotlight = ({
                       params: { projectId: project.id },
                     }),
                   )
+                }
+              />
+            ))}
+          </Spotlight.ActionsGroup>
+        )}
+
+        {articleResults.length > 0 && (
+          <Spotlight.ActionsGroup label={t("navigation.knowledgeArticles")}>
+            {articleResults.map((article) => (
+              <Spotlight.Action
+                key={article.id}
+                label={`${article.icon ? `${article.icon} ` : ""}${article.title || t("navigation.untitledArticle")}`}
+                description={
+                  article.path.map((item) => item.title || t("navigation.untitledArticle")).join(" / ") ||
+                  t("navigation.knowledgeArticle")
+                }
+                leftSection={<IconBook2 size={20} stroke={1.5} />}
+                onClick={() =>
+                  handleNavigate(() => navigate({ to: ARTICLE_ROUTE_PATH, params: { articleId: article.id } }))
                 }
               />
             ))}

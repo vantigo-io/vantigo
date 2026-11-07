@@ -67,3 +67,20 @@ if (!("fonts" in document)) {
     configurable: true,
   });
 }
+
+// ProseMirror measures ranges and asks for the element under a point; jsdom has neither.
+const emptyRects = () =>
+  ({ length: 0, item: () => null, [Symbol.iterator]: [][Symbol.iterator] }) as unknown as DOMRectList;
+const zeroRect = () =>
+  ({ x: 0, y: 0, top: 0, left: 0, bottom: 0, right: 0, width: 0, height: 0, toJSON: () => ({}) }) as DOMRect;
+Range.prototype.getClientRects = Range.prototype.getClientRects ?? emptyRects;
+Range.prototype.getBoundingClientRect = Range.prototype.getBoundingClientRect ?? zeroRect;
+document.elementFromPoint = document.elementFromPoint ?? (() => null);
+
+afterEach(() => {
+  try {
+    window.localStorage.clear();
+  } catch {
+    // Nothing stored.
+  }
+});

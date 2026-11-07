@@ -6,6 +6,7 @@
   "scripts": {
     "lint": "eslint .",
     "test": "vitest run",
+    "schema:export": "bun scripts/export-schema.ts",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
@@ -15,9 +16,17 @@
     "@mantine/hooks": "catalog:",
     "@mantine/modals": "catalog:",
     "@mantine/notifications": "catalog:",
+    "@mantine/tiptap": "catalog:",
     "@tabler/icons-react": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
+    "@tiptap/extension-link": "catalog:",
+    "@tiptap/extension-task-item": "catalog:",
+    "@tiptap/extension-task-list": "catalog:",
+    "@tiptap/extensions": "catalog:",
+    "@tiptap/pm": "catalog:",
+    "@tiptap/react": "catalog:",
+    "@tiptap/starter-kit": "catalog:",
     "@vantigo/frontend-api-client": "workspace:*",
     "@vantigo/frontend-shell": "workspace:*",
     "dayjs": "catalog:",

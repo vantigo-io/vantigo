@@ -1,0 +1,63 @@
+{
+  "nodes": {
+    "blockquote": {
+      "attrs": []
+    },
+    "bulletList": {
+      "attrs": []
+    },
+    "codeBlock": {
+      "attrs": ["language"]
+    },
+    "doc": {
+      "attrs": []
+    },
+    "hardBreak": {
+      "attrs": []
+    },
+    "heading": {
+      "attrs": ["level"]
+    },
+    "horizontalRule": {
+      "attrs": []
+    },
+    "listItem": {
+      "attrs": []
+    },
+    "orderedList": {
+      "attrs": ["start", "type"]
+    },
+    "paragraph": {
+      "attrs": []
+    },
+    "taskItem": {
+      "attrs": ["checked"]
+    },
+    "taskList": {
+      "attrs": []
+    },
+    "text": {
+      "attrs": []
+    }
+  },
+  "marks": {
+    "bold": {
+      "attrs": []
+    },
+    "code": {
+      "attrs": []
+    },
+    "italic": {
+      "attrs": []
+    },
+    "link": {
+      "attrs": ["class", "href", "rel", "target", "title"]
+    },
+    "strike": {
+      "attrs": []
+    },
+    "underline": {
+      "attrs": []
+    }
+  }
+}
