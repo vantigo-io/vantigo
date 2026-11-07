@@ -358,7 +358,9 @@ func (w *MailboxSyncWorker) importMessage(ctx context.Context, c *syncCycle, ite
 		}); err != nil {
 			return fmt.Errorf("communications: write the receipt: %w", err)
 		}
-		return nil
+		// Heard when this commits: the inbox, and whoever has the
+		// conversation open (live design L18).
+		return notifyMessage(ctx, tx, conversationID, eventMessageAdded, messageID)
 	})
 	if txErr == nil {
 		return nil

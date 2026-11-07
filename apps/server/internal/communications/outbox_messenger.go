@@ -197,7 +197,7 @@ func (w *OutboxWorker) reapplyWatermarks(ctx context.Context, channelID uuid.UUI
 			continue
 		}
 		err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-			return applyWatermark(ctx, store.New(tx), channelID, participant, step.kind, step.from, mark, now)
+			return applyWatermark(ctx, tx, channelID, participant, step.kind, step.from, mark, now)
 		})
 		if err != nil {
 			w.logger().Warn("could not apply a participant's watermark", "worker", outboxWorkerName, "kind", step.kind, "error", err)

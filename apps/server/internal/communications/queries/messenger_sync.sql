@@ -190,7 +190,7 @@ SELECT EXISTS (
 -- 'sending'), is left for the watermark kept per participant to reach when the
 -- send completes. Monotonic — a delivery already further along is not in
 -- from_statuses — and so idempotent. It answers the deliveries it moved, for
--- their events.
+-- their events and the conversations to notify.
 UPDATE communications.message_deliveries d
 SET status = @status
 FROM communications.conversation_messages m
@@ -203,7 +203,7 @@ WHERE d.message_id = m.id
   AND (SELECT max(COALESCE(p.platform_at, p.attempted_at))
        FROM communications.messenger_parts p WHERE p.message_id = m.id) <= @watermark
   AND d.status = ANY(@from_statuses::text[])
-RETURNING d.id, d.message_id;
+RETURNING d.id, d.message_id, m.conversation_id;
 
 -- name: UpsertMessengerWatermark :exec
 -- The newest watermark of a kind a participant has had, never backwards.

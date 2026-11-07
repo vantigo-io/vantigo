@@ -59,6 +59,13 @@ func (customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx, f
 	if err != nil {
 		return nil, fmt.Errorf("communications: re-point customer %d's candidates to %d: %w", from, into, err)
 	}
+	// A bulk change on the merge's transaction: the inbox hears it once,
+	// without an id, when the merge commits (live design L6, L18).
+	if conversations+suggestions+candidates > 0 {
+		if err := notifyInbox(ctx, tx); err != nil {
+			return nil, err
+		}
+	}
 	return []contracts.RepointedReferences{
 		{Kind: customerReferenceKindConversations, Count: conversations},
 		{Kind: customerReferenceKindSuggestions, Count: suggestions},

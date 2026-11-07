@@ -377,7 +377,9 @@ func (w *RetentionWorker) cleanupBatch(ctx context.Context, on retentionDB) (int
 		if err := q.DeleteOrphanParticipants(ctx); err != nil {
 			return fmt.Errorf("communications: delete orphan participants: %w", err)
 		}
-		return nil
+		// A bulk change: the inbox hears it once per batch, without an id,
+		// when the batch commits (live design L6, L18).
+		return notifyInbox(ctx, tx)
 	})
 	if err != nil {
 		return 0, err

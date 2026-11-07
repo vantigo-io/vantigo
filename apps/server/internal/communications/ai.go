@@ -755,6 +755,7 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 		}); err != nil {
 			return nil, fmt.Errorf("communications: save suggested customer: %w", err)
 		}
+		s.notifyOnPool(ctx, req.Id, "a customer suggestion")
 	}
 	row.ResultSummary = apicommon.Ptr(outcome)
 	if err := s.recordInteraction(ctx, q, row); err != nil {

@@ -2,7 +2,7 @@ import { Alert, Button, Checkbox, Group, Modal, Stack, Text, Textarea, TextInput
 import { IconInbox, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ContentSkeleton, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection, useI18n, useLiveTopic } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import {
@@ -49,11 +49,26 @@ export function InboxPage({ connectionButton }: InboxPageProps = {}) {
     unreadOnly: search.unreadOnly,
     tagId: search.tagId,
   };
-  const list = useQuery(conversationsQueryOptions(filters));
-  const selectedId = search.conversationId || list.data?.data[0]?.id || "";
-  const detail = useQuery(conversationQueryOptions(selectedId));
-  const tags = useQuery(tagsQueryOptions());
   const client = useQueryClient();
+  // The screens are live; their polls are only the fallback while their topic is not (design L13, L19).
+  const inboxLive = useLiveTopic(
+    "communications.inbox",
+    () => void client.invalidateQueries({ queryKey: ["conversations"] }),
+  );
+  const list = useQuery({
+    ...conversationsQueryOptions(filters),
+    refetchInterval: inboxLive ? false : 60_000,
+  });
+  const selectedId = search.conversationId || list.data?.data[0]?.id || "";
+  const conversationLive = useLiveTopic(
+    selectedId ? `communications.conversation:${selectedId}` : null,
+    () => void client.invalidateQueries({ queryKey: ["conversation", selectedId] }),
+  );
+  const detail = useQuery({
+    ...conversationQueryOptions(selectedId),
+    refetchInterval: conversationLive ? false : 60_000,
+  });
+  const tags = useQuery(tagsQueryOptions());
   const invalidate = () =>
     Promise.all([
       client.invalidateQueries({ queryKey: ["conversations"] }),

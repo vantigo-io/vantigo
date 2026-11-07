@@ -250,6 +250,9 @@ const en = {
   chatFailureHumanAgent: "Human Agent is not granted to the app",
   chatFailureRejected: "Messenger refused the message",
   chatFailureProviderUnavailable: "Messenger is not available",
+  presenceAlsoHere: "Also here: {{names}}",
+  presenceReplying_one: "{{names}} is replying …",
+  presenceReplying_other: "{{names}} are replying …",
 } as const;
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -503,6 +506,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   chatFailureHumanAgent: "Human Agent er ikke gitt til appen",
   chatFailureRejected: "Messenger avviste meldingen",
   chatFailureProviderUnavailable: "Messenger er ikke tilgjengelig",
+  presenceAlsoHere: "Også her: {{names}}",
+  presenceReplying_one: "{{names}} svarer …",
+  presenceReplying_other: "{{names}} svarer …",
 };
 
 export const communicationsCatalog = { en, nb } as const satisfies CatalogResources;

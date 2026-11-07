@@ -434,3 +434,8 @@ ORDER BY (SELECT max(m.occurred_at) FROM communications.conversation_messages m
           WHERE m.conversation_id = cp.conversation_id AND m.participant_id = p.id AND m.direction = 'inbound') DESC NULLS LAST,
          p.created_at ASC, p.id ASC
 LIMIT 1;
+
+-- name: GetMessageConversationID :one
+-- The conversation a message is in, for the live notification of a write that
+-- names only the message: the outbox's delivery outcomes (live design L18).
+SELECT conversation_id FROM communications.conversation_messages WHERE id = @id;

@@ -186,6 +186,13 @@ func (p *customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx,
 	if err != nil {
 		return nil, fmt.Errorf("communications: delete candidate rows of customer %d: %w", customerID, err)
 	}
+	// A bulk change on Customers' transaction: the inbox hears it once,
+	// without an id, when the erasure commits (live design L6, L18).
+	if conversations+suggestions+candidates > 0 {
+		if err := notifyInbox(ctx, tx); err != nil {
+			return nil, err
+		}
+	}
 	return []contracts.ErasedData{
 		{Kind: personalDataKindConversations, Count: conversations},
 		{Kind: personalDataKindMessages, Count: messages},
