@@ -13,7 +13,7 @@ sources:
   - apps/server/internal/db/migrations/00111_communications_provider_neutral.sql
   - apps/server/internal/db/migrations/00130_communications_messaging.sql
   - apps/server/internal/db/migrations/00138_communications_inbox_counts.sql
-  - apps/server/internal/db/migrations/00134_communications_contact_hints.sql
+  - apps/server/internal/db/migrations/00139_communications_contact_hints.sql
   - apps/server/internal/contracts/contact_channels.go
   - apps/server/internal/contracts/outbound_mail.go
   - apps/server/internal/contracts/channel_mailbox.go
@@ -1489,7 +1489,7 @@ it decides nothing else. A participant that does not exist is 404. Setting the c
 participant has is 200 and `DELETE` is 204 whether or not there was a link. Both lock the
 participant's row, replace the link whatever it was and delete the participant's hints.
 
-**Hints.** `communications.participant_contact_hints` (migration `00134`) keeps, per
+**Hints.** `communications.participant_contact_hints` (migration `00139`) keeps, per
 participant, what is only suggested or noted, so that it cannot be mistaken for the link:
 `suggested_contact_id`, the one contact the address shared in answer to *Ask for e-mail*
 names (written only while the participant has no contact), and `referral_contact_id`, below.
