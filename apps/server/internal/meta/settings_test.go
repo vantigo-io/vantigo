@@ -153,7 +153,7 @@ func TestProvider_StatusAndCapabilities(t *testing.T) {
 
 	caps := p.Capabilities()
 	if caps.MaxText != 2000 || caps.MaxAnswerOptions != 13 || caps.MaxAnswerTitle != 20 || !caps.ShareEmail ||
-		caps.MaxCards != 0 || caps.MaxAttachmentBytes != 25<<20 || caps.Window != 24*time.Hour || caps.HumanAgentWindow != 0 {
+		caps.MaxCards != 10 || caps.MaxCardChoices != 3 || caps.MaxCardTitle != 80 || caps.MaxCardSubtitle != 80 || caps.MaxChoiceTitle != 20 || !caps.PublicMedia || caps.MaxAttachmentBytes != 25<<20 || caps.Window != 24*time.Hour || caps.HumanAgentWindow != 0 {
 		t.Fatalf("Capabilities: %+v", caps)
 	}
 	if !caps.Components() {
