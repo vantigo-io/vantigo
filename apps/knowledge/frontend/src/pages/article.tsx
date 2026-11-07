@@ -21,6 +21,7 @@ import {
 } from "../api/articles";
 import { NotFoundError, refusalCode } from "../api/request";
 import { AccessDialog } from "../components/access-dialog";
+import { Backlinks } from "../components/backlinks";
 import { HistoryDrawer } from "../components/history-drawer";
 import { IconPicker } from "../components/icon-picker";
 import { KnowledgeLayout } from "../components/knowledge-layout";
@@ -28,6 +29,7 @@ import { PageMenu } from "../components/page-menu";
 import { EditingBanner, PresenceAvatars } from "../components/presence";
 import { ArticleEditor } from "../editor/article-editor";
 import { useArticleEditor } from "../editor/use-article-editor";
+import { pathIsFile } from "../lib/document-path";
 import { clearDraft, isDraftUnsaved, type LocalDraft, readDraft, writeDraft } from "../lib/draft";
 import { expandAll } from "../lib/expanded";
 import { useKnowledgeFormat } from "../lib/format";
@@ -127,7 +129,7 @@ const ArticleView = ({
   const [title, setTitle] = useState(article.title);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [conflict, setConflict] = useState<Conflict | null>(null);
-  const [problem, setProblem] = useState<"tooLarge" | { invalid: string } | null>(null);
+  const [problem, setProblem] = useState<"tooLarge" | { invalid: string; file: boolean } | null>(null);
   const [draft, setDraft] = useState<LocalDraft | null>(() => {
     const stored = readDraft(article.id);
     return isDraftUnsaved(stored, article) ? stored : null;
@@ -220,7 +222,8 @@ const ArticleView = ({
       } else if (code === "document_too_large" || status === 413) {
         setProblem("tooLarge");
       } else if (code === "invalid_document") {
-        setProblem({ invalid: problemOf(error)?.path ?? "" });
+        const path = problemOf(error)?.path ?? "";
+        setProblem({ invalid: path, file: pathIsFile(editorRef.current?.getJSON(), path) });
       } else if (code === "article_locked" || code === "article_read_only") {
         notifications.show({ color: "yellow", message: t(code === "article_locked" ? "lockedNow" : "readOnlyNow") });
         void queryClient.invalidateQueries({ queryKey: articleQueryKey(article.id) });
@@ -257,7 +260,12 @@ const ArticleView = ({
     schedule();
   }, [article.id, schedule, setDirty]);
 
-  const editor = useArticleEditor({ content: article.content, editable: !readOnly, onUpdate: changed });
+  const editor = useArticleEditor({
+    content: article.content,
+    editable: !readOnly,
+    articleId: article.id,
+    onUpdate: changed,
+  });
   useEffect(() => {
     editorRef.current = editor;
   }, [editor]);
@@ -466,7 +474,7 @@ const ArticleView = ({
       )}
       {problem && problem !== "tooLarge" && (
         <Alert color="red" icon={<IconAlertTriangle size={16} />} title={t("invalidTitle")} role="alert">
-          {t("invalidBody", { path: problem.invalid })}
+          {problem.file ? t("invalidFileBody") : t("invalidBody", { path: problem.invalid })}
         </Alert>
       )}
 
@@ -476,8 +484,9 @@ const ArticleView = ({
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
         }}
       >
-        <ArticleEditor editor={editor} editable={!readOnly} label={t("contentLabel")} />
+        <ArticleEditor editor={editor} editable={!readOnly} label={t("contentLabel")} articleId={article.id} />
       </PageSection>
+      {!noAccess && <Backlinks articleId={article.id} />}
 
       <Modal
         opened={conflict !== null}

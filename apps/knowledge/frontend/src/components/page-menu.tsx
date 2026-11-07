@@ -3,6 +3,8 @@ import { notifications } from "@mantine/notifications";
 import {
   IconCheck,
   IconDots,
+  IconFileExport,
+  IconFileImport,
   IconHistory,
   IconLock,
   IconLockOpen,
@@ -30,11 +32,13 @@ import {
 } from "../api/articles";
 import { refusalCode } from "../api/request";
 import { KNOWLEDGE_HOME_ROUTE_PATH } from "../lib/routes";
+import { ExportDialog, ImportDialog } from "./markdown-dialogs";
 
 /**
- * The article's menu: share, history, favourite, the lock (K11a), Hidden from
- * the Assistant (K16) and the trash (K10). The writes are a writer's; a reader
- * sees share (read-only), history and favourite.
+ * The article's menu: share, history, favourite, Export as Markdown and
+ * Import Markdown (K23), the lock (K11a), Hidden from the Assistant (K16) and
+ * the trash (K10). The writes are a writer's; a reader sees share
+ * (read-only), history, favourite, export and import (to the top of a section).
  */
 export const PageMenu = ({
   article,
@@ -49,6 +53,7 @@ export const PageMenu = ({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [confirmTrash, setConfirmTrash] = useState(false);
+  const [markdown, setMarkdown] = useState<"export" | "import" | null>(null);
   const favourites = useQuery(favouritesQueryOptions());
   const isFavourite = (favourites.data ?? []).some((node) => node.id === article.id);
   const canWrite = article.permission === "write";
@@ -108,6 +113,13 @@ export const PageMenu = ({
           >
             {t(isFavourite ? "removeFavourite" : "addFavourite")}
           </Menu.Item>
+          <Menu.Divider />
+          <Menu.Item leftSection={<IconFileExport size={14} />} onClick={() => setMarkdown("export")}>
+            {t("exportMarkdown")}
+          </Menu.Item>
+          <Menu.Item leftSection={<IconFileImport size={14} />} onClick={() => setMarkdown("import")}>
+            {t("importMarkdown")}
+          </Menu.Item>
           {canWrite && (
             <>
               <Menu.Divider />
@@ -140,6 +152,8 @@ export const PageMenu = ({
           )}
         </Menu.Dropdown>
       </Menu>
+      <ExportDialog article={article} opened={markdown === "export"} onClose={() => setMarkdown(null)} />
+      <ImportDialog article={article} opened={markdown === "import"} onClose={() => setMarkdown(null)} />
       <Modal opened={confirmTrash} onClose={() => setConfirmTrash(false)} title={t("moveToTrashTitle")} centered>
         <Text size="sm">{t("moveToTrashBody")}</Text>
         <Group justify="flex-end" mt="lg">

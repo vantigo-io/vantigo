@@ -70,6 +70,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge/articles/{id}/backlinks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an article's backlinks
+         * @description The articles that link to this one and that the caller can read (K21), by title. An article the caller cannot read is left out, never named.
+         */
+        get: operations["listKnowledgeBacklinks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/knowledge/articles/{id}/content": {
         parameters: {
             query?: never;
@@ -84,6 +104,66 @@ export interface paths {
          */
         put: operations["updateKnowledgeArticleContent"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/articles/{id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export an article as Markdown
+         * @description The article as Markdown (K23): text/markdown, or with subtree=true a .zip of the article and the descendants the caller can read, one .md per article in folders following the tree, its files in an assets/ folder. A link to an article the caller cannot read is its label as plain text. The article alone is also a .zip when it has files. The zip is streamed; an export of more than 2000 entries or 1 GiB is refused before anything is written.
+         */
+        get: operations["exportKnowledgeArticle"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/articles/{id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a file into an article
+         * @description Uploads a file into an article the caller may write (K19): multipart, the part file, at most 25 MiB. A JPEG or a PNG is an image, stored without its metadata; any other type, SVG included, is an attachment. The answer's url is what an image node's src or a fileAttachment's fileId names.
+         */
+        post: operations["uploadKnowledgeFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/articles/{id}/files/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copy a file into an article
+         * @description Copies a file of an article the caller can read into an article the caller may write (K19): a new file, its bytes copied in the store, with the same name, type, size and kind. A paste of an image or a file from another article uploads it this way. A source file the caller cannot read is the bare 404 an unknown one is.
+         */
+        post: operations["copyKnowledgeFile"];
         delete?: never;
         options?: never;
         head?: never;
@@ -299,6 +379,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge/files/{fileId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a file of an article
+         * @description Streams a file of an article the caller can read (K19): a JPEG or a PNG inline, anything else as a download (Content-Disposition attachment, application/octet-stream), never sniffed, Cache-Control private. A file whose article the caller cannot read is the bare 404 an unknown id is.
+         */
+        get: operations["getKnowledgeFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Markdown
+         * @description Imports Markdown (K23): multipart, the part file holding one .md or a .zip (an Obsidian vault or a Notion export) of at most 50 MiB, at most 500 files and 200 MiB uncompressed, folders at most 10 deep. The articles are created under parentId, which the caller must be able to write, or as roots in section (workspace when neither is given). A zip's folders become the tree; Obsidian's > [!note] callouts become callouts and [[wiki links]] between the imported files become article links; its JPEG and PNG images become the articles' files. What could not be carried over is listed in warnings.
+         */
+        post: operations["importKnowledgeMarkdown"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/links/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve article links
+         * @description Resolves the targets of a page's article links (K21), in the order asked: ok with the current title and icon, no_access for one the caller cannot read — trashed included — and deleted for one gone for good. The title of an article the caller cannot read is never answered. It writes nothing.
+         */
+        post: operations["resolveKnowledgeLinks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/knowledge/search": {
         parameters: {
             query?: never;
@@ -485,6 +625,16 @@ export interface components {
             /** @description The article's title; empty is shown as Untitled. */
             title?: string;
         };
+        /** @description An article that links to this one (K21), and that the caller can read. */
+        KnowledgeBacklink: {
+            icon: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description Its ancestors the caller can read, from the root down, stopping at the first they cannot (K12). */
+            path: components["schemas"]["KnowledgePathItem"][];
+            title: string;
+        };
+        KnowledgeBacklinkList: components["schemas"]["KnowledgeBacklink"][];
         /** @description An autosave (K9): the title and the document, with the version the editor last read. */
         KnowledgeContentUpdate: {
             content: components["schemas"]["KnowledgeDocument"];
@@ -516,6 +666,38 @@ export interface components {
              * @description The favourite it comes after; null puts it first.
              */
             afterId: string | null;
+        };
+        /** @description A file uploaded into an article (K19). url is where it is served; an image node's src is exactly it. */
+        KnowledgeFile: {
+            contentType: string;
+            filename: string;
+            /** Format: uuid */
+            id: string;
+            /** @description A JPEG or a PNG, its metadata stripped, shown inline; anything else is an attachment, served as a download. */
+            isImage: boolean;
+            /** Format: int64 */
+            size: number;
+            url: string;
+        };
+        /** @description A file of another article to copy into this one (K19), as a paste from one article into another does. */
+        KnowledgeFileCopy: {
+            /** Format: uuid */
+            fileId: string;
+        };
+        /** @description An article an import created. */
+        KnowledgeImportCreated: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+        };
+        /** @description What an import created, in tree order, and what it could not carry over (K23). */
+        KnowledgeImportResult: {
+            created: components["schemas"]["KnowledgeImportCreated"][];
+            warnings: string[];
+        };
+        /** @description The articles a page's link chips name (K21). */
+        KnowledgeLinkResolveRequest: {
+            ids: string[];
         };
         /** @description A person's access to an article through a membership (K4). */
         KnowledgeMember: {
@@ -562,7 +744,7 @@ export interface components {
          * @enum {string}
          */
         KnowledgePermission: "write" | "read";
-        /** @description An RFC 9457 problem with this module's refusal code (knowledge design K4–K10). code names the rule that refused and is what a client keys off, never the words: move_into_descendant (400: the new parent is the article itself or below it), too_deep (400: the tree would be more than 10 levels deep), parent_invalid (400: the parent is unknown to the caller or trashed), after_invalid (400: afterId is not a sibling under the parent), invalid_document (400: a node, mark or attribute outside the allowlist; path names it), root_permission_required (400: a root's internal permission cannot be null), last_writer (400: the change would leave the article without a writer), article_read_only (403: the caller can read the article but not write it), version_conflict (409: expectedVersion is not the current version; currentVersion, updatedAt and updatedBy say who saved it), article_locked (409: a content save to a locked article), visibility_change (409: the change moves the article between private and the workspace and confirmVisibility was not given), not_trashed (409: a restore of an article that is not in the trash) and document_too_large (413: the document is over 2 MiB). errors carries the field errors of a 400, keyed by the request's camelCase field. An article the caller cannot read answers a bare 404, never 403 (K6). */
+        /** @description An RFC 9457 problem with this module's refusal code (knowledge design K4–K10). code names the rule that refused and is what a client keys off, never the words: move_into_descendant (400: the new parent is the article itself or below it), too_deep (400: the tree would be more than 10 levels deep), parent_invalid (400: the parent is unknown to the caller or trashed), after_invalid (400: afterId is not a sibling under the parent), invalid_document (400: a node, mark or attribute outside the allowlist; path names it), root_permission_required (400: a root's internal permission cannot be null), last_writer (400: the change would leave the article without a writer), article_read_only (403: the caller can read the article but not write it), version_conflict (409: expectedVersion is not the current version; currentVersion, updatedAt and updatedBy say who saved it), article_locked (409: a content save to a locked article), visibility_change (409: the change moves the article between private and the workspace and confirmVisibility was not given), not_trashed (409: a restore of an article that is not in the trash), document_too_large (413: the document is over 2 MiB), file_too_large (413: an upload over its limit), export_too_large (413: an export over 2000 entries or 1 GiB), import_busy (429: two imports are running already) and storage_unavailable (503: the object store could not be reached). errors carries the field errors of a 400, keyed by the request's camelCase field. An article the caller cannot read answers a bare 404, never 403 (K6). */
         KnowledgeProblem: {
             code?: string | null;
             /**
@@ -589,6 +771,16 @@ export interface components {
             /** @description version_conflict: who saved the current version; null for a former user. */
             updatedBy?: components["schemas"]["KnowledgeActor"] | null;
         };
+        /** @description One link chip's target (K21): ok with its current title and icon, no_access when the caller cannot read it — a trashed article included — or deleted when it is gone for good. The title and icon are null unless ok. */
+        KnowledgeResolvedLink: {
+            icon: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            state: "ok" | "no_access" | "deleted";
+            title: string | null;
+        };
+        KnowledgeResolvedLinkList: components["schemas"]["KnowledgeResolvedLink"][];
         /** @description A restore of a version (K9): it is saved as a new version over expectedVersion. */
         KnowledgeRestoreVersionInput: {
             /** Format: int32 */
@@ -1034,6 +1226,54 @@ export interface operations {
             };
         };
     };
+    listKnowledgeBacklinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The article. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBacklinkList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no article the caller can read. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     updateKnowledgeArticleContent: {
         parameters: {
             query?: never;
@@ -1105,6 +1345,248 @@ export interface operations {
             };
             /** @description Payload Too Large — document_too_large. */
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+        };
+    };
+    exportKnowledgeArticle: {
+        parameters: {
+            query?: {
+                /** @description Include the subtree. */
+                subtree?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description The article. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
+                    "text/markdown": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no article the caller can read. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload Too Large — export_too_large: the export would hold more than 2000 entries or 1 GiB; nothing was written. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+            /** @description Service Unavailable — storage_unavailable: a file could not be read from the object store. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+        };
+    };
+    uploadKnowledgeFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The article. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeFile"];
+                };
+            };
+            /** @description Bad Request — field errors on file: missing, empty, sent twice or not a multipart form. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the permission is missing (application/json), or article_read_only: the caller can read the article but not write it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+            /** @description Not Found — no article the caller can read. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — article_locked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+            /** @description Payload Too Large — file_too_large: the file is over 25 MiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+            /** @description Service Unavailable — storage_unavailable: the object store could not be written; nothing was recorded. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+        };
+    };
+    copyKnowledgeFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The article to copy into. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeFileCopy"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeFile"];
+                };
+            };
+            /** @description Bad Request — a field error on fileId. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the permission is missing (application/json), or article_read_only: the caller can read the article but not write it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+            /** @description Not Found — no article the caller can read, or no file the caller can read. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — article_locked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+            /** @description Service Unavailable — storage_unavailable: the object store could not be read or written; nothing was recorded. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1737,6 +2219,200 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getKnowledgeFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The file. */
+                fileId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such file, its article is one the caller cannot read, or the object is gone from the store. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — storage_unavailable: the object store could not be read. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+        };
+    };
+    importKnowledgeMarkdown: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    /** Format: uuid */
+                    parentId?: string;
+                    section?: components["schemas"]["KnowledgeRootSection"];
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeImportResult"];
+                };
+            };
+            /** @description Bad Request — field errors on file (missing, not .md or .zip, a zip that is unreadable, has more than 500 files, is over 200 MiB uncompressed, holds a path outside it or is more than 10 deep, or holds no .md), on parentId (parent_invalid), too_deep. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the permission is missing (application/json), or article_read_only: the caller can read the article but not write it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+            /** @description Payload Too Large — file_too_large: the upload is over 50 MiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+            /** @description Too Many Requests — import_busy: two imports are running in this server already; try again after Retry-After seconds. */
+            429: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+            /** @description Service Unavailable — storage_unavailable: an image could not be written; nothing was created. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+        };
+    };
+    resolveKnowledgeLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeLinkResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeResolvedLinkList"];
+                };
+            };
+            /** @description Bad Request — field errors on ids (more than 200). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
             };
         };
     };
