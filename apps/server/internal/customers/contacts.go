@@ -536,9 +536,15 @@ func (s *server) GetCustomersByIdContacts(ctx context.Context, req gen.GetCustom
 		byContact[r.ContactID] = append(byContact[r.ContactID], contactRole{Role: r.Role, Primary: r.IsPrimary})
 	}
 
+	channels, err := s.contactChannelsOf(ctx, rows)
+	if err != nil {
+		return nil, err
+	}
+
 	data := make([]gen.CustomerContactResponse, 0, len(rows))
 	for _, r := range rows {
 		data = append(data, gen.CustomerContactResponse{
+			Channels: channels[r.ID],
 			Contact: gen.ContactResponse{
 				Id: r.ID, FirstName: r.FirstName, LastName: r.LastName,
 				MiddleName: r.MiddleName, Prefix: r.Prefix, Suffix: r.Suffix, Phone: r.ContactPhone, Email: r.ContactEmail,

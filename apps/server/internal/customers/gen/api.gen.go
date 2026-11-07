@@ -303,6 +303,30 @@ type CustomerConflictProblem struct {
 	Type       *string                      `json:"type,omitempty"`
 }
 
+// CustomerContactChannel One Messenger channel as a contact's row reads it (Messenger design N22). It never carries the person's page-scoped id, which belongs to the Page and never leaves Communications.
+type CustomerContactChannel struct {
+	// ChannelId The channel's id in Communications; the Messenger link of the contact is made for it.
+	ChannelId openapi_types.UUID `json:"channelId"`
+
+	// LastInboundAt When the linked person last wrote on the channel; absent while not linked or when they never wrote.
+	LastInboundAt *time.Time `json:"lastInboundAt,omitempty"`
+
+	// Linked Whether a person on the channel is linked to the contact.
+	Linked bool `json:"linked"`
+
+	// Name The channel's name, the Page's.
+	Name string `json:"name"`
+
+	// ParticipantId The linked person's id in Communications, which writing to them and unlinking them take; absent while not linked.
+	ParticipantId *openapi_types.UUID `json:"participantId,omitempty"`
+
+	// ReplyWindowClosesAt When the reply window of the linked person closes, absent when it is closed - the person must write first. Communications answers it, with the human-agent extension where the Page has it.
+	ReplyWindowClosesAt *time.Time `json:"replyWindowClosesAt,omitempty"`
+
+	// Type messenger.
+	Type string `json:"type"`
+}
+
 // CustomerContactInfo A customer's own contact details (invoice-ready customer design D2) — what reaches the customer itself, not one of its contacts. Each field is optional; a blank value is stored as null, but the response never sends null back — a field with none is simply absent.
 type CustomerContactInfo struct {
 	Email   *string `json:"email,omitempty"`
@@ -324,9 +348,11 @@ type CustomerContactRequest struct {
 
 // CustomerContactResponse defines model for CustomerContactResponse.
 type CustomerContactResponse struct {
-	Contact ContactResponse `json:"contact"`
-	Email   *string         `json:"email,omitempty"`
-	Phone   *string         `json:"phone,omitempty"`
+	// Channels The Messenger channels of the contact, one per active channel, linked or not (Messenger design N22). Absent when Communications is off, the caller may not view conversations, or there is no active channel.
+	Channels *[]CustomerContactChannel `json:"channels,omitempty"`
+	Contact  ContactResponse           `json:"contact"`
+	Email    *string                   `json:"email,omitempty"`
+	Phone    *string                   `json:"phone,omitempty"`
 
 	// Roles Every typed role this contact holds for this customer, in the fixed order billing, project, decision_maker (typed contact roles design D3). Always present on responses from this version on — an empty array when the contact holds none — and optional here only because the recorded exchange corpus predates it.
 	Roles *[]CustomerContactRole `json:"roles,omitempty"`

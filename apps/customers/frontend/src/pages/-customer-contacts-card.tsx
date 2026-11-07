@@ -43,6 +43,7 @@ import {
   toRoleInputs,
 } from "./-connection";
 import { ContactFields, toContactInput } from "./-contact-form-modal";
+import { ContactMessengerMenu, MessengerMark } from "./-contact-messenger";
 import "../i18n";
 
 /**
@@ -156,7 +157,10 @@ export const CustomerContactsCard = ({
                     }
                   >
                     <Table.Td>
-                      <Text size="sm">{formatContactName(association.contact)}</Text>
+                      <Text size="sm">
+                        {formatContactName(association.contact)}
+                        <MessengerMark channels={association.channels} />
+                      </Text>
                       {association.title && (
                         <Text size="xs" c="dimmed">
                           {association.title}
@@ -175,6 +179,14 @@ export const CustomerContactsCard = ({
                     <Table.Td onClick={(event) => event.stopPropagation()}>
                       {!readOnly && (
                         <Group gap={4} wrap="nowrap">
+                          {association.channels && association.channels.length > 0 && (
+                            <ContactMessengerMenu
+                              contactId={association.contact.id}
+                              contactName={formatContactName(association.contact)}
+                              channels={association.channels}
+                              customerId={customerId}
+                            />
+                          )}
                           <ActionIcon
                             variant="subtle"
                             color="gray"
