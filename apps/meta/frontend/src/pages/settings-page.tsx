@@ -30,6 +30,7 @@ import {
   type MetaSettings,
   regenerateVerifyToken,
   removePage,
+  resubscribePage,
   settingsQueryOptions,
   updateSettings,
 } from "../api/settings";
@@ -223,6 +224,19 @@ const PageRow = ({ page }: { page: MetaPage }) => {
     onError: (error) =>
       notifications.show({ color: "red", title: t("couldNotRemove"), message: refusalText(error, t) }),
   });
+  const resubscribe = useMutation({
+    mutationFn: () => resubscribePage(page.pageId),
+    onSuccess: async () => {
+      notifications.show({
+        color: "teal",
+        title: t("pageResubscribed"),
+        message: t("pageResubscribedBody", { name: page.name }),
+      });
+      await queryClient.invalidateQueries({ queryKey: [META_QUERY_KEY] });
+    },
+    onError: (error) =>
+      notifications.show({ color: "red", title: t("couldNotResubscribe"), message: refusalText(error, t) }),
+  });
   const confirmRemove = () =>
     modals.openConfirmModal({
       title: t("removePageTitle", { name: page.name }),
@@ -254,16 +268,27 @@ const PageRow = ({ page }: { page: MetaPage }) => {
               {page.checkedAt ? ` · ${t("pageChecked", { date: date(page.checkedAt) })}` : ""}
             </Text>
           </Stack>
-          <Button
-            variant="subtle"
-            color="red"
-            size="compact-sm"
-            aria-label={t("removePageLabel", { name: page.name })}
-            onClick={confirmRemove}
-            loading={remove.isPending}
-          >
-            {t("removePage")}
-          </Button>
+          <Group gap={4} wrap="nowrap">
+            <Button
+              variant="subtle"
+              size="compact-sm"
+              aria-label={t("resubscribePageLabel", { name: page.name })}
+              onClick={() => resubscribe.mutate()}
+              loading={resubscribe.isPending}
+            >
+              {t("resubscribePage")}
+            </Button>
+            <Button
+              variant="subtle"
+              color="red"
+              size="compact-sm"
+              aria-label={t("removePageLabel", { name: page.name })}
+              onClick={confirmRemove}
+              loading={remove.isPending}
+            >
+              {t("removePage")}
+            </Button>
+          </Group>
         </Group>
         {page.state === "token_rejected" ? (
           <Alert color="red" variant="light">
