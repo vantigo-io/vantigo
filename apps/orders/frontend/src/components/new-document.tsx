@@ -21,12 +21,6 @@ export interface NewDocumentProps {
   /** The customer, when the editor was opened from the customer page (O31a). */
   customerId?: number;
   /**
-   * A variant the order starts with, when the page was opened from a message in
-   * Communications that showed a product (Messenger design N17): the order's
-   * first line.
-   */
-  variantId?: number;
-  /**
    * The product the page was opened for: its one variant is the order's first
    * line, and when it has several the person picks which.
    */
@@ -44,25 +38,23 @@ const GRID_CURRENCY = "NOK";
  * template chosen. The create carries one idempotency key for the page's
  * life, so a double click answers the same document (O27).
  */
-export const NewDocument = ({
-  kind,
-  customerId: preset,
-  variantId: presetVariant,
-  productId,
-  access,
-}: NewDocumentProps) => {
+export const NewDocument = ({ kind, customerId: preset, productId, access }: NewDocumentProps) => {
   const { t } = useOrdersFormat();
   const queryClient = useQueryClient();
   const navigate = useNavigate() as (options: unknown) => void;
   const [customerId, setCustomerId] = useState<number | null>(preset ?? null);
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [requestId] = useState(newRequestId);
-  const [variantId, setVariantId] = useState<string | null>(presetVariant === undefined ? null : String(presetVariant));
-  // A product without a variant given: its variants are listed, and the only one is taken.
+  const [variantId, setVariantId] = useState<string | null>(null);
+  // The product's variants are listed, and the only one is taken.
   const grid = useQuery({
     ...variantGridQueryOptions(productId ?? 0, GRID_CURRENCY),
-    enabled: productId !== undefined && presetVariant === undefined && kind === "order" && access.canManageOrders,
+    enabled: productId !== undefined && kind === "order" && access.canManageOrders,
   });
+  // Creating waits for the variants, so the order never starts without the product's line by a click that
+  // came too early; when they cannot be read the person is told, and the order starts empty.
+  const gridPending = productId !== undefined && kind === "order" && access.canManageOrders && grid.isPending;
+  const gridFailed = productId !== undefined && kind === "order" && grid.isError;
   const variants = [...(grid.data?.cells ?? []), ...(grid.data?.variants ?? [])].filter(
     (v, i, all) => all.findIndex((other) => other.variantId === v.variantId) === i,
   );
@@ -97,8 +89,8 @@ export const NewDocument = ({
   const picker = <CustomerPicker value={customerId} onChange={setCustomerId} required />;
   const createButton = {
     rightSection: <IconArrowRight size={16} />,
-    disabled: customerId === null,
-    loading: create.isPending,
+    disabled: customerId === null || gridPending,
+    loading: create.isPending || gridPending,
     onClick: () => create.mutate(),
   };
   return (
@@ -133,7 +125,8 @@ export const NewDocument = ({
             ) : (
               <Alert color="yellow">{t("needsCustomersView")}</Alert>
             )}
-            {kind === "order" && productId !== undefined && presetVariant === undefined && variants.length > 1 && (
+            {gridFailed && <Alert color="yellow">{t("productNotRead")}</Alert>}
+            {kind === "order" && productId !== undefined && variants.length > 1 && (
               <Select
                 label={t("startWithVariant", { product: grid.data?.productName ?? "" })}
                 placeholder={t("noVariant")}
@@ -147,7 +140,7 @@ export const NewDocument = ({
                 onChange={setVariantId}
               />
             )}
-            {kind === "order" && startVariant !== null && (variants.length <= 1 || presetVariant !== undefined) && (
+            {kind === "order" && startVariant !== null && variants.length <= 1 && (
               <Text size="sm">{t("startsWithProduct", { product: grid.data?.productName ?? "" })}</Text>
             )}
             {kind === "quote" && (templates.data ?? []).length > 0 && (
