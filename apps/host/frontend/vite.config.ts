@@ -24,7 +24,8 @@ export default defineConfig({
   },
   server: {
     port: 10011,
-    proxy: { "/api": { target: apiTarget, changeOrigin: true, secure: false } },
+    // ws: the live socket (/api/v1/live) is proxied too.
+    proxy: { "/api": { target: apiTarget, changeOrigin: true, secure: false, ws: true } },
     fs: {
       allow: [searchForWorkspaceRoot(process.cwd())],
     },
