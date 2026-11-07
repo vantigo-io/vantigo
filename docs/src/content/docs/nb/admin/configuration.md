@@ -64,9 +64,11 @@ veiledningene det lenkes til fra hver gruppe, sier hvordan du velger.
 | `TRUSTED_PROXY_HOPS`, `TRUSTED_PROXY_CIDRS` | `0`, ikke satt | Mellomtjenerne foran, hvis videresendte adresser det stoles på |
 | `CSP_REPORT_ONLY` | `0` | Send innholdssikkerhetspolicyen som bare rapportering |
 | `MANAGEMENT_PORT`, `MANAGEMENT_TOKEN` | ikke satt | Den private lytteren for kontrollplanet og dens bærertoken |
+| `LIVE_ENABLED` | `1` | Om `api`- og `server`-modus serverer endepunktet for sanntidsoppdateringer, `GET /api/v1/live`. `0` svarer `404`, og hvert skjermbilde oppdaterer seg omtrent én gang i minuttet i stedet |
+| `LIVE_DATABASE_URL` | ikke satt | Databaseadressen for de to tilkoblingene sanntidsoppdateringer holder per HTTP-replika. Ikke satt bruker de `DATABASE_URL`. Pek den på databasens direkteport når `DATABASE_URL` går gjennom en pooler i transaksjonsmodus, der `LISTEN` ikke fungerer. Sladdes når den skrives ut |
 | `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | ikke satt | Profileringen applikasjonen viser |
 
-Se [Installasjon](/nb/admin/installation/), [Identitet, autentisering og
+Se [Installasjon](/nb/admin/installation/) (blant annet [Sanntidsoppdateringer og proxyen din](/nb/admin/installation/#sanntidsoppdateringer-og-proxyen-din)), [Identitet, autentisering og
 utrulling](/nb/admin/authentication/), [Transportsikkerhet](/nb/admin/transport-security/)
 og [administrasjonslytteren](/nb/admin/management-listener/).
 

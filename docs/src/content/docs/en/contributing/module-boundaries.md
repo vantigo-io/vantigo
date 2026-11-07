@@ -258,6 +258,18 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    acts on a person's own standing setting — the calendar's Outlook sync worker, whose
    row is the person's: `HasPermission` then asks `Access.UserHolds` for that user
    instead of `Check` for a session (rule 12).
+   Beside the slots a module fills for another, `Module.LiveTopics func(Deps) []live.Topic`
+   declares the live topics the module serves ([Live updates](/en/contributing/platform-packages/#live-updates)).
+   It is read by `Compose`, not by a consumer: `Compose` collects the enabled modules' topics,
+   refuses a duplicate kind, a kind whose prefix is not the module's name and a topic
+   without `Authorize`, and hands the result to the hub as `*live.Registry` in `Deps.Live`.
+   A module needs neither the hub nor the registry to publish: `live.Notify` is a free
+   function that takes the transaction, and a worker-only process, which builds no hub, calls
+   it the same way. The `Authorize` of a topic runs under `contracts.AsUser`, so
+   `HasPermission` answers through `Access.UserHolds`. The hub re-checks a socket's session
+   every 60 seconds through `contracts.Access.SessionLive(ctx, sessionID)`, a read that does
+   not slide the session's idle window and that only the hub calls; `Access.Check` is still
+   the call that signs a request in.
    No two invoiced-work holders may claim one source kind. `module.Workers`
    collects `CustomerPersonalData` and `InvoicedWork` as well, because worker mode
    never composes: the anonymisation worker is where rule 9's erase runs, and the

@@ -33,7 +33,8 @@ other unknown path does).
 {
   "version": "1.4.2",
   "bootstrap": "invited",
-  "usage": { "users": 12, "activeUsers": 9, "databaseBytes": 734003200 }
+  "usage": { "users": 12, "activeUsers": 9, "databaseBytes": 734003200 },
+  "live": { "listener": "up", "queueUsage": 0.0001, "connections": 14 }
 }
 ```
 
@@ -44,6 +45,13 @@ other unknown path does).
 | `usage.users` | Every account |
 | `usage.activeUsers` | Accounts that can sign in: not disabled and not locked out, and, while SCIM is enabled, not deprovisioned upstream — except an Owner, who stays counted as the break-glass account even then. It says nothing about recency |
 | `usage.databaseBytes` | `pg_database_size` of the instance's database |
+| `live.listener` | `up` or `down`: whether this replica's live-updates listener holds its database connection. While `down`, screens refresh about once a minute |
+| `live.queueUsage` | `pg_notification_queue_usage()`, from `0` to `1`, or `-1` when it could not be read. Near `1` means a listener is stuck |
+| `live.connections` | The live sockets open on this replica |
+
+The `live` block is left out of the answer of a `worker`-only process and when
+`LIVE_ENABLED=0`: it describes the replica you ask ([Live updates and your
+proxy](/en/admin/installation/#live-updates-and-your-proxy)).
 
 There is no `usage.storageBytes` field — usage is users, active users and
 database size only.

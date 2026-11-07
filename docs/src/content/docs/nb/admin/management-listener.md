@@ -32,7 +32,8 @@ ukjent sti gjør).
 {
   "version": "1.4.2",
   "bootstrap": "invited",
-  "usage": { "users": 12, "activeUsers": 9, "databaseBytes": 734003200 }
+  "usage": { "users": 12, "activeUsers": 9, "databaseBytes": 734003200 },
+  "live": { "listener": "up", "queueUsage": 0.0001, "connections": 14 }
 }
 ```
 
@@ -43,6 +44,13 @@ ukjent sti gjør).
 | `usage.users` | Alle kontoer |
 | `usage.activeUsers` | Kontoer som kan logge inn: ikke deaktivert og ikke utestengt, og, mens SCIM er slått på, ikke avklargjort oppstrøms — unntatt en eier, som fortsatt telles som nødkontoen (break-glass) selv da. Det sier ingenting om hvor nylig de har vært aktive |
 | `usage.databaseBytes` | `pg_database_size` for instansens database |
+| `live.listener` | `up` eller `down`: om denne replikaens lytter for sanntidsoppdateringer holder databasetilkoblingen sin. Mens den er `down`, oppdaterer skjermbildene seg omtrent én gang i minuttet |
+| `live.queueUsage` | `pg_notification_queue_usage()`, fra `0` til `1`, eller `-1` når den ikke kunne leses. Nær `1` betyr at en lytter står fast |
+| `live.connections` | Sanntidsforbindelsene som er åpne på denne replikaen |
+
+`live`-blokken er utelatt i svaret fra en ren `worker`-prosess og når `LIVE_ENABLED=0`: den
+beskriver replikaen du spør ([Sanntidsoppdateringer og proxyen
+din](/nb/admin/installation/#sanntidsoppdateringer-og-proxyen-din)).
 
 Det finnes ikke noe `usage.storageBytes`-felt — bruk er bare brukere, aktive brukere
 og databasestørrelse.

@@ -108,6 +108,10 @@ avslutter øktene dine med en gang. De nøyaktige grensene settes av den som dri
 installasjonen; se øktlevetid og tilbakekalling i
 [Identitet, autentisering og distribusjon](/nb/admin/authentication/).
 
+At en fane står åpen, holder deg ikke innlogget: skjermbilder som Innboks i Kommunikasjon
+oppdateres av seg selv mens du er borte, men det regnes ikke som aktivitet, så økten
+avsluttes etter planen.
+
 ## Rediger profilen din
 
 Åpne avatar-menyen øverst til høyre og velg **Innstillinger**. Siden **Profil**

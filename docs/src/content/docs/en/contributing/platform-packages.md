@@ -1,6 +1,6 @@
 ---
 title: Platform packages
-description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam and its chat, the operations dispatcher the assistant calls the API through, the payments port with its Vipps MobilePay adapter, the public-holiday calendar, the image metadata stripper, and the address rule a directory provider makes an account's address by.
+description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam and its chat, the operations dispatcher the assistant calls the API through, the payments port with its Vipps MobilePay adapter, the public-holiday calendar, the image metadata stripper, the address rule a directory provider makes an account's address by, and live updates — the topics a module serves, notifying on the transaction that writes, the endpoint, presence and the limits.
 sidebar:
   order: 5
 sources:
@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/imagemeta
   - apps/server/internal/directoryaddress
   - apps/server/internal/events
+  - apps/server/internal/live
   - apps/server/internal/docmath
 ---
 
@@ -599,6 +600,165 @@ never holds one pooled connection while it asks for another, so it runs on a poo
 one. The operator's view — the stuck deliveries, a retry, a skip — is on the
 [management listener](/en/admin/management-listener/#the-events-outbox); no tenant
 permission reaches it.
+
+## Live updates
+
+`internal/live` lets the browser hear that something changed without polling. A module
+notifies a topic on the transaction that writes; Postgres delivers the notification to
+every HTTP replica when the transaction commits; each replica's `live.Hub` hands it to the
+sockets that subscribed to the topic. It is a platform package: it imports no business
+module, and it is in depguard's `platform` set in `apps/server/.golangci.yml`.
+
+**Events carry identifiers only, never data.** A screen that hears an event refetches
+through the ordinary API, which checks the person's permission as it always does, so the
+socket never carries what the person could not fetch. A missed event is harmless once a
+`resync` follows.
+
+### Notify
+
+```go
+live.Notify(ctx, q live.Execer, topic, kind, id string) error
+```
+
+It runs `SELECT pg_notify('vantigo_live', …)` on `q`, with the payload `{"t":topic,"k":kind,"id":id}`.
+`q` is anything with `Exec`: a `pgx.Tx`, the pool or a sqlc `DBTX`.
+
+- **Notify on the transaction that writes.** Postgres delivers a notification only when the
+  transaction commits and drops it on rollback, the way `events.Publish` behaves. Notify on
+  the pool only for a write that is not in a transaction, and then log a failure rather than
+  fail the request: the write is made, and the screen's fallback poll repairs a lost event.
+- **Notify once per aggregate, never in a loop.** Postgres takes one cluster-wide lock at
+  commit for every transaction that notified, held through the WAL flush, so notifying
+  commits are serialised across the cluster. That is far below what UI-scale writes cost,
+  but a loop over many rows would pay it per row. A bulk change (retention, erasure) sends
+  **one** event without an id.
+- **Validation.** `Notify` refuses a topic outside the grammar, a kind that is not
+  `[a-z][a-z.-]*`, and a payload over 7 KiB, since `NOTIFY` itself refuses one over 8000
+  bytes and an id is free text.
+- **Any process may notify.** A `worker`-only process builds no hub but calls `Notify`
+  like any other. That is why the fan-out goes through Postgres and not through memory:
+  inbound mail and Messenger messages are written by workers, which may run in another
+  process than the HTTP replicas.
+
+### Topics and the `LiveTopics` slot
+
+A topic is `<module>.<kind>` or `<module>.<kind>:<key>`, matching
+`^[a-z]+\.[a-z-]+(:[A-Za-z0-9_-]{1,64})?$`: `communications.inbox`,
+`communications.conversation:<uuid>`.
+
+A module registers the kinds it serves through `Module.LiveTopics func(Deps) []live.Topic`
+([the slot](/en/contributing/module-boundaries/#the-rules)):
+
+```go
+live.Topic{Kind string, Presence bool, Authorize func(ctx context.Context, key string) error}
+```
+
+- `Kind` is `<module>.<kind>` and its prefix must be the module's name, the way permission
+  keys are. `Compose` collects the topics of enabled modules into a `*live.Registry`, refuses
+  a duplicate kind and a topic without `Authorize`, and passes the registry on in
+  `Deps.Live`. A topic of a disabled module is `unknown_topic`.
+- `Authorize` runs when a client subscribes, with a context carrying
+  `contracts.AsUser(ctx, principal.UserID)`, so `live.HasPermission` answers through
+  `Access.UserHolds`. It returns `nil` or `live.ErrForbidden`; any other error is read as
+  forbidden too.
+- **No existence oracle.** A key that names nothing and a key the person may not see are
+  both `forbidden`. `unknown_topic` is only for a kind no enabled module registered. A
+  key-level check uses the same rule the module's `GET` uses.
+- `Presence` says whether clients may announce presence on the topic.
+
+### The endpoint
+
+`GET /api/v1/live?v=1` is mounted by `server.New` outside `Compose`, because the composed
+router accepts only contract operations; it is therefore not in the API reference. The
+handler answers before upgrading:
+
+| Status | When |
+| --- | --- |
+| `404` | `LIVE_ENABLED=0`, or a process that builds no hub |
+| `405` | not a `GET` |
+| `400` | `v` is not `1` |
+| `403` | the origin is not the application's: `Sec-Fetch-Site` must be `same-origin`, or `Origin` must equal the application origin; a missing `Origin` is refused |
+| `401` | no session, answered by `Access.Reject` |
+| `429` | more than 30 handshakes a minute for the person (`live.connect`) |
+| `503` | the process is shutting down |
+
+The origin is checked by the handler itself because `CrossOriginProtection` lets every
+`GET` through; the session cookie's `SameSite=Strict` is the second layer. The endpoint is
+left out of the `otelhttp` filter so a socket never becomes an hours-long span. The wire is
+JSON text frames: `sub`, `unsub`, `presence` and `ping` from the client; `ok`, `denied`
+(`forbidden`, `unknown_topic`, `limit`, `unavailable`), `event`, `presence`, `resync` (with a
+`reason`), `degraded` and `pong` from the server. `unavailable` is a transient server error
+while authorising; the client retries the topic with backoff from 2 s to 60 s. A denial
+never reveals existence: a missing key and a key the person may not see are both `forbidden`.
+
+### The listener, `degraded` and `resync`
+
+Each hub opens two dedicated connections, not from the pool, so a held connection cannot
+starve the lease workers' pool: the **listener** (`LISTEN vantigo_live`) and the
+**presence publisher**. Both open `LIVE_DATABASE_URL`, or `DATABASE_URL` when it is unset
+(a transaction-mode pooler cannot `LISTEN`).
+
+- The hub does not trust a quiet connection: it waits at most 30 s for a notification, then
+  runs `SELECT 1` (5 s limit), and a failure marks the listener down. TCP keepalive (15 s
+  idle, 5 s interval, 3 probes) catches a peer that vanished without closing.
+- While the listener is down the hub sends `degraded` to every socket and to new ones, and
+  the browser resumes its fallback polling.
+- It reconnects with backoff, 1 s doubling to 30 s with jitter, and after every reconnect
+  sends `resync` with `reason: "reconnect"` to every socket, because it cannot know what it
+  missed; the status is `live` again. A slow consumer gets `reason: "slow_consumer"`: the
+  screen refetches and the status is unchanged.
+- Every 60 seconds the hub re-checks each session through `Access.SessionLive`, a read that
+  does **not** slide the session's idle window (`Access.Check` does, which would keep a
+  hidden tab signed in for ever). A session that is gone or idle-expired closes the socket
+  with `4401`. It then re-runs every subscription's `Authorize`, with `UserHolds` answers
+  cached for the cycle, and drops one that now fails with `denied`.
+- The fan-out never blocks: each socket has a send queue of 64 frames. A full queue is
+  cleared and a single `resync` queued.
+
+### Presence
+
+Presence is per topic, kept in memory on every hub and shared between hubs in batches. A
+`presence` frame needs a subscription to a topic whose `Presence` is true; its state is
+`viewing`, `editing` or `replying`, and `null` leaves. The hub pushes the topic's whole
+member set to its subscribers at once, at most every 500 ms per topic. Between hubs, each
+sends one notification every 3 s with the changes since the last (chunked under 7 KiB) on
+its presence publisher, and repeats its full set every 15 s as a heartbeat; a remote hub's
+members expire 45 s after its last batch, so a hub that dies leaves no ghosts. Clients
+repeat their state every 20 s. Names are resolved through `contracts.UserDirectory`, cached
+for 10 minutes. The cost is per hub, not per client: a hundred watchers cost at most one
+notifying commit per replica every 3 s.
+
+### Limits and close codes
+
+| Limit | Value |
+| --- | --- |
+| Subscriptions per socket | 200 (`denied`, `limit`) |
+| Sockets per person and replica | 20; the 21st is accepted and closed with `4429` |
+| Client frame | 4 KiB; larger closes with `1009` |
+| Keep-alive | a ping every 25 s; a socket silent for 60 s is dropped |
+| Send queue | 64 frames; overflowing three times in a minute closes with `1008` |
+
+| Close code | Meaning |
+| --- | --- |
+| `1001` | the process is shutting down; the hub closes every socket before the pool, and the browser reconnects to another replica |
+| `1003` | a binary frame; only text is accepted |
+| `1008` | slow consumer |
+| `1009` | frame over 4 KiB |
+| `4401` | the session ended; the browser does not reconnect |
+| `4429` | more than 20 sockets for the person on this replica |
+
+### Telemetry
+
+An OpenTelemetry meter named `vantigo.live`: the up-down counters
+`vantigo.live.connections` and `vantigo.live.subscriptions`, and the counters
+`vantigo.live.notifications` (events the listener received),
+`vantigo.live.resyncs{reason=reconnect|slow_consumer}` and
+`vantigo.live.denied{reason=forbidden|unknown_topic|limit|unavailable}`. The management listener's
+`/management/status` carries the listener's state
+([Management listener](/en/admin/management-listener/#the-endpoint)).
+
+The browser side is described in [Live screens](/en/contributing/frontend-architecture/#live-screens);
+the operator's side in [Live updates and your proxy](/en/admin/installation/#live-updates-and-your-proxy).
 
 ## The document arithmetic
 
