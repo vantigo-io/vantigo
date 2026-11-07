@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/secrets"
 )
@@ -91,6 +93,12 @@ func verifyRef(box *secrets.Box, ref string, channelID uuid.UUID, now time.Time)
 	return int32(contact), true
 }
 
+// The permissions the link operations are gated by, as the contract names them.
+const (
+	permConversationsManage = "communications:conversations-manage"
+	permConversationsReply  = "communications:conversations-reply"
+)
+
 // messengerLinkURL is the m.me link of a Page for a ref.
 func messengerLinkURL(pageID, ref string) string {
 	return "https://m.me/" + url.PathEscape(pageID) + "?ref=" + url.QueryEscape(ref)
@@ -120,10 +128,17 @@ func (s *server) PutCommunicationsParticipantsByIdContact(ctx context.Context, r
 	}
 	contactID := req.Body.ContactId
 	q := store.New(s.deps.Pool)
-	if _, err := q.GetParticipantWithChannel(ctx, req.Id); errors.Is(err, pgx.ErrNoRows) {
+	participant, err := q.GetParticipantWithChannel(ctx, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return gen.PutCommunicationsParticipantsByIdContact404Response{}, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("communications: get participant: %w", err)
+	}
+	// Only a person on a messenger channel is linked this way: an e-mail
+	// participant's contact is the linker's (inbound_linker.go).
+	if participant.ChannelType != channelTypeMessenger {
+		return gen.PutCommunicationsParticipantsByIdContact422JSONResponse(flatErrorBody(
+			"not_supported_on_channel", "Only a person on a messenger channel is linked to a contact here.")), nil
 	}
 
 	exists, err := s.contactExists(ctx, contactID)
@@ -135,29 +150,38 @@ func (s *server) PutCommunicationsParticipantsByIdContact(ctx context.Context, r
 			"contact_unknown", "The selected contact does not exist.")), nil
 	}
 
+	// A conversationId is only a statement of where the agent is: it has to be a
+	// conversation the participant is in. What decides is what the server finds.
 	if req.Body.ConversationId != nil {
-		conv, err := q.GetConversationByID(ctx, *req.Body.ConversationId)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return gen.PutCommunicationsParticipantsByIdContact404Response{}, nil
-		} else if err != nil {
-			return nil, fmt.Errorf("communications: get conversation: %w", err)
+		in, err := q.ParticipantInConversation(ctx, store.ParticipantInConversationParams{
+			ConversationID: *req.Body.ConversationId, ParticipantID: req.Id,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("communications: check the conversation holds the participant: %w", err)
 		}
-		if conv.CustomerID != nil {
-			contacts, err := directoryContactsForCustomer(ctx, s.deps.Directory, *conv.CustomerID)
-			if err != nil {
-				return nil, fmt.Errorf("communications: list the customer's contacts: %w", err)
-			}
-			belongs := false
-			for _, c := range contacts {
-				if c.ID == contactID {
-					belongs = true
-					break
-				}
-			}
-			if !belongs {
-				return gen.PutCommunicationsParticipantsByIdContact422JSONResponse(flatErrorBody(
-					"contact_not_of_customer", "The contact is not one of the conversation's customer's contacts.")), nil
-			}
+		if !in {
+			return gen.PutCommunicationsParticipantsByIdContact422JSONResponse(flatErrorBody(
+				"participant_invalid", "The participant is not in that conversation.")), nil
+		}
+	}
+	// The contact has to be one of the customer of every conversation the
+	// participant is in that has one (N20), found here and not trusted from the
+	// request.
+	customers, err := q.ListParticipantConversationCustomers(ctx, req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("communications: list the participant's customers: %w", err)
+	}
+	for _, customerID := range customers {
+		if customerID == nil {
+			continue
+		}
+		contacts, err := directoryContactsForCustomer(ctx, s.deps.Directory, *customerID)
+		if err != nil {
+			return nil, fmt.Errorf("communications: list the customer's contacts: %w", err)
+		}
+		if !slices.ContainsFunc(contacts, func(c contracts.ContactEntry) bool { return c.ID == contactID }) {
+			return gen.PutCommunicationsParticipantsByIdContact422JSONResponse(flatErrorBody(
+				"contact_not_of_customer", "The contact is not one of the contacts of the customer of the participant's conversations.")), nil
 		}
 	}
 
@@ -248,7 +272,12 @@ func (s *server) PostCommunicationsChannelsByIdContactLinks(ctx context.Context,
 // participant, the contact it is linked to, the one a shared e-mail address
 // suggests and the one whose Messenger link it used while linked to another
 // (N20, N21). nil for a conversation with no participant.
-func messengerLinkOf(ctx context.Context, q *store.Queries, conversationID uuid.UUID) (*gen.MessengerLink, error) {
+//
+// A contact_id that no longer resolves in Customers (the contact was deleted, or
+// Customers is off) is answered as no contact: the participant is unlinked as far
+// as anyone can tell, and a ref or the agent can link it again. CanManage tells
+// the thread whether to offer linking at all.
+func (s *server) messengerLinkOf(ctx context.Context, q *store.Queries, conversationID uuid.UUID) (*gen.MessengerLink, error) {
 	p, err := q.GetConversationMessengerParticipant(ctx, conversationID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -256,7 +285,20 @@ func messengerLinkOf(ctx context.Context, q *store.Queries, conversationID uuid.
 	if err != nil {
 		return nil, fmt.Errorf("communications: get the conversation's participant: %w", err)
 	}
-	out := &gen.MessengerLink{ParticipantId: p.ID, ContactId: p.ContactID}
+	contactID := p.ContactID
+	if contactID != nil {
+		entry, err := directoryContact(ctx, s.deps.Directory, *contactID)
+		if err != nil {
+			return nil, fmt.Errorf("communications: look up the participant's contact: %w", err)
+		}
+		if entry == nil {
+			contactID = nil
+		}
+	}
+	out := &gen.MessengerLink{
+		ParticipantId: p.ID, ContactId: contactID,
+		CanManage: contracts.HasPermission(ctx, s.deps.Access, permConversationsManage),
+	}
 	hints, err := q.GetParticipantContactHints(ctx, p.ID)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
@@ -265,10 +307,10 @@ func messengerLinkOf(ctx context.Context, q *store.Queries, conversationID uuid.
 	default:
 		// A suggestion is moot once the participant has a contact, and a
 		// referral that names the very contact it is linked to says nothing.
-		if p.ContactID == nil {
+		if contactID == nil {
 			out.SuggestedContactId = hints.SuggestedContactID
 		}
-		if hints.ReferralContactID != nil && (p.ContactID == nil || *hints.ReferralContactID != *p.ContactID) {
+		if hints.ReferralContactID != nil && (contactID == nil || *hints.ReferralContactID != *contactID) {
 			out.ReferralContactId = hints.ReferralContactID
 		}
 	}

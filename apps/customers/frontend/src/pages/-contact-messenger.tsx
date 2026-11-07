@@ -93,6 +93,22 @@ export const ContactMessengerMenu = ({
     },
   });
 
+  // Each item is offered to a caller who holds what Communications will ask of
+  // them (Messenger design N22): writing needs conversations-reply, the link and
+  // Unlink need conversations-manage. A channel with nothing to offer is left out,
+  // and a menu with nothing at all is not shown.
+  const offered = channels.map((channel) => {
+    const person = channel.linked && Boolean(channel.participantId);
+    return {
+      channel,
+      write: person && channel.canWrite === true,
+      copy: channel.canManage === true,
+      unlink: person && channel.canManage === true,
+    };
+  });
+  const visible = offered.filter((o) => o.write || o.copy || o.unlink);
+  if (visible.length === 0) return null;
+
   return (
     <>
       <Menu position="bottom-end" withinPortal>
@@ -102,11 +118,11 @@ export const ContactMessengerMenu = ({
           </ActionIcon>
         </Menu.Target>
         <Menu.Dropdown>
-          {channels.map((channel) => (
+          {visible.map(({ channel, write: canWrite, copy: canCopy, unlink: canUnlink }) => (
             <div key={channel.channelId}>
               {several && <Menu.Label>{channel.name}</Menu.Label>}
-              {channel.linked && channel.participantId ? (
-                windowOpen(channel) ? (
+              {canWrite &&
+                (windowOpen(channel) ? (
                   <Menu.Item leftSection={<IconSend size={14} />} onClick={() => setWriting(channel)}>
                     {t("writeOnMessenger")}
                   </Menu.Item>
@@ -116,16 +132,17 @@ export const ContactMessengerMenu = ({
                       {t("messengerMustWriteFirst", { name: contactName, page: channel.name })}
                     </Text>
                   </Menu.Item>
-                )
-              ) : null}
-              <Menu.Item leftSection={<IconCopy size={14} />} onClick={() => copy.mutate(channel)}>
-                {t("copyMessengerLink")}
-              </Menu.Item>
-              {channel.linked && channel.participantId ? (
+                ))}
+              {canCopy && (
+                <Menu.Item leftSection={<IconCopy size={14} />} onClick={() => copy.mutate(channel)}>
+                  {t("copyMessengerLink")}
+                </Menu.Item>
+              )}
+              {canUnlink && (
                 <Menu.Item color="red" leftSection={<IconLinkOff size={14} />} onClick={() => unlink.mutate(channel)}>
                   {t("unlinkMessenger")}
                 </Menu.Item>
-              ) : null}
+              )}
             </div>
           ))}
         </Menu.Dropdown>

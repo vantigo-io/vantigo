@@ -29,6 +29,7 @@ const (
 	personalDataKindObjects       = "communications.objects"
 	personalDataKindSuggestions   = "communications.conversationSuggestions"
 	personalDataKindCandidates    = "communications.conversationCandidates"
+	personalDataKindContactLinks  = "communications.participantContacts"
 )
 
 // customerPersonalData is this module's contracts.CustomerPersonalData
@@ -200,4 +201,29 @@ func (p *customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx,
 		{Kind: personalDataKindSuggestions, Count: suggestions},
 		{Kind: personalDataKindCandidates, Count: candidates},
 	}, nil
+}
+
+var _ contracts.ContactDataEraser = (*customerPersonalData)(nil)
+
+// EraseContactData drops what this module holds that names a contact the
+// anonymisation deleted (Messenger design N19): the participants linked to it are
+// unlinked and the suggestions and referral notices naming it are cleared, whether
+// or not any conversation of theirs had a customer. Nothing is read from
+// Customers: the ids are given. It reports the participants it unlinked.
+func (p *customerPersonalData) EraseContactData(ctx context.Context, tx pgx.Tx, contactIDs []int32) ([]contracts.ErasedData, error) {
+	if len(contactIDs) == 0 {
+		return []contracts.ErasedData{{Kind: personalDataKindContactLinks, Count: 0}}, nil
+	}
+	q := store.New(tx)
+	unlinked, err := q.ClearParticipantContactsIn(ctx, contactIDs)
+	if err != nil {
+		return nil, fmt.Errorf("communications: unlink participants from erased contacts: %w", err)
+	}
+	if _, err := q.ClearContactHintsIn(ctx, store.ClearContactHintsInParams{ContactIds: contactIDs, Now: p.clock()}); err != nil {
+		return nil, fmt.Errorf("communications: clear hints naming erased contacts: %w", err)
+	}
+	if err := q.DeleteAllEmptyContactHints(ctx); err != nil {
+		return nil, fmt.Errorf("communications: delete empty hints: %w", err)
+	}
+	return []contracts.ErasedData{{Kind: personalDataKindContactLinks, Count: unlinked}}, nil
 }

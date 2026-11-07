@@ -11,6 +11,8 @@ export type MessengerLink = {
   contactId: number | null;
   suggestedContactId: number | null;
   referralContactId: number | null;
+  /** Whether the caller may link and unlink (communications:conversations-manage). */
+  canManage: boolean;
 };
 
 /** A contact as the thread's picker and header name it. */

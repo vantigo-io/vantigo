@@ -76,7 +76,16 @@ func (s *server) createMessengerConversation(ctx context.Context, key string, bo
 		if ferr != nil {
 			return nil, ferr
 		}
-		if existing.PayloadFingerprint == fingerprint {
+		// The reply's fingerprint holds the conversation, not the participant, so
+		// the participant is part of the comparison here: the key was used for
+		// this person or it is used again for another payload.
+		in, perr := q.ParticipantInConversation(ctx, store.ParticipantInConversationParams{
+			ConversationID: existing.ConversationID, ParticipantID: participant.ID,
+		})
+		if perr != nil {
+			return nil, fmt.Errorf("communications: check the replayed conversation holds the participant: %w", perr)
+		}
+		if in && existing.PayloadFingerprint == fingerprint {
 			return gen.PostCommunicationsConversations200JSONResponse(gen.ConversationMutationResponse{
 				ConversationId: existing.ConversationID, MessageId: &existing.MessageID, Status: "queued", IdempotencyKey: &key,
 			}), nil
@@ -157,12 +166,23 @@ func (s *server) openMessengerConversation(ctx context.Context, channelID, parti
 	created := false
 	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// The participant's row is the lock two writers of one person queue on: a
+		// second request finds the conversation the first made, and no two open
+		// conversations of one participant come of two creates racing.
+		if _, err := txq.LockParticipant(ctx, participantID); err != nil {
+			return err
+		}
 		open, err := txq.FindOpenMessengerConversation(ctx, store.FindOpenMessengerConversationParams{
 			ChannelID: channelID, ParticipantID: participantID,
 		})
 		switch {
 		case err == nil:
 			conversationID = open.ID
+			// The customer of a conversation that has one is not changed from here;
+			// one that has none takes the request's.
+			if open.CustomerID == nil && customerID != nil {
+				return txq.SetConversationManualCustomer(ctx, store.SetConversationManualCustomerParams{CustomerID: customerID, ID: open.ID})
+			}
 			return nil
 		case !errors.Is(err, pgx.ErrNoRows):
 			return err

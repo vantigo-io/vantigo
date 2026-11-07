@@ -489,21 +489,34 @@ func (q *Queries) DeleteAllCustomerAddresses(ctx context.Context, customerID int
 	return result.RowsAffected(), nil
 }
 
-const deleteOrphanedContacts = `-- name: DeleteOrphanedContacts :execrows
+const deleteOrphanedContacts = `-- name: DeleteOrphanedContacts :many
 DELETE FROM customers.contacts c
 WHERE c.id = ANY($1::int[])
   AND NOT EXISTS (SELECT 1 FROM customers.customers_contacts cc WHERE cc.contact_id = c.id)
+RETURNING c.id
 `
 
 // A contact the anonymised customer was the only one linked to existed for it
 // alone (design D4), and goes; one another customer still links is somebody
 // else's contact too, and stays.
-func (q *Queries) DeleteOrphanedContacts(ctx context.Context, contactIds []int32) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteOrphanedContacts, contactIds)
+func (q *Queries) DeleteOrphanedContacts(ctx context.Context, contactIds []int32) ([]int32, error) {
+	rows, err := q.db.Query(ctx, deleteOrphanedContacts, contactIds)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return result.RowsAffected(), nil
+	defer rows.Close()
+	var items []int32
+	for rows.Next() {
+		var id int32
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const detachCustomerContacts = `-- name: DetachCustomerContacts :many

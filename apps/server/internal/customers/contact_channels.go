@@ -14,6 +14,14 @@ import (
 // as they were.
 const conversationsView = "communications:conversations-view"
 
+// The permissions the actions of the Messenger menu need in Communications:
+// writing to the person, and getting a contact's link or unlinking. The page
+// hides what the caller lacks (Communications refuses it all the same).
+const (
+	conversationsReply  = "communications:conversations-reply"
+	conversationsManage = "communications:conversations-manage"
+)
+
 // contactChannelsOf is the Messenger channels of the contacts of a customer's
 // list (contracts.ContactChannels, Messenger design N22), by contact id: one
 // entry per active Messenger channel, linked or not, so that the row can offer a
@@ -34,6 +42,7 @@ func (s *server) contactChannelsOf(ctx context.Context, rows []store.ListContact
 	if err != nil {
 		return nil, fmt.Errorf("customers: read the contacts' channels: %w", err)
 	}
+	canWrite, canManage := s.hasPermission(ctx, conversationsReply), s.hasPermission(ctx, conversationsManage)
 	out := make(map[int32]*[]gen.CustomerContactChannel, len(entries))
 	for id, list := range entries {
 		if len(list) == 0 {
@@ -42,7 +51,7 @@ func (s *server) contactChannelsOf(ctx context.Context, rows []store.ListContact
 		channels := make([]gen.CustomerContactChannel, 0, len(list))
 		for _, e := range list {
 			c := gen.CustomerContactChannel{
-				ChannelId: e.ChannelID, Type: e.Type, Name: e.Name, Linked: e.Linked,
+				ChannelId: e.ChannelID, Type: e.Type, Name: e.Name, Linked: e.Linked, CanWrite: canWrite, CanManage: canManage,
 				ParticipantId: e.ParticipantID, LastInboundAt: e.LastInboundAt, ReplyWindowClosesAt: e.ReplyWindowClosesAt,
 			}
 			channels = append(channels, c)

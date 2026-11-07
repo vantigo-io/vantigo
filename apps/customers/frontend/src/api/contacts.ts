@@ -84,6 +84,10 @@ export interface ContactChannel {
   type: string;
   name: string;
   linked: boolean;
+  /** Whether the caller may write to the person (communications:conversations-reply). */
+  canWrite?: boolean;
+  /** Whether the caller may get the contact's Messenger link and unlink the person (communications:conversations-manage). */
+  canManage?: boolean;
   participantId?: string | null;
   lastInboundAt?: string | null;
   /** When the person's reply window closes; absent when it is closed, and they must write first. */

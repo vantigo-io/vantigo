@@ -162,6 +162,12 @@ func TestAnonymisationWorker_TakesThePersonOutAndKeepsTheBookkeeping(t *testing.
 	c = h.SignIn(t, mergeKeys...)
 	runAnonymisation(t, h)
 
+	// Communications-like holders are told which contacts went: the one only this
+	// customer had, and not the shared one the neighbour still has.
+	if got := fake.contactErasesSoFar(); len(got) != 1 || !slices.Equal(got[0], []int32{orphan.Id}) {
+		t.Errorf("EraseContactData was given %v, want the one orphaned contact [%d]", got, orphan.Id)
+	}
+
 	// The row: cleared as listed, kept as listed.
 	type rowState struct {
 		Name, Status                                               string
