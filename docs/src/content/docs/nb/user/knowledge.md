@@ -82,6 +82,61 @@ En **Lenke** spør etter **Lenkeadresse**. Å klikke på en lenke i en side åpn
 i en ny fane (**Åpne i ny fane**) og en adresse i Vantigo i samme fane (**Åpne i denne fanen**);
 **Fjern lenke** tar den bort. En side kan være høyst 2 MiB.
 
+## Blokker, bilder og lenker
+
+**Legg til en blokk.** Skriv `/` i begynnelsen av en linje, eller bruk knappen **Legg til en blokk**
+(+) ved siden av en blokk, så åpnes menyen **Blokker**; skriv videre for å snevre inn (*Ingen blokk
+passer.* når ingenting gjør det). Den har **Tekst**, overskriftene, listene, **Sitat**,
+**Sammenleggbar seksjon**, **Infoboks**, **Tipsboks**, **Advarselsboks**, **Fareboks**,
+**Kodeblokk**, **Tabell**, **Skillelinje**, **Innholdsfortegnelse**, **Bilde**, **Fil** og
+**Lenke til en side**.
+
+**Flytt en blokk.** Dra gripen ved siden av en blokk (**Dra for å flytte**) for å legge den et annet
+sted på siden.
+
+- **Bokser.** En boks er et farget felt. Klikk ikonet (*Boks: Info. Endre type eller emoji*) for å endre **Type**
+  (**Info**, **Tips**, **Advarsel**, **Fare**) eller velge en **Emoji**, eller **Ingen emoji**.
+- **Sammenleggbare seksjoner.** En **Sammenleggbar seksjon** er en overskrift du klikker på for å åpne eller
+  brette sammen teksten under.
+- **Tabeller.** Sett inn en **Tabell**, og åpne menyen **Tabell** fra en celle for å **Legge til en rad over**
+  eller **under**, **Legge til en kolonne til venstre** eller **høyre**, **Fjerne raden**, **Fjerne
+  kolonnen**, **Slå overskriftsrad av eller på** eller **Fjerne tabellen**.
+- **Kodeblokker.** En **Kodeblokk** har et **Språk** du kan velge, eller **Finn automatisk**.
+- **Innholdsfortegnelse.** Den lister sidens overskrifter og følger dem mens du skriver; en side uten
+  overskrifter sier *Legg til overskrifter, så listes de her.*
+
+**Bilder og filer.** Lim inn eller slipp en fil på siden, eller bruk **Bilde** eller **Fil** i
+Blokker-menyen. En fil kan være på høyst **25 MiB**. En JPEG eller PNG vises som bilde (kamera- og
+stedsdata fjernes; velg **Liten**, **Middels** eller **Full bredde** under **Bildebredde**); alt annet,
+også SVG, vises som en fil du kan **Laste ned**. Opplastingen krever redigeringstilgang og en ulåst side;
+ellers står det hvorfor (*Siden er låst, så ingenting kan legges til.*). Limer du inn et bilde eller en fil kopiert fra en annen side, legges en kopi inn på denne siden. En fil hører til siden sin: en som
+ikke er i bruk, ryddes bort etter en uke.
+
+**Nevn en person.** Skriv `@` og velg noen under **Personer**. Vedkommende får beskjed på e-post, med en
+lenke, men bare hvis hen kan åpne siden, og høyst **én gang i timen per side**; du får aldri beskjed om din egen omtale.
+
+**Lenk til en annen side.** Skriv `[[` og søk under **Sider**, eller velg **Lenke til en side**. Limer du inn en
+adresse fra Vantigo, blir den også en lenke (en adresse med `?`- eller `#`-del forblir en vanlig lenke). En lenke viser sidens gjeldende tittel og ikon; kan du ikke lese siden,
+står det **Ingen tilgang** uten tittelen, og er siden slettet for godt, står det **Slettet**. En side i papirkurven
+viser også **Ingen tilgang**.
+
+**Lenket fra.** Nederst på en side lister **Lenket fra** sidene du kan lese som lenker til den.
+
+## Eksporter og importer Markdown
+
+I **Sidemeny** laster **Eksporter som Markdown** ned siden som en `.md`-fil. Velg **Ta med undersider** for å
+laste ned en `.zip` med én fil per underside du kan lese, lagt ut som en Obsidian-hvelv; bilder og filer
+legges i en `assets`-mappe, og det gjør også nedlastingen til en `.zip`. Lenker til sider du ikke kan lese,
+blir **Ingen tilgang**. En eksport på mer enn 2000 filer eller omtrent 1 GiB avvises.
+
+**Importer Markdown** gjør en `.md`-fil, eller en `.zip` fra Obsidian eller en Notion-eksport, om til sider. Velg
+**Fil**, og deretter **Legg sidene** **Under denne siden**, **Øverst i Arbeidsområde** eller **Øverst i Privat**.
+Mapper blir undersider, en mappe og en fil med samme navn blir én side, Obsidian-merknader blir bokser, og
+`[[lenker]]` mellom filene blir sidelenker. En første overskrift som gjentar tittelen, utelates. JPEG- og
+PNG-bilder følger med som sidens bilder. Det som hoppes over, listes etterpå under **Noe kunne ikke tas med**:
+andre filtyper, HTML, bilder på nettet og skjulte mapper som `.obsidian`. Opplastingen kan være på høyst 50 MiB
+(en zip høyst 500 filer, 200 MiB utpakket). Deler redigeringsprogrammet ikke kan romme, utelates og listes også; bilder i overskrifter og tabeller blir beskrivelsesteksten. Bare to importer kjører samtidig, så er det travelt, ber den deg prøve igjen om ti sekunder. Alt eller ingenting: **Åpne** resultatet fra listen som følger.
+
 ## Lagring, og når noen andre har endret siden
 
 Det finnes ingen Lagre-knapp. Siden lagrer seg selv et øyeblikk etter at du slutter å skrive, og

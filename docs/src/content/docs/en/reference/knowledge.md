@@ -1,6 +1,6 @@
 ---
 title: Knowledge module
-description: "The Knowledge module (nb Kunnskap): the articles tree with fractional positions and a depth of 10; the access model — the nearest member row, else the nearest default, bounded by knowledge:articles — materialised under one advisory lock, the Workspace, Shared and Private sections, and what knowledge:manage may and may not do; the document allowlist and the plain text derived from it; autosave with expectedVersion, the lock, the history and its coalescing; the trash and its groups; favourites; search in Norwegian and English; the Assistant's two tools and Hidden from the Assistant; the live topics; the retention worker and the erasure sweep; the editor's licences; the endpoints and their refusals."
+description: "The Knowledge module (nb Kunnskap): the articles tree with fractional positions and a depth of 10; the access model — the nearest member row, else the nearest default, bounded by knowledge:articles — materialised under one advisory lock, the Workspace, Shared and Private sections, and what knowledge:manage may and may not do; the document allowlist (callouts, toggles, tables, images, attachments, mentions, article and record links) and the plain text derived from it; files in articles; links, backlinks and mentions; Markdown export and import; autosave with expectedVersion, the lock, the history and its coalescing; the trash and its groups; favourites; search in Norwegian and English; the Assistant's two tools and Hidden from the Assistant; the live topics; the retention worker and the erasure sweep; the editor's and the server's licences; the endpoints and their refusals."
 sidebar:
   order: 125
 sources:
@@ -8,6 +8,7 @@ sources:
   - openapi/knowledge.yaml
   - apps/server/internal/openapi/specs/knowledge.yaml
   - apps/server/internal/db/migrations/00135_knowledge_baseline.sql
+  - apps/server/internal/db/migrations/00136_knowledge_files_links.sql
   - apps/knowledge/frontend
 ---
 
@@ -29,7 +30,7 @@ article is looked at, whatever the access rows say.
 
 ## The schema
 
-Schema `knowledge`; migration `00135_knowledge_baseline.sql`.
+Schema `knowledge`; migrations `00135_knowledge_baseline.sql` and `00136_knowledge_files_links.sql` (files, links and mention notices).
 
 | Table | Holds |
 | --- | --- |
@@ -38,6 +39,10 @@ Schema `knowledge`; migration `00135_knowledge_baseline.sql`.
 | `article_access_default` | Per article, the **effective default** (`permission`) and the effective `ai_hidden` — materialised. |
 | `article_access` | Per article and person, the **effective** access through a member row — materialised. |
 | `article_versions` | `(article_id, version)` with the title, the document, who and when. |
+| `article_files` | A file uploaded into an article: `id`, `article_id`, `object_key` (a random name in the object store, never derived from the file name), `filename` (1–255 characters), `content_type`, `size`, `is_image`, `created_by` and `created_at`. Deleted with its article. |
+| `file_object_deletions` | The object keys whose file rows are gone, queued by a trigger on `article_files` and emptied by the [retention worker](#the-retention-worker). |
+| `article_links` | `(from_id, to_id)`: the article links each article's document holds, rewritten on every save. `to_id` has no foreign key. |
+| `mention_notices` | `(article_id, user_id, notified_at)`: when a person was last told they were mentioned in an article. |
 | `favourites` | A person's favourites, ordered by a `position` key. |
 
 User ids are stored as plain uuids, with no foreign key into identity; names are looked up
@@ -160,25 +165,44 @@ A document is a node `doc` and nothing else at the root; a node, mark or attribu
 refused with the JSON path of the first one found (`400 invalid_document`, the path in the field
 error, for example `$.content[2].marks[0].attrs.href`). Nesting is limited to 64 levels.
 
+Every block node also carries the optional attribute `id` (1–64 characters of `A-Za-z0-9_-`, or
+null): the editor's block identity, a UUID by default. `hardBreak`, `detailsSummary`,
+`detailsContent`, `tableRow`, `text`, and the inline atoms below do not carry it.
+
 | Node | Attributes | Notes |
 | --- | --- | --- |
-| `doc`, `paragraph`, `listItem`, `taskList`, `bulletList`, `blockquote` | none | |
+| `doc` | none | |
+| `paragraph`, `listItem`, `taskList`, `bulletList`, `blockquote`, `table` | `id` | |
 | `heading` | `level` 1–3 | |
 | `orderedList` | `start` (a whole number), `type` (`1`, `a`, `A`, `i`, `I` or null) | |
 | `taskItem` | `checked` (boolean) | |
 | `codeBlock` | `language` (1–32 of `A-Za-z0-9_+#.-`, or null) | |
-| `horizontalRule` | none | leaf |
+| `horizontalRule` | `id` | leaf |
 | `hardBreak` | none | leaf, inline |
 | `text` | none | carries a non-empty string and the marks |
+| `callout` | `kind` (`info`, `tip`, `warning` or `danger`), `emoji` (up to 32 characters or null) | |
+| `details` | `open` (boolean) | a toggle; holds a `detailsSummary` and a `detailsContent` |
+| `detailsSummary`, `detailsContent`, `tableRow` | none | |
+| `tableHeader`, `tableCell` | `colspan` 1–100, `rowspan` 1–100, `colwidth` (a list of up to 100 widths of 1–10 000, or null) | |
+| `tableOfContents` | `id` | leaf |
+| `image` | `src` (required), `alt` (up to 1000 characters or null), `title` (up to 500 or null), `width` (1–10 000 or null) | leaf. `src` must be exactly `/api/v1/knowledge/files/` followed by a file's id. |
+| `fileAttachment` | `fileId` (required, a UUID), `filename` (up to 255 or null), `size` (0 to 2^40 or null), `contentType` (up to 255 or null) | leaf |
+| `mention` | `id` (required, a UUID), `label` (up to 200 characters or null) | leaf, inline: a person. The label is what the editor showed; it renders the current name. |
+| `articleLink` | `id` (required, a UUID), `label` (up to 200 or null) | leaf, inline: a link to an article. **No title is stored**: the server sets the label to null on every save path (save, restore, import, create) and lower-cases the id. |
+| `recordLink` | `path` (required), `label` (up to 200 or null) | leaf, inline: a link to a record elsewhere in Vantigo; the editor makes a chip only for a path whose first segment is an enabled module's route, and a URL with a query or fragment stays a plain link. `path` is an application path of letters, digits, `/`, `_` and `-` (1–500 characters after the first `/`), never starting with `//`. |
 
 | Mark | Attributes |
 | --- | --- |
 | `bold`, `italic`, `strike`, `underline`, `code` | none |
 | `link` | `href` (required), `target` (`_blank` or null), `rel` (`noopener noreferrer nofollow` or null), `class` (null), `title` (text up to 500 bytes or null) |
 
-A link's **`href`** must be an `https:` or `http:` URL (with a host), a `mailto:` address, or an
+A link mark's **`href`** must be an `https:` or `http:` URL (with a host), a `mailto:` address, or an
 application path starting with a single `/`; `//host`, `javascript:`, `data:`, a backslash, a
 space or any control character is refused, and an href over 2048 characters too.
+
+An `image` or `fileAttachment` may name only **its own article's files**: a save whose document
+names any other file id (another article's, an unknown one, a malformed one) is
+`400 invalid_document`, with the JSON path of the node in the field error.
 
 A document is at most **2 MiB** as JSON: over that is `413 document_too_large` (the router's
 body cap is 3 MiB, so the handler answers rather than the router cutting off). The list is
@@ -191,7 +215,140 @@ The text derived from a valid document (`content_text`) is what search indexes a
 Assistant reads. Blocks are separated by a blank line and written Markdown-like: `# ` before a
 heading, `- `, `1. ` and `- [x] ` before list items, `> ` before a quote, fences round a code
 block, `---` for a rule. Marks add nothing, and **a link contributes only its text**, never its
-target. It is computed on every save and restore.
+target. Of the grown allowlist, a callout, a toggle and a table cell contribute their content (a
+table is a line per row, cells separated by ` | `); a `mention` contributes `@` and its label (people's
+names are not secret within the company); an `image` contributes its alt text and a
+`fileAttachment` its file name; an **`articleLink` and a `recordLink` contribute nothing**, since
+a label could be a title the reader may not see; the table of contents contributes nothing. It is
+computed on every save and restore.
+
+## Files in articles
+
+`POST /articles/{id}/files` uploads one file into an article as `multipart/form-data` (the part
+`file`). The caller needs write access and the article must not be locked (`409 article_locked`).
+A file is at most **25 MiB**: over it is `413 file_too_large`. The request must carry exactly one
+non-empty file, else `400`. The answer is `201` with `id`, `url` (`/api/v1/knowledge/files/{id}`,
+exactly what an image's `src` holds), `filename`, `contentType`, `size` and `isImage`.
+
+- A **JPEG or a PNG, judged by its bytes** and not by the declared type, is an **image**: its
+  metadata (EXIF and the like) is stripped before it is stored. Anything else — SVG and HTML included — is an
+  **attachment**, stored as sent and always served as a download of `application/octet-stream`;
+  the declared type is kept for display only.
+- The file name is the client's, without any path or control character, at most 255 characters
+  (`file` when nothing is left).
+- The bytes go to the object store under the module's scope at a random key; the row is written
+  after. If the row's transaction does not commit the object is removed again. A store that cannot
+  be reached is `503 storage_unavailable`, and nothing is changed.
+
+`GET /files/{fileId}` serves a file to anyone who can read its article; a file of an article the
+caller cannot read is the bare 404 an unknown id gets, and a missing object is 404 too. An image is
+served **inline** with its type, an attachment as an `attachment` download. Every response carries
+`X-Content-Type-Options: nosniff`, `Cache-Control: private, max-age=300` (named by a random id and
+never replaced, but its article's access can change, so only the browser's own cache, and briefly) and
+`Content-Security-Policy: default-src 'none'; sandbox`.
+
+`POST /articles/{id}/files/copy` (`copyKnowledgeFile`, body `{fileId}`) copies a file of another
+article into this one, as a new file with its own id and object, so a picture pasted from another
+page keeps working. It answers `201` with the new `KnowledgeFile`. The caller needs write access to
+the target and read access to the source file's article, else 404; it is never for the Assistant.
+
+A file has no delete operation. The [retention worker](#the-retention-worker) deletes the files
+that no article content and no version names, once they are **older than 7 days** (the editor may
+upload and save a while later). A file row is also deleted with its article; either way a database
+trigger queues its object in `file_object_deletions`, and the worker removes the object from the
+store after it has released its lease (10 seconds allowed per delete) and then the queue row, trying again next cycle if the store refuses.
+
+## Links, backlinks and mentions
+
+**Links.** On every save and restore the server rewrites the article's rows in `article_links`
+from the `articleLink` nodes its document holds, **to targets that exist**. A link to an article
+deleted for good has no row; the editor shows it as *Deleted*.
+
+`GET /articles/{id}/backlinks` lists the articles that link to the article, **only those the
+caller can read** (a trashed article is not listed), each with `id`, `title`, `icon` and the
+readable `path` of its ancestors (the article itself not included). The caller must be able to read the
+article, else 404.
+
+`POST /links/resolve` takes `{ids}` (at most 200, else `400`) and answers, in the order asked, one
+`{id, state, title, icon}` per id: `ok` with its title and icon, `no_access`, or `deleted`. An
+article the caller cannot read — **a trashed one included** — is `no_access`, and **its title and
+icon are never answered**, so resolving reveals nothing a person could not read. Only an id that
+no article has is `deleted`.
+
+**Mentions.** When a save adds a `mention` to the document, the people **newly** mentioned (not
+in the previous version of the document) are told, after the save has committed, if all of these hold:
+
+- they hold `knowledge:articles` and can read the article;
+- they have not been told of a mention in **that article within the last hour** (`mention_notices`);
+- they are not the author of the save.
+
+Notices are sent on create and on import as well as on save. Anyone else is skipped silently. The notice goes through the user directory in English and
+Norwegian bokmål ("*Name* mentioned you in “*Title*”") with a link to the article when the installation has
+an origin. A notice that cannot be sent is logged and never fails the save.
+
+## Markdown export and import
+
+### Export
+
+`GET /articles/{id}/export?subtree=` answers the article as Markdown. The caller needs read access.
+
+- One article with no files is a single `Title.md` (`text/markdown`).
+- With `subtree=true`, or when the article uses files, the answer is a **zip** laid out the way
+  Obsidian keeps a vault: `Title.md` beside a folder `Title/` holding its children's `.md` files
+  in turn. **Only descendants the caller can read** are included. Names are the titles made safe
+  (no separator or reserved character, at most 100 characters, `Untitled` for none); siblings that
+  collide get ` (2)`, ` (3)`.
+- The files a document uses are in `assets/<fileId>-<name>`, linked with a relative path; a file
+  whose object is gone is left out. A store that cannot be reached is `503 storage_unavailable`.
+- The zip is streamed. An export of more than **2000 entries** or an estimated **1 GiB** is `413 export_too_large`, checked before anything is written.
+- The response is `Cache-Control: private, no-store` with `nosniff` and a download name.
+
+The Markdown is CommonMark with GFM tables, task lists and strikethrough, and Obsidian's callouts:
+
+| Document | Markdown |
+| --- | --- |
+| callout | `> [!info]`, `> [!tip]`, `> [!warning]`, `> [!danger]` |
+| toggle | `> [!note]-` (closed) or `> [!note]+` (open) with the summary as its title |
+| table | a GFM table |
+| article link | `[[Title]]` when the caller can read the target, else `No access` |
+| mention | `@Name` |
+| record link | a Markdown link to its path |
+| image, attachment | a relative link into `assets/`; the alt text or the file name when the file is not exported |
+| table of contents, underline | dropped |
+
+### Import
+
+`POST /import` (`multipart/form-data`) takes `file` (a `.md` or a `.zip`), and optionally `parentId`
+(an article to import under) and `section` (`workspace`, the default, or `private`, for imports at the root).
+The caller needs write access to the parent; the tree depth limit applies. Answer `201`:
+`created` (`id` and `title` of each article, in order) and `warnings` (messages, each once).
+
+| Limit | Value |
+| --- | --- |
+| Upload | 50 MiB (`413 file_too_large`) |
+| Entries in a zip | 500 |
+| Uncompressed, counted as read, never trusted from headers | 200 MiB |
+| Folder depth | 10 |
+| A `.md` | 4 MiB (larger is imported empty, with a warning) |
+| An embedded image | 25 MiB (larger is left out, with a warning) |
+
+A zip over those limits, one that is not readable, or **one with an entry that reaches outside it
+(path traversal, an absolute path, a backslash)** is `400` with a field error on `file`; so is a zip
+with no `.md`. The rules:
+
+- Dot-files and dot-folders (`.obsidian`, `.DS_Store`) and `__MACOSX` are skipped. A **single top folder** that holds everything is dropped.
+- The folders become the tree. A **folder and a `.md` of the same name beside it are one article**
+  (as Obsidian and Notion lay them out); a folder with no `.md` of its own becomes an empty article.
+- The title is the file name; Notion's trailing 32-character id is stripped. A **first heading that
+  repeats the title is dropped**.
+- `[[wiki links]]` and relative links between the imported `.md` files become article links.
+  Embedded **JPEG and PNG** images become the article's files (metadata stripped).
+- What is not carried over is a **warning**: remote images, HTML, other file types, a file that is not
+  UTF-8 text or that could not be converted (imported empty).
+- A node, mark or attribute the allowlist refuses is dropped with a warning (labels are clamped to 200 characters, alt text to 1000). Images inside headings and table cells become their alt text and are not uploaded.
+- At most **2 imports run at once per process**; another is `429 import_busy` with `Retry-After: 10`.
+- It is **one transaction**: all the articles or none. Objects written before it are removed again
+  if it does not commit. A store that cannot be reached is `503 storage_unavailable`. It sends `tree.changed`.
 
 ## Saving, the lock and the history
 
@@ -296,15 +453,16 @@ safe on a pool of one, then:
 
 1. **purges the trash** — every trash group trashed more than 30 days ago, deleted for good with its versions, under the tree lock;
 2. **prunes the versions** older than 365 days beyond each article's newest 20;
-3. **removes the favourites** of articles their person can no longer read;
-4. and, after the connection is back in the pool and only on the replica that won the lease, runs the **erasure sweep**.
+3. **deletes the unreferenced files** older than 7 days that neither an article's content nor any of its versions names, and **removes the objects** of every file row gone (up to 1000 a cycle; see [Files in articles](#files-in-articles));
+4. **removes the favourites** of articles their person can no longer read;
+5. and, after the connection is back in the pool and only on the replica that won the lease, runs the **erasure sweep**.
 
 ### Erasure
 
 The sweep asks `contracts.UserDirectory` which of the users Knowledge holds anything of still
 exist, 200 ids at a time. For each erased user, in one transaction under the tree lock, it deletes
 the **private roots** (and their subtrees and versions) of which they were the **only writer**,
-then their **member rows**, their **favourites**, and sets their **authorship to null** (shown as
+then their **member rows**, their **favourites** and their **mention notices**, and sets their **authorship** — and the uploader of their files — **to null** (shown as
 a former user); what they wrote in shared articles stays. It then sends `tree.changed`. It is
 idempotent.
 
@@ -329,6 +487,15 @@ article id; the generated API reference (`/en/reference/api/knowledge/`) has the
 | `GET /favourites`, `PUT`/`DELETE /favourites/{id}`, `POST /favourites/{id}/move` | Favourites. |
 | `GET /search` | Search (also the Assistant's). |
 | `GET /trash`, `DELETE /trash` | The trash; *empty* needs `knowledge:manage`. |
+| `POST /articles/{id}/files` | Upload a file into an article (`uploadKnowledgeFile`). |
+| `GET /files/{fileId}` | Serve a file (`getKnowledgeFile`). |
+| `GET /articles/{id}/backlinks` | The readable articles linking to it (`listKnowledgeBacklinks`). |
+| `POST /links/resolve` | Titles, or `no_access` / `deleted`, of up to 200 article ids (`resolveKnowledgeLinks`). |
+| `GET /articles/{id}/export?subtree=` | Markdown or a zip (`exportKnowledgeArticle`). |
+| `POST /articles/{id}/files/copy` | Copy a file of another article into this one (`copyKnowledgeFile`). |
+| `POST /import` | Import a `.md` or a `.zip` (`importKnowledgeMarkdown`). |
+
+The seven operations above are all `x-vantigo-assistant: never`: the Assistant cannot use them.
 
 ### Refusals
 
@@ -352,7 +519,12 @@ words. Field errors of a 400 are in `errors`, keyed by the request's camelCase f
 | 409 | `article_locked` | A content save, title change or version restore on a locked article. |
 | 409 | `visibility_change` | The change moves the article between private and the workspace and `confirmVisibility` was not given. |
 | 409 | `not_trashed` | A restore of an article that is not in the trash. |
+| 400 | `invalid_document` | Also: an image or attachment naming a file that is not the article's own. |
 | 413 | `document_too_large` | The document is over 2 MiB. |
+| 413 | `file_too_large` | An uploaded file over 25 MiB, or an import over 50 MiB. |
+| 413 | `export_too_large` | An export of more than 2000 entries or an estimated 1 GiB. |
+| 429 | `import_busy` | Two imports are already running in this process; `Retry-After: 10`. |
+| 503 | `storage_unavailable` | The object store could not be reached (upload, serving a file, export, import). Nothing was changed. |
 
 ## Limits
 
@@ -368,11 +540,24 @@ words. Field errors of a 400 are in `errors`, keyed by the request's camelCase f
 | Version coalescing | the same author within 10 minutes |
 | Trash | 30 days |
 | Versions | 365 days, beyond the newest 20 |
+| Uploaded file | 25 MiB; unreferenced files are deleted after 7 days |
+| Link resolve | 200 ids |
+| Mention notice | once an hour per person per article |
+| Import | 50 MiB upload, 500 entries, 200 MiB uncompressed, 10 folders deep, 4 MiB per `.md`, 25 MiB per image |
 
 ## The editor and its licences
 
-The editor in `apps/knowledge/frontend` is built on TipTap and ProseMirror. Every package it
-uses is **MIT-licensed**: `@tiptap/starter-kit`, `@tiptap/react`, `@tiptap/pm`,
-`@tiptap/extensions`, `@tiptap/extension-link`, `@tiptap/extension-task-list`,
-`@tiptap/extension-task-item` and `@mantine/tiptap`. No paid or source-available TipTap extension
-is used.
+The editor in `apps/knowledge/frontend` is built on TipTap and ProseMirror. **Only permissively
+licensed packages (MIT, BSD, Apache-2.0) are used, and never `@tiptap-pro`.** Pinned at 3.32.2
+unless noted:
+
+| Package | Licence |
+| --- | --- |
+| `@tiptap/core`, `@tiptap/react`, `@tiptap/pm`, `@tiptap/starter-kit`, `@tiptap/extensions`, `@tiptap/extension-link`, `@tiptap/extension-task-list`, `@tiptap/extension-task-item`, `@mantine/tiptap` | MIT |
+| `@tiptap/extension-code-block-lowlight`, `-details`, `-drag-handle`, `-drag-handle-react`, `-mention`, `-node-range`, `-table`, `-unique-id`, `@tiptap/suggestion` | MIT |
+| `lowlight` 3.3.0 | MIT |
+| `highlight.js` 11.11.2 (through lowlight) | BSD-3-Clause |
+| `yjs`, `y-protocols`, `@tiptap/extension-collaboration`, `@tiptap/y-tiptap` (peers of the drag handle) | MIT |
+
+The server parses Markdown on import with [goldmark](https://github.com/yuin/goldmark)
+(`github.com/yuin/goldmark`, **MIT**).

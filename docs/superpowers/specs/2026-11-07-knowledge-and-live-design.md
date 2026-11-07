@@ -661,8 +661,10 @@ whenever convenient.
   - **Code blocks** get syntax highlighting with lowlight. The language is chosen per
     block.
   - **A table of contents** block lists the headings and links to them.
-  - **Only MIT packages.** The `@tiptap-pro` packages are not used. Every extension's
-    licence is checked when it is added and listed in the reference page.
+  - **Only permissively licensed packages** (MIT, BSD, Apache-2.0). The `@tiptap-pro`
+    packages are not used. Every extension's licence, and its dependencies' licences, are
+    checked when it is added and listed in the reference page. `highlight.js` (through
+    lowlight) is BSD-3-Clause. The drag handle's peers bring Yjs, which K-C uses anyway.
 - **K19 — Images and files.**
   - **How they arrive.** Paste, drag-drop or the slash menu upload to
     `POST /knowledge/articles/{id}/files` (multipart, 25 MiB, writers only).
@@ -682,13 +684,18 @@ whenever convenient.
   notification through `UserDirectory.Notify`, once per person per article per hour.
 - **K21 — Links between articles.**
   - **Typing one.** `[[` opens an article picker and inserts a link node holding the
-    target id. The link renders the target's current title, or *"No access"*, or
-    *"Deleted"*.
+    target id **and no title**. The server clears any label on save (revision 4), because a
+    stored title would reveal a private target to every reader of the page, and through
+    export and the API. The link renders the target's current title, or *"No access"*,
+    or *"Deleted"*.
   - **Backlinks.** `knowledge.article_links (from_id, to_id)` is rewritten on every save.
     *Linked from* at the foot of a page lists the backlinks the reader may read.
 - **K22 — Links to Vantigo records.** Pasting a Vantigo URL (a customer, a project, an
-  order, an invoice) turns it into a record chip that holds the path. It renders the
-  title through the same route table the Assistant validates links against. The chip
+  order, an invoice) turns it into a record chip that holds the path.
+  - **Which paths.** Only paths whose first segment is an enabled module's route, and
+    never a URL with a query or fragment, which stays ordinary link text (revision 4).
+  - **The label** is the module's name and the route's last segment. The Assistant's
+    route table is not reachable from a module UI, so it is not used. The chip
   shows only what the person may open, because opening it is an ordinary navigation.
 - **K23 — Markdown.**
   - **Export.** **Export → Markdown** downloads the article, or the article with its
@@ -931,3 +938,12 @@ An Opus critic checked revision 1 against the code. What changed:
 - **K4:** a page with its own default is detached from its ancestors' members. Under
   revision 2, any writer of a workspace page could add themselves as a member there and
   so open a private page beneath it.
+
+### Revision 4 — the K-B code review, 2026-11-07
+
+- **K21:** article links store no title.
+- **K19:** a pasted file from another article is copied into this one
+  (`copyKnowledgeFile`), never referenced across articles.
+- **K22:** record chips are limited to enabled modules' routes.
+- **K23:** export streams, and import bounds its memory and its concurrency.
+- **K18:** permissive licences (MIT, BSD, Apache-2.0), each listed.
