@@ -125,6 +125,7 @@ var markedByHand = map[string]string{
 	"addKnowledgeFavourite":          "never",
 	"removeKnowledgeFavourite":       "never",
 	"moveKnowledgeFavourite":         "never",
+	"listKnowledgeAssignableUsers":   "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {

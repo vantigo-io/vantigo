@@ -60,3 +60,30 @@ func liveTopics(d module.Deps) []live.Topic {
 		}},
 	}
 }
+
+// The events (K13).
+const (
+	eventContentChanged = "content.changed"
+	eventMetaChanged    = "meta.changed"
+	eventTrashed        = "trashed"
+	eventTreeChanged    = "tree.changed"
+)
+
+// notifyArticle tells the article's readers that kind happened to it, on the
+// transaction that wrote it.
+func notifyArticle(ctx context.Context, q live.Execer, id uuid.UUID, kind string) error {
+	if err := live.Notify(ctx, q, liveArticle+":"+id.String(), kind, id.String()); err != nil {
+		return fmt.Errorf("knowledge: notify article %s: %w", id, err)
+	}
+	return nil
+}
+
+// notifyTree tells everyone with knowledge:articles that the sidebar changed,
+// with no id (K13): sent only when a title, an icon, a parent, a position, an
+// access, a trash or a restore changed.
+func notifyTree(ctx context.Context, q live.Execer) error {
+	if err := live.Notify(ctx, q, liveTree, eventTreeChanged, ""); err != nil {
+		return fmt.Errorf("knowledge: notify the tree: %w", err)
+	}
+	return nil
+}

@@ -1,7 +1,9 @@
 package doc
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -15,7 +17,7 @@ const everything = `{"type":"doc","content":[
    {"type":"text","text":"Read "},
    {"type":"text","marks":[{"type":"link","attrs":{"href":"https://example.com/a","target":"_blank","rel":"noopener noreferrer nofollow","class":null,"title":null}}],"text":"the guide"},
    {"type":"text","text":" and "},
-   {"type":"text","marks":[{"type":"bold"},{"type":"italic"},{"type":"strike"},{"type":"code"}],"text":"this"},
+   {"type":"text","marks":[{"type":"bold"},{"type":"italic"},{"type":"strike"},{"type":"underline"},{"type":"code"}],"text":"this"},
    {"type":"hardBreak"},
    {"type":"text","marks":[{"type":"link","attrs":{"href":"/knowledge/articles/1"}}],"text":"next"}
  ]},
@@ -95,7 +97,7 @@ func TestParse_RefusesWithThePath(t *testing.T) {
 		{"an ordered list's unknown type", `{"type":"doc","content":[{"type":"orderedList","attrs":{"type":"disc"}}]}`, "$.content[0].attrs.type"},
 		{"a task item's checked as text", `{"type":"doc","content":[{"type":"taskList","content":[{"type":"taskItem","attrs":{"checked":"yes"}}]}]}`, "$.content[0].content[0].attrs.checked"},
 		{"a code block's odd language", `{"type":"doc","content":[{"type":"codeBlock","attrs":{"language":"<script>"}}]}`, "$.content[0].attrs.language"},
-		{"an unknown mark", `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"a","marks":[{"type":"underline"}]}]}]}`, "$.content[0].content[0].marks[0].type"},
+		{"an unknown mark", `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"a","marks":[{"type":"highlight"}]}]}]}`, "$.content[0].content[0].marks[0].type"},
 		{"a mark on a block", `{"type":"doc","content":[{"type":"paragraph","marks":[{"type":"bold"}]}]}`, "$.content[0].marks"},
 		{"a mark with an unknown field", `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"a","marks":[{"type":"bold","style":"x"}]}]}]}`, "$.content[0].content[0].marks[0].style"},
 		{"a bold with attributes", `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"a","marks":[{"type":"bold","attrs":{"x":1}}]}]}]}`, "$.content[0].content[0].marks[0].attrs.x"},
@@ -194,7 +196,58 @@ func TestAllowlist_NamesTheEditorsSchema(t *testing.T) {
 	if !slices.Equal(nodes["orderedList"], []string{"start", "type"}) || !slices.Equal(nodes["heading"], []string{"level"}) {
 		t.Errorf("attributes = %v", nodes)
 	}
-	if !slices.Equal(marks["link"], []string{"class", "href", "rel", "target", "title"}) || len(marks) != 5 {
+	if !slices.Equal(marks["link"], []string{"class", "href", "rel", "target", "title"}) || len(marks) != 6 {
 		t.Errorf("marks = %v", marks)
 	}
+}
+
+// The allowlist mirrors the editor's schema exactly (K8): every node and mark
+// the editor can write, with the attributes it writes, as the UI package
+// exports them to src/editor/schema.json.
+func TestAllowlist_MatchesTheEditorsExportedSchema(t *testing.T) {
+	raw, err := os.ReadFile("../../../../knowledge/frontend/src/editor/schema.json")
+	if err != nil {
+		t.Fatalf("read the editor's exported schema: %v", err)
+	}
+	var schema struct {
+		Nodes map[string]struct {
+			Attrs []string `json:"attrs"`
+		} `json:"nodes"`
+		Marks map[string]struct {
+			Attrs []string `json:"attrs"`
+		} `json:"marks"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatalf("parse the editor's exported schema: %v", err)
+	}
+	nodes, marks := Allowlist()
+	compare := func(kind string, ours map[string][]string, theirs map[string][]string) {
+		for name, attrs := range theirs {
+			got, ok := ours[name]
+			if !ok {
+				t.Errorf("the editor writes %s %q, which the allowlist refuses", kind, name)
+				continue
+			}
+			want := slices.Clone(attrs)
+			slices.Sort(want)
+			if !slices.Equal(got, want) {
+				t.Errorf("%s %q: the allowlist names attributes %v, the editor %v", kind, name, got, want)
+			}
+		}
+		for name := range ours {
+			if _, ok := theirs[name]; !ok {
+				t.Errorf("the allowlist accepts %s %q, which the editor does not have", kind, name)
+			}
+		}
+	}
+	editorNodes := map[string][]string{}
+	for k, v := range schema.Nodes {
+		editorNodes[k] = v.Attrs
+	}
+	editorMarks := map[string][]string{}
+	for k, v := range schema.Marks {
+		editorMarks[k] = v.Attrs
+	}
+	compare("node", nodes, editorNodes)
+	compare("mark", marks, editorMarks)
 }

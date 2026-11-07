@@ -226,6 +226,15 @@ type KnowledgeArticleUpdate struct {
 	Title *string `json:"title,omitempty"`
 }
 
+// KnowledgeAssignableUser A user who may be named as an article's member (K4); enough to name them in a picker.
+type KnowledgeAssignableUser struct {
+	DisplayName string             `json:"displayName"`
+	UserId      openapi_types.UUID `json:"userId"`
+}
+
+// KnowledgeAssignableUserList Active users the caller may make a member of an article (K4), from the user directory, capped at 20.
+type KnowledgeAssignableUserList = []KnowledgeAssignableUser
+
 // KnowledgeContentUpdate An autosave (K9): the title and the document, with the version the editor last read.
 type KnowledgeContentUpdate struct {
 	// Content A ProseMirror document as the editor stores it (K8): {type: doc, content: [...]}. Only the allowlisted nodes, marks and attributes are accepted (invalid_document names the JSON path of the first one refused), and a document over 2 MiB is refused with 413 document_too_large. HTML is never stored.
@@ -238,6 +247,13 @@ type KnowledgeContentUpdate struct {
 
 // KnowledgeDocument A ProseMirror document as the editor stores it (K8): {type: doc, content: [...]}. Only the allowlisted nodes, marks and attributes are accepted (invalid_document names the JSON path of the first one refused), and a document over 2 MiB is refused with 413 document_too_large. HTML is never stored.
 type KnowledgeDocument map[string]interface{}
+
+// KnowledgeExcerptSegment One run of a search excerpt's text.
+type KnowledgeExcerptSegment struct {
+	// Match The run is a word the query matched.
+	Match bool   `json:"match"`
+	Text  string `json:"text"`
+}
 
 // KnowledgeFavouriteList The caller's favourites in their order (K11); one the caller can no longer read is left out.
 type KnowledgeFavouriteList struct {
@@ -351,10 +367,10 @@ type KnowledgeSaved struct {
 
 // KnowledgeSearchHit One search hit (K12).
 type KnowledgeSearchHit struct {
-	// Excerpt A ts_headline excerpt, plain text.
-	Excerpt string             `json:"excerpt"`
-	Icon    *string            `json:"icon"`
-	Id      openapi_types.UUID `json:"id"`
+	// Excerpt A ts_headline excerpt as plain-text segments in order; match marks the words the query found. Never markup, so text in the article that looks like a tag is only text.
+	Excerpt []KnowledgeExcerptSegment `json:"excerpt"`
+	Icon    *string                   `json:"icon"`
+	Id      openapi_types.UUID        `json:"id"`
 
 	// Path The ancestors from the top down, stopping below the first the caller cannot read, and for the Assistant below the first hidden one.
 	Path      []KnowledgePathItem `json:"path"`
@@ -450,6 +466,15 @@ type GetKnowledgeArticleTextParams struct {
 	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListKnowledgeAssignableUsersParams defines parameters for ListKnowledgeAssignableUsers.
+type ListKnowledgeAssignableUsersParams struct {
+	// Query Narrows the directory search by display name. Absent or blank lists the first page of active users.
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
+	// Limit How many users to answer, 1-20. Defaults to 20.
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // SearchKnowledgeParams defines parameters for SearchKnowledge.
 type SearchKnowledgeParams struct {
 	Q     string `form:"q" json:"q"`
@@ -523,6 +548,9 @@ type ServerInterface interface {
 	// RestoreKnowledgeArticleVersion Restore a version of an article
 	// (POST /api/v1/knowledge/articles/{id}/versions/{version}/restore)
 	RestoreKnowledgeArticleVersion(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, version int32)
+	// ListKnowledgeAssignableUsers Search users to make members
+	// (GET /api/v1/knowledge/assignable-users)
+	ListKnowledgeAssignableUsers(w http.ResponseWriter, r *http.Request, params ListKnowledgeAssignableUsersParams)
 	// ListKnowledgeFavourites List my favourite articles
 	// (GET /api/v1/knowledge/favourites)
 	ListKnowledgeFavourites(w http.ResponseWriter, r *http.Request)
@@ -918,6 +946,52 @@ func (siw *ServerInterfaceWrapper) RestoreKnowledgeArticleVersion(w http.Respons
 	handler.ServeHTTP(w, r)
 }
 
+// ListKnowledgeAssignableUsers operation middleware
+func (siw *ServerInterfaceWrapper) ListKnowledgeAssignableUsers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListKnowledgeAssignableUsersParams
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListKnowledgeAssignableUsers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListKnowledgeFavourites operation middleware
 func (siw *ServerInterfaceWrapper) ListKnowledgeFavourites(w http.ResponseWriter, r *http.Request) {
 
@@ -1250,6 +1324,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/versions", wrapper.ListKnowledgeArticleVersions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/versions/{version}", wrapper.GetKnowledgeArticleVersion)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/versions/{version}/restore", wrapper.RestoreKnowledgeArticleVersion)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/knowledge/assignable-users", wrapper.ListKnowledgeAssignableUsers)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/knowledge/favourites", wrapper.ListKnowledgeFavourites)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/knowledge/favourites/{id}", wrapper.RemoveKnowledgeFavourite)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/knowledge/favourites/{id}", wrapper.AddKnowledgeFavourite)
@@ -1497,6 +1572,20 @@ type UpdateKnowledgeArticle404Response struct {
 func (response UpdateKnowledgeArticle404Response) VisitUpdateKnowledgeArticleResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type UpdateKnowledgeArticle409ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response UpdateKnowledgeArticle409ApplicationProblemPlusJSONResponse) VisitUpdateKnowledgeArticleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetKnowledgeArticleAccessRequestObject struct {
@@ -2276,6 +2365,70 @@ func (response RestoreKnowledgeArticleVersion409ApplicationProblemPlusJSONRespon
 	return err
 }
 
+type ListKnowledgeAssignableUsersRequestObject struct {
+	Params ListKnowledgeAssignableUsersParams
+}
+
+type ListKnowledgeAssignableUsersResponseObject interface {
+	VisitListKnowledgeAssignableUsersResponse(w http.ResponseWriter) error
+}
+
+type ListKnowledgeAssignableUsers200JSONResponse KnowledgeAssignableUserList
+
+func (response ListKnowledgeAssignableUsers200JSONResponse) VisitListKnowledgeAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListKnowledgeAssignableUsers400ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response ListKnowledgeAssignableUsers400ApplicationProblemPlusJSONResponse) VisitListKnowledgeAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListKnowledgeAssignableUsers401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListKnowledgeAssignableUsers401JSONResponse) VisitListKnowledgeAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListKnowledgeAssignableUsers403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListKnowledgeAssignableUsers403JSONResponse) VisitListKnowledgeAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListKnowledgeFavouritesRequestObject struct {
 }
 
@@ -2751,6 +2904,9 @@ type StrictServerInterface interface {
 	// RestoreKnowledgeArticleVersion Restore a version of an article
 	// (POST /api/v1/knowledge/articles/{id}/versions/{version}/restore)
 	RestoreKnowledgeArticleVersion(ctx context.Context, request RestoreKnowledgeArticleVersionRequestObject) (RestoreKnowledgeArticleVersionResponseObject, error)
+	// ListKnowledgeAssignableUsers Search users to make members
+	// (GET /api/v1/knowledge/assignable-users)
+	ListKnowledgeAssignableUsers(ctx context.Context, request ListKnowledgeAssignableUsersRequestObject) (ListKnowledgeAssignableUsersResponseObject, error)
 	// ListKnowledgeFavourites List my favourite articles
 	// (GET /api/v1/knowledge/favourites)
 	ListKnowledgeFavourites(ctx context.Context, request ListKnowledgeFavouritesRequestObject) (ListKnowledgeFavouritesResponseObject, error)
@@ -3190,6 +3346,32 @@ func (sh *strictHandler) RestoreKnowledgeArticleVersion(w http.ResponseWriter, r
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RestoreKnowledgeArticleVersionResponseObject); ok {
 		if err := validResponse.VisitRestoreKnowledgeArticleVersionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListKnowledgeAssignableUsers operation middleware
+func (sh *strictHandler) ListKnowledgeAssignableUsers(w http.ResponseWriter, r *http.Request, params ListKnowledgeAssignableUsersParams) {
+	var request ListKnowledgeAssignableUsersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListKnowledgeAssignableUsers(ctx, request.(ListKnowledgeAssignableUsersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListKnowledgeAssignableUsers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListKnowledgeAssignableUsersResponseObject); ok {
+		if err := validResponse.VisitListKnowledgeAssignableUsersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
