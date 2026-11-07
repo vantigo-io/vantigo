@@ -1,6 +1,7 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import { appUrl } from "@vantigo/frontend-shell";
 import type { ChannelType } from "./channels";
+import type { MessengerLink } from "./contact-links";
 import { request } from "./request";
 
 export type ConversationStatus = "open" | "closed" | "archived";
@@ -169,6 +170,8 @@ export type ConversationDetail = ConversationListItem & {
   componentLimits?: ComponentLimits | null;
   /** A Messenger conversation's reply window; null for e-mail. */
   replyWindow?: ReplyWindow | null;
+  /** A Messenger conversation's participant and its contact link (design N20, N21); null for e-mail. */
+  messengerLink?: MessengerLink | null;
 };
 export type AiDraftResponse = {
   interactionId: string;
