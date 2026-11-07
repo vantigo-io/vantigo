@@ -124,6 +124,7 @@ func Module() module.Module {
 		CustomerReferences:   newCustomerReferenceHolder,
 		CustomerPersonalData: newCustomerPersonalData,
 		OutboundMail:         newOutboundMail,
+		LiveTopics:           liveTopics,
 	}
 }
 

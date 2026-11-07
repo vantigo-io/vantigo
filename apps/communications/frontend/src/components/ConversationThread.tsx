@@ -1,4 +1,17 @@
-import { ActionIcon, Alert, Badge, Button, Group, Menu, ScrollArea, Select, Text, Title } from "@mantine/core";
+import {
+  ActionIcon,
+  Alert,
+  Avatar,
+  Badge,
+  Button,
+  Group,
+  Menu,
+  ScrollArea,
+  Select,
+  Text,
+  Title,
+  Tooltip,
+} from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
   IconArchive,
@@ -10,7 +23,7 @@ import {
   IconTag,
 } from "@tabler/icons-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { type PresenceMember, useI18n, usePresence } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { ConversationDetail, ConversationMessage, ConversationStatus, Tag } from "../api/conversations";
@@ -47,6 +60,8 @@ export function ConversationThread({
   connectionButton,
 }: ConversationThreadProps) {
   const { t } = useI18n("communications");
+  const [drafting, setDrafting] = useState(false);
+  const others = usePresence(`communications.conversation:${conversation.id}`, drafting ? "replying" : "viewing");
 
   return (
     <div className="thread-layout">
@@ -62,6 +77,7 @@ export function ConversationThread({
                 : t("customer")
               : conversation.subject || "No subject"}
           </Title>
+          <PresenceLine members={others} />
           <Group gap="xs" mt="xs">
             {conversation.customerId ? (
               <Badge color="teal">
@@ -177,8 +193,46 @@ export function ConversationThread({
           ),
         )}
       </ScrollArea>
-      <ConversationComposer conversation={conversation} onSent={onSent} connectionButton={connectionButton} />
+      <ConversationComposer
+        conversation={conversation}
+        onSent={onSent}
+        connectionButton={connectionButton}
+        onDraftingChange={setDrafting}
+      />
     </div>
+  );
+}
+
+/**
+ * Who else is in the conversation: "Also here: Kari", and "Kari is replying …" when the composer of
+ * another person has focus and text (design L19). Unobtrusive, in the header, and nothing when alone.
+ */
+function PresenceLine({ members }: { members: readonly PresenceMember[] }) {
+  const { t } = useI18n("communications");
+  const replying = members.filter((member) => member.state !== "viewing");
+  const here = members.filter((member) => member.state === "viewing");
+  if (members.length === 0) return null;
+  const names = (list: readonly PresenceMember[]) => list.map((member) => member.name).join(", ");
+  return (
+    <Group gap="xs" mt={4} aria-live="polite" className="thread-presence">
+      <Avatar.Group>
+        {members.map((member) => (
+          <Tooltip key={member.userId} label={member.name}>
+            <Avatar size="xs" radius="xl" name={member.name} color="initials" />
+          </Tooltip>
+        ))}
+      </Avatar.Group>
+      {replying.length > 0 && (
+        <Badge size="sm" variant="light" color="orange">
+          {t("presenceReplying", { count: replying.length, names: names(replying) })}
+        </Badge>
+      )}
+      {here.length > 0 && (
+        <Text size="xs" c="dimmed">
+          {t("presenceAlsoHere", { names: names(here) })}
+        </Text>
+      )}
+    </Group>
   );
 }
 

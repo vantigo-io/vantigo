@@ -106,3 +106,7 @@ func TestMount_ForbiddenPatchNeverReadsTheBody(t *testing.T) {
 		t.Error("the request body was read despite Access.Check refusing the request — withRawPatchBody ran before Access.Check")
 	}
 }
+
+func (denyingAccess) SessionLive(context.Context, uuid.UUID) (uuid.UUID, bool, error) {
+	return uuid.Nil, false, nil
+}

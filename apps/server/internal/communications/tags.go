@@ -111,6 +111,7 @@ func (s *server) PutCommunicationsConversationsByIdTagsByTagId(ctx context.Conte
 	}); err != nil {
 		return nil, fmt.Errorf("communications: add conversation tag: %w", err)
 	}
+	s.notifyOnPool(ctx, req.Id, "a tag added")
 	return gen.PutCommunicationsConversationsByIdTagsByTagId204Response{}, nil
 }
 
@@ -130,5 +131,6 @@ func (s *server) DeleteCommunicationsConversationsByIdTagsByTagId(ctx context.Co
 	if rows == 0 {
 		return gen.DeleteCommunicationsConversationsByIdTagsByTagId404Response{}, nil
 	}
+	s.notifyOnPool(ctx, req.Id, "a tag removed")
 	return gen.DeleteCommunicationsConversationsByIdTagsByTagId204Response{}, nil
 }

@@ -19,6 +19,7 @@ import {
 import { ChatComposer } from "./ChatComposer";
 import { isChat } from "./chat";
 import { personalSenderLabel, returnHere } from "./conversationHelpers";
+import { useDraftingSignal } from "./useDraftingSignal";
 
 export type ConnectionButtonProps = {
   feature: "calendar" | "mail";
@@ -31,6 +32,8 @@ export type ConversationComposerProps = {
   conversation: ConversationDetail;
   onSent: () => Promise<unknown>;
   connectionButton?: (props: ConnectionButtonProps) => ReactNode;
+  /** Called with true while the composer has focus and text, so the thread announces "replying". */
+  onDraftingChange?: (drafting: boolean) => void;
 };
 
 /**
@@ -39,13 +42,13 @@ export type ConversationComposerProps = {
  */
 export function ConversationComposer(props: ConversationComposerProps) {
   return isChat(props.conversation) ? (
-    <ChatComposer conversation={props.conversation} onSent={props.onSent} />
+    <ChatComposer conversation={props.conversation} onSent={props.onSent} onDraftingChange={props.onDraftingChange} />
   ) : (
     <EmailComposer {...props} />
   );
 }
 
-function EmailComposer({ conversation, onSent, connectionButton }: ConversationComposerProps) {
+function EmailComposer({ conversation, onSent, connectionButton, onDraftingChange }: ConversationComposerProps) {
   const { t, formatters } = useI18n("communications");
   // The attachments the channel takes, as the server words them in its refusal: never the budget of MIME.
   const allowance = conversation.maxAttachmentBytes ?? null;
@@ -61,7 +64,9 @@ function EmailComposer({ conversation, onSent, connectionButton }: ConversationC
   const [aiTone, setAiTone] = useState<"concise" | "friendly" | "formal">("friendly");
   const [aiInstruction, setAiInstruction] = useState("");
   const [aiDraft, setAiDraft] = useState(false);
+  const [typed, setTyped] = useState(false);
   const editor = useEditor({ extensions: [StarterKit], content: "" });
+  const drafting = useDraftingSignal(typed || body.trim() !== "", onDraftingChange);
   const statusQueries = useQueries({
     queries: uploads.map((item) => attachmentUploadStatusQueryOptions(conversation.id, item.id)),
   });
@@ -85,6 +90,7 @@ function EmailComposer({ conversation, onSent, connectionButton }: ConversationC
       setBody("");
       editor?.commands.clearContent();
       setUploads([]);
+      setTyped(false);
       await onSent();
     },
   });
@@ -96,12 +102,13 @@ function EmailComposer({ conversation, onSent, connectionButton }: ConversationC
     mutationFn: () => draftConversationWithAi(conversation.id, { tone: aiTone, instruction: aiInstruction.trim() }),
     onSuccess: (result) => {
       editor?.commands.setContent(result.text);
+      setTyped(result.text.trim() !== "");
       setAiDraft(true);
     },
   });
 
   return (
-    <footer className="composer">
+    <footer className="composer" {...drafting} onInput={() => setTyped((editor?.getText() ?? "").trim() !== "")}>
       {!noteMode && (
         <Card withBorder radius="md" padding="sm" mb="sm" className="ai-draft-panel">
           <Group justify="space-between">

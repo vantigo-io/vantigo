@@ -813,6 +813,9 @@ func (s *server) PostCommunicationsConversationsByIdRead(ctx context.Context, re
 	}); err != nil {
 		return nil, fmt.Errorf("communications: mark conversation read: %w", err)
 	}
+	// No live notification: the read state is the caller's own, and the
+	// caller's client refreshes after this POST (live design L18; see
+	// liveExempt in live_internal_test.go).
 	return gen.PostCommunicationsConversationsByIdRead200Response{}, nil
 }
 

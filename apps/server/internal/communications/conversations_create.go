@@ -405,10 +405,13 @@ func (s *server) PostCommunicationsConversations(ctx context.Context, req gen.Po
 			return err
 		}
 
-		return txq.InsertIdempotencyRecord(ctx, store.InsertIdempotencyRecordParams{
+		if err := txq.InsertIdempotencyRecord(ctx, store.InsertIdempotencyRecordParams{
 			ID: uuid.New(), Key: key, PayloadFingerprint: fingerprint, ConversationID: conversationID,
 			MessageID: messageID, CreatedAt: now,
-		})
+		}); err != nil {
+			return err
+		}
+		return notifyMessage(ctx, tx, conversationID, eventMessageAdded, messageID)
 	})
 	if txErr != nil {
 		// Fix round 2's item 2: ux_idempotency_records_key's own race. The

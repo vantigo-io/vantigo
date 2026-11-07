@@ -54,6 +54,13 @@ func (s *server) PostCommunicationsConversationsByIdNotes(ctx context.Context, r
 	}); err != nil {
 		return nil, fmt.Errorf("communications: insert note message: %w", err)
 	}
+	// The note is written on the pool, two statements and no transaction,
+	// so the notification is too (live design L6): sent once both are in. A
+	// failure to send it is the screens' fallback poll's to repair, not the
+	// note's: it is written.
+	if err := notifyMessage(ctx, s.deps.Pool, req.Id, eventMessageAdded, messageID); err != nil {
+		s.deps.Logger.WarnContext(ctx, "communications: notify a note", "error", err)
+	}
 
 	return gen.PostCommunicationsConversationsByIdNotes201JSONResponse(gen.ConversationMutationResponse{
 		ConversationId: req.Id, MessageId: &messageID, Status: "created", IdempotencyKey: nil,

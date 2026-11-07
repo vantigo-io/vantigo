@@ -202,6 +202,9 @@ func (w *MessengerSyncWorker) importMessage(ctx context.Context, c *messengerCyc
 		}); err != nil {
 			return fmt.Errorf("communications: write the receipt: %w", err)
 		}
+		if err := notifyMessage(ctx, tx, conversationID, eventMessageAdded, messageID); err != nil {
+			return err
+		}
 		return w.advanceCursor(ctx, txq, c, event.Cursor, now)
 	})
 	if txErr == nil {
@@ -520,7 +523,7 @@ func (w *MessengerSyncWorker) importWatermark(ctx context.Context, c *messengerC
 			}); err != nil {
 				return fmt.Errorf("communications: keep a watermark: %w", err)
 			}
-			if err := applyWatermark(ctx, txq, c.channelID, participant.ID, status, from, watermark, now); err != nil {
+			if err := applyWatermark(ctx, tx, c.channelID, participant.ID, status, from, watermark, now); err != nil {
 				return err
 			}
 		}
@@ -529,9 +532,12 @@ func (w *MessengerSyncWorker) importWatermark(ctx context.Context, c *messengerC
 }
 
 // applyWatermark moves the deliveries a watermark covers to status, from the
-// statuses in from, writing an event for each (AdvanceMessengerDeliveries).
-func applyWatermark(ctx context.Context, txq *store.Queries, channelID, participantID uuid.UUID,
+// statuses in from, writing an event for each (AdvanceMessengerDeliveries), and
+// tells each conversation it moved one in, once, with message.changed: the
+// message when it is one, none when it is several.
+func applyWatermark(ctx context.Context, tx pgx.Tx, channelID, participantID uuid.UUID,
 	status string, from []string, watermark, now time.Time) error {
+	txq := store.New(tx)
 	moved, err := txq.AdvanceMessengerDeliveries(ctx, store.AdvanceMessengerDeliveriesParams{
 		Status: status, ChannelID: channelID, ParticipantID: participantID,
 		Watermark: &watermark, FromStatuses: from,
@@ -545,6 +551,24 @@ func applyWatermark(ctx context.Context, txq *store.Queries, channelID, particip
 			ID: uuid.New(), MessageID: d.MessageID, DeliveryID: &deliveryID, EventType: status, OccurredAt: now,
 		}); err != nil {
 			return fmt.Errorf("communications: write a %s event: %w", status, err)
+		}
+	}
+	messages := map[uuid.UUID]map[uuid.UUID]bool{}
+	for _, d := range moved {
+		if messages[d.ConversationID] == nil {
+			messages[d.ConversationID] = map[uuid.UUID]bool{}
+		}
+		messages[d.ConversationID][d.MessageID] = true
+	}
+	for conversationID, ids := range messages {
+		id := ""
+		if len(ids) == 1 {
+			for m := range ids {
+				id = m.String()
+			}
+		}
+		if err := notifyConversation(ctx, tx, conversationID, eventMessageChanged, id); err != nil {
+			return err
 		}
 	}
 	return nil

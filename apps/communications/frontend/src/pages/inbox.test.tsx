@@ -1,7 +1,7 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { setLanguagePreference } from "@vantigo/frontend-shell";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { LiveProvider, setLanguagePreference } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InboxPage } from "./inbox";
@@ -779,5 +779,96 @@ describe("inbox", () => {
       expect(screen.getByText("Fra: kari@nordlys.no · Svar til: post@firma.no")).toBeTruthy();
       expect(screen.getByLabelText("Send fra min adresse (kari@nordlys.no)")).toBeTruthy();
     });
+  });
+});
+
+describe("inbox, live", () => {
+  type Frame = Record<string, unknown>;
+  const sockets: {
+    sent: Frame[];
+    onopen: (() => void) | null;
+    onmessage: ((event: { data: unknown }) => void) | null;
+  }[] = [];
+  const createSocket = () => {
+    const socket = {
+      sent: [] as Frame[],
+      onopen: null as (() => void) | null,
+      onclose: null,
+      onmessage: null as ((event: { data: unknown }) => void) | null,
+      send: (data: string) => void socket.sent.push(JSON.parse(data)),
+      close: () => undefined,
+    };
+    sockets.push(socket);
+    return socket;
+  };
+  const receive = (frame: Frame) => act(() => sockets[0]?.onmessage?.({ data: JSON.stringify(frame) }));
+
+  const renderLive = async () => {
+    sockets.length = 0;
+    const first = conversation("c-1", "First question");
+    mocks.fetchConversations.mockResolvedValue(page([first]));
+    mocks.fetchConversation.mockResolvedValue(detail("c-1", "First question"));
+    render(
+      <MantineProvider env="test">
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <LiveProvider userId="me" url="ws://test" createSocket={createSocket}>
+            <InboxPage />
+          </LiveProvider>
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+    await screen.findByText("Could you help me with this?");
+    act(() => sockets[0]?.onopen?.());
+  };
+
+  it("subscribes to the inbox and the open conversation, and refetches on their events", async () => {
+    await renderLive();
+    expect(sockets[0]?.sent).toEqual(
+      expect.arrayContaining([
+        { type: "sub", topic: "communications.inbox" },
+        { type: "sub", topic: "communications.conversation:c-1" },
+      ]),
+    );
+    const lists = mocks.fetchConversations.mock.calls.length;
+    const details = mocks.fetchConversation.mock.calls.length;
+    receive({ type: "event", topic: "communications.inbox", kind: "conversation.changed", id: "c-1" });
+    await waitFor(() => expect(mocks.fetchConversations.mock.calls.length).toBeGreaterThan(lists));
+    expect(mocks.fetchConversation.mock.calls.length).toBe(details);
+    receive({ type: "event", topic: "communications.conversation:c-1", kind: "message.added", id: "m-2" });
+    await waitFor(() => expect(mocks.fetchConversation.mock.calls.length).toBeGreaterThan(details));
+  });
+
+  it("announces viewing and shows who else is here and who is replying", async () => {
+    await renderLive();
+    expect(sockets[0]?.sent).toContainEqual({
+      type: "presence",
+      topic: "communications.conversation:c-1",
+      state: "viewing",
+    });
+    receive({
+      type: "presence",
+      topic: "communications.conversation:c-1",
+      members: [
+        { userId: "u-kari", name: "Kari", state: "viewing", since: "2026-01-01T10:00:00Z" },
+        { userId: "u-ola", name: "Ola", state: "replying", since: "2026-01-01T10:01:00Z" },
+      ],
+    });
+    expect(await screen.findByText("Also here: Kari")).toBeTruthy();
+    expect(screen.getByText("Ola is replying …")).toBeTruthy();
+  });
+
+  it("announces replying while the composer has focus and text", async () => {
+    await renderLive();
+    const editor = document.querySelector(".tiptap") as HTMLElement;
+    mocks.editorText = "Hello";
+    act(() => editor.focus());
+    fireEvent.input(editor);
+    await waitFor(() =>
+      expect(sockets[0]?.sent).toContainEqual({
+        type: "presence",
+        topic: "communications.conversation:c-1",
+        state: "replying",
+      }),
+    );
   });
 });

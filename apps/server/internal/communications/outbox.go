@@ -382,7 +382,7 @@ func (w *OutboxWorker) claim(ctx context.Context) (*store.CommunicationsOutboxJo
 				}
 			}
 			claimed = &job
-			return nil
+			return notifyMessageChanged(ctx, tx, job.MessageID)
 		}
 		return nil
 	})
@@ -685,7 +685,7 @@ func (w *OutboxWorker) complete(ctx context.Context, job store.CommunicationsOut
 			}
 		}
 		completed = true
-		return nil
+		return notifyMessageChanged(ctx, tx, job.MessageID)
 	})
 	if err != nil {
 		return err
@@ -724,7 +724,7 @@ func (w *OutboxWorker) cancelSuppressed(ctx context.Context, job store.Communica
 				return fmt.Errorf("communications: write suppressed event: %w", err)
 			}
 		}
-		return nil
+		return notifyMessageChanged(ctx, tx, job.MessageID)
 	})
 }
 
@@ -836,7 +836,7 @@ func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsO
 			}
 		}
 		recorded, holding = true, hold
-		return nil
+		return notifyMessageChanged(ctx, tx, current.MessageID)
 	})
 	if err != nil {
 		return err

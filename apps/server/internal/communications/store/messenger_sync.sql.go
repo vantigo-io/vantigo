@@ -25,7 +25,7 @@ WHERE d.message_id = m.id
   AND (SELECT max(COALESCE(p.platform_at, p.attempted_at))
        FROM communications.messenger_parts p WHERE p.message_id = m.id) <= $4
   AND d.status = ANY($5::text[])
-RETURNING d.id, d.message_id
+RETURNING d.id, d.message_id, m.conversation_id
 `
 
 type AdvanceMessengerDeliveriesParams struct {
@@ -37,8 +37,9 @@ type AdvanceMessengerDeliveriesParams struct {
 }
 
 type AdvanceMessengerDeliveriesRow struct {
-	ID        uuid.UUID
-	MessageID uuid.UUID
+	ID             uuid.UUID
+	MessageID      uuid.UUID
+	ConversationID uuid.UUID
 }
 
 // The watermark of a delivered or read event (N2): every delivery of an
@@ -49,7 +50,7 @@ type AdvanceMessengerDeliveriesRow struct {
 // 'sending'), is left for the watermark kept per participant to reach when the
 // send completes. Monotonic — a delivery already further along is not in
 // from_statuses — and so idempotent. It answers the deliveries it moved, for
-// their events.
+// their events and the conversations to notify.
 func (q *Queries) AdvanceMessengerDeliveries(ctx context.Context, arg AdvanceMessengerDeliveriesParams) ([]AdvanceMessengerDeliveriesRow, error) {
 	rows, err := q.db.Query(ctx, advanceMessengerDeliveries,
 		arg.Status,
@@ -65,7 +66,7 @@ func (q *Queries) AdvanceMessengerDeliveries(ctx context.Context, arg AdvanceMes
 	var items []AdvanceMessengerDeliveriesRow
 	for rows.Next() {
 		var i AdvanceMessengerDeliveriesRow
-		if err := rows.Scan(&i.ID, &i.MessageID); err != nil {
+		if err := rows.Scan(&i.ID, &i.MessageID, &i.ConversationID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

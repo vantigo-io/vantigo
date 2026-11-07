@@ -405,6 +405,19 @@ func (q *Queries) GetIdempotencyRecordByKey(ctx context.Context, key string) (Co
 	return i, err
 }
 
+const getMessageConversationID = `-- name: GetMessageConversationID :one
+SELECT conversation_id FROM communications.conversation_messages WHERE id = $1
+`
+
+// The conversation a message is in, for the live notification of a write that
+// names only the message: the outbox's delivery outcomes (live design L18).
+func (q *Queries) GetMessageConversationID(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getMessageConversationID, id)
+	var conversation_id uuid.UUID
+	err := row.Scan(&conversation_id)
+	return conversation_id, err
+}
+
 const getMessengerReplyParticipant = `-- name: GetMessengerReplyParticipant :one
 SELECT p.id, p.address
 FROM communications.conversation_participants cp

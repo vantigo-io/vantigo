@@ -35,6 +35,7 @@ import {
   textWithinLimit,
 } from "./chat";
 import { relative } from "./conversationHelpers";
+import { useDraftingSignal } from "./useDraftingSignal";
 
 const errorCode = (error: Error) => ("code" in error && typeof error.code === "string" ? error.code : undefined);
 
@@ -49,6 +50,8 @@ const replyErrors: Record<string, string> = {
 export type ChatComposerProps = {
   conversation: ConversationDetail;
   onSent: () => Promise<unknown>;
+  /** Called with true while the composer has focus and text, so the thread announces "replying". */
+  onDraftingChange?: (drafting: boolean) => void;
 };
 
 /**
@@ -58,12 +61,13 @@ export type ChatComposerProps = {
  * and *Ask for e-mail*. A closed window disables sending, with the sentence that says why; a note can
  * still be added.
  */
-export function ChatComposer({ conversation, onSent }: ChatComposerProps) {
+export function ChatComposer({ conversation, onSent, onDraftingChange }: ChatComposerProps) {
   const { t } = useI18n("communications");
   const limits = limitsOf(conversation);
   const window = conversation.replyWindow ?? null;
   const [noteMode, setNoteMode] = useState(false);
   const [text, setText] = useState("");
+  const drafting = useDraftingSignal(text.trim() !== "", onDraftingChange);
   const [options, setOptions] = useState<DraftOption[]>([]);
   const [shareEmail, setShareEmail] = useState(false);
   const [uploads, setUploads] = useState<AttachmentUpload[]>([]);
@@ -121,7 +125,7 @@ export function ChatComposer({ conversation, onSent }: ChatComposerProps) {
   const closesAt = window?.closesAt ? relative(window.closesAt) : "";
 
   return (
-    <footer className="composer chat-composer">
+    <footer className="composer chat-composer" {...drafting}>
       <Group justify="space-between" mb="xs">
         <Text fw={700}>{noteMode ? t("internalNote") : t("reply")}</Text>
         <Button

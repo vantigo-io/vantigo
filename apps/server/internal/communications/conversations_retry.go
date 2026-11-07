@@ -110,7 +110,7 @@ func (s *server) PostCommunicationsConversationsByIdMessagesByMessageIdRetry(ctx
 		}); err != nil {
 			return fmt.Errorf("communications: insert retry message event: %w", err)
 		}
-		return nil
+		return notifyMessage(ctx, tx, req.Id, eventMessageChanged, msg.ID)
 	}); err != nil {
 		return nil, err
 	}

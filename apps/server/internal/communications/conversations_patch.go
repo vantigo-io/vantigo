@@ -15,6 +15,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 )
 
 // PatchCommunicationsConversationsById Update a conversation
@@ -162,7 +163,10 @@ func (s *server) PatchCommunicationsConversationsById(ctx context.Context, req g
 
 	var updated store.UpdateConversationFieldsRow
 	var candidateIDs []int32
-	if err := s.withTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	locked := context.WithValue(ctx, lockedTxKey{}, true)
+	if err := db.WithTx(locked, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		ctx := locked
+		txq := store.New(tx)
 		if touchedCustomer {
 			if err := txq.DeleteConversationCustomerCandidates(ctx, req.Id); err != nil {
 				return fmt.Errorf("communications: clear conversation candidates: %w", err)
@@ -206,7 +210,7 @@ func (s *server) PatchCommunicationsConversationsById(ctx context.Context, req g
 		if lerr != nil {
 			return fmt.Errorf("communications: list conversation candidates: %w", lerr)
 		}
-		return nil
+		return notifyConversationChanged(ctx, tx, req.Id)
 	}); err != nil {
 		return nil, err
 	}

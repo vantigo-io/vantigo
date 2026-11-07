@@ -764,6 +764,9 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 		}); err != nil {
 			return err
 		}
+		if err := notifyMessage(ctx, tx, p.conversationID, eventMessageAdded, messageID); err != nil {
+			return err
+		}
 
 		resp = gen.PostCommunicationsConversationsByIdReply201JSONResponse(gen.ConversationMutationResponse{
 			ConversationId: p.conversationID, MessageId: &messageID, Status: "queued", IdempotencyKey: &p.key,

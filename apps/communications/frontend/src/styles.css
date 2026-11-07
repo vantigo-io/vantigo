@@ -187,3 +187,6 @@
 .chat-card-image.placeholder {
   background: var(--mantine-color-gray-1);
 }
+.thread-presence {
+  min-height: 22px;
+}
