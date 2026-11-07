@@ -1279,9 +1279,9 @@ and `message_attachments.role`, `file` or `card`, default `file`): `answerOption
 the order given; a title of 1 to 20 characters), `shareEmail` (Messenger's `user_email` quick
 reply) and `cards` (a carousel: a title of 1 to 80 characters, a subtitle of at most 80, up
 to 3 choices of 1 to 20 characters each, and the card's image, an attachment of role `card`).
-An `id` is `[a-z0-9-]{1,40}`, unique within its message — except that the same choice, with the
-same title, may stand on several cards, as *Buy* does on every card of a product; the payload
-the platform carries is `v1:<messageId>:<id>`. The limits are the provider's `Capabilities`, which the conversation
+An `id` is `[a-z0-9-]{1,40}`, unique within its message, so the cards of a product each carry their own *Buy*, `buy-<card
+index>` (and a second choice `second-<card index>`); the payload the platform carries is
+`v1:<messageId>:<id>`. The limits are the provider's `Capabilities`, which the conversation
 detail answers as `componentLimits`. The provider's `Capabilities` also carry `MaxAttachmentBytes`, answered in `componentLimits`
 as `maxAttachmentBytes`, and `PublicMedia`, whether the provider fetches a card's image from
 the public host. A card of a reply names `productImageId`, a product image; it is copied
@@ -1383,8 +1383,8 @@ of each card.
 transaction, for each card Communications:
 
 1. opens the image through `ProductCatalog.OpenProductImage` and looks its product up with
-   `ProductImages(productID, "communications")`; an image that is not there is 422
-   `product_image_unavailable`, and images of two products are 422 `components_invalid` under
+   `ProductImages(productID, "communications")`; an image that is not there, or whose
+   content type is not `image/png` or `image/jpeg`, is 422 `product_image_unavailable`, and images of two products are 422 `components_invalid` under
    `cards[i].productImageId`. Like the rest of the catalog these calls check no user
    permission, and being calls out of the module they are never made inside a transaction;
 2. writes the `attachment_cleanup_records` row for the new object (`cards/<conversation>/<id>`)
@@ -1400,8 +1400,8 @@ for the carousel, never as a file). `replyFingerprint` includes each card's `pro
 
 **A Buy answer.** The conversation detail resolves an answer to a choice of a card of a
 message that kept a product id: `answerTo.product` is `{productId, name, attachmentId}`,
-the card's title and the card's image. The frontend shows it as *Wants to buy: …* for the
-`buy` choice and, where Orders is present and the user may create orders, a *Create order*
+the title and the image of the very card the choice stands on, since each card's choice id is
+its own. The frontend shows it as *Wants to buy: …* for a `buy-<n>` choice and, where Orders is present and the user may create orders, a *Create order*
 link to `/orders/orders/new?customerId=…&productId=…`. No order is made automatically.
 
 **The public media route.** Meta's generic template takes an `image_url` that Meta fetches,
@@ -1423,14 +1423,15 @@ requests per client address in 10 minutes (`communications-public-media`).
   channel whose provider's `Capabilities.PublicMedia` is true, answered with the image's own
   content type, `Content-Length`, `Referrer-Policy: no-referrer`,
   `Cache-Control: private, max-age=86400` and `X-Content-Type-Options: nosniff`. HEAD answers
-  the same headers without reading the object.
+  the same headers without reading the object, but looks for it, so a missing one is a 404 for
+  both.
 - **Every refusal is the same bare 404**, never a 401: an expired, malformed, wrongly signed
   or foreign token, a `file` attachment, an inbound one, a provider that does not ask for
   public media, an object that is gone. So the route cannot be used to probe.
 - **Logging**: each fetch is logged by Communications with the attachment id and never the
   token. The request log, which records every path as it is, does include it, as for
-  [Calendar's feed](/en/reference/calendar/); keep the public host's proxy access log to the
-  path, or to nothing.
+  [Calendar's feed](/en/reference/calendar/); the proxy's access log should record the path
+  without the token, or not at all.
 
 ### Participants and personal data
 
