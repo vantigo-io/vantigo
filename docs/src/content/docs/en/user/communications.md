@@ -345,7 +345,7 @@ A person who writes to your Page is known to Messenger only by an id that belong
 Page, so Vantigo cannot tell who they are. You can tell it, by linking the person to a
 contact in Customers. A linked person shows in the customer's contact list with a Messenger
 mark, and you can write to them from there ([Messenger on a contact](/en/user/customers/#messenger-on-a-contact)).
-Linking, and unlinking, need `communications:conversations-manage`.
+Linking, and unlinking, need `communications:conversations-manage`; without it the header names the contact and offers nothing to change.
 
 In the header of a Messenger conversation:
 

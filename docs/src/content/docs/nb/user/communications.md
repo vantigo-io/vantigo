@@ -348,7 +348,7 @@ En person som skriver til siden din, kjenner Messenger bare ved en ID som hører
 så Vantigo kan ikke vite hvem de er. Du kan fortelle det ved å knytte personen til en
 kontakt i Kunder. En knyttet person vises i kundens kontaktliste med et Messenger-merke, og
 du kan skrive til dem derfra ([Messenger på en kontakt](/nb/user/customers/#messenger-på-en-kontakt)).
-Å knytte og å fjerne koblingen krever `communications:conversations-manage`.
+Å knytte og å fjerne koblingen krever `communications:conversations-manage`; uten den navngir toppen kontakten og tilbyr ingenting å endre.
 
 I toppen av en Messenger-samtale:
 

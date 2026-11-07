@@ -220,7 +220,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    all five keyed and from the enabled modules too,
    `CustomerReferences`
    (`contracts.CustomerReferenceHolder`, rule 8), `CustomerPersonalData`
-   (`contracts.CustomerPersonalData`, rule 9), `InvoicedWork`
+   (`contracts.CustomerPersonalData`, rule 9; a holder of contact ids may also implement the optional
+   `contracts.ContactDataEraser`, which Customers calls in the same transaction with the contacts the
+   anonymisation deleted), `InvoicedWork`
    (`contracts.InvoicedWorkHolder`, rule 10), `VariantReferences`
    (`contracts.VariantReferenceHolder`, rule 20) and `EventHandlers` (`events.Handler`,
    the domain-events outbox's handlers, rule 23), the last five from every module

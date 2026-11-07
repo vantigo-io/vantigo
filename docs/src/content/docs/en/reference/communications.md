@@ -1459,19 +1459,34 @@ linking is an explicit act of its own.
 **Merge and erasure.** A customer merge moves no `contact_id`: contacts are shared between
 customers and keep their ids when customers merge (Customers moves the *associations*), so
 nothing here needs repointing, and the conversation's own customer is moved by the existing
-`communications.conversations` holder. Erasing a customer erases its conversations as before;
-the participant rows outlive them until the orphan sweep. A contact deleted in Customers leaves
-`contact_id` pointing at nothing, which every read treats as unlinked: the thread shows the
-number and `GET /customers/{id}/contacts` never lists it.
+`communications.conversations` holder. Erasing a customer erases its conversations as before, and
+the participant rows outlive them until the orphan sweep. **The contacts its anonymisation
+deletes** (the ones only that customer had) are given to the module through the optional
+`contracts.ContactDataEraser`, which `customerPersonalData` implements and Customers calls right
+after `EraseCustomerData`, in the same transaction: `EraseContactData(ctx, tx, contactIDs)`
+unlinks every participant linked to them, clears the suggestions and referral notices naming
+them and deletes the hint rows left empty — **whether or not any conversation of the person had
+a customer**, which is why the conversations cannot be the way in. It reports
+`communications.participantContacts`, the participants it unlinked. A contact deleted by hand in
+Customers (`DELETE /customers/contacts/{id}`) is not announced, and leaves `contact_id`
+pointing at nothing: **a `contact_id` that no longer resolves in `CustomerDirectory` is no link
+anywhere.** The thread answers `contactId: null` for it, `ContactChannels` is only ever asked
+about contacts that exist, and a ref **replaces** it (below).
 
 **Linking by hand.** `PUT /participants/{id}/contact` with `{contactId, conversationId?}` links;
-`DELETE` clears. Both need `communications:conversations-manage`. The contact must exist in
-`CustomerDirectory` (422 `contact_unknown`, also when Customers is off) and, when
-`conversationId` names a conversation linked to a customer, be one of that customer's contacts
-(422 `contact_not_of_customer`). A participant that does not exist, or a conversation named that
-does not, is 404. Setting the contact the participant has is 200 and `DELETE` is 204 whether or
-not there was a link. Both lock the participant's row, replace the link whatever it was and
-delete the participant's hints.
+`DELETE` clears. Both need `communications:conversations-manage`. `PUT` is for a participant of a
+**messenger** channel (422 `not_supported_on_channel` for an e-mail one, whose contact is the
+linker's). The contact must exist in `CustomerDirectory` (422 `contact_unknown`, also when
+Customers is off; **a caller with `conversations-manage` can thereby learn whether a contact id
+exists, without Customers' view permission, and nothing else of it** — the reasoning being that
+linking needs exactly that answer, and ids are not secrets). The customers are **found by the
+server**: it lists the customers of every conversation the participant is in, and the contact has
+to be one of the contacts of **each** (422 `contact_not_of_customer`), whatever the request
+says. `conversationId`, when given, only has to be a conversation the participant is in (422
+`participant_invalid`, the module's code for "not of this participant", also used by create);
+it decides nothing else. A participant that does not exist is 404. Setting the contact the
+participant has is 200 and `DELETE` is 204 whether or not there was a link. Both lock the
+participant's row, replace the link whatever it was and delete the participant's hints.
 
 **Hints.** `communications.participant_contact_hints` (migration `00134`) keeps, per
 participant, what is only suggested or noted, so that it cannot be mistaken for the link:
@@ -1479,7 +1494,7 @@ participant, what is only suggested or noted, so that it cannot be mistaken for 
 names (written only while the participant has no contact), and `referral_contact_id`, below.
 The conversation detail answers `messengerLink: {participantId, contactId, suggestedContactId,
 referralContactId}` for a Messenger conversation (null for e-mail). `suggestedContactId` is
-answered only while there is no contact, and `referralContactId` only when it differs from it.
+answered only while there is no contact, and `referralContactId` only when it differs from it. The block also has `canManage`, whether the caller holds `conversations-manage`, so the thread offers linking only to someone who may.
 
 **The ref token.** `POST /channels/{id}/contact-links` with `{contactId}` answers `{url,
 expiresAt}`, needs `communications:conversations-manage`, and refuses a channel that is not
@@ -1499,11 +1514,10 @@ import's transaction, asking the customer directory whether the contact exists (
 that fails makes the event be tried again, never dropped), and applies it **in the import's
 transaction**: a participant with no contact is linked and its suggestion cleared; one with
 another contact is left alone and gets `referral_contact_id`; one already linked to that very
-contact changes nothing. **A ref never overrides a link.** A ref that fails its MAC, has
+contact changes nothing. **A ref never overrides a link** — but a link whose contact no longer resolves in Customers is none, and the ref replaces it (the sync resolves the participant's current contact before the transaction, and the replacing update only matches the stale id it read). A ref that fails its MAC, has
 expired, names another channel, is not ours or names a contact that is gone is ignored and
 logged at info without its value, and the message is imported as if it had none. A referral
-event for a person Communications does not know yet is ignored; the person's first message
-brings the referral again.
+event for a person Communications does not know yet **makes the participant** (its profile read first, outside the transaction, as a message's is) and applies the ref, so that the link is not lost to a first message that may not come; a Get Started postback with no title is such an event too. A participant with no conversation is swept by retention like any other.
 
 **Conversation create with `participantId`.** `POST /conversations` takes `participantId` as
 an alternative to `to` and `recipients`, for a Messenger participant only, with `textBody` as
@@ -1516,11 +1530,11 @@ participant is closed. The window counts from the participant's newest inbound m
 of its conversations (`LatestInboundOccurredAt` now reads the participant's messages, which
 changes nothing for a conversation that has its own), so a conversation started from a customer
 has the person's window. The conversation is the participant's newest open one, else a new one
-with no subject, made with its participant link in one transaction; the first message then goes
+with no subject, made with its participant link in one transaction **that first locks the participant's row**, so two creates racing for a person who has no open conversation share the one the first makes. A reused conversation takes the request's `customerId` only while it has none; a customer it has is kept and the request's is ignored; the first message then goes
 through `POST /conversations/{id}/reply` itself (limits, components checks, the window at send
 time, the outbox), with the request's `Idempotency-Key`. A refusal by the reply takes a
 conversation made for it back. A replay of an accepted key is 200 with the original ids; the
-same key with another text is 409.
+same key with another text, **or for another participant** (the reply's fingerprint holds the conversation, so the participant is checked against it), is 409.
 
 **`contracts.ContactChannels`.** The read Customers calls for its contact rows:
 `ForContacts(ctx, contactIDs []int32) (map[int32][]ContactChannelEntry, error)`, a
