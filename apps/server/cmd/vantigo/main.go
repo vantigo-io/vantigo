@@ -51,6 +51,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/identity"
 	"github.com/vantigo-io/vantigo/server/internal/inventory"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
+	"github.com/vantigo-io/vantigo/server/internal/live"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/management"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -444,6 +445,21 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		}
 	}()
 
+	// The live hub (live design L1), in api and server mode only: a worker
+	// notifies through Postgres and needs none. Registered after closePool's
+	// defer, its wait runs first: Authorize reads the pool.
+	var hub *live.Hub
+	defer func() {
+		if hub == nil {
+			return
+		}
+		waitCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+		defer cancel()
+		if err := hub.Wait(waitCtx); err != nil {
+			logger.Error("the live hub did not shut down in time", "error", err)
+		}
+	}()
+
 	if withAPI {
 		assets := web.Assets()
 		index, err := web.NewIndex(assets, cfg.BasePath, cfg.Branding, cfg.Modules)
@@ -458,6 +474,9 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		// directory into every enabled module's Deps. A disabled module
 		// contributes no route, no permission and no contract path — only its
 		// customer reference holder, since its schema is there regardless.
+		if cfg.LiveEnabled {
+			deps.Live = live.NewRegistry() // Compose fills it with the enabled modules' topics
+		}
 		api, err := module.Compose(deps, mods...)
 		if err != nil {
 			logger.Error("startup failed", "error", err)
@@ -472,6 +491,33 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 			return 1
 		}
 
+		// The hub runs on a context of its own, a child of the shutdown
+		// signal's, so a return before serving (an early failure) stops it
+		// too: the deferred Wait above would otherwise wait for a signal that
+		// never comes. Cancelled with ctx, it closes every socket with 1001
+		// while srv.Shutdown drains, which does not touch hijacked
+		// connections (L12).
+		var liveHandler http.Handler
+		if cfg.LiveEnabled {
+			liveURL := cfg.LiveDatabaseURL
+			if liveURL == "" {
+				liveURL = cfg.DatabaseURL
+			}
+			hubCtx, stopHub := context.WithCancel(ctx)
+			defer stopHub()
+			hub = live.New(live.Options{
+				DatabaseURL: liveURL,
+				Registry:    deps.Live,
+				Access:      access,
+				Limiter:     deps.Limiter,
+				AppOrigin:   cfg.AppOrigin,
+				Logger:      logger,
+				Clock:       deps.Clock,
+			})
+			hub.Start(hubCtx)
+			liveHandler = hub
+		}
+
 		handler = telemetry.HTTPHandler(server.New(server.Options{
 			Config: cfg,
 			Logger: logger,
@@ -480,6 +526,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 			Assets: assets,
 			Health: healthHandler,
 			API:    api,
+			Live:   liveHandler,
 		}), cfg.BasePath)
 	}
 
@@ -525,6 +572,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 				},
 				DatabaseBytes: management.DatabaseBytes(pool),
 				Deliveries:    events.NewOperator(pool, deps.Clock),
+				Live:          liveHealth(hub),
 			}),
 			ReadHeaderTimeout: readHeaderTimeout,
 			IdleTimeout:       idleTimeout,
@@ -623,4 +671,16 @@ func serveUntilDone(ctx context.Context, logger *slog.Logger, srv *http.Server, 
 	}
 	logger.Info("shutdown complete")
 	return 0
+}
+
+// liveHealth is the hub's state for the management status, or nil when this
+// process runs no hub.
+func liveHealth(hub *live.Hub) func(context.Context) management.Live {
+	if hub == nil {
+		return nil
+	}
+	return func(ctx context.Context) management.Live {
+		h := hub.Health(ctx)
+		return management.Live{Listener: h.Listener, QueueUsage: h.QueueUsage, Connections: h.Connections}
+	}
 }

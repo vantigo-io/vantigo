@@ -192,6 +192,17 @@ type Config struct {
 	// worker into separate replicas sets it to 0 on the api ones.
 	WorkersInProcess bool
 
+	// LiveEnabled is LIVE_ENABLED (live design L2): whether api and server
+	// mode serve the live endpoint, GET /api/v1/live. Defaults on; off, the
+	// endpoint answers 404 and every screen keeps its fallback polling.
+	LiveEnabled bool
+	// LiveDatabaseURL is LIVE_DATABASE_URL (live design L7): the connection
+	// the live hub's two dedicated connections (the listener and the presence
+	// publisher) open, for a deployment whose DATABASE_URL goes through a
+	// transaction-mode pooler, where LISTEN does not work. Empty when unset;
+	// the hub then uses DatabaseURL.
+	LiveDatabaseURL string
+
 	// BrregBaseURL is the origin the customers module's Brreg lookup client
 	// calls (BRREG_BASE_URL, customers inventory §5, CFG/BrregLookupOptions.cs:11);
 	// no trailing slash. The module's only outbound HTTP dependency.
@@ -663,6 +674,8 @@ func Load(env map[string]string) (*Config, error) {
 
 	c.Modules = modules(&p, env)
 	c.WorkersInProcess = workersInProcess(&p, env)
+	c.LiveEnabled = boolean(&p, env, "LIVE_ENABLED", true)
+	c.LiveDatabaseURL = databaseURL(&p, env, "LIVE_DATABASE_URL", false)
 
 	c.BrregBaseURL = httpBaseURL(&p, env, "BRREG_BASE_URL", defaultBrregBaseURL)
 	c.BrregTimeout = duration(&p, env, "BRREG_TIMEOUT", 15*time.Second)

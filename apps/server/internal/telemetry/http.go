@@ -11,12 +11,16 @@ import (
 // It must be the outermost layer, so httpx.TraceID — and with it every
 // problem response and request-log line — carries the span's trace id. Health
 // probes and SPA/static requests are not traced: at probe frequency they would
-// drown the useful spans.
+// drown the useful spans. Nor is the live socket (live design L2), which
+// would become a span hours long.
 func HTTPHandler(h http.Handler, basePath string) http.Handler {
 	return otelhttp.NewHandler(h, "http.server", otelhttp.WithFilter(func(r *http.Request) bool {
-		return IsAPIPath(r.URL.Path, basePath)
+		return IsAPIPath(r.URL.Path, basePath) && strings.TrimPrefix(r.URL.Path, basePath) != livePath
 	}))
 }
+
+// livePath is the live socket's path (live.Path), excluded from tracing.
+const livePath = "/api/v1/live"
 
 // IsAPIPath reports whether path, as received (still carrying basePath), is
 // in the /api namespace.

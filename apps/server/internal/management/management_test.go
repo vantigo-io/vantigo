@@ -80,6 +80,22 @@ func TestStatus(t *testing.T) {
 	}
 }
 
+// With Options.Live the status carries the live hub's state; without it the
+// field is absent.
+func TestStatus_CarriesTheLiveHubsState(t *testing.T) {
+	h := handler(management.Options{Live: func(context.Context) management.Live {
+		return management.Live{Listener: "up", QueueUsage: 0.25, Connections: 3}
+	}})
+	raw, _ := io.ReadAll(get(t, h, "/management/status", "Bearer "+token, "").Body)
+	if !strings.Contains(string(raw), `"live":{"listener":"up","queueUsage":0.25,"connections":3}`) {
+		t.Errorf("body = %s", raw)
+	}
+	raw, _ = io.ReadAll(get(t, handler(management.Options{}), "/management/status", "Bearer "+token, "").Body)
+	if strings.Contains(string(raw), `"live"`) {
+		t.Errorf("no hub: body = %s", raw)
+	}
+}
+
 func TestStatus_RequiresTheBearerToken(t *testing.T) {
 	h := handler(management.Options{})
 	for name, authorization := range map[string]string{

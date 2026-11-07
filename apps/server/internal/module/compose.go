@@ -15,6 +15,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
+	"github.com/vantigo-io/vantigo/server/internal/live"
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
 	"github.com/vantigo-io/vantigo/server/internal/operations"
 )
@@ -33,7 +34,8 @@ import (
 // sources and identity provisioners, the fourth and the fifth, from the
 // enabled modules only — a source kind two invoiced-work holders claim, a
 // key two identity provisioners claim, an event handler name two handlers
-// share (EventHandlers), or a nil Deps.Config:
+// share (EventHandlers), a live topic kind that is malformed, not prefixed by
+// its module's name or declared twice (LiveTopics), or a nil Deps.Config:
 // enablement (which modules MODULES turns on) is meaningless without one, and
 // every real caller already loads one before composing.
 func Compose(deps Deps, mods ...Module) (http.Handler, error) {
@@ -182,6 +184,12 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	}
 	deps.AITasks = aiTasks
 
+	// The live topics' registry (live design L9) is on every module's Deps;
+	// the topics themselves are collected after each Mount, below.
+	if deps.Live == nil {
+		deps.Live = live.NewRegistry()
+	}
+
 	// The customer directory, the user directory, the product catalog, the
 	// project directory, project actuals, project expenses and customer
 	// receivables are the sanctioned cross-module reads
@@ -214,6 +222,8 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	if usersProvider != nil {
 		deps.Users = usersProvider.Users(deps)
 	}
+	// Presence names its members through the user directory.
+	deps.Live.SetUsers(deps.Users)
 
 	// The business calendar (contracts.BusinessCalendar) resolves right
 	// after the user directory: identity provides both, and every module
@@ -525,6 +535,11 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		handler, err := mod.Mount(modDeps)
 		if err != nil {
 			return nil, fmt.Errorf("module: mount %s: %w", mod.Name, err)
+		}
+		if mod.LiveTopics != nil {
+			if err := deps.Live.Register(mod.Name, mod.LiveTopics(modDeps)...); err != nil {
+				return nil, fmt.Errorf("module: %w", err)
+			}
 		}
 		// A pattern ending in "/" matches the whole subtree and hands the
 		// module's router the request path unchanged (no StripPrefix): the

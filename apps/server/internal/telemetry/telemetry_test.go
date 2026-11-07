@@ -222,11 +222,13 @@ func TestHTTPHandler_TracesAPIRequestsOnlyAndExposesTheTraceID(t *testing.T) {
 
 	var seen string
 	h := HTTPHandler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		if IsAPIPath(r.URL.Path, "/vantigo") {
+		if IsAPIPath(r.URL.Path, "/vantigo") && r.URL.Path != "/vantigo/api/v1/live" {
 			seen = httpx.TraceID(r)
 		}
 	}), "/vantigo")
-	for _, path := range []string{"/vantigo/api/v1/ping", "/health/ready", "/vantigo/customers"} {
+	// The live socket (live design L2) is not traced either: a span would
+	// last as long as the socket.
+	for _, path := range []string{"/vantigo/api/v1/ping", "/health/ready", "/vantigo/customers", "/vantigo/api/v1/live"} {
 		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
 	}
 

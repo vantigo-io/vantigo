@@ -1247,6 +1247,7 @@ linters:
             - "**/internal/fileimport/**"
             - "**/internal/health/**"
             - "**/internal/httpx/**"
+            - "**/internal/live/**"
             - "**/internal/mail/**"
             - "**/internal/management/**"
             - "**/internal/netguard/**"

@@ -179,4 +179,12 @@ type Access interface {
 	// is for a read made on a user's behalf where there is no request to
 	// check: the calendar feed. Any failure is an error, never a false.
 	UserHolds(ctx context.Context, userID uuid.UUID, keys ...string) (bool, error)
+	// SessionLive reports whether the session sessionID is still live — not
+	// revoked, expired or idle-expired, and its user still one a session may
+	// belong to — and whose it is. Unlike Check it never slides the idle
+	// window: the live hub (srv/live, design L11) re-checks an open socket
+	// with it every 60 seconds, and a hidden tab must not keep its session
+	// alive for ever. A session that is not live is (uuid.Nil, false, nil);
+	// any failure to read is an error.
+	SessionLive(ctx context.Context, sessionID uuid.UUID) (uuid.UUID, bool, error)
 }

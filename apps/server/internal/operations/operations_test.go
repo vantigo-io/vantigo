@@ -1142,3 +1142,7 @@ func TestGate_NeverWidensTheContract(t *testing.T) {
 		t.Errorf("Call(updateThing) = %v, want ErrConfirmationRequired", err)
 	}
 }
+
+func (f *fakeAccess) SessionLive(context.Context, uuid.UUID) (uuid.UUID, bool, error) {
+	return uuid.Nil, false, nil
+}

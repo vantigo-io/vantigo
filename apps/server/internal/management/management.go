@@ -46,6 +46,21 @@ type Options struct {
 	// Deliveries is the operator's view of the domain-events outbox
 	// (events.Operator, orders design O4). Nil serves none of its routes.
 	Deliveries Deliveries
+	// Live is the live hub's state (live design L7, L16): its listener and
+	// the notification queue's usage. Nil — a worker, or LIVE_ENABLED=0 —
+	// leaves it out of the status.
+	Live func(context.Context) Live
+}
+
+// Live is the live hub's part of the status.
+type Live struct {
+	// Listener is "up" or "down".
+	Listener string `json:"listener"`
+	// QueueUsage is pg_notification_queue_usage(), 0 to 1, or -1 when it
+	// could not be read.
+	QueueUsage float64 `json:"queueUsage"`
+	// Connections is the sockets open on this replica.
+	Connections int `json:"connections"`
 }
 
 // Deliveries is what the listener asks of the outbox: the stuck deliveries,
@@ -60,6 +75,7 @@ type status struct {
 	Version   string `json:"version"`
 	Bootstrap string `json:"bootstrap"`
 	Usage     usage  `json:"usage"`
+	Live      *Live  `json:"live,omitempty"`
 }
 
 type usage struct {
@@ -68,7 +84,8 @@ type usage struct {
 	DatabaseBytes int64 `json:"databaseBytes"`
 }
 
-// Handler serves GET /management/status and, with Options.Deliveries, the
+// Handler serves GET /management/status — with Options.Live, the live hub's
+// state in it — and, with Options.Deliveries, the
 // outbox's deliveries (GET /management/events/deliveries and the retry and
 // skip of one), behind the bearer token.
 func Handler(o Options) http.Handler {
@@ -86,13 +103,18 @@ func Handler(o Options) http.Handler {
 			httpx.WriteProblem(w, r, http.StatusServiceUnavailable, "The status is not available.")
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(w).Encode(status{
+		body := status{
 			Version:   o.Version,
 			Bootstrap: inst.Bootstrap,
 			Usage:     usage{Users: inst.Users, ActiveUsers: inst.ActiveUsers, DatabaseBytes: size},
-		})
+		}
+		if o.Live != nil {
+			live := o.Live(r.Context())
+			body.Live = &live
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(w).Encode(body)
 	})
 
 	if o.Deliveries != nil {

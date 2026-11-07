@@ -1093,3 +1093,39 @@ func TestServe_AManagementBindFailureStartsNoWorkers(t *testing.T) {
 	default:
 	}
 }
+
+// TestServe_MountsTheLiveHub proves api and server mode build the live hub
+// and mount it at /api/v1/live (live design L1, L2): a handshake from the
+// application's origin without a session is the hub's own 401, and with
+// LIVE_ENABLED=0 the path is the API's 404 problem.
+func TestServe_MountsTheLiveHub(t *testing.T) {
+	get := func(t *testing.T, base string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, base+"/api/v1/live?v=1", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Origin", "http://localhost:8080")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		return resp
+	}
+	for _, m := range []mode{modeAPI, modeServer} {
+		base, stop := startServeEnv(t, m, map[string]string{"WORKERS_IN_PROCESS": "0"})
+		if resp := get(t, base); resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s: status %d, want the hub's 401 for a handshake without a session", commandName(m), resp.StatusCode)
+		}
+		if code := stop(); code != 0 {
+			t.Errorf("%s: exit %d", commandName(m), code)
+		}
+	}
+
+	base, stop := startServeEnv(t, modeServer, map[string]string{"LIVE_ENABLED": "0"})
+	defer stop()
+	if resp := get(t, base); resp.StatusCode != http.StatusNotFound || resp.Header.Get("Content-Type") != "application/problem+json" {
+		t.Errorf("LIVE_ENABLED=0: status %d %q, want the 404 problem", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+}
