@@ -122,12 +122,19 @@ func TestGraphSend_RefusesWhatMetaWouldNotTakeWithoutACall(t *testing.T) {
 
 	long := grPart(strings.Repeat("å", 2001))
 	cards := grPart("")
-	cards.Cards = []contracts.MessengerCard{{Title: "Kort", Choices: []contracts.MessengerChoice{{ID: "a", Title: "A"}}}}
+	cards.Cards = []contracts.MessengerCard{{Title: "Kort", ImageURL: "http://plain.example/x.png"}}
+	manyChoices := grPart("")
+	manyChoices.Cards = []contracts.MessengerCard{{Title: "Kort", Choices: []contracts.MessengerChoice{
+		{ID: "a", Title: "A"}, {ID: "b", Title: "B"}, {ID: "c", Title: "C"}, {ID: "d", Title: "D"}}}}
+	eleven := grPart("")
+	for i := 0; i < 11; i++ {
+		eleven.Cards = append(eleven.Cards, contracts.MessengerCard{Title: "Kort"})
+	}
 	big := contracts.MessengerPart{Participant: grPSID, Attachment: &contracts.MessengerAttachment{
 		FileName: "stor.bin", ContentType: "application/octet-stream", Content: make([]byte, 25<<20+1),
 	}}
 	empty := grPart("")
-	for name, part := range map[string]contracts.MessengerPart{"too long": long, "a carousel": cards, "too big": big, "nothing": empty} {
+	for name, part := range map[string]contracts.MessengerPart{"too long": long, "a plain image": cards, "four choices": manyChoices, "eleven cards": eleven, "too big": big, "nothing": empty} {
 		_, err := e.m.Send(ctx, grPageID, part)
 		if !errors.Is(err, contracts.ErrMessengerRejected) || contracts.IsMessengerTemporary(err) {
 			t.Errorf("%s: err = %v", name, err)
@@ -229,5 +236,50 @@ func TestGraphSend_TheErrorMap(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGraphSend_CardsGoAsAGenericTemplate(t *testing.T) {
+	e := newGrEnv(t).withPage(t)
+	part := grPart("")
+	part.MessageID = "msg-9"
+	part.AnswerOptions = []contracts.MessengerChoice{{ID: "later", Title: "Later"}}
+	part.Cards = []contracts.MessengerCard{
+		{Title: "Stol", Subtitle: "1 200 kr", ImageURL: "https://pay.example.com/api/v1/communications/public-media/a.b.c",
+			Choices: []contracts.MessengerChoice{{ID: "buy", Title: "Kjøp"}, {ID: "more", Title: "Mer"}}},
+		{Title: "Bord"},
+	}
+	sent, err := e.m.Send(context.Background(), grPageID, part)
+	if err != nil || sent.PlatformMessageID != "m_1" {
+		t.Fatalf("sent: %+v %v", sent, err)
+	}
+	s := e.fake.Sent()[0]
+	att, _ := s.Message["attachment"].(map[string]any)
+	payload, _ := att["payload"].(map[string]any)
+	elements, _ := payload["elements"].([]any)
+	if att["type"] != "template" || payload["template_type"] != "generic" || len(elements) != 2 {
+		t.Fatalf("attachment: %+v", att)
+	}
+	first := elements[0].(map[string]any)
+	if first["title"] != "Stol" || first["subtitle"] != "1 200 kr" || first["image_url"] != "https://pay.example.com/api/v1/communications/public-media/a.b.c" {
+		t.Fatalf("first element: %+v", first)
+	}
+	buttons, _ := first["buttons"].([]any)
+	if len(buttons) != 2 {
+		t.Fatalf("buttons: %+v", buttons)
+	}
+	b := buttons[0].(map[string]any)
+	if b["type"] != "postback" || b["title"] != "Kjøp" || b["payload"] != contracts.MessengerPayload("msg-9", "buy") {
+		t.Fatalf("first button: %+v", b)
+	}
+	second := elements[1].(map[string]any)
+	if _, ok := second["buttons"]; ok || second["image_url"] != nil {
+		t.Fatalf("second element: %+v", second)
+	}
+	if replies, _ := s.Message["quick_replies"].([]any); len(replies) != 1 {
+		t.Fatalf("quick_replies: %+v", s.Message["quick_replies"])
+	}
+	if s.MessagingType != "RESPONSE" {
+		t.Fatalf("messaging type %q", s.MessagingType)
 	}
 }

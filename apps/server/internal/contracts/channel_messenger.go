@@ -132,6 +132,10 @@ type MessengerCapabilities struct {
 	// MaxAttachmentBytes is the largest file one part carries (Messenger: 25 MB);
 	// zero when the provider names none.
 	MaxAttachmentBytes int64
+	// PublicMedia is whether the provider fetches a card's image from an
+	// address on the public host (MessengerCard.ImageURL) instead of being
+	// handed its bytes (Messenger: true, design N18).
+	PublicMedia bool
 	// Window is how long after the participant's newest message a reply may
 	// be sent (Messenger: 24 h).
 	Window time.Duration
@@ -172,11 +176,15 @@ type MessengerAttachment struct {
 }
 
 // MessengerCard is one card of a carousel part: its image, copied into
-// Communications' storage, and its choices.
+// Communications' storage, and its choices. A provider whose Capabilities ask
+// for public media is given ImageURL, an address on the instance's public host
+// that serves the image for a time under a signed token (design N18); any
+// other is given the bytes in Image. Never both.
 type MessengerCard struct {
 	Title    string
 	Subtitle string
 	Image    *MessengerAttachment
+	ImageURL string
 	Choices  []MessengerChoice
 }
 
