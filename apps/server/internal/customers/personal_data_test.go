@@ -35,6 +35,8 @@ type fakePersonalData struct {
 	mu      sync.Mutex
 	exports []int32
 	erases  []int32
+
+	contactErases [][]int32
 }
 
 func (f *fakePersonalData) ExportCustomerData(_ context.Context, customerID int32) (any, error) {
@@ -54,6 +56,22 @@ func (f *fakePersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, cus
 		}
 	}
 	return f.erased, nil
+}
+
+// EraseContactData makes the fake a contracts.ContactDataEraser: it records the
+// ids of the contacts the anonymisation deleted.
+func (f *fakePersonalData) EraseContactData(_ context.Context, _ pgx.Tx, contactIDs []int32) ([]contracts.ErasedData, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.contactErases = append(f.contactErases, slices.Clone(contactIDs))
+	return nil, nil
+}
+
+// contactErasesSoFar is the contact ids of every EraseContactData call.
+func (f *fakePersonalData) contactErasesSoFar() [][]int32 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.contactErases)
 }
 
 // erasesSoFar is every customer EraseCustomerData was called for, in call

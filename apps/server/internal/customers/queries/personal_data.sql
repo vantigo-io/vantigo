@@ -135,13 +135,14 @@ DELETE FROM customers.customers_contacts WHERE customer_id = @customer_id RETURN
 -- writer's order.
 SELECT id FROM customers.contacts WHERE id = ANY(@contact_ids::int[]) ORDER BY id FOR UPDATE;
 
--- name: DeleteOrphanedContacts :execrows
+-- name: DeleteOrphanedContacts :many
 -- A contact the anonymised customer was the only one linked to existed for it
 -- alone (design D4), and goes; one another customer still links is somebody
 -- else's contact too, and stays.
 DELETE FROM customers.contacts c
 WHERE c.id = ANY(@contact_ids::int[])
-  AND NOT EXISTS (SELECT 1 FROM customers.customers_contacts cc WHERE cc.contact_id = c.id);
+  AND NOT EXISTS (SELECT 1 FROM customers.customers_contacts cc WHERE cc.contact_id = c.id)
+RETURNING c.id;
 
 -- name: AnonymiseTimelineEntries :execrows
 -- AnonymiseTimelineEntries rewrites every timeline entry of an anonymised

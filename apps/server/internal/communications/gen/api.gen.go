@@ -537,6 +537,9 @@ type MessageComponents struct {
 
 // MessengerLink A messenger conversation's participant and the contact it is linked to, suggested for or was referred by. Null for an e-mail conversation.
 type MessengerLink struct {
+	// CanManage Whether the caller may link and unlink the participant (communications:conversations-manage); the thread offers nothing to link otherwise.
+	CanManage bool `json:"canManage"`
+
 	// ContactId The contact of Customers the participant is linked to.
 	ContactId *int32 `json:"contactId"`
 
@@ -566,7 +569,7 @@ type ParticipantContactRequest struct {
 	// ContactId The contact of Customers to link the participant to.
 	ContactId int32 `json:"contactId"`
 
-	// ConversationId The conversation the link is made from. When it is linked to a customer, the contact must be one of that customer's contacts.
+	// ConversationId The conversation the link is made from; it has to be one the participant is in, else 422 participant_invalid. It decides nothing about which contacts are accepted - that is every conversation of the participant that has a customer.
 	ConversationId *openapi_types.UUID `json:"conversationId,omitempty"`
 }
 

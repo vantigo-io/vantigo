@@ -12,6 +12,27 @@ import (
 	"github.com/google/uuid"
 )
 
+const clearContactHintsIn = `-- name: ClearContactHintsIn :execrows
+UPDATE communications.participant_contact_hints
+SET suggested_contact_id = CASE WHEN suggested_contact_id = ANY($1::int[]) THEN NULL ELSE suggested_contact_id END,
+    referral_contact_id  = CASE WHEN referral_contact_id  = ANY($1::int[]) THEN NULL ELSE referral_contact_id END,
+    updated_at = $2
+WHERE suggested_contact_id = ANY($1::int[]) OR referral_contact_id = ANY($1::int[])
+`
+
+type ClearContactHintsInParams struct {
+	ContactIds []int32
+	Now        time.Time
+}
+
+func (q *Queries) ClearContactHintsIn(ctx context.Context, arg ClearContactHintsInParams) (int64, error) {
+	result, err := q.db.Exec(ctx, clearContactHintsIn, arg.ContactIds, arg.Now)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const clearParticipantContact = `-- name: ClearParticipantContact :exec
 UPDATE communications.participants SET contact_id = NULL WHERE id = $1
 `
@@ -19,6 +40,20 @@ UPDATE communications.participants SET contact_id = NULL WHERE id = $1
 func (q *Queries) ClearParticipantContact(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, clearParticipantContact, id)
 	return err
+}
+
+const clearParticipantContactsIn = `-- name: ClearParticipantContactsIn :execrows
+UPDATE communications.participants SET contact_id = NULL WHERE contact_id = ANY($1::int[])
+`
+
+// Contacts erased in Customers (a customer's anonymisation): no participant is
+// linked to them any more.
+func (q *Queries) ClearParticipantContactsIn(ctx context.Context, contactIds []int32) (int64, error) {
+	result, err := q.db.Exec(ctx, clearParticipantContactsIn, contactIds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const clearSuggestedContact = `-- name: ClearSuggestedContact :exec
@@ -29,6 +64,15 @@ UPDATE communications.participant_contact_hints SET suggested_contact_id = NULL 
 // when it holds nothing else.
 func (q *Queries) ClearSuggestedContact(ctx context.Context, participantID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, clearSuggestedContact, participantID)
+	return err
+}
+
+const deleteAllEmptyContactHints = `-- name: DeleteAllEmptyContactHints :exec
+DELETE FROM communications.participant_contact_hints WHERE suggested_contact_id IS NULL AND referral_contact_id IS NULL
+`
+
+func (q *Queries) DeleteAllEmptyContactHints(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteAllEmptyContactHints)
 	return err
 }
 
@@ -270,6 +314,36 @@ func (q *Queries) ListMessengerParticipantsByContacts(ctx context.Context, conta
 	return items, nil
 }
 
+const listParticipantConversationCustomers = `-- name: ListParticipantConversationCustomers :many
+SELECT DISTINCT c.customer_id
+FROM communications.conversation_participants cp
+JOIN communications.conversations c ON c.id = cp.conversation_id
+WHERE cp.participant_id = $1 AND c.customer_id IS NOT NULL
+ORDER BY c.customer_id
+`
+
+// The customers of the conversations a participant is in (N20): the contact it
+// may be linked to has to be one of each of them.
+func (q *Queries) ListParticipantConversationCustomers(ctx context.Context, participantID uuid.UUID) ([]*int32, error) {
+	rows, err := q.db.Query(ctx, listParticipantConversationCustomers, participantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*int32
+	for rows.Next() {
+		var customer_id *int32
+		if err := rows.Scan(&customer_id); err != nil {
+			return nil, err
+		}
+		items = append(items, customer_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockParticipant = `-- name: LockParticipant :one
 SELECT id FROM communications.participants WHERE id = $1 FOR UPDATE
 `
@@ -281,6 +355,25 @@ func (q *Queries) LockParticipant(ctx context.Context, id uuid.UUID) (uuid.UUID,
 	var id_2 uuid.UUID
 	err := row.Scan(&id_2)
 	return id_2, err
+}
+
+const participantInConversation = `-- name: ParticipantInConversation :one
+SELECT EXISTS (
+    SELECT 1 FROM communications.conversation_participants
+    WHERE conversation_id = $1 AND participant_id = $2
+)::boolean
+`
+
+type ParticipantInConversationParams struct {
+	ConversationID uuid.UUID
+	ParticipantID  uuid.UUID
+}
+
+func (q *Queries) ParticipantInConversation(ctx context.Context, arg ParticipantInConversationParams) (bool, error) {
+	row := q.db.QueryRow(ctx, participantInConversation, arg.ConversationID, arg.ParticipantID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const participantLatestInbound = `-- name: ParticipantLatestInbound :one
@@ -298,6 +391,44 @@ func (q *Queries) ParticipantLatestInbound(ctx context.Context, participantID *u
 	var occurred_at time.Time
 	err := row.Scan(&occurred_at)
 	return occurred_at, err
+}
+
+const replaceStaleParticipantContact = `-- name: ReplaceStaleParticipantContact :execrows
+UPDATE communications.participants SET contact_id = $1 WHERE id = $2 AND contact_id = $3
+`
+
+type ReplaceStaleParticipantContactParams struct {
+	ContactID      *int32
+	ID             uuid.UUID
+	StaleContactID *int32
+}
+
+// A ref replaces a contact that no longer resolves in Customers (N21), and only
+// that one: the participant still has the stale id it was read with.
+func (q *Queries) ReplaceStaleParticipantContact(ctx context.Context, arg ReplaceStaleParticipantContactParams) (int64, error) {
+	result, err := q.db.Exec(ctx, replaceStaleParticipantContact, arg.ContactID, arg.ID, arg.StaleContactID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setConversationManualCustomer = `-- name: SetConversationManualCustomer :exec
+UPDATE communications.conversations
+SET customer_id = $1, customer_association_source = 'manual'
+WHERE id = $2 AND customer_id IS NULL
+`
+
+type SetConversationManualCustomerParams struct {
+	CustomerID *int32
+	ID         uuid.UUID
+}
+
+// A conversation started from a customer (N22) takes the customer only while it
+// has none.
+func (q *Queries) SetConversationManualCustomer(ctx context.Context, arg SetConversationManualCustomerParams) error {
+	_, err := q.db.Exec(ctx, setConversationManualCustomer, arg.CustomerID, arg.ID)
+	return err
 }
 
 const setParticipantLinkedContact = `-- name: SetParticipantLinkedContact :exec

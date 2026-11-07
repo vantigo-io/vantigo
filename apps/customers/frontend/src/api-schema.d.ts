@@ -1185,6 +1185,10 @@ export interface components {
         };
         /** @description One Messenger channel as a contact's row reads it (Messenger design N22). It never carries the person's page-scoped id, which belongs to the Page and never leaves Communications. */
         CustomerContactChannel: {
+            /** @description Whether the caller may get the contact's Messenger link and unlink the person (communications:conversations-manage). */
+            canManage: boolean;
+            /** @description Whether the caller may write to the person (communications:conversations-reply). */
+            canWrite: boolean;
             /**
              * Format: uuid
              * @description The channel's id in Communications; the Messenger link of the contact is made for it.

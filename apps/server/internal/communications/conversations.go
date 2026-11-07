@@ -399,7 +399,7 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 			return nil, err
 		}
 		componentLimits, window = componentLimitsOf(state.caps), replyWindowResponse(state.window)
-		if messengerLink, err = messengerLinkOf(ctx, q, req.Id); err != nil {
+		if messengerLink, err = s.messengerLinkOf(ctx, q, req.Id); err != nil {
 			return nil, err
 		}
 	}

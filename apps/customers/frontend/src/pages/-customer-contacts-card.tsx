@@ -177,54 +177,58 @@ export const CustomerContactsCard = ({
                       <ConnectionValue own={association.contact.phone} connection={association.phone} />
                     </Table.Td>
                     <Table.Td onClick={(event) => event.stopPropagation()}>
-                      {!readOnly && (
-                        <Group gap={4} wrap="nowrap">
-                          {association.channels && association.channels.length > 0 && (
-                            <ContactMessengerMenu
-                              contactId={association.contact.id}
-                              contactName={formatContactName(association.contact)}
-                              channels={association.channels}
-                              customerId={customerId}
-                            />
-                          )}
-                          <ActionIcon
-                            variant="subtle"
-                            color="gray"
-                            aria-label={t("editConnectionFor", { name: formatContactName(association.contact) })}
-                            onClick={() =>
-                              setEditing({
-                                customerId,
-                                contactId: association.contact.id,
-                                counterpartName: formatContactName(association.contact),
-                                title: association.title,
-                                roles: association.roles,
-                                soleRoles: association.roles
-                                  .filter(
-                                    (assignment) =>
-                                      !associations.some(
-                                        (other) =>
-                                          other.contact.id !== association.contact.id &&
-                                          other.roles.some((r) => r.role === assignment.role),
-                                      ),
-                                  )
-                                  .map((assignment) => assignment.role),
-                                phone: association.phone,
-                                email: association.email,
-                              })
-                            }
-                          >
-                            <IconPencil size={16} />
-                          </ActionIcon>
-                          <ActionIcon
-                            variant="subtle"
-                            color="red"
-                            aria-label={t("removeNamed", { name: formatContactName(association.contact) })}
-                            onClick={() => confirmDetach(association)}
-                          >
-                            <IconUserOff size={16} />
-                          </ActionIcon>
-                        </Group>
-                      )}
+                      <Group gap={4} wrap="nowrap" justify="flex-end">
+                        {/* Not behind the card's own read-only mode: the menu is Communications', and what it
+                            offers follows the caller's rights there, not the customer's state. */}
+                        {association.channels && association.channels.length > 0 && (
+                          <ContactMessengerMenu
+                            contactId={association.contact.id}
+                            contactName={formatContactName(association.contact)}
+                            channels={association.channels}
+                            customerId={customerId}
+                          />
+                        )}
+                        {!readOnly && (
+                          <>
+                            <ActionIcon
+                              variant="subtle"
+                              color="gray"
+                              aria-label={t("editConnectionFor", { name: formatContactName(association.contact) })}
+                              onClick={() =>
+                                setEditing({
+                                  customerId,
+                                  contactId: association.contact.id,
+                                  counterpartName: formatContactName(association.contact),
+                                  title: association.title,
+                                  roles: association.roles,
+                                  soleRoles: association.roles
+                                    .filter(
+                                      (assignment) =>
+                                        !associations.some(
+                                          (other) =>
+                                            other.contact.id !== association.contact.id &&
+                                            other.roles.some((r) => r.role === assignment.role),
+                                        ),
+                                    )
+                                    .map((assignment) => assignment.role),
+                                  phone: association.phone,
+                                  email: association.email,
+                                })
+                              }
+                            >
+                              <IconPencil size={16} />
+                            </ActionIcon>
+                            <ActionIcon
+                              variant="subtle"
+                              color="red"
+                              aria-label={t("removeNamed", { name: formatContactName(association.contact) })}
+                              onClick={() => confirmDetach(association)}
+                            >
+                              <IconUserOff size={16} />
+                            </ActionIcon>
+                          </>
+                        )}
+                      </Group>
                     </Table.Td>
                   </Table.Tr>
                 ))}

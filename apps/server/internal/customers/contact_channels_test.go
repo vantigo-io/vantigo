@@ -39,6 +39,8 @@ type channelsJSON struct {
 			Type                string     `json:"type"`
 			Name                string     `json:"name"`
 			Linked              bool       `json:"linked"`
+			CanWrite            bool       `json:"canWrite"`
+			CanManage           bool       `json:"canManage"`
 			ParticipantId       *string    `json:"participantId"`
 			LastInboundAt       *time.Time `json:"lastInboundAt"`
 			ReplyWindowClosesAt *time.Time `json:"replyWindowClosesAt"`
@@ -90,11 +92,30 @@ func TestGetCustomersByIdContacts_CarriesTheContactsMessengerChannels(t *testing
 			t.Errorf("channel = %+v, want the entry as Communications gave it", ch)
 		}
 	}
+	for _, row := range got.Data {
+		if row.Channels[0].CanWrite || row.Channels[0].CanManage {
+			t.Errorf("a caller with view alone is told it may write or manage: %+v", row.Channels[0])
+		}
+	}
 	if len(fake.asked) != 1 || len(fake.asked[0]) != 2 {
 		t.Errorf("asked = %v, want one call naming both contacts", fake.asked)
 	}
 	if strings.Contains(string(r.Body), "psid") || strings.Contains(string(r.Body), "address") {
 		t.Errorf("body %s carries a platform id", r.Body)
+	}
+
+	// What the menu may offer follows the caller's rights in Communications.
+	writer := h.SignIn(t, "customers:contacts-view", "customers:associations-view", "communications:conversations-view", "communications:conversations-reply")
+	var withReply channelsJSON
+	writer.Do(http.MethodGet, path, nil).JSON(&withReply)
+	if ch := withReply.Data[0].Channels[0]; !ch.CanWrite || ch.CanManage {
+		t.Errorf("a caller with reply: %+v, want canWrite and not canManage", ch)
+	}
+	manager := h.SignIn(t, "customers:contacts-view", "customers:associations-view", "communications:conversations-view", "communications:conversations-manage")
+	var withManage channelsJSON
+	manager.Do(http.MethodGet, path, nil).JSON(&withManage)
+	if ch := withManage.Data[0].Channels[0]; ch.CanWrite || !ch.CanManage {
+		t.Errorf("a caller with manage: %+v, want canManage and not canWrite", ch)
 	}
 
 	// Without the permission the rows are as they were, and Communications is
