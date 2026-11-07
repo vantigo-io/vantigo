@@ -44,6 +44,23 @@ type KnowledgeArticleAccessDefault struct {
 	AiHidden   bool
 }
 
+type KnowledgeArticleFile struct {
+	ID          uuid.UUID
+	ArticleID   uuid.UUID
+	ObjectKey   string
+	Filename    string
+	ContentType string
+	Size        int64
+	IsImage     bool
+	CreatedBy   *uuid.UUID
+	CreatedAt   time.Time
+}
+
+type KnowledgeArticleLink struct {
+	FromID uuid.UUID
+	ToID   uuid.UUID
+}
+
 type KnowledgeArticleMember struct {
 	ArticleID  uuid.UUID
 	UserID     uuid.UUID
@@ -64,4 +81,15 @@ type KnowledgeFavourite struct {
 	ArticleID uuid.UUID
 	Position  string
 	CreatedAt time.Time
+}
+
+type KnowledgeFileObjectDeletion struct {
+	ObjectKey string
+	QueuedAt  time.Time
+}
+
+type KnowledgeMentionNotice struct {
+	ArticleID  uuid.UUID
+	UserID     uuid.UUID
+	NotifiedAt time.Time
 }

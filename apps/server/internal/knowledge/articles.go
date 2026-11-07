@@ -39,11 +39,13 @@ var emptyDocument = []byte(`{"type":"doc","content":[{"type":"paragraph"}]}`)
 type document struct {
 	raw  []byte
 	text string
+	refs doc.Refs
 }
 
 // parseDocument validates a request's document against the allowlist (K8):
 // 413 over 2 MiB, 400 invalid_document with the JSON path of what was
-// refused.
+// refused. It answers the document in its stored form (doc.Normalise): no
+// article link's label, every id lower-case.
 func parseDocument(field string, d gen.KnowledgeDocument) (document, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -51,8 +53,7 @@ func parseDocument(field string, d gen.KnowledgeDocument) (document, error) {
 	if err := enc.Encode(map[string]any(d)); err != nil {
 		return document{}, invalid(field, codeInvalidDocument, "The document is not JSON.")
 	}
-	raw := bytes.TrimRight(buf.Bytes(), "\n")
-	n, err := doc.Parse(raw)
+	raw, n, err := doc.Canonical(bytes.TrimRight(buf.Bytes(), "\n"))
 	if errors.Is(err, doc.ErrTooLarge) {
 		return document{}, tooLarge()
 	}
@@ -69,7 +70,17 @@ func parseDocument(field string, d gen.KnowledgeDocument) (document, error) {
 	if err != nil {
 		return document{}, fmt.Errorf("knowledge: parse a document: %w", err)
 	}
-	return document{raw: raw, text: doc.Text(n)}, nil
+	return document{raw: raw, text: doc.Text(n), refs: doc.References(n)}, nil
+}
+
+// storedRefs is what a stored document refers to; one that no longer parses
+// refers to nothing.
+func storedRefs(raw []byte) doc.Refs {
+	n, err := doc.Parse(raw)
+	if err != nil {
+		return doc.Refs{}
+	}
+	return doc.References(n)
 }
 
 // storedDocument is a stored document as the contract carries it.
@@ -321,6 +332,13 @@ func (s *server) CreateKnowledgeArticle(ctx context.Context, req gen.CreateKnowl
 		}); err != nil {
 			return fmt.Errorf("knowledge: record the first version: %w", err)
 		}
+		// A new article has no files yet, so its document can name none.
+		if err := checkFiles(ctx, q, id, d.refs); err != nil {
+			return err
+		}
+		if err := rewriteLinks(ctx, q, id, d.refs); err != nil {
+			return err
+		}
 		if body.ParentId == nil && section == gen.KnowledgeRootSectionPrivate {
 			if err := q.UpsertMember(ctx, store.UpsertMemberParams{ArticleID: id, UserID: user, Permission: levelWrite}); err != nil {
 				return fmt.Errorf("knowledge: make the creator a writer: %w", err)
@@ -338,6 +356,7 @@ func (s *server) CreateKnowledgeArticle(ctx context.Context, req gen.CreateKnowl
 	if err != nil {
 		return nil, err
 	}
+	s.notifyMentions(ctx, id, title, user, newMentions(doc.Refs{}, d.refs, user))
 	return gen.CreateKnowledgeArticle201JSONResponse(out), nil
 }
 
@@ -516,7 +535,10 @@ func (s *server) UpdateKnowledgeArticleContent(ctx context.Context, req gen.Upda
 	}
 	user := callerID(ctx)
 	now := s.deps.Clock()
-	var version int32
+	var (
+		version   int32
+		mentioned []uuid.UUID
+	)
 	err = s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error {
 		if err := q.LockArticle(ctx, req.Id); err != nil {
 			return fmt.Errorf("knowledge: lock article %s: %w", req.Id, err)
@@ -531,7 +553,18 @@ func (s *server) UpdateKnowledgeArticleContent(ctx context.Context, req gen.Upda
 		if m.Version != body.ExpectedVersion {
 			return versionConflict(m.Version, m.UpdatedAt, m.UpdatedBy)
 		}
+		if err := checkFiles(ctx, q, req.Id, d.refs); err != nil {
+			return err
+		}
+		previous, err := q.ArticleContent(ctx, req.Id)
+		if err != nil {
+			return fmt.Errorf("knowledge: read the document of %s: %w", req.Id, err)
+		}
+		mentioned = newMentions(storedRefs(previous.Content), d.refs, user)
 		if version, err = saveVersion(ctx, q, req.Id, user, body.Title, d, now, true); err != nil {
+			return err
+		}
+		if err := rewriteLinks(ctx, q, req.Id, d.refs); err != nil {
 			return err
 		}
 		if err := notifyArticle(ctx, tx, req.Id, eventContentChanged); err != nil {
@@ -548,6 +581,7 @@ func (s *server) UpdateKnowledgeArticleContent(ctx context.Context, req gen.Upda
 	if err != nil {
 		return fail(err)
 	}
+	s.notifyMentions(ctx, req.Id, body.Title, user, mentioned)
 	return gen.UpdateKnowledgeArticleContent200JSONResponse{
 		Id: req.Id, Version: version, UpdatedAt: now, UpdatedBy: s.actor(ctx, &user),
 	}, nil

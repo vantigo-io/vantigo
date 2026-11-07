@@ -12,7 +12,11 @@ import (
 // survives: "# " before a heading, "- ", "1. " and "- [x] " before list
 // items, "> " before a quote, fences around a code block, "---" for a
 // divider. Marks add nothing: a link is only its own text, never its target,
-// so a title the reader may not see cannot reach the text.
+// so a title the reader may not see cannot reach the text. Of K-B's nodes
+// (K18–K22), a mention is "@" and its label — people's names are not secret
+// within the company — an image its alt text and a file attachment its file
+// name; an article link and a record link contribute nothing, since their
+// label could be a title the reader may not see (K8).
 func Text(n *Node) string {
 	if n == nil {
 		return ""
@@ -64,8 +68,26 @@ func block(n *Node, depth int) string {
 		return "```" + lang + "\n" + inline(n) + "\n```"
 	case "horizontalRule":
 		return "---"
-	case "listItem", "taskItem":
+	case "listItem", "taskItem", "callout", "details", "detailsContent":
 		return children(n, depth)
+	case "table":
+		var rows []string
+		for i := range n.Content {
+			var cells []string
+			for j := range n.Content[i].Content {
+				cells = append(cells, strings.ReplaceAll(children(&n.Content[i].Content[j], depth), "\n", " "))
+			}
+			rows = append(rows, strings.Join(cells, " | "))
+		}
+		return strings.Join(rows, "\n")
+	case "image":
+		alt, _ := n.Attrs["alt"].(string)
+		return alt
+	case "fileAttachment":
+		name, _ := n.Attrs["filename"].(string)
+		return name
+	case "tableOfContents":
+		return ""
 	}
 	return inline(n)
 }
@@ -139,6 +161,12 @@ func inline(n *Node) string {
 			b.WriteString(c.Text)
 		case "hardBreak":
 			b.WriteByte('\n')
+		case "mention":
+			if label, _ := c.Attrs["label"].(string); label != "" {
+				b.WriteString("@" + label)
+			}
+		case "articleLink", "recordLink":
+			// Nothing: a label could be a title the reader may not see (K8).
 		default:
 			for i := range c.Content {
 				walk(&c.Content[i])
@@ -149,4 +177,61 @@ func inline(n *Node) string {
 		walk(&n.Content[i])
 	}
 	return b.String()
+}
+
+// Refs are what a document refers to by id (K19–K21): the articles its
+// article links name, the people its mentions name, and the files its images
+// and file attachments name, each once, in document order, lower-case.
+// FilePaths is the JSON path of the first node naming each file.
+type Refs struct {
+	Articles  []string
+	Mentions  []string
+	Files     []string
+	FilePaths map[string]string
+}
+
+// References answers n's Refs.
+func References(n *Node) Refs {
+	r := Refs{FilePaths: map[string]string{}}
+	seen := map[string]bool{}
+	add := func(list *[]string, kind, id string) bool {
+		id = strings.ToLower(id)
+		if id == "" || seen[kind+id] {
+			return false
+		}
+		seen[kind+id] = true
+		*list = append(*list, id)
+		return true
+	}
+	addFile := func(id, path string) {
+		if add(&r.Files, "f", id) {
+			r.FilePaths[strings.ToLower(id)] = path
+		}
+	}
+	var walk func(*Node, string)
+	walk = func(c *Node, path string) {
+		switch c.Type {
+		case "articleLink":
+			id, _ := c.Attrs["id"].(string)
+			add(&r.Articles, "a", id)
+		case "mention":
+			id, _ := c.Attrs["id"].(string)
+			add(&r.Mentions, "m", id)
+		case "image":
+			src, _ := c.Attrs["src"].(string)
+			if id, ok := FileIDOfSrc(src); ok {
+				addFile(id, path)
+			}
+		case "fileAttachment":
+			id, _ := c.Attrs["fileId"].(string)
+			addFile(id, path)
+		}
+		for i := range c.Content {
+			walk(&c.Content[i], path+".content["+strconv.Itoa(i)+"]")
+		}
+	}
+	if n != nil {
+		walk(n, "$")
+	}
+	return r
 }

@@ -2,9 +2,10 @@ package knowledge
 
 // The knowledge.retention worker (knowledge design K9–K11, K17): once a day
 // it deletes the trash groups trashed more than 30 days ago, prunes the
-// versions older than 365 days beyond each article's newest 20, removes the
-// favourites of articles their person can no longer read, and sweeps the
-// users identity has erased.
+// versions older than 365 days beyond each article's newest 20, then the
+// files that neither an article's content nor any version left names (K19)
+// and the objects of every file row gone, removes the favourites of articles
+// their person can no longer read, and sweeps the users identity has erased.
 //
 // One replica runs a cycle: it takes an advisory lease on a pooled connection
 // of its own and runs the purges on that connection, so it never asks the
@@ -15,6 +16,7 @@ package knowledge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -24,6 +26,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/knowledge/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
+	"github.com/vantigo-io/vantigo/server/internal/storage"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
@@ -36,6 +39,13 @@ const (
 	versionsKept     = 20
 	// erasureChunk is how many user ids one directory read asks about (K17).
 	erasureChunk = 200
+	// fileGrace is how long an uploaded file is kept before a document
+	// names it: an editor may upload and save a while later (K19).
+	fileGrace = 7 * 24 * time.Hour
+	// objectChunk is how many queued objects one cycle removes at most.
+	objectChunk = 1000
+	// objectDeleteTimeout bounds one object-store delete.
+	objectDeleteTimeout = 10 * time.Second
 )
 
 // workers is the module's Workers.
@@ -70,14 +80,22 @@ type retentionResult struct {
 	Acquired          bool
 	TrashPurged       int64
 	VersionsPruned    int64
+	FilesPruned       int64
+	ObjectsRemoved    int
 	FavouritesRemoved int64
 	Erased            int
+	// queued are the object keys to remove once the lease's connection is
+	// back in the pool.
+	queued []string
 }
 
 // cycle is one pass: the purges under the lease, then the erasure sweep.
 func (w *retentionWorker) cycle(ctx context.Context) (retentionResult, error) {
 	res, err := w.purgeUnderLease(ctx)
 	if err != nil || !res.Acquired {
+		return res, err
+	}
+	if res.ObjectsRemoved, err = w.removeQueuedObjects(ctx, res.queued); err != nil {
 		return res, err
 	}
 	res.Erased, err = sweepErased(ctx, w.deps)
@@ -125,10 +143,47 @@ func (w *retentionWorker) purgeUnderLease(ctx context.Context) (res retentionRes
 	if res.VersionsPruned, err = q.PruneVersions(ctx, store.PruneVersionsParams{Keep: versionsKept, Cutoff: now.Add(-versionRetention)}); err != nil {
 		return res, fmt.Errorf("knowledge: prune the versions: %w", err)
 	}
+	if res.FilesPruned, err = q.PruneUnreferencedFiles(ctx, now.Add(-fileGrace)); err != nil {
+		return res, fmt.Errorf("knowledge: prune the files: %w", err)
+	}
+	if res.queued, err = q.ListObjectDeletions(ctx, objectChunk); err != nil {
+		return res, fmt.Errorf("knowledge: list the objects to remove: %w", err)
+	}
 	if res.FavouritesRemoved, err = q.PruneFavourites(ctx); err != nil {
 		return res, fmt.Errorf("knowledge: prune the favourites: %w", err)
 	}
 	return res, nil
+}
+
+// removeQueuedObjects removes the objects of the file rows gone, queued by
+// the trigger in the transactions that deleted them, each with a timeout of
+// its own, after the lease's connection is back in the pool; then it clears
+// the queue rows of those the store confirmed. A store that refuses leaves
+// the row for the next cycle; removing an object twice is harmless.
+func (w *retentionWorker) removeQueuedObjects(ctx context.Context, keys []string) (int, error) {
+	if len(keys) == 0 {
+		return 0, nil
+	}
+	o := newObjects(w.deps)
+	var done []string
+	for _, key := range keys {
+		callCtx, cancel := context.WithTimeout(ctx, objectDeleteTimeout)
+		err := o.delete(callCtx, key)
+		cancel()
+		if err != nil && !errors.Is(err, storage.ErrNotExist) {
+			w.deps.Logger.WarnContext(ctx, "knowledge: a file object could not be removed; it is tried again next cycle",
+				"worker", retentionWorkerName, "error", err.Error())
+			continue
+		}
+		done = append(done, key)
+	}
+	if len(done) == 0 {
+		return 0, nil
+	}
+	if err := store.New(w.deps.Pool).DeleteObjectDeletions(ctx, done); err != nil {
+		return 0, fmt.Errorf("knowledge: clear the removed objects: %w", err)
+	}
+	return len(done), nil
 }
 
 // sweepErased removes what Knowledge holds of users identity has erased
@@ -203,6 +258,12 @@ func eraseUsers(ctx context.Context, d module.Deps, gone []uuid.UUID) error {
 		}
 		if err := q.ForgetErasedAuthors(ctx, gone); err != nil {
 			return fmt.Errorf("knowledge: forget the erased users' authorship: %w", err)
+		}
+		if err := q.ForgetErasedFileAuthors(ctx, gone); err != nil {
+			return fmt.Errorf("knowledge: forget the erased users' uploads: %w", err)
+		}
+		if err := q.DeleteErasedMentionNotices(ctx, gone); err != nil {
+			return fmt.Errorf("knowledge: delete the erased users' mention notices: %w", err)
 		}
 		return notifyTree(ctx, tx)
 	})

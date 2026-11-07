@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"time"
 
@@ -52,6 +54,27 @@ func (e KnowledgePermission) Valid() bool {
 	case KnowledgePermissionRead:
 		return true
 	case KnowledgePermissionWrite:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for KnowledgeResolvedLinkState.
+const (
+	Deleted  KnowledgeResolvedLinkState = "deleted"
+	NoAccess KnowledgeResolvedLinkState = "no_access"
+	Ok       KnowledgeResolvedLinkState = "ok"
+)
+
+// Valid indicates whether the value is a known member of the KnowledgeResolvedLinkState enum.
+func (e KnowledgeResolvedLinkState) Valid() bool {
+	switch e {
+	case Deleted:
+		return true
+	case NoAccess:
+		return true
+	case Ok:
 		return true
 	default:
 		return false
@@ -235,6 +258,19 @@ type KnowledgeAssignableUser struct {
 // KnowledgeAssignableUserList Active users the caller may make a member of an article (K4), from the user directory, capped at 20.
 type KnowledgeAssignableUserList = []KnowledgeAssignableUser
 
+// KnowledgeBacklink An article that links to this one (K21), and that the caller can read.
+type KnowledgeBacklink struct {
+	Icon *string            `json:"icon"`
+	Id   openapi_types.UUID `json:"id"`
+
+	// Path Its ancestors the caller can read, from the root down, stopping at the first they cannot (K12).
+	Path  []KnowledgePathItem `json:"path"`
+	Title string              `json:"title"`
+}
+
+// KnowledgeBacklinkList defines model for KnowledgeBacklinkList.
+type KnowledgeBacklinkList = []KnowledgeBacklink
+
 // KnowledgeContentUpdate An autosave (K9): the title and the document, with the version the editor last read.
 type KnowledgeContentUpdate struct {
 	// Content A ProseMirror document as the editor stores it (K8): {type: doc, content: [...]}. Only the allowlisted nodes, marks and attributes are accepted (invalid_document names the JSON path of the first one refused), and a document over 2 MiB is refused with 413 document_too_large. HTML is never stored.
@@ -264,6 +300,40 @@ type KnowledgeFavouriteList struct {
 type KnowledgeFavouriteMove struct {
 	// AfterId The favourite it comes after; null puts it first.
 	AfterId *openapi_types.UUID `json:"afterId"`
+}
+
+// KnowledgeFile A file uploaded into an article (K19). url is where it is served; an image node's src is exactly it.
+type KnowledgeFile struct {
+	ContentType string             `json:"contentType"`
+	Filename    string             `json:"filename"`
+	Id          openapi_types.UUID `json:"id"`
+
+	// IsImage A JPEG or a PNG, its metadata stripped, shown inline; anything else is an attachment, served as a download.
+	IsImage bool   `json:"isImage"`
+	Size    int64  `json:"size"`
+	Url     string `json:"url"`
+}
+
+// KnowledgeFileCopy A file of another article to copy into this one (K19), as a paste from one article into another does.
+type KnowledgeFileCopy struct {
+	FileId openapi_types.UUID `json:"fileId"`
+}
+
+// KnowledgeImportCreated An article an import created.
+type KnowledgeImportCreated struct {
+	Id    openapi_types.UUID `json:"id"`
+	Title string             `json:"title"`
+}
+
+// KnowledgeImportResult What an import created, in tree order, and what it could not carry over (K23).
+type KnowledgeImportResult struct {
+	Created  []KnowledgeImportCreated `json:"created"`
+	Warnings []string                 `json:"warnings"`
+}
+
+// KnowledgeLinkResolveRequest The articles a page's link chips name (K21).
+type KnowledgeLinkResolveRequest struct {
+	Ids []openapi_types.UUID `json:"ids"`
 }
 
 // KnowledgeMember A person's access to an article through a membership (K4).
@@ -313,7 +383,7 @@ type KnowledgePathItem struct {
 // KnowledgePermission What the caller may do with an article (K4, K6): an article the caller cannot read is never answered.
 type KnowledgePermission string
 
-// KnowledgeProblem An RFC 9457 problem with this module's refusal code (knowledge design K4–K10). code names the rule that refused and is what a client keys off, never the words: move_into_descendant (400: the new parent is the article itself or below it), too_deep (400: the tree would be more than 10 levels deep), parent_invalid (400: the parent is unknown to the caller or trashed), after_invalid (400: afterId is not a sibling under the parent), invalid_document (400: a node, mark or attribute outside the allowlist; path names it), root_permission_required (400: a root's internal permission cannot be null), last_writer (400: the change would leave the article without a writer), article_read_only (403: the caller can read the article but not write it), version_conflict (409: expectedVersion is not the current version; currentVersion, updatedAt and updatedBy say who saved it), article_locked (409: a content save to a locked article), visibility_change (409: the change moves the article between private and the workspace and confirmVisibility was not given), not_trashed (409: a restore of an article that is not in the trash) and document_too_large (413: the document is over 2 MiB). errors carries the field errors of a 400, keyed by the request's camelCase field. An article the caller cannot read answers a bare 404, never 403 (K6).
+// KnowledgeProblem An RFC 9457 problem with this module's refusal code (knowledge design K4–K10). code names the rule that refused and is what a client keys off, never the words: move_into_descendant (400: the new parent is the article itself or below it), too_deep (400: the tree would be more than 10 levels deep), parent_invalid (400: the parent is unknown to the caller or trashed), after_invalid (400: afterId is not a sibling under the parent), invalid_document (400: a node, mark or attribute outside the allowlist; path names it), root_permission_required (400: a root's internal permission cannot be null), last_writer (400: the change would leave the article without a writer), article_read_only (403: the caller can read the article but not write it), version_conflict (409: expectedVersion is not the current version; currentVersion, updatedAt and updatedBy say who saved it), article_locked (409: a content save to a locked article), visibility_change (409: the change moves the article between private and the workspace and confirmVisibility was not given), not_trashed (409: a restore of an article that is not in the trash), document_too_large (413: the document is over 2 MiB), file_too_large (413: an upload over its limit), export_too_large (413: an export over 2000 entries or 1 GiB), import_busy (429: two imports are running already) and storage_unavailable (503: the object store could not be reached). errors carries the field errors of a 400, keyed by the request's camelCase field. An article the caller cannot read answers a bare 404, never 403 (K6).
 type KnowledgeProblem struct {
 	Code *string `json:"code,omitempty"`
 
@@ -335,6 +405,20 @@ type KnowledgeProblem struct {
 	// UpdatedBy version_conflict: who saved the current version; null for a former user.
 	UpdatedBy *KnowledgeActor `json:"updatedBy,omitempty"`
 }
+
+// KnowledgeResolvedLink One link chip's target (K21): ok with its current title and icon, no_access when the caller cannot read it — a trashed article included — or deleted when it is gone for good. The title and icon are null unless ok.
+type KnowledgeResolvedLink struct {
+	Icon  *string                    `json:"icon"`
+	Id    openapi_types.UUID         `json:"id"`
+	State KnowledgeResolvedLinkState `json:"state"`
+	Title *string                    `json:"title"`
+}
+
+// KnowledgeResolvedLinkState defines model for KnowledgeResolvedLink.State.
+type KnowledgeResolvedLinkState string
+
+// KnowledgeResolvedLinkList defines model for KnowledgeResolvedLinkList.
+type KnowledgeResolvedLinkList = []KnowledgeResolvedLink
 
 // KnowledgeRestoreVersionInput A restore of a version (K9): it is saved as a new version over expectedVersion.
 type KnowledgeRestoreVersionInput struct {
@@ -461,6 +545,17 @@ type KnowledgeVersionSummary struct {
 	Version int32  `json:"version"`
 }
 
+// ExportKnowledgeArticleParams defines parameters for ExportKnowledgeArticle.
+type ExportKnowledgeArticleParams struct {
+	// Subtree Include the subtree.
+	Subtree *bool `form:"subtree,omitempty" json:"subtree,omitempty"`
+}
+
+// UploadKnowledgeFileMultipartBody defines parameters for UploadKnowledgeFile.
+type UploadKnowledgeFileMultipartBody struct {
+	File openapi_types.File `json:"file"`
+}
+
 // GetKnowledgeArticleTextParams defines parameters for GetKnowledgeArticleText.
 type GetKnowledgeArticleTextParams struct {
 	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
@@ -473,6 +568,15 @@ type ListKnowledgeAssignableUsersParams struct {
 
 	// Limit How many users to answer, 1-20. Defaults to 20.
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ImportKnowledgeMarkdownMultipartBody defines parameters for ImportKnowledgeMarkdown.
+type ImportKnowledgeMarkdownMultipartBody struct {
+	File     openapi_types.File  `json:"file"`
+	ParentId *openapi_types.UUID `json:"parentId,omitempty"`
+
+	// Section Where a new root goes (K4): workspace (internal permission write) or private (none, with the caller as its write member).
+	Section *KnowledgeRootSection `json:"section,omitempty"`
 }
 
 // SearchKnowledgeParams defines parameters for SearchKnowledge.
@@ -498,6 +602,12 @@ type UpdateKnowledgeArticleAccessJSONRequestBody = KnowledgeAccessUpdate
 // UpdateKnowledgeArticleContentJSONRequestBody defines body for UpdateKnowledgeArticleContent for application/json ContentType.
 type UpdateKnowledgeArticleContentJSONRequestBody = KnowledgeContentUpdate
 
+// UploadKnowledgeFileMultipartRequestBody defines body for UploadKnowledgeFile for multipart/form-data ContentType.
+type UploadKnowledgeFileMultipartRequestBody UploadKnowledgeFileMultipartBody
+
+// CopyKnowledgeFileJSONRequestBody defines body for CopyKnowledgeFile for application/json ContentType.
+type CopyKnowledgeFileJSONRequestBody = KnowledgeFileCopy
+
 // MoveKnowledgeArticleJSONRequestBody defines body for MoveKnowledgeArticle for application/json ContentType.
 type MoveKnowledgeArticleJSONRequestBody = KnowledgeMoveInput
 
@@ -506,6 +616,12 @@ type RestoreKnowledgeArticleVersionJSONRequestBody = KnowledgeRestoreVersionInpu
 
 // MoveKnowledgeFavouriteJSONRequestBody defines body for MoveKnowledgeFavourite for application/json ContentType.
 type MoveKnowledgeFavouriteJSONRequestBody = KnowledgeFavouriteMove
+
+// ImportKnowledgeMarkdownMultipartRequestBody defines body for ImportKnowledgeMarkdown for multipart/form-data ContentType.
+type ImportKnowledgeMarkdownMultipartRequestBody ImportKnowledgeMarkdownMultipartBody
+
+// ResolveKnowledgeLinksJSONRequestBody defines body for ResolveKnowledgeLinks for application/json ContentType.
+type ResolveKnowledgeLinksJSONRequestBody = KnowledgeLinkResolveRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -524,9 +640,21 @@ type ServerInterface interface {
 	// UpdateKnowledgeArticleAccess Change an article's access
 	// (PUT /api/v1/knowledge/articles/{id}/access)
 	UpdateKnowledgeArticleAccess(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// ListKnowledgeBacklinks List an article's backlinks
+	// (GET /api/v1/knowledge/articles/{id}/backlinks)
+	ListKnowledgeBacklinks(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// UpdateKnowledgeArticleContent Save an article's title and content
 	// (PUT /api/v1/knowledge/articles/{id}/content)
 	UpdateKnowledgeArticleContent(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// ExportKnowledgeArticle Export an article as Markdown
+	// (GET /api/v1/knowledge/articles/{id}/export)
+	ExportKnowledgeArticle(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params ExportKnowledgeArticleParams)
+	// UploadKnowledgeFile Upload a file into an article
+	// (POST /api/v1/knowledge/articles/{id}/files)
+	UploadKnowledgeFile(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// CopyKnowledgeFile Copy a file into an article
+	// (POST /api/v1/knowledge/articles/{id}/files/copy)
+	CopyKnowledgeFile(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// MoveKnowledgeArticle Move an article
 	// (POST /api/v1/knowledge/articles/{id}/move)
 	MoveKnowledgeArticle(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -563,6 +691,15 @@ type ServerInterface interface {
 	// MoveKnowledgeFavourite Reorder my favourites
 	// (POST /api/v1/knowledge/favourites/{id}/move)
 	MoveKnowledgeFavourite(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// GetKnowledgeFile Download a file of an article
+	// (GET /api/v1/knowledge/files/{fileId})
+	GetKnowledgeFile(w http.ResponseWriter, r *http.Request, fileId openapi_types.UUID)
+	// ImportKnowledgeMarkdown Import Markdown
+	// (POST /api/v1/knowledge/import)
+	ImportKnowledgeMarkdown(w http.ResponseWriter, r *http.Request)
+	// ResolveKnowledgeLinks Resolve article links
+	// (POST /api/v1/knowledge/links/resolve)
+	ResolveKnowledgeLinks(w http.ResponseWriter, r *http.Request)
 	// SearchKnowledge Search articles
 	// (GET /api/v1/knowledge/search)
 	SearchKnowledge(w http.ResponseWriter, r *http.Request, params SearchKnowledgeParams)
@@ -704,6 +841,32 @@ func (siw *ServerInterfaceWrapper) UpdateKnowledgeArticleAccess(w http.ResponseW
 	handler.ServeHTTP(w, r)
 }
 
+// ListKnowledgeBacklinks operation middleware
+func (siw *ServerInterfaceWrapper) ListKnowledgeBacklinks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListKnowledgeBacklinks(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // UpdateKnowledgeArticleContent operation middleware
 func (siw *ServerInterfaceWrapper) UpdateKnowledgeArticleContent(w http.ResponseWriter, r *http.Request) {
 
@@ -721,6 +884,100 @@ func (siw *ServerInterfaceWrapper) UpdateKnowledgeArticleContent(w http.Response
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateKnowledgeArticleContent(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportKnowledgeArticle operation middleware
+func (siw *ServerInterfaceWrapper) ExportKnowledgeArticle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportKnowledgeArticleParams
+
+	// ------------- Optional query parameter "subtree" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "subtree", r.URL.Query(), &params.Subtree, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "subtree"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subtree", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportKnowledgeArticle(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UploadKnowledgeFile operation middleware
+func (siw *ServerInterfaceWrapper) UploadKnowledgeFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadKnowledgeFile(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CopyKnowledgeFile operation middleware
+func (siw *ServerInterfaceWrapper) CopyKnowledgeFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CopyKnowledgeFile(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1084,6 +1341,60 @@ func (siw *ServerInterfaceWrapper) MoveKnowledgeFavourite(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// GetKnowledgeFile operation middleware
+func (siw *ServerInterfaceWrapper) GetKnowledgeFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "fileId" -------------
+	var fileId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fileId", r.PathValue("fileId"), &fileId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fileId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetKnowledgeFile(w, r, fileId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ImportKnowledgeMarkdown operation middleware
+func (siw *ServerInterfaceWrapper) ImportKnowledgeMarkdown(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ImportKnowledgeMarkdown(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResolveKnowledgeLinks operation middleware
+func (siw *ServerInterfaceWrapper) ResolveKnowledgeLinks(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResolveKnowledgeLinks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SearchKnowledge operation middleware
 func (siw *ServerInterfaceWrapper) SearchKnowledge(w http.ResponseWriter, r *http.Request) {
 
@@ -1316,7 +1627,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}", wrapper.UpdateKnowledgeArticle)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/access", wrapper.GetKnowledgeArticleAccess)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/access", wrapper.UpdateKnowledgeArticleAccess)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/backlinks", wrapper.ListKnowledgeBacklinks)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/content", wrapper.UpdateKnowledgeArticleContent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/export", wrapper.ExportKnowledgeArticle)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/files", wrapper.UploadKnowledgeFile)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/files/copy", wrapper.CopyKnowledgeFile)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/move", wrapper.MoveKnowledgeArticle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/restore", wrapper.RestoreKnowledgeArticle)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/text", wrapper.GetKnowledgeArticleText)
@@ -1329,6 +1644,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/knowledge/favourites/{id}", wrapper.RemoveKnowledgeFavourite)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/knowledge/favourites/{id}", wrapper.AddKnowledgeFavourite)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/knowledge/favourites/{id}/move", wrapper.MoveKnowledgeFavourite)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/knowledge/files/{fileId}", wrapper.GetKnowledgeFile)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/knowledge/import", wrapper.ImportKnowledgeMarkdown)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/knowledge/links/resolve", wrapper.ResolveKnowledgeLinks)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/knowledge/search", wrapper.SearchKnowledge)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/knowledge/trash", wrapper.EmptyKnowledgeTrash)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/knowledge/trash", wrapper.ListKnowledgeTrash)
@@ -1747,6 +2065,64 @@ func (response UpdateKnowledgeArticleAccess409ApplicationProblemPlusJSONResponse
 	return err
 }
 
+type ListKnowledgeBacklinksRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type ListKnowledgeBacklinksResponseObject interface {
+	VisitListKnowledgeBacklinksResponse(w http.ResponseWriter) error
+}
+
+type ListKnowledgeBacklinks200JSONResponse KnowledgeBacklinkList
+
+func (response ListKnowledgeBacklinks200JSONResponse) VisitListKnowledgeBacklinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListKnowledgeBacklinks401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListKnowledgeBacklinks401JSONResponse) VisitListKnowledgeBacklinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListKnowledgeBacklinks403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListKnowledgeBacklinks403JSONResponse) VisitListKnowledgeBacklinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListKnowledgeBacklinks404Response struct {
+}
+
+func (response ListKnowledgeBacklinks404Response) VisitListKnowledgeBacklinksResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type UpdateKnowledgeArticleContentRequestObject struct {
 	Id   openapi_types.UUID `json:"id"`
 	Body *UpdateKnowledgeArticleContentJSONRequestBody
@@ -1858,6 +2234,363 @@ func (response UpdateKnowledgeArticleContent413ApplicationProblemPlusJSONRespons
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportKnowledgeArticleRequestObject struct {
+	Id     openapi_types.UUID `json:"id"`
+	Params ExportKnowledgeArticleParams
+}
+
+type ExportKnowledgeArticleResponseObject interface {
+	VisitExportKnowledgeArticleResponse(w http.ResponseWriter) error
+}
+
+type ExportKnowledgeArticle200ApplicationzipResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportKnowledgeArticle200ApplicationzipResponse) VisitExportKnowledgeArticleResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/zip")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportKnowledgeArticle200TextmarkdownResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportKnowledgeArticle200TextmarkdownResponse) VisitExportKnowledgeArticleResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/markdown")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportKnowledgeArticle401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ExportKnowledgeArticle401JSONResponse) VisitExportKnowledgeArticleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportKnowledgeArticle403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ExportKnowledgeArticle403JSONResponse) VisitExportKnowledgeArticleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportKnowledgeArticle404Response struct {
+}
+
+func (response ExportKnowledgeArticle404Response) VisitExportKnowledgeArticleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ExportKnowledgeArticle413ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response ExportKnowledgeArticle413ApplicationProblemPlusJSONResponse) VisitExportKnowledgeArticleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportKnowledgeArticle503ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response ExportKnowledgeArticle503ApplicationProblemPlusJSONResponse) VisitExportKnowledgeArticleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadKnowledgeFileRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *multipart.Reader
+}
+
+type UploadKnowledgeFileResponseObject interface {
+	VisitUploadKnowledgeFileResponse(w http.ResponseWriter) error
+}
+
+type UploadKnowledgeFile201JSONResponse KnowledgeFile
+
+func (response UploadKnowledgeFile201JSONResponse) VisitUploadKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadKnowledgeFile400ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response UploadKnowledgeFile400ApplicationProblemPlusJSONResponse) VisitUploadKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadKnowledgeFile401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UploadKnowledgeFile401JSONResponse) VisitUploadKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadKnowledgeFile403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UploadKnowledgeFile403JSONResponse) VisitUploadKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadKnowledgeFile403ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response UploadKnowledgeFile403ApplicationProblemPlusJSONResponse) VisitUploadKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadKnowledgeFile404Response struct {
+}
+
+func (response UploadKnowledgeFile404Response) VisitUploadKnowledgeFileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UploadKnowledgeFile409ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response UploadKnowledgeFile409ApplicationProblemPlusJSONResponse) VisitUploadKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadKnowledgeFile413ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response UploadKnowledgeFile413ApplicationProblemPlusJSONResponse) VisitUploadKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadKnowledgeFile503ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response UploadKnowledgeFile503ApplicationProblemPlusJSONResponse) VisitUploadKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CopyKnowledgeFileRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *CopyKnowledgeFileJSONRequestBody
+}
+
+type CopyKnowledgeFileResponseObject interface {
+	VisitCopyKnowledgeFileResponse(w http.ResponseWriter) error
+}
+
+type CopyKnowledgeFile201JSONResponse KnowledgeFile
+
+func (response CopyKnowledgeFile201JSONResponse) VisitCopyKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CopyKnowledgeFile400ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response CopyKnowledgeFile400ApplicationProblemPlusJSONResponse) VisitCopyKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CopyKnowledgeFile401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CopyKnowledgeFile401JSONResponse) VisitCopyKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CopyKnowledgeFile403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CopyKnowledgeFile403JSONResponse) VisitCopyKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CopyKnowledgeFile403ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response CopyKnowledgeFile403ApplicationProblemPlusJSONResponse) VisitCopyKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CopyKnowledgeFile404Response struct {
+}
+
+func (response CopyKnowledgeFile404Response) VisitCopyKnowledgeFileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type CopyKnowledgeFile409ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response CopyKnowledgeFile409ApplicationProblemPlusJSONResponse) VisitCopyKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CopyKnowledgeFile503ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response CopyKnowledgeFile503ApplicationProblemPlusJSONResponse) VisitCopyKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2649,6 +3382,279 @@ func (response MoveKnowledgeFavourite404Response) VisitMoveKnowledgeFavouriteRes
 	return nil
 }
 
+type GetKnowledgeFileRequestObject struct {
+	FileId openapi_types.UUID `json:"fileId"`
+}
+
+type GetKnowledgeFileResponseObject interface {
+	VisitGetKnowledgeFileResponse(w http.ResponseWriter) error
+}
+
+type GetKnowledgeFile200AsteriskResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetKnowledgeFile200AsteriskResponse) VisitGetKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetKnowledgeFile401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetKnowledgeFile401JSONResponse) VisitGetKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetKnowledgeFile403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetKnowledgeFile403JSONResponse) VisitGetKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetKnowledgeFile404Response struct {
+}
+
+func (response GetKnowledgeFile404Response) VisitGetKnowledgeFileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetKnowledgeFile503ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response GetKnowledgeFile503ApplicationProblemPlusJSONResponse) VisitGetKnowledgeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportKnowledgeMarkdownRequestObject struct {
+	Body *multipart.Reader
+}
+
+type ImportKnowledgeMarkdownResponseObject interface {
+	VisitImportKnowledgeMarkdownResponse(w http.ResponseWriter) error
+}
+
+type ImportKnowledgeMarkdown201JSONResponse KnowledgeImportResult
+
+func (response ImportKnowledgeMarkdown201JSONResponse) VisitImportKnowledgeMarkdownResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportKnowledgeMarkdown400ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response ImportKnowledgeMarkdown400ApplicationProblemPlusJSONResponse) VisitImportKnowledgeMarkdownResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportKnowledgeMarkdown401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ImportKnowledgeMarkdown401JSONResponse) VisitImportKnowledgeMarkdownResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportKnowledgeMarkdown403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ImportKnowledgeMarkdown403JSONResponse) VisitImportKnowledgeMarkdownResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportKnowledgeMarkdown403ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response ImportKnowledgeMarkdown403ApplicationProblemPlusJSONResponse) VisitImportKnowledgeMarkdownResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportKnowledgeMarkdown413ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response ImportKnowledgeMarkdown413ApplicationProblemPlusJSONResponse) VisitImportKnowledgeMarkdownResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportKnowledgeMarkdown429ResponseHeaders struct {
+	RetryAfter *int
+}
+
+type ImportKnowledgeMarkdown429ApplicationProblemPlusJSONResponse struct {
+	Body    KnowledgeProblem
+	Headers ImportKnowledgeMarkdown429ResponseHeaders
+}
+
+func (response ImportKnowledgeMarkdown429ApplicationProblemPlusJSONResponse) VisitImportKnowledgeMarkdownResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportKnowledgeMarkdown503ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response ImportKnowledgeMarkdown503ApplicationProblemPlusJSONResponse) VisitImportKnowledgeMarkdownResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveKnowledgeLinksRequestObject struct {
+	Body *ResolveKnowledgeLinksJSONRequestBody
+}
+
+type ResolveKnowledgeLinksResponseObject interface {
+	VisitResolveKnowledgeLinksResponse(w http.ResponseWriter) error
+}
+
+type ResolveKnowledgeLinks200JSONResponse KnowledgeResolvedLinkList
+
+func (response ResolveKnowledgeLinks200JSONResponse) VisitResolveKnowledgeLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveKnowledgeLinks400ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response ResolveKnowledgeLinks400ApplicationProblemPlusJSONResponse) VisitResolveKnowledgeLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveKnowledgeLinks401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ResolveKnowledgeLinks401JSONResponse) VisitResolveKnowledgeLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveKnowledgeLinks403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ResolveKnowledgeLinks403JSONResponse) VisitResolveKnowledgeLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SearchKnowledgeRequestObject struct {
 	Params SearchKnowledgeParams
 }
@@ -2880,9 +3886,21 @@ type StrictServerInterface interface {
 	// UpdateKnowledgeArticleAccess Change an article's access
 	// (PUT /api/v1/knowledge/articles/{id}/access)
 	UpdateKnowledgeArticleAccess(ctx context.Context, request UpdateKnowledgeArticleAccessRequestObject) (UpdateKnowledgeArticleAccessResponseObject, error)
+	// ListKnowledgeBacklinks List an article's backlinks
+	// (GET /api/v1/knowledge/articles/{id}/backlinks)
+	ListKnowledgeBacklinks(ctx context.Context, request ListKnowledgeBacklinksRequestObject) (ListKnowledgeBacklinksResponseObject, error)
 	// UpdateKnowledgeArticleContent Save an article's title and content
 	// (PUT /api/v1/knowledge/articles/{id}/content)
 	UpdateKnowledgeArticleContent(ctx context.Context, request UpdateKnowledgeArticleContentRequestObject) (UpdateKnowledgeArticleContentResponseObject, error)
+	// ExportKnowledgeArticle Export an article as Markdown
+	// (GET /api/v1/knowledge/articles/{id}/export)
+	ExportKnowledgeArticle(ctx context.Context, request ExportKnowledgeArticleRequestObject) (ExportKnowledgeArticleResponseObject, error)
+	// UploadKnowledgeFile Upload a file into an article
+	// (POST /api/v1/knowledge/articles/{id}/files)
+	UploadKnowledgeFile(ctx context.Context, request UploadKnowledgeFileRequestObject) (UploadKnowledgeFileResponseObject, error)
+	// CopyKnowledgeFile Copy a file into an article
+	// (POST /api/v1/knowledge/articles/{id}/files/copy)
+	CopyKnowledgeFile(ctx context.Context, request CopyKnowledgeFileRequestObject) (CopyKnowledgeFileResponseObject, error)
 	// MoveKnowledgeArticle Move an article
 	// (POST /api/v1/knowledge/articles/{id}/move)
 	MoveKnowledgeArticle(ctx context.Context, request MoveKnowledgeArticleRequestObject) (MoveKnowledgeArticleResponseObject, error)
@@ -2919,6 +3937,15 @@ type StrictServerInterface interface {
 	// MoveKnowledgeFavourite Reorder my favourites
 	// (POST /api/v1/knowledge/favourites/{id}/move)
 	MoveKnowledgeFavourite(ctx context.Context, request MoveKnowledgeFavouriteRequestObject) (MoveKnowledgeFavouriteResponseObject, error)
+	// GetKnowledgeFile Download a file of an article
+	// (GET /api/v1/knowledge/files/{fileId})
+	GetKnowledgeFile(ctx context.Context, request GetKnowledgeFileRequestObject) (GetKnowledgeFileResponseObject, error)
+	// ImportKnowledgeMarkdown Import Markdown
+	// (POST /api/v1/knowledge/import)
+	ImportKnowledgeMarkdown(ctx context.Context, request ImportKnowledgeMarkdownRequestObject) (ImportKnowledgeMarkdownResponseObject, error)
+	// ResolveKnowledgeLinks Resolve article links
+	// (POST /api/v1/knowledge/links/resolve)
+	ResolveKnowledgeLinks(ctx context.Context, request ResolveKnowledgeLinksRequestObject) (ResolveKnowledgeLinksResponseObject, error)
 	// SearchKnowledge Search articles
 	// (GET /api/v1/knowledge/search)
 	SearchKnowledge(ctx context.Context, request SearchKnowledgeRequestObject) (SearchKnowledgeResponseObject, error)
@@ -3121,6 +4148,32 @@ func (sh *strictHandler) UpdateKnowledgeArticleAccess(w http.ResponseWriter, r *
 	}
 }
 
+// ListKnowledgeBacklinks operation middleware
+func (sh *strictHandler) ListKnowledgeBacklinks(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request ListKnowledgeBacklinksRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListKnowledgeBacklinks(ctx, request.(ListKnowledgeBacklinksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListKnowledgeBacklinks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListKnowledgeBacklinksResponseObject); ok {
+		if err := validResponse.VisitListKnowledgeBacklinksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // UpdateKnowledgeArticleContent operation middleware
 func (sh *strictHandler) UpdateKnowledgeArticleContent(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	var request UpdateKnowledgeArticleContentRequestObject
@@ -3147,6 +4200,99 @@ func (sh *strictHandler) UpdateKnowledgeArticleContent(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateKnowledgeArticleContentResponseObject); ok {
 		if err := validResponse.VisitUpdateKnowledgeArticleContentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportKnowledgeArticle operation middleware
+func (sh *strictHandler) ExportKnowledgeArticle(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params ExportKnowledgeArticleParams) {
+	var request ExportKnowledgeArticleRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportKnowledgeArticle(ctx, request.(ExportKnowledgeArticleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportKnowledgeArticle")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportKnowledgeArticleResponseObject); ok {
+		if err := validResponse.VisitExportKnowledgeArticleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UploadKnowledgeFile operation middleware
+func (sh *strictHandler) UploadKnowledgeFile(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request UploadKnowledgeFileRequestObject
+
+	request.Id = id
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UploadKnowledgeFile(ctx, request.(UploadKnowledgeFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UploadKnowledgeFile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UploadKnowledgeFileResponseObject); ok {
+		if err := validResponse.VisitUploadKnowledgeFileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CopyKnowledgeFile operation middleware
+func (sh *strictHandler) CopyKnowledgeFile(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request CopyKnowledgeFileRequestObject
+
+	request.Id = id
+
+	var body CopyKnowledgeFileJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CopyKnowledgeFile(ctx, request.(CopyKnowledgeFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CopyKnowledgeFile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CopyKnowledgeFileResponseObject); ok {
+		if err := validResponse.VisitCopyKnowledgeFileResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -3481,6 +4627,94 @@ func (sh *strictHandler) MoveKnowledgeFavourite(w http.ResponseWriter, r *http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(MoveKnowledgeFavouriteResponseObject); ok {
 		if err := validResponse.VisitMoveKnowledgeFavouriteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetKnowledgeFile operation middleware
+func (sh *strictHandler) GetKnowledgeFile(w http.ResponseWriter, r *http.Request, fileId openapi_types.UUID) {
+	var request GetKnowledgeFileRequestObject
+
+	request.FileId = fileId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetKnowledgeFile(ctx, request.(GetKnowledgeFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetKnowledgeFile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetKnowledgeFileResponseObject); ok {
+		if err := validResponse.VisitGetKnowledgeFileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ImportKnowledgeMarkdown operation middleware
+func (sh *strictHandler) ImportKnowledgeMarkdown(w http.ResponseWriter, r *http.Request) {
+	var request ImportKnowledgeMarkdownRequestObject
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ImportKnowledgeMarkdown(ctx, request.(ImportKnowledgeMarkdownRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ImportKnowledgeMarkdown")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ImportKnowledgeMarkdownResponseObject); ok {
+		if err := validResponse.VisitImportKnowledgeMarkdownResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResolveKnowledgeLinks operation middleware
+func (sh *strictHandler) ResolveKnowledgeLinks(w http.ResponseWriter, r *http.Request) {
+	var request ResolveKnowledgeLinksRequestObject
+
+	var body ResolveKnowledgeLinksJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResolveKnowledgeLinks(ctx, request.(ResolveKnowledgeLinksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResolveKnowledgeLinks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResolveKnowledgeLinksResponseObject); ok {
+		if err := validResponse.VisitResolveKnowledgeLinksResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -87,7 +87,7 @@ func TestParse_RefusesWithThePath(t *testing.T) {
 		{"two values", `{"type":"doc"} {}`, "$"},
 		{"a root that is not doc", `{"type":"paragraph"}`, "$.type"},
 		{"an array root", `[]`, "$.type"},
-		{"an unknown node", `{"type":"doc","content":[{"type":"image","attrs":{"src":"x"}}]}`, "$.content[0].type"},
+		{"an unknown node", `{"type":"doc","content":[{"type":"video","attrs":{"src":"x"}}]}`, "$.content[0].type"},
 		{"a nested doc", `{"type":"doc","content":[{"type":"doc"}]}`, "$.content[0].type"},
 		{"an unknown field", `{"type":"doc","content":[{"type":"paragraph","html":"<b>"}]}`, "$.content[0].html"},
 		{"an unknown attribute", `{"type":"doc","content":[{"type":"paragraph","attrs":{"textAlign":"left"}}]}`, "$.content[0].attrs.textAlign"},
@@ -184,7 +184,9 @@ func TestLinkHrefAllowed(t *testing.T) {
 
 func TestAllowlist_NamesTheEditorsSchema(t *testing.T) {
 	nodes, marks := Allowlist()
-	wantNodes := []string{"blockquote", "bulletList", "codeBlock", "doc", "hardBreak", "heading", "horizontalRule", "listItem", "orderedList", "paragraph", "taskItem", "taskList", "text"}
+	wantNodes := []string{"articleLink", "blockquote", "bulletList", "callout", "codeBlock", "details", "detailsContent", "detailsSummary",
+		"doc", "fileAttachment", "hardBreak", "heading", "horizontalRule", "image", "listItem", "mention", "orderedList", "paragraph",
+		"recordLink", "table", "tableCell", "tableHeader", "tableOfContents", "tableRow", "taskItem", "taskList", "text"}
 	gotNodes := make([]string, 0, len(nodes))
 	for k := range nodes {
 		gotNodes = append(gotNodes, k)
@@ -193,7 +195,8 @@ func TestAllowlist_NamesTheEditorsSchema(t *testing.T) {
 	if !slices.Equal(gotNodes, wantNodes) {
 		t.Errorf("nodes = %v, want %v", gotNodes, wantNodes)
 	}
-	if !slices.Equal(nodes["orderedList"], []string{"start", "type"}) || !slices.Equal(nodes["heading"], []string{"level"}) {
+	if !slices.Equal(nodes["orderedList"], []string{"id", "start", "type"}) || !slices.Equal(nodes["heading"], []string{"id", "level"}) ||
+		!slices.Equal(nodes["image"], []string{"alt", "id", "src", "title", "width"}) || !slices.Equal(nodes["recordLink"], []string{"label", "path"}) {
 		t.Errorf("attributes = %v", nodes)
 	}
 	if !slices.Equal(marks["link"], []string{"class", "href", "rel", "target", "title"}) || len(marks) != 6 {

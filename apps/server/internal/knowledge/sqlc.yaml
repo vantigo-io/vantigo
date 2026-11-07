@@ -7,6 +7,7 @@ sql:
   - engine: postgresql
     schema:
       - ../db/migrations/00135_knowledge_baseline.sql
+      - ../db/migrations/00136_knowledge_files_links.sql
     queries: queries
     gen:
       go:

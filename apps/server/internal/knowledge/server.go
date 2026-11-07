@@ -24,13 +24,14 @@ import (
 // is made inside a transaction: each is made before it, or after it to name
 // the people in an answer.
 type server struct {
-	deps module.Deps
+	deps    module.Deps
+	objects objects
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
 
 // newServer builds the module's operations over d.
-func newServer(d module.Deps) *server { return &server{deps: d} }
+func newServer(d module.Deps) *server { return &server{deps: d, objects: newObjects(d)} }
 
 // callerID is the signed-in caller of one request; the router has already
 // authenticated every operation, so a handler always has one.

@@ -79,7 +79,7 @@ func TestArticles_StatusCodes(t *testing.T) {
 	// The document's allowlist and size (K8).
 	r = a.c.Do(http.MethodPut, "/api/v1/knowledge/articles/"+c.ID+"/content", map[string]any{
 		"title": "x", "expectedVersion": 2,
-		"content": map[string]any{"type": "doc", "content": []any{map[string]any{"type": "image", "attrs": map[string]any{"src": "x"}}}},
+		"content": map[string]any{"type": "doc", "content": []any{map[string]any{"type": "video", "attrs": map[string]any{"src": "x"}}}},
 	})
 	expectStatus(t, "an unknown node", r, http.StatusBadRequest, "invalid_document")
 	if got := problemOf(t, r).Path; got != "$.content[0].type" {

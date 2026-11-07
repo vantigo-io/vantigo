@@ -51,6 +51,8 @@ const documentBodyBytes int64 = 3 << 20
 var bodyLimits = map[string]int64{
 	"createKnowledgeArticle":        documentBodyBytes,
 	"updateKnowledgeArticleContent": documentBodyBytes,
+	"uploadKnowledgeFile":           maxFileBytes + multipartMargin,
+	"importKnowledgeMarkdown":       maxImportBytes + multipartMargin,
 }
 
 // Module is the Knowledge module.
