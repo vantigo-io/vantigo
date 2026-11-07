@@ -285,6 +285,37 @@ describe("the admin permission catalog", () => {
     }
   });
 
+  // Hand-kept in step with `apps/server/internal/knowledge/module.go` (`var
+  // permissions`), for the same reason as the lists above.
+  it("names the two knowledge permissions in English and Norwegian, the English the server's own", () => {
+    const server: Record<string, [string, string]> = {
+      "knowledge:articles": [
+        "Use Knowledge",
+        "See the Knowledge app, and read and write articles as each article's access allows.",
+      ],
+      "knowledge:manage": [
+        "Administer Knowledge",
+        "See and change the access of every article that is not private, restore anyone's trashed article and empty the trash. Private articles stay private.",
+      ],
+    };
+    const en = adminCatalog.en as Record<string, string>;
+    for (const [key, [display, description]] of Object.entries(server)) {
+      const translation = hostPermissionTranslationKeys[key as keyof typeof hostPermissionTranslationKeys];
+      expect(translation, `no catalog entry for ${key}`).toBeDefined();
+      expect(translation.moduleKey).toBe("admin.permission.module.knowledge");
+      expect(translation.categoryKey).toBe("admin.permission.category.knowledge");
+      expect(en[translation.displayNameKey]).toBe(display);
+      expect(en[translation.descriptionKey]).toBe(description);
+      for (const lng of ["en", "nb"] as const) {
+        const catalog = adminCatalog[lng] as Record<string, string>;
+        expect(catalog[translation.displayNameKey], `${key} display name (${lng})`).toBeTruthy();
+        expect(catalog[translation.descriptionKey], `${key} description (${lng})`).toBeTruthy();
+        expect(catalog[translation.moduleKey], `${key} module (${lng})`).toBeTruthy();
+        expect(catalog[translation.categoryKey], `${key} category (${lng})`).toBeTruthy();
+      }
+    }
+  });
+
   // Hand-kept in step with `apps/server/internal/calendar/module.go` (`var
   // permissions`), for the same reason as the lists above.
   it("names the three calendar permissions in English and Norwegian, the English the server's own", () => {

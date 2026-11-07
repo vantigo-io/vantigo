@@ -51,6 +51,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/identity"
 	"github.com/vantigo-io/vantigo/server/internal/inventory"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
+	"github.com/vantigo-io/vantigo/server/internal/knowledge"
 	"github.com/vantigo-io/vantigo/server/internal/live"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/management"
@@ -330,6 +331,7 @@ func businessModules(access *identity.Access) []module.Module {
 		planning.Module(),
 		inventory.Module(),
 		orders.Module(),
+		knowledge.Module(),
 		calendar.Module(),
 		entra.Module(),
 		google.Module(),

@@ -23,6 +23,7 @@ import { Route as ExpensesRouteImport } from './routes/expenses'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as InvoicesRouteImport } from './routes/invoices'
+import { Route as KnowledgeRouteImport } from './routes/knowledge'
 import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as PasswordResetRouteImport } from './routes/password-reset'
 import { Route as PayRouteImport } from './routes/pay'
@@ -68,6 +69,8 @@ import { Route as InvoicesJournalRouteImport } from './routes/invoices/journal'
 import { Route as InvoicesOverdueRouteImport } from './routes/invoices/overdue'
 import { Route as InvoicesQuickRouteImport } from './routes/invoices/quick'
 import { Route as InvoicesSettingsRouteImport } from './routes/invoices/settings'
+import { Route as KnowledgeIndexRouteImport } from './routes/knowledge/index'
+import { Route as KnowledgeTrashRouteImport } from './routes/knowledge/trash'
 import { Route as OrdersIndexRouteImport } from './routes/orders/index'
 import { Route as OrdersAnalysisRouteImport } from './routes/orders/analysis'
 import { Route as OrdersSettingsRouteImport } from './routes/orders/settings'
@@ -138,6 +141,7 @@ import { Route as InvoicesPaymentsIndexRouteImport } from './routes/invoices/pay
 import { Route as InvoicesPaymentsVippsRouteImport } from './routes/invoices/payments.vipps'
 import { Route as InvoicesReminderRunsRunIdRouteImport } from './routes/invoices/reminder-runs.$runId'
 import { Route as InvoicesRemindersPrintRouteImport } from './routes/invoices/reminders.print'
+import { Route as KnowledgeArticlesArticleIdRouteImport } from './routes/knowledge/articles.$articleId'
 import { Route as OrdersDeliveriesIndexRouteImport } from './routes/orders/deliveries.index'
 import { Route as OrdersDeliveriesDeliveryIdRouteImport } from './routes/orders/deliveries.$deliveryId'
 import { Route as OrdersOrdersIndexRouteImport } from './routes/orders/orders.index'
@@ -247,6 +251,11 @@ const InventoryRoute = InventoryRouteImport.update({
 const InvoicesRoute = InvoicesRouteImport.update({
   id: '/invoices',
   path: '/invoices',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KnowledgeRoute = KnowledgeRouteImport.update({
+  id: '/knowledge',
+  path: '/knowledge',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrdersRoute = OrdersRouteImport.update({
@@ -474,6 +483,16 @@ const InvoicesSettingsRoute = InvoicesSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => InvoicesRoute,
+} as any)
+const KnowledgeIndexRoute = KnowledgeIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => KnowledgeRoute,
+} as any)
+const KnowledgeTrashRoute = KnowledgeTrashRouteImport.update({
+  id: '/trash',
+  path: '/trash',
+  getParentRoute: () => KnowledgeRoute,
 } as any)
 const OrdersIndexRoute = OrdersIndexRouteImport.update({
   id: '/',
@@ -839,6 +858,12 @@ const InvoicesRemindersPrintRoute = InvoicesRemindersPrintRouteImport.update({
   path: '/reminders/print',
   getParentRoute: () => InvoicesRoute,
 } as any)
+const KnowledgeArticlesArticleIdRoute =
+  KnowledgeArticlesArticleIdRouteImport.update({
+    id: '/articles/$articleId',
+    path: '/articles/$articleId',
+    getParentRoute: () => KnowledgeRoute,
+  } as any)
 const OrdersDeliveriesIndexRoute = OrdersDeliveriesIndexRouteImport.update({
   id: '/deliveries/',
   path: '/deliveries/',
@@ -1073,6 +1098,7 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/inventory': typeof InventoryRouteWithChildren
   '/invoices': typeof InvoicesRouteWithChildren
+  '/knowledge': typeof KnowledgeRouteWithChildren
   '/orders': typeof OrdersRouteWithChildren
   '/password-reset': typeof PasswordResetRoute
   '/pay': typeof PayRoute
@@ -1108,6 +1134,7 @@ export interface FileRoutesByFullPath {
   '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
+  '/knowledge/trash': typeof KnowledgeTrashRoute
   '/orders/analysis': typeof OrdersAnalysisRoute
   '/orders/settings': typeof OrdersSettingsRoute
   '/orders/templates': typeof OrdersTemplatesRoute
@@ -1154,6 +1181,7 @@ export interface FileRoutesByFullPath {
   '/expenses/': typeof ExpensesIndexRoute
   '/inventory/': typeof InventoryIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
+  '/knowledge/': typeof KnowledgeIndexRoute
   '/orders/': typeof OrdersIndexRoute
   '/planning/': typeof PlanningIndexRoute
   '/products/': typeof ProductsIndexRoute
@@ -1180,6 +1208,7 @@ export interface FileRoutesByFullPath {
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
+  '/knowledge/articles/$articleId': typeof KnowledgeArticlesArticleIdRoute
   '/orders/deliveries/$deliveryId': typeof OrdersDeliveriesDeliveryIdRoute
   '/orders/orders/$orderId': typeof OrdersOrdersOrderIdRoute
   '/orders/orders/new': typeof OrdersOrdersNewRoute
@@ -1260,6 +1289,7 @@ export interface FileRoutesByTo {
   '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
+  '/knowledge/trash': typeof KnowledgeTrashRoute
   '/orders/analysis': typeof OrdersAnalysisRoute
   '/orders/settings': typeof OrdersSettingsRoute
   '/orders/templates': typeof OrdersTemplatesRoute
@@ -1303,6 +1333,7 @@ export interface FileRoutesByTo {
   '/expenses': typeof ExpensesIndexRoute
   '/inventory': typeof InventoryIndexRoute
   '/invoices': typeof InvoicesIndexRoute
+  '/knowledge': typeof KnowledgeIndexRoute
   '/orders': typeof OrdersIndexRoute
   '/planning': typeof PlanningIndexRoute
   '/products': typeof ProductsIndexRoute
@@ -1329,6 +1360,7 @@ export interface FileRoutesByTo {
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
+  '/knowledge/articles/$articleId': typeof KnowledgeArticlesArticleIdRoute
   '/orders/deliveries/$deliveryId': typeof OrdersDeliveriesDeliveryIdRoute
   '/orders/orders/$orderId': typeof OrdersOrdersOrderIdRoute
   '/orders/orders/new': typeof OrdersOrdersNewRoute
@@ -1394,6 +1426,7 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/inventory': typeof InventoryRouteWithChildren
   '/invoices': typeof InvoicesRouteWithChildren
+  '/knowledge': typeof KnowledgeRouteWithChildren
   '/orders': typeof OrdersRouteWithChildren
   '/password-reset': typeof PasswordResetRoute
   '/pay': typeof PayRoute
@@ -1429,6 +1462,7 @@ export interface FileRoutesById {
   '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
+  '/knowledge/trash': typeof KnowledgeTrashRoute
   '/orders/analysis': typeof OrdersAnalysisRoute
   '/orders/settings': typeof OrdersSettingsRoute
   '/orders/templates': typeof OrdersTemplatesRoute
@@ -1475,6 +1509,7 @@ export interface FileRoutesById {
   '/expenses/': typeof ExpensesIndexRoute
   '/inventory/': typeof InventoryIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
+  '/knowledge/': typeof KnowledgeIndexRoute
   '/orders/': typeof OrdersIndexRoute
   '/planning/': typeof PlanningIndexRoute
   '/products/': typeof ProductsIndexRoute
@@ -1501,6 +1536,7 @@ export interface FileRoutesById {
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
+  '/knowledge/articles/$articleId': typeof KnowledgeArticlesArticleIdRoute
   '/orders/deliveries/$deliveryId': typeof OrdersDeliveriesDeliveryIdRoute
   '/orders/orders/$orderId': typeof OrdersOrdersOrderIdRoute
   '/orders/orders/new': typeof OrdersOrdersNewRoute
@@ -1567,6 +1603,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/inventory'
     | '/invoices'
+    | '/knowledge'
     | '/orders'
     | '/password-reset'
     | '/pay'
@@ -1602,6 +1639,7 @@ export interface FileRouteTypes {
     | '/invoices/overdue'
     | '/invoices/quick'
     | '/invoices/settings'
+    | '/knowledge/trash'
     | '/orders/analysis'
     | '/orders/settings'
     | '/orders/templates'
@@ -1648,6 +1686,7 @@ export interface FileRouteTypes {
     | '/expenses/'
     | '/inventory/'
     | '/invoices/'
+    | '/knowledge/'
     | '/orders/'
     | '/planning/'
     | '/products/'
@@ -1674,6 +1713,7 @@ export interface FileRouteTypes {
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
+    | '/knowledge/articles/$articleId'
     | '/orders/deliveries/$deliveryId'
     | '/orders/orders/$orderId'
     | '/orders/orders/new'
@@ -1754,6 +1794,7 @@ export interface FileRouteTypes {
     | '/invoices/overdue'
     | '/invoices/quick'
     | '/invoices/settings'
+    | '/knowledge/trash'
     | '/orders/analysis'
     | '/orders/settings'
     | '/orders/templates'
@@ -1797,6 +1838,7 @@ export interface FileRouteTypes {
     | '/expenses'
     | '/inventory'
     | '/invoices'
+    | '/knowledge'
     | '/orders'
     | '/planning'
     | '/products'
@@ -1823,6 +1865,7 @@ export interface FileRouteTypes {
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
+    | '/knowledge/articles/$articleId'
     | '/orders/deliveries/$deliveryId'
     | '/orders/orders/$orderId'
     | '/orders/orders/new'
@@ -1887,6 +1930,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/inventory'
     | '/invoices'
+    | '/knowledge'
     | '/orders'
     | '/password-reset'
     | '/pay'
@@ -1922,6 +1966,7 @@ export interface FileRouteTypes {
     | '/invoices/overdue'
     | '/invoices/quick'
     | '/invoices/settings'
+    | '/knowledge/trash'
     | '/orders/analysis'
     | '/orders/settings'
     | '/orders/templates'
@@ -1968,6 +2013,7 @@ export interface FileRouteTypes {
     | '/expenses/'
     | '/inventory/'
     | '/invoices/'
+    | '/knowledge/'
     | '/orders/'
     | '/planning/'
     | '/products/'
@@ -1994,6 +2040,7 @@ export interface FileRouteTypes {
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
+    | '/knowledge/articles/$articleId'
     | '/orders/deliveries/$deliveryId'
     | '/orders/orders/$orderId'
     | '/orders/orders/new'
@@ -2059,6 +2106,7 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   InventoryRoute: typeof InventoryRouteWithChildren
   InvoicesRoute: typeof InvoicesRouteWithChildren
+  KnowledgeRoute: typeof KnowledgeRouteWithChildren
   OrdersRoute: typeof OrdersRouteWithChildren
   PasswordResetRoute: typeof PasswordResetRoute
   PayRoute: typeof PayRoute
@@ -2175,6 +2223,13 @@ declare module '@tanstack/react-router' {
       path: '/invoices'
       fullPath: '/invoices'
       preLoaderRoute: typeof InvoicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/knowledge': {
+      id: '/knowledge'
+      path: '/knowledge'
+      fullPath: '/knowledge'
+      preLoaderRoute: typeof KnowledgeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/orders': {
@@ -2491,6 +2546,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/invoices/settings'
       preLoaderRoute: typeof InvoicesSettingsRouteImport
       parentRoute: typeof InvoicesRoute
+    }
+    '/knowledge/': {
+      id: '/knowledge/'
+      path: '/'
+      fullPath: '/knowledge/'
+      preLoaderRoute: typeof KnowledgeIndexRouteImport
+      parentRoute: typeof KnowledgeRoute
+    }
+    '/knowledge/trash': {
+      id: '/knowledge/trash'
+      path: '/trash'
+      fullPath: '/knowledge/trash'
+      preLoaderRoute: typeof KnowledgeTrashRouteImport
+      parentRoute: typeof KnowledgeRoute
     }
     '/orders/': {
       id: '/orders/'
@@ -2981,6 +3050,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/invoices/reminders/print'
       preLoaderRoute: typeof InvoicesRemindersPrintRouteImport
       parentRoute: typeof InvoicesRoute
+    }
+    '/knowledge/articles/$articleId': {
+      id: '/knowledge/articles/$articleId'
+      path: '/articles/$articleId'
+      fullPath: '/knowledge/articles/$articleId'
+      preLoaderRoute: typeof KnowledgeArticlesArticleIdRouteImport
+      parentRoute: typeof KnowledgeRoute
     }
     '/orders/deliveries/': {
       id: '/orders/deliveries/'
@@ -3493,6 +3569,22 @@ const InvoicesRouteWithChildren = InvoicesRoute._addFileChildren(
   InvoicesRouteChildren,
 )
 
+interface KnowledgeRouteChildren {
+  KnowledgeTrashRoute: typeof KnowledgeTrashRoute
+  KnowledgeIndexRoute: typeof KnowledgeIndexRoute
+  KnowledgeArticlesArticleIdRoute: typeof KnowledgeArticlesArticleIdRoute
+}
+
+const KnowledgeRouteChildren: KnowledgeRouteChildren = {
+  KnowledgeTrashRoute: KnowledgeTrashRoute,
+  KnowledgeIndexRoute: KnowledgeIndexRoute,
+  KnowledgeArticlesArticleIdRoute: KnowledgeArticlesArticleIdRoute,
+}
+
+const KnowledgeRouteWithChildren = KnowledgeRoute._addFileChildren(
+  KnowledgeRouteChildren,
+)
+
 interface OrdersRouteChildren {
   OrdersAnalysisRoute: typeof OrdersAnalysisRoute
   OrdersSettingsRoute: typeof OrdersSettingsRoute
@@ -3769,6 +3861,7 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   InventoryRoute: InventoryRouteWithChildren,
   InvoicesRoute: InvoicesRouteWithChildren,
+  KnowledgeRoute: KnowledgeRouteWithChildren,
   OrdersRoute: OrdersRouteWithChildren,
   PasswordResetRoute: PasswordResetRoute,
   PayRoute: PayRoute,

@@ -135,6 +135,7 @@ vantigo/
 │   │       ├── planning/            # Planning vertical slice (who works on what)
 │   │       ├── inventory/           # Inventory vertical slice (stock in sites and locations)
 │   │       ├── orders/              # Orders vertical slice (quotes and sales orders)
+│   │       ├── knowledge/           # Knowledge vertical slice (articles in a tree)
 │   │       ├── calendar/            # Calendar vertical slice
 │   │       ├── entra/               # Microsoft Entra ID (accounts in the tenant, for Staff)
 │   │       ├── google/              # Google Workspace (the organisation's connection, for Staff)
@@ -163,6 +164,7 @@ vantigo/
 │   ├── planning/frontend/           # @vantigo/planning-ui
 │   ├── inventory/frontend/          # @vantigo/inventory-ui
 │   ├── orders/frontend/             # @vantigo/orders-ui
+│   ├── knowledge/frontend/          # @vantigo/knowledge-ui
 │   ├── calendar/frontend/           # @vantigo/calendar-ui
 │   ├── entra/frontend/              # @vantigo/entra-ui
 │   ├── google/frontend/             # @vantigo/google-ui
@@ -227,7 +229,7 @@ own deployable without a rewrite.
 
 One PostgreSQL database, one schema per module: `identity`, `customers`, `products`,
 `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`,
-`planning`, `inventory`, `orders`, `calendar`, `entra`, `google` and `assistant`. Schemas are hard boundaries:
+`planning`, `inventory`, `orders`, `knowledge`, `calendar`, `entra`, `google` and `assistant`. Schemas are hard boundaries:
 
 - **No cross-schema foreign keys or joins.** Reference other modules' data by
   opaque ID only. This is what keeps a future "move this schema to its own
@@ -315,7 +317,7 @@ Navigation — *one pattern per level*, so every page reads the same way:
   `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
   `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`, `/api/v1/expenses`,
   `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`, `/api/v1/inventory`,
-  `/api/v1/orders`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and
+  `/api/v1/orders`, `/api/v1/knowledge`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and
   `/api/v1/assistant`.
 - **In-process contracts** — module collaboration uses `internal/contracts`, not
   service-to-service API keys.
@@ -332,7 +334,7 @@ enabled modules at `GET /api/openapi.json` (session required). Module prefixes a
 `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
 `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`, `/api/v1/expenses`,
 `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`, `/api/v1/inventory`,
-`/api/v1/orders`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and
+`/api/v1/orders`, `/api/v1/knowledge`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and
 `/api/v1/assistant`. Every other
 `/api` path answers the catch-all 404 problem.
 
@@ -540,7 +542,7 @@ that does not match `identity.yaml` fails the test that produced it. `go test
 must have been exercised by at least one successful exchange, with no allow-list, so a newly
 added operation without a passing test fails the whole package.
 
-### Customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, calendar, entra, google and assistant
+### Customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, knowledge, calendar, entra, google and assistant
 
 Fifteen business modules mount on that platform, each serving its own contract and
 owning its own schema:
@@ -622,6 +624,12 @@ owning its own schema:
   `orders` **requires `products`, `customers` and `invoices`**, and the module refuses
   to mount without any of the three. See
   [`docs/src/content/docs/en/reference/orders.md`](docs/src/content/docs/en/reference/orders.md).
+- `internal/knowledge` → `/api/v1/knowledge/*` from `openapi/knowledge.yaml`: the
+  company's own articles — a tree of pages with inherited access, autosaved
+  ProseMirror content and its history, the trash, favourites and full-text search, and
+  the live topics `knowledge.article` and `knowledge.tree`. It depends on **nobody but
+  identity**. See
+  [`docs/src/content/docs/en/reference/knowledge.md`](docs/src/content/docs/en/reference/knowledge.md).
 - `internal/calendar` → `/api/v1/calendar/*` from `openapi/calendar.yaml`: one
   calendar per person — the appointments it owns beside what every enabled module
   projects onto it through `contracts.CalendarSource`, invitations, the feed and the
@@ -641,7 +649,7 @@ owning its own schema:
 
 `MODULES` chooses which of them a deployment serves: a comma-separated list,
 parsed once at startup, defaulting to
-`customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,orders,calendar,entra,google,assistant` — every module
+`customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,orders,knowledge,calendar,entra,google,assistant` — every module
 this binary can mount. Identity is always mounted and is never
 listed. A name the binary does not know fails
 startup, naming the name and the known set. `energy`, `communications` and

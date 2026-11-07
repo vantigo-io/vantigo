@@ -36,6 +36,8 @@ const forbiddenModuleImports = [
   "@vantigo/inventory-ui/**",
   "@vantigo/orders-ui",
   "@vantigo/orders-ui/**",
+  "@vantigo/knowledge-ui",
+  "@vantigo/knowledge-ui/**",
   "@vantigo/app",
   "@vantigo/app/**",
   "../../../customers/**",
@@ -53,6 +55,7 @@ const forbiddenModuleImports = [
   "../../../assistant/**",
   "../../../inventory/**",
   "../../../orders/**",
+  "../../../knowledge/**",
   "../../../host/**",
 ];
 

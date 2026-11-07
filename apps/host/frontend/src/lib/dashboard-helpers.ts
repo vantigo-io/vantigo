@@ -1,5 +1,6 @@
 import {
   IconBolt,
+  IconBook2,
   IconBriefcase,
   IconBuildingWarehouse,
   IconCalendar,
@@ -131,6 +132,15 @@ export const moduleCards = [
     // Every Orders call asks for the app's own key (orders design §8).
     requiredPermissions: ["orders:access"],
   },
+  {
+    title: "dashboard.knowledge",
+    description: "dashboard.manageKnowledge",
+    path: "/knowledge",
+    icon: IconBook2,
+    module: "knowledge" as ModuleKey,
+    // Every Knowledge call asks for the app's own key (knowledge design K2).
+    requiredPermissions: ["knowledge:articles"],
+  },
 ] as const;
 
 /** The module cards the caller may see: module enabled for the tenant and permission granted. */
@@ -174,7 +184,7 @@ export const canReadInventoryStats = (permissions: string[] | undefined) =>
  * serves no stats endpoints, and its place on the page is the agenda above
  * the row (calendar design D7). Nor has Orders yet: its figures, quotes
  * awaiting an answer and orders to invoice (orders design §10), come with the
- * module's own stats.
+ * module's own stats. Knowledge has none: it counts nothing.
  */
 export const kpiCards = <Card extends { module: ModuleKey }>(
   cards: readonly Card[],
@@ -184,6 +194,7 @@ export const kpiCards = <Card extends { module: ModuleKey }>(
     (card) =>
       card.module !== "calendar" &&
       card.module !== "orders" &&
+      card.module !== "knowledge" &&
       (card.module !== "staff" || canReadStaffStats(permissions)) &&
       (card.module !== "planning" || canReadPlanningStats(permissions)) &&
       (card.module !== "inventory" || canReadInventoryStats(permissions)),

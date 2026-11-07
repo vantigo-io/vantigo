@@ -42,6 +42,7 @@
     "@vantigo/google-ui": "workspace:*",
     "@vantigo/inventory-ui": "workspace:*",
     "@vantigo/invoices-ui": "workspace:*",
+    "@vantigo/knowledge-ui": "workspace:*",
     "@vantigo/orders-ui": "workspace:*",
     "@vantigo/planning-ui": "workspace:*",
     "@vantigo/products-ui": "workspace:*",
