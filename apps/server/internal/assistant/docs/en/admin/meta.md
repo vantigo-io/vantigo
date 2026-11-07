@@ -109,8 +109,10 @@ data](#retention-and-personal-data), and your policy has to describe that.
    it when the token is right. If Meta reports that the URL could not be verified, see
    [What can go wrong](#what-can-go-wrong).
 3. Subscribe the app to the Page fields **messages**, **messaging_postbacks**,
-   **message_reads**, **message_deliveries** and **message_echoes**. Vantigo also
-   subscribes each Page to these when you add it.
+   **messaging_referrals**, **message_reads**, **message_deliveries** and
+   **message_echoes**. Vantigo also subscribes each Page to these when you add it.
+   **messaging_referrals** is what lets a contact's Messenger link link the person who
+   taps it (see [Pages connected earlier](#pages-connected-earlier)).
 
 ## Add a Page
 
@@ -127,7 +129,7 @@ person's own login stops working when their password or permissions change.
 Vantigo asks Meta which Pages the token manages and keeps those whose tasks include
 **MESSAGING**. With one, that Page is connected. With several, Vantigo asks you to
 **Choose the Page to connect**: select one and choose **Add Page** again. Then it
-subscribes the app to the Page's `messages`, `messaging_postbacks`, `message_reads`,
+subscribes the app to the Page's `messages`, `messaging_postbacks`, `messaging_referrals`, `message_reads`,
 `message_deliveries` and `message_echoes`, and stores the **Page's own token**, sealed,
 not the token you pasted. The Page is listed by its name and id, and no token is shown
 again.
@@ -135,6 +137,18 @@ again.
 A Page's own access token pasted directly also works. Meta does not list Pages for such a
 token, so Vantigo reads the Page from the token and checks that it may act for it by
 subscribing the app; if Meta refuses that, the Page is refused.
+
+### Pages connected earlier
+
+A Page connected before Messenger links for contacts existed is subscribed without
+`messaging_referrals`. It works as it did, but a person who opens a contact's Messenger link
+is not linked to the contact, because Meta does not tell Vantigo about the referral. Choose
+**Re-subscribe** on the Page under **Pages**: Vantigo subscribes the Page again with the
+stored token, and the Page's row is set to active. You do not paste the token again, and
+Vantigo asks Meta for nothing but the new list of fields. Do it once for each Page
+connected before, and check with a contact's Messenger link that the person is linked. A Page that Meta answers with an error is told to
+you as *The Page could not be re-subscribed*; if the token has been rejected, add the Page
+again with a new token (see below).
 
 **Remove** a Page to disconnect it. Its token, its queued events and their files are
 deleted, and channels on the Page become unavailable. Vantigo also withdraws the app's
