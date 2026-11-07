@@ -54,7 +54,10 @@ func (rt Route) matches(method, p string) bool {
 // the payer nor the invitee: Graph posts its handshake and its notifications
 // to PUBLIC_BASE_URL (calendar Outlook sync design O11.5), and so does Google
 // Calendar its push messages (Google Workspace design G32), so Entra's one
-// path and Google's one path are admitted, under POST alone and exactly. No maintenance poll: the
+// path and Google's one path are admitted, under POST alone and exactly. Meta
+// is the third: its webhook's handshake (GET) and its events (POST) are two
+// routes of one path, admitted exactly and under their own method each
+// (Messenger design N11). No maintenance poll: the
 // root layout makes none on the pay page. No Vipps webhook path: webhooks are
 // deferred (the plan's Task 11) and nothing serves one. The list names only
 // what is served. The paths are base-relative: the gate runs after
@@ -76,6 +79,8 @@ func PayRoutes() []Route {
 		{Methods: get, Path: "/api/v1/calendar/feed/", OneSegment: true},
 		{Methods: post, Path: "/api/v1/entra/mailbox-notifications"},
 		{Methods: post, Path: "/api/v1/google/calendar-notifications"},
+		{Methods: get, Path: "/api/v1/meta/webhook"},
+		{Methods: post, Path: "/api/v1/meta/webhook"},
 		{Methods: getHead, Path: "/health/", Prefix: true},
 	}
 }

@@ -2,6 +2,8 @@ export type ApiError = Error & {
   status?: number;
   fields?: Record<string, string[]>;
   code?: string;
+  /** The parsed problem body, for a module's own fields (a refusal's list of choices, say). */
+  problem?: Record<string, unknown>;
 };
 
 export type RequestOptions = RequestInit & {
@@ -132,8 +134,13 @@ const problemMessage = (problem: unknown, status: number) => {
   return typeof message === "string" ? message : `Request failed (HTTP ${status})`;
 };
 
-const apiError = (message: string, status: number, fields?: Record<string, string[]>, code?: string): ApiError =>
-  Object.assign(new Error(message), { status, fields, code });
+const apiError = (
+  message: string,
+  status: number,
+  fields?: Record<string, string[]>,
+  code?: string,
+  problem?: Record<string, unknown>,
+): ApiError => Object.assign(new Error(message), { status, fields, code, problem });
 
 export const createApiClient = (clientOptions: ApiClientOptions = {}): ApiClient => {
   const options = { ...defaultOptions, ...clientOptions };
@@ -193,7 +200,13 @@ export const createApiClient = (clientOptions: ApiClientOptions = {}): ApiClient
         problem: problem as Record<string, unknown>,
       });
     }
-    throw apiError(problemMessage(problem, response.status), response.status, fields, code);
+    throw apiError(
+      problemMessage(problem, response.status),
+      response.status,
+      fields,
+      code,
+      details as Record<string, unknown>,
+    );
   };
 
   return {

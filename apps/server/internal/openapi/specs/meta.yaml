@@ -1,0 +1,480 @@
+components:
+    schemas:
+        MetaPage:
+            description: A Facebook Page the module is connected to (Messenger design N10) — its id and name, and whether its access token still works. The token is never answered.
+            properties:
+                addedAt:
+                    format: date-time
+                    type: string
+                checkedAt:
+                    description: When the Page was last read from Meta, by adding it or by a channel's check.
+                    format: date-time
+                    nullable: true
+                    type: string
+                lastError:
+                    description: The last refusal Meta gave for this Page, as a short code (token_rejected, page_unavailable); absent while there is none.
+                    nullable: true
+                    type: string
+                name:
+                    type: string
+                pageId:
+                    description: The Page's id, which is a channel's address.
+                    type: string
+                state:
+                    description: active, or token_rejected when Meta refused the Page's token (code 190) — a channel on the Page is then unavailable until the Page is added again with a new token.
+                    enum:
+                        - active
+                        - token_rejected
+                    type: string
+            required:
+                - pageId
+                - name
+                - state
+                - addedAt
+            type: object
+        MetaPageChoice:
+            description: A Page a system user's or a user's token manages and may message — one of the choices of a page_choice_required refusal.
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+            required:
+                - id
+                - name
+            type: object
+        MetaPageRequest:
+            description: A token Vantigo checks with Meta before it keeps the Page (Messenger design N10) — a system user's or a user's token that manages the Page, or the Page's own access token.
+            properties:
+                accessToken:
+                    description: A system user's token that does not expire is recommended; a user's token, or the Page's own access token, also works. Never stored when it is not the Page's own; the Page's access token is sealed under meta/page-token and never answered.
+                    maxLength: 1024
+                    type: string
+                pageId:
+                    description: Which Page to connect when the token manages several; the id of one of the choices a page_choice_required refusal listed. Optional.
+                    maxLength: 30
+                    nullable: true
+                    type: string
+            required:
+                - accessToken
+            type: object
+        MetaProblem:
+            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: public_host_required (422: the instance has no public host, so the webhook has no address), not_configured (422: the app id and secret are not set), page_token_insufficient (422: the token is neither a Page''s own token nor a user''s or system user''s token that manages a Page with permission to message it, or the pageId asked for is not such a Page), page_choice_required (422: the token manages several Pages that may be messaged and no pageId was given; choices lists them), meta_unreachable (503: Meta could not be asked), page_not_found (404). errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither.'
+            properties:
+                choices:
+                    description: The Pages to choose from, on a page_choice_required refusal.
+                    items:
+                        $ref: '#/components/schemas/MetaPageChoice'
+                    type: array
+                code:
+                    nullable: true
+                    type: string
+                detail:
+                    nullable: true
+                    type: string
+                errors:
+                    additionalProperties:
+                        items:
+                            type: string
+                        type: array
+                    type: object
+                instance:
+                    nullable: true
+                    type: string
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
+        MetaSettings:
+            description: The workspace's Meta settings (Messenger design N10) — the app, the webhook's verify token and address, the Human Agent switch, the Pages and the status line. The app secret and the Page tokens are never answered.
+            properties:
+                appId:
+                    description: The Meta app's id; absent until set.
+                    nullable: true
+                    type: string
+                appSecretSet:
+                    description: Whether the app secret is stored. It is sealed under meta/app-secret and never answered.
+                    type: boolean
+                humanAgentGranted:
+                    description: Whether Meta has granted the app the Human Agent permission, which extends the reply window to seven days (design N6).
+                    type: boolean
+                pages:
+                    items:
+                        $ref: '#/components/schemas/MetaPage'
+                    type: array
+                publicHostConfigured:
+                    description: Whether the instance has a public host (PUBLIC_BASE_URL). Without one the settings cannot be saved, because the webhook lives there.
+                    type: boolean
+                status:
+                    $ref: '#/components/schemas/MetaStatus'
+                verifyToken:
+                    description: The token Meta's handshake presents, generated by the module; regenerating replaces it.
+                    type: string
+                webhookUrl:
+                    description: Where Meta posts, PUBLIC_BASE_URL/api/v1/meta/webhook; absent while the instance has no public host.
+                    nullable: true
+                    type: string
+            required:
+                - appSecretSet
+                - humanAgentGranted
+                - verifyToken
+                - publicHostConfigured
+                - pages
+                - status
+            type: object
+        MetaSettingsRequest:
+            description: The workspace's Meta settings. Every field is optional and one left out keeps its value.
+            properties:
+                appId:
+                    description: The Meta app's id, digits only.
+                    maxLength: 40
+                    type: string
+                appSecret:
+                    description: The app secret, sealed at once under meta/app-secret. Empty keeps the stored one.
+                    maxLength: 200
+                    type: string
+                humanAgentGranted:
+                    type: boolean
+            type: object
+        MetaStatus:
+            description: What the Owner reads to see whether Meta reaches the instance and the instance reaches Meta.
+            properties:
+                lastGraphErrorAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                lastGraphErrorCode:
+                    description: The last refusal of Meta's Graph API as a code — Meta's own code (190, 10/2018278) or human_agent_not_permitted, in which case the Owner should clear the Human Agent checkbox; absent while there is none.
+                    nullable: true
+                    type: string
+                lastGraphErrorMessage:
+                    description: Meta's words for it, at most 200 characters.
+                    nullable: true
+                    type: string
+                lastRejectedAt:
+                    description: When a post arrived whose signature did not match the app secret.
+                    format: date-time
+                    nullable: true
+                    type: string
+                lastWebhookAt:
+                    description: When the last post with a valid signature arrived.
+                    format: date-time
+                    nullable: true
+                    type: string
+            type: object
+info:
+    title: Vantigo Meta API
+    version: "1"
+openapi: 3.0.3
+paths:
+    /api/v1/meta/pages:
+        post:
+            description: 'Connects a Facebook Page from a token (Messenger design N10). Vantigo lists the Pages the token manages (GET /me/accounts, for a system user''s or a user''s token) and keeps those whose tasks include MESSAGING: none, or a pageId that is not one of them, is 422 page_token_insufficient; several and no pageId is 422 page_choice_required with the choices; the chosen Page''s own access token, not the pasted one, is what is used and sealed under meta/page-token. A token Meta does not let list Pages is taken for a Page''s own token: the Page is read from /me and the token is accepted when subscribing the app succeeds. Vantigo subscribes the app to the Page''s messages, messaging_postbacks, message_reads, message_deliveries and message_echoes and keeps the Page''s id and name. The same Page added again replaces its token and clears a rejection. The Owner''s. 422 not_configured while the app id and secret are not set; 503 meta_unreachable when Meta could not be asked. Rate limited to 30 per client address a minute, shared with every Owner operation of the module.'
+            operationId: postMetaPages
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/MetaPageRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MetaPage'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/MetaProblem'
+                    description: Bad Request — field errors on the body.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "422":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/MetaProblem'
+                    description: Unprocessable Entity — not_configured, page_token_insufficient, or page_choice_required (choices lists the Pages).
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — meta-owner's limit for this client address, shared with every Owner operation of the module.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/MetaProblem'
+                    description: Service Unavailable — meta_unreachable, Meta could not be asked.
+            summary: Connect a Page
+            tags:
+                - Meta
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/meta/pages/{pageId}:
+        delete:
+            description: 'Removes a Page (Messenger design N10): the app''s subscription is withdrawn from Meta as far as Meta answers, and the Page''s token, its queued events, their stored files and its cached profiles are deleted. A channel on the Page becomes unavailable. The Owner''s. Rate limited with every Owner operation of the module.'
+            operationId: deleteMetaPagesByPageId
+            parameters:
+                - description: The Page's id.
+                  in: path
+                  name: pageId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/MetaProblem'
+                    description: Not Found — page_not_found.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — meta-owner's limit for this client address, shared with every Owner operation of the module.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Remove a Page
+            tags:
+                - Meta
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/meta/settings:
+        get:
+            description: The workspace's Meta settings with the Pages, the webhook's address and verify token and the status line (Messenger design N10). The secrets are never answered. The Owner's.
+            operationId: getMetaSettings
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MetaSettings'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the Meta settings
+            tags:
+                - Meta
+            x-vantigo-access: policy:Owner+OwnerManagement
+        put:
+            description: 'Sets the app id, the app secret and the Human Agent switch (Messenger design N10); a field left out keeps its value. Refused 422 public_host_required while the instance has no public host, because the webhook lives there. The secret is sealed under meta/app-secret at once. Rate limited to 30 per client address a minute, shared with every Owner operation of the module.'
+            operationId: putMetaSettings
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/MetaSettingsRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MetaSettings'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/MetaProblem'
+                    description: Bad Request — field errors on the body.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "422":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/MetaProblem'
+                    description: Unprocessable Entity — public_host_required.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — meta-owner's limit for this client address, shared with every Owner operation of the module.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Set the Meta settings
+            tags:
+                - Meta
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/meta/settings/verify-token:
+        post:
+            description: 'Replaces the webhook''s verify token with a new random one (Messenger design N10); the Owner pastes it into Meta''s webhook settings again, and until then Meta''s handshake is refused. Rate limited with every Owner operation of the module.'
+            operationId: postMetaSettingsVerifyToken
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MetaSettings'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — meta-owner's limit for this client address, shared with every Owner operation of the module.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Regenerate the verify token
+            tags:
+                - Meta
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/meta/webhook:
+        get:
+            description: 'Meta''s webhook handshake (Messenger design N11), on the public host and the app''s host alike. Anonymous: Meta sends no session. With hub.mode subscribe and a hub.verify_token equal — compared in constant time — to the settings'' verify token, it answers hub.challenge as text/plain with 200; anything else is 403. Rate limited to 60 per client address a minute (meta-webhook-verify).'
+            operationId: getMetaWebhook
+            parameters:
+                - in: query
+                  name: hub.mode
+                  schema:
+                    type: string
+                - in: query
+                  name: hub.verify_token
+                  schema:
+                    type: string
+                - in: query
+                  name: hub.challenge
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        text/plain:
+                            schema:
+                                type: string
+                    description: OK — hub.challenge, as plain text.
+                "403":
+                    description: Forbidden — the mode is not subscribe, or the verify token does not match.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — meta-webhook-verify's limit for this client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Meta's webhook handshake
+            tags:
+                - Meta
+            x-vantigo-access: anonymous
+        post:
+            description: 'Meta''s webhook events (Messenger design N11), on the public host and the app''s host alike. Anonymous: Meta sends no session. A hand-written handler: the contract declares the body as raw bytes (application/octet-stream, binary), which the strict wrapper hands on undecoded, whatever content type Meta sends, and the handler reads the raw body itself, at most 1 MiB (413 above). It checks X-Hub-Signature-256, sha256=<hex>, an HMAC-SHA256 under the app secret over the bytes exactly as received, compared in constant time — a missing or wrong signature is 401 and is logged, and an app secret not yet set is 503 — then stores the body in meta.webhook_events and answers 200 with no body. A database that cannot be written is 503, so Meta retries. Nothing is parsed for routing before the answer: Meta wants one within five seconds. Rate limited to 1200 per client address a minute (meta-webhook).'
+            operationId: postMetaWebhook
+            requestBody:
+                content:
+                    application/octet-stream:
+                        schema:
+                            format: binary
+                            type: string
+                description: The event as Meta sent it, application/json in practice, read raw by the handler and never decoded by the strict wrapper.
+                required: true
+            responses:
+                "200":
+                    description: OK — the event is stored.
+                    x-vantigo-empty-body: true
+                "400":
+                    description: Bad Request — a signed body that is not JSON.
+                "401":
+                    description: Unauthorized — the signature is missing or does not match.
+                "413":
+                    description: Content Too Large — more than 1 MiB.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — meta-webhook's limit for this client address. Meta retries.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+                "503":
+                    description: Service Unavailable — the event could not be stored, or the app secret is not set. Meta retries.
+            summary: Meta's webhook events
+            tags:
+                - Meta
+            x-vantigo-access: anonymous
+servers:
+    - url: /

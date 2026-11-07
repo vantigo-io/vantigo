@@ -34,6 +34,7 @@ import { Route as WorkspaceGoogleConnectionRoute } from "./workspace/google/conn
 import { Route as WorkspaceGoogleIndexRoute } from "./workspace/google/index";
 import { Route as WorkspaceIndexRoute } from "./workspace/index";
 import { Route as WorkspaceInvitationsRoute } from "./workspace/invitations";
+import { Route as WorkspaceMetaRoute } from "./workspace/meta";
 import { Route as WorkspaceOverviewRoute } from "./workspace/overview";
 import { Route as WorkspaceRolesRoute } from "./workspace/roles";
 import { Route as WorkspaceShippingRoute } from "./workspace/shipping";
@@ -748,5 +749,37 @@ describe("the Shipping route", () => {
     const thrown = await runGuard(WorkspaceShippingRoute, "/workspace/shipping");
     expect(isNotFound(thrown)).toBe(true);
     expect((thrown as { data?: unknown }).data).toEqual({ moduleDisabled: "orders" });
+  });
+});
+
+// Integrations › Meta (Messenger design N9): the Owner's, while the Meta module is on. The module has no
+// permission, so a holder of every permission who is not an Owner is sent home.
+describe("the Meta route", () => {
+  const injectModules = (modules: string[]) => {
+    window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules };
+  };
+
+  beforeEach(() => injectModules(["customers", "communications", "meta"]));
+  afterEach(() => {
+    delete window.__VANTIGO_APP__;
+  });
+
+  it("admits an Owner while the module is on", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"]));
+    await expectAdmitted(WorkspaceMetaRoute);
+  });
+
+  it("sends a member home, whatever the member holds", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+    getAuthorizationMe.mockResolvedValue({ permissions: ["*"], canManageAuthorization: true });
+    await expectRedirectTo(WorkspaceMetaRoute, "/");
+  });
+
+  it("answers the not-enabled page to an Owner while the module is off", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"]));
+    injectModules(["customers", "communications"]);
+    const thrown = await runGuard(WorkspaceMetaRoute, "/workspace/meta");
+    expect(isNotFound(thrown)).toBe(true);
+    expect((thrown as { data?: unknown }).data).toEqual({ moduleDisabled: "meta" });
   });
 });

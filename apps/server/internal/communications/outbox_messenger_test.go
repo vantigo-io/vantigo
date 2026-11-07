@@ -638,3 +638,41 @@ func TestOutboxMessenger_AHeldSendClearsThePartsAttempt(t *testing.T) {
 		t.Errorf("job = %q, want completed", job.status)
 	}
 }
+
+// TestOutboxMessenger_AFilePartIsGivenTimeToUpload: a part carrying a large
+// file is sent under a timeout scaled to its size, not the 30 seconds of a text,
+// and the job's lease is kept at twice it (M2); a text part keeps the base.
+func TestOutboxMessenger_AFilePartIsGivenTimeToUpload(t *testing.T) {
+	t.Parallel()
+	f := newChat(t)
+	conv := f.chat(t)
+	file := f.stage(t, conv, "big.png", make([]byte, 10_000_000))
+	message := f.mustReply(t, conv, map[string]any{"textBody": "A big one", "attachmentIds": []string{file}})
+
+	var mu sync.Mutex
+	var budgets, leases []time.Duration
+	f.fake.OnSend(func(ctx context.Context, _ string, _ contracts.MessengerPart) error {
+		var until time.Time
+		_ = f.h.Pool().QueryRow(context.Background(), `SELECT lease_until FROM communications.outbox_jobs WHERE message_id = $1`, message).Scan(&until)
+		deadline, _ := ctx.Deadline()
+		mu.Lock()
+		defer mu.Unlock()
+		budgets = append(budgets, time.Until(deadline))
+		leases = append(leases, until.Sub(f.h.Now()))
+		return nil
+	})
+	f.drainOutbox(t, f.outbox())
+	if len(budgets) != 2 {
+		t.Fatalf("Send calls = %d, want the text and the file", len(budgets))
+	}
+	if budgets[0] > 31*time.Second || budgets[0] < 25*time.Second {
+		t.Errorf("the text part's timeout = %v, want about 30 s", budgets[0])
+	}
+	// 10 MB: 30 s and 2 s a megabyte begun.
+	if budgets[1] < 45*time.Second || budgets[1] > 51*time.Second {
+		t.Errorf("the file part's timeout = %v, want about 50 s", budgets[1])
+	}
+	if leases[1] < 95*time.Second {
+		t.Errorf("the lease at the file part = %v, want twice its timeout", leases[1])
+	}
+}

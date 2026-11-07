@@ -295,7 +295,10 @@ subscriptions worker `calendar-subscriptions` unless `CALENDAR_SUBSCRIPTIONS_ENA
 calendar mailbox sync worker `calendar-mailbox-sync` unless `CALENDAR_MAILBOX_SYNC_ENABLED=0`, and the
 Microsoft Entra ID module's `entra-outlook-sweep`, always, which tidies the people's
 Outlook connections every hour, the Google Workspace module's `google-sweep`, always,
-which does the same for the people's Google connections, and the Assistant's `assistant-runs`, always, which fails a run
+which does the same for the people's Google connections, the Meta module's `meta-split`,
+always, which splits Meta's stored webhook events into the Messenger channels' inbox and
+fetches the files people sent from Meta's servers, and `meta-retention`, always, which
+deletes what the module keeps past its periods every hour, and the Assistant's `assistant-runs`, always, which fails a run
 a restart left running, and `assistant-retention`, always, which deletes conversations past
 their retention once a day — and the platform's events dispatcher `events.dispatch`,
 always, whatever `MODULES` says) inside the
@@ -327,7 +330,9 @@ you use, retention cleanup, the registry workers, the EHF events worker, the
 calendar cancellations worker, `entra-outlook-sweep` and `assistant-retention` take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
 the `invoices-ehf` worker, the `invoices-reminders` worker, the `invoices-billing` worker,
 the `invoices-payments` worker, `communications-mailbox-sync`, `communications-messenger-sync`, the calendar subscriptions and mailbox sync workers and `events.dispatch` instead take one row at a time under a time-limited lease, so any number of
-instances share the work without sending anything twice. `google-sweep` and
+instances share the work without sending anything twice. `meta-split` takes the stored
+events under a lease and `meta-retention` deletes in batches, so both are safe on any
+number of instances. `google-sweep` and
 `invoices.allocation_reconcile` take neither: each of their steps claims its rows in one
 statement, so two instances never handle the same row. The reminder worker sends one letter at a time, at most one a
 second per instance, and each send must finish well inside its 60-second lease
@@ -726,7 +731,11 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   well: Google posts them over HTTPS to `PUBLIC_BASE_URL`, with a certificate it trusts,
   and the same switch turns them off
   ([Google Workspace](/en/admin/google-workspace/#calendar-sync),
-  [Calendar](/en/admin/calendar/#google-calendar)).
+  [Calendar](/en/admin/calendar/#google-calendar)). It carries the Meta module's webhook
+  for Facebook Messenger as well, `GET` and `POST /api/v1/meta/webhook`, which the proxy
+  must pass through as two routes: Meta's handshake and its events, whose signature is
+  checked over the body exactly as Meta sent it, so the proxy must not re-write the body
+  ([Meta](/en/admin/meta/#the-public-hosts-routes)).
 - `vantigo.env.example` also documents `STAFF_IMPORT_MAX_ROWS`, how many people one
   Staff import takes and one Staff export writes
   ([Staff](/en/admin/staff/#import-and-export-the-register)), and the Staff retention

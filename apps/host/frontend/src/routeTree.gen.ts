@@ -111,6 +111,7 @@ import { Route as WorkspaceAssistantRouteImport } from './routes/workspace/assis
 import { Route as WorkspaceEntraRouteImport } from './routes/workspace/entra'
 import { Route as WorkspaceGoogleRouteImport } from './routes/workspace/google'
 import { Route as WorkspaceInvitationsRouteImport } from './routes/workspace/invitations'
+import { Route as WorkspaceMetaRouteImport } from './routes/workspace/meta'
 import { Route as WorkspaceOverviewRouteImport } from './routes/workspace/overview'
 import { Route as WorkspaceRolesRouteImport } from './routes/workspace/roles'
 import { Route as WorkspaceShippingRouteImport } from './routes/workspace/shipping'
@@ -694,6 +695,11 @@ const WorkspaceInvitationsRoute = WorkspaceInvitationsRouteImport.update({
   path: '/invitations',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const WorkspaceMetaRoute = WorkspaceMetaRouteImport.update({
+  id: '/meta',
+  path: '/meta',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
 const WorkspaceOverviewRoute = WorkspaceOverviewRouteImport.update({
   id: '/overview',
   path: '/overview',
@@ -1167,6 +1173,7 @@ export interface FileRoutesByFullPath {
   '/workspace/entra': typeof WorkspaceEntraRouteWithChildren
   '/workspace/google': typeof WorkspaceGoogleRouteWithChildren
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
+  '/workspace/meta': typeof WorkspaceMetaRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/shipping': typeof WorkspaceShippingRoute
@@ -1319,6 +1326,7 @@ export interface FileRoutesByTo {
   '/workspace/ai': typeof WorkspaceAiRoute
   '/workspace/assistant': typeof WorkspaceAssistantRoute
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
+  '/workspace/meta': typeof WorkspaceMetaRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/shipping': typeof WorkspaceShippingRoute
@@ -1495,6 +1503,7 @@ export interface FileRoutesById {
   '/workspace/entra': typeof WorkspaceEntraRouteWithChildren
   '/workspace/google': typeof WorkspaceGoogleRouteWithChildren
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
+  '/workspace/meta': typeof WorkspaceMetaRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/shipping': typeof WorkspaceShippingRoute
@@ -1672,6 +1681,7 @@ export interface FileRouteTypes {
     | '/workspace/entra'
     | '/workspace/google'
     | '/workspace/invitations'
+    | '/workspace/meta'
     | '/workspace/overview'
     | '/workspace/roles'
     | '/workspace/shipping'
@@ -1824,6 +1834,7 @@ export interface FileRouteTypes {
     | '/workspace/ai'
     | '/workspace/assistant'
     | '/workspace/invitations'
+    | '/workspace/meta'
     | '/workspace/overview'
     | '/workspace/roles'
     | '/workspace/shipping'
@@ -1999,6 +2010,7 @@ export interface FileRouteTypes {
     | '/workspace/entra'
     | '/workspace/google'
     | '/workspace/invitations'
+    | '/workspace/meta'
     | '/workspace/overview'
     | '/workspace/roles'
     | '/workspace/shipping'
@@ -2839,6 +2851,13 @@ declare module '@tanstack/react-router' {
       path: '/invitations'
       fullPath: '/workspace/invitations'
       preLoaderRoute: typeof WorkspaceInvitationsRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
+    '/workspace/meta': {
+      id: '/workspace/meta'
+      path: '/meta'
+      fullPath: '/workspace/meta'
+      preLoaderRoute: typeof WorkspaceMetaRouteImport
       parentRoute: typeof WorkspaceRoute
     }
     '/workspace/overview': {
@@ -3822,6 +3841,7 @@ interface WorkspaceRouteChildren {
   WorkspaceEntraRoute: typeof WorkspaceEntraRouteWithChildren
   WorkspaceGoogleRoute: typeof WorkspaceGoogleRouteWithChildren
   WorkspaceInvitationsRoute: typeof WorkspaceInvitationsRoute
+  WorkspaceMetaRoute: typeof WorkspaceMetaRoute
   WorkspaceOverviewRoute: typeof WorkspaceOverviewRoute
   WorkspaceRolesRoute: typeof WorkspaceRolesRoute
   WorkspaceShippingRoute: typeof WorkspaceShippingRoute
@@ -3835,6 +3855,7 @@ const WorkspaceRouteChildren: WorkspaceRouteChildren = {
   WorkspaceEntraRoute: WorkspaceEntraRouteWithChildren,
   WorkspaceGoogleRoute: WorkspaceGoogleRouteWithChildren,
   WorkspaceInvitationsRoute: WorkspaceInvitationsRoute,
+  WorkspaceMetaRoute: WorkspaceMetaRoute,
   WorkspaceOverviewRoute: WorkspaceOverviewRoute,
   WorkspaceRolesRoute: WorkspaceRolesRoute,
   WorkspaceShippingRoute: WorkspaceShippingRoute,
