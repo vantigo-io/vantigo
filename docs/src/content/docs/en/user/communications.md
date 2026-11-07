@@ -8,6 +8,7 @@ sources:
   - packages/frontend-shell/src/side-panel.tsx
   - apps/host/frontend/src/routes/communications
   - apps/host/frontend/src/lib/product-messaging.ts
+  - apps/host/frontend/src/routes/__root.tsx
 ---
 
 The Communications app is a shared inbox: every email conversation — and, where a
