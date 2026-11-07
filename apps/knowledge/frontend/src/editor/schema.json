@@ -1,40 +1,82 @@
 {
   "nodes": {
+    "articleLink": {
+      "attrs": ["id", "label"]
+    },
     "blockquote": {
-      "attrs": []
+      "attrs": ["id"]
     },
     "bulletList": {
-      "attrs": []
+      "attrs": ["id"]
+    },
+    "callout": {
+      "attrs": ["emoji", "id", "kind"]
     },
     "codeBlock": {
-      "attrs": ["language"]
+      "attrs": ["id", "language"]
+    },
+    "details": {
+      "attrs": ["id", "open"]
+    },
+    "detailsContent": {
+      "attrs": []
+    },
+    "detailsSummary": {
+      "attrs": []
     },
     "doc": {
       "attrs": []
+    },
+    "fileAttachment": {
+      "attrs": ["contentType", "fileId", "filename", "id", "size"]
     },
     "hardBreak": {
       "attrs": []
     },
     "heading": {
-      "attrs": ["level"]
+      "attrs": ["id", "level"]
     },
     "horizontalRule": {
-      "attrs": []
+      "attrs": ["id"]
+    },
+    "image": {
+      "attrs": ["alt", "id", "src", "title", "width"]
     },
     "listItem": {
-      "attrs": []
+      "attrs": ["id"]
+    },
+    "mention": {
+      "attrs": ["id", "label"]
     },
     "orderedList": {
-      "attrs": ["start", "type"]
+      "attrs": ["id", "start", "type"]
     },
     "paragraph": {
+      "attrs": ["id"]
+    },
+    "recordLink": {
+      "attrs": ["label", "path"]
+    },
+    "table": {
+      "attrs": ["id"]
+    },
+    "tableCell": {
+      "attrs": ["colspan", "colwidth", "rowspan"]
+    },
+    "tableHeader": {
+      "attrs": ["colspan", "colwidth", "rowspan"]
+    },
+    "tableOfContents": {
+      "attrs": ["id"]
+    },
+    "tableRow": {
       "attrs": []
     },
     "taskItem": {
-      "attrs": ["checked"]
+      "attrs": ["checked", "id"]
     },
     "taskList": {
-      "attrs": []
+      "attrs": ["id"]
     },
     "text": {
       "attrs": []

@@ -30,6 +30,16 @@
       "@tanstack/react-router-devtools": "^1.167.2",
       "@tanstack/router-plugin": "^1.168.48",
       "@tanstack/react-virtual": "3.14.20",
+      "@tiptap/core": "3.32.2",
+      "@tiptap/extension-code-block-lowlight": "3.32.2",
+      "@tiptap/extension-details": "3.32.2",
+      "@tiptap/extension-drag-handle": "3.32.2",
+      "@tiptap/extension-drag-handle-react": "3.32.2",
+      "@tiptap/extension-mention": "3.32.2",
+      "@tiptap/extension-node-range": "3.32.2",
+      "@tiptap/extension-table": "3.32.2",
+      "@tiptap/extension-unique-id": "3.32.2",
+      "@tiptap/suggestion": "3.32.2",
       "@tiptap/extension-link": "^3.32.2",
       "@tiptap/extension-task-item": "^3.32.2",
       "@tiptap/extension-task-list": "^3.32.2",
@@ -63,7 +73,8 @@
       "typescript-eslint": "^8.72.1",
       "vite": "^8.3.5",
       "vitest": "^5.0.5",
-      "jsdom": "^30.1.3"
+      "jsdom": "^30.1.3",
+      "lowlight": "3.3.0"
     }
   },
   "scripts": {

@@ -35,7 +35,7 @@ export const fakeServer = (handler: Handler) => {
       const call: Call = {
         method: init?.method ?? "GET",
         url: String(input),
-        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        body: init?.body instanceof FormData ? init.body : init?.body ? JSON.parse(String(init.body)) : undefined,
       };
       calls.push(call);
       return (await handler(call)) ?? emptyAnswers(call) ?? new Response(null, { status: 404 });
