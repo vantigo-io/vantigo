@@ -4,7 +4,7 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { type Attachment, fetchInlineImage, type MessageCard } from "../api/conversations";
 
 /** One card's image as a data: URI, fetched by the page as an inline image is; nothing while it loads or when it cannot be shown. */
-function CardImage({ attachment }: { attachment: Attachment | undefined }) {
+export function CardImage({ attachment }: { attachment: Attachment | undefined }) {
   const image = useQuery({
     queryKey: ["chat-card-image", attachment?.id],
     queryFn: ({ signal }) => fetchInlineImage(attachment?.downloadPath ?? "", signal),

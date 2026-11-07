@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -162,9 +163,37 @@ type storedAnswer struct {
 	Title     string `json:"title"`
 }
 
+// productQuestion is a message of the thread that showed a product in cards
+// (N16): the product, and the cards as they were sent, which an answer to one
+// of their choices is resolved against (N17).
+type productQuestion struct {
+	productID int32
+	cards     []storedCard
+}
+
+// productQuestions are the thread's messages with cards and a product, by id.
+func productQuestions(rows []store.GetConversationMessagesByConversationIDRow) (map[uuid.UUID]productQuestion, error) {
+	out := map[uuid.UUID]productQuestion{}
+	for _, r := range rows {
+		if r.ProductID == 0 || len(r.Components) == 0 {
+			continue
+		}
+		var stored storedComponents
+		if err := json.Unmarshal(r.Components, &stored); err != nil {
+			return nil, fmt.Errorf("communications: decode a message's components: %w", err)
+		}
+		if len(stored.Cards) > 0 {
+			out[r.ID] = productQuestion{productID: r.ProductID, cards: stored.Cards}
+		}
+	}
+	return out, nil
+}
+
 // answerResponse is the stored answer as the thread reads it: nil for a message
-// that is no answer, or whose answer cannot be read.
-func answerResponse(raw []byte) *gen.MessageAnswer {
+// that is no answer, or whose answer cannot be read. An answer to a choice of a
+// card of a product the question showed carries the product (N17): its id, the
+// card's title and the card's image.
+func answerResponse(raw []byte, products map[uuid.UUID]productQuestion) *gen.MessageAnswer {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil
 	}
@@ -176,7 +205,17 @@ func answerResponse(raw []byte) *gen.MessageAnswer {
 	if err != nil {
 		return nil
 	}
-	return &gen.MessageAnswer{MessageId: id, ChoiceId: stored.ChoiceID, Title: stored.Title}
+	answer := &gen.MessageAnswer{MessageId: id, ChoiceId: stored.ChoiceID, Title: stored.Title}
+	if q, ok := products[id]; ok {
+		for _, card := range q.cards {
+			if !slices.ContainsFunc(card.Choices, func(c storedChoice) bool { return c.ID == stored.ChoiceID }) {
+				continue
+			}
+			answer.Product = &gen.MessageAnswerProduct{ProductId: q.productID, Name: card.Title, AttachmentId: card.AttachmentID}
+			break
+		}
+	}
+	return answer
 }
 
 // componentLimitsOf is what a message may carry on a channel whose provider has
@@ -281,15 +320,16 @@ func latestInbound(ctx context.Context, q *store.Queries, conversationID uuid.UU
 // validateComponents checks a reply's components against the provider's
 // Capabilities (N4): every limit it breaks is a field of the 422
 // components_invalid, keyed by where it is. Cards are checked for their shape;
-// that a card's image is a product's belongs to the delivery that copies it.
+// that a card's image is a product's belongs to the copy (reply_cards.go).
 func validateComponents(c *gen.MessageComponents, caps contracts.MessengerCapabilities) map[string][]string {
 	errs := map[string][]string{}
 	if c == nil {
 		return errs
 	}
 	// An id is unique within its message, answer options and card choices alike:
-	// it is what the payload names (N4).
-	seen := map[string]bool{}
+	// it is what the payload names (N4). The same choice of a card may stand on
+	// several cards (validateChoices).
+	seen := map[string]seenChoice{}
 	if c.AnswerOptions != nil {
 		options := *c.AnswerOptions
 		switch {
@@ -299,7 +339,7 @@ func validateComponents(c *gen.MessageComponents, caps contracts.MessengerCapabi
 			// The request for an e-mail address is a quick reply too (N4): it counts.
 			errs["answerOptions"] = []string{fmt.Sprintf("At most %d answer options are allowed, the request for an e-mail address counting as one.", caps.MaxAnswerOptions)}
 		}
-		errs = validateChoices(errs, seen, "answerOptions", options, caps.MaxAnswerTitle)
+		errs = validateChoices(errs, seen, "answerOptions", options, caps.MaxAnswerTitle, false)
 	}
 	if c.ShareEmail != nil && *c.ShareEmail && !caps.ShareEmail {
 		errs["shareEmail"] = []string{"This channel cannot ask for an e-mail address."}
@@ -324,26 +364,42 @@ func validateComponents(c *gen.MessageComponents, caps contracts.MessengerCapabi
 				if len(*card.Choices) > caps.MaxCardChoices {
 					errs[key+".choices"] = []string{fmt.Sprintf("A card has at most %d choices.", caps.MaxCardChoices)}
 				}
-				errs = validateChoices(errs, seen, key+".choices", *card.Choices, caps.MaxChoiceTitle)
+				errs = validateChoices(errs, seen, key+".choices", *card.Choices, caps.MaxChoiceTitle, true)
 			}
 		}
 	}
 	return errs
 }
 
+// seenChoice is a choice id met so far in a message: the title it carried, and
+// whether it was a card's choice.
+type seenChoice struct {
+	title string
+	card  bool
+}
+
 // validateChoices checks each choice of one list: an id of the shape N4 names,
-// not in seen — the ids of the message so far, which it adds to —, and a title
-// of 1 to maxTitle characters.
-func validateChoices(errs map[string][]string, seen map[string]bool, key string, choices []gen.MessageComponentChoice, maxTitle int) map[string][]string {
+// once in the list and not one of the message's answer options or another kind
+// of choice (seen holds the ids of the message so far, which it adds to), and a
+// title of 1 to maxTitle characters. A card's choice may repeat on another card
+// with the same title: it is the same answer, as Buy is on each card of a
+// product's carousel (N16), because what the payload names is the message and
+// the choice, not the card.
+func validateChoices(errs map[string][]string, seen map[string]seenChoice, key string, choices []gen.MessageComponentChoice, maxTitle int, cards bool) map[string][]string {
+	inList := map[string]bool{}
 	for i, choice := range choices {
 		at := fmt.Sprintf("%s[%d]", key, i)
+		prev, met := seen[choice.Id]
 		switch {
 		case !choiceIDPattern.MatchString(choice.Id):
 			errs[at+".id"] = []string{"An id is 1 to 40 lower-case letters, digits and hyphens."}
-		case seen[choice.Id]:
+		case inList[choice.Id]:
 			errs[at+".id"] = []string{"An id may appear only once."}
+		case met && (!cards || !prev.card || prev.title != choice.Title):
+			errs[at+".id"] = []string{"An id may appear only once in a message, except the same choice on several cards."}
 		}
-		seen[choice.Id] = true
+		inList[choice.Id] = true
+		seen[choice.Id] = seenChoice{title: choice.Title, card: cards}
 		if n := utf8.RuneCountInString(strings.TrimSpace(choice.Title)); n < 1 || n > maxTitle {
 			errs[at+".title"] = []string{fmt.Sprintf("A title is 1 to %d characters.", maxTitle)}
 		}

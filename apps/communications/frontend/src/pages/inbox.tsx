@@ -18,14 +18,17 @@ import { ConversationThread } from "../components/ConversationThread";
 import { personalSenderLabel, returnHere } from "../components/conversationHelpers";
 import { InboxFilters, type InboxSearch } from "../components/InboxFilters";
 import { useConversationActions } from "../hooks/useConversationActions";
+import { noProductMessaging, type ProductMessaging, ProductMessagingProvider } from "../lib/product-messaging";
 import "../i18n";
 import "../styles.css";
 
 export type InboxPageProps = {
   connectionButton?: (props: ConnectionButtonProps) => ReactNode;
+  /** What the host says of Products and Orders beside the chat: Attach product, prices, Create order (Messenger design N16, N17). */
+  productMessaging?: ProductMessaging;
 };
 
-export function InboxPage({ connectionButton }: InboxPageProps = {}) {
+export function InboxPage({ connectionButton, productMessaging = noProductMessaging }: InboxPageProps = {}) {
   const { t } = useI18n("communications");
   const search = useSearch({ strict: false }) as InboxSearch;
   const navigate = useNavigate() as (options: unknown) => void;
@@ -93,122 +96,126 @@ export function InboxPage({ connectionButton }: InboxPageProps = {}) {
   });
 
   return (
-    <Stack gap="lg" className="inbox-shell">
-      <PageHeader title={t("inbox")} description={t("inboxDescription")} />
-      <PageSection padding={0} className="inbox-card">
-        <Group className="inbox-toolbar" justify="space-between" p="sm">
-          <Group gap="xs">
-            <IconInbox size={19} />
-            <Text fw={700}>{t("sharedInbox")}</Text>
-          </Group>
-          <InboxFilters
-            search={search}
-            tags={tags.data || []}
-            onSearchChange={(nextSearch) => void navigate({ search: nextSearch })}
-          />
-          <Group gap="xs">
-            <TextInput placeholder={t("searchConversations")} size="sm" className="inbox-search" disabled />
-            <Button size="sm" leftSection={<IconPlus size={15} />} onClick={() => setNewModalOpen(true)}>
-              {t("newConversation")}
-            </Button>
-          </Group>
-        </Group>
-        <div className="inbox-grid">
-          <ConversationList
-            data={list.data}
-            isPending={list.isPending}
-            isError={list.isError && !list.data}
-            error={list.error}
-            selectedId={selectedId}
-            onSelect={select}
-            onRefresh={() => void list.refetch()}
-          />
-          <main className="thread-pane">
-            {!selectedId ? (
-              <Stack align="center" justify="center" h="100%" p="xl">
-                <IconInbox size={38} color="var(--mantine-color-dimmed)" />
-                <Title order={3}>{t("selectConversation")}</Title>
-                <Text c="dimmed">{t("repliesAndNotesTogether")}</Text>
-              </Stack>
-            ) : detail.isPending ? (
-              <ContentSkeleton rows={5} p="md" />
-            ) : detail.isError && !active ? (
-              <Alert m="md" color="red">
-                {t("couldNotLoadConversation")}
-              </Alert>
-            ) : (
-              active && (
-                <>
-                  {detail.isError && (
-                    <Alert color="yellow" py={4} px="sm" role="status">
-                      {t("refreshFailed")}
-                    </Alert>
-                  )}
-                  <ConversationThread
-                    key={active.id}
-                    conversation={active}
-                    tags={tags.data || []}
-                    onRead={() => markRead.mutate()}
-                    onWorkflow={(body) => workflow.mutate(body)}
-                    onTag={(tagId, remove) => tagMutation.mutate({ tagId, remove })}
-                    onSent={invalidate}
-                    onSuggest={() => suggest.mutate()}
-                    suggestionPending={suggest.isPending}
-                    suggestionError={suggest.error}
-                    connectionButton={connectionButton}
-                  />
-                </>
-              )
-            )}
-          </main>
-        </div>
-      </PageSection>
-      <Modal opened={newModalOpen} onClose={() => setNewModalOpen(false)} title={t("newConversation")} size="lg">
-        <Stack gap="sm">
-          <TextInput label={t("to")} required value={newTo} onChange={(e) => setNewTo(e.currentTarget.value)} />
-          <TextInput
-            label={t("subject")}
-            required
-            value={newSubject}
-            onChange={(e) => setNewSubject(e.currentTarget.value)}
-          />
-          <Textarea
-            label={t("message")}
-            required
-            minRows={4}
-            value={newBody}
-            onChange={(e) => setNewBody(e.currentTarget.value)}
-          />
-          {personalSender?.available && (
-            <Checkbox
-              size="xs"
-              label={personalSenderLabel(t, personalSender)}
-              checked={sendFromPersonal}
-              onChange={(e) => setSendFromPersonal(e.currentTarget.checked)}
+    <ProductMessagingProvider value={productMessaging}>
+      <Stack gap="lg" className="inbox-shell">
+        <PageHeader title={t("inbox")} description={t("inboxDescription")} />
+        <PageSection padding={0} className="inbox-card">
+          <Group className="inbox-toolbar" justify="space-between" p="sm">
+            <Group gap="xs">
+              <IconInbox size={19} />
+              <Text fw={700}>{t("sharedInbox")}</Text>
+            </Group>
+            <InboxFilters
+              search={search}
+              tags={tags.data || []}
+              onSearchChange={(nextSearch) => void navigate({ search: nextSearch })}
             />
-          )}
-          {!personalSender?.available &&
-            (personalSender?.reason === "not_connected" || personalSender?.reason === "reconnect") &&
-            connectionButton && <Group gap="xs">{connectionButton({ feature: "mail", returnTo: returnHere() })}</Group>}
-          {create.error && (
-            <Text size="xs" c="red">
-              {create.error.message}
-            </Text>
-          )}
-          <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={() => setNewModalOpen(false)}>
-              {t("cancel")}
-            </Button>
-            <Button
-              loading={create.isPending}
-              disabled={!newTo.trim() || !newSubject.trim() || !newBody.trim()}
-              onClick={() => create.mutate()}
-            >
-              {t("send")}
-            </Button>
+            <Group gap="xs">
+              <TextInput placeholder={t("searchConversations")} size="sm" className="inbox-search" disabled />
+              <Button size="sm" leftSection={<IconPlus size={15} />} onClick={() => setNewModalOpen(true)}>
+                {t("newConversation")}
+              </Button>
+            </Group>
           </Group>
-        </Stack>
-      </Modal>
-    </Stack>
+          <div className="inbox-grid">
+            <ConversationList
+              data={list.data}
+              isPending={list.isPending}
+              isError={list.isError && !list.data}
+              error={list.error}
+              selectedId={selectedId}
+              onSelect={select}
+              onRefresh={() => void list.refetch()}
+            />
+            <main className="thread-pane">
+              {!selectedId ? (
+                <Stack align="center" justify="center" h="100%" p="xl">
+                  <IconInbox size={38} color="var(--mantine-color-dimmed)" />
+                  <Title order={3}>{t("selectConversation")}</Title>
+                  <Text c="dimmed">{t("repliesAndNotesTogether")}</Text>
+                </Stack>
+              ) : detail.isPending ? (
+                <ContentSkeleton rows={5} p="md" />
+              ) : detail.isError && !active ? (
+                <Alert m="md" color="red">
+                  {t("couldNotLoadConversation")}
+                </Alert>
+              ) : (
+                active && (
+                  <>
+                    {detail.isError && (
+                      <Alert color="yellow" py={4} px="sm" role="status">
+                        {t("refreshFailed")}
+                      </Alert>
+                    )}
+                    <ConversationThread
+                      key={active.id}
+                      conversation={active}
+                      tags={tags.data || []}
+                      onRead={() => markRead.mutate()}
+                      onWorkflow={(body) => workflow.mutate(body)}
+                      onTag={(tagId, remove) => tagMutation.mutate({ tagId, remove })}
+                      onSent={invalidate}
+                      onSuggest={() => suggest.mutate()}
+                      suggestionPending={suggest.isPending}
+                      suggestionError={suggest.error}
+                      connectionButton={connectionButton}
+                    />
+                  </>
+                )
+              )}
+            </main>
+          </div>
+        </PageSection>
+        <Modal opened={newModalOpen} onClose={() => setNewModalOpen(false)} title={t("newConversation")} size="lg">
+          <Stack gap="sm">
+            <TextInput label={t("to")} required value={newTo} onChange={(e) => setNewTo(e.currentTarget.value)} />
+            <TextInput
+              label={t("subject")}
+              required
+              value={newSubject}
+              onChange={(e) => setNewSubject(e.currentTarget.value)}
+            />
+            <Textarea
+              label={t("message")}
+              required
+              minRows={4}
+              value={newBody}
+              onChange={(e) => setNewBody(e.currentTarget.value)}
+            />
+            {personalSender?.available && (
+              <Checkbox
+                size="xs"
+                label={personalSenderLabel(t, personalSender)}
+                checked={sendFromPersonal}
+                onChange={(e) => setSendFromPersonal(e.currentTarget.checked)}
+              />
+            )}
+            {!personalSender?.available &&
+              (personalSender?.reason === "not_connected" || personalSender?.reason === "reconnect") &&
+              connectionButton && (
+                <Group gap="xs">{connectionButton({ feature: "mail", returnTo: returnHere() })}</Group>
+              )}
+            {create.error && (
+              <Text size="xs" c="red">
+                {create.error.message}
+              </Text>
+            )}
+            <Group justify="flex-end" mt="md">
+              <Button variant="default" onClick={() => setNewModalOpen(false)}>
+                {t("cancel")}
+              </Button>
+              <Button
+                loading={create.isPending}
+                disabled={!newTo.trim() || !newSubject.trim() || !newBody.trim()}
+                onClick={() => create.mutate()}
+              >
+                {t("send")}
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
+      </Stack>
+    </ProductMessagingProvider>
   );
 }

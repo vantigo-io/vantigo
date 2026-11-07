@@ -1060,6 +1060,11 @@ components:
                     description: The message the question was in.
                     format: uuid
                     type: string
+                product:
+                    allOf:
+                        - $ref: '#/components/schemas/MessageAnswerProduct'
+                    description: The product a card's choice was about, for an answer to a card of a product the message attached (design N17); absent for any other answer.
+                    nullable: true
                 title:
                     description: The title the person saw.
                     type: string
@@ -1082,6 +1087,25 @@ components:
             required:
                 - unread
                 - assignedToMeUnread
+            type: object
+        MessageAnswerProduct:
+            description: The product a card answer is about, as the question message kept it (design N17).
+            properties:
+                attachmentId:
+                    description: The card's image, an attachment of the question message; absent when the card had none.
+                    format: uuid
+                    nullable: true
+                    type: string
+                name:
+                    description: The card's title, the product's name when it was sent.
+                    type: string
+                productId:
+                    description: The product's id in Products.
+                    format: int32
+                    type: integer
+            required:
+                - productId
+                - name
             type: object
         MessageComponentCard:
             properties:
@@ -2464,7 +2488,7 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
-                    description: Unprocessable Entity — channel_inactive, recipients_missing, recipient_suppressed, too_large, and on a messenger conversation components_unsupported (the channel takes none), components_invalid (a limit broken, with fields), reply_window_closed, not_supported_on_channel (sendFromPersonal or replyMode all), text_too_long (more than 2000 characters), and too_large (a staged attachment above the provider's limit).
+                    description: Unprocessable Entity — channel_inactive, recipients_missing, recipient_suppressed, too_large, and on a messenger conversation components_unsupported (the channel takes none), components_invalid (a limit broken, with fields), reply_window_closed, not_supported_on_channel (sendFromPersonal or replyMode all), text_too_long (more than 2000 characters), too_large (a staged attachment above the provider's limit), and for cards product_image_unavailable (a productImageId is gone, or is no longer marked for Communications) and public_url_missing (the instance has no public host for Meta to fetch the images from).
             summary: Send a reply in a conversation
             tags:
                 - ConversationEndpoints
@@ -2617,6 +2641,81 @@ paths:
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-view
+    /api/v1/communications/public-media/{token}:
+        get:
+            description: 'A card''s image for Meta to fetch (Messenger design N18), on the public host. Anonymous, with the token in the path: <attachmentId>.<expiresAt>.<mac>, the MAC made under the purpose communications/public-media and the expiry a Unix time in seconds. It serves only a card attachment of an outbound message on a channel whose provider asks for public media; an expired, wrong or foreign token, a file attachment and an inbound attachment are all the same bare 404, so the route cannot be used to probe. HEAD is answered as GET without the body. A fetch is logged with the attachment id, never the token.'
+            operationId: getCommunicationsPublicMediaByToken
+            parameters:
+                - description: The signed token, as one segment.
+                  in: path
+                  name: token
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        '*/*':
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK — the image, as its own media type (image/jpeg or image/png).
+                    headers:
+                        Cache-Control:
+                            description: private, max-age=86400.
+                            schema:
+                                type: string
+                        Referrer-Policy:
+                            description: no-referrer.
+                            schema:
+                                type: string
+                        X-Content-Type-Options:
+                            description: nosniff.
+                            schema:
+                                type: string
+                "404":
+                    description: Not Found — the token is wrong, expired or foreign, or names nothing this route serves. The body is empty.
+            summary: A card image for Meta
+            tags:
+                - ConversationEndpoints
+            x-vantigo-access: anonymous
+        head:
+            description: GET's answer without the body (Messenger design N18) - the same checks, the same bare 404 for every refusal, the image's content type and length and the same headers.
+            operationId: headCommunicationsPublicMediaByToken
+            parameters:
+                - description: The signed token, as one segment.
+                  in: path
+                  name: token
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        '*/*':
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK — the headers of the image.
+                    headers:
+                        Cache-Control:
+                            description: private, max-age=86400.
+                            schema:
+                                type: string
+                        Referrer-Policy:
+                            description: no-referrer.
+                            schema:
+                                type: string
+                        X-Content-Type-Options:
+                            description: nosniff.
+                            schema:
+                                type: string
+                "404":
+                    description: Not Found — the token is wrong, expired or foreign, or names nothing this route serves. The body is empty.
+            summary: A card image's headers for Meta
+            tags:
+                - ConversationEndpoints
+            x-vantigo-access: anonymous
     /api/v1/communications/personal-sender:
         get:
             description: Whether the signed-in caller can send outbound mail from their own connected address through a personal mailbox provider (`entra`, `google`; Outlook connection design M20, Google Workspace design G3), the address and display name they would send from, and the provider's name.

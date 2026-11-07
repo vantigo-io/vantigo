@@ -68,6 +68,11 @@ var aiTasks = []contracts.AITask{
 // operations; nobody sets up channels thirty times a minute.
 var channelCheckLimit = ratelimit.Policy{Name: "communications-channel-check", Limit: 30, Window: time.Minute}
 
+// publicMediaLimit is the policy of the anonymous public media route: Meta
+// fetches the images of a carousel from a few addresses, up to ten for one send
+// (Messenger design N18). One bucket for GET and HEAD.
+var publicMediaLimit = ratelimit.Policy{Name: "communications-public-media", Limit: 600, Window: 10 * time.Minute}
+
 // limits maps each rate-limited operationId to its policy. The .NET
 // original rate-limited no Communications endpoint (communications inventory
 // §1); delivery C limits the three that can reach Graph.
@@ -75,6 +80,10 @@ var limits = map[string]ratelimit.Policy{
 	"postCommunicationsChannels":             channelCheckLimit,
 	"postCommunicationsChannelsByIdProvider": channelCheckLimit,
 	"postCommunicationsChannelsByIdVerify":   channelCheckLimit,
+	// The public media route is anonymous: Meta fetches the images of a carousel
+	// from a few addresses, up to ten for one send (Messenger design N18).
+	"getCommunicationsPublicMediaByToken":  publicMediaLimit,
+	"headCommunicationsPublicMediaByToken": publicMediaLimit,
 }
 
 // attachmentBodySlack is added to Config.CommunicationsAttachmentMaxBytes to

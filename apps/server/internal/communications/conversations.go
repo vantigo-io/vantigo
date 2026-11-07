@@ -498,6 +498,10 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 	for _, r := range rows {
 		messageIDs = append(messageIDs, r.ID)
 	}
+	products, err := productQuestions(rows)
+	if err != nil {
+		return nil, err
+	}
 	attachmentRows, err := q.ListMessageAttachmentsByMessageIDs(ctx, messageIDs)
 	if err != nil {
 		return nil, fmt.Errorf("communications: list message attachments: %w", err)
@@ -727,7 +731,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			AutoSubmitted: apicommon.Ptr(r.AutoSubmitted), Unreadable: apicommon.Ptr(r.Unreadable),
 			RawDownloadPath: rawDownloadPath(r.ID, r.HasRawPayload),
 			FromAddress:     fromAddress, FromDisplayName: fromDisplayName, ReplyToAddress: replyToAddress, SendAs: sendAs,
-			Components: components, AnswerTo: answerResponse(r.Answer), Echo: apicommon.Ptr(r.Echo),
+			Components: components, AnswerTo: answerResponse(r.Answer, products), Echo: apicommon.Ptr(r.Echo),
 		})
 	}
 	return out, nil

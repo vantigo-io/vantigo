@@ -325,6 +325,8 @@ var filesOrRedirects = []string{
 	"getCalendarFeedByFile",
 	"getCommunicationsAttachmentsByIdDownload",
 	"getCommunicationsMessagesByIdRaw",
+	"getCommunicationsPublicMediaByToken",
+	"headCommunicationsPublicMediaByToken",
 	"getCustomersByIdAttachmentsByAttachmentId",
 	"getCustomersExport",
 	"getCustomersImportTemplate",
