@@ -1,6 +1,6 @@
 ---
 title: "Assistant module"
-description: "Every person's assistant (nb Assistent): the schema; availability — the instance, the mode, the person's switch; the endpoints with their rules, status codes and If-Match; conversations that only their owner can reach; runs that outlive the connection, their caps, the stream and how a client reconnects; context compaction (in place, or by a summary) and the frozen system prompt; the history Claude's preserved thinking needs; the six tools, how their results reach the model and the action log; the guided tours (`show_tour`, the target registry, the runner); the changes the model proposes, the pending action behind a confirmation card, its preview, `If-Match`, confirm, cancel and expiry; bulk changes — the selector and its paging, the frozen items, the preview, the canary of five, the job in chunks of 100, its claim and the process it runs in, its grant, its stops, the failed items and their CSV; the daily token budget and the Owner's usage view; the links an answer may carry; the documentation index behind search_docs; the permission levels the Owner sets and the gate that applies them to the dispatcher; the Owner's audit; retention and erasure."
+description: "Every person's assistant (nb Assistent): the schema; availability — the instance, the mode, the person's switch; the endpoints with their rules, status codes and If-Match; conversations that only their owner can reach; runs that outlive the connection, their caps, the stream and how a client reconnects; context compaction (in place, or by a summary) and the frozen system prompt; the history Claude's preserved thinking needs; the six tools, how their results reach the model and the action log; the guided tours (`show_tour`, the target registry, the runner); the changes the model proposes, the pending action behind a confirmation card, its preview, `If-Match`, confirm, cancel and expiry; bulk changes — the selector and its paging, the frozen items, the preview, the canary of five, the job in chunks of 100, its claim and the process it runs in, its grant, its stops, the failed items and their CSV; the daily token budget and the Owner's usage view; the links an answer may carry; the documentation index behind search_docs; Knowledge as a source; the permission levels the Owner sets and the gate that applies them to the dispatcher; the Owner's audit; retention and erasure."
 sources:
   - apps/server/internal/assistant
   - apps/server/internal/operations
@@ -289,7 +289,7 @@ it sees is a plain-text transcript, tool calls and results cut to 600 characters
 ## The system prompt
 
 The prompt is built **once, at a conversation's first run, and frozen**: it is stored on `conversation_state`
-with its `prompt_version` (`promptVersion`, `2026-11-05.3`, bumped with any change of the rules) and sent unchanged on every
+with its `prompt_version` (`promptVersion`, `2026-11-07.2`, bumped with any change of the rules) and sent unchanged on every
 later run, whatever the code says by then. A conversation that began under an older version keeps the prompt
 it began with; a new one gets the current. This is what a Claude model's thinking needs
 ([below](#claude-and-preserved-thinking)), and it keeps Anthropic's prompt cache warm. The prompt states, in order, who the assistant is; **the
@@ -486,6 +486,30 @@ contributing sections are not embedded.
   assistant gives. An introduction has no anchor.
 - **Language.** The person's language first; what it does not answer well is filled from English,
   so a Norwegian reader is never left without an answer for a page not yet translated.
+
+## Knowledge as a source
+
+Beside the documentation, the assistant can answer from the company's own articles in
+[Knowledge](/en/reference/knowledge/). It has no tool of its own for them: it reaches them
+through the ordinary operation tools, and the contract allows exactly two of the module's
+operations to the Assistant — **`searchKnowledge`** and **`getKnowledgeArticleText`**, both
+`GET`s and so mode `auto`. Every other Knowledge operation is `x-vantigo-assistant: never`:
+the assistant cannot read a document, the access, the history or the trash, and cannot create,
+edit, move, share or trash an article.
+
+The prompt (`promptVersion` `2026-11-07.2`) has one rule for them: when a question may be about
+how this company does something, search with `searchKnowledge`, read the article with
+`getKnowledgeArticleText` before answering, answer from it, and cite it as a Markdown link to
+`/knowledge/articles/{id}`; `/knowledge` and `/knowledge/articles/{articleId}` are among the
+routes the prompt lists, and the module is in `APP_ROUTE_PREFIXES`. The article's text is data
+like any tool result — it can inform an answer, never instruct the assistant.
+
+The two calls run as the person, so they see only articles the person can read, and **Hidden from
+the Assistant** applies on top: a hidden article, and everything below it, is left out of search,
+answers 404 to `getKnowledgeArticleText`, and is cut from the path shown with a hit. The flag is
+not an access rule — the person still reads the article in the interface. Search and text are
+described in [Knowledge](/en/reference/knowledge/#search); the text comes in pieces of 12 000
+characters, so a long article is read with `offset` and `nextOffset`.
 
 ## Permission levels and the gate
 
