@@ -51,6 +51,7 @@ import { connectionButtonFor } from "../lib/connections";
 import { enabledModuleKeys } from "../lib/enabled-modules";
 import { mfaEnrolmentRedirect } from "../lib/mfa-enrolment-gate";
 import { useOpenRoute } from "../lib/open-route";
+import { useProductMessaging } from "../lib/product-messaging";
 import { publicPaths, sessionlessPaths } from "../lib/public-paths";
 import {
   activeNavItem,
@@ -169,6 +170,7 @@ const RootLayout = () => {
   });
   // Conversations: the module on and the view permission, like the inbox. The customer page the person is on is offered as a filter.
   const customerParam = pathname.startsWith("/customers/") ? Number(routeInfo?.params.customerId) : Number.NaN;
+  const productMessaging = useProductMessaging();
   const conversations = useConversationsShell({
     side: sidePanel,
     enabled:
@@ -183,6 +185,7 @@ const RootLayout = () => {
     canManage: hasPermissions(permissions, ["communications:conversations-manage"]),
     onNavigate: openRoute,
     connectionButton: connectionButtonFor(),
+    productMessaging,
   });
   const logout = useMutation({
     mutationFn: signOut,

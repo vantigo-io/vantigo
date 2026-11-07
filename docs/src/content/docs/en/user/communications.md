@@ -339,6 +339,8 @@ another conversation — is shown as plain text.
 
 ### Attach a product
 
+**Attach product** is in the Conversations panel's composer too, under the same conditions.
+
 **Attach product** in the chat composer shows a product to the customer as a row of cards
 they can swipe through. It is offered when Products is on and you may see products
 (`products:products-view`); without them the button is not there.

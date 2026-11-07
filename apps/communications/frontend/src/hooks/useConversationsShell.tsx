@@ -7,6 +7,7 @@ import { type InboxCounts, inboxCountsQueryKey, inboxCountsQueryOptions } from "
 import type { ConnectionButtonProps } from "../components/ConversationComposer";
 import { ConversationsPanel } from "../components/ConversationsPanel";
 import { FALLBACK_POLL_MS } from "../lib/polling";
+import { noProductMessaging, type ProductMessaging, ProductMessagingProvider } from "../lib/product-messaging";
 import { conversationsShortcutHint, useConversationsShortcut } from "../lib/shortcut";
 import "../i18n";
 
@@ -34,6 +35,8 @@ export type UseConversationsShellOptions = {
   canManage: boolean;
   onNavigate: (route: string) => void;
   connectionButton?: (props: ConnectionButtonProps) => ReactNode;
+  /** What the host says of Products and Orders beside the chat in the panel (Messenger design N16, N17). */
+  productMessaging?: ProductMessaging;
 };
 
 /**
@@ -52,6 +55,7 @@ export const useConversationsShell = ({
   canManage,
   onNavigate,
   connectionButton,
+  productMessaging = noProductMessaging,
 }: UseConversationsShellOptions) => {
   const { t } = useI18n("communications");
   const visible = enabled && !onInboxPage;
@@ -122,14 +126,16 @@ export const useConversationsShell = ({
           badgeLabel: countsLabel || undefined,
           hidden: onInboxPage,
           render: () => (
-            <ConversationsPanel
-              userId={userId}
-              customerId={customerId}
-              canReply={canReply}
-              canManage={canManage}
-              onNavigate={onNavigate}
-              connectionButton={connectionButton}
-            />
+            <ProductMessagingProvider value={productMessaging}>
+              <ConversationsPanel
+                userId={userId}
+                customerId={customerId}
+                canReply={canReply}
+                canManage={canManage}
+                onNavigate={onNavigate}
+                connectionButton={connectionButton}
+              />
+            </ProductMessagingProvider>
           ),
         } satisfies SidePanel)
       : undefined,
