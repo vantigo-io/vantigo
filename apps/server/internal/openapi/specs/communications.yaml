@@ -376,6 +376,27 @@ components:
                 - closedConversations
                 - closedConversationsDelta
             type: object
+        ContactLinkRequest:
+            properties:
+                contactId:
+                    description: The contact, of Customers, the link is made for.
+                    format: int32
+                    type: integer
+            required:
+                - contactId
+            type: object
+        ContactLinkResponse:
+            properties:
+                expiresAt:
+                    format: date-time
+                    type: string
+                url:
+                    description: The Messenger link to send to the contact, and only to that contact.
+                    type: string
+            required:
+                - url
+                - expiresAt
+            type: object
         ConversationDetailResponse:
             properties:
                 assignedUserId:
@@ -661,6 +682,12 @@ components:
                 previewText:
                     nullable: true
                     type: string
+                messengerLink:
+                    allOf:
+                        - $ref: '#/components/schemas/MessengerLink'
+                    description: The participant of a messenger conversation and its contact link; null for an e-mail conversation.
+                    nullable: true
+                    x-omitempty: false
                 personalSender:
                     allOf:
                         - $ref: '#/components/schemas/PersonalSenderResponse'
@@ -990,6 +1017,11 @@ components:
                 htmlBody:
                     nullable: true
                     type: string
+                participantId:
+                    description: For a messenger channel, the participant to write to; the person must have written within the reply window, else 422 reply_window_closed. The conversation is the newest open one with the participant, or a new one, and textBody is its first message, sent as a reply is. Not used on an e-mail channel.
+                    format: uuid
+                    nullable: true
+                    type: string
                 participantIds:
                     items:
                         format: uuid
@@ -1007,6 +1039,7 @@ components:
                     nullable: true
                     type: boolean
                 subject:
+                    description: Required for an e-mail conversation, else 400; not used with a participantId, a chat having no subject.
                     nullable: true
                     type: string
                 textBody:
@@ -1017,8 +1050,6 @@ components:
                         $ref: '#/components/schemas/EmailRecipientRequest'
                     nullable: true
                     type: array
-            required:
-                - subject
             type: object
         CreateSuppressionRequest:
             properties:
@@ -1212,6 +1243,34 @@ components:
                     nullable: true
                     type: boolean
             type: object
+        MessengerLink:
+            description: A messenger conversation's participant and the contact it is linked to, suggested for or was referred by. Null for an e-mail conversation.
+            properties:
+                contactId:
+                    description: The contact of Customers the participant is linked to.
+                    format: int32
+                    nullable: true
+                    type: integer
+                participantId:
+                    description: The participant the conversation is with; the id the link operations take.
+                    format: uuid
+                    type: string
+                referralContactId:
+                    description: The contact whose Messenger link the person used while linked to another contact (contactId). Linking, unlinking or changing the contact clears it.
+                    format: int32
+                    nullable: true
+                    type: integer
+                suggestedContactId:
+                    description: The one contact the e-mail address the person shared names. A suggestion only - nothing is linked until it is confirmed.
+                    format: int32
+                    nullable: true
+                    type: integer
+            required:
+                - participantId
+                - contactId
+                - suggestedContactId
+                - referralContactId
+            type: object
         NoteRequest:
             properties:
                 textBody:
@@ -1231,6 +1290,33 @@ components:
             required:
                 - data
                 - pagination
+            type: object
+        ParticipantContactRequest:
+            properties:
+                contactId:
+                    description: The contact of Customers to link the participant to.
+                    format: int32
+                    type: integer
+                conversationId:
+                    description: The conversation the link is made from. When it is linked to a customer, the contact must be one of that customer's contacts.
+                    format: uuid
+                    nullable: true
+                    type: string
+            required:
+                - contactId
+            type: object
+        ParticipantContactResponse:
+            properties:
+                contactId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                participantId:
+                    format: uuid
+                    type: string
+            required:
+                - participantId
+                - contactId
             type: object
         PersonalSenderResponse:
             description: 'Whether the caller can send outbound mail from their own connected address through a personal mailbox provider (`entra`, `google`; Outlook connection design M20, Google Workspace design G3), and the address and display name they would send from.'
@@ -1691,6 +1777,61 @@ paths:
                 - ChannelEndpoints
             x-vantigo-access: permission:communications:channels-manage
             x-vantigo-assistant: never
+    /api/v1/communications/channels/{id}/contact-links:
+        post:
+            description: Makes the Messenger link of a contact for a messenger channel, https://m.me/<page>?ref=<token>. When the contact taps it and writes, the Page's webhook carries the person's id together with the token, and Communications links that person to the contact - unless the person is linked to another contact already. The token is signed, names the contact and the channel, and expires after 90 days.
+            operationId: postCommunicationsChannelsByIdContactLinks
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/ContactLinkRequest'
+                            nullable: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ContactLinkResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CommunicationErrorResponse'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CommunicationErrorResponse'
+                    description: Unprocessable Entity - not_supported_on_channel (the channel is not a messenger channel), contact_unknown, channel_inactive.
+            summary: Get a contact's Messenger link
+            tags:
+                - ChannelEndpoints
+            x-vantigo-access: permission:communications:conversations-manage
     /api/v1/communications/channels/{id}/provider:
         post:
             description: Switches an SMTP channel to a mailbox provider (`entra`, `google`) by its own address, keeping its id, conversations and default flag; the SMTP credentials are deleted in the same transaction.
@@ -1940,7 +2081,7 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
-                    description: Unprocessable Entity — channel_invalid, customer_invalid, and channel_cannot_start for a messenger channel, which only the person writing first can start.
+                    description: Unprocessable Entity — channel_invalid, customer_invalid, and for a messenger channel channel_cannot_start (without a participantId only the person writing first starts a conversation), participant_invalid (the participant is not of the channel), reply_window_closed (the person has not written within the reply window) and the replies' own 422s.
             summary: Create a conversation
             tags:
                 - ConversationEndpoints
@@ -2716,6 +2857,92 @@ paths:
             tags:
                 - ConversationEndpoints
             x-vantigo-access: anonymous
+    /api/v1/communications/participants/{id}/contact:
+        delete:
+            description: Clears the contact a participant is linked to. Idempotent - a participant with no contact is 204 as well.
+            operationId: deleteCommunicationsParticipantsByIdContact
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Unlink a participant from its contact
+            tags:
+                - ParticipantEndpoints
+            x-vantigo-access: permission:communications:conversations-manage
+        put:
+            description: Links a participant - on a messenger channel, the person who wrote to the Page - to a contact of Customers. Setting the contact it already has is 200 as well. A link made here is never overridden by a Messenger link the contact taps, and any suggestion or referral notice of the participant is cleared.
+            operationId: putCommunicationsParticipantsByIdContact
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/ParticipantContactRequest'
+                            nullable: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ParticipantContactResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CommunicationErrorResponse'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CommunicationErrorResponse'
+                    description: Unprocessable Entity - contact_unknown (no such contact in Customers, or Customers is off), contact_not_of_customer (conversationId names a conversation linked to a customer, and the contact is not one of that customer's contacts).
+            summary: Link a participant to a contact
+            tags:
+                - ParticipantEndpoints
+            x-vantigo-access: permission:communications:conversations-manage
     /api/v1/communications/personal-sender:
         get:
             description: Whether the signed-in caller can send outbound mail from their own connected address through a personal mailbox provider (`entra`, `google`; Outlook connection design M20, Google Workspace design G3), the address and display name they would send from, and the provider's name.

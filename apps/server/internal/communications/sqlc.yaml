@@ -12,6 +12,7 @@ sql:
       - ../db/migrations/00111_communications_provider_neutral.sql
       - ../db/migrations/00130_communications_messaging.sql
       - ../db/migrations/00138_communications_inbox_counts.sql
+      - ../db/migrations/00134_communications_contact_hints.sql
     queries: queries
     gen:
       go:

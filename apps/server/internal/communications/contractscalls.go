@@ -628,3 +628,28 @@ func personalConnectionNeeded(status contracts.PersonalMailStatus) string {
 	return fmt.Sprintf("Your personal %[1]s connection is not available. Please connect or reconnect %[1]s before sending from your address.",
 		status.ProviderDisplayName)
 }
+
+// directoryContact looks a contact up in the customer directory (Messenger
+// design N20, N21), nil when there is none or Customers is off. It is a call out
+// of the module, so it is refused inside a transaction.
+func directoryContact(ctx context.Context, d contracts.CustomerDirectory, id int32) (*contracts.ContactEntry, error) {
+	if d == nil {
+		return nil, nil
+	}
+	if err := noteContractCall(ctx, "Directory.Contact"); err != nil {
+		return nil, err
+	}
+	return d.Contact(ctx, id)
+}
+
+// directoryContactsForCustomer lists a customer's contacts (N20): the check that
+// a contact linked from a conversation is one of its customer's.
+func directoryContactsForCustomer(ctx context.Context, d contracts.CustomerDirectory, customerID int32) ([]contracts.ContactEntry, error) {
+	if d == nil {
+		return nil, nil
+	}
+	if err := noteContractCall(ctx, "Directory.ContactsForCustomer"); err != nil {
+		return nil, err
+	}
+	return d.ContactsForCustomer(ctx, customerID)
+}

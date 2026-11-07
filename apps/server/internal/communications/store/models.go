@@ -284,6 +284,13 @@ type CommunicationsParticipant struct {
 	CreatedAt   time.Time
 }
 
+type CommunicationsParticipantContactHint struct {
+	ParticipantID      uuid.UUID
+	SuggestedContactID *int32
+	ReferralContactID  *int32
+	UpdatedAt          time.Time
+}
+
 type CommunicationsParticipantProfile struct {
 	ParticipantID uuid.UUID
 	FetchedAt     time.Time

@@ -328,6 +328,15 @@ type Deps struct {
 	// modtest.WithCalendarBusy fills). Only Planning reads it, never inside a
 	// transaction. nil when the calendar is disabled.
 	CalendarBusy contracts.CalendarBusy
+	// ContactChannels is what Communications knows of a contact's Messenger
+	// channels, for Customers' contact rows (see contracts.ContactChannels,
+	// Messenger design N22). Compose sets it, on every module's Deps copy, from
+	// whichever enabled module declares Module.ContactChannels, after the
+	// channel messengers its provider reads; Workers does not — no worker
+	// reads it. A preset value is kept when no enabled module provides one
+	// (the seam modtest.WithContactChannels fills). Consumer-gated, and never
+	// called inside a transaction. nil when Communications is disabled.
+	ContactChannels contracts.ContactChannels
 	// AITasks are the AI tasks the enabled modules declare
 	// (Module.AITasks, contracts.AITask), by key — composed the way Catalog is
 	// composed from Permissions: a disabled module's are absent, and a key two
@@ -700,4 +709,10 @@ type Module struct {
 	// the single-provider slots, after the mailbox calendar, and puts the
 	// result on every module's Deps. Workers never calls it.
 	CalendarBusy func(Deps) contracts.CalendarBusy
+	// ContactChannels builds this module's contracts.ContactChannels, if it
+	// answers a contact's messaging channels to other modules (Messenger design
+	// N22: Communications). At most one enabled module may set it; Compose
+	// calls it after the channel messengers it reads, and puts the result on
+	// every module's Deps. Workers never calls it.
+	ContactChannels func(Deps) contracts.ContactChannels
 }

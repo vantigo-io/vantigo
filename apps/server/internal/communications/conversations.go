@@ -392,12 +392,16 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 	// message: both null for an e-mail conversation.
 	var componentLimits *gen.MessageComponentLimits
 	var window *gen.ReplyWindow
+	var messengerLink *gen.MessengerLink
 	if channelDetail.Type == channelTypeMessenger {
 		state, err := s.messengerStateOf(ctx, q, req.Id, channelDetail.Provider, s.deps.Clock())
 		if err != nil {
 			return nil, err
 		}
 		componentLimits, window = componentLimitsOf(state.caps), replyWindowResponse(state.window)
+		if messengerLink, err = messengerLinkOf(ctx, q, req.Id); err != nil {
+			return nil, err
+		}
 	}
 
 	// The channel's size budget (M13), and the attachments it takes, which
@@ -432,7 +436,7 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 		MaxMessageBytes: budget, MaxAttachmentBytes: allowance,
 		ChannelAddress: apicommon.Ptr(channelDetail.Address), ChannelDisplayName: channelDetail.DisplayName,
 		ChannelType: apicommon.Ptr(channelDetail.Type), ComponentLimits: componentLimits, ReplyWindow: window,
-		PersonalSender: personalSender,
+		MessengerLink: messengerLink, PersonalSender: personalSender,
 	}
 	return gen.GetCommunicationsConversationsById200JSONResponse(resp), nil
 }
