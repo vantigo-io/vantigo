@@ -11,7 +11,7 @@ sql:
       - ../db/migrations/00095_communications_personal_sending.sql
       - ../db/migrations/00111_communications_provider_neutral.sql
       - ../db/migrations/00130_communications_messaging.sql
-      - ../db/migrations/00134_communications_contact_hints.sql
+      - ../db/migrations/00139_communications_contact_hints.sql
     queries: queries
     gen:
       go:
