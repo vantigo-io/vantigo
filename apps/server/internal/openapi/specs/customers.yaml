@@ -456,8 +456,50 @@ components:
                     nullable: true
                     type: string
             type: object
+        CustomerContactChannel:
+            description: One Messenger channel as a contact's row reads it (Messenger design N22). It never carries the person's page-scoped id, which belongs to the Page and never leaves Communications.
+            properties:
+                channelId:
+                    description: The channel's id in Communications; the Messenger link of the contact is made for it.
+                    format: uuid
+                    type: string
+                lastInboundAt:
+                    description: When the linked person last wrote on the channel; absent while not linked or when they never wrote.
+                    format: date-time
+                    nullable: true
+                    type: string
+                linked:
+                    description: Whether a person on the channel is linked to the contact.
+                    type: boolean
+                name:
+                    description: The channel's name, the Page's.
+                    type: string
+                participantId:
+                    description: The linked person's id in Communications, which writing to them and unlinking them take; absent while not linked.
+                    format: uuid
+                    nullable: true
+                    type: string
+                replyWindowClosesAt:
+                    description: When the reply window of the linked person closes, absent when it is closed - the person must write first. Communications answers it, with the human-agent extension where the Page has it.
+                    format: date-time
+                    nullable: true
+                    type: string
+                type:
+                    description: messenger.
+                    type: string
+            required:
+                - channelId
+                - type
+                - name
+                - linked
+            type: object
         CustomerContactResponse:
             properties:
+                channels:
+                    description: The Messenger channels of the contact, one per active channel, linked or not (Messenger design N22). Absent when Communications is off, the caller may not view conversations, or there is no active channel.
+                    items:
+                        $ref: '#/components/schemas/CustomerContactChannel'
+                    type: array
                 contact:
                     $ref: '#/components/schemas/ContactResponse'
                 email:

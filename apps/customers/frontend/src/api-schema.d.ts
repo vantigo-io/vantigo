@@ -1183,7 +1183,38 @@ export interface components {
             /** @description What this person is called at this customer — a job title, free text (typed contact roles design D1). At most 255 characters, trimmed. A request that would leave the association with neither a title nor a role is refused with a field error on title. */
             title?: string | null;
         };
+        /** @description One Messenger channel as a contact's row reads it (Messenger design N22). It never carries the person's page-scoped id, which belongs to the Page and never leaves Communications. */
+        CustomerContactChannel: {
+            /**
+             * Format: uuid
+             * @description The channel's id in Communications; the Messenger link of the contact is made for it.
+             */
+            channelId: string;
+            /**
+             * Format: date-time
+             * @description When the linked person last wrote on the channel; absent while not linked or when they never wrote.
+             */
+            lastInboundAt?: string | null;
+            /** @description Whether a person on the channel is linked to the contact. */
+            linked: boolean;
+            /** @description The channel's name, the Page's. */
+            name: string;
+            /**
+             * Format: uuid
+             * @description The linked person's id in Communications, which writing to them and unlinking them take; absent while not linked.
+             */
+            participantId?: string | null;
+            /**
+             * Format: date-time
+             * @description When the reply window of the linked person closes, absent when it is closed - the person must write first. Communications answers it, with the human-agent extension where the Page has it.
+             */
+            replyWindowClosesAt?: string | null;
+            /** @description messenger. */
+            type: string;
+        };
         CustomerContactResponse: {
+            /** @description The Messenger channels of the contact, one per active channel, linked or not (Messenger design N22). Absent when Communications is off, the caller may not view conversations, or there is no active channel. */
+            channels?: components["schemas"]["CustomerContactChannel"][];
             contact: components["schemas"]["ContactResponse"];
             email?: string | null;
             phone?: string | null;
