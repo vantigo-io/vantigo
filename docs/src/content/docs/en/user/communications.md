@@ -71,8 +71,8 @@ and are not shown on the Inbox itself, which is the same view.
 
 **The badge** on the button counts the open conversations assigned to you that you have not read.
 When none of those is unread but other open conversations are, it shows a dot. A screen reader hears both numbers when
-there are two: the ones assigned to you, then all unread. The counts are read every 30 seconds while the browser tab is visible,
-and when you come back to the tab.
+there are two: the ones assigned to you, then all unread. The counts change within a moment of mail arriving or a colleague changing a conversation, and
+when you come back to the browser tab. Reading a conversation in another browser tab is only seen then.
 
 **The list** is compact. Its filters are **Assigned to me**, **Unread** and **All open**; it starts on
 Assigned to me, or on All open when nothing is assigned to you. On a customer's page it also offers
@@ -91,11 +91,12 @@ come back, or close the panel and open it again. What you may do follows your pe
 Inbox: without `communications:conversations-reply` the composer is read-only; without
 `communications:conversations-manage` the status control is disabled and the tag, archive and customer controls are not shown.
 
-**It stays current.** While the panel is open and the tab is visible, the list reloads every 15 seconds
-and the open conversation every 5 seconds; both stop when the panel is closed or the tab is hidden, and
-reload once when it is shown again. If a reload fails, the thread you have open stays as it was, with a note that it
-could not be refreshed, so a reply you are writing is not lost. The Inbox reloads the same way. This is polling, not push: a message
-can take a few seconds to appear.
+**It stays current.** Like the Inbox, the panel is live (see [The Inbox updates by itself](#the-inbox-updates-by-itself)):
+while it is in front, the list and the open conversation change within a moment of a new message or a
+colleague's change, and the conversation shows who else has it open and who is replying. Nothing is
+listened to while the panel is closed or on another tab, and it reloads once when it is shown again. Where live
+updates are not available, the list and the conversation refresh every minute instead. If a reload fails, the thread you have open stays as it was, with a note that it
+could not be refreshed, so a reply you are writing is not lost.
 
 ## Read a conversation
 

@@ -1,6 +1,6 @@
 ---
 title: "Communications module"
-description: "Business email from shared mailboxes: the channels' providers — SMTP, and the shared mailboxes of every mailbox provider (Microsoft 365 through the Microsoft Entra ID module, and Google Workspace's licensed Gmail mailboxes through the Google Workspace module), named by key, created by address or switched from SMTP, with an optional import window and Outlook on-close behavior — the outbox and its delivery through either, the size a mailbox channel takes; the OutboundMail slot, through which Invoices and Calendar send customer mail from a channel an Owner chose, and the end of any fall-back to the installation's SMTP; receiving into a mailbox channel — the mailbox sync, change notifications, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all, and Outlook state on close —; sending from one's own address — Outlook or Gmail — through the provider that answers for the person; Messenger channels — the channel types and the default of each, the ChannelMessenger slot, the messenger sync worker, components, answers and the reply window, sending a message in parts, and the new refusals —; the inbox counts behind the side panel's badge and the polling intervals; retention and the operator's configuration."
+description: "Business email from shared mailboxes: the channels' providers — SMTP, and the shared mailboxes of every mailbox provider (Microsoft 365 through the Microsoft Entra ID module, and Google Workspace's licensed Gmail mailboxes through the Google Workspace module), named by key, created by address or switched from SMTP, with an optional import window and Outlook on-close behavior — the outbox and its delivery through either, the size a mailbox channel takes; the OutboundMail slot, through which Invoices and Calendar send customer mail from a channel an Owner chose, and the end of any fall-back to the installation's SMTP; receiving into a mailbox channel — the mailbox sync, change notifications, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all, and Outlook state on close —; sending from one's own address — Outlook or Gmail — through the provider that answers for the person; Messenger channels — the channel types and the default of each, the ChannelMessenger slot, the messenger sync worker, components, answers and the reply window, sending a message in parts, and the new refusals —; the inbox counts behind the side panel's badge and how the panel follows the live topics; retention and the operator's configuration."
 sources:
   - apps/server/internal/communications
   - apps/communications/frontend
@@ -1436,7 +1436,7 @@ choose **Send from my address** on both new conversations and replies
   race writes nothing and answers `queued` all the same —, then its `submission_failed` deliveries go
   back to `queued` with an event each.
 
-## The inbox counts and polling
+## The inbox counts and the side panel's live updates
 
 `GET /api/v1/communications/inbox/counts` (`communications:conversations-view`) answers
 `{ unread, assignedToMeUnread }` for the caller, and backs the badge on the Conversations button in the
@@ -1458,20 +1458,20 @@ shell's side panel.
   server, and has no other filter: a client wanting a count of a filtered list asks the list.
 - **Errors.** 401 without a session and 403 without `conversations-view`; it has no 404.
 
-**Polling.** There is no push yet; the frontend asks again on a timer, and only while someone is looking
-(`apps/communications/frontend/src/lib/polling.ts`):
+**Live, with a fallback.** The Conversations button and panel use the same live layer as the Inbox
+(`useLiveTopic`, [live updates](/en/contributing/frontend-architecture/)); they do not poll while a topic is live.
 
-| What | Interval | While |
+| What | Follows | Fallback while that topic is not live |
 | --- | --- | --- |
-| The Conversations button's counts | 30 s, and on window focus | the browser tab is visible |
-| The side panel's list | 15 s | the panel is in front and the tab visible |
-| The open conversation in the panel | 5 s | the panel is in front and the tab visible |
-| The Inbox page's list and open conversation | 15 s and 5 s | the tab is visible |
+| The Conversations button's counts | `communications.inbox` (any `conversation.changed` refetches `/inbox/counts`), and a window focus | 60 s |
+| The side panel's list | `communications.inbox`, only while the panel is in front | 60 s, only while the panel is in front |
+| The open conversation in the panel | `communications.conversation:{id}`, only while the panel is in front; presence is announced only then | 60 s, only while the panel is in front |
 
-Polling stops when the panel or the tab is hidden, and a panel that is shown again refetches at once. The
-panel's search is client-side, over the list page already loaded (30 rows of the chosen filter);
-`GET /conversations` has no free-text parameter yet, and a server-side `q` is later. A server-sent stream
-for the inbox and the panel is later too.
+A panel that is shown again refetches at once. The counts are the caller's own read state, and marking a
+conversation read notifies nothing (see the table above), so a read made in another tab of the same
+person shows in the badge at the next event, focus or fallback poll. The panel's search is client-side,
+over the list page already loaded (30 rows of the chosen filter); `GET /conversations` has no free-text
+parameter yet, and a server-side `q` is later.
 
 ## AI draft and customer suggestion
 

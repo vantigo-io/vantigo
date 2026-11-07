@@ -50,6 +50,8 @@ export type ConversationThreadProps = {
   canReply?: boolean;
   /** Whether the person may close, tag and confirm customers (communications:conversations-manage). Default true. */
   canManage?: boolean;
+  /** Whether to announce "viewing" or "replying" to the others (default true). The side panel passes false while it is not in front. */
+  announcePresence?: boolean;
 };
 
 export function ConversationThread({
@@ -65,10 +67,14 @@ export function ConversationThread({
   connectionButton,
   canReply = true,
   canManage = true,
+  announcePresence = true,
 }: ConversationThreadProps) {
   const { t } = useI18n("communications");
   const [drafting, setDrafting] = useState(false);
-  const others = usePresence(`communications.conversation:${conversation.id}`, drafting ? "replying" : "viewing");
+  const others = usePresence(
+    `communications.conversation:${conversation.id}`,
+    announcePresence ? (drafting ? "replying" : "viewing") : null,
+  );
 
   return (
     <div className="thread-layout">

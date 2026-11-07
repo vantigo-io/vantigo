@@ -204,21 +204,16 @@ const queryString = (filters: ConversationFilters) => {
   const query = params.toString();
   return query ? `?${query}` : "";
 };
-/** Polling: how often a query refetches while it is on screen (Messenger design N26); false for never. */
-export type PollingOptions = { refetchInterval?: number | false };
-
-export const conversationsQueryOptions = (filters: ConversationFilters = {}, polling: PollingOptions = {}) =>
+export const conversationsQueryOptions = (filters: ConversationFilters = {}) =>
   queryOptions({
     queryKey: ["conversations", filters],
-    refetchInterval: polling.refetchInterval ?? false,
     queryFn: ({ signal }) =>
       request<Page<ConversationListItem>>(`/api/v1/communications/conversations${queryString(filters)}`, { signal }),
     placeholderData: keepPreviousData,
   });
-export const conversationQueryOptions = (id: string, polling: PollingOptions = {}) =>
+export const conversationQueryOptions = (id: string) =>
   queryOptions({
     queryKey: ["conversation", id],
-    refetchInterval: polling.refetchInterval ?? false,
     queryFn: ({ signal }) =>
       request<ConversationDetail>(`/api/v1/communications/conversations/${encodeURIComponent(id)}`, { signal }),
     enabled: Boolean(id),
@@ -226,12 +221,12 @@ export const conversationQueryOptions = (id: string, polling: PollingOptions = {
 /** The caller's unread open conversations, and those assigned to them (Messenger design N27). */
 export type InboxCounts = { unread: number; assignedToMeUnread: number };
 export const inboxCountsQueryKey = ["inbox-counts"] as const;
-export const inboxCountsQueryOptions = (polling: PollingOptions & { enabled?: boolean } = {}) =>
+export const inboxCountsQueryOptions = (options: { enabled?: boolean; refetchInterval?: number | false } = {}) =>
   queryOptions({
     queryKey: inboxCountsQueryKey,
     queryFn: ({ signal }) => request<InboxCounts>("/api/v1/communications/inbox/counts", { signal }),
-    enabled: polling.enabled ?? true,
-    refetchInterval: polling.refetchInterval ?? false,
+    enabled: options.enabled ?? true,
+    refetchInterval: options.refetchInterval ?? false,
     refetchOnWindowFocus: true,
   });
 export const personalSenderQueryOptions = () =>

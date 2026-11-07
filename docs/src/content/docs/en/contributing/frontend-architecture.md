@@ -80,7 +80,7 @@ The shell has one right-hand panel, `AppShellLayout`'s `aside`, and `packages/fr
   (`vantigo.sidePanel.width|mode|ratio|last`) inside try/catch; the width is read once from the
   Assistant's old key `vantigo.assistant.panelWidth`.
 - **What a panel gets.** Inside `render()`, `useSidePanelShown()` says whether the panel is open and in
-  front (stop polling and timers when it is false) and `useSidePanelActions()` closes the panel or
+  front (stop listening to live topics and timers when it is false) and `useSidePanelActions()` closes the panel or
   brings another forward. Everything else, including the width handle and the tabs, is the host's.
 
 **Adding a panel.** (1) In the module package, export a panel component and a hook, like

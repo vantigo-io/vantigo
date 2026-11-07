@@ -1,7 +1,13 @@
 import { ActionIcon, Alert, Anchor, Box, Chip, Group, Stack, Text, TextInput, Tooltip } from "@mantine/core";
 import { IconArrowLeft, IconExternalLink, IconX } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, useI18n, useSidePanelActions, useSidePanelShown } from "@vantigo/frontend-shell";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  ContentSkeleton,
+  useI18n,
+  useLiveTopic,
+  useSidePanelActions,
+  useSidePanelShown,
+} from "@vantigo/frontend-shell";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   type ConversationFilters,
@@ -13,7 +19,7 @@ import {
   tagsQueryOptions,
 } from "../api/conversations";
 import { useConversationActions } from "../hooks/useConversationActions";
-import { CONVERSATION_POLL_MS, LIST_POLL_MS, usePageVisible, useRefetchOnResume } from "../lib/polling";
+import { FALLBACK_POLL_MS, useRefetchOnResume } from "../lib/polling";
 import type { ConnectionButtonProps } from "./ConversationComposer";
 import { ConversationList } from "./ConversationList";
 import { ConversationThread } from "./ConversationThread";
@@ -62,7 +68,7 @@ const filtersFor = (
  * customer on a customer page) and a search over what is loaded, and, on picking
  * a row, the thread and the composer with Back, Open in inbox and the customer's
  * link. It is built from the inbox page's components and shares its mutations.
- * While it is in front and the tab is visible, the list refetches every 15 s and
+ * While it is in front the list and the open conversation follow the live topics
  * the open conversation every 5 s.
  */
 export function ConversationsPanel({
@@ -77,8 +83,8 @@ export function ConversationsPanel({
   const shown = useSidePanelShown();
   const { close, hostHasClose } = useSidePanelActions();
   const counts = useQuery(inboxCountsQueryOptions());
-  const visible = usePageVisible();
-  const active = shown && visible;
+  const client = useQueryClient();
+  const active = shown;
   const [openId, setOpenId] = useState<string | null>(null);
   const [chosen, setChosen] = useState<Filter | undefined>();
   const [autoAll, setAutoAll] = useState(false);
@@ -86,11 +92,16 @@ export function ConversationsPanel({
 
   const choice = chosen === "customer" && customerId === undefined ? undefined : chosen;
   const filter: Filter = choice ?? (autoAll || userId === undefined ? "all" : "mine");
-  const list = useQuery(
-    conversationsQueryOptions(filtersFor(filter, userId, customerId), {
-      refetchInterval: active ? LIST_POLL_MS : false,
-    }),
+  // Live while the panel is in front; the minute's poll is only the fallback while the topic is not live (live design L13).
+  const inboxLive = useLiveTopic(
+    "communications.inbox",
+    () => void client.invalidateQueries({ queryKey: ["conversations"] }),
+    { enabled: active },
   );
+  const list = useQuery({
+    ...conversationsQueryOptions(filtersFor(filter, userId, customerId)),
+    refetchInterval: active && !inboxLive ? FALLBACK_POLL_MS : false,
+  });
   useRefetchOnResume(active, () => void list.refetch());
   // Something is assigned to the person after all (the badge's count): the default goes back to Assigned to me.
   if (autoAll && choice === undefined && (counts.data?.assignedToMeUnread ?? 0) > 0) setAutoAll(false);
@@ -218,7 +229,16 @@ function PanelConversation({
 }) {
   const { t } = useI18n("communications");
   const { close, hostHasClose } = useSidePanelActions();
-  const detail = useQuery(conversationQueryOptions(id, { refetchInterval: active ? CONVERSATION_POLL_MS : false }));
+  const client = useQueryClient();
+  const conversationLive = useLiveTopic(
+    `communications.conversation:${id}`,
+    () => void client.invalidateQueries({ queryKey: ["conversation", id] }),
+    { enabled: active },
+  );
+  const detail = useQuery({
+    ...conversationQueryOptions(id),
+    refetchInterval: active && !conversationLive ? FALLBACK_POLL_MS : false,
+  });
   useRefetchOnResume(active, () => void detail.refetch());
   const tags = useQuery(tagsQueryOptions());
   const { invalidate, markRead, workflow, tagMutation, suggest } = useConversationActions(id);

@@ -1,12 +1,12 @@
 import { ActionIcon, Badge, Indicator, Tooltip } from "@mantine/core";
 import { IconMessages } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
-import { type SidePanel, type SidePanelController, useI18n } from "@vantigo/frontend-shell";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { type SidePanel, type SidePanelController, useI18n, useLiveTopic } from "@vantigo/frontend-shell";
 import { type ReactNode, useCallback } from "react";
-import { type InboxCounts, inboxCountsQueryOptions } from "../api/conversations";
+import { type InboxCounts, inboxCountsQueryKey, inboxCountsQueryOptions } from "../api/conversations";
 import type { ConnectionButtonProps } from "../components/ConversationComposer";
 import { ConversationsPanel } from "../components/ConversationsPanel";
-import { COUNTS_POLL_MS, usePollInterval } from "../lib/polling";
+import { FALLBACK_POLL_MS } from "../lib/polling";
 import { conversationsShortcutHint, useConversationsShortcut } from "../lib/shortcut";
 import "../i18n";
 
@@ -38,8 +38,8 @@ export type UseConversationsShellOptions = {
 
 /**
  * Everything the shell needs of Conversations, in one hook, like the Assistant's:
- * the header button with its badge (the counts are read every 30 s while the tab
- * is visible, and on focus), the panel's entry for the side panel, and the
+ * the header button with its badge (the counts follow the inbox's live topic, with a
+ * minute's poll as the fallback, and refetch on focus), the panel's entry for the side panel, and the
  * Cmd/Ctrl+Shift+U shortcut.
  */
 export const useConversationsShell = ({
@@ -55,8 +55,17 @@ export const useConversationsShell = ({
 }: UseConversationsShellOptions) => {
   const { t } = useI18n("communications");
   const visible = enabled && !onInboxPage;
-  const poll = usePollInterval(COUNTS_POLL_MS, visible);
-  const counts = useQuery(inboxCountsQueryOptions({ enabled: visible, refetchInterval: poll })).data;
+  const client = useQueryClient();
+  // The counts follow the inbox topic (any conversation changing may change them); the minute's poll is the fallback
+  // while it is not live, and a window focus refetches. A read made in another tab of the same person is not announced.
+  const inboxLive = useLiveTopic(
+    "communications.inbox",
+    () => void client.invalidateQueries({ queryKey: inboxCountsQueryKey }),
+    { enabled: visible },
+  );
+  const counts = useQuery(
+    inboxCountsQueryOptions({ enabled: visible, refetchInterval: visible && !inboxLive ? FALLBACK_POLL_MS : false }),
+  ).data;
   const open = side.isShown(CONVERSATIONS_PANEL_KEY);
   const { toggle } = side;
   const toggleConversations = useCallback(() => toggle(CONVERSATIONS_PANEL_KEY), [toggle]);
