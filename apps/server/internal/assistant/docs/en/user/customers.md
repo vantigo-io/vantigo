@@ -242,7 +242,7 @@ Facebook Page is linked to it, and a **Messenger** menu in its row with:
   Inbox. Messenger only lets a Page write first while the person's window is open (24 hours
   after they last wrote, 7 days if the Page has Meta's Human Agent permission), so the item
   is disabled once it has passed, and says that the contact must write to the Page first
-  and that you should send them your Messenger link. Writing needs `communications:conversations-reply`.
+  and that you should send them your Messenger link. Writing needs `communications:conversations-reply`, and the item is not shown without it.
 - **Copy Messenger link** — makes a link, `https://m.me/…`, for that Page and copies it. It
   is the way a contact is linked in the first place: when the contact opens it and writes to
   the Page, Vantigo links them. The link is valid for 90 days. **Send it only to the contact
@@ -250,6 +250,11 @@ Facebook Page is linked to it, and a **Messenger** menu in its row with:
   wrong person (it never replaces a link the person already has; the conversation then says
   so). Needs `communications:conversations-manage`.
 - **Unlink from Messenger** — removes the link. Needs `communications:conversations-manage`.
+
+The menu shows only what you may do: with `communications:conversations-reply` alone, **Write on
+Messenger**; with `communications:conversations-manage` alone, the link and **Unlink**; with
+neither, no menu. It is there also on a customer that has been merged into another, whose card
+is otherwise read-only.
 
 With several Pages, the menu has a heading for each. A person is linked in
 Communications, and you can link them from the conversation as well:
