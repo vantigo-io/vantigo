@@ -201,7 +201,9 @@ The third is Communications', not this module's: the pictures of a product sent 
 must be reachable from the internet, while the installation's storage has no public address.
 It serves nothing but card images of messages sent on Messenger, and every other request is a
 bare 404. A proxy that caches it may keep an image for up to a day (`Cache-Control: private,
-max-age=86400`).
+max-age=86400`). The token is part of the path, and Vantigo's own request log records every path
+as it is, as it does for Calendar's feed; the reverse proxy's access log should therefore
+record the `public-media` path without the token, or not at all.
 
 Every post is checked with `X-Hub-Signature-256`, an HMAC-SHA256 over the **raw bytes**
 of the body with the app secret. A proxy that re-writes the body (compression,

@@ -740,7 +740,8 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   `/api/v1/communications/public-media/{token}`, which Meta fetches from the internet under a
   token that holds for 7 days; the proxy must pass it, as exactly one path segment
   ([Meta](/en/admin/meta/#the-public-hosts-routes)). Without `PUBLIC_BASE_URL`, a reply with
-  cards is refused.
+  cards is refused. The token is in the path, so the proxy's access log should record that
+  path without the token, or not at all.
 - `vantigo.env.example` also documents `STAFF_IMPORT_MAX_ROWS`, how many people one
   Staff import takes and one Staff export writes
   ([Staff](/en/admin/staff/#import-and-export-the-register)), and the Staff retention
