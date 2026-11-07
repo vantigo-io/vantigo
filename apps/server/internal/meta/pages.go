@@ -27,7 +27,7 @@ const (
 var pageIDPattern = regexp.MustCompile(`^[0-9]{1,30}$`)
 
 // subscribedFields are the webhook fields the app subscribes a Page to.
-const subscribedFields = "messages,messaging_postbacks,message_reads,message_deliveries,message_echoes"
+const subscribedFields = "messages,messaging_postbacks,messaging_referrals,message_reads,message_deliveries,message_echoes"
 
 // pageAnswer is a Page as Meta answers it: GET /me for a Page's token, an
 // entry of GET /me/accounts for a user's or a system user's.
@@ -169,6 +169,59 @@ func pageRefusal(err error) gen.PostMetaPagesResponseObject {
 			"Meta could not be reached", "Meta did not answer; try again in a moment."))
 	}
 	return gen.PostMetaPages422ApplicationProblemPlusJSONResponse(insufficientToken())
+}
+
+// PostMetaPagesByPageIdResubscribe subscribes the app to a connected Page's
+// webhook fields again, with the stored token (Messenger design N21): a Page
+// connected before messaging_referrals joined subscribedFields gets the field,
+// which is what lets a contact's Messenger link link the person. Meta replaces
+// the Page's list with the one sent, so it is safe to repeat, and no new consent
+// is asked of the Page. (POST /api/v1/meta/pages/{pageId}/resubscribe)
+func (s *server) PostMetaPagesByPageIdResubscribe(ctx context.Context, req gen.PostMetaPagesByPageIdResubscribeRequestObject) (gen.PostMetaPagesByPageIdResubscribeResponseObject, error) {
+	page, err := s.q.GetPage(ctx, req.PageId)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.PostMetaPagesByPageIdResubscribe404ApplicationProblemPlusJSONResponse(problem(404, codePageNotFound,
+			"The Page is not connected", "No Page with that id is connected.")), nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("meta: read the Page: %w", err)
+	}
+	settings, err := s.settings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !configured(settings) {
+		return gen.PostMetaPagesByPageIdResubscribe422ApplicationProblemPlusJSONResponse(problem(422, codeNotConfigured,
+			"The Meta app is not configured",
+			"Set the app id and the app secret before subscribing a Page.")), nil
+	}
+	token, err := s.pageToken(page)
+	if err != nil {
+		return nil, err
+	}
+	err = s.graph.postForm(ctx, token, pagePath(page.PageID, "/subscribed_apps"), url.Values{"subscribed_fields": {subscribedFields}}, nil)
+	if err != nil {
+		var ge graphError
+		switch {
+		case isTemporaryGraph(err) || !errors.As(err, &ge):
+			return gen.PostMetaPagesByPageIdResubscribe503ApplicationProblemPlusJSONResponse(problem(503, codeMetaUnreachable,
+				"Meta could not be reached", "Meta did not answer; try again in a moment.")), nil
+		case ge.Code == codeTokenRejected:
+			now := s.now()
+			reason := reasonTokenRejected
+			if err := s.q.SetPageState(ctx, store.SetPageStateParams{State: statePageRejected, LastError: &reason, Now: &now, PageID: page.PageID}); err != nil {
+				s.logger.WarnContext(ctx, "meta: a Page's rejected token could not be recorded", "err", err)
+			}
+		}
+		return gen.PostMetaPagesByPageIdResubscribe422ApplicationProblemPlusJSONResponse(insufficientToken()), nil
+	}
+	now := s.now()
+	if err := s.q.SetPageState(ctx, store.SetPageStateParams{State: statePageActive, Now: &now, PageID: page.PageID}); err != nil {
+		return nil, fmt.Errorf("meta: keep the Page's state: %w", err)
+	}
+	page.State = statePageActive
+	page.LastError = nil
+	return gen.PostMetaPagesByPageIdResubscribe200JSONResponse(pageBody(page)), nil
 }
 
 // DeleteMetaPagesByPageId removes a Page. (DELETE /api/v1/meta/pages/{pageId})

@@ -32,6 +32,8 @@ export interface MetaServer {
   put?: () => Response;
   /** Answers `POST /pages` instead of connecting the Page. */
   addPage?: () => Response;
+  /** Answers `POST /pages/{id}/resubscribe` instead of subscribing the Page. */
+  resubscribe?: () => Response;
   failLoad?: boolean;
 }
 
@@ -64,6 +66,12 @@ export const stubMetaApi = (server: MetaServer = {}): StubbedFetch => {
       const added = page({ name: "Contoso Salg", pageId: "104200000000002" });
       current = { ...current, pages: [...current.pages, added] };
       return Promise.resolve(jsonResponse(201, added));
+    }
+    const resubscription = /^\/api\/v1\/meta\/pages\/([^/]+)\/resubscribe$/.exec(url);
+    if (resubscription && method === "POST") {
+      if (server.resubscribe) return Promise.resolve(server.resubscribe());
+      const found = current.pages.find((one) => one.pageId === resubscription[1]);
+      return Promise.resolve(found ? jsonResponse(200, found) : problemResponse(404, "page_not_found"));
     }
     const removal = /^\/api\/v1\/meta\/pages\/([^/]+)$/.exec(url);
     if (removal && method === "DELETE") {

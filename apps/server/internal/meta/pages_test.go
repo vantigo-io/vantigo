@@ -29,7 +29,7 @@ func TestGraphPages_AddAPage(t *testing.T) {
 		t.Fatal("the token is answered")
 	}
 	fields, ok := e.fake.Subscribed(grPageID)
-	if !ok || fields != "messages,messaging_postbacks,message_reads,message_deliveries,message_echoes" {
+	if !ok || fields != "messages,messaging_postbacks,messaging_referrals,message_reads,message_deliveries,message_echoes" {
 		t.Fatalf("subscribed_fields = %q (%v)", fields, ok)
 	}
 	sealed := modtest.One[[]byte](t, e.h.Harness, `SELECT token_sealed FROM meta.pages WHERE page_id = $1`, grPageID)
@@ -299,6 +299,54 @@ func TestGraphPages_AddingAgainReplacesTheTokenAndClearsARejection(t *testing.T)
 	}
 	if ep, err := e.m.Check(context.Background(), grPageID); err != nil || !ep.Available {
 		t.Fatalf("check with the new token: %+v %v", ep, err)
+	}
+}
+
+// TestGraphPages_ResubscribeAddsTheFieldsASubscribedPageLacks: a Page connected
+// before messaging_referrals joined the list (delivery D) is subscribed again
+// with the stored token, and the list Meta holds then has the field. A repeat is
+// harmless; a Page that is not connected is 404; a token Meta refuses marks the
+// Page and answers 422.
+func TestGraphPages_ResubscribeAddsTheFieldsASubscribedPageLacks(t *testing.T) {
+	e := newGrEnv(t).withPage(t)
+	path := pagesPath + "/" + grPageID + "/resubscribe"
+	e.fake.ResetCalls()
+	for range 2 {
+		r := e.owner.Do(http.MethodPost, path, nil)
+		if r.Status != http.StatusOK {
+			t.Fatalf("resubscribe: status %d body %s", r.Status, r.Body)
+		}
+		var page gen.MetaPage
+		r.JSON(&page)
+		if page.PageId != grPageID || page.State != "active" {
+			t.Errorf("page = %+v", page)
+		}
+	}
+	fields, ok := e.fake.Subscribed(grPageID)
+	if !ok || !strings.Contains(fields, "messaging_referrals") {
+		t.Errorf("subscribed_fields = %q (%v), want messaging_referrals among them", fields, ok)
+	}
+	if calls := e.fake.CallsTo("POST /" + grPageID + "/subscribed_apps"); len(calls) != 2 || calls[0].Token != grPageToken {
+		t.Errorf("subscription calls = %+v, want two with the stored token", calls)
+	}
+
+	if r := e.owner.Do(http.MethodPost, pagesPath+"/424242/resubscribe", nil); r.Status != http.StatusNotFound {
+		t.Errorf("unknown Page: status %d, want 404", r.Status)
+	}
+	e.fake.FailNext("POST /"+grPageID+"/subscribed_apps", metatest.Failure{Status: 400, Code: 190, Message: "bad"})
+	r := e.owner.Do(http.MethodPost, path, nil)
+	if r.Status != http.StatusUnprocessableEntity || grProblemCode(t, r) != "page_token_insufficient" {
+		t.Errorf("rejected token: status %d body %s, want 422 page_token_insufficient", r.Status, r.Body)
+	}
+	if grPageState(t, e) != "token_rejected" {
+		t.Error("the Page is not marked rejected")
+	}
+	e.fake.FailNext("POST /"+grPageID+"/subscribed_apps", metatest.Failure{Status: 502})
+	if r := e.owner.Do(http.MethodPost, path, nil); r.Status != http.StatusServiceUnavailable {
+		t.Errorf("Meta down: status %d, want 503", r.Status)
+	}
+	if r := e.h.SignIn(t, "communications:channels-manage").Do(http.MethodPost, path, nil); r.Status != http.StatusForbidden {
+		t.Errorf("not the Owner: status %d, want 403", r.Status)
 	}
 }
 
