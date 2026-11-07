@@ -365,6 +365,63 @@ describe("a conversation in the panel", () => {
   });
 });
 
+describe("a poll that fails", () => {
+  const messenger = (id: string) =>
+    detail(id, "", {
+      subject: null,
+      channelType: "messenger",
+      replyWindow: { state: "open", closesAt: "2026-01-02T00:00:00Z" },
+      componentLimits: {
+        maxText: 2000,
+        maxAnswerOptions: 13,
+        maxAnswerTitle: 20,
+        shareEmail: true,
+        maxCards: 10,
+        maxCardChoices: 3,
+        maxCardTitle: 80,
+        maxCardSubtitle: 80,
+        maxChoiceTitle: 20,
+      },
+    });
+
+  it("keeps the thread, and the half-written reply, and says so inline", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let failing = false;
+    mocks.request.mockImplementation((url: string) => {
+      if (url.startsWith("/api/v1/communications/conversations?"))
+        return Promise.resolve(page([item("c-1", "", { channelType: "messenger", subject: null })]));
+      if (url.endsWith("/conversations/c-1"))
+        return failing ? Promise.reject(new Error("offline")) : Promise.resolve(messenger("c-1"));
+      if (url.startsWith("/api/v1/communications/inbox/counts")) return Promise.resolve(counts);
+      return Promise.resolve([]);
+    });
+    mount();
+    await openPanel();
+    fireEvent.click(await screen.findByRole("button", { name: /Preview for/ }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Message" }), { target: { value: "still typing" } });
+
+    failing = true;
+    await act(async () => void (await vi.advanceTimersByTimeAsync(5_200)));
+    expect(await screen.findByText("Could not refresh; showing what was loaded last.")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("still typing");
+    expect(screen.queryByText("Could not load this conversation.")).not.toBeInTheDocument();
+  });
+
+  it("still says it could not load a conversation that never loaded", async () => {
+    mocks.request.mockImplementation((url: string) => {
+      if (url.startsWith("/api/v1/communications/conversations?"))
+        return Promise.resolve(page([item("c-1", "First question")]));
+      if (url.endsWith("/conversations/c-1")) return Promise.reject(new Error("offline"));
+      if (url.startsWith("/api/v1/communications/inbox/counts")) return Promise.resolve(counts);
+      return Promise.resolve([]);
+    });
+    mount();
+    await openPanel();
+    fireEvent.click(await screen.findByRole("button", { name: /First question/ }));
+    expect(await screen.findByText("Could not load this conversation.")).toBeInTheDocument();
+  });
+});
+
 describe("polling by visibility", () => {
   const tick = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
 
@@ -428,7 +485,9 @@ describe("the button and its badge", () => {
     counts = { unread: 5, assignedToMeUnread: 2 };
     mount();
     expect(
-      await screen.findByRole("button", { name: "Open conversations. Unread conversations assigned to you: 2" }),
+      await screen.findByRole("button", {
+        name: "Open conversations. Unread conversations assigned to you: 2. Unread conversations: 5",
+      }),
     ).toBeInTheDocument();
   });
 

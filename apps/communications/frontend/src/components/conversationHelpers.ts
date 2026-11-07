@@ -1,6 +1,14 @@
 import { getTimeZones, type useI18n } from "@vantigo/frontend-shell";
 import type { ConversationListItem, Participant, PersonalSender } from "../api/conversations";
 
+/** The width an e-mail's HTML is laid out at when the space is narrower, and the height of the frame then. */
+export const EMAIL_DESIGN_WIDTH = 600;
+export const FIT_FRAME_HEIGHT = 320;
+
+/** The scale that fits an e-mail laid out at 600 px into `containerWidth`: 1 where it fits or the width is not known yet. */
+export const fitScale = (containerWidth: number) =>
+  containerWidth > 0 && containerWidth < EMAIL_DESIGN_WIDTH ? containerWidth / EMAIL_DESIGN_WIDTH : 1;
+
 /** A message's instant in the viewer's time zone (time zones design D8), as the shell holds it. */
 export const relative = (date: string) =>
   new Intl.DateTimeFormat(undefined, {

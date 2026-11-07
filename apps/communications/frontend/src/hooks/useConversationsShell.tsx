@@ -63,12 +63,13 @@ export const useConversationsShell = ({
   useConversationsShortcut(toggleConversations, visible);
 
   const badge = badgeFor(counts);
-  const countsLabel =
-    counts && counts.assignedToMeUnread > 0
-      ? t("badgeAssigned", { count: counts.assignedToMeUnread })
-      : counts && counts.unread > 0
-        ? t("badgeUnread", { count: counts.unread })
-        : undefined;
+  // Both counts are named when both are above 0.
+  const countsLabel = [
+    counts && counts.assignedToMeUnread > 0 ? t("badgeAssigned", { count: counts.assignedToMeUnread }) : undefined,
+    counts && counts.unread > 0 ? t("badgeUnread", { count: counts.unread }) : undefined,
+  ]
+    .filter(Boolean)
+    .join(". ");
   const label = open ? t("closeConversationsPanel") : t("openConversationsPanel");
 
   return {
@@ -109,6 +110,7 @@ export const useConversationsShell = ({
                 {badge.label > 99 ? "99+" : badge.label}
               </Badge>
             ) : undefined,
+          badgeLabel: countsLabel || undefined,
           hidden: onInboxPage,
           render: () => (
             <ConversationsPanel
