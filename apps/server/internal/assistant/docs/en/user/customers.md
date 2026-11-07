@@ -231,6 +231,32 @@ A connection needs a title or at least one role. The pencil on a row opens **Edi
 connection — {name}**; the remove icon detaches the contact after a confirmation,
 keeping both. See [Contacts and associations](/en/reference/customers/#contacts-and-associations).
 
+### Messenger on a contact
+
+When Communications has a Messenger channel and you have `communications:conversations-view`,
+each contact in the **Contacts** card has a Messenger icon beside the name once a person on a
+Facebook Page is linked to it, and a **Messenger** menu in its row with:
+
+- **Write on Messenger** — opens a box for the first message; **Send** then starts the
+  contact's conversation on that Page, or continues the open one, and takes you to it in the
+  Inbox. Messenger only lets a Page write first while the person's window is open (24 hours
+  after they last wrote, 7 days if the Page has Meta's Human Agent permission), so the item
+  is disabled once it has passed, and says that the contact must write to the Page first
+  and that you should send them your Messenger link. Writing needs `communications:conversations-reply`.
+- **Copy Messenger link** — makes a link, `https://m.me/…`, for that Page and copies it. It
+  is the way a contact is linked in the first place: when the contact opens it and writes to
+  the Page, Vantigo links them. The link is valid for 90 days. **Send it only to the contact
+  it names**: whoever opens it is linked to that contact, so a link passed on can link the
+  wrong person (it never replaces a link the person already has; the conversation then says
+  so). Needs `communications:conversations-manage`.
+- **Unlink from Messenger** — removes the link. Needs `communications:conversations-manage`.
+
+With several Pages, the menu has a heading for each. A person is linked in
+Communications, and you can link them from the conversation as well:
+[Link the person to a contact](/en/user/communications/#link-the-person-to-a-contact). A
+deployment without Communications, or a user without `communications:conversations-view`,
+sees none of this.
+
 **Contacts** in the sidebar lists every contact with **Name**, **Phone**, **Email** and
 **Customers**, searchable by name, phone or email; **Create new contact** creates one
 without a customer, the pencil edits it, the bin deletes it outright. A contact's page
