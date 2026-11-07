@@ -34,6 +34,7 @@ import { type ConnectionButtonProps, ConversationComposer } from "./Conversation
 import { isChat } from "./chat";
 import { participantName, relative, returnHere } from "./conversationHelpers";
 import { FittedHtml } from "./FittedHtml";
+import { MessengerContactLink } from "./MessengerContactLink";
 
 export type ConversationThreadProps = {
   conversation: ConversationDetail;
@@ -129,6 +130,13 @@ export function ConversationThread({
               </Text>
             )}
           </Group>
+          {conversation.messengerLink && (
+            <MessengerContactLink
+              conversationId={conversation.id}
+              customerId={conversation.customerId}
+              link={conversation.messengerLink}
+            />
+          )}
           {canManage && conversation.suggestedCustomerId && !conversation.customerId && (
             <Group gap="xs" mt="xs">
               <Text size="xs" c="dimmed">
