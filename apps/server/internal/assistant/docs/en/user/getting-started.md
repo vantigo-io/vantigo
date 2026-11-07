@@ -109,6 +109,10 @@ details or role, or signs you out everywhere, since each of those ends your sess
 at once. The exact limits are set by whoever runs the installation; see
 [Session lifetime and revocation](/en/admin/authentication/#session-lifetime-and-revocation).
 
+Leaving a tab open does not keep you signed in: screens such as the Communications Inbox
+update by themselves while you are away, but that does not count as activity, so the session
+ends on schedule.
+
 ## Edit your profile
 
 Open the avatar menu at the top right and choose **Settings**. The **Profile** page

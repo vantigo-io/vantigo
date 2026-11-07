@@ -258,6 +258,17 @@ content, so the inline scripts are the site's own. The header name follows
 `CSP_REPORT_ONLY` like the application's. Every other header in this section is
 unchanged on those responses.
 
+### The live-updates endpoint
+
+`GET /api/v1/live` upgrades to a WebSocket and is a `GET`, which the cross-origin protection
+that guards the application's other requests lets through. The handler therefore checks the
+origin itself: it accepts the handshake only when `Sec-Fetch-Site` is `same-origin`, or when
+`Origin` equals the application origin from `APP_URL`, and refuses a request without an
+`Origin` with `403`. The session cookie's `SameSite=Strict` is a second layer. The content
+security policy needs no change: `connect-src 'self'` covers a same-origin WebSocket in
+current browsers. The proxy must pass the upgrade
+([Live updates and your proxy](/en/admin/installation/#live-updates-and-your-proxy)).
+
 ## The API contract document
 
 The running server serves the merged contract of its **enabled** modules at:
