@@ -105,7 +105,7 @@ client reaches the host's handlers.
 `LiveProvider` once, under the signed-in layout and keyed on the session's user id, so the
 sign-in and pay pages open no socket and signing in as someone else in the same tab
 reconnects. The shell takes no TanStack Query dependency: a module's callback calls
-`queryClient.invalidateQueries` itself. Vite's dev proxy has `ws: true`.
+`queryClient.invalidateQueries` itself. Vite's dev proxy has `ws: true`, and it presents the API's origin on a WebSocket upgrade. Browsers send no `Sec-Fetch-Site` on a WebSocket handshake, so the server judges it by its `Origin`, which must equal `APP_URL`'s.
 
 - **`useLiveTopic(topic, onEvent, { enabled })`** subscribes while the component is mounted;
   two components on one topic share the subscription. `onEvent` receives
