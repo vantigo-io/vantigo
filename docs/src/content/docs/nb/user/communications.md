@@ -8,6 +8,7 @@ sources:
   - packages/frontend-shell/src/side-panel.tsx
   - apps/host/frontend/src/routes/communications
   - apps/host/frontend/src/lib/product-messaging.ts
+  - apps/host/frontend/src/routes/__root.tsx
 ---
 
 Kommunikasjon-appen er en delt innboks: alle e-postsamtaler — og, der en Facebook
