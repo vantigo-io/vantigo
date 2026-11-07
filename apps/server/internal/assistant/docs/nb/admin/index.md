@@ -47,6 +47,10 @@ applikasjonen.
   nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen,
   e-posttekstene og tilbudsmalene. Koble avgiftskategoriene i Produkter til mva-koder i
   Fakturaer før noen lager tilbud.
+- **Kunnskap.** Kunnskap er på når `knowledge` står i `MODULES` (eller `MODULES` ikke er satt);
+  den krever ingen annen modul. Ingen har tilgang før du gir en rolle **Bruke Kunnskap**
+  (`knowledge:articles`); **Administrere Kunnskap** (`knowledge:manage`) gir tilgang til
+  alle sider som ikke er private, og til papirkurven. Se [Kunnskap](/nb/user/knowledge/).
 - **Kalender.** [Kalender](/nb/admin/calendar/) er på når `calendar` står i `MODULES`
   (eller `MODULES` ikke er satt), med tre rettigheter — `calendar:access` for å bruke den,
   `calendar:view-colleagues` for å se når kolleger er opptatt og ledige, og `calendar:manage`

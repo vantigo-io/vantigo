@@ -47,6 +47,10 @@ application.
   number series, quote validity, payment terms, the send channel, the mail texts and the
   quote templates. Map Products' tax categories to VAT codes in Invoices before people
   quote.
+- **Knowledge.** Knowledge is on when `knowledge` is in `MODULES` (or `MODULES` is unset); it needs
+  no other module. Nobody has access until you give a role **Use Knowledge**
+  (`knowledge:articles`); **Administer Knowledge** (`knowledge:manage`) adds the access
+  of every page that is not private and the trash. See [Knowledge](/en/user/knowledge/).
 - **Calendar.** [Calendar](/en/admin/calendar/) is on when `calendar` is in `MODULES`
   (or `MODULES` is unset), with three permissions — `calendar:access` to use it,
   `calendar:view-colleagues` to see colleagues' busy and free times, and `calendar:manage` to
