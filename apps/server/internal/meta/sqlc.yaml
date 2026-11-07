@@ -5,7 +5,7 @@ version: "2"
 sql:
   - engine: postgresql
     schema:
-      - ../db/migrations/00132_meta_baseline.sql
+      - ../db/migrations/00137_meta_baseline.sql
     queries: queries
     gen:
       go:

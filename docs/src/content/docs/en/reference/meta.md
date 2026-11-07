@@ -6,7 +6,7 @@ sources:
   - apps/meta/frontend
   - apps/host/frontend/src/routes/workspace/meta.tsx
   - openapi/meta.yaml
-  - apps/server/internal/db/migrations/00132_meta_baseline.sql
+  - apps/server/internal/db/migrations/00137_meta_baseline.sql
 ---
 
 The Meta module is the connection between Vantigo and **Facebook Messenger**. It fills
@@ -28,7 +28,7 @@ module is on. It adds no Assistant route prefix.
   (`meta requires communications`). It imports nothing; no SQL of it crosses a schema.
 - **The contract** is `openapi/meta.yaml`, mounted under `/api/v1/meta/`. The API
   reference is generated from it.
-- **The schema** is `meta`, created by migration `00132_meta_baseline.sql` whether or not
+- **The schema** is `meta`, created by migration `00137_meta_baseline.sql` whether or not
   the module is enabled.
 
 | Operation | Method and path | Access |
