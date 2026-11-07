@@ -341,6 +341,8 @@ en annen samtale — vises som vanlig tekst.
 
 ### Legg ved et produkt
 
+**Legg ved produkt** finnes også i skrivefeltet i Samtaler-panelet, på samme vilkår.
+
 **Legg ved produkt** i chat-skrivefeltet viser kunden et produkt som en rad med kort de kan
 bla gjennom. Knappen er der når Produkter er på og du har lov til å se produkter
 (`products:products-view`); uten dem finnes den ikke.
