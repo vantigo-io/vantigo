@@ -94,6 +94,14 @@ export const useAssistantShell = ({
                 }}
               />
             ),
+          badgeLabel:
+            status === "working"
+              ? t("statusWorking")
+              : status === "waiting"
+                ? t("statusWaiting")
+                : status === "done"
+                  ? t("statusDone")
+                  : undefined,
           hidden: !visible,
           render: () => (
             <AssistantPanel
