@@ -24,8 +24,21 @@ export default defineConfig({
   },
   server: {
     port: 10011,
-    // ws: the live socket (/api/v1/live) is proxied too.
-    proxy: { "/api": { target: apiTarget, changeOrigin: true, secure: false, ws: true } },
+    // ws: the live socket (/api/v1/live) is proxied too. Browsers send no
+    // Sec-Fetch-Site on a WebSocket handshake, so the server judges it by its
+    // Origin, which must be APP_URL's: the dev proxy presents the API's origin,
+    // as it presents its Host through changeOrigin.
+    proxy: {
+      "/api": {
+        target: apiTarget,
+        changeOrigin: true,
+        secure: false,
+        ws: true,
+        configure: (proxy) => {
+          proxy.on("proxyReqWs", (proxyReq) => proxyReq.setHeader("origin", apiTarget));
+        },
+      },
+    },
     fs: {
       allow: [searchForWorkspaceRoot(process.cwd())],
     },
