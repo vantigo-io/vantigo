@@ -1,6 +1,6 @@
 # Knowledge and live updates — the `live` platform package and the Knowledge module (phase 1)
 
-Revision 2, 2026-11-07 (after an Opus critic review; §14 lists what changed). Drawn from the owner's conversation of 2026-11-07, which agreed:
+Revision 3, 2026-11-07 (after an Opus critic review and the K-A code review; §14 lists what changed). Drawn from the owner's conversation of 2026-11-07, which agreed:
 
 - a knowledge base in the manner of Odoo Knowledge;
 - a TipTap editor with Notion-like comfort;
@@ -419,8 +419,13 @@ whenever convenient.
     holds explicit members. These are inherited down the tree too. A member row on a
     descendant overrides the inherited one, so `none` can shut one person out of a
     subtree.
+  - **A page with its own default is detached** (revision 3, the K-A review): an article
+    whose `internal_permission` is set, not inherited, stops ancestors' member rows from
+    reaching it, as Odoo's desynchronised articles do. Below it, only its own members and
+    its descendants' members apply. Otherwise, adding oneself as a member on a workspace
+    page would open every private page under it, administrators included.
   - **What a person may do.** It comes from the nearest member row for them on the path
-    from the article up to the root. Failing that, it comes from the nearest
+    from the article up to the first detached article (inclusive) or the root. Failing that, it comes from the nearest
     `internal_permission`. It is always also bounded by the `knowledge:articles`
     permission.
   - **The sidebar's sections are derived, not stored:**
@@ -920,3 +925,9 @@ An Opus critic checked revision 1 against the code. What changed:
   - **presence in delivery 0:** it is half of what the owner asked the live channel for,
     and it guards Communications against double replies;
   - **favourites and the lock:** cheap, and Odoo's users expect them.
+
+### Revision 3 — the K-A code review, 2026-11-07
+
+- **K4:** a page with its own default is detached from its ancestors' members. Under
+  revision 2, any writer of a workspace page could add themselves as a member there and
+  so open a private page beneath it.
