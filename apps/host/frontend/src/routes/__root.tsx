@@ -18,6 +18,7 @@ import {
   AppShellLayout,
   AppSwitcher,
   appUrl,
+  LiveProvider,
   type ShellLinkComponent,
   SpotlightSearchBox,
   SpotlightSearchButton,
@@ -207,7 +208,7 @@ const RootLayout = () => {
     return <MaintenancePage message={systemStatus.data?.message} />;
   }
   return (
-    <>
+    <LiveProvider userId={session.user.id}>
       <AppShellLayout
         title={titleLabel ? t(titleLabel) : undefined}
         headerCenter={gated ? undefined : <SpotlightSearchBox />}
@@ -288,7 +289,7 @@ const RootLayout = () => {
       {!gated && assistant.tour}
       <TanStackRouterDevtools />
       <ReactQueryDevtools />
-    </>
+    </LiveProvider>
   );
 };
 
