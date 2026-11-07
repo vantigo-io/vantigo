@@ -804,6 +804,14 @@ every permission check requires. The two queries are kept in step, so a disable,
 lockout, a deactivation in the directory or a role change stops such a read at its very
 next request, as it stops a session ([Calendar → the feed](/en/admin/calendar/#the-feed-on-the-public-host)).
 
+**An open live connection does not keep a session alive.** A signed-in tab holds a
+WebSocket for [live updates](/en/admin/installation/#live-updates-and-your-proxy). Every
+60 seconds the server re-checks the connection's session with a read that, unlike a request,
+does not slide the idle window, so a tab left alone is signed out on schedule. A session
+that was revoked, has expired or has idled out closes the connection with code `4401`, and
+the browser then stops reconnecting; the person sees the sign-in page at their next action
+like any other expired session.
+
 ## Assistant grants
 
 The Assistant acts for a person through the same API the interface uses, and it does so

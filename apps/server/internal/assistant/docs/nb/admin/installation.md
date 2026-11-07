@@ -512,6 +512,19 @@ replikaer × poolstørrelse  ≤  max_connections − margin (reserver ~10 til
 
 Migreringer kjører uten pool-taket, siden skjemaendringer legitimt kan ta lengre tid.
 
+**Legg til to tilkoblinger per HTTP-replika for sanntidsoppdateringer.** Hver replika som
+serverer HTTP (`api`- og `server`-modus) holder to PostgreSQL-tilkoblinger til som ikke
+er en del av poolen og ikke begrenses av `pool_max_conns`: lytteren som hører endringer,
+og utgiveren som deler hvem som ser på hva. En ren `worker`-prosess åpner ingen av dem.
+Ta dem med i formelen:
+
+```
+replikaer × (poolstørrelse + 2)  ≤  max_connections − margin
+```
+
+De kobler til `LIVE_DATABASE_URL`, eller til `DATABASE_URL` når den ikke er satt
+([Sanntidsoppdateringer og proxyen din](#sanntidsoppdateringer-og-proxyen-din)).
+
 ## Basesti og omvendt proxy
 
 Hele applikasjonen kan serveres under ett konfigurerbart stiprefiks. Sett
@@ -551,6 +564,94 @@ passordtilbakestillings- og OIDC-tilbakekallings-URL-er det prefikset. Basestien
 en kjøretidsinnstilling; det ene imaget serverer den tilhørende SPA-en uten ny bygging.
 Stol på nøyaktig proxyen foran deg med `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS`,
 ellers ignoreres de videresendte headerne for skjema, vert og klientadresse.
+
+## Sanntidsoppdateringer og proxyen din
+
+Vantigo holder skjermbildene oppdatert uten at du laster siden på nytt: Innboks i
+Kommunikasjon og en åpen samtale oppdateres av seg selv, og viser hvem andre som er i en
+samtale. Nettleseren åpner én WebSocket til `GET /api/v1/live` (under `APP_BASE_PATH` når
+du har satt en), og serveren forteller hva som er endret. Kan ikke forbindelsen opprettes,
+går ingenting i stykker: hvert skjermbilde faller tilbake til å oppdatere seg omtrent én
+gang i minuttet. Gå gjennom dette avsnittet slik at forbindelsen kan opprettes.
+
+### Forutsetninger
+
+- Den omvendte proxyen må slippe gjennom WebSocket-oppgraderinger for `/api/v1/live`.
+- Proxyens lesetidsavbrudd for den stien må være minst **75 sekunder**. Serveren sender en
+  ping hvert 25. sekund og kutter en forbindelse som har vært stille i 60, så en proxy som
+  kutter ledige forbindelser etter 60 sekunder går også bra, men en som kutter etter 30
+  gjør det ikke.
+- Proxyen må videresende `Origin` uendret, og `APP_URL` må være adressen folk åpner i
+  nettleseren: serveren godtar håndtrykket bare fra den opprinnelsen.
+- `LISTEN` må fungere på databasetilkoblingen ([Pooler](#pooler-og-live_database_url)).
+
+### Sett opp proxyen
+
+nginx, i `server`-blokken fra [Basesti og omvendt proxy](#basesti-og-omvendt-proxy):
+
+```nginx
+location /vantigo/api/v1/live {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 75s;
+}
+```
+
+Uten `APP_BASE_PATH` er stien `/api/v1/live`. Den må stå før, eller være mer spesifikk
+enn, `location`-blokken som serverer resten av applikasjonen.
+
+Caddy slipper gjennom oppgraderinger av seg selv, så den vanlige blokken er nok:
+
+```
+vantigo.example.com {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+Caddy setter ikke noe lesetidsavbrudd. Setter du et på transporten, hold det på 75 sekunder
+eller mer. For andre proxyer og lastbalanserere: se etter «WebSocket», «upgrade» eller
+«idle timeout» i innstillingene, og sett tidsavbruddet for ledig forbindelse til minst
+75 sekunder.
+
+### Pooler og LIVE_DATABASE_URL
+
+Sanntidsoppdateringer bruker PostgreSQLs `LISTEN`, som ikke fungerer gjennom en pooler i
+**transaksjonsmodus** (PgBouncer i transaksjonsmodus, eller en administrert leverandørs
+innebygde pooler). Går `DATABASE_URL` gjennom en slik, setter du `LIVE_DATABASE_URL` til
+databasens direkteport, med samme rolle. Den brukes bare til de to sanntidstilkoblingene;
+poolen bruker fortsatt `DATABASE_URL`. Når den ikke er satt, bruker sanntidstilkoblingene
+`DATABASE_URL`. Verdien sladdes når konfigurasjonen skrives ut.
+
+### Slå det av
+
+`LIVE_ENABLED=0` får `/api/v1/live` til å svare `404`. Hvert skjermbilde oppdaterer seg da
+omtrent én gang i minuttet, som når forbindelsen ikke kan opprettes. Det er på som standard.
+
+### Kontroller
+
+1. Logg inn, åpne **Innboks**, og åpne nettleserens utviklerverktøy på Nettverk-fanen.
+2. Filtrer på WS. En forespørsel til `live?v=1` skal ha status `101 Switching Protocols`
+   og forbli åpen.
+3. Be om status fra en replika ([Management-lytteren](/nb/admin/management-listener/#endepunktet)):
+   `live`-blokken skal vise `"listener": "up"`, og `connections` skal telle de åpne fanene.
+
+### Hva kan gå galt
+
+| Du ser | Sannsynlig årsak |
+| --- | --- |
+| En `4xx` (typisk `426`) eller ingen `101`, forespørselen avsluttes med en gang | Proxyen sender ikke `Upgrade` og `Connection` videre. |
+| `101`, men lukket etter nøyaktig 30 eller 60 sekunder og åpnet igjen og igjen | Proxyens tidsavbrudd for ledig forbindelse er kortere enn serverens ping; sett det til 75 sekunder eller mer. |
+| `403` | `Origin` samsvarer ikke med `APP_URL`: en proxy som skriver den om, eller folk som åpner Vantigo på en annen adresse. |
+| `404` | `LIVE_ENABLED=0`, eller replikaen kjører bare arbeidere. |
+| `401` | Økten er avsluttet; logg inn på nytt. |
+| `429` | Mer enn 30 tilkoblingsforsøk i minuttet for én person, vanligvis en løkke foran proxyen. |
+| `"listener": "down"` og skjermbildene oppdaterer seg hvert minutt | Databasetilkoblingen for `LISTEN` feiler: en pooler i transaksjonsmodus (sett `LIVE_DATABASE_URL`), en rolle som ikke har lov til å koble til, eller `max_connections` er nådd fordi de to ekstra tilkoblingene ikke ble talt med. Replikaen kobler til igjen av seg selv; den tester også en stille lytter hvert 30. sekund. |
+| `queueUsage` nær `1` | PostgreSQLs varslingskø fylles fordi en lytter står fast; start replikaen som melder det på nytt. |
 
 ## Den innebygde dokumentasjonen
 

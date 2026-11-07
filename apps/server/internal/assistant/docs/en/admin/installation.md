@@ -493,6 +493,19 @@ replicas × pool size  ≤  max_connections − headroom (reserve ~10 for
 
 Migrations run without the pool cap, since schema changes may legitimately run longer.
 
+**Add two connections per HTTP replica for live updates.** Each replica that serves HTTP
+(`api` and `server` mode) holds two more PostgreSQL connections that are not part of the
+pool and are not capped by `pool_max_conns`: the listener that hears changes, and the
+publisher that shares who is looking at what. A `worker`-only process opens neither.
+Count them in the formula:
+
+```
+replicas × (pool size + 2)  ≤  max_connections − headroom
+```
+
+They connect to `LIVE_DATABASE_URL`, or to `DATABASE_URL` when that is unset
+([Live updates and your proxy](#live-updates-and-your-proxy)).
+
 ## Base path and reverse proxy
 
 The whole application can be served below one configurable path prefix. Set
@@ -532,6 +545,93 @@ URLs include that prefix. The base path is a runtime setting; the single image s
 the matching SPA without a rebuild. Trust exactly the proxy in front of you with
 `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS`, or the forwarded scheme, host and
 client-address headers are ignored.
+
+## Live updates and your proxy
+
+Vantigo keeps screens current without reloading: the Communications inbox and an open
+conversation update by themselves, and show who else is in a conversation. The browser
+opens one WebSocket to `GET /api/v1/live` (under `APP_BASE_PATH` when you set one), and the
+server tells it what changed. If the connection cannot be made, nothing breaks: each screen
+falls back to refreshing about once a minute. Work through this section so that it can be
+made.
+
+### Preconditions
+
+- The reverse proxy must pass WebSocket upgrades for `/api/v1/live`.
+- The proxy's read timeout for that path must be at least **75 seconds**. The server sends
+  a ping every 25 seconds and drops a connection that is silent for 60, so a proxy that cuts
+  idle connections at 60 seconds is also fine, but one that cuts at 30 is not.
+- The proxy must forward `Origin` unchanged, and `APP_URL` must be the address people open
+  in the browser: the server accepts the handshake only from that origin.
+- `LISTEN` must work on the database connection ([Poolers](#poolers-and-live_database_url)).
+
+### Configure the proxy
+
+nginx, inside the `server` block of [Base path and reverse proxy](#base-path-and-reverse-proxy):
+
+```nginx
+location /vantigo/api/v1/live {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 75s;
+}
+```
+
+Without `APP_BASE_PATH`, the location is `/api/v1/live`. It must come before, or be more
+specific than, the location that serves the rest of the application.
+
+Caddy passes upgrades by itself, so the ordinary block is enough:
+
+```
+vantigo.example.com {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+Caddy sets no read timeout. If you set one on the transport, keep it at 75 seconds or more.
+Other proxies and load balancers: look for "WebSocket", "upgrade" or "idle timeout" in the
+settings, and raise the idle timeout to at least 75 seconds.
+
+### Poolers and LIVE_DATABASE_URL
+
+Live updates use PostgreSQL's `LISTEN`, which does not work through a pooler in
+**transaction mode** (PgBouncer in transaction mode, or a managed provider's built-in
+pooler). If `DATABASE_URL` goes through one, set `LIVE_DATABASE_URL` to the database's
+direct port, with the same role. It is used only for the two live connections; the pool
+still uses `DATABASE_URL`. When it is unset, the live connections use `DATABASE_URL`. The
+value is redacted when the configuration is printed.
+
+### Turn it off
+
+`LIVE_ENABLED=0` makes `/api/v1/live` answer `404`. Every screen then refreshes about once a
+minute, as when the connection cannot be made. It is on by default.
+
+### Verify
+
+1. Sign in, open **Inbox**, and open the browser's developer tools on the Network tab.
+2. Filter by WS. A request to `live?v=1` should have status `101 Switching Protocols` and
+   stay open.
+3. Ask for the status of a replica ([Management listener](/en/admin/management-listener/#the-endpoint)):
+   the `live` block should read `"listener": "up"`, and `connections` should count the open
+   tabs.
+
+### What can go wrong
+
+| You see | Likely cause |
+| --- | --- |
+| A `4xx` (typically `426`) or no `101`, the request ends at once | The proxy does not pass `Upgrade` and `Connection`. |
+| `101`, but closed after exactly 30 or 60 seconds, and reopened over and over | The proxy's idle timeout is shorter than the server's ping; raise it to 75 seconds or more. |
+| `403` | `Origin` does not match `APP_URL`: a proxy that rewrites it, or people opening Vantigo at another address. |
+| `404` | `LIVE_ENABLED=0`, or the replica serves only workers. |
+| `401` | The session has ended; sign in again. |
+| `429` | More than 30 connection attempts a minute for one person, usually a loop in front of the proxy. |
+| `"listener": "down"` and screens refresh every minute | The database connection for `LISTEN` fails: a transaction-mode pooler (set `LIVE_DATABASE_URL`), a role without the right to connect, or `max_connections` reached because the two extra connections were not counted. The replica reconnects by itself; it also tests a silent listener every 30 seconds. |
+| `queueUsage` near `1` | PostgreSQL's notification queue is filling because a listener is stuck; restart the replica that reports it. |
 
 ## The built-in documentation
 

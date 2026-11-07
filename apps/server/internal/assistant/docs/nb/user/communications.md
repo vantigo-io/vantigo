@@ -50,6 +50,14 @@ Hakeikonet ved siden av antallet laster listen på nytt.
 Når du åpner Innboks, velges den første samtalen i listen; klikk på en rad for å lese
 en annen. Innboks krever `communications:conversations-view`.
 
+### Innboks oppdaterer seg selv
+
+Du trenger ikke laste siden på nytt. Når det kommer inn e-post eller en chattmelding, eller
+en kollega svarer, lukker, merker eller tildeler en samtale, endrer listen og samtalen du har
+åpen seg i løpet av et øyeblikk. Har ikke administratoren gjort sanntidsoppdateringer
+tilgjengelige, eller mistes forbindelsen en stund, oppdateres listen i stedet av seg selv
+hvert minutt, og hakeikonet ved siden av antallet laster den fortsatt på nytt med en gang.
+
 ## Les en samtale
 
 En samtale samler alt som er utvekslet med én kunde om ett emne: deltakerne og emnet i
@@ -96,6 +104,20 @@ Fra toppen kan du:
 
 Å lese krever `communications:conversations-view`; å endre status og tagger krever i
 tillegg `communications:conversations-manage`.
+
+### Se hvem andre som er i en samtale
+
+Under samtalens topptekst ser du kollegene som har den samme samtalen åpen, som små runde
+avatarer. Ved siden av står:
+
+- **Også her: Kari** lister dem som bare ser på.
+- **Kari svarer …** vises uthevet når en kollega har klikket inn i svarfeltet og skrevet
+  noe. Er det flere, står det **Kari, Ola svarer …**.
+
+Bruk det for å unngå å svare den samme kunden to ganger: ser du at noen svarer, avtal med
+dem før du sender. Det hindrer deg aldri i å sende, og sier ingenting om folk som har
+samtalen lukket. Du vises ikke for deg selv, og en kollega som har samtalen åpen i to faner
+vises én gang.
 
 ## Knytt en samtale til en kunde
 
