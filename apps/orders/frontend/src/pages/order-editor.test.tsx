@@ -431,22 +431,41 @@ describe("the new order", () => {
     expect(fake.sent("POST", "/api/v1/orders/orders")?.body).toMatchObject({ customerId: 43 });
   });
 
-  it("starts with the variant a message showed, as the order's one line", async () => {
-    const fake = fakeServer((call) => {
-      if (call.method === "POST" && call.url === "/api/v1/orders/orders") return jsonResponse(201, order({ id: 2078 }));
-      if (call.method === "GET" && call.url === "/api/v1/orders/orders/2078")
-        return jsonResponse(200, order({ id: 2078 }));
+  it("waits for the product's variants before it lets the order be created", async () => {
+    fakeServer((call) => {
+      if (call.method === "GET" && call.url.startsWith("/api/v1/orders/products/7/grid"))
+        return jsonResponse(200, {
+          productId: 7,
+          productName: "Chair",
+          currency: "NOK",
+          mode: "list",
+          options: [],
+          cells: [],
+          variants: [{ variantId: 71, sku: "CH-1", unit: "stk", values: {}, price: 100 }],
+        });
       return commonAnswers(call, settings());
     });
-    const { router } = renderRoute("/orders/orders/new?customerId=43&productId=7&variantId=71");
+    renderRoute("/orders/orders/new?customerId=43&productId=7");
 
-    await userEvent.click(await screen.findByRole("button", { name: "Create the order" }));
+    // Before the variants are read the button is not to be pressed: the order would start without the line.
+    expect(await screen.findByRole("button", { name: "Create the order" })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create the order" })).toBeEnabled());
+  });
 
-    await waitFor(() => expect(router.state.location.pathname).toBe("/orders/orders/2078"));
-    expect(fake.sent("POST", "/api/v1/orders/orders")?.body).toMatchObject({
-      customerId: 43,
-      lines: [{ kind: "product", variantId: 71, quantity: 1 }],
+  it("says when the product could not be read, and starts the order empty", async () => {
+    const fake = fakeServer((call) => {
+      if (call.method === "GET" && call.url.startsWith("/api/v1/orders/products/7/grid")) return refusal(500, "failed");
+      if (call.method === "POST" && call.url === "/api/v1/orders/orders") return jsonResponse(201, order({ id: 2081 }));
+      if (call.method === "GET" && call.url === "/api/v1/orders/orders/2081")
+        return jsonResponse(200, order({ id: 2081 }));
+      return commonAnswers(call, settings());
     });
+    renderRoute("/orders/orders/new?customerId=43&productId=7");
+
+    expect(await screen.findByText("The product could not be read; the order starts empty.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Create the order" }));
+    await waitFor(() => expect(fake.sent("POST", "/api/v1/orders/orders")).toBeDefined());
+    expect(fake.sent("POST", "/api/v1/orders/orders")?.body).not.toHaveProperty("lines");
   });
 
   it("takes the only variant of the product a message showed", async () => {

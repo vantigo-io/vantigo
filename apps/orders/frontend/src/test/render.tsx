@@ -125,11 +125,10 @@ const routeTree = (access: OrdersAccess, extra?: ReactNode) => {
     validateSearch: (search: Record<string, unknown>) => ({
       customerId: searchCustomer(search),
       productId: searchId(search.productId),
-      variantId: searchId(search.variantId),
     }),
     component: () => {
-      const { customerId, productId, variantId } = newOrder.useSearch();
-      return <OrderEditorPage customerId={customerId} productId={productId} variantId={variantId} access={access} />;
+      const { customerId, productId } = newOrder.useSearch();
+      return <OrderEditorPage customerId={customerId} productId={productId} access={access} />;
     },
   });
   return root.addChildren([
