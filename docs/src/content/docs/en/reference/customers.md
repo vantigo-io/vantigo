@@ -344,6 +344,23 @@ billing contact" is found by scanning the list, which is what the UI does. A
 directory accessor (`CustomerDirectory.PrimaryContact`) is one added method the
 day Invoices asks for it, and not before.
 
+**The Messenger channels of a contact** (Communications' Messenger design N22).
+`GET /customers/{id}/contacts` gives each association a `channels` array when
+Communications is on (`Deps.ContactChannels`, `contracts.ContactChannels`) **and** the
+caller holds `communications:conversations-view`; otherwise the key is absent and the
+answer is as it was. The contract performs no authorization, so this is where it is
+decided, and Communications is asked **once for the whole list**, after the read-only
+transaction has closed, never inside it. An entry is one active Messenger channel,
+linked to the contact or not — `{channelId, type, name, linked, participantId?,
+lastInboundAt?, replyWindowClosesAt?}` — so that a contact that nobody on a Page is linked
+to yet can still be given its Messenger link. The participant's id is Communications' own
+and names the person for *Write on Messenger* and *Unlink* (both Communications'
+endpoints, called by the page); **the person's page-scoped id never leaves Communications**
+and is not in the answer. `replyWindowClosesAt` is Communications' reading of the window,
+the Human Agent extension included, absent once it is closed. Customers stores nothing
+of it, and a customer merge moves no link: the association moves, the contact keeps its id
+(see [Contacts on Messenger](/en/reference/communications/#contacts-on-messenger)).
+
 **Association writes touch no `revision`.** `customers_contacts` and
 `customer_contact_roles` are off the customer row, exactly as addresses and tags
 are, so no write here takes a revision, accepts one or bumps one.
