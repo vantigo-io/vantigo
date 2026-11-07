@@ -1279,12 +1279,14 @@ and `message_attachments.role`, `file` or `card`, default `file`): `answerOption
 the order given; a title of 1 to 20 characters), `shareEmail` (Messenger's `user_email` quick
 reply) and `cards` (a carousel: a title of 1 to 80 characters, a subtitle of at most 80, up
 to 3 choices of 1 to 20 characters each, and the card's image, an attachment of role `card`).
-An `id` is `[a-z0-9-]{1,40}`, unique within its message; the payload the platform carries is
-`v1:<messageId>:<id>`. The limits are the provider's `Capabilities`, which the conversation
+An `id` is `[a-z0-9-]{1,40}`, unique within its message — except that the same choice, with the
+same title, may stand on several cards, as *Buy* does on every card of a product; the payload
+the platform carries is `v1:<messageId>:<id>`. The limits are the provider's `Capabilities`, which the conversation
 detail answers as `componentLimits`. The provider's `Capabilities` also carry `MaxAttachmentBytes`, answered in `componentLimits`
-as `maxAttachmentBytes`. Cards are in the contract and rendered by the thread, but
-a reply carrying any is refused (`components_invalid`, under `cards`) until the delivery that
-attaches a product's images copies them.
+as `maxAttachmentBytes`, and `PublicMedia`, whether the provider fetches a card's image from
+the public host. A card of a reply names `productImageId`, a product image; it is copied
+(see [A product in a message](#a-product-in-a-message)) and the stored card answers
+`attachmentId`, the copy. A client-sent `attachmentId` is ignored.
 
 **Answers.** A tapped answer option or card choice comes back as a `message` event with
 `answer: {messageId, choiceId}` and the title the customer saw as its text. The inbound
@@ -1317,7 +1319,9 @@ ignored. After the channel's `channel_inactive` check, and before the idempotenc
 | 400 `invalid_request`, `textBody` | the text is blank (the HTML is ignored) |
 | 422 `text_too_long` | the text is longer than the provider's `MaxText` characters (2000) |
 | 422 `components_unsupported` | there are components and the provider takes none — and on every e-mail channel |
-| 422 `components_invalid`, with `fields` | a limit is broken: `answerOptions` (empty, over the limit), `answerOptions[i].title` or `.id`, `shareEmail` where the provider has none, `cards` |
+| 422 `components_invalid`, with `fields` | a limit is broken: `answerOptions` (empty, over the limit), `answerOptions[i].title` or `.id`, `shareEmail` where the provider has none, `cards` (empty, over the limit), `cards[i].title`, `.subtitle`, `.choices`, `cards[i].productImageId` (missing, or an image of another product than the first card's) |
+| 422 `product_image_unavailable` | a card's image is not in the catalog, or is no longer marked `communications` |
+| 422 `public_url_missing` | the message has cards, the provider fetches images from the public host and the instance has none (`PUBLIC_BASE_URL` unset) |
 
 The subject is ignored (a chat has none), `mailEstimate` is not run, and no Cc exists. The
 person answered is the conversation's participant (the one whose message came last), and one
@@ -1333,7 +1337,11 @@ The outbox has a messenger branch beside SMTP and the mailbox (`outbox_messenger
 Messenger takes one attachment per message, so a message is sent as **ordered parts**: the
 text, if any; each `file` attachment, in a stable order (when attached, then by id — the order the parts
 are counted in, so a job claimed again counts them alike); then the
-carousel, built from the `card` attachments and the stored cards. The answer options and the
+carousel, built from the `card` attachments and the stored cards: for a provider whose
+`Capabilities.PublicMedia` is true each card carries `ImageURL`, the public media address
+of its copy (and no bytes); for any other it carries the bytes. A carousel the instance can
+no longer give an address — `PUBLIC_BASE_URL` was unset after the reply was accepted — fails
+terminally as `public_url_missing`. The answer options and the
 request for an e-mail address ride on the last part. A `card` attachment is never a part of
 its own.
 
@@ -1364,6 +1372,65 @@ The provider's errors map onto the outbox's outcomes:
 
 A terminal code is carried by the failure event and shown as the delivery's error; the
 job's `last_error` stays the constant `Outbound delivery failed.`.
+
+### A product in a message
+
+A message of cards shows one product (Messenger design N16). The composer's picker reads
+Products' own API with the user's permissions; the server only sees the `productImageId`
+of each card.
+
+**The copy, at reply time.** After the refusals and the idempotency replay, before the reply
+transaction, for each card Communications:
+
+1. opens the image through `ProductCatalog.OpenProductImage` and looks its product up with
+   `ProductImages(productID, "communications")`; an image that is not there is 422
+   `product_image_unavailable`, and images of two products are 422 `components_invalid` under
+   `cards[i].productImageId`. Like the rest of the catalog these calls check no user
+   permission, and being calls out of the module they are never made inside a transaction;
+2. writes the `attachment_cleanup_records` row for the new object (`cards/<conversation>/<id>`)
+   in its own commit, then stores the bytes (at most 8 MiB) in Communications' storage;
+3. the reply transaction creates a `card` attachment for each, marks the object `owned`, and
+   keeps the product id in the message's `channel_metadata_json.productId`.
+
+A reply refused after the copy — a staged attachment that is not ready, a suppression, a
+failed commit — queues the copies for deletion, so no object is left owned by nothing. The
+message keeps what was sent, even when the product's images change or are deleted later, and
+the card's image is downloaded through the ordinary attachment download (the thread lists it
+for the carousel, never as a file). `replyFingerprint` includes each card's `productImageId`.
+
+**A Buy answer.** The conversation detail resolves an answer to a choice of a card of a
+message that kept a product id: `answerTo.product` is `{productId, name, attachmentId}`,
+the card's title and the card's image. The frontend shows it as *Wants to buy: …* for the
+`buy` choice and, where Orders is present and the user may create orders, a *Create order*
+link to `/orders/orders/new?customerId=…&productId=…`. No order is made automatically.
+
+**The public media route.** Meta's generic template takes an `image_url` that Meta fetches,
+and storage has no public address by design. `GET` and `HEAD`
+`/api/v1/communications/public-media/{token}` is anonymous, on the public host
+(`security.PayRoutes()`, as exactly one segment under GET and HEAD) and rate limited to 600
+requests per client address in 10 minutes (`communications-public-media`).
+
+- **The token** is `<attachmentId>.<expiresAt>.<mac>`: the attachment's UUID, the expiry as
+  Unix seconds, and the unpadded base64url of the secrets Box's `MAC` under the purpose
+  `communications/public-media` over `<attachmentId>.<expiresAt>`, compared in constant time.
+  The outbox mints it when it sends the carousel — a retry mints a new one — and the address
+  is `PUBLIC_BASE_URL` followed by the route and the token. It holds for 7 days
+  (`publicMediaTokenLifetime`). **That expiry is pending a live check** (the design's delivery
+  0) of whether Meta keeps a template's image once it has accepted the message; if it does
+  not, a conversation scrolled back to after a week shows the carousel from Vantigo's own
+  copy, but Meta's own client may not, and the constant is the one thing to change.
+- **What it serves**: only a `card` attachment of an *outbound* message on a *Messenger*
+  channel whose provider's `Capabilities.PublicMedia` is true, answered with the image's own
+  content type, `Content-Length`, `Referrer-Policy: no-referrer`,
+  `Cache-Control: private, max-age=86400` and `X-Content-Type-Options: nosniff`. HEAD answers
+  the same headers without reading the object.
+- **Every refusal is the same bare 404**, never a 401: an expired, malformed, wrongly signed
+  or foreign token, a `file` attachment, an inbound one, a provider that does not ask for
+  public media, an object that is gone. So the route cannot be used to probe.
+- **Logging**: each fetch is logged by Communications with the attachment id and never the
+  token. The request log, which records every path as it is, does include it, as for
+  [Calendar's feed](/en/reference/calendar/); keep the public host's proxy access log to the
+  path, or to nothing.
 
 ### Participants and personal data
 

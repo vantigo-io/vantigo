@@ -188,13 +188,20 @@ The module runs two workers, in the API process and in worker mode alike
 
 ## The public host's routes
 
-The public host serves two anonymous routes for Meta, exactly these paths
-([The public host](/en/admin/payments/#the-public-host)); the proxy must pass both:
+The public host serves three anonymous routes for Meta, exactly these paths
+([The public host](/en/admin/payments/#the-public-host)); the proxy must pass all of them:
 
 | Method | Path | Does |
 | --- | --- | --- |
 | `GET` | `/api/v1/meta/webhook` | Meta's handshake: answers `hub.challenge` when the verify token is right |
 | `POST` | `/api/v1/meta/webhook` | Meta's events, up to 1 MiB |
+| `GET`, `HEAD` | `/api/v1/communications/public-media/{token}` | A card's image, which Meta fetches when Communications sends a product as cards; one path segment, signed by its token, valid for 7 days |
+
+The third is Communications', not this module's: the pictures of a product sent in a message
+must be reachable from the internet, while the installation's storage has no public address.
+It serves nothing but card images of messages sent on Messenger, and every other request is a
+bare 404. A proxy that caches it may keep an image for up to a day (`Cache-Control: private,
+max-age=86400`).
 
 Every post is checked with `X-Hub-Signature-256`, an HMAC-SHA256 over the **raw bytes**
 of the body with the app secret. A proxy that re-writes the body (compression,

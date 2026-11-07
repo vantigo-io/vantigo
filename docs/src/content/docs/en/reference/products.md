@@ -309,7 +309,10 @@ Inventory posting holds `FOR SHARE`. The rules:
   `sort_order` is kept as 0, 1, 2… with no gaps, renumbered by every move and delete.
 - **`uses`** says where the image may be shown: `communications` — to a customer in a
   message; the default for a new image — and `marketing`, for marketing use such as ads,
-  which nothing reads yet. A CHECK keeps the column within those two words; a `PATCH`
+  which nothing reads yet. Communications reads `communications`: a message's cards are made of a product's
+images marked `communications` — `ProductImages(productID, "communications")` — and a reply
+that names an image no longer marked is refused as `product_image_unavailable`
+([A product in a message](/en/reference/communications/#a-product-in-a-message)). A CHECK keeps the column within those two words; a `PATCH`
   with any other is a 400, and an empty list is allowed.
 
 ### Endpoints and permissions
