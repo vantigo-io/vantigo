@@ -93,7 +93,7 @@ export const AssistantPanel = ({
   const { t } = useI18n("assistant");
   // Whether the shared side panel is open with this panel in front; the host owns the width, the tabs and closing.
   const open = useSidePanelShown();
-  const { close: onClose } = useSidePanelActions();
+  const { close: onClose, hostHasClose } = useSidePanelActions();
   const queryClient = useQueryClient();
   const me = useQuery(meQueryOptions());
   // Opening the panel counts as looking at a finished run: the button's badge clears.
@@ -207,11 +207,13 @@ export const AssistantPanel = ({
               <IconExternalLink size={18} />
             </ActionIcon>
           </Tooltip>
-          <Tooltip label={t("close")}>
-            <ActionIcon variant="subtle" color="gray" aria-label={t("close")} onClick={onClose}>
-              <IconX size={18} />
-            </ActionIcon>
-          </Tooltip>
+          {!hostHasClose && (
+            <Tooltip label={t("close")}>
+              <ActionIcon variant="subtle" color="gray" aria-label={t("close")} onClick={onClose}>
+                <IconX size={18} />
+              </ActionIcon>
+            </Tooltip>
+          )}
         </Group>
       </Group>
       <Box flex={1} style={{ minHeight: 0 }}>
