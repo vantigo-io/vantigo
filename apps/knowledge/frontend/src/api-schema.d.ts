@@ -224,6 +224,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge/assignable-users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search users to make members
+         * @description Active users from the user directory, for the access dialog's member picker (K4). Only display names are answered.
+         */
+        get: operations["listKnowledgeAssignableUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/knowledge/favourites": {
         parameters: {
             query?: never;
@@ -373,6 +393,12 @@ export interface components {
             internalPermission: components["schemas"]["KnowledgeAccessLevel"] | null;
             members: components["schemas"]["KnowledgeMemberInput"][];
         };
+        /** @description A user who may be named as an article's member (K4); enough to name them in a picker. */
+        KnowledgeAssignableUser: {
+            displayName: string;
+            /** Format: uuid */
+            userId: string;
+        };
         /** @description A person who did something, as the user directory names them now. */
         KnowledgeActor: {
             displayName: string;
@@ -470,6 +496,14 @@ export interface components {
         /** @description A ProseMirror document as the editor stores it (K8): {type: doc, content: [...]}. Only the allowlisted nodes, marks and attributes are accepted (invalid_document names the JSON path of the first one refused), and a document over 2 MiB is refused with 413 document_too_large. HTML is never stored. */
         KnowledgeDocument: {
             [key: string]: unknown;
+        };
+        /** @description Active users the caller may make a member of an article (K4), from the user directory, capped at 20. */
+        KnowledgeAssignableUserList: components["schemas"]["KnowledgeAssignableUser"][];
+        /** @description One run of a search excerpt's text. */
+        KnowledgeExcerptSegment: {
+            /** @description The run is a word the query matched. */
+            match: boolean;
+            text: string;
         };
         /** @description The caller's favourites in their order (K11); one the caller can no longer read is left out. */
         KnowledgeFavouriteList: {
@@ -591,8 +625,8 @@ export interface components {
         };
         /** @description One search hit (K12). */
         KnowledgeSearchHit: {
-            /** @description A ts_headline excerpt, plain text. */
-            excerpt: string;
+            /** @description A ts_headline excerpt as plain-text segments in order; match marks the words the query found. Never markup, so text in the article that looks like a tag is only text. */
+            excerpt: components["schemas"]["KnowledgeExcerptSegment"][];
             icon: string | null;
             /** Format: uuid */
             id: string;
@@ -869,6 +903,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict — article_locked: a new title for a locked article (unlocking it in the same request is allowed). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
             };
         };
     };
@@ -1452,6 +1495,58 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+        };
+    };
+    listKnowledgeAssignableUsers: {
+        parameters: {
+            query?: {
+                /** @description Narrows the directory search by display name. Absent or blank lists the first page of active users. */
+                query?: string;
+                /** @description How many users to answer, 1-20. Defaults to 20. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeAssignableUserList"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };

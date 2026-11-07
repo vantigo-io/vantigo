@@ -8,5 +8,10 @@ import { KnowledgeHomePage } from "@vantigo/knowledge-ui/pages/home";
  */
 export const Route = createFileRoute("/knowledge/")({
   validateSearch: (search: Record<string, unknown>): { new?: number } => (search.new === 1 ? { new: 1 } : {}),
-  component: KnowledgeHomePage,
+  component: KnowledgeHomeRoutePage,
 });
+
+function KnowledgeHomeRoutePage() {
+  const { new: openNew } = Route.useSearch();
+  return <KnowledgeHomePage openNew={openNew === 1} />;
+}

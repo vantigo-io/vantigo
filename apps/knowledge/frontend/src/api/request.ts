@@ -62,8 +62,8 @@ export const KNOWLEDGE_QUERY_KEY = "knowledge";
 
 /**
  * A refused answer as the shared client throws it, so the page says it in the
- * same words — but with the problem's `code` kept on a validation refusal
- * too, which the shared client drops. An answer without a problem's words has
+ * same words — but with the problem's `code` (and the problem itself) kept on
+ * a validation refusal too, which the shared client drops. An answer without a problem's words has
  * an empty message and its `status`.
  */
 export const refusalOf = async (response: Response): Promise<Error> => {
@@ -74,11 +74,16 @@ export const refusalOf = async (response: Response): Promise<Error> => {
     errors?: Record<string, string[]>;
   }>(response).catch(() => null);
   const message = problem?.detail ?? problem?.title ?? "";
-  const extra = { code: problem?.code ?? undefined };
+  const extra = { code: problem?.code ?? undefined, problem: problem ?? undefined };
   if (response.status === 404) return new NotFoundError(message);
   if (problem?.errors) return Object.assign(new ApiValidationError(message, problem.errors, response.status), extra);
-  if (response.status === 409 && problem?.title)
-    return new ApiConflictError(message, { title: problem.title, detail: problem.detail, code: problem.code, problem });
+  if (response.status === 409 && problem)
+    return new ApiConflictError(message, {
+      title: problem.title,
+      detail: problem.detail,
+      code: problem.code,
+      problem,
+    });
   return Object.assign(new Error(message), { status: response.status, ...extra });
 };
 

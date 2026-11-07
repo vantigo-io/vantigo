@@ -588,6 +588,37 @@ describe("AppSpotlight navigation authorization", () => {
     );
   });
 
+  it("finds Knowledge articles with their path for a caller holding knowledge:articles", async () => {
+    const hit = {
+      id: "00000000-0000-4000-8000-000000000002",
+      title: "Onboarding",
+      icon: "👋",
+      path: [{ id: "00000000-0000-4000-8000-000000000001", title: "Routines" }],
+      excerpt: [{ text: "roof", match: true }],
+      updatedAt: "2026-11-01T10:00:00Z",
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(String(input).includes("/api/v1/knowledge/search") ? { items: [hit] } : paginated([])),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    renderSpotlight(["knowledge:articles"], false, false, undefined, ["knowledge"]);
+
+    await enterSearch("roof");
+
+    await waitFor(() => expect(screen.getByText("👋 Onboarding", { exact: true })).toBeInTheDocument());
+    expect(screen.getByText("Routines", { exact: true })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toContain("/api/v1/knowledge/search?q=roof&limit=5");
+    fireEvent.click(screen.getByText("👋 Onboarding", { exact: true }));
+    expect(navigateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/knowledge/articles/$articleId", params: { articleId: hit.id } }),
+    );
+  });
+
   it("does not search projects when the projects module is disabled", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) =>
       Promise.resolve(
