@@ -76,6 +76,9 @@ export interface OrderEditorPageProps {
   orderId?: number;
   /** A new order's customer, when it was opened from the customer page (O31a). */
   customerId?: number;
+  /** A new order's first line: a variant, or a product whose variant is picked (Messenger design N17). */
+  variantId?: number;
+  productId?: number;
   access?: OrdersAccess;
 }
 
@@ -89,7 +92,13 @@ export interface OrderEditorPageProps {
  * with the invoices issued from it (O41), the change log, the stored
  * confirmations and the sends.
  */
-export const OrderEditorPage = ({ orderId, customerId, access = noOrdersAccess }: OrderEditorPageProps) => {
+export const OrderEditorPage = ({
+  orderId,
+  customerId,
+  variantId,
+  productId,
+  access = noOrdersAccess,
+}: OrderEditorPageProps) => {
   const { t } = useOrdersFormat();
   const order = useQuery({
     ...orderQueryOptions(orderId ?? 0),
@@ -97,7 +106,10 @@ export const OrderEditorPage = ({ orderId, customerId, access = noOrdersAccess }
     staleTime: Number.POSITIVE_INFINITY,
     refetchOnWindowFocus: false,
   });
-  if (orderId === undefined) return <NewDocument kind="order" customerId={customerId} access={access} />;
+  if (orderId === undefined)
+    return (
+      <NewDocument kind="order" customerId={customerId} variantId={variantId} productId={productId} access={access} />
+    );
   if (order.isPending) return <ContentSkeleton rows={6} rowHeight={48} />;
   if (order.isError)
     return order.error instanceof NotFoundError ? (

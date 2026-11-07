@@ -40,9 +40,14 @@ export const newQuoteLinkOptions = (customerId?: number) => ({
   to: NEW_QUOTE_ROUTE_PATH,
   search: customerSearch(customerId),
 });
-export const newSalesOrderLinkOptions = (customerId?: number) => ({
+/**
+ * A new order's editor, with the customer filled in when one is given and, when it
+ * was opened from a message that showed a product, that product: its one variant is
+ * the order's first line, and the person picks among several (Messenger design N17).
+ */
+export const newSalesOrderLinkOptions = (customerId?: number, product?: { productId: number }) => ({
   to: NEW_SALES_ORDER_ROUTE_PATH,
-  search: customerSearch(customerId),
+  search: { ...customerSearch(customerId), ...(product ? { productId: product.productId } : {}) },
 });
 export const newSubscriptionLinkOptions = (customerId?: number) => ({
   to: NEW_SUBSCRIPTION_ROUTE_PATH,
