@@ -83,6 +83,62 @@ A **Link** asks for the **Link address**. Clicking a link in a page opens it in 
 outside address (**Open in a new tab**) and in the same tab for an address inside Vantigo
 (**Open in this tab**); **Remove link** takes it away. A page can be at most 2 MiB.
 
+## Blocks, pictures and links
+
+**Add a block.** Type `/` at the start of a line, or use the **Add a block** button (+) beside a
+block, and the **Blocks** menu opens; keep typing to narrow it (*No block matches.* when nothing
+does). It offers **Text**, the headings, the lists, **Quote**, **Toggle**, **Info callout**,
+**Tip callout**, **Warning callout**, **Danger callout**, **Code block**, **Table**, **Divider**,
+**Table of contents**, **Image**, **File** and **Link to a page**.
+
+**Move a block.** Drag the grip beside a block (**Drag to move**) to put it somewhere else on
+the page.
+
+- **Callouts.** A callout is a coloured box. Click its icon (*Callout: Info. Change its kind or
+  emoji*) to change its **Kind** (**Info**, **Tip**, **Warning**, **Danger**) or choose an
+  **Emoji**, or **No emoji**.
+- **Toggles.** A **Toggle** is a heading you click to open or fold the text under it.
+- **Tables.** Insert a **Table**, then open its **Table** menu from a cell to **Add a row above**
+  or **below**, **Add a column to the left** or **right**, **Remove the row**, **Remove the
+  column**, turn the **Header row on or off** or **Remove the table**.
+- **Code blocks.** A **Code block** has a **Language** to pick, or **Detect automatically**.
+- **Table of contents.** It lists the page's headings and follows them as you write them; a page with no
+  headings says *Add headings, and they are listed here.*
+
+**Images and files.** Paste or drop a file onto the page, or use **Image** or **File** in the Blocks
+menu. A file can be at most **25 MiB**. A JPEG or PNG shows as a picture (its camera and location
+data are removed; choose **Small**, **Medium** or **Full width** under **Image width**); anything
+else, including SVG, is shown as a file you **Download**. The upload needs edit access and an
+unlocked page; otherwise it says why (*The page is locked, so nothing can be added to it.*).
+Pasting a picture or file copied from another page puts a copy into this page. A file lives with its page: an unused one is cleaned away after a week.
+
+**Mention a person.** Type `@` and pick someone under **People**. They are told by mail, with a link,
+but only if they can open the page, and at most **once an hour per page**; you are never
+notified of your own mention.
+
+**Link to another page.** Type `[[` and search under **Pages**, or choose **Link to a page**. Pasting an
+address from Vantigo turns it into a link too (an address with a `?` or `#` part stays an ordinary link). A link shows the page's current title and icon;
+if you cannot read the page it shows **No access** and does not reveal the title, and if the page was
+deleted for good it shows **Deleted**. A trashed page also shows **No access**.
+
+**Linked from.** At the foot of a page, **Linked from** lists the pages you can read that link to it.
+
+## Export and import Markdown
+
+In the **Page menu**, **Export as Markdown** downloads the page as a `.md` file. Choose **Include
+subpages** to download a `.zip` with one file per subpage you can read, laid out as an Obsidian
+vault; images and files go in an `assets` folder, which also makes the download a `.zip`. Links to
+pages you cannot read become **No access**. An export of more than 2000 files or about 1 GiB is refused.
+
+**Import Markdown** turns a `.md` file, or a `.zip` from Obsidian or a Notion export, into pages. Choose the
+**File**, then **Put the pages** **Under this page**, **At the top of the Workspace** or **At the top of
+Private**. Folders become subpages, a folder and a file of the same name become one page, Obsidian
+callouts become callouts, and `[[links]]` between the files become page links. A first heading that repeats
+the title is left out. JPEG and PNG images come along as page pictures. What is skipped is
+listed afterwards under **Some things could not be carried over**: other file types, HTML, images on the
+web, hidden folders such as `.obsidian`. The upload can be at most 50 MiB (a zip at most 500 files, 200 MiB unpacked).
+Parts the editor cannot hold are left out and listed as well; images inside headings and tables become their description text. Only two imports run at once, so a busy one asks you to try again in ten seconds. It is all or nothing: **Open** the result from the list that follows.
+
 ## Saving, and when someone else changed the page
 
 There is no Save button. The page saves by itself a moment after you stop typing, and the
