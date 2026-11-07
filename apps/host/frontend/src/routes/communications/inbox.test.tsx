@@ -12,6 +12,9 @@ vi.mock("@vantigo/communications-ui/pages/inbox", () => ({
     <div>{connectionButton ? connectionButton({ feature: "mail", returnTo: "/communications/inbox" }) : "no slot"}</div>
   ),
 }));
+vi.mock("../../lib/product-messaging", () => ({
+  useProductMessaging: () => ({ canAttachProduct: false, canViewPricing: false }),
+}));
 vi.mock("@vantigo/entra-ui", () => ({
   OutlookConnectButton: ({ feature, returnTo }: { feature: string; returnTo: string }) => (
     <p>

@@ -58,6 +58,8 @@ export type MessageCard = {
   subtitle?: string | null;
   /** The card's image, an attachment of role card (response only). */
   attachmentId?: string | null;
+  /** The product image the card shows, copied when the reply is made (request only; design N16). */
+  productImageId?: number | null;
   choices?: MessageChoice[] | null;
 };
 /** What a message on a Messenger channel carries beside its text (Messenger design N4). */
@@ -67,7 +69,13 @@ export type MessageComponents = {
   cards?: MessageCard[] | null;
 };
 /** The answer an inbound message is, to an option of an earlier message (design N5). */
-export type MessageAnswer = { messageId: string; choiceId: string; title: string };
+export type MessageAnswer = {
+  messageId: string;
+  choiceId: string;
+  title: string;
+  /** The product a card's choice was about, for an answer to a card of a product the message attached (design N17). */
+  product?: { productId: number; name: string; attachmentId?: string | null } | null;
+};
 /** What a message on a channel may carry, as its provider says (design N4). */
 export type ComponentLimits = {
   maxText: number;

@@ -335,7 +335,7 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 		if state, err = s.messengerStateOf(ctx, q, req.Id, conv.ChannelProvider, s.deps.Clock()); err != nil {
 			return nil, err
 		}
-		if refusal := messengerReplyRefusal(body, state.caps); refusal != nil {
+		if refusal := messengerReplyRefusal(body, state.caps, s.publicBaseURL()); refusal != nil {
 			return refusal, nil
 		}
 	} else if hasComponents(body.Components) {
@@ -409,21 +409,54 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 		messageSubject = conv.Subject
 	}
 	var components []byte
+	var images *cardImages
+	now := s.deps.Clock()
 	if messenger {
 		// No subject and no HTML: a chat is plain text (N8).
 		messageSubject, body.HtmlBody = nil, nil
-		if stored := storedComponentsOf(body.Components); !stored.empty() {
+		stored := storedComponentsOf(body.Components)
+		if len(stored.Cards) > 0 {
+			// A card's image is a copy of a product's, made before the transaction
+			// (N16): the attachment id a client sent is never the card's.
+			var refusal gen.PostCommunicationsConversationsByIdReplyResponseObject
+			if images, refusal, err = s.copyCardImages(ctx, req.Id, *body.Components.Cards, now); err != nil || refusal != nil {
+				return refusal, err
+			}
+			for i := range stored.Cards {
+				id := images.copies[i].id
+				stored.Cards[i].AttachmentID = &id
+			}
+			if metadata, err = json.Marshal(messengerMetadata{ProductID: &images.productID}); err != nil {
+				s.forgetCardImages(ctx, images.copies, now)
+				return nil, fmt.Errorf("communications: encode the reply's metadata: %w", err)
+			}
+		}
+		if !stored.empty() {
 			if components, err = json.Marshal(stored); err != nil {
+				s.forgetCardImages(ctx, imageCopies(images), now)
 				return nil, fmt.Errorf("communications: encode the reply's components: %w", err)
 			}
 		}
 	}
-	return s.queueReply(ctx, replyQueueParams{
+	resp, err := s.queueReply(ctx, replyQueueParams{
 		conversationID: req.Id, channelType: conv.ChannelType, channelProvider: conv.ChannelProvider, caller: caller, key: key,
 		fingerprint: fingerprint, body: body, messageSubject: messageSubject,
 		primaryAddress: source.senderAddress, ccAddresses: ccAddresses, metadata: metadata, components: components,
-		attachmentMax: state.caps.MaxAttachmentBytes, now: s.deps.Clock(),
+		cards: images, attachmentMax: state.caps.MaxAttachmentBytes, now: now,
 	})
+	if _, queued := resp.(gen.PostCommunicationsConversationsByIdReply201JSONResponse); !queued && images != nil {
+		// Nothing of this reply was committed: the copies are no one's.
+		s.forgetCardImages(ctx, images.copies, now)
+	}
+	return resp, err
+}
+
+// imageCopies is the copies of images, none for nil.
+func imageCopies(images *cardImages) []cardCopy {
+	if images == nil {
+		return nil
+	}
+	return images.copies
 }
 
 // messengerMaxText is a Messenger message's text limit when its provider names
@@ -441,9 +474,10 @@ func hasComponents(c *gen.MessageComponents) bool {
 // e-mail-only inputs (422 not_supported_on_channel), text that is missing (400)
 // or too long (422 text_too_long), and components the provider takes none of
 // (422 components_unsupported) or breaking its limits (422 components_invalid,
-// with fields). Cards need a product image, which the delivery that attaches
-// products brings: they are refused until then.
-func messengerReplyRefusal(body gen.ReplyRequest, caps contracts.MessengerCapabilities) gen.PostCommunicationsConversationsByIdReplyResponseObject {
+// with fields). Cards must each name a product image (cardsRefusal), and the
+// provider's fetching them from the public host needs the instance to have one
+// (422 public_url_missing).
+func messengerReplyRefusal(body gen.ReplyRequest, caps contracts.MessengerCapabilities, publicBaseURL string) gen.PostCommunicationsConversationsByIdReplyResponseObject {
 	if (body.SendFromPersonal != nil && *body.SendFromPersonal) || normalizedReplyMode(body.ReplyMode) == "reply_all" {
 		return gen.PostCommunicationsConversationsByIdReply422JSONResponse(flatErrorBody(
 			"not_supported_on_channel", "Sending from a personal address and replying to all are not available on this channel."))
@@ -473,14 +507,19 @@ func messengerReplyRefusal(body gen.ReplyRequest, caps contracts.MessengerCapabi
 			"components_unsupported", "This channel takes no answer options or cards."))
 	}
 	errs := validateComponents(body.Components, caps)
-	if body.Components.Cards != nil {
-		errs["cards"] = []string{"A carousel needs a product image, which cannot be attached yet."}
-	}
 	if len(errs) > 0 {
 		return gen.PostCommunicationsConversationsByIdReply422JSONResponse(fieldsErrorBody(
 			"components_invalid", "The answer options or cards break the channel's limits.", errs))
 	}
-	return nil
+	return cardsRefusal(body.Components, caps, publicBaseURL)
+}
+
+// publicBaseURL is the instance's public host's address, "" when it has none.
+func (s *server) publicBaseURL() string {
+	if s.deps.Config == nil {
+		return ""
+	}
+	return s.deps.Config.PublicBaseURL
 }
 
 // messengerReplySource is who a reply on a Messenger conversation answers: its
@@ -514,6 +553,9 @@ type replyQueueParams struct {
 	// components is a Messenger reply's conversation_messages.components, nil for
 	// none.
 	components []byte
+	// cards is the product images a Messenger reply copied for its cards, nil
+	// for none: the transaction creates their attachments (N16).
+	cards *cardImages
 	// attachmentMax is a Messenger provider's largest file in bytes, 0 for none.
 	attachmentMax int64
 	now           time.Time
@@ -714,6 +756,19 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 				StorageKey: row.StorageKey, IsInline: row.IsInline, CreatedAt: p.now,
 			}); err != nil {
 				return err
+			}
+		}
+		if p.cards != nil {
+			for _, c := range p.cards.copies {
+				if err := txq.InsertCardAttachment(ctx, store.InsertCardAttachmentParams{
+					ID: c.id, MessageID: messageID, FileName: c.fileName, ContentType: c.contentType, SizeBytes: c.size,
+					ContentHash: c.hash, StorageKey: c.key, CreatedAt: p.now,
+				}); err != nil {
+					return err
+				}
+				if err := txq.MarkCleanupRecordOwned(ctx, c.key); err != nil {
+					return err
+				}
 			}
 		}
 		if len(stagedRows) > 0 {

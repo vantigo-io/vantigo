@@ -126,6 +126,11 @@ type chatMessageJSON struct {
 		MessageId string `json:"messageId"`
 		ChoiceId  string `json:"choiceId"`
 		Title     string `json:"title"`
+		Product   *struct {
+			ProductId    int32   `json:"productId"`
+			Name         string  `json:"name"`
+			AttachmentId *string `json:"attachmentId"`
+		} `json:"product"`
 	} `json:"answerTo"`
 	Components *struct {
 		AnswerOptions *[]struct {

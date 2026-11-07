@@ -25,6 +25,7 @@ export {
   useConversationsShell,
 } from "./hooks/useConversationsShell";
 export { communicationsCatalog } from "./i18n";
+export type { NewOrderTarget, ProductMessaging } from "./lib/product-messaging";
 export {
   isConversationsShortcut,
   shouldIgnoreConversationsShortcut,

@@ -203,7 +203,12 @@ export function ConversationThread({
       <ScrollArea className="thread-messages">
         {conversation.messages.map((message) =>
           isChat(conversation) ? (
-            <ChatMessage key={message.id} message={message} messages={conversation.messages} />
+            <ChatMessage
+              key={message.id}
+              message={message}
+              messages={conversation.messages}
+              customerId={conversation.customerId}
+            />
           ) : (
             <MessageCard
               key={message.id}

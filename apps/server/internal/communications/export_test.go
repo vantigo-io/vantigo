@@ -92,6 +92,14 @@ var AttachmentDispositionForTest = attachmentDisposition
 // NewOutboxWorkerWithMeterForTest.
 var NewMessengerSyncWorkerWithMeterForTest = newMessengerSyncWorker
 
+// PublicMediaTokenForTest is publicMediaToken (public_media.go): a test mints a
+// card attachment's token, valid, expired or for another attachment, with the
+// harness's own secrets box.
+var PublicMediaTokenForTest = publicMediaToken
+
+// PublicMediaTokenLifetimeForTest is how long after a send a card's token holds.
+const PublicMediaTokenLifetimeForTest = publicMediaTokenLifetime
+
 // expectedInTxKey marks a context whose call made inside one of the module's
 // transactions is the point of a test, so the harness's lock-rule check does not
 // count it.
