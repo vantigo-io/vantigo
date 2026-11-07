@@ -12,7 +12,7 @@ sources:
   - apps/server/internal/db/migrations/00095_communications_personal_sending.sql
   - apps/server/internal/db/migrations/00111_communications_provider_neutral.sql
   - apps/server/internal/db/migrations/00130_communications_messaging.sql
-  - apps/server/internal/db/migrations/00133_communications_inbox_counts.sql
+  - apps/server/internal/db/migrations/00138_communications_inbox_counts.sql
   - apps/server/internal/contracts/outbound_mail.go
   - apps/server/internal/contracts/channel_mailbox.go
   - apps/server/internal/contracts/channel_messenger.go
@@ -1454,7 +1454,7 @@ shell's side panel.
   it costs O(open conversations) per call; nothing narrows it by assignee. `assignedToMeUnread`
   (`CountInboxAssignedUnread`) is its own query with `status = 'open' AND assigned_user_id = $caller`, which
   `ix_conversations_assigned_user_open` (a partial index on `assigned_user_id WHERE status = 'open'`,
-  migration `00133_communications_inbox_counts.sql`) serves. The answer is per caller, never cached on the
+  migration `00138_communications_inbox_counts.sql`) serves. The answer is per caller, never cached on the
   server, and has no other filter: a client wanting a count of a filtered list asks the list.
 - **Errors.** 401 without a session and 403 without `conversations-view`; it has no 404.
 
