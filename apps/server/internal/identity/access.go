@@ -258,6 +258,35 @@ func (a *Access) UserHolds(ctx context.Context, userID uuid.UUID, keys ...string
 	return true, nil
 }
 
+// SessionLive reports whether the session sessionID is live at the clock's
+// now and whose it is, through GetSessionByID, which rejects every state
+// GetSessionByTokenHash rejects. It never slides the idle window: the live
+// hub asks it every 60 seconds of an open socket (live design L11), and a
+// read that slid would keep a hidden tab's session alive for ever.
+func (a *Access) SessionLive(ctx context.Context, sessionID uuid.UUID) (uuid.UUID, bool, error) {
+	sso, err := a.sso.get(ctx)
+	if err != nil {
+		return uuid.Nil, false, fmt.Errorf("identity: read whether the session is live: %w", err)
+	}
+	bounds := a.cfg.Sessions
+	row, err := a.q.GetSessionByID(ctx, store.GetSessionByIDParams{
+		ID:                 sessionID,
+		ScimEnabled:        sso.SCIM != nil,
+		Now:                a.now(),
+		Idle:               interval(bounds.Idle),
+		PrivilegedIdle:     interval(bounds.PrivilegedIdle),
+		Absolute:           interval(bounds.Absolute),
+		PrivilegedAbsolute: interval(bounds.PrivilegedAbsolute),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, false, nil
+	}
+	if err != nil {
+		return uuid.Nil, false, fmt.Errorf("identity: read whether the session is live: %w", err)
+	}
+	return row.UserID, true, nil
+}
+
 // authenticate resolves r's session cookie at now. It reports false, with no
 // error, when there is no cookie or its session is not (or no longer) live;
 // GetSessionByTokenHash lists everything that ends a session. A live

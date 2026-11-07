@@ -39,6 +39,7 @@ func (c Config) redacted() redactedConfig {
 	v := redactedConfig(c)
 	v.DatabaseURL = redactDatabaseURL(v.DatabaseURL)
 	v.MigrationsDatabaseURL = redactDatabaseURL(v.MigrationsDatabaseURL)
+	v.LiveDatabaseURL = redactDatabaseURL(v.LiveDatabaseURL)
 	if len(v.AppSecret) > 0 {
 		v.AppSecret = []byte(redactedText)
 	}

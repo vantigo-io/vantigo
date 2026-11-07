@@ -304,6 +304,35 @@ func TestLoad_FlagsAreStrict(t *testing.T) {
 	}
 }
 
+// TestLoad_Live proves LIVE_ENABLED defaults on and is a strict "0"/"1"
+// switch, and that LIVE_DATABASE_URL is optional, validated as a connection
+// string, and left empty (the hub then uses DATABASE_URL) when unset.
+func TestLoad_Live(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !cfg.LiveEnabled {
+		t.Error("LIVE_ENABLED unset did not default to on")
+	}
+	if cfg.LiveDatabaseURL != "" {
+		t.Errorf("LiveDatabaseURL = %q unset, want empty", cfg.LiveDatabaseURL)
+	}
+	if mustLoad(t, with(validEnv(), "LIVE_ENABLED", "0")).LiveEnabled {
+		t.Error("LIVE_ENABLED=0 did not disable it")
+	}
+	if msg := loadError(t, with(validEnv(), "LIVE_ENABLED", "false")); !strings.Contains(msg, `LIVE_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+	direct := "postgres://vantigo:live-pw-value@db.internal:5432/vantigo?sslmode=disable"
+	if got := mustLoad(t, with(validEnv(), "LIVE_DATABASE_URL", direct)).LiveDatabaseURL; got != direct {
+		t.Errorf("LiveDatabaseURL = %q, want %q", got, direct)
+	}
+	if msg := loadError(t, with(validEnv(), "LIVE_DATABASE_URL", "postgres://%zz")); !strings.Contains(msg, "LIVE_DATABASE_URL: is not a valid PostgreSQL connection string") {
+		t.Errorf("error = %q", msg)
+	}
+	if printed := fmt.Sprintf("%+v", mustLoad(t, with(validEnv(), "LIVE_DATABASE_URL", direct))); strings.Contains(printed, "live-pw-value") {
+		t.Errorf("LIVE_DATABASE_URL's password is printed: %s", printed)
+	}
+}
+
 // TestLoad_WorkersInProcess proves the opposite default from flag's
 // off-by-default switches (design §3.2: single-container deployments run
 // api and worker together unless split out), and that it stays a strict

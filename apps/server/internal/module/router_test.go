@@ -825,3 +825,7 @@ func TestRouter_BodyLimitProblems(t *testing.T) {
 		})
 	}
 }
+
+func (f *fakeAccess) SessionLive(context.Context, uuid.UUID) (uuid.UUID, bool, error) {
+	return uuid.Nil, false, nil
+}

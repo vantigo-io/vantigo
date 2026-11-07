@@ -19,6 +19,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/events"
+	"github.com/vantigo-io/vantigo/server/internal/live"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/operations"
 	"github.com/vantigo-io/vantigo/server/internal/peppol"
@@ -362,6 +363,13 @@ type Deps struct {
 	// of the AI slots; a preset value is kept. nil is the unavailable state —
 	// no provider is configured — which a caller answers as 503 ai_unavailable.
 	AI *ai.Client
+	// Live is the registry of live topics (live design L9): Compose fills it
+	// from every enabled module's LiveTopics, after their Mount, and gives it
+	// the resolved user directory. A caller that serves the live endpoint
+	// presets it, so it can build its hub over what Compose filled; without
+	// one Compose makes its own. A module never needs it to notify:
+	// live.Notify is a free function.
+	Live *live.Registry
 	// HTTPTransport is the RoundTripper a module's own outbound HTTP client
 	// (customers' Brreg lookup, so far the only one) dials through. nil in
 	// production, meaning http.DefaultTransport; a test harness sets it to a
@@ -679,6 +687,13 @@ type Module struct {
 	// AssistantGrants provides contracts.AssistantGrants. At most one enabled
 	// module may declare it; identity does.
 	AssistantGrants func(Deps) contracts.AssistantGrants
+	// LiveTopics builds the live topics this module serves (live design L9),
+	// if it has any: each kind is <module>.<kind>, its prefix the module's
+	// name. Compose calls it for every enabled module, right after its
+	// Mount, with the same Deps, and refuses a kind outside the grammar, a
+	// prefix that is not the module's name, or a kind two modules declare.
+	// A disabled module's topics are unknown to the hub.
+	LiveTopics func(Deps) []live.Topic
 	// CalendarBusy builds this module's contracts.CalendarBusy, if it answers
 	// people's busy time to other modules (calendar Outlook sync design
 	// O9.8). At most one enabled module may set it; Compose calls it last of

@@ -197,3 +197,7 @@ func TestHasPermissions_AsUserAsksUserHolds(t *testing.T) {
 		t.Errorf("Check asked %d times and UserHolds %d, want the request checked through Check alone", len(routed.asked), len(routed.held))
 	}
 }
+
+func (a *grantingAccess) SessionLive(context.Context, uuid.UUID) (uuid.UUID, bool, error) {
+	return uuid.Nil, false, nil
+}

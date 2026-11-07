@@ -700,3 +700,43 @@ func equal(a, b []string) bool {
 	}
 	return true
 }
+
+// TestAccess_SessionLiveDoesNotSlide proves SessionLive (live design L11), the
+// live hub's 60-second re-check, reads without sliding the idle window: asked
+// past the write interval, last_seen_at stays put, so a socket left open
+// cannot keep its session alive, and the session idles out on schedule —
+// after which SessionLive reports it not live. A revoked session and one that
+// never existed are not live either.
+func TestAccess_SessionLiveDoesNotSlide(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	ctx := context.Background()
+	user := h.insertUser(t, "user@example.test", identity.RoleUserID)
+	p, _ := check(t, h, h.session(t, user, false), "session")
+
+	for elapsed := time.Hour; elapsed < h.cfg.Sessions.Idle; elapsed += time.Hour {
+		h.advance(time.Hour)
+		got, ok, err := h.access.SessionLive(ctx, p.SessionID)
+		if err != nil || !ok || got != user {
+			t.Fatalf("after %v idle: (%v, %v, %v), want the session's user", elapsed, got, ok, err)
+		}
+	}
+	if seen := lastSeen(t, h, p.SessionID); !seen.Equal(start) {
+		t.Errorf("last_seen_at = %v, want it unchanged at %v: SessionLive slid the session", seen, start)
+	}
+	h.advance(time.Hour)
+	if got, ok, err := h.access.SessionLive(ctx, p.SessionID); err != nil || ok || got != uuid.Nil {
+		t.Errorf("idle 8h: (%v, %v, %v), want not live", got, ok, err)
+	}
+
+	other, _ := check(t, h, h.session(t, user, false), "session")
+	if err := identity.RevokeAllSessions(h.access, ctx, store.New(h.pool), user); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := h.access.SessionLive(ctx, other.SessionID); err != nil || ok {
+		t.Errorf("revoked: (%v, %v), want not live", ok, err)
+	}
+	if _, ok, err := h.access.SessionLive(ctx, uuid.New()); err != nil || ok {
+		t.Errorf("no such session: (%v, %v), want not live", ok, err)
+	}
+}

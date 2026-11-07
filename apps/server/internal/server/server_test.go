@@ -470,3 +470,31 @@ func TestServer_PublicHostRefusesAnEncodedSlash(t *testing.T) {
 		t.Errorf("an attempt's status on the public host: %d, want it to reach the API", rec.Code)
 	}
 }
+
+func (allowAllAccess) SessionLive(context.Context, uuid.UUID) (uuid.UUID, bool, error) {
+	return uuid.Nil, false, nil
+}
+
+// Options.Live answers exactly /api/v1/live, ahead of the API; without it
+// (LIVE_ENABLED=0) the path is the API's 404 problem.
+func TestNew_MountsTheLiveEndpointAtItsPathOnly(t *testing.T) {
+	live := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	f := newFixture(t, func(_ *config.Config, o *Options) {
+		o.API = composedAPI(t)
+		o.Live = live
+	})
+	if rec := f.do(request(http.MethodGet, "https://vantigo.example.com/api/v1/live?v=1")); rec.Code != http.StatusTeapot {
+		t.Errorf("/api/v1/live: status %d, want the live handler's", rec.Code)
+	}
+	for _, path := range []string{"/api/v1/live/", "/api/v1/livex"} {
+		if rec := f.do(request(http.MethodGet, "https://vantigo.example.com"+path)); rec.Code != http.StatusNotFound {
+			t.Errorf("%s: status %d, want 404", path, rec.Code)
+		}
+	}
+
+	off := newFixture(t, func(_ *config.Config, o *Options) { o.API = composedAPI(t) })
+	rec := off.do(request(http.MethodGet, "https://vantigo.example.com/api/v1/live?v=1"))
+	if rec.Code != http.StatusNotFound || rec.Header().Get("Content-Type") != "application/problem+json" {
+		t.Errorf("no live handler: status %d Content-Type %q, want the 404 problem", rec.Code, rec.Header().Get("Content-Type"))
+	}
+}

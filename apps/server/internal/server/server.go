@@ -29,7 +29,16 @@ type Options struct {
 	// API serves everything under /api/ and receives the full path. Nil
 	// answers every API path with a 404 problem.
 	API http.Handler
+	// Live is the live hub's socket endpoint (live design L2), matched at
+	// exactly /api/v1/live inside the /api branch, ahead of API and the
+	// CSRF guard (which lets every GET through regardless): the hub checks
+	// the handshake's origin itself. Nil — LIVE_ENABLED=0, or a process that
+	// builds no hub — leaves the path to API, which answers 404.
+	Live http.Handler
 }
+
+// livePath is where Options.Live is matched.
+const livePath = "/api/v1/live"
 
 // New returns the process's HTTP handler.
 func New(o Options) http.Handler {
@@ -77,6 +86,10 @@ func New(o Options) http.Handler {
 	// want.
 	root := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if path := r.URL.EscapedPath(); path == "/api" || strings.HasPrefix(path, "/api/") {
+			if path == livePath && o.Live != nil {
+				o.Live.ServeHTTP(w, r)
+				return
+			}
 			apiHandler.ServeHTTP(w, r)
 			return
 		}
