@@ -735,7 +735,12 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   for Facebook Messenger as well, `GET` and `POST /api/v1/meta/webhook`, which the proxy
   must pass through as two routes: Meta's handshake and its events, whose signature is
   checked over the body exactly as Meta sent it, so the proxy must not re-write the body
-  ([Meta](/en/admin/meta/#the-public-hosts-routes)).
+  ([Meta](/en/admin/meta/#the-public-hosts-routes)). It also carries the images of the cards
+  Communications sends on Messenger, `GET` and `HEAD`
+  `/api/v1/communications/public-media/{token}`, which Meta fetches from the internet under a
+  token that holds for 7 days; the proxy must pass it, as exactly one path segment
+  ([Meta](/en/admin/meta/#the-public-hosts-routes)). Without `PUBLIC_BASE_URL`, a reply with
+  cards is refused.
 - `vantigo.env.example` also documents `STAFF_IMPORT_MAX_ROWS`, how many people one
   Staff import takes and one Staff export writes
   ([Staff](/en/admin/staff/#import-and-export-the-register)), and the Staff retention
