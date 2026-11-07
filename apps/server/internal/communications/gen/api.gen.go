@@ -184,6 +184,20 @@ type CommunicationsStatsSummaryResponse struct {
 	To                       time.Time `json:"to"`
 }
 
+// ContactLinkRequest defines model for ContactLinkRequest.
+type ContactLinkRequest struct {
+	// ContactId The contact, of Customers, the link is made for.
+	ContactId int32 `json:"contactId"`
+}
+
+// ContactLinkResponse defines model for ContactLinkResponse.
+type ContactLinkResponse struct {
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// Url The Messenger link to send to the contact, and only to that contact.
+	Url string `json:"url"`
+}
+
 // ConversationDetailResponse defines model for ConversationDetailResponse.
 type ConversationDetailResponse struct {
 	AssignedUserId       *openapi_types.UUID `json:"assignedUserId"`
@@ -283,7 +297,10 @@ type ConversationDetailResponse struct {
 		// Unreadable An inbound message Vantigo could not read; its text says so and its original is downloadable. Always answered; optional in the schema only because the recorded exchanges predate it.
 		Unreadable *bool `json:"unreadable"`
 	} `json:"messages"`
-	Participants []struct {
+
+	// MessengerLink The participant of a messenger conversation and its contact link; null for an e-mail conversation.
+	MessengerLink *MessengerLink `json:"messengerLink"`
+	Participants  []struct {
 		Address     string             `json:"address"`
 		ChannelId   openapi_types.UUID `json:"channelId"`
 		ContactId   *int32             `json:"contactId"`
@@ -399,18 +416,23 @@ type CreateChannelRequest struct {
 
 // CreateConversationRequest defines model for CreateConversationRequest.
 type CreateConversationRequest struct {
-	Cc             *[]EmailRecipientRequest   `json:"cc,omitempty"`
-	ChannelId      *openapi_types.UUID        `json:"channelId,omitempty"`
-	CustomerId     *int32                     `json:"customerId,omitempty"`
-	HtmlBody       *string                    `json:"htmlBody,omitempty"`
+	Cc         *[]EmailRecipientRequest `json:"cc,omitempty"`
+	ChannelId  *openapi_types.UUID      `json:"channelId,omitempty"`
+	CustomerId *int32                   `json:"customerId,omitempty"`
+	HtmlBody   *string                  `json:"htmlBody,omitempty"`
+
+	// ParticipantId For a messenger channel, the participant to write to; the person must have written within the reply window, else 422 reply_window_closed. The conversation is the newest open one with the participant, or a new one, and textBody is its first message, sent as a reply is. Not used on an e-mail channel.
+	ParticipantId  *openapi_types.UUID        `json:"participantId,omitempty"`
 	ParticipantIds *[]*openapi_types.UUID     `json:"participantIds,omitempty"`
 	Recipients     *[]ChannelRecipientRequest `json:"recipients,omitempty"`
 
 	// SendFromPersonal When true, sends the initial outbound message from the caller's own connected address, through the personal mailbox provider personal-sender names, with Reply-To set to the channel's address.
-	SendFromPersonal *bool                    `json:"sendFromPersonal,omitempty"`
-	Subject          *string                  `json:"subject"`
-	TextBody         *string                  `json:"textBody,omitempty"`
-	To               *[]EmailRecipientRequest `json:"to,omitempty"`
+	SendFromPersonal *bool `json:"sendFromPersonal,omitempty"`
+
+	// Subject Required for an e-mail conversation, else 400; not used with a participantId, a chat having no subject.
+	Subject  *string                  `json:"subject,omitempty"`
+	TextBody *string                  `json:"textBody,omitempty"`
+	To       *[]EmailRecipientRequest `json:"to,omitempty"`
 }
 
 // CreateSuppressionRequest defines model for CreateSuppressionRequest.
@@ -513,6 +535,21 @@ type MessageComponents struct {
 	ShareEmail *bool `json:"shareEmail,omitempty"`
 }
 
+// MessengerLink A messenger conversation's participant and the contact it is linked to, suggested for or was referred by. Null for an e-mail conversation.
+type MessengerLink struct {
+	// ContactId The contact of Customers the participant is linked to.
+	ContactId *int32 `json:"contactId"`
+
+	// ParticipantId The participant the conversation is with; the id the link operations take.
+	ParticipantId openapi_types.UUID `json:"participantId"`
+
+	// ReferralContactId The contact whose Messenger link the person used while linked to another contact (contactId). Linking, unlinking or changing the contact clears it.
+	ReferralContactId *int32 `json:"referralContactId"`
+
+	// SuggestedContactId The one contact the e-mail address the person shared names. A suggestion only - nothing is linked until it is confirmed.
+	SuggestedContactId *int32 `json:"suggestedContactId"`
+}
+
 // NoteRequest defines model for NoteRequest.
 type NoteRequest struct {
 	TextBody *string `json:"textBody"`
@@ -522,6 +559,21 @@ type NoteRequest struct {
 type PaginatedResponseOfConversationListItem struct {
 	Data       []ConversationListItem          `json:"data"`
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
+
+// ParticipantContactRequest defines model for ParticipantContactRequest.
+type ParticipantContactRequest struct {
+	// ContactId The contact of Customers to link the participant to.
+	ContactId int32 `json:"contactId"`
+
+	// ConversationId The conversation the link is made from. When it is linked to a customer, the contact must be one of that customer's contacts.
+	ConversationId *openapi_types.UUID `json:"conversationId,omitempty"`
+}
+
+// ParticipantContactResponse defines model for ParticipantContactResponse.
+type ParticipantContactResponse struct {
+	ContactId     *int32             `json:"contactId"`
+	ParticipantId openapi_types.UUID `json:"participantId"`
 }
 
 // PersonalSenderResponse Whether the caller can send outbound mail from their own connected address through a personal mailbox provider (`entra`, `google`; Outlook connection design M20, Google Workspace design G3), and the address and display name they would send from.
@@ -638,6 +690,9 @@ type PostCommunicationsChannelsJSONBody = CreateChannelRequest
 // PutCommunicationsChannelsByIdJSONBody defines parameters for PutCommunicationsChannelsById.
 type PutCommunicationsChannelsByIdJSONBody = UpdateChannelRequest
 
+// PostCommunicationsChannelsByIdContactLinksJSONBody defines parameters for PostCommunicationsChannelsByIdContactLinks.
+type PostCommunicationsChannelsByIdContactLinksJSONBody = ContactLinkRequest
+
 // GetCommunicationsConversationsParams defines parameters for GetCommunicationsConversations.
 type GetCommunicationsConversationsParams struct {
 	Page           *int32              `form:"page,omitempty" json:"page,omitempty"`
@@ -689,6 +744,9 @@ type PostCommunicationsConversationsByIdReplyParams struct {
 	IdempotencyKey string `json:"Idempotency-Key"`
 }
 
+// PutCommunicationsParticipantsByIdContactJSONBody defines parameters for PutCommunicationsParticipantsByIdContact.
+type PutCommunicationsParticipantsByIdContactJSONBody = ParticipantContactRequest
+
 // GetCommunicationsStatsSummaryParams defines parameters for GetCommunicationsStatsSummary.
 type GetCommunicationsStatsSummaryParams struct {
 	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
@@ -714,6 +772,9 @@ type PostCommunicationsChannelsJSONRequestBody = PostCommunicationsChannelsJSONB
 // PutCommunicationsChannelsByIdJSONRequestBody defines body for PutCommunicationsChannelsById for application/json ContentType.
 type PutCommunicationsChannelsByIdJSONRequestBody = PutCommunicationsChannelsByIdJSONBody
 
+// PostCommunicationsChannelsByIdContactLinksJSONRequestBody defines body for PostCommunicationsChannelsByIdContactLinks for application/json ContentType.
+type PostCommunicationsChannelsByIdContactLinksJSONRequestBody = PostCommunicationsChannelsByIdContactLinksJSONBody
+
 // PostCommunicationsChannelsByIdProviderJSONRequestBody defines body for PostCommunicationsChannelsByIdProvider for application/json ContentType.
 type PostCommunicationsChannelsByIdProviderJSONRequestBody = SwitchChannelProviderRequest
 
@@ -734,6 +795,9 @@ type PostCommunicationsConversationsByIdNotesJSONRequestBody = PostCommunication
 
 // PostCommunicationsConversationsByIdReplyJSONRequestBody defines body for PostCommunicationsConversationsByIdReply for application/json ContentType.
 type PostCommunicationsConversationsByIdReplyJSONRequestBody = PostCommunicationsConversationsByIdReplyJSONBody
+
+// PutCommunicationsParticipantsByIdContactJSONRequestBody defines body for PutCommunicationsParticipantsByIdContact for application/json ContentType.
+type PutCommunicationsParticipantsByIdContactJSONRequestBody = PutCommunicationsParticipantsByIdContactJSONBody
 
 // PostCommunicationsSuppressionsJSONRequestBody defines body for PostCommunicationsSuppressions for application/json ContentType.
 type PostCommunicationsSuppressionsJSONRequestBody = PostCommunicationsSuppressionsJSONBody
@@ -761,6 +825,9 @@ type ServerInterface interface {
 	// PutCommunicationsChannelsById Update a mail channel
 	// (PUT /api/v1/communications/channels/{id})
 	PutCommunicationsChannelsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// PostCommunicationsChannelsByIdContactLinks Get a contact's Messenger link
+	// (POST /api/v1/communications/channels/{id}/contact-links)
+	PostCommunicationsChannelsByIdContactLinks(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// PostCommunicationsChannelsByIdProvider Switch a mail channel to another provider
 	// (POST /api/v1/communications/channels/{id}/provider)
 	PostCommunicationsChannelsByIdProvider(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -812,6 +879,12 @@ type ServerInterface interface {
 	// GetCommunicationsMessagesByIdRaw Download a message as it was received
 	// (GET /api/v1/communications/messages/{id}/raw)
 	GetCommunicationsMessagesByIdRaw(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// DeleteCommunicationsParticipantsByIdContact Unlink a participant from its contact
+	// (DELETE /api/v1/communications/participants/{id}/contact)
+	DeleteCommunicationsParticipantsByIdContact(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// PutCommunicationsParticipantsByIdContact Link a participant to a contact
+	// (PUT /api/v1/communications/participants/{id}/contact)
+	PutCommunicationsParticipantsByIdContact(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// GetCommunicationsPersonalSender Get whether the caller can send from their own mailbox
 	// (GET /api/v1/communications/personal-sender)
 	GetCommunicationsPersonalSender(w http.ResponseWriter, r *http.Request)
@@ -970,6 +1043,32 @@ func (siw *ServerInterfaceWrapper) PutCommunicationsChannelsById(w http.Response
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutCommunicationsChannelsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCommunicationsChannelsByIdContactLinks operation middleware
+func (siw *ServerInterfaceWrapper) PostCommunicationsChannelsByIdContactLinks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCommunicationsChannelsByIdContactLinks(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1617,6 +1716,58 @@ func (siw *ServerInterfaceWrapper) GetCommunicationsMessagesByIdRaw(w http.Respo
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteCommunicationsParticipantsByIdContact operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCommunicationsParticipantsByIdContact(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCommunicationsParticipantsByIdContact(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutCommunicationsParticipantsByIdContact operation middleware
+func (siw *ServerInterfaceWrapper) PutCommunicationsParticipantsByIdContact(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCommunicationsParticipantsByIdContact(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCommunicationsPersonalSender operation middleware
 func (siw *ServerInterfaceWrapper) GetCommunicationsPersonalSender(w http.ResponseWriter, r *http.Request) {
 
@@ -2036,6 +2187,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/channels", wrapper.PostCommunicationsChannels)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/channels/{id}", wrapper.GetCommunicationsChannelsById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/communications/channels/{id}", wrapper.PutCommunicationsChannelsById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/channels/{id}/contact-links", wrapper.PostCommunicationsChannelsByIdContactLinks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/channels/{id}/provider", wrapper.PostCommunicationsChannelsByIdProvider)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/channels/{id}/verify", wrapper.PostCommunicationsChannelsByIdVerify)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/conversations", wrapper.GetCommunicationsConversations)
@@ -2055,6 +2207,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/messages/{id}/raw", wrapper.GetCommunicationsMessagesByIdRaw)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/public-media/{token}", wrapper.GetCommunicationsPublicMediaByToken)
 	m.HandleFunc(http.MethodHead+" "+options.BaseURL+"/api/v1/communications/public-media/{token}", wrapper.HeadCommunicationsPublicMediaByToken)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/communications/participants/{id}/contact", wrapper.DeleteCommunicationsParticipantsByIdContact)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/communications/participants/{id}/contact", wrapper.PutCommunicationsParticipantsByIdContact)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/personal-sender", wrapper.GetCommunicationsPersonalSender)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/stats/attention", wrapper.GetCommunicationsStatsAttention)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/stats/summary", wrapper.GetCommunicationsStatsSummary)
@@ -2513,6 +2667,93 @@ type PutCommunicationsChannelsById404Response struct {
 func (response PutCommunicationsChannelsById404Response) VisitPutCommunicationsChannelsByIdResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type PostCommunicationsChannelsByIdContactLinksRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *PostCommunicationsChannelsByIdContactLinksJSONRequestBody
+}
+
+type PostCommunicationsChannelsByIdContactLinksResponseObject interface {
+	VisitPostCommunicationsChannelsByIdContactLinksResponse(w http.ResponseWriter) error
+}
+
+type PostCommunicationsChannelsByIdContactLinks200JSONResponse ContactLinkResponse
+
+func (response PostCommunicationsChannelsByIdContactLinks200JSONResponse) VisitPostCommunicationsChannelsByIdContactLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsChannelsByIdContactLinks400JSONResponse CommunicationErrorResponse
+
+func (response PostCommunicationsChannelsByIdContactLinks400JSONResponse) VisitPostCommunicationsChannelsByIdContactLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsChannelsByIdContactLinks401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCommunicationsChannelsByIdContactLinks401JSONResponse) VisitPostCommunicationsChannelsByIdContactLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsChannelsByIdContactLinks403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCommunicationsChannelsByIdContactLinks403JSONResponse) VisitPostCommunicationsChannelsByIdContactLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsChannelsByIdContactLinks404Response struct {
+}
+
+func (response PostCommunicationsChannelsByIdContactLinks404Response) VisitPostCommunicationsChannelsByIdContactLinksResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCommunicationsChannelsByIdContactLinks422JSONResponse CommunicationErrorResponse
+
+func (response PostCommunicationsChannelsByIdContactLinks422JSONResponse) VisitPostCommunicationsChannelsByIdContactLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type PostCommunicationsChannelsByIdProviderRequestObject struct {
@@ -3990,6 +4231,145 @@ func (response GetCommunicationsMessagesByIdRaw503JSONResponse) VisitGetCommunic
 	return err
 }
 
+type DeleteCommunicationsParticipantsByIdContactRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteCommunicationsParticipantsByIdContactResponseObject interface {
+	VisitDeleteCommunicationsParticipantsByIdContactResponse(w http.ResponseWriter) error
+}
+
+type DeleteCommunicationsParticipantsByIdContact204Response struct {
+}
+
+func (response DeleteCommunicationsParticipantsByIdContact204Response) VisitDeleteCommunicationsParticipantsByIdContactResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteCommunicationsParticipantsByIdContact401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCommunicationsParticipantsByIdContact401JSONResponse) VisitDeleteCommunicationsParticipantsByIdContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCommunicationsParticipantsByIdContact403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCommunicationsParticipantsByIdContact403JSONResponse) VisitDeleteCommunicationsParticipantsByIdContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCommunicationsParticipantsByIdContact404Response struct {
+}
+
+func (response DeleteCommunicationsParticipantsByIdContact404Response) VisitDeleteCommunicationsParticipantsByIdContactResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCommunicationsParticipantsByIdContactRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *PutCommunicationsParticipantsByIdContactJSONRequestBody
+}
+
+type PutCommunicationsParticipantsByIdContactResponseObject interface {
+	VisitPutCommunicationsParticipantsByIdContactResponse(w http.ResponseWriter) error
+}
+
+type PutCommunicationsParticipantsByIdContact200JSONResponse ParticipantContactResponse
+
+func (response PutCommunicationsParticipantsByIdContact200JSONResponse) VisitPutCommunicationsParticipantsByIdContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCommunicationsParticipantsByIdContact400JSONResponse CommunicationErrorResponse
+
+func (response PutCommunicationsParticipantsByIdContact400JSONResponse) VisitPutCommunicationsParticipantsByIdContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCommunicationsParticipantsByIdContact401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCommunicationsParticipantsByIdContact401JSONResponse) VisitPutCommunicationsParticipantsByIdContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCommunicationsParticipantsByIdContact403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCommunicationsParticipantsByIdContact403JSONResponse) VisitPutCommunicationsParticipantsByIdContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCommunicationsParticipantsByIdContact404Response struct {
+}
+
+func (response PutCommunicationsParticipantsByIdContact404Response) VisitPutCommunicationsParticipantsByIdContactResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCommunicationsParticipantsByIdContact422JSONResponse CommunicationErrorResponse
+
+func (response PutCommunicationsParticipantsByIdContact422JSONResponse) VisitPutCommunicationsParticipantsByIdContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCommunicationsPersonalSenderRequestObject struct {
 }
 
@@ -4706,6 +5086,9 @@ type StrictServerInterface interface {
 	// PutCommunicationsChannelsById Update a mail channel
 	// (PUT /api/v1/communications/channels/{id})
 	PutCommunicationsChannelsById(ctx context.Context, request PutCommunicationsChannelsByIdRequestObject) (PutCommunicationsChannelsByIdResponseObject, error)
+	// PostCommunicationsChannelsByIdContactLinks Get a contact's Messenger link
+	// (POST /api/v1/communications/channels/{id}/contact-links)
+	PostCommunicationsChannelsByIdContactLinks(ctx context.Context, request PostCommunicationsChannelsByIdContactLinksRequestObject) (PostCommunicationsChannelsByIdContactLinksResponseObject, error)
 	// PostCommunicationsChannelsByIdProvider Switch a mail channel to another provider
 	// (POST /api/v1/communications/channels/{id}/provider)
 	PostCommunicationsChannelsByIdProvider(ctx context.Context, request PostCommunicationsChannelsByIdProviderRequestObject) (PostCommunicationsChannelsByIdProviderResponseObject, error)
@@ -4757,6 +5140,12 @@ type StrictServerInterface interface {
 	// GetCommunicationsMessagesByIdRaw Download a message as it was received
 	// (GET /api/v1/communications/messages/{id}/raw)
 	GetCommunicationsMessagesByIdRaw(ctx context.Context, request GetCommunicationsMessagesByIdRawRequestObject) (GetCommunicationsMessagesByIdRawResponseObject, error)
+	// DeleteCommunicationsParticipantsByIdContact Unlink a participant from its contact
+	// (DELETE /api/v1/communications/participants/{id}/contact)
+	DeleteCommunicationsParticipantsByIdContact(ctx context.Context, request DeleteCommunicationsParticipantsByIdContactRequestObject) (DeleteCommunicationsParticipantsByIdContactResponseObject, error)
+	// PutCommunicationsParticipantsByIdContact Link a participant to a contact
+	// (PUT /api/v1/communications/participants/{id}/contact)
+	PutCommunicationsParticipantsByIdContact(ctx context.Context, request PutCommunicationsParticipantsByIdContactRequestObject) (PutCommunicationsParticipantsByIdContactResponseObject, error)
 	// GetCommunicationsPersonalSender Get whether the caller can send from their own mailbox
 	// (GET /api/v1/communications/personal-sender)
 	GetCommunicationsPersonalSender(ctx context.Context, request GetCommunicationsPersonalSenderRequestObject) (GetCommunicationsPersonalSenderResponseObject, error)
@@ -4997,6 +5386,42 @@ func (sh *strictHandler) PutCommunicationsChannelsById(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCommunicationsChannelsByIdResponseObject); ok {
 		if err := validResponse.VisitPutCommunicationsChannelsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCommunicationsChannelsByIdContactLinks operation middleware
+func (sh *strictHandler) PostCommunicationsChannelsByIdContactLinks(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PostCommunicationsChannelsByIdContactLinksRequestObject
+
+	request.Id = id
+
+	var body PostCommunicationsChannelsByIdContactLinksJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCommunicationsChannelsByIdContactLinks(ctx, request.(PostCommunicationsChannelsByIdContactLinksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCommunicationsChannelsByIdContactLinks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCommunicationsChannelsByIdContactLinksResponseObject); ok {
+		if err := validResponse.VisitPostCommunicationsChannelsByIdContactLinksResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -5509,6 +5934,68 @@ func (sh *strictHandler) GetCommunicationsMessagesByIdRaw(w http.ResponseWriter,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCommunicationsMessagesByIdRawResponseObject); ok {
 		if err := validResponse.VisitGetCommunicationsMessagesByIdRawResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCommunicationsParticipantsByIdContact operation middleware
+func (sh *strictHandler) DeleteCommunicationsParticipantsByIdContact(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteCommunicationsParticipantsByIdContactRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCommunicationsParticipantsByIdContact(ctx, request.(DeleteCommunicationsParticipantsByIdContactRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCommunicationsParticipantsByIdContact")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCommunicationsParticipantsByIdContactResponseObject); ok {
+		if err := validResponse.VisitDeleteCommunicationsParticipantsByIdContactResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCommunicationsParticipantsByIdContact operation middleware
+func (sh *strictHandler) PutCommunicationsParticipantsByIdContact(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PutCommunicationsParticipantsByIdContactRequestObject
+
+	request.Id = id
+
+	var body PutCommunicationsParticipantsByIdContactJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCommunicationsParticipantsByIdContact(ctx, request.(PutCommunicationsParticipantsByIdContactRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCommunicationsParticipantsByIdContact")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCommunicationsParticipantsByIdContactResponseObject); ok {
+		if err := validResponse.VisitPutCommunicationsParticipantsByIdContactResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

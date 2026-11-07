@@ -67,6 +67,8 @@ func (w *MessengerSyncWorker) importEvent(ctx context.Context, c *messengerCycle
 		return w.importMessage(ctx, c, event)
 	case contracts.MessengerEventDelivered, contracts.MessengerEventRead:
 		return w.importWatermark(ctx, c, event)
+	case contracts.MessengerEventReferral:
+		return w.importReferral(ctx, c, event)
 	}
 	w.logger().Info("messenger sync skipped an event of a kind it does not know",
 		"worker", messengerSyncWorkerName, "channel", c.channelID, "kind", event.Kind)
@@ -138,6 +140,16 @@ func (w *MessengerSyncWorker) importMessage(ctx context.Context, c *messengerCyc
 		}
 	}
 
+	// The contact a referral names (N21), verified before the transaction as well:
+	// it asks the customer directory. An echo is the Page's own and carries none.
+	var refContact *int32
+	if !event.Echo {
+		if refContact, err = w.verifiedRef(ctx, c, event.Ref, now); err != nil {
+			forgetInboundObjects(ctx, w.deps.Pool, w.logger(), messengerSyncWorkerName, objects, now)
+			return err
+		}
+	}
+
 	occurredAt := eventTime(event, now)
 	locked := context.WithValue(ctx, lockedTxKey{}, true)
 	txErr := db.WithTx(locked, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -147,6 +159,11 @@ func (w *MessengerSyncWorker) importMessage(ctx context.Context, c *messengerCyc
 		participantID, err := w.messengerParticipant(ctx, txq, c.channelID, event.Participant, name, fetched, now)
 		if err != nil {
 			return err
+		}
+		if refContact != nil {
+			if err := applyRef(ctx, txq, participantID, *refContact, now); err != nil {
+				return err
+			}
 		}
 		conversationID, isNew, customerID, err := w.messengerThread(ctx, txq, c.channelID, participantID, occurredAt, now, event.Text)
 		if err != nil {
@@ -224,6 +241,95 @@ func (w *MessengerSyncWorker) importMessage(ctx context.Context, c *messengerCyc
 		return txErr
 	}
 	return fmt.Errorf("communications: import a messenger event: %w", txErr)
+}
+
+// verifiedRef is the contact a ref names (N21): nil, and logged at info without
+// the ref, when there is none, the ref fails its MAC, has expired or names
+// another channel, or the contact is gone. A directory that cannot answer is
+// errImportTransient, so the event is tried again rather than the link lost.
+func (w *MessengerSyncWorker) verifiedRef(ctx context.Context, c *messengerCycle, ref string, now time.Time) (*int32, error) {
+	if ref == "" {
+		return nil, nil
+	}
+	contact, ok := verifyRef(w.deps.Secrets, ref, c.channelID, now)
+	if !ok {
+		w.logger().Info("messenger sync ignored a ref it does not vouch for: bad signature, expired, or another channel's",
+			"worker", messengerSyncWorkerName, "channel", c.channelID)
+		return nil, nil
+	}
+	entry, err := directoryContact(ctx, w.deps.Directory, contact)
+	if err != nil {
+		return nil, fmt.Errorf("%w: look up the ref's contact: %w", errImportTransient, err)
+	}
+	if entry == nil {
+		w.logger().Info("messenger sync ignored a ref whose contact does not exist",
+			"worker", messengerSyncWorkerName, "channel", c.channelID)
+		return nil, nil
+	}
+	return &contact, nil
+}
+
+// applyRef applies a verified ref to a participant, inside the import's
+// transaction (N21). A participant with no contact is linked. One with another
+// contact is left alone — a ref never overrides a link — and the thread says the
+// person used this contact's link. The same contact is nothing to say.
+func applyRef(ctx context.Context, txq *store.Queries, participantID uuid.UUID, contact int32, now time.Time) error {
+	linked, err := txq.LinkParticipantContactIfNone(ctx, store.LinkParticipantContactIfNoneParams{ContactID: &contact, ID: participantID})
+	if err != nil {
+		return fmt.Errorf("communications: link the participant to the ref's contact: %w", err)
+	}
+	if linked == 1 {
+		// The link makes a suggestion moot.
+		if err := txq.ClearSuggestedContact(ctx, participantID); err != nil {
+			return fmt.Errorf("communications: clear the suggestion: %w", err)
+		}
+		return txq.DeleteEmptyParticipantContactHints(ctx, participantID)
+	}
+	current, err := txq.GetParticipantContact(ctx, participantID)
+	if err != nil {
+		return fmt.Errorf("communications: read the participant's contact: %w", err)
+	}
+	if current == nil || *current == contact {
+		return nil
+	}
+	if err := txq.UpsertReferralContact(ctx, store.UpsertReferralContactParams{ParticipantID: participantID, ContactID: &contact, Now: now}); err != nil {
+		return fmt.Errorf("communications: note the referral: %w", err)
+	}
+	return nil
+}
+
+// importReferral applies a referral event (N21): the person opened the thread
+// through a link, outside any message. Nothing is shown of it; a participant not
+// known yet, whose first message will bring the referral again, is left for it.
+func (w *MessengerSyncWorker) importReferral(ctx context.Context, c *messengerCycle, event contracts.MessengerEvent) error {
+	now := w.now()
+	contact, err := w.verifiedRef(ctx, c, event.Ref, now)
+	if err != nil {
+		return err
+	}
+	if contact == nil {
+		return w.advanceOnly(ctx, c, event.Cursor)
+	}
+	locked := context.WithValue(ctx, lockedTxKey{}, true)
+	return db.WithTx(locked, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		ctx := locked
+		txq := store.New(tx)
+		participant, err := txq.FindParticipantByChannelAndAddress(ctx, store.FindParticipantByChannelAndAddressParams{
+			ChannelID: c.channelID, Address: event.Participant,
+		})
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			w.logger().Info("messenger sync read a referral of a person it does not know yet; ignored",
+				"worker", messengerSyncWorkerName, "channel", c.channelID)
+		case err != nil:
+			return fmt.Errorf("communications: find a participant: %w", err)
+		default:
+			if err := applyRef(ctx, txq, participant.ID, *contact, now); err != nil {
+				return err
+			}
+		}
+		return w.advanceCursor(ctx, txq, c, event.Cursor, now)
+	})
 }
 
 // skipWithReceipt writes a skipped receipt for an echo of a part we sent and
@@ -468,15 +574,25 @@ func (w *MessengerSyncWorker) placeAnswer(ctx context.Context, txq *store.Querie
 	return &storedAnswer{MessageID: question.String(), ChoiceID: answer.ChoiceID, Title: capText(event.Text)}, nil
 }
 
-// suggest is the linker's writes for an e-mail address a person shared (N3a),
-// inside the import's transaction: a suggestion and never a link. The customers
-// its contacts belong to become candidates of a conversation that has no
-// customer yet, and the participant gets the one contact when it has none.
+// suggest is the linker's writes for an e-mail address a person shared (N3a,
+// N20), inside the import's transaction: a suggestion and never a link. The
+// customers its contacts belong to become candidates of a conversation that has
+// no customer yet, and the one contact becomes the participant's suggested
+// contact when it has none, which the thread offers as "Link to <contact>".
+// Nothing is linked until someone clicks it.
 func (l senderLink) suggest(ctx context.Context, txq *store.Queries, conversationID uuid.UUID, customerID *int32,
 	participantID uuid.UUID, now time.Time) error {
 	if l.contact != nil {
-		if err := txq.SetParticipantContact(ctx, store.SetParticipantContactParams{ContactID: l.contact, ID: participantID}); err != nil {
-			return fmt.Errorf("communications: link the participant's contact: %w", err)
+		current, err := txq.GetParticipantContact(ctx, participantID)
+		if err != nil {
+			return fmt.Errorf("communications: read the participant's contact: %w", err)
+		}
+		if current == nil {
+			if err := txq.UpsertSuggestedContact(ctx, store.UpsertSuggestedContactParams{
+				ParticipantID: participantID, ContactID: l.contact, Now: now,
+			}); err != nil {
+				return fmt.Errorf("communications: suggest the participant's contact: %w", err)
+			}
 		}
 	}
 	if customerID != nil {

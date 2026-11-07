@@ -122,7 +122,8 @@ func bodyLimits(d module.Deps) map[string]int64 {
 // re-points its conversations, suggestions and candidates through (customers
 // merge design D1), and contracts.OutboundMail, its channels as Invoices and
 // Calendar send customer mail through them (outbound_mail.go, integrations
-// design T4).
+// design T4), and contracts.ContactChannels, the Messenger channels of a contact
+// that Customers' contact rows show (contact_channels.go, Messenger design N22).
 func Module() module.Module {
 	return module.Module{
 		Name:                 "communications",
@@ -134,6 +135,7 @@ func Module() module.Module {
 		CustomerPersonalData: newCustomerPersonalData,
 		OutboundMail:         newOutboundMail,
 		LiveTopics:           liveTopics,
+		ContactChannels:      newContactChannels,
 	}
 }
 

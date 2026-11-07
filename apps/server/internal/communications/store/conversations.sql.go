@@ -792,15 +792,18 @@ func (q *Queries) InsertParticipant(ctx context.Context, arg InsertParticipantPa
 }
 
 const latestInboundOccurredAt = `-- name: LatestInboundOccurredAt :one
-SELECT occurred_at
-FROM communications.conversation_messages
-WHERE conversation_id = $1 AND direction = 'inbound'
-ORDER BY occurred_at DESC, id DESC
+SELECT m.occurred_at
+FROM communications.conversation_messages m
+WHERE m.direction = 'inbound'
+  AND m.participant_id IN (SELECT cp.participant_id FROM communications.conversation_participants cp WHERE cp.conversation_id = $1)
+ORDER BY m.occurred_at DESC, m.id DESC
 LIMIT 1
 `
 
-// The participant's newest message of a conversation, the instant a Messenger
-// reply window counts from (N6): an echo is outbound and never counts.
+// The participant's newest message, the instant a Messenger reply window counts
+// from (N6): an echo is outbound and never counts. It is the participant's, in
+// whichever conversation it was written, so a conversation the Page starts from
+// a customer (N22) has the window of the person and not none of its own.
 func (q *Queries) LatestInboundOccurredAt(ctx context.Context, conversationID uuid.UUID) (time.Time, error) {
 	row := q.db.QueryRow(ctx, latestInboundOccurredAt, conversationID)
 	var occurred_at time.Time

@@ -207,6 +207,12 @@ func (s *server) PostCommunicationsConversations(ctx context.Context, req gen.Po
 		body = *req.Body
 	}
 
+	// A request that names a Messenger participant is a chat written first from a
+	// customer (Messenger design N22), with none of the e-mail inputs below.
+	if body.ParticipantId != nil {
+		return s.createMessengerConversation(ctx, req.Params.IdempotencyKey, body)
+	}
+
 	if errs := validateConversation(body); len(errs) > 0 {
 		return gen.PostCommunicationsConversations400JSONResponse(validationErrorBody(errs)), nil
 	}
@@ -246,8 +252,9 @@ func (s *server) PostCommunicationsConversations(ctx context.Context, req gen.Po
 			return nil, fmt.Errorf("communications: get channel: %w", err)
 		}
 		channelID, channelType = row.ID, row.Type
-		// A Messenger conversation starts when the person writes first: the
-		// platform lets the Page answer, never open (Messenger design N7).
+		// Without a participantId a Messenger conversation starts when the person
+		// writes first: the platform lets the Page answer, never open (Messenger
+		// design N7). With one, N22's createMessengerConversation took the request.
 		if channelType == channelTypeMessenger {
 			return gen.PostCommunicationsConversations422JSONResponse(flatErrorBody(
 				"channel_cannot_start", "A conversation on a messenger channel starts when the person writes first.")), nil

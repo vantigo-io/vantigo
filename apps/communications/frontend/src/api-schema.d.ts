@@ -78,6 +78,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/communications/channels/{id}/contact-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get a contact's Messenger link
+         * @description Makes the Messenger link of a contact for a messenger channel, https://m.me/<page>?ref=<token>. When the contact taps it and writes, the Page's webhook carries the person's id together with the token, and Communications links that person to the contact - unless the person is linked to another contact already. The token is signed, names the contact and the channel, and expires after 90 days.
+         */
+        post: operations["postCommunicationsChannelsByIdContactLinks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/communications/channels/{id}/provider": {
         parameters: {
             query?: never;
@@ -349,6 +369,30 @@ export interface paths {
          * @description GET's answer without the body (Messenger design N18) - the same checks, the same bare 404 for every refusal, the image's content type and length and the same headers.
          */
         head: operations["headCommunicationsPublicMediaByToken"];
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/communications/participants/{id}/contact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Link a participant to a contact
+         * @description Links a participant - on a messenger channel, the person who wrote to the Page - to a contact of Customers. Setting the contact it already has is 200 as well. A link made here is never overridden by a Messenger link the contact taps, and any suggestion or referral notice of the participant is cleared.
+         */
+        put: operations["putCommunicationsParticipantsByIdContact"];
+        post?: never;
+        /**
+         * Unlink a participant from its contact
+         * @description Clears the contact a participant is linked to. Idempotent - a participant with no contact is 204 as well.
+         */
+        delete: operations["deleteCommunicationsParticipantsByIdContact"];
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -638,6 +682,19 @@ export interface components {
             /** Format: date-time */
             to: string;
         };
+        ContactLinkRequest: {
+            /**
+             * Format: int32
+             * @description The contact, of Customers, the link is made for.
+             */
+            contactId: number;
+        };
+        ContactLinkResponse: {
+            /** Format: date-time */
+            expiresAt: string;
+            /** @description The Messenger link to send to the contact, and only to that contact. */
+            url: string;
+        };
         ConversationDetailResponse: {
             /** Format: uuid */
             assignedUserId: string | null;
@@ -757,6 +814,8 @@ export interface components {
                 id: string;
             }[];
             previewText: string | null;
+            /** @description The participant of a messenger conversation and its contact link; null for an e-mail conversation. */
+            messengerLink?: components["schemas"]["MessengerLink"] | null;
             /** @description Whether the caller can send from their own connected address, through a personal mailbox provider, in this conversation's composer. Always answered; optional in the schema only because the recorded exchanges predate it. */
             personalSender?: components["schemas"]["PersonalSenderResponse"];
             /** @description Whether a reply may be sent in a messenger conversation now, by the participant's newest message; null for an e-mail conversation. Always answered; optional in the schema only because the recorded exchanges predate it. */
@@ -877,11 +936,17 @@ export interface components {
             /** Format: int32 */
             customerId?: number | null;
             htmlBody?: string | null;
+            /**
+             * Format: uuid
+             * @description For a messenger channel, the participant to write to; the person must have written within the reply window, else 422 reply_window_closed. The conversation is the newest open one with the participant, or a new one, and textBody is its first message, sent as a reply is. Not used on an e-mail channel.
+             */
+            participantId?: string | null;
             participantIds?: (string | null)[] | null;
             recipients?: components["schemas"]["ChannelRecipientRequest"][] | null;
             /** @description When true, sends the initial outbound message from the caller's own connected address, through the personal mailbox provider personal-sender names, with Reply-To set to the channel's address. */
             sendFromPersonal?: boolean | null;
-            subject: string | null;
+            /** @description Required for an e-mail conversation, else 400; not used with a participantId, a chat having no subject. */
+            subject?: string | null;
             textBody?: string | null;
             to?: components["schemas"]["EmailRecipientRequest"][] | null;
         };
@@ -986,12 +1051,53 @@ export interface components {
             /** @description Asks the person for their e-mail address, as a quick reply. */
             shareEmail?: boolean | null;
         };
+        /** @description A messenger conversation's participant and the contact it is linked to, suggested for or was referred by. Null for an e-mail conversation. */
+        MessengerLink: {
+            /**
+             * Format: int32
+             * @description The contact of Customers the participant is linked to.
+             */
+            contactId: number | null;
+            /**
+             * Format: uuid
+             * @description The participant the conversation is with; the id the link operations take.
+             */
+            participantId: string;
+            /**
+             * Format: int32
+             * @description The contact whose Messenger link the person used while linked to another contact (contactId). Linking, unlinking or changing the contact clears it.
+             */
+            referralContactId: number | null;
+            /**
+             * Format: int32
+             * @description The one contact the e-mail address the person shared names. A suggestion only - nothing is linked until it is confirmed.
+             */
+            suggestedContactId: number | null;
+        };
         NoteRequest: {
             textBody: string | null;
         };
         PaginatedResponseOfConversationListItem: {
             data: components["schemas"]["ConversationListItem"][];
             pagination: components["schemas"]["PaginationMetadata"];
+        };
+        ParticipantContactRequest: {
+            /**
+             * Format: int32
+             * @description The contact of Customers to link the participant to.
+             */
+            contactId: number;
+            /**
+             * Format: uuid
+             * @description The conversation the link is made from. When it is linked to a customer, the contact must be one of that customer's contacts.
+             */
+            conversationId?: string | null;
+        };
+        ParticipantContactResponse: {
+            /** Format: int32 */
+            contactId: number | null;
+            /** Format: uuid */
+            participantId: string;
         };
         /** @description Whether the caller can send outbound mail from their own connected address through a personal mailbox provider (`entra`, `google`; Outlook connection design M20, Google Workspace design G3), and the address and display name they would send from. */
         PersonalSenderResponse: {
@@ -1447,6 +1553,75 @@ export interface operations {
             };
         };
     };
+    postCommunicationsChannelsByIdContactLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ContactLinkRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactLinkResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity - not_supported_on_channel (the channel is not a messenger channel), contact_unknown, channel_inactive. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+        };
+    };
     postCommunicationsChannelsByIdProvider: {
         parameters: {
             query?: never;
@@ -1733,7 +1908,7 @@ export interface operations {
                     "application/json": components["schemas"]["CommunicationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity — channel_invalid, customer_invalid, and channel_cannot_start for a messenger channel, which only the person writing first can start. */
+            /** @description Unprocessable Entity — channel_invalid, customer_invalid, and for a messenger channel channel_cannot_start (without a participantId only the person writing first starts a conversation), participant_invalid (the participant is not of the channel), reply_window_closed (the person has not written within the reply window) and the replies' own 422s. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2650,6 +2825,120 @@ export interface operations {
                 };
             };
             /** @description Not Found — the token is wrong, expired or foreign, or names nothing this route serves. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putCommunicationsParticipantsByIdContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ParticipantContactRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParticipantContactResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity - contact_unknown (no such contact in Customers, or Customers is off), contact_not_of_customer (conversationId names a conversation linked to a customer, and the contact is not one of that customer's contacts). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteCommunicationsParticipantsByIdContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
             404: {
                 headers: {
                     [name: string]: unknown;
