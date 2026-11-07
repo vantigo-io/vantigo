@@ -30,12 +30,21 @@ const linked = (overrides: Partial<ContactChannel> = {}): ContactChannel => ({
   type: "messenger",
   name: "Nordlys",
   linked: true,
+  canWrite: true,
+  canManage: true,
   participantId: "participant-1",
   lastInboundAt: anHourAgo,
   replyWindowClosesAt: inAnHour,
   ...overrides,
 });
-const unlinked = (): ContactChannel => ({ channelId: "channel-2", type: "messenger", name: "Fjord", linked: false });
+const unlinked = (): ContactChannel => ({
+  channelId: "channel-2",
+  type: "messenger",
+  name: "Fjord",
+  linked: false,
+  canWrite: true,
+  canManage: true,
+});
 
 const renderMenu = (channels: ContactChannel[]) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -110,6 +119,29 @@ describe("a contact's Messenger menu", () => {
     expect(screen.getByText("Fjord")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("menuitem", { name: "Unlink from Messenger" }));
     await waitFor(() => expect(mocks.unlinkMessengerParticipant).toHaveBeenCalledWith("participant-1"));
+  });
+
+  it("offers only what the caller may do: writing needs reply, the link and Unlink need manage", async () => {
+    // Reply alone: Write on Messenger, no link and no Unlink.
+    renderMenu([linked({ canManage: false })]);
+    await open();
+    expect(await screen.findByRole("menuitem", { name: "Write on Messenger" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Copy Messenger link" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Unlink from Messenger" })).not.toBeInTheDocument();
+  });
+
+  it("offers the link and Unlink to a caller who may manage but not reply", async () => {
+    renderMenu([linked({ canWrite: false })]);
+    await open();
+    expect(await screen.findByRole("menuitem", { name: "Copy Messenger link" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Unlink from Messenger" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Write on Messenger" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/must write to Nordlys first/)).not.toBeInTheDocument();
+  });
+
+  it("shows no menu at all to a caller who may do neither", () => {
+    renderMenu([linked({ canWrite: false, canManage: false })]);
+    expect(screen.queryByRole("button", { name: "Messenger for Kari Nordmann" })).not.toBeInTheDocument();
   });
 
   it("marks a contact whose person is linked, and no other", () => {

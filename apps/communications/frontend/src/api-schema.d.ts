@@ -402,7 +402,7 @@ export interface paths {
         get?: never;
         /**
          * Link a participant to a contact
-         * @description Links a participant - on a messenger channel, the person who wrote to the Page - to a contact of Customers. Setting the contact it already has is 200 as well. A link made here is never overridden by a Messenger link the contact taps, and any suggestion or referral notice of the participant is cleared.
+         * @description Links a participant - on a messenger channel, the person who wrote to the Page - to a contact of Customers. Setting the contact it already has is 200 as well. Only a person on a messenger channel can be linked (422 not_supported_on_channel). A link made here is never overridden by a Messenger link the contact taps, and any suggestion or referral notice of the participant is cleared.
          */
         put: operations["putCommunicationsParticipantsByIdContact"];
         post?: never;
@@ -1086,6 +1086,8 @@ export interface components {
         };
         /** @description A messenger conversation's participant and the contact it is linked to, suggested for or was referred by. Null for an e-mail conversation. */
         MessengerLink: {
+            /** @description Whether the caller may link and unlink the participant (communications:conversations-manage); the thread offers nothing to link otherwise. */
+            canManage: boolean;
             /**
              * Format: int32
              * @description The contact of Customers the participant is linked to.
@@ -1122,7 +1124,7 @@ export interface components {
             contactId: number;
             /**
              * Format: uuid
-             * @description The conversation the link is made from. When it is linked to a customer, the contact must be one of that customer's contacts.
+             * @description The conversation the link is made from; it has to be one the participant is in, else 422 participant_invalid. It decides nothing about which contacts are accepted - that is every conversation of the participant that has a customer.
              */
             conversationId?: string | null;
         };
@@ -2962,7 +2964,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Unprocessable Entity - contact_unknown (no such contact in Customers, or Customers is off), contact_not_of_customer (conversationId names a conversation linked to a customer, and the contact is not one of that customer's contacts). */
+            /** @description Unprocessable Entity - contact_unknown (no such contact in Customers, or Customers is off), contact_not_of_customer (a conversation the participant is in is linked to a customer, and the contact is not one of that customer's contacts - decided by the server from the participant's conversations, whatever conversationId says), participant_invalid (conversationId names a conversation the participant is not in), not_supported_on_channel. contact_unknown tells a caller with conversations-manage whether a contact id exists, without Customers' view permission; nothing of the contact is given. */
             422: {
                 headers: {
                     [name: string]: unknown;

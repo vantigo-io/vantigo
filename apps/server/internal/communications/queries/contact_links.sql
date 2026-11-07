@@ -107,3 +107,45 @@ LEFT JOIN communications.conversation_messages m ON m.participant_id = p.id AND 
 WHERE p.contact_id = ANY(@contact_ids::int[]) AND ch.type = 'messenger' AND ch.is_active
 GROUP BY p.id
 ORDER BY p.contact_id, p.created_at, p.id;
+
+-- name: ListParticipantConversationCustomers :many
+-- The customers of the conversations a participant is in (N20): the contact it
+-- may be linked to has to be one of each of them.
+SELECT DISTINCT c.customer_id
+FROM communications.conversation_participants cp
+JOIN communications.conversations c ON c.id = cp.conversation_id
+WHERE cp.participant_id = @participant_id AND c.customer_id IS NOT NULL
+ORDER BY c.customer_id;
+
+-- name: ParticipantInConversation :one
+SELECT EXISTS (
+    SELECT 1 FROM communications.conversation_participants
+    WHERE conversation_id = @conversation_id AND participant_id = @participant_id
+)::boolean;
+
+-- name: ReplaceStaleParticipantContact :execrows
+-- A ref replaces a contact that no longer resolves in Customers (N21), and only
+-- that one: the participant still has the stale id it was read with.
+UPDATE communications.participants SET contact_id = @contact_id WHERE id = @id AND contact_id = @stale_contact_id;
+
+-- name: SetConversationManualCustomer :exec
+-- A conversation started from a customer (N22) takes the customer only while it
+-- has none.
+UPDATE communications.conversations
+SET customer_id = @customer_id, customer_association_source = 'manual'
+WHERE id = @id AND customer_id IS NULL;
+
+-- name: ClearParticipantContactsIn :execrows
+-- Contacts erased in Customers (a customer's anonymisation): no participant is
+-- linked to them any more.
+UPDATE communications.participants SET contact_id = NULL WHERE contact_id = ANY(@contact_ids::int[]);
+
+-- name: ClearContactHintsIn :execrows
+UPDATE communications.participant_contact_hints
+SET suggested_contact_id = CASE WHEN suggested_contact_id = ANY(@contact_ids::int[]) THEN NULL ELSE suggested_contact_id END,
+    referral_contact_id  = CASE WHEN referral_contact_id  = ANY(@contact_ids::int[]) THEN NULL ELSE referral_contact_id END,
+    updated_at = @now
+WHERE suggested_contact_id = ANY(@contact_ids::int[]) OR referral_contact_id = ANY(@contact_ids::int[]);
+
+-- name: DeleteAllEmptyContactHints :exec
+DELETE FROM communications.participant_contact_hints WHERE suggested_contact_id IS NULL AND referral_contact_id IS NULL;

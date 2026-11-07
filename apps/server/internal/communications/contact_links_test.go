@@ -67,6 +67,7 @@ type messengerLinkJSON struct {
 	ContactId          *int32 `json:"contactId"`
 	SuggestedContactId *int32 `json:"suggestedContactId"`
 	ReferralContactId  *int32 `json:"referralContactId"`
+	CanManage          bool   `json:"canManage"`
 }
 
 func linkOf(t *testing.T, f chatFixture, conversation string) *messengerLinkJSON {
@@ -176,8 +177,145 @@ func TestParticipantContact_MustBeOneOfTheConversationsCustomer(t *testing.T) {
 	if r := putContact(f, p, map[string]any{"contactId": 2001, "conversationId": conv}); r.Status != http.StatusOK {
 		t.Errorf("the customer's contact: status %d body %s, want 200", r.Status, r.Body)
 	}
-	if r := putContact(f, p, map[string]any{"contactId": 2002}); r.Status != http.StatusOK {
-		t.Errorf("without a conversation: status %d body %s, want 200", r.Status, r.Body)
+	// The server finds the participant's customers itself: leaving the
+	// conversation out of the request, or naming a conversation of nobody's, does
+	// not get a contact of another customer past it.
+	r = putContact(f, p, map[string]any{"contactId": 2002})
+	if r.Status != http.StatusUnprocessableEntity || r.Code() != "contact_not_of_customer" {
+		t.Errorf("without a conversation: status %d code %q body %s, want 422 contact_not_of_customer", r.Status, r.Code(), r.Body)
+	}
+	other := insertConversationFor(t, f.h, f.channel.Id, nil, nil)
+	r = putContact(f, p, map[string]any{"contactId": 2002, "conversationId": other})
+	if r.Status != http.StatusUnprocessableEntity || r.Code() != "participant_invalid" {
+		t.Errorf("a conversation the participant is not in: status %d code %q body %s, want 422 participant_invalid", r.Status, r.Code(), r.Body)
+	}
+	if got := contactOf(t, f, p); got == nil || *got != 2001 {
+		t.Errorf("contact = %v after the refusals, want 2001 as linked", got)
+	}
+}
+
+// TestParticipantContact_RefusesAParticipantOfAnEmailChannel: only a person on a
+// messenger channel is linked here.
+func TestParticipantContact_RefusesAParticipantOfAnEmailChannel(t *testing.T) {
+	t.Parallel()
+	f := newLinkChat(t)
+	email := setupChannel(t, f.h)
+	p := uuid.NewString()
+	f.h.Exec(t, `INSERT INTO communications.participants (id, channel_id, address, created_at) VALUES ($1, $2, 'kari@example.test', now())`, p, email)
+	r := putContact(f, p, map[string]any{"contactId": 2001})
+	if r.Status != http.StatusUnprocessableEntity || r.Code() != "not_supported_on_channel" {
+		t.Errorf("status %d code %q body %s, want 422 not_supported_on_channel", r.Status, r.Code(), r.Body)
+	}
+}
+
+// TestParticipantContact_ADanglingContactIsUnlinked (M2): a contact_id that no
+// longer resolves in Customers is no link — the thread says no contact, and
+// canManage tells whether the caller may link — and a ref replaces it, where it
+// leaves a contact that does resolve alone.
+func TestParticipantContact_ADanglingContactIsUnlinked(t *testing.T) {
+	t.Parallel()
+	f := newLinkChat(t)
+	f.text("4242", "m1", "Hello", 0)
+	f.sync(t)
+	conv := f.conversations(t)[0]
+	p := participantOf(t, f, "4242")
+	f.h.Exec(t, `UPDATE communications.participants SET contact_id = 9999 WHERE id = $1`, p)
+
+	link := linkOf(t, f, conv)
+	if link == nil || link.ContactId != nil || !link.CanManage {
+		t.Fatalf("link = %+v, want no contact (9999 is gone) and canManage", link)
+	}
+	if reader := f.h.SignIn(t, "communications:conversations-view"); true {
+		var d struct {
+			MessengerLink *messengerLinkJSON `json:"messengerLink"`
+		}
+		reader.Do(http.MethodGet, "/api/v1/communications/conversations/"+conv, nil).JSON(&d)
+		if d.MessengerLink == nil || d.MessengerLink.CanManage {
+			t.Errorf("a caller without manage: %+v, want canManage false", d.MessengerLink)
+		}
+	}
+
+	_, ref := refOfLink(t, f, f.channel, 2001)
+	pushRef(f, contracts.MessengerEventMessage, "4242", "dangle", "Hi", ref)
+	f.sync(t)
+	if got := contactOf(t, f, p); got == nil || *got != 2001 {
+		t.Errorf("contact = %v, want 2001: the ref replaces a contact that is gone", got)
+	}
+}
+
+// TestContactLinks_ErasedContactsAreForgotten (M2): the contacts a customer's
+// anonymisation deleted are unlinked from their participants and cleared from the
+// hints, whether or not any conversation had a customer; other contacts stay.
+func TestContactLinks_ErasedContactsAreForgotten(t *testing.T) {
+	t.Parallel()
+	f := newLinkChat(t)
+	f.text("4242", "m1", "Hello", 0)
+	f.text("5252", "m2", "Hi", 0)
+	f.sync(t)
+	gone, kept := participantOf(t, f, "4242"), participantOf(t, f, "5252")
+	f.h.Exec(t, `UPDATE communications.participants SET contact_id = 2001 WHERE id = $1`, gone)
+	f.h.Exec(t, `UPDATE communications.participants SET contact_id = 2002 WHERE id = $1`, kept)
+	f.h.Exec(t, `INSERT INTO communications.participant_contact_hints (participant_id, suggested_contact_id, referral_contact_id, updated_at) VALUES ($1, 2001, 2002, now())`, kept)
+
+	ctx := context.Background()
+	tx, err := f.h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	eraser, ok := personalDataOf(t, f.h).(contracts.ContactDataEraser)
+	if !ok {
+		t.Fatal("the module's personal data is no ContactDataEraser")
+	}
+	erased, err := eraser.EraseContactData(ctx, tx, []int32{2001})
+	if err != nil {
+		t.Fatalf("EraseContactData: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(erased) != 1 || erased[0].Kind != "communications.participantContacts" || erased[0].Count != 1 {
+		t.Errorf("erased = %+v, want one participant unlinked", erased)
+	}
+	if got := contactOf(t, f, gone); got != nil {
+		t.Errorf("the erased contact's participant still has contact %d", *got)
+	}
+	if got := contactOf(t, f, kept); got == nil || *got != 2002 {
+		t.Errorf("the other contact's participant has %v, want 2002", got)
+	}
+	if got := modtest.One[*int32](t, f.h, `SELECT suggested_contact_id FROM communications.participant_contact_hints WHERE participant_id = $1`, kept); got != nil {
+		t.Errorf("the suggestion of the erased contact is still there: %d", *got)
+	}
+	if got := modtest.One[*int32](t, f.h, `SELECT referral_contact_id FROM communications.participant_contact_hints WHERE participant_id = $1`, kept); got == nil || *got != 2002 {
+		t.Errorf("the referral of the other contact = %v, want 2002 left", got)
+	}
+}
+
+// TestMessengerSync_AReferralOfAPersonNotYetKnownLinksThem (M3): a referral event
+// of a person this Page has not met makes the participant (named from the
+// profile) and links it; the profile is read once.
+func TestMessengerSync_AReferralOfAPersonNotYetKnownLinksThem(t *testing.T) {
+	t.Parallel()
+	f := newLinkChat(t)
+	f.fake.SetProfile("7070", "Nora Ny")
+	_, ref := refOfLink(t, f, f.channel, 2001)
+	pushRef(f, contracts.MessengerEventReferral, "7070", "", "", ref)
+	f.sync(t)
+	p := participantOf(t, f, "7070")
+	if got := contactOf(t, f, p); got == nil || *got != 2001 {
+		t.Fatalf("contact = %v, want 2001", got)
+	}
+	if got := modtest.One[string](t, f.h, `SELECT display_name FROM communications.participants WHERE id = $1`, p); got != "Nora Ny" {
+		t.Errorf("name = %q, want the profile's", got)
+	}
+	if f.h.Count(t, `SELECT count(*) FROM communications.conversations WHERE channel_id = $1`, f.channel.Id) != 0 {
+		t.Error("a referral made a conversation")
+	}
+	// The first message that follows finds the participant and its link.
+	f.text("7070", "m1", "Hei", 0)
+	f.sync(t)
+	if got := contactOf(t, f, p); got == nil || *got != 2001 {
+		t.Errorf("contact = %v after the first message, want 2001 kept", got)
 	}
 }
 
@@ -540,6 +678,90 @@ func TestCreateConversation_FromAParticipant(t *testing.T) {
 	}
 	if r := createFromParticipant(f, map[string]any{"participantId": p}, uuid.NewString()); r.Status != http.StatusBadRequest {
 		t.Errorf("no text: status %d, want 400", r.Status)
+	}
+}
+
+// TestCreateConversation_FromAParticipantRaceReusesOneConversation: two creates
+// for one person that has no open conversation queue on the participant's row,
+// and the second finds the conversation the first made.
+func TestCreateConversation_FromAParticipantRaceReusesOneConversation(t *testing.T) {
+	t.Parallel()
+	f := newLinkChat(t)
+	f.text("4242", "m1", "Hello", 0)
+	f.sync(t)
+	p := participantOf(t, f, "4242")
+	f.h.Exec(t, `UPDATE communications.conversations SET status = 'closed'`)
+
+	ctx := context.Background()
+	gate, err := f.h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = gate.Rollback(ctx) }()
+	if _, err := gate.Exec(ctx, `SELECT 1 FROM communications.participants WHERE id = $1 FOR UPDATE`, p); err != nil {
+		t.Fatalf("gate: %v", err)
+	}
+	finished := make(chan struct{}, 2)
+	statuses := make(chan int, 2)
+	for i := range 2 {
+		go func() {
+			r := createFromParticipant(f, map[string]any{"participantId": p, "textBody": fmt.Sprintf("Message %d", i)}, uuid.NewString())
+			statuses <- r.Status
+			finished <- struct{}{}
+		}()
+	}
+	awaitLockWaiters(t, f.h, 2, finished)
+	if err := gate.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if status := <-statuses; status != http.StatusCreated {
+			t.Errorf("a create answered %d, want 201", status)
+		}
+	}
+	if got := f.h.Count(t, `SELECT count(*) FROM communications.conversations WHERE channel_id = $1 AND status = 'open'`, f.channel.Id); got != 1 {
+		t.Errorf("open conversations = %d, want the one both creates share", got)
+	}
+	if got := f.h.Count(t, `SELECT count(*) FROM communications.conversation_messages WHERE direction = 'outbound'`); got != 2 {
+		t.Errorf("outbound messages = %d, want both", got)
+	}
+}
+
+// TestCreateConversation_FromAParticipantCustomerOnlyWhileTheConversationHasNone:
+// a reused conversation takes the request's customer only if it has none; a
+// customer it has is not replaced, and the idempotency key of one participant
+// cannot be replayed for another.
+func TestCreateConversation_FromAParticipantCustomerOnlyWhileTheConversationHasNone(t *testing.T) {
+	t.Parallel()
+	f := newLinkChat(t)
+	f.text("4242", "m1", "Hello", 0)
+	f.text("5252", "m2", "Hi", 0)
+	f.sync(t)
+	p, other := participantOf(t, f, "4242"), participantOf(t, f, "5252")
+	conv := modtest.One[string](t, f.h, `
+		SELECT c.id::text FROM communications.conversations c
+		JOIN communications.conversation_participants cp ON cp.conversation_id = c.id WHERE cp.participant_id = $1`, p)
+
+	if r := createFromParticipant(f, map[string]any{"participantId": p, "textBody": "One", "customerId": 1001}, uuid.NewString()); r.Status != http.StatusCreated {
+		t.Fatalf("create: %d %s", r.Status, r.Body)
+	}
+	if got := f.h.Count(t, `SELECT count(*) FROM communications.conversations WHERE id = $1 AND customer_id = 1001 AND customer_association_source = 'manual'`, conv); got != 1 {
+		t.Error("a conversation with no customer did not take the request's")
+	}
+	if r := createFromParticipant(f, map[string]any{"participantId": p, "textBody": "Two", "customerId": 1002}, uuid.NewString()); r.Status != http.StatusCreated {
+		t.Fatalf("create again: %d %s", r.Status, r.Body)
+	}
+	if got := f.h.Count(t, `SELECT count(*) FROM communications.conversations WHERE id = $1 AND customer_id = 1001`, conv); got != 1 {
+		t.Error("the conversation's own customer was replaced")
+	}
+
+	key := uuid.NewString()
+	body := map[string]any{"participantId": p, "textBody": "Same text"}
+	if r := createFromParticipant(f, body, key); r.Status != http.StatusCreated {
+		t.Fatalf("create with a key: %d %s", r.Status, r.Body)
+	}
+	if r := createFromParticipant(f, map[string]any{"participantId": other, "textBody": "Same text"}, key); r.Status != http.StatusConflict {
+		t.Errorf("the key of one person replayed for another: status %d, want 409", r.Status)
 	}
 }
 

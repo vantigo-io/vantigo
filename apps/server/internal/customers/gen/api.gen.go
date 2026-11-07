@@ -305,6 +305,12 @@ type CustomerConflictProblem struct {
 
 // CustomerContactChannel One Messenger channel as a contact's row reads it (Messenger design N22). It never carries the person's page-scoped id, which belongs to the Page and never leaves Communications.
 type CustomerContactChannel struct {
+	// CanManage Whether the caller may get the contact's Messenger link and unlink the person (communications:conversations-manage).
+	CanManage bool `json:"canManage"`
+
+	// CanWrite Whether the caller may write to the person (communications:conversations-reply).
+	CanWrite bool `json:"canWrite"`
+
 	// ChannelId The channel's id in Communications; the Messenger link of the contact is made for it.
 	ChannelId openapi_types.UUID `json:"channelId"`
 

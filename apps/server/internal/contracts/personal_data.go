@@ -46,6 +46,18 @@ type CustomerPersonalData interface {
 	EraseCustomerData(ctx context.Context, tx pgx.Tx, customerID int32) ([]ErasedData, error)
 }
 
+// ContactDataEraser is the optional second half of a CustomerPersonalData: a
+// holder that keeps contact ids (Communications' participants link a person to a
+// contact, Messenger design N19) is told which contacts the anonymisation deleted
+// — the ones only the anonymised customer had, which no module can resolve any
+// more — so it can drop its references to them. It runs in the same transaction,
+// right after EraseCustomerData, under the same rules: no transaction of its own,
+// no directory read, and zeros for ids it holds nothing for. The ids are only
+// those of deleted contacts; a contact another customer still has is not named.
+type ContactDataEraser interface {
+	EraseContactData(ctx context.Context, tx pgx.Tx, contactIDs []int32) ([]ErasedData, error)
+}
+
 // ErasedData is one kind of thing a module removed or blanked for a person,
 // and how many rows of it.
 type ErasedData struct {

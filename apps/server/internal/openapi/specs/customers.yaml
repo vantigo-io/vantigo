@@ -459,6 +459,12 @@ components:
         CustomerContactChannel:
             description: One Messenger channel as a contact's row reads it (Messenger design N22). It never carries the person's page-scoped id, which belongs to the Page and never leaves Communications.
             properties:
+                canManage:
+                    description: Whether the caller may get the contact's Messenger link and unlink the person (communications:conversations-manage).
+                    type: boolean
+                canWrite:
+                    description: Whether the caller may write to the person (communications:conversations-reply).
+                    type: boolean
                 channelId:
                     description: The channel's id in Communications; the Messenger link of the contact is made for it.
                     format: uuid
@@ -492,6 +498,8 @@ components:
                 - type
                 - name
                 - linked
+                - canWrite
+                - canManage
             type: object
         CustomerContactResponse:
             properties:

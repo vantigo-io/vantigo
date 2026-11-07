@@ -34,6 +34,7 @@ const link = (overrides: Partial<MessengerLink> = {}): MessengerLink => ({
   contactId: null,
   suggestedContactId: null,
   referralContactId: null,
+  canManage: true,
   ...overrides,
 });
 
@@ -97,6 +98,19 @@ describe("the Messenger contact link in the thread header", () => {
     renderLink(link({ contactId: 2002, referralContactId: 2001 }));
     expect(await screen.findByText("This person used Kari Nordmann's Messenger link")).toBeInTheDocument();
     expect(screen.getByText("Linked to Ola Nordmann")).toBeInTheDocument();
+  });
+
+  it("offers nothing to link or unlink to a caller who may not manage, but still names the contact", async () => {
+    renderLink(link({ contactId: 2001, canManage: false }));
+    expect(await screen.findByText("Linked to Kari Nordmann")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Unlink" })).not.toBeInTheDocument();
+  });
+
+  it("offers no picker and no suggestion to a caller who may not manage", async () => {
+    renderLink(link({ suggestedContactId: 2001, canManage: false }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByPlaceholderText("Choose a contact")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Link to/ })).not.toBeInTheDocument();
   });
 
   it("falls back to the contact's number when Customers will not name it", async () => {

@@ -62,20 +62,22 @@ export function MessengerContactLink({
         <Group gap="xs" mt="xs">
           <IconLink size={14} />
           <Text size="xs">{t("linkedToContact", { name: label(link.contactId, linkedName.data) })}</Text>
-          <Button
-            size="compact-xs"
-            variant="subtle"
-            color="gray"
-            leftSection={<IconLinkOff size={13} />}
-            loading={detach.isPending}
-            onClick={() => detach.mutate()}
-          >
-            {t("unlinkContact")}
-          </Button>
+          {link.canManage && (
+            <Button
+              size="compact-xs"
+              variant="subtle"
+              color="gray"
+              leftSection={<IconLinkOff size={13} />}
+              loading={detach.isPending}
+              onClick={() => detach.mutate()}
+            >
+              {t("unlinkContact")}
+            </Button>
+          )}
         </Group>
       ) : (
         <>
-          {link.suggestedContactId != null && (
+          {link.canManage && link.suggestedContactId != null && (
             <Group gap="xs" mt="xs">
               <Text size="xs" c="dimmed">
                 {t("suggestedContactHint")}
@@ -91,7 +93,7 @@ export function MessengerContactLink({
               </Button>
             </Group>
           )}
-          {customerId != null && (options.data?.length ?? 0) > 0 && (
+          {link.canManage && customerId != null && (options.data?.length ?? 0) > 0 && (
             <Group gap="xs" mt="xs" align="end">
               <Select
                 size="xs"
