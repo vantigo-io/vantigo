@@ -64,6 +64,19 @@ components:
                 - internalPermission
                 - members
             type: object
+        KnowledgeAssignableUser:
+            additionalProperties: false
+            description: A user who may be named as an article's member (K4); enough to name them in a picker.
+            properties:
+                displayName:
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+            type: object
         KnowledgeActor:
             additionalProperties: false
             description: A person who did something, as the user directory names them now.
@@ -252,6 +265,24 @@ components:
         KnowledgeDocument:
             additionalProperties: true
             description: "A ProseMirror document as the editor stores it (K8): {type: doc, content: [...]}. Only the allowlisted nodes, marks and attributes are accepted (invalid_document names the JSON path of the first one refused), and a document over 2 MiB is refused with 413 document_too_large. HTML is never stored."
+            type: object
+        KnowledgeAssignableUserList:
+            description: Active users the caller may make a member of an article (K4), from the user directory, capped at 20.
+            items:
+                $ref: "#/components/schemas/KnowledgeAssignableUser"
+            type: array
+        KnowledgeExcerptSegment:
+            additionalProperties: false
+            description: One run of a search excerpt's text.
+            properties:
+                match:
+                    description: The run is a word the query matched.
+                    type: boolean
+                text:
+                    type: string
+            required:
+                - text
+                - match
             type: object
         KnowledgeFavouriteList:
             additionalProperties: false
@@ -474,8 +505,10 @@ components:
             description: One search hit (K12).
             properties:
                 excerpt:
-                    description: A ts_headline excerpt, plain text.
-                    type: string
+                    description: "A ts_headline excerpt as plain-text segments in order; match marks the words the query found. Never markup, so text in the article that looks like a tag is only text."
+                    items:
+                        $ref: "#/components/schemas/KnowledgeExcerptSegment"
+                    type: array
                 icon:
                     nullable: true
                     type: string
@@ -826,6 +859,12 @@ paths:
                     description: "Forbidden — the permission is missing (application/json), or article_read_only: the caller can read the article but not write it."
                 "404":
                     description: "Not Found — no article the caller can read. The body is empty."
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Conflict — article_locked: a new title for a locked article (unlocking it in the same request is allowed)."
             summary: Change an article's title, icon, lock or Assistant visibility
             tags:
                 - Knowledge
@@ -1314,6 +1353,58 @@ paths:
                                 $ref: "#/components/schemas/KnowledgeProblem"
                     description: "Conflict — version_conflict, article_locked."
             summary: Restore a version of an article
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
+    /api/v1/knowledge/assignable-users:
+        get:
+            description: "Active users from the user directory, for the access dialog's member picker (K4). Only display names are answered."
+            operationId: listKnowledgeAssignableUsers
+            parameters:
+                - description: Narrows the directory search by display name. Absent or blank lists the first page of active users.
+                  in: query
+                  name: query
+                  required: false
+                  schema:
+                      maxLength: 200
+                      type: string
+                - description: How many users to answer, 1-20. Defaults to 20.
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                      default: 20
+                      format: int32
+                      maximum: 20
+                      minimum: 1
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeAssignableUserList"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Bad Request — field errors."
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+            summary: Search users to make members
             tags:
                 - Knowledge
             x-vantigo-access: permission:knowledge:articles

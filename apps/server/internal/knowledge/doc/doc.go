@@ -1,7 +1,7 @@
 // Package doc is the stored form of a Knowledge article (knowledge design K8):
 // a ProseMirror document as the editor's JSON, validated against an
 // allowlist of node and mark types and their attributes that mirrors the
-// editor's schema (TipTap's StarterKit, Link, TaskList and TaskItem), and the
+// editor's schema (TipTap's StarterKit with its Underline, Link, TaskList and TaskItem), and the
 // plain text derived from it for search and the Assistant.
 //
 // The browser renders the JSON through the editor's schema and the server
@@ -96,10 +96,11 @@ var nodes = map[string]nodeSpec{
 }
 
 var marks = map[string]map[string]attrRule{
-	"bold":   nil,
-	"italic": nil,
-	"strike": nil,
-	"code":   nil,
+	"bold":      nil,
+	"italic":    nil,
+	"strike":    nil,
+	"underline": nil,
+	"code":      nil,
 	"link": {
 		"href":   linkHref,
 		"target": nullOr(oneOf("_blank")),
