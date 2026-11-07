@@ -163,16 +163,16 @@ describe("Attach product", () => {
         subtitle: "Sale!",
         productImageId: 71,
         choices: [
-          { id: "buy", title: "Buy" },
-          { id: "second", title: "Tell me more" },
+          { id: "buy-0", title: "Buy" },
+          { id: "second-0", title: "Tell me more" },
         ],
       },
       {
         title: "Chair",
         productImageId: 72,
         choices: [
-          { id: "buy", title: "Buy" },
-          { id: "second", title: "Tell me more" },
+          { id: "buy-1", title: "Buy" },
+          { id: "second-1", title: "Tell me more" },
         ],
       },
     ]);

@@ -9,10 +9,15 @@ import {
 } from "../api/products";
 import { characters } from "./chat";
 
-/** The id of the Buy choice (Messenger design N16): what a "Wants to buy" answer is recognised by. */
-export const BUY_CHOICE_ID = "buy";
-/** The id of the optional second choice the agent writes. */
-export const SECOND_CHOICE_ID = "second";
+/**
+ * The id of a card's Buy choice (Messenger design N16): buy-<card index>, unique within the message, so an
+ * answer names the very card it was given on. A "Wants to buy" answer is recognised by it.
+ */
+export const buyChoiceId = (cardIndex: number): string => `buy-${cardIndex}`;
+/** Whether a choice id is a card's Buy. */
+export const isBuyChoice = (choiceId: string): boolean => /^buy-\d+$/.test(choiceId);
+/** The id of the optional second choice the agent writes on a card. */
+export const secondChoiceId = (cardIndex: number): string => `second-${cardIndex}`;
 
 /** One card of a product being attached: the image, the title and the subtitle the agent may edit. */
 export type DraftCard = {
@@ -100,12 +105,12 @@ export const draftProblem = (draft: ProductDraft, limits: ComponentLimits): "sub
 
 /** The draft as the cards of a reply: each names its product image, and carries Buy and the second choice. */
 export const draftCards = (draft: ProductDraft): MessageCard[] =>
-  draft.cards.map((card) => ({
+  draft.cards.map((card, index) => ({
     title: card.title,
     ...(card.subtitle.trim() ? { subtitle: card.subtitle.trim() } : {}),
     productImageId: card.imageId,
     choices: [
-      { id: BUY_CHOICE_ID, title: draft.buyTitle.trim() },
-      ...(draft.secondTitle.trim() ? [{ id: SECOND_CHOICE_ID, title: draft.secondTitle.trim() }] : []),
+      { id: buyChoiceId(index), title: draft.buyTitle.trim() },
+      ...(draft.secondTitle.trim() ? [{ id: secondChoiceId(index), title: draft.secondTitle.trim() }] : []),
     ],
   }));

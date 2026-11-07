@@ -57,6 +57,15 @@ func (c *fakeCatalog) add(id, product int32, order int32, communications bool, c
 	return id
 }
 
+// setContentType changes the media type the catalog says an image has.
+func (c *fakeCatalog) setContentType(id int32, contentType string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	i := c.images[id]
+	i.image.ContentType = contentType
+	c.images[id] = i
+}
+
 // remove deletes an image: the product's images change after the message.
 func (c *fakeCatalog) remove(id int32) {
 	c.mu.Lock()
@@ -124,7 +133,29 @@ func card(title string, image int32, choices ...map[string]any) map[string]any {
 func buy() map[string]any { return map[string]any{"id": "buy", "title": "Buy"} }
 
 func cardsOf(cards ...map[string]any) map[string]any {
-	return map[string]any{"cards": cards}
+	return map[string]any{"cards": numbered(cards)}
+}
+
+// numbered gives each card's choices ids of their own, as the composer does: buy-<card index> for the buy
+// choice and <id>-<card index> for any other, since a choice id is unique within its message.
+func numbered(cards []map[string]any) []map[string]any {
+	out := make([]map[string]any, 0, len(cards))
+	for i, c := range cards {
+		cc := map[string]any{}
+		for k, v := range c {
+			cc[k] = v
+		}
+		if choices, ok := c["choices"].([]map[string]any); ok {
+			renamed := make([]map[string]any, 0, len(choices))
+			for _, ch := range choices {
+				id := fmt.Sprintf("%v-%d", ch["id"], i)
+				renamed = append(renamed, map[string]any{"id": id, "title": ch["title"]})
+			}
+			cc["choices"] = renamed
+		}
+		out = append(out, cc)
+	}
+	return out
 }
 
 // cardAttachments is a message's card attachments, newest last.
@@ -161,9 +192,9 @@ func TestReplyCards_ACarouselOfProductImages(t *testing.T) {
 	conv := f.chat(t)
 
 	message := f.mustReply(t, conv, map[string]any{"textBody": "Have a look", "components": map[string]any{
-		"cards": []map[string]any{
+		"cards": numbered([]map[string]any{
 			card("Chair", 71, buy()), card("Chair, side", 72, buy(), map[string]any{"id": "more", "title": "Tell me more"}), card("Chair, back", 74),
-		},
+		}),
 		"answerOptions": []map[string]any{{"id": "later", "title": "Later"}},
 	}})
 
@@ -213,12 +244,12 @@ func TestReplyCards_TenCardsAreTaken(t *testing.T) {
 		catalog.add(int32(100+i), 7, int32(10+i), true, fmt.Sprintf("IMG%d", i))
 		cards = append(cards, card(fmt.Sprintf("Card %d", i), int32(100+i), buy()))
 	}
-	r := f.reply(conv, uuid.NewString(), map[string]any{"textBody": "All of them", "components": map[string]any{"cards": cards}})
+	r := f.reply(conv, uuid.NewString(), map[string]any{"textBody": "All of them", "components": map[string]any{"cards": numbered(cards)}})
 	wantCode(t, r, http.StatusUnprocessableEntity, "components_invalid")
 	if n := f.cleanupRecords(t, "pending") + f.cleanupRecords(t, "staged") + f.cleanupRecords(t, "owned"); n != 0 {
 		t.Errorf("card objects after a refused request = %d, want none: it was refused before any copy", n)
 	}
-	id := f.mustReply(t, conv, map[string]any{"textBody": "Ten of them", "components": map[string]any{"cards": cards[:10]}})
+	id := f.mustReply(t, conv, map[string]any{"textBody": "Ten of them", "components": map[string]any{"cards": numbered(cards[:10])}})
 	if got := len(f.cardAttachments(t, conv, id)); got != 10 {
 		t.Errorf("card attachments = %d, want 10", got)
 	}
@@ -229,7 +260,11 @@ func TestReplyCards_TenCardsAreTaken(t *testing.T) {
 // public host are refused, each with its code.
 func TestReplyCards_Refusals(t *testing.T) {
 	t.Parallel()
-	f, _ := newCardChat(t)
+	f, catalog := newCardChat(t)
+	catalog.add(82, 8, 1, true, "<svg/>")
+	catalog.setContentType(82, "image/svg+xml")
+	catalog.add(83, 8, 2, true, "GIF")
+	catalog.setContentType(83, "image/gif")
 	conv := f.chat(t)
 	cases := []struct {
 		name, code string
@@ -237,9 +272,13 @@ func TestReplyCards_Refusals(t *testing.T) {
 		field      string
 	}{
 		{"marked for marketing only", "product_image_unavailable", cardsOf(card("Chair", 73, buy())), ""},
+		{"an SVG", "product_image_unavailable", cardsOf(card("Lamp", 82, buy())), ""},
+		{"a GIF", "product_image_unavailable", cardsOf(card("Lamp", 83, buy())), ""},
 		{"no such image", "product_image_unavailable", cardsOf(card("Chair", 999, buy())), ""},
 		{"the second image is not marked", "product_image_unavailable", cardsOf(card("Chair", 71), card("Chair", 73)), ""},
 		{"two products", "components_invalid", cardsOf(card("Chair", 71), card("Lamp", 81)), "cards[1].productImageId"},
+		{"the same choice id on two cards", "components_invalid", map[string]any{"cards": []map[string]any{
+			card("Chair", 71, buy()), card("Chair", 72, buy())}}, "cards[1].choices[0].id"},
 		{"no image", "components_invalid", cardsOf(map[string]any{"title": "Chair"}), "cards[0].productImageId"},
 		{"four choices", "components_invalid", cardsOf(card("Chair", 71, buy(),
 			map[string]any{"id": "a", "title": "A"}, map[string]any{"id": "b", "title": "B"}, map[string]any{"id": "c", "title": "C"})), "cards[0].choices"},
@@ -376,7 +415,7 @@ func TestOutboxCards_ACarouselIsSentWithPublicImageAddresses(t *testing.T) {
 			t.Errorf("card %d: fetching its own address = %d, want 200", i, r.Status)
 		}
 	}
-	if len(carousel[0].Choices) != 1 || carousel[0].Choices[0].ID != "buy" {
+	if len(carousel[0].Choices) != 1 || carousel[0].Choices[0].ID != "buy-0" {
 		t.Errorf("first card choices = %+v, want buy", carousel[0].Choices)
 	}
 }
@@ -462,6 +501,16 @@ func TestPublicMedia_TheRoute(t *testing.T) {
 		}
 	}
 
+	// An object that is gone is a 404 for GET and HEAD alike.
+	key := modtest.One[string](t, f.h, `SELECT storage_key FROM communications.message_attachments WHERE id = $1`, card)
+	f.h.Exec(t, `UPDATE communications.message_attachments SET storage_key = 'cards/missing' WHERE id = $1`, card)
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		if r := get(method, good); r.Status != http.StatusNotFound {
+			t.Errorf("a missing object (%s): %d, want 404", method, r.Status)
+		}
+	}
+	f.h.Exec(t, `UPDATE communications.message_attachments SET storage_key = $2 WHERE id = $1`, card, key)
+
 	// A provider that is handed the bytes serves no public media.
 	caps := f.fake.Capabilities()
 	caps.PublicMedia = false
@@ -538,7 +587,7 @@ func TestBuyAnswer_ResolvesItsProduct(t *testing.T) {
 		})
 		f.sync(t)
 	}
-	answer("b1", "Buy", &contracts.MessengerAnswer{MessageID: message.String(), ChoiceID: "buy"})
+	answer("b1", "Buy", &contracts.MessengerAnswer{MessageID: message.String(), ChoiceID: "buy-1"})
 	answer("b2", "Yes", &contracts.MessengerAnswer{MessageID: plain.String(), ChoiceID: "yes"})
 
 	byText := map[string]chatMessageJSON{}
@@ -548,9 +597,9 @@ func TestBuyAnswer_ResolvesItsProduct(t *testing.T) {
 		}
 	}
 	a := byText["Buy"].AnswerTo
-	if a == nil || a.ChoiceId != "buy" || a.Product == nil || a.Product.ProductId != 7 || a.Product.Name != "Chair" ||
-		a.Product.AttachmentId == nil || *a.Product.AttachmentId != cards[0] {
-		t.Errorf("Buy answer = %+v, want product 7, the first card's title and image", a)
+	if a == nil || a.ChoiceId != "buy-1" || a.Product == nil || a.Product.ProductId != 7 || a.Product.Name != "Chair, side" ||
+		a.Product.AttachmentId == nil || *a.Product.AttachmentId != cards[1] {
+		t.Errorf("Buy answer = %+v, want product 7 and the title and image of the card it was given on (the second)", a)
 	}
 	if a := byText["Yes"].AnswerTo; a == nil || a.Product != nil {
 		t.Errorf("an answer to a message with no product = %+v, want no product", a)

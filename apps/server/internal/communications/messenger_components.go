@@ -327,9 +327,9 @@ func validateComponents(c *gen.MessageComponents, caps contracts.MessengerCapabi
 		return errs
 	}
 	// An id is unique within its message, answer options and card choices alike:
-	// it is what the payload names (N4). The same choice of a card may stand on
-	// several cards (validateChoices).
-	seen := map[string]seenChoice{}
+	// it is what the payload names (N4). A product's cards each carry their own
+	// Buy, buy-<card index>, so an answer names the card it was given on.
+	seen := map[string]bool{}
 	if c.AnswerOptions != nil {
 		options := *c.AnswerOptions
 		switch {
@@ -339,7 +339,7 @@ func validateComponents(c *gen.MessageComponents, caps contracts.MessengerCapabi
 			// The request for an e-mail address is a quick reply too (N4): it counts.
 			errs["answerOptions"] = []string{fmt.Sprintf("At most %d answer options are allowed, the request for an e-mail address counting as one.", caps.MaxAnswerOptions)}
 		}
-		errs = validateChoices(errs, seen, "answerOptions", options, caps.MaxAnswerTitle, false)
+		errs = validateChoices(errs, seen, "answerOptions", options, caps.MaxAnswerTitle)
 	}
 	if c.ShareEmail != nil && *c.ShareEmail && !caps.ShareEmail {
 		errs["shareEmail"] = []string{"This channel cannot ask for an e-mail address."}
@@ -364,42 +364,26 @@ func validateComponents(c *gen.MessageComponents, caps contracts.MessengerCapabi
 				if len(*card.Choices) > caps.MaxCardChoices {
 					errs[key+".choices"] = []string{fmt.Sprintf("A card has at most %d choices.", caps.MaxCardChoices)}
 				}
-				errs = validateChoices(errs, seen, key+".choices", *card.Choices, caps.MaxChoiceTitle, true)
+				errs = validateChoices(errs, seen, key+".choices", *card.Choices, caps.MaxChoiceTitle)
 			}
 		}
 	}
 	return errs
 }
 
-// seenChoice is a choice id met so far in a message: the title it carried, and
-// whether it was a card's choice.
-type seenChoice struct {
-	title string
-	card  bool
-}
-
 // validateChoices checks each choice of one list: an id of the shape N4 names,
-// once in the list and not one of the message's answer options or another kind
-// of choice (seen holds the ids of the message so far, which it adds to), and a
-// title of 1 to maxTitle characters. A card's choice may repeat on another card
-// with the same title: it is the same answer, as Buy is on each card of a
-// product's carousel (N16), because what the payload names is the message and
-// the choice, not the card.
-func validateChoices(errs map[string][]string, seen map[string]seenChoice, key string, choices []gen.MessageComponentChoice, maxTitle int, cards bool) map[string][]string {
-	inList := map[string]bool{}
+// not in seen — the ids of the message so far, which it adds to —, and a title
+// of 1 to maxTitle characters.
+func validateChoices(errs map[string][]string, seen map[string]bool, key string, choices []gen.MessageComponentChoice, maxTitle int) map[string][]string {
 	for i, choice := range choices {
 		at := fmt.Sprintf("%s[%d]", key, i)
-		prev, met := seen[choice.Id]
 		switch {
 		case !choiceIDPattern.MatchString(choice.Id):
 			errs[at+".id"] = []string{"An id is 1 to 40 lower-case letters, digits and hyphens."}
-		case inList[choice.Id]:
+		case seen[choice.Id]:
 			errs[at+".id"] = []string{"An id may appear only once."}
-		case met && (!cards || !prev.card || prev.title != choice.Title):
-			errs[at+".id"] = []string{"An id may appear only once in a message, except the same choice on several cards."}
 		}
-		inList[choice.Id] = true
-		seen[choice.Id] = seenChoice{title: choice.Title, card: cards}
+		seen[choice.Id] = true
 		if n := utf8.RuneCountInString(strings.TrimSpace(choice.Title)); n < 1 || n > maxTitle {
 			errs[at+".title"] = []string{fmt.Sprintf("A title is 1 to %d characters.", maxTitle)}
 		}
