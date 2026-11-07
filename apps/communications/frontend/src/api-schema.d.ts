@@ -328,6 +328,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/communications/public-media/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A card image for Meta
+         * @description A card's image for Meta to fetch (Messenger design N18), on the public host. Anonymous, with the token in the path: <attachmentId>.<expiresAt>.<mac>, the MAC made under the purpose communications/public-media and the expiry a Unix time in seconds. It serves only a card attachment of an outbound message on a channel whose provider asks for public media; an expired, wrong or foreign token, a file attachment and an inbound attachment are all the same bare 404, so the route cannot be used to probe. HEAD is answered as GET without the body. A fetch is logged with the attachment id, never the token.
+         */
+        get: operations["getCommunicationsPublicMediaByToken"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /**
+         * A card image's headers for Meta
+         * @description GET's answer without the body (Messenger design N18) - the same checks, the same bare 404 for every refusal, the image's content type and length and the same headers.
+         */
+        head: operations["headCommunicationsPublicMediaByToken"];
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/communications/personal-sender": {
         parameters: {
             query?: never;
@@ -881,8 +905,25 @@ export interface components {
              * @description The message the question was in.
              */
             messageId: string;
+            /** @description The product a card's choice was about, for an answer to a card of a product the message attached (design N17); absent for any other answer. */
+            product?: components["schemas"]["MessageAnswerProduct"] | null;
             /** @description The title the person saw. */
             title: string;
+        };
+        /** @description The product a card answer is about, as the question message kept it (design N17). */
+        MessageAnswerProduct: {
+            /**
+             * Format: uuid
+             * @description The card's image, an attachment of the question message; absent when the card had none.
+             */
+            attachmentId?: string | null;
+            /** @description The card's title, the product's name when it was sent. */
+            name: string;
+            /**
+             * Format: int32
+             * @description The product's id in Products.
+             */
+            productId: number;
         };
         MessageComponentCard: {
             /**
@@ -2384,7 +2425,7 @@ export interface operations {
                     "application/json": components["schemas"]["CommunicationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity — channel_inactive, recipients_missing, recipient_suppressed, too_large, and on a messenger conversation components_unsupported (the channel takes none), components_invalid (a limit broken, with fields), reply_window_closed, not_supported_on_channel (sendFromPersonal or replyMode all), text_too_long (more than 2000 characters), and too_large (a staged attachment above the provider's limit). */
+            /** @description Unprocessable Entity — channel_inactive, recipients_missing, recipient_suppressed, too_large, and on a messenger conversation components_unsupported (the channel takes none), components_invalid (a limit broken, with fields), reply_window_closed, not_supported_on_channel (sendFromPersonal or replyMode all), text_too_long (more than 2000 characters), too_large (a staged attachment above the provider's limit), and for cards product_image_unavailable (a productImageId is gone, or is no longer marked for Communications) and public_url_missing (the instance has no public host for Meta to fetch the images from). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2542,6 +2583,78 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CommunicationErrorResponse"];
                 };
+            };
+        };
+    };
+    getCommunicationsPublicMediaByToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signed token, as one segment. */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the image, as its own media type (image/jpeg or image/png). */
+            200: {
+                headers: {
+                    /** @description private, max-age=86400. */
+                    "Cache-Control"?: string;
+                    /** @description no-referrer. */
+                    "Referrer-Policy"?: string;
+                    /** @description nosniff. */
+                    "X-Content-Type-Options"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            /** @description Not Found — the token is wrong, expired or foreign, or names nothing this route serves. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    headCommunicationsPublicMediaByToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signed token, as one segment. */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the headers of the image. */
+            200: {
+                headers: {
+                    /** @description private, max-age=86400. */
+                    "Cache-Control"?: string;
+                    /** @description no-referrer. */
+                    "Referrer-Policy"?: string;
+                    /** @description nosniff. */
+                    "X-Content-Type-Options"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            /** @description Not Found — the token is wrong, expired or foreign, or names nothing this route serves. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

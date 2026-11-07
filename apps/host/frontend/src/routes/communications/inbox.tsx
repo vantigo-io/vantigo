@@ -1,8 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { InboxPage } from "@vantigo/communications-ui/pages/inbox";
 import { connectionButtonFor } from "../../lib/connections";
+import { useProductMessaging } from "../../lib/product-messaging";
 
-const CommunicationsInboxRoute = () => <InboxPage connectionButton={connectionButtonFor()} />;
+const CommunicationsInboxRoute = () => (
+  <InboxPage connectionButton={connectionButtonFor()} productMessaging={useProductMessaging()} />
+);
 
 export const Route = createFileRoute("/communications/inbox")({
   validateSearch: (s: Record<string, unknown>) => ({

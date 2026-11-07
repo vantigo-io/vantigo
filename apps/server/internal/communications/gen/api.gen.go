@@ -438,8 +438,23 @@ type MessageAnswer struct {
 	// MessageId The message the question was in.
 	MessageId openapi_types.UUID `json:"messageId"`
 
+	// Product The product a card's choice was about, for an answer to a card of a product the message attached (design N17); absent for any other answer.
+	Product *MessageAnswerProduct `json:"product,omitempty"`
+
 	// Title The title the person saw.
 	Title string `json:"title"`
+}
+
+// MessageAnswerProduct The product a card answer is about, as the question message kept it (design N17).
+type MessageAnswerProduct struct {
+	// AttachmentId The card's image, an attachment of the question message; absent when the card had none.
+	AttachmentId *openapi_types.UUID `json:"attachmentId,omitempty"`
+
+	// Name The card's title, the product's name when it was sent.
+	Name string `json:"name"`
+
+	// ProductId The product's id in Products.
+	ProductId int32 `json:"productId"`
 }
 
 // MessageComponentCard defines model for MessageComponentCard.
@@ -800,6 +815,12 @@ type ServerInterface interface {
 	// GetCommunicationsPersonalSender Get whether the caller can send from their own mailbox
 	// (GET /api/v1/communications/personal-sender)
 	GetCommunicationsPersonalSender(w http.ResponseWriter, r *http.Request)
+	// GetCommunicationsPublicMediaByToken A card image for Meta
+	// (GET /api/v1/communications/public-media/{token})
+	GetCommunicationsPublicMediaByToken(w http.ResponseWriter, r *http.Request, token string)
+	// HeadCommunicationsPublicMediaByToken A card image's headers for Meta
+	// (HEAD /api/v1/communications/public-media/{token})
+	HeadCommunicationsPublicMediaByToken(w http.ResponseWriter, r *http.Request, token string)
 	// GetCommunicationsStatsAttention Get communications dashboard attention items
 	// (GET /api/v1/communications/stats/attention)
 	GetCommunicationsStatsAttention(w http.ResponseWriter, r *http.Request)
@@ -1610,6 +1631,58 @@ func (siw *ServerInterfaceWrapper) GetCommunicationsPersonalSender(w http.Respon
 	handler.ServeHTTP(w, r)
 }
 
+// GetCommunicationsPublicMediaByToken operation middleware
+func (siw *ServerInterfaceWrapper) GetCommunicationsPublicMediaByToken(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "token" -------------
+	var token string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "token", r.PathValue("token"), &token, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCommunicationsPublicMediaByToken(w, r, token)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// HeadCommunicationsPublicMediaByToken operation middleware
+func (siw *ServerInterfaceWrapper) HeadCommunicationsPublicMediaByToken(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "token" -------------
+	var token string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "token", r.PathValue("token"), &token, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.HeadCommunicationsPublicMediaByToken(w, r, token)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCommunicationsStatsAttention operation middleware
 func (siw *ServerInterfaceWrapper) GetCommunicationsStatsAttention(w http.ResponseWriter, r *http.Request) {
 
@@ -1980,6 +2053,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/tags/{tagId}", wrapper.DeleteCommunicationsConversationsByIdTagsByTagId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/tags/{tagId}", wrapper.PutCommunicationsConversationsByIdTagsByTagId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/messages/{id}/raw", wrapper.GetCommunicationsMessagesByIdRaw)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/public-media/{token}", wrapper.GetCommunicationsPublicMediaByToken)
+	m.HandleFunc(http.MethodHead+" "+options.BaseURL+"/api/v1/communications/public-media/{token}", wrapper.HeadCommunicationsPublicMediaByToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/personal-sender", wrapper.GetCommunicationsPersonalSender)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/stats/attention", wrapper.GetCommunicationsStatsAttention)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/stats/summary", wrapper.GetCommunicationsStatsSummary)
@@ -3964,6 +4039,112 @@ func (response GetCommunicationsPersonalSender403JSONResponse) VisitGetCommunica
 	return err
 }
 
+type GetCommunicationsPublicMediaByTokenRequestObject struct {
+	Token string `json:"token"`
+}
+
+type GetCommunicationsPublicMediaByTokenResponseObject interface {
+	VisitGetCommunicationsPublicMediaByTokenResponse(w http.ResponseWriter) error
+}
+
+type GetCommunicationsPublicMediaByToken200ResponseHeaders struct {
+	CacheControl        *string
+	ReferrerPolicy      *string
+	XContentTypeOptions *string
+}
+
+type GetCommunicationsPublicMediaByToken200AsteriskResponse struct {
+	Body          io.Reader
+	Headers       GetCommunicationsPublicMediaByToken200ResponseHeaders
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetCommunicationsPublicMediaByToken200AsteriskResponse) VisitGetCommunicationsPublicMediaByTokenResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	if response.Headers.ReferrerPolicy != nil {
+		w.Header().Set("Referrer-Policy", fmt.Sprint(*response.Headers.ReferrerPolicy))
+	}
+	if response.Headers.XContentTypeOptions != nil {
+		w.Header().Set("X-Content-Type-Options", fmt.Sprint(*response.Headers.XContentTypeOptions))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetCommunicationsPublicMediaByToken404Response struct {
+}
+
+func (response GetCommunicationsPublicMediaByToken404Response) VisitGetCommunicationsPublicMediaByTokenResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type HeadCommunicationsPublicMediaByTokenRequestObject struct {
+	Token string `json:"token"`
+}
+
+type HeadCommunicationsPublicMediaByTokenResponseObject interface {
+	VisitHeadCommunicationsPublicMediaByTokenResponse(w http.ResponseWriter) error
+}
+
+type HeadCommunicationsPublicMediaByToken200ResponseHeaders struct {
+	CacheControl        *string
+	ReferrerPolicy      *string
+	XContentTypeOptions *string
+}
+
+type HeadCommunicationsPublicMediaByToken200AsteriskResponse struct {
+	Body          io.Reader
+	Headers       HeadCommunicationsPublicMediaByToken200ResponseHeaders
+	ContentType   string
+	ContentLength int64
+}
+
+func (response HeadCommunicationsPublicMediaByToken200AsteriskResponse) VisitHeadCommunicationsPublicMediaByTokenResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	if response.Headers.ReferrerPolicy != nil {
+		w.Header().Set("Referrer-Policy", fmt.Sprint(*response.Headers.ReferrerPolicy))
+	}
+	if response.Headers.XContentTypeOptions != nil {
+		w.Header().Set("X-Content-Type-Options", fmt.Sprint(*response.Headers.XContentTypeOptions))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type HeadCommunicationsPublicMediaByToken404Response struct {
+}
+
+func (response HeadCommunicationsPublicMediaByToken404Response) VisitHeadCommunicationsPublicMediaByTokenResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type GetCommunicationsStatsAttentionRequestObject struct {
 }
 
@@ -4579,6 +4760,12 @@ type StrictServerInterface interface {
 	// GetCommunicationsPersonalSender Get whether the caller can send from their own mailbox
 	// (GET /api/v1/communications/personal-sender)
 	GetCommunicationsPersonalSender(ctx context.Context, request GetCommunicationsPersonalSenderRequestObject) (GetCommunicationsPersonalSenderResponseObject, error)
+	// GetCommunicationsPublicMediaByToken A card image for Meta
+	// (GET /api/v1/communications/public-media/{token})
+	GetCommunicationsPublicMediaByToken(ctx context.Context, request GetCommunicationsPublicMediaByTokenRequestObject) (GetCommunicationsPublicMediaByTokenResponseObject, error)
+	// HeadCommunicationsPublicMediaByToken A card image's headers for Meta
+	// (HEAD /api/v1/communications/public-media/{token})
+	HeadCommunicationsPublicMediaByToken(ctx context.Context, request HeadCommunicationsPublicMediaByTokenRequestObject) (HeadCommunicationsPublicMediaByTokenResponseObject, error)
 	// GetCommunicationsStatsAttention Get communications dashboard attention items
 	// (GET /api/v1/communications/stats/attention)
 	GetCommunicationsStatsAttention(ctx context.Context, request GetCommunicationsStatsAttentionRequestObject) (GetCommunicationsStatsAttentionResponseObject, error)
@@ -5346,6 +5533,58 @@ func (sh *strictHandler) GetCommunicationsPersonalSender(w http.ResponseWriter, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCommunicationsPersonalSenderResponseObject); ok {
 		if err := validResponse.VisitGetCommunicationsPersonalSenderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCommunicationsPublicMediaByToken operation middleware
+func (sh *strictHandler) GetCommunicationsPublicMediaByToken(w http.ResponseWriter, r *http.Request, token string) {
+	var request GetCommunicationsPublicMediaByTokenRequestObject
+
+	request.Token = token
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCommunicationsPublicMediaByToken(ctx, request.(GetCommunicationsPublicMediaByTokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCommunicationsPublicMediaByToken")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCommunicationsPublicMediaByTokenResponseObject); ok {
+		if err := validResponse.VisitGetCommunicationsPublicMediaByTokenResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// HeadCommunicationsPublicMediaByToken operation middleware
+func (sh *strictHandler) HeadCommunicationsPublicMediaByToken(w http.ResponseWriter, r *http.Request, token string) {
+	var request HeadCommunicationsPublicMediaByTokenRequestObject
+
+	request.Token = token
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.HeadCommunicationsPublicMediaByToken(ctx, request.(HeadCommunicationsPublicMediaByTokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "HeadCommunicationsPublicMediaByToken")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(HeadCommunicationsPublicMediaByTokenResponseObject); ok {
+		if err := validResponse.VisitHeadCommunicationsPublicMediaByTokenResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

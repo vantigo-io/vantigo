@@ -1,11 +1,15 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../api/conversations";
 import "../i18n";
+import { noProductMessaging, type ProductMessaging, ProductMessagingProvider } from "../lib/product-messaging";
 import { ChatMessage } from "./ChatMessage";
+
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }));
 
 vi.mock("../api/conversations", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/conversations")>();
@@ -29,11 +33,18 @@ const message = (overrides: Partial<ConversationMessage>): ConversationMessage =
   ...overrides,
 });
 
-const show = (item: ConversationMessage, thread: ConversationMessage[] = [item]) =>
+const show = (
+  item: ConversationMessage,
+  thread: ConversationMessage[] = [item],
+  messaging: ProductMessaging = noProductMessaging,
+  customerId: number | null = null,
+) =>
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <MantineProvider>
-        <ChatMessage message={item} messages={thread} />
+        <ProductMessagingProvider value={messaging}>
+          <ChatMessage message={item} messages={thread} customerId={customerId} />
+        </ProductMessagingProvider>
       </MantineProvider>
     </QueryClientProvider>,
   );
@@ -147,6 +158,77 @@ describe("a message of a Messenger conversation", () => {
     expect(screen.getByText("100 kr")).toBeInTheDocument();
     expect(screen.getByText("Buy")).toBeInTheDocument();
     expect(screen.queryByText("chair.png")).not.toBeInTheDocument();
+  });
+
+  describe("a Buy answer", () => {
+    const cardImage = {
+      id: "att-card",
+      fileName: "chair.png",
+      contentType: "image/png",
+      sizeBytes: 10,
+      contentId: null,
+      scanStatus: "clean",
+      isInline: false,
+      createdAt: "2026-01-01T10:00:00Z",
+      downloadAvailable: true,
+      downloadPath: "/api/v1/communications/attachments/att-card/download",
+      role: "card" as const,
+    };
+    const question = message({
+      id: "q-1",
+      direction: "outbound",
+      participant: null,
+      textBody: "Look",
+      components: {
+        cards: [{ title: "Chair", attachmentId: "att-card", choices: [{ id: "buy", title: "Buy" }] }],
+      },
+      attachments: [cardImage],
+    });
+    const buy = message({
+      id: "a-1",
+      textBody: "Buy",
+      answerTo: {
+        messageId: "q-1",
+        choiceId: "buy",
+        title: "Buy",
+        product: { productId: 7, name: "Chair", attachmentId: "att-card" },
+      },
+    });
+
+    it("shows as Wants to buy, with the card's image, and no link without Orders", async () => {
+      show(buy, [question, buy]);
+      expect(screen.getByText("Wants to buy: Chair")).toBeInTheDocument();
+      await waitFor(() =>
+        expect(document.querySelector("img.chat-card-image")).toHaveAttribute("src", "data:image/png;base64,AAAA"),
+      );
+      expect(screen.queryByRole("link", { name: "Create order" })).not.toBeInTheDocument();
+    });
+
+    it("carries a Create order link with the customer and the product when Orders is present", () => {
+      const newOrder = vi.fn(({ customerId, productId }: { customerId: number | null; productId: number }) => ({
+        to: "/orders/orders/new",
+        search: { ...(customerId ? { customerId } : {}), productId },
+      }));
+      navigate.mockReset();
+      show(buy, [question, buy], { canAttachProduct: true, canViewPricing: false, newOrder }, 1001);
+
+      const link = screen.getByRole("link", { name: "Create order" });
+      expect(newOrder).toHaveBeenCalledWith({ customerId: 1001, productId: 7 });
+      expect(link.getAttribute("href")).toContain("/orders/orders/new?customerId=1001&productId=7");
+      fireEvent.click(link);
+      expect(navigate).toHaveBeenCalledWith({ to: "/orders/orders/new", search: { customerId: 1001, productId: 7 } });
+    });
+
+    it("is a plain answer when the choice is not Buy or the product is not known", () => {
+      const other = message({
+        id: "a-2",
+        textBody: "Tell me more",
+        answerTo: { messageId: "q-1", choiceId: "second", title: "Tell me more", product: null },
+      });
+      show(other, [question, other]);
+      expect(screen.getByText("Tell me more").closest(".mantine-Badge-root")).not.toBeNull();
+      expect(screen.queryByText(/Wants to buy/)).not.toBeInTheDocument();
+    });
   });
 
   it("says where an outbound message stands, and why one failed", () => {

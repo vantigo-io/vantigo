@@ -149,6 +149,8 @@ func outboxTerminalCode(err error) string {
 		return "connection_needed"
 	case errors.Is(err, errChannelNoCredentials):
 		return "channel_unavailable"
+	case errors.Is(err, errPublicHostMissing):
+		return "public_url_missing"
 	}
 	return messengerTerminalCode(err)
 }

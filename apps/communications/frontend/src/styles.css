@@ -190,3 +190,23 @@
 .thread-presence {
   min-height: 22px;
 }
+
+.product-picker-row {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--mantine-radius-sm);
+  text-align: left;
+}
+.product-picker-row:hover:not(:disabled) {
+  background: var(--mantine-color-default-hover);
+}
+.product-picker-row:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.wants-to-buy .chat-card-image {
+  width: 56px;
+  height: 56px;
+  flex: none;
+}
