@@ -430,4 +430,78 @@ describe("the new order", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/orders/orders/2077"));
     expect(fake.sent("POST", "/api/v1/orders/orders")?.body).toMatchObject({ customerId: 43 });
   });
+
+  it("starts with the variant a message showed, as the order's one line", async () => {
+    const fake = fakeServer((call) => {
+      if (call.method === "POST" && call.url === "/api/v1/orders/orders") return jsonResponse(201, order({ id: 2078 }));
+      if (call.method === "GET" && call.url === "/api/v1/orders/orders/2078")
+        return jsonResponse(200, order({ id: 2078 }));
+      return commonAnswers(call, settings());
+    });
+    const { router } = renderRoute("/orders/orders/new?customerId=43&productId=7&variantId=71");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Create the order" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/orders/orders/2078"));
+    expect(fake.sent("POST", "/api/v1/orders/orders")?.body).toMatchObject({
+      customerId: 43,
+      lines: [{ kind: "product", variantId: 71, quantity: 1 }],
+    });
+  });
+
+  it("takes the only variant of the product a message showed", async () => {
+    const fake = fakeServer((call) => {
+      if (call.method === "GET" && call.url.startsWith("/api/v1/orders/products/7/grid"))
+        return jsonResponse(200, {
+          productId: 7,
+          productName: "Chair",
+          currency: "NOK",
+          mode: "list",
+          options: [],
+          cells: [],
+          variants: [{ variantId: 71, sku: "CH-1", unit: "stk", values: {}, price: 100 }],
+        });
+      if (call.method === "POST" && call.url === "/api/v1/orders/orders") return jsonResponse(201, order({ id: 2079 }));
+      if (call.method === "GET" && call.url === "/api/v1/orders/orders/2079")
+        return jsonResponse(200, order({ id: 2079 }));
+      return commonAnswers(call, settings());
+    });
+    renderRoute("/orders/orders/new?customerId=43&productId=7");
+
+    expect(await screen.findByText("The order starts with one line for Chair.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Create the order" }));
+    await waitFor(() =>
+      expect(fake.sent("POST", "/api/v1/orders/orders")?.body).toMatchObject({ lines: [{ variantId: 71 }] }),
+    );
+  });
+
+  it("lets the person pick among the variants of the product a message showed", async () => {
+    const fake = fakeServer((call) => {
+      if (call.method === "GET" && call.url.startsWith("/api/v1/orders/products/7/grid"))
+        return jsonResponse(200, {
+          productId: 7,
+          productName: "Chair",
+          currency: "NOK",
+          mode: "list",
+          options: [],
+          cells: [],
+          variants: [
+            { variantId: 71, sku: "CH-RED", unit: "stk", values: { Colour: "Red" }, price: 100 },
+            { variantId: 72, sku: "CH-BLUE", unit: "stk", values: { Colour: "Blue" }, price: 100 },
+          ],
+        });
+      if (call.method === "POST" && call.url === "/api/v1/orders/orders") return jsonResponse(201, order({ id: 2080 }));
+      if (call.method === "GET" && call.url === "/api/v1/orders/orders/2080")
+        return jsonResponse(200, order({ id: 2080 }));
+      return commonAnswers(call, settings());
+    });
+    renderRoute("/orders/orders/new?customerId=43&productId=7");
+
+    await userEvent.click(await screen.findByRole("combobox", { name: "Start with a variant of Chair" }));
+    await userEvent.click(await screen.findByRole("option", { name: "CH-BLUE · Blue" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create the order" }));
+    await waitFor(() =>
+      expect(fake.sent("POST", "/api/v1/orders/orders")?.body).toMatchObject({ lines: [{ variantId: 72 }] }),
+    );
+  });
 });
