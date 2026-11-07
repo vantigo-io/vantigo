@@ -180,7 +180,7 @@ describe("a message of a Messenger conversation", () => {
       participant: null,
       textBody: "Look",
       components: {
-        cards: [{ title: "Chair", attachmentId: "att-card", choices: [{ id: "buy", title: "Buy" }] }],
+        cards: [{ title: "Chair", attachmentId: "att-card", choices: [{ id: "buy-0", title: "Buy" }] }],
       },
       attachments: [cardImage],
     });
@@ -189,7 +189,7 @@ describe("a message of a Messenger conversation", () => {
       textBody: "Buy",
       answerTo: {
         messageId: "q-1",
-        choiceId: "buy",
+        choiceId: "buy-0",
         title: "Buy",
         product: { productId: 7, name: "Chair", attachmentId: "att-card" },
       },
