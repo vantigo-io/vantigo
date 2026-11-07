@@ -202,7 +202,11 @@ number is not used again.
 Accepting a quote makes an order. To make one directly, choose **New order** in **Sales
 orders** or on the customer's **Orders** tab, pick the **Customer** and choose **Create the
 order**. An order has the same header and lines as a quote, except that it has no
-optional lines and no valid-until day.
+optional lines and no valid-until day. When you reach the page from **Create order** on a
+customer's *Wants to buy* answer in a Messenger conversation, it opens with the customer and
+the product the customer asked for: the product's only variant becomes the order's first
+line (quantity 1), and for a product with several variants you pick one — or none — before
+you choose **Create the order**.
 
 When Inventory keeps stock, a new order also gets a **Site** — the warehouse its goods are
 reserved at and delivered from — from the Orders settings' **Default site**. Change it in

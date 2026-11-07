@@ -187,14 +187,21 @@ Modulen kjører to jobber, i API-prosessen og i jobbmodus på samme måte
 
 ## Rutene på den offentlige verten
 
-Den offentlige verten serverer to anonyme ruter for Meta, nøyaktig disse stiene
+Den offentlige verten serverer tre anonyme ruter for Meta, nøyaktig disse stiene
 ([Den offentlige verten](/nb/admin/payments/#den-offentlige-verten)); proxyen må slippe
-begge gjennom:
+alle gjennom:
 
 | Metode | Sti | Gjør |
 | --- | --- | --- |
 | `GET` | `/api/v1/meta/webhook` | Metas håndtrykk: svarer `hub.challenge` når verifiseringstokenet er riktig |
 | `POST` | `/api/v1/meta/webhook` | Metas hendelser, opptil 1 MiB |
+| `GET`, `HEAD` | `/api/v1/communications/public-media/{token}` | Et korts bilde, som Meta henter når Kommunikasjon sender et produkt som kort; ett stisegment, signert av tokenet, gyldig i 7 dager |
+
+Den tredje hører til Kommunikasjon, ikke til denne modulen: bildene til et produkt som sendes
+i en melding må kunne nås fra internett, mens installasjonens lagring ikke har noen offentlig
+adresse. Den serverer ikke annet enn kortbilder i meldinger sendt på Messenger, og alt annet er
+en tom 404. En proxy som mellomlagrer den, kan beholde et bilde i opptil ett døgn
+(`Cache-Control: private, max-age=86400`).
 
 Hver innsending sjekkes med `X-Hub-Signature-256`, en HMAC-SHA256 over **råbytene** i
 kroppen med apphemmeligheten. En proxy som skriver om kroppen (komprimering,

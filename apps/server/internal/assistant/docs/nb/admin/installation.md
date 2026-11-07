@@ -757,7 +757,12 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   for Facebook Messenger, `GET` og `POST /api/v1/meta/webhook`, som proxyen må slippe
   gjennom som to ruter: Metas håndtrykk og hendelsene dens, der signaturen sjekkes over
   kroppen nøyaktig slik Meta sendte den, så proxyen må ikke skrive om kroppen
-  ([Meta](/nb/admin/meta/#rutene-på-den-offentlige-verten)).
+  ([Meta](/nb/admin/meta/#rutene-på-den-offentlige-verten)). Den bærer også bildene til
+  kortene Kommunikasjon sender på Messenger, `GET` og `HEAD`
+  `/api/v1/communications/public-media/{token}`, som Meta henter fra internett med et token
+  som gjelder i 7 dager; proxyen må slippe den gjennom, som nøyaktig ett stisegment
+  ([Meta](/nb/admin/meta/#rutene-på-den-offentlige-verten)). Uten `PUBLIC_BASE_URL` avvises et
+  svar med kort.
 - `vantigo.env.example` dokumenterer også `STAFF_IMPORT_MAX_ROWS`, hvor mange personer
   én import i Ansatte tar og én eksport skriver
   ([Ansatte](/nb/admin/staff/#importer-og-eksporter-registeret)), og
