@@ -13,7 +13,7 @@ export interface paths {
         put?: never;
         /**
          * Connect a Page
-         * @description Connects a Facebook Page from a token (Messenger design N10). Vantigo lists the Pages the token manages (GET /me/accounts, for a system user's or a user's token) and keeps those whose tasks include MESSAGING: none, or a pageId that is not one of them, is 422 page_token_insufficient; several and no pageId is 422 page_choice_required with the choices; the chosen Page's own access token, not the pasted one, is what is used and sealed under meta/page-token. A token Meta does not let list Pages is taken for a Page's own token: the Page is read from /me and the token is accepted when subscribing the app succeeds. Vantigo subscribes the app to the Page's messages, messaging_postbacks, message_reads, message_deliveries and message_echoes and keeps the Page's id and name. The same Page added again replaces its token and clears a rejection. The Owner's. 422 not_configured while the app id and secret are not set; 503 meta_unreachable when Meta could not be asked. Rate limited to 30 per client address a minute, shared with every Owner operation of the module.
+         * @description Connects a Facebook Page from a token (Messenger design N10). Vantigo lists the Pages the token manages (GET /me/accounts, for a system user's or a user's token) and keeps those whose tasks include MESSAGING: none, or a pageId that is not one of them, is 422 page_token_insufficient; several and no pageId is 422 page_choice_required with the choices; the chosen Page's own access token, not the pasted one, is what is used and sealed under meta/page-token. A token Meta does not let list Pages is taken for a Page's own token: the Page is read from /me and the token is accepted when subscribing the app succeeds. Vantigo subscribes the app to the Page's messages, messaging_postbacks, messaging_referrals, message_reads, message_deliveries and message_echoes and keeps the Page's id and name. The same Page added again replaces its token and clears a rejection. The Owner's. 422 not_configured while the app id and secret are not set; 503 meta_unreachable when Meta could not be asked. Rate limited to 30 per client address a minute, shared with every Owner operation of the module.
          */
         post: operations["postMetaPages"];
         delete?: never;
@@ -37,6 +37,26 @@ export interface paths {
          * @description Removes a Page (Messenger design N10): the app's subscription is withdrawn from Meta as far as Meta answers, and the Page's token, its queued events, their stored files and its cached profiles are deleted. A channel on the Page becomes unavailable. The Owner's. Rate limited with every Owner operation of the module.
          */
         delete: operations["deleteMetaPagesByPageId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta/pages/{pageId}/resubscribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Subscribe a Page again
+         * @description Subscribes the app to the Page's webhook fields again, with the stored token (Messenger design N21): a Page connected before the field messaging_referrals was added gets it, which is what lets Communications link a person who taps a contact's Messenger link. Meta replaces the Page's list with the one sent, so it is safe to repeat. A rejected token is found and the Page marked, as a check does. The Owner's. Rate limited with every Owner operation of the module.
+         */
+        post: operations["postMetaPagesByPageIdResubscribe"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -356,6 +376,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postMetaPagesByPageIdResubscribe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Page's id. */
+                pageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaPage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — page_not_found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["MetaProblem"];
+                };
+            };
+            /** @description Unprocessable Entity — not_configured, or page_token_insufficient (Meta refused the token; the Page is marked). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["MetaProblem"];
+                };
+            };
+            /** @description Too Many Requests — meta-owner's limit for this client address, shared with every Owner operation of the module. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — meta_unreachable, Meta could not be asked. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["MetaProblem"];
                 };
             };
         };

@@ -176,7 +176,7 @@ openapi: 3.0.3
 paths:
     /api/v1/meta/pages:
         post:
-            description: 'Connects a Facebook Page from a token (Messenger design N10). Vantigo lists the Pages the token manages (GET /me/accounts, for a system user''s or a user''s token) and keeps those whose tasks include MESSAGING: none, or a pageId that is not one of them, is 422 page_token_insufficient; several and no pageId is 422 page_choice_required with the choices; the chosen Page''s own access token, not the pasted one, is what is used and sealed under meta/page-token. A token Meta does not let list Pages is taken for a Page''s own token: the Page is read from /me and the token is accepted when subscribing the app succeeds. Vantigo subscribes the app to the Page''s messages, messaging_postbacks, message_reads, message_deliveries and message_echoes and keeps the Page''s id and name. The same Page added again replaces its token and clears a rejection. The Owner''s. 422 not_configured while the app id and secret are not set; 503 meta_unreachable when Meta could not be asked. Rate limited to 30 per client address a minute, shared with every Owner operation of the module.'
+            description: 'Connects a Facebook Page from a token (Messenger design N10). Vantigo lists the Pages the token manages (GET /me/accounts, for a system user''s or a user''s token) and keeps those whose tasks include MESSAGING: none, or a pageId that is not one of them, is 422 page_token_insufficient; several and no pageId is 422 page_choice_required with the choices; the chosen Page''s own access token, not the pasted one, is what is used and sealed under meta/page-token. A token Meta does not let list Pages is taken for a Page''s own token: the Page is read from /me and the token is accepted when subscribing the app succeeds. Vantigo subscribes the app to the Page''s messages, messaging_postbacks, messaging_referrals, message_reads, message_deliveries and message_echoes and keeps the Page''s id and name. The same Page added again replaces its token and clears a rejection. The Owner''s. 422 not_configured while the app id and secret are not set; 503 meta_unreachable when Meta could not be asked. Rate limited to 30 per client address a minute, shared with every Owner operation of the module.'
             operationId: postMetaPages
             requestBody:
                 content:
@@ -278,6 +278,68 @@ paths:
                             schema:
                                 type: string
             summary: Remove a Page
+            tags:
+                - Meta
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/meta/pages/{pageId}/resubscribe:
+        post:
+            description: 'Subscribes the app to the Page''s webhook fields again, with the stored token (Messenger design N21): a Page connected before the field messaging_referrals was added gets it, which is what lets Communications link a person who taps a contact''s Messenger link. Meta replaces the Page''s list with the one sent, so it is safe to repeat. A rejected token is found and the Page marked, as a check does. The Owner''s. Rate limited with every Owner operation of the module.'
+            operationId: postMetaPagesByPageIdResubscribe
+            parameters:
+                - description: The Page's id.
+                  in: path
+                  name: pageId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MetaPage'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/MetaProblem'
+                    description: Not Found — page_not_found.
+                "422":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/MetaProblem'
+                    description: Unprocessable Entity — not_configured, or page_token_insufficient (Meta refused the token; the Page is marked).
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — meta-owner's limit for this client address, shared with every Owner operation of the module.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/MetaProblem'
+                    description: Service Unavailable — meta_unreachable, Meta could not be asked.
+            summary: Subscribe a Page again
             tags:
                 - Meta
             x-vantigo-access: policy:Owner+OwnerManagement

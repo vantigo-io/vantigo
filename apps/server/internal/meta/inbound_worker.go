@@ -72,12 +72,19 @@ func backoffAfter(attempts int32) time.Duration {
 // this module's own shape. Attachments are in the order of the row's
 // storage_keys.
 type inboundPayload struct {
-	MID         string              `json:"mid,omitempty"`
-	Text        string              `json:"text,omitempty"`
-	Answer      *inboundAnswer      `json:"answer,omitempty"`
-	Echo        bool                `json:"echo,omitempty"`
-	WatermarkMs int64               `json:"watermark,omitempty"`
-	Attachments []inboundAttachment `json:"attachments,omitempty"`
+	MID         string         `json:"mid,omitempty"`
+	Text        string         `json:"text,omitempty"`
+	Answer      *inboundAnswer `json:"answer,omitempty"`
+	Echo        bool           `json:"echo,omitempty"`
+	WatermarkMs int64          `json:"watermark,omitempty"`
+	// Ref is the referral the person arrived with (Messenger design N21): the
+	// ref of the m.me link, verbatim. ReferralOnly marks a row that is nothing
+	// but that referral - a referral event of its own - which Pending answers
+	// as contracts.MessengerEventReferral; the row's kind stays "message", the
+	// column's CHECK having no other word for it.
+	Ref          string              `json:"ref,omitempty"`
+	ReferralOnly bool                `json:"referralOnly,omitempty"`
+	Attachments  []inboundAttachment `json:"attachments,omitempty"`
 }
 
 type inboundAnswer struct {
@@ -107,14 +114,27 @@ type whParty struct {
 	ID string `json:"id"`
 }
 
+// whReferral is the referral Meta sends when a person opens the thread through
+// an m.me link with a ref: as an event of its own (messaging_referrals), nested
+// in a Get Started postback, or on the person's first message.
+type whReferral struct {
+	Ref    string `json:"ref"`
+	Source string `json:"source"`
+	Type   string `json:"type"`
+}
+
 type whMessage struct {
 	Sender    whParty `json:"sender"`
 	Recipient whParty `json:"recipient"`
 	Timestamp int64   `json:"timestamp"`
-	Message   *struct {
-		MID        string `json:"mid"`
-		Text       string `json:"text"`
-		IsEcho     bool   `json:"is_echo"`
+	// Referral is the referral event (messaging_referrals): the person tapped
+	// the link on a thread that already exists.
+	Referral *whReferral `json:"referral"`
+	Message  *struct {
+		MID        string      `json:"mid"`
+		Text       string      `json:"text"`
+		IsEcho     bool        `json:"is_echo"`
+		Referral   *whReferral `json:"referral"`
 		QuickReply *struct {
 			Payload string `json:"payload"`
 		} `json:"quick_reply"`
@@ -126,9 +146,10 @@ type whMessage struct {
 		} `json:"attachments"`
 	} `json:"message"`
 	Postback *struct {
-		MID     string `json:"mid"`
-		Title   string `json:"title"`
-		Payload string `json:"payload"`
+		MID      string      `json:"mid"`
+		Title    string      `json:"title"`
+		Payload  string      `json:"payload"`
+		Referral *whReferral `json:"referral"`
 	} `json:"postback"`
 	Delivery *struct {
 		Watermark int64 `json:"watermark"`
@@ -323,6 +344,9 @@ func (w *SplitWorker) planMessage(ctx context.Context, entry whEntry, m whMessag
 		if msg.QuickReply != nil && !msg.IsEcho {
 			row.payload.Answer = w.quickReplyAnswer(ctx, msg.QuickReply.Payload, msg.Text)
 		}
+		if !msg.IsEcho {
+			row.payload.Ref = refOf(msg.Referral)
+		}
 	case m.Postback != nil:
 		pb := m.Postback
 		row.kind = contracts.MessengerEventMessage
@@ -332,15 +356,28 @@ func (w *SplitWorker) planMessage(ctx context.Context, entry whEntry, m whMessag
 			sum := sha256.Sum256([]byte(entry.ID + "|" + m.Sender.ID + "|" + strconv.FormatInt(m.Timestamp, 10) + "|" + pb.Payload))
 			row.dedupKey = "p:" + hex.EncodeToString(sum[:])
 		}
-		row.payload = inboundPayload{MID: pb.MID, Text: pb.Title}
+		row.payload = inboundPayload{MID: pb.MID, Text: pb.Title, Ref: refOf(pb.Referral)}
 		if a, ok := contracts.ParseMessengerPayload(pb.Payload); ok {
 			row.payload.Answer = &inboundAnswer{MessageID: a.MessageID, ChoiceID: a.ChoiceID}
 		} else {
 			w.logger.InfoContext(ctx, "meta: a postback with a payload that is not ours was read as text")
 		}
 		if pb.Title == "" && row.payload.Answer == nil {
-			return plannedRow{}, false
+			if row.payload.Ref == "" {
+				return plannedRow{}, false
+			}
+			// A Get Started postback with a referral and no title: nothing to
+			// show, but the referral is still read.
+			row.payload.ReferralOnly = true
 		}
+	case m.Referral != nil && refOf(m.Referral) != "":
+		// A referral event: the person opened an existing thread through the link.
+		ref := refOf(m.Referral)
+		sum := sha256.Sum256([]byte(entry.ID + "|" + m.Sender.ID + "|" + strconv.FormatInt(m.Timestamp, 10) + "|" + ref))
+		row.kind = contracts.MessengerEventMessage
+		row.participant = m.Sender.ID
+		row.dedupKey = "f:" + hex.EncodeToString(sum[:])
+		row.payload = inboundPayload{Ref: ref, ReferralOnly: true}
 	case m.Delivery != nil && m.Delivery.Watermark > 0:
 		row.kind = contracts.MessengerEventDelivered
 		row.participant = m.Sender.ID
@@ -358,6 +395,18 @@ func (w *SplitWorker) planMessage(ctx context.Context, entry whEntry, m whMessag
 		return plannedRow{}, false
 	}
 	return row, true
+}
+
+// maxRefLength bounds a ref this module stores. Meta allows 2083 characters; a
+// ref of ours is far shorter, and a longer one cannot be ours.
+const maxRefLength = 1024
+
+// refOf is the ref of a referral, "" for none or for one too long to be ours.
+func refOf(r *whReferral) string {
+	if r == nil || r.Ref == "" || len(r.Ref) > maxRefLength {
+		return ""
+	}
+	return r.Ref
 }
 
 // quickReplyAnswer reads a quick reply's payload: ours is an answer to a

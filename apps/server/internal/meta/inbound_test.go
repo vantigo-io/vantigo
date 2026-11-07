@@ -294,6 +294,61 @@ func TestSplit_EveryKindOfEvent(t *testing.T) {
 	}
 }
 
+// TestSplit_ReferralsInTheirThreeShapes (Messenger design N21): a referral event
+// on a thread that exists, the referral of a Get Started postback, and the
+// referral on a first message each reach Communications as the Ref of an event; a
+// referral event is an event of its own, of kind referral, with nothing to show;
+// a referral of an echo, an empty or an over-long ref is no ref at all.
+func TestSplit_ReferralsInTheirThreeShapes(t *testing.T) {
+	f := newInbFixture(t)
+	party := func(extra map[string]any) map[string]any {
+		item := map[string]any{"sender": map[string]any{"id": inbUser}, "recipient": map[string]any{"id": inbPage}, "timestamp": inbMs}
+		for k, v := range extra {
+			item[k] = v
+		}
+		return item
+	}
+	ref := map[string]any{"ref": "v1.2001.abc.1.mac", "source": "SHORTLINK", "type": "OPEN_THREAD"}
+	f.post(t, inbEnvelope(inbPage,
+		party(map[string]any{"referral": ref}),
+		party(map[string]any{"postback": map[string]any{"mid": "pb.g", "title": "Get Started", "payload": "GET_STARTED", "referral": ref}}),
+		party(map[string]any{"postback": map[string]any{"mid": "pb.e", "payload": "GET_STARTED", "referral": ref}}),
+		inbText("m.first", "Hello", map[string]any{"referral": ref}),
+		party(map[string]any{"referral": map[string]any{"ref": "", "source": "ADS"}}),
+		party(map[string]any{"referral": map[string]any{"ref": strings.Repeat("x", 2000)}}),
+		party(map[string]any{"sender": map[string]any{"id": inbPage}, "recipient": map[string]any{"id": inbUser},
+			"message": map[string]any{"mid": "echo.r", "is_echo": true, "text": "mine", "referral": ref}}),
+	))
+	f.cycle(t)
+
+	events := f.pending(t, inbPage, 0)
+	if len(events) != 5 {
+		t.Fatalf("%d events, want 5 (the empty and the over-long ref dropped): %+v", len(events), events)
+	}
+	if e := events[0]; e.Kind != contracts.MessengerEventReferral || e.Ref != "v1.2001.abc.1.mac" || e.Participant != inbUser || e.Text != "" || e.PlatformMessageID != "" {
+		t.Errorf("the referral event: %+v", e)
+	}
+	if e := events[1]; e.Kind != contracts.MessengerEventMessage || e.Ref != "v1.2001.abc.1.mac" || e.Text != "Get Started" || e.PlatformMessageID != "pb.g" {
+		t.Errorf("the Get Started postback: %+v", e)
+	}
+	if e := events[2]; e.Kind != contracts.MessengerEventReferral || e.Ref != "v1.2001.abc.1.mac" || e.Text != "" {
+		t.Errorf("a postback with no title: %+v", e)
+	}
+	if e := events[3]; e.Kind != contracts.MessengerEventMessage || e.Ref != "v1.2001.abc.1.mac" || e.Text != "Hello" {
+		t.Errorf("the first message: %+v", e)
+	}
+	if e := events[4]; !e.Echo || e.Ref != "" {
+		t.Errorf("the echo: %+v, want no ref", e)
+	}
+
+	// The same referral posted again is the same event: it dedups.
+	f.post(t, inbEnvelope(inbPage, party(map[string]any{"referral": ref})))
+	f.cycle(t)
+	if got := len(f.pending(t, inbPage, 0)); got != 5 {
+		t.Errorf("%d events after the same referral again, want 5", got)
+	}
+}
+
 func TestSplit_DropsWhatIsNotForAConnectedPage(t *testing.T) {
 	f := newInbFixture(t)
 	f.post(t, inbEnvelope("424242", inbText("m.x", "stranger", nil)))

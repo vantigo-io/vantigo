@@ -56,13 +56,14 @@ var webhookVerifyLimit = ratelimit.Policy{Name: "meta-webhook-verify", Limit: 60
 // limits maps each rate-limited operationId to its policy; the router hits it
 // per client address before access is checked.
 var limits = map[string]ratelimit.Policy{
-	"getMetaSettings":             ownerLimit,
-	"putMetaSettings":             ownerLimit,
-	"postMetaSettingsVerifyToken": ownerLimit,
-	"postMetaPages":               ownerLimit,
-	"deleteMetaPagesByPageId":     ownerLimit,
-	"getMetaWebhook":              webhookVerifyLimit,
-	"postMetaWebhook":             webhookLimit,
+	"getMetaSettings":                  ownerLimit,
+	"putMetaSettings":                  ownerLimit,
+	"postMetaSettingsVerifyToken":      ownerLimit,
+	"postMetaPages":                    ownerLimit,
+	"deleteMetaPagesByPageId":          ownerLimit,
+	"postMetaPagesByPageIdResubscribe": ownerLimit,
+	"getMetaWebhook":                   webhookVerifyLimit,
+	"postMetaWebhook":                  webhookLimit,
 }
 
 // bodyLimits gives the webhook's POST the cap the spec names, 1 MiB, in so
