@@ -135,11 +135,16 @@ func (s *server) RestoreKnowledgeArticleVersion(ctx context.Context, req gen.Res
 		if m.Version != req.Body.ExpectedVersion {
 			return versionConflict(m.Version, m.UpdatedAt, m.UpdatedBy)
 		}
-		n, err := doc.Parse(v.Content)
+		// An older version is saved in today's stored form (doc.Normalise).
+		raw, n, err := doc.Canonical(v.Content)
 		if err != nil {
 			return fmt.Errorf("knowledge: read version %d of %s: %w", req.Version, req.Id, err)
 		}
-		if version, err = saveVersion(ctx, q, req.Id, user, v.Title, document{raw: v.Content, text: doc.Text(n)}, now, false); err != nil {
+		d := document{raw: raw, text: doc.Text(n), refs: doc.References(n)}
+		if version, err = saveVersion(ctx, q, req.Id, user, v.Title, d, now, false); err != nil {
+			return err
+		}
+		if err := rewriteLinks(ctx, q, req.Id, d.refs); err != nil {
 			return err
 		}
 		if err := notifyArticle(ctx, tx, req.Id, eventContentChanged); err != nil {

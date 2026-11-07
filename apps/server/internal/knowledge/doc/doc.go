@@ -1,8 +1,9 @@
 // Package doc is the stored form of a Knowledge article (knowledge design K8):
 // a ProseMirror document as the editor's JSON, validated against an
 // allowlist of node and mark types and their attributes that mirrors the
-// editor's schema (TipTap's StarterKit with its Underline, Link, TaskList and TaskItem), and the
-// plain text derived from it for search and the Assistant.
+// editor's schema (TipTap's StarterKit with its Underline, Link, TaskList and
+// TaskItem, and K-B's blocks), the plain text derived from it for search and
+// the Assistant, and its Markdown.
 //
 // The browser renders the JSON through the editor's schema and the server
 // never emits HTML, so no HTML sanitiser is needed: the allowlist replaces
@@ -68,32 +69,101 @@ type attrRule func(v any) string
 // nodeSpec is what the allowlist says about a node type.
 type nodeSpec struct {
 	attrs map[string]attrRule
+	// required are the attributes the node must carry.
+	required []string
 	// leaf nodes carry no content; text is the only one that carries text.
 	leaf bool
 	// inline nodes may carry marks.
 	inline bool
 }
 
-// The allowlist (K8), mirroring the editor's schema in
-// @vantigo/knowledge-ui: StarterKit's nodes (headings 1–3), Link, and the
-// task lists. Every attribute the editor writes into its JSON is named, with
-// the values it may hold; null is allowed wherever the editor's default is
-// null.
+// The allowlist (K8, K18–K22), mirroring the editor's schema in
+// @vantigo/knowledge-ui: StarterKit's nodes (headings 1–3), Link, the task
+// lists, and K-B's callouts, toggles (TipTap's Details), tables, the table of
+// contents, images, file attachments, mentions, article links and record
+// links. Every attribute the editor writes into its JSON is named, with the
+// values it may hold; null is allowed wherever the editor's default is null.
+// A node with block identity carries UniqueID's id (K18).
 var nodes = map[string]nodeSpec{
 	"doc":            {},
-	"paragraph":      {},
-	"heading":        {attrs: map[string]attrRule{"level": intIn(1, 3)}},
-	"bulletList":     {},
-	"orderedList":    {attrs: map[string]attrRule{"start": intIn(-1_000_000, 1_000_000), "type": nullOr(oneOf("1", "a", "A", "i", "I"))}},
-	"listItem":       {},
-	"taskList":       {},
-	"taskItem":       {attrs: map[string]attrRule{"checked": isBool}},
-	"blockquote":     {},
-	"codeBlock":      {attrs: map[string]attrRule{"language": nullOr(matches(languagePattern, "a language name"))}},
-	"horizontalRule": {leaf: true},
+	"paragraph":      {attrs: withID(nil)},
+	"heading":        {attrs: withID(map[string]attrRule{"level": intIn(1, 3)})},
+	"bulletList":     {attrs: withID(nil)},
+	"orderedList":    {attrs: withID(map[string]attrRule{"start": intIn(-1_000_000, 1_000_000), "type": nullOr(oneOf("1", "a", "A", "i", "I"))})},
+	"listItem":       {attrs: withID(nil)},
+	"taskList":       {attrs: withID(nil)},
+	"taskItem":       {attrs: withID(map[string]attrRule{"checked": isBool})},
+	"blockquote":     {attrs: withID(nil)},
+	"codeBlock":      {attrs: withID(map[string]attrRule{"language": nullOr(matches(languagePattern, "a language name"))})},
+	"horizontalRule": {attrs: withID(nil), leaf: true},
 	"hardBreak":      {leaf: true, inline: true},
 	"text":           {leaf: true, inline: true},
+
+	// K18: callouts, toggles, tables and the table of contents.
+	"callout":         {attrs: withID(map[string]attrRule{"kind": oneOf(CalloutKinds...), "emoji": nullOr(stringUpTo(32))})},
+	"details":         {attrs: withID(map[string]attrRule{"open": isBool})},
+	"detailsSummary":  {},
+	"detailsContent":  {},
+	"table":           {attrs: withID(nil)},
+	"tableRow":        {},
+	"tableHeader":     {attrs: cellAttrs},
+	"tableCell":       {attrs: cellAttrs},
+	"tableOfContents": {attrs: withID(nil), leaf: true},
+
+	// K19: an image is one of the module's own files; a file attachment
+	// names one.
+	"image": {attrs: withID(map[string]attrRule{
+		"src": imageSrc, "alt": nullOr(stringUpTo(1000)), "title": nullOr(stringUpTo(500)), "width": nullOr(intIn(1, 10_000)),
+	}), required: []string{"src"}, leaf: true},
+	"fileAttachment": {attrs: withID(map[string]attrRule{
+		"fileId": isUUID, "filename": nullOr(stringUpTo(255)), "size": nullOr(intIn(0, 1<<40)), "contentType": nullOr(stringUpTo(255)),
+	}), required: []string{"fileId"}, leaf: true},
+
+	// K20–K22: inline atoms. A mention's label and a link's label are what
+	// the editor showed when it was written; the editor renders the current
+	// name or title.
+	"mention":     {attrs: map[string]attrRule{"id": isUUID, "label": nullOr(stringUpTo(200))}, required: []string{"id"}, leaf: true, inline: true},
+	"articleLink": {attrs: map[string]attrRule{"id": isUUID, "label": nullOr(stringUpTo(200))}, required: []string{"id"}, leaf: true, inline: true},
+	"recordLink":  {attrs: map[string]attrRule{"path": recordPath, "label": nullOr(stringUpTo(200))}, required: []string{"path"}, leaf: true, inline: true},
 }
+
+// CalloutKinds are a callout's kinds (K18).
+var CalloutKinds = []string{"info", "tip", "warning", "danger"}
+
+// cellAttrs are a table cell's and a table header's attributes.
+var cellAttrs = map[string]attrRule{
+	"colspan": intIn(1, 100), "rowspan": intIn(1, 100), "colwidth": nullOr(intList(1, 10_000, 100)),
+}
+
+// blockIDPattern is UniqueID's id: a uuid by default, kept loose.
+var blockIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// withID adds UniqueID's id to a block node's attributes (K18).
+func withID(attrs map[string]attrRule) map[string]attrRule {
+	out := map[string]attrRule{"id": nullOr(matches(blockIDPattern, "a block id"))}
+	maps.Copy(out, attrs)
+	return out
+}
+
+// FilePathPrefix is where the module serves its files (K19): an image's src
+// is this followed by the file's id, exactly.
+const FilePathPrefix = "/api/v1/knowledge/files/"
+
+// FileIDOfSrc is the file an image's src names, and whether it names one.
+func FileIDOfSrc(src string) (string, bool) {
+	rest, ok := strings.CutPrefix(src, FilePathPrefix)
+	if !ok || !uuidPattern.MatchString(rest) {
+		return "", false
+	}
+	return strings.ToLower(rest), true
+}
+
+// uuidPattern is a uuid in its canonical form.
+var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// recordPathPattern is a record link's path (K22): an application path of
+// letters, digits, "/", "_" and "-", not starting with "//".
+var recordPathPattern = regexp.MustCompile(`^/[A-Za-z0-9_-][A-Za-z0-9/_-]{0,499}$`)
 
 var marks = map[string]map[string]attrRule{
 	"bold":      nil,
@@ -171,6 +241,11 @@ func parseNode(obj map[string]any, path string, depth int) (Node, error) {
 		return Node{}, err
 	}
 	n.Attrs = attrs
+	for _, name := range spec.required {
+		if _, ok := attrs[name]; !ok {
+			return Node{}, &InvalidError{Path: path + ".attrs." + name, Reason: fmt.Sprintf("a %s needs its %s", typ, name)}
+		}
+	}
 
 	if raw, present := obj["text"]; present {
 		s, ok := raw.(string)
@@ -324,6 +399,46 @@ func linkHref(v any) string {
 		return "a link's href must be an https:, http: or mailto: URL, or a path starting with /"
 	}
 	return ""
+}
+
+func imageSrc(v any) string {
+	s, _ := v.(string)
+	if _, ok := FileIDOfSrc(s); !ok {
+		return "an image's src must be " + FilePathPrefix + " followed by a file's id"
+	}
+	return ""
+}
+
+func recordPath(v any) string {
+	s, _ := v.(string)
+	if !recordPathPattern.MatchString(s) || strings.HasPrefix(s, "//") {
+		return "a record link's path must be an application path starting with /"
+	}
+	return ""
+}
+
+func isUUID(v any) string {
+	s, _ := v.(string)
+	if !uuidPattern.MatchString(s) {
+		return "must be a uuid"
+	}
+	return ""
+}
+
+func intList(lo, hi int64, most int) attrRule {
+	one := intIn(lo, hi)
+	return func(v any) string {
+		list, ok := v.([]any)
+		if !ok || len(list) > most {
+			return fmt.Sprintf("must be a list of at most %d whole numbers", most)
+		}
+		for _, item := range list {
+			if why := one(item); why != "" {
+				return why
+			}
+		}
+		return ""
+	}
 }
 
 func isNull(v any) string {

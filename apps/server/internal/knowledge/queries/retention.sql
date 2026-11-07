@@ -34,6 +34,8 @@ SELECT user_id::uuid AS user_id FROM (
     UNION SELECT a.updated_by FROM knowledge.articles a WHERE a.updated_by IS NOT NULL
     UNION SELECT a.trashed_by FROM knowledge.articles a WHERE a.trashed_by IS NOT NULL
     UNION SELECT v.created_by FROM knowledge.article_versions v WHERE v.created_by IS NOT NULL
+    UNION SELECT f.created_by FROM knowledge.article_files f WHERE f.created_by IS NOT NULL
+    UNION SELECT n.user_id FROM knowledge.mention_notices n
 ) held
 WHERE user_id > @after::uuid
 ORDER BY user_id

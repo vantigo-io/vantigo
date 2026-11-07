@@ -37,3 +37,24 @@ func KeyBetween(a, b string) (string, error) { return keyBetween(a, b) }
 
 // SplitQuery is the search's split of a query into its head and last word.
 func SplitQuery(q string) (string, string) { return splitQuery(q) }
+
+// SetExportLimits sets the export's bounds until the answered func restores
+// them; for a test that does not run in parallel.
+func SetExportLimits(entries int, bytes int64) func() {
+	e, b := exportMaxEntries, exportMaxBytes
+	exportMaxEntries, exportMaxBytes = entries, bytes
+	return func() { exportMaxEntries, exportMaxBytes = e, b }
+}
+
+// HoldImportSlots takes every import slot until the answered func gives
+// them back; for a test that does not run in parallel.
+func HoldImportSlots() func() {
+	for range cap(importSlots) {
+		importSlots <- struct{}{}
+	}
+	return func() {
+		for range cap(importSlots) {
+			<-importSlots
+		}
+	}
+}

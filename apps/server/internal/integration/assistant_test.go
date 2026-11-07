@@ -126,6 +126,13 @@ var markedByHand = map[string]string{
 	"removeKnowledgeFavourite":       "never",
 	"moveKnowledgeFavourite":         "never",
 	"listKnowledgeAssignableUsers":   "never",
+	"uploadKnowledgeFile":            "never",
+	"getKnowledgeFile":               "never",
+	"listKnowledgeBacklinks":         "never",
+	"exportKnowledgeArticle":         "never",
+	"importKnowledgeMarkdown":        "never",
+	"resolveKnowledgeLinks":          "never",
+	"copyKnowledgeFile":              "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {
@@ -369,6 +376,10 @@ var filesOrRedirects = []string{
 	"getDeliveryPackingSlip",
 	"getShipmentLabel",
 	"getShipmentWaybill",
+	"uploadKnowledgeFile",
+	"getKnowledgeFile",
+	"exportKnowledgeArticle",
+	"importKnowledgeMarkdown",
 }
 
 func equalMaps(a, b map[string]string) bool {
