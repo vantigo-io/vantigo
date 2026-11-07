@@ -4,6 +4,7 @@ description: "Workspace layout, module manifests, API client generation, i18n, t
 sources:
   - packages/frontend-shell/src/assist-targets.ts
   - packages/frontend-shell/src/ui
+  - packages/frontend-shell/src/live
   - apps/host/frontend/src/lib/assist-targets.ts
   - apps/host/frontend/src/api/session-handlers.ts
   - tools/assist
@@ -96,6 +97,46 @@ client reaches the host's handlers.
   tabs, and modal targets so views are bookmarkable and survive refreshes.
 - **Avoid manual `fetch` inside `useEffect`**. Always use `useQuery` or `useMutation` so
   cancellation, retries, caching, and loading states are handled consistently.
+
+## Live screens
+
+`@vantigo/frontend-shell` owns one WebSocket per tab, to `GET /api/v1/live?v=1`
+([Live updates](/en/contributing/platform-packages/#live-updates)). The host mounts
+`LiveProvider` once, under the signed-in layout and keyed on the session's user id, so the
+sign-in and pay pages open no socket and signing in as someone else in the same tab
+reconnects. The shell takes no TanStack Query dependency: a module's callback calls
+`queryClient.invalidateQueries` itself. Vite's dev proxy has `ws: true`.
+
+- **`useLiveTopic(topic, onEvent, { enabled })`** subscribes while the component is mounted;
+  two components on one topic share the subscription. `onEvent` receives
+  `{ kind, ids }` or `{ kind: "resync" }` (tell them apart with `"ids" in event`). Calls are
+  debounced per topic with a 250 ms trailing window, the distinct ids of that window
+  gathered; `ids` is empty when the events carried none, as after a bulk change.
+- **The contract of `onEvent`:** an event is a hint that something changed, never data. The
+  callback invalidates the queries the screen shows and lets the ordinary, permission-checked
+  request fetch them. On `resync` it must refetch **everything** the screen shows, because
+  events may have been missed: after a reconnect, a slow-consumer drop, or the listener's
+  return.
+- **`useLiveTopic` returns a boolean:** `true` only while the socket is live **and** the
+  server has answered `ok` for that topic. Each `ok` triggers one `resync` to that topic's
+  subscribers, which covers the window between a screen's fetch and its subscription.
+- **`useLiveStatus()`** is `connecting | live | degraded | unavailable`. After five failed
+  attempts the status is `unavailable` and the provider tries again every 60 s; this covers
+  `LIVE_ENABLED=0` and a proxy that refuses upgrades. A close with `4401` (the session
+  ended) stops reconnecting; `4429` (too many sockets) makes the status `unavailable` with
+  the 60 s retry; `1008` backs off. A connection counts as successful only after its first
+  frame or 5 s, and no `pong` within 10 s of a ping reconnects.
+- **Fallback polling.** A screen made live keeps its poll, used **only while its topic is
+  not live**: `refetchInterval: live ? false : 60_000`, with `live` the boolean from
+  `useLiveTopic`, decided per topic. Without the poll a screen would stay stale for as long
+  as the socket is down. The Communications list and the open conversation each poll every
+  60 s while not live. A staged attachment's scan status has no event, so it keeps its own
+  2 s poll regardless.
+- **`usePresence(topic, state)`** announces `viewing`, `editing` or `replying` (or none) on
+  a topic whose server side allows presence, repeats it every 20 s, and returns the other
+  members. It collapses a person's tabs to one member with the strongest state (editing,
+  then replying, then viewing) and leaves the signed-in person out. A screen shows it as it
+  fits; the Communications thread shows "Also here: …" and "… is replying …".
 
 ## Internationalisation (`en` and `nb`)
 

@@ -582,6 +582,54 @@ unavailable provider, nor one that lost its lease. A rise means a channel's mail
 arriving. There are deliberately no others — no retention, cleanup, storage, SMTP or AI
 metrics, and no histograms.
 
+## Live updates
+
+The Inbox and an open conversation update by themselves through the platform's
+[live updates](/en/contributing/platform-packages/#live-updates). The module registers two
+topics through `Module.LiveTopics` (`internal/communications/live.go`) and notifies them from
+the writes below. Events carry identifiers only; a screen that hears one refetches through
+the ordinary endpoints, which check the permission as they always do.
+
+| Topic | Authorised by | Events | Presence |
+| --- | --- | --- | --- |
+| `communications.inbox` | `communications:conversations-view` | `conversation.changed`, with the conversation's id, or without one after a bulk change | not allowed |
+| `communications.conversation:<uuid>` | `communications:conversations-view`, and the conversation exists | `conversation.changed` (status, assignment, tags, customer link and suggestions), `message.added`, `message.changed` (a delivery's outcome), each with the id of what changed (empty when several messages changed) | allowed; the thread announces `viewing` and `replying` |
+
+A key that is not a UUID, a conversation that does not exist and one the person may not see
+are all `forbidden`, so a subscription tells nothing about which conversations exist.
+
+### Where the module notifies
+
+A write notifies on its own transaction, so the event is heard only when the transaction
+commits. Each write notifies the inbox and the conversation's topic, except where stated.
+
+| Trigger | Where (`internal/communications/`) | Event |
+| --- | --- | --- |
+| Mail received into a mailbox channel | `inbound_import.go` | `message.added` |
+| A Messenger message received | `messenger_import.go`, `importMessage` | `message.added` |
+| A Messenger delivery or read mark applied | `messenger_import.go`, the watermarks | `message.changed` |
+| A conversation started from the Inbox | `conversations_create.go` | `message.added` |
+| A reply queued | `conversations_reply.go` | `message.added` |
+| A failed delivery retried | `conversations_retry.go` | `message.changed` |
+| An internal note added | `conversations_notes.go`, on the pool | `message.added` |
+| Status, assignment or another field changed | `conversations_patch.go` | `conversation.changed` |
+| A tag added or removed | `tags.go`, on the pool | `conversation.changed` |
+| An AI customer suggestion saved on the conversation | `ai.go`, on the pool | `conversation.changed` |
+| The outbox claims, completes, fails or cancels a job | `outbox.go`: `claim`, `complete`, `markFailed`, `cancelSuppressed` | `message.changed` |
+| Customers merge, so conversations are re-pointed | `customer_references.go` | `conversation.changed` on the inbox, once, without an id |
+| A customer's data erased | `customer_personal_data.go`, on Customers' transaction | the same, once |
+| Retention deletes closed history | `retention.go` | the same, once per batch |
+
+Marking a conversation read notifies nothing: the read state is the caller's own, and the reader's client refreshes its own list. A write on the pool, outside a transaction, logs a failure to send and goes on: the write is
+made, and the screen's fallback refresh repairs a lost event. A bulk path sends **one**
+event without an id and never one per row, because every notifying commit takes a
+cluster-wide lock. A change not in this table, such as the linker choosing a customer
+automatically or a mailbox sync giving up, is seen at the screen's next refresh. A staged attachment's scan status has no event either, so the composer keeps its own 2 second poll whether or not the connection is live.
+
+A screen polls every 60 seconds (the list, and the open conversation) only while its topic is not live. See
+[Live updates and your proxy](/en/admin/installation/#live-updates-and-your-proxy) for the
+operator's side.
+
 ## Retention, cleanup and staged objects
 
 Terminal jobs, their receipts and their attachments follow the configured retention

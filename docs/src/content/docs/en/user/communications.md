@@ -49,6 +49,14 @@ icon next to the count reloads the list.
 Opening the Inbox selects the first conversation in the list; click any row to read
 another one. The Inbox needs `communications:conversations-view`.
 
+### The Inbox updates by itself
+
+You do not need to reload. When mail or a chat message arrives, or a colleague answers,
+closes, tags or assigns a conversation, the list and the conversation you have open change
+within a moment. If your administrator has not made live updates available, or the
+connection is lost for a while, the list refreshes by itself every minute instead, and the
+tick icon next to the count still reloads it at once.
+
 ## Read a conversation
 
 A conversation groups everything exchanged with one customer about one subject: the
@@ -94,6 +102,20 @@ From the header you can:
 
 Reading needs `communications:conversations-view`; changing the status and the tags
 needs `communications:conversations-manage` as well.
+
+### See who else is in a conversation
+
+Under the conversation's header you see the colleagues who have the same conversation open,
+as small round avatars. Beside them:
+
+- **Also here: Kari** lists those who are only looking.
+- **Kari is replying …** appears, highlighted, when a colleague has clicked into the reply
+  box and typed something. With several, it reads **Kari, Ola are replying …**.
+
+Use it to avoid answering the same customer twice: when you see someone replying, agree with
+them before you send. It never stops you from sending, and it says nothing about people who
+have the conversation closed. You do not appear to yourself, and a colleague with the
+conversation open in two tabs appears once.
 
 ## Link a conversation to a customer
 

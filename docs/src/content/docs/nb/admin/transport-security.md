@@ -261,6 +261,18 @@ sidens egen: `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'`,
 inline-skriptene er sidens egne. Navnet på hodet følger `CSP_REPORT_ONLY` som
 applikasjonens. Alle andre hoder i denne delen er uendret på de svarene.
 
+### Endepunktet for sanntidsoppdateringer
+
+`GET /api/v1/live` oppgraderes til en WebSocket og er en `GET`, som beskyttelsen mot
+kryssopprinnelsesforespørsler for applikasjonens øvrige forespørsler slipper gjennom.
+Håndtereren kontrollerer derfor opprinnelsen selv: den godtar håndtrykket bare når
+`Sec-Fetch-Site` er `same-origin`, eller når `Origin` er lik applikasjonens opprinnelse fra
+`APP_URL`, og avviser en forespørsel uten `Origin` med `403`. Øktinformasjonskapselens
+`SameSite=Strict` er et andre lag. Innholdssikkerhetspolicyen trenger ingen endring:
+`connect-src 'self'` dekker en WebSocket til samme opprinnelse i dagens nettlesere. Proxyen
+må slippe gjennom oppgraderingen
+([Sanntidsoppdateringer og proxyen din](/nb/admin/installation/#sanntidsoppdateringer-og-proxyen-din)).
+
 ## API-kontraktdokumentet
 
 Den kjørende tjeneren serverer den sammenslåtte kontrakten for sine **aktiverte**

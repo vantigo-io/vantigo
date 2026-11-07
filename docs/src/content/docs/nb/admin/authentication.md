@@ -836,6 +836,14 @@ en deaktivering, en utestengning, en deaktivering i katalogen eller en rolleendr
 stopper en slik lesing på aller neste forespørsel, slik den stopper en økt
 ([Kalender → strømmen](/nb/admin/calendar/#kalenderstrømmen-på-den-offentlige-verten)).
 
+**En åpen sanntidsforbindelse holder ikke en økt i live.** En innlogget fane holder en
+WebSocket for [sanntidsoppdateringer](/nb/admin/installation/#sanntidsoppdateringer-og-proxyen-din).
+Hvert 60. sekund kontrollerer serveren forbindelsens økt med en lesing som, i motsetning til
+en forespørsel, ikke skyver inaktivitetsvinduet fremover, så en fane som står i fred, logges
+ut etter planen. En økt som er tilbakekalt, utløpt eller utløpt på inaktivitet, lukker
+forbindelsen med kode `4401`, og nettleseren slutter da å koble til igjen; personen ser
+innloggingssiden ved neste handling som ved enhver annen utløpt økt.
+
 ## Assistentens tilganger
 
 Assistenten handler på vegne av en person gjennom samme API som grensesnittet bruker, og gjør
