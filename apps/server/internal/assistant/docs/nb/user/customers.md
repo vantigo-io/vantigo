@@ -244,7 +244,7 @@ er knyttet til den, og en **Messenger**-meny i raden med:
   Messenger lar en side skrive først bare mens personens vindu er åpent (24 timer etter at
   de sist skrev, 7 dager om siden har Metas Human Agent-tillatelse), så valget er deaktivert
   når det er over, og sier at kontakten må skrive til siden først og at du skal sende dem
-  Messenger-lenken din. Å skrive krever `communications:conversations-reply`.
+  Messenger-lenken din. Å skrive krever `communications:conversations-reply`, og valget vises ikke uten den.
 - **Kopier Messenger-lenke** — lager en lenke, `https://m.me/…`, for den siden og kopierer
   den. Det er slik en kontakt knyttes i utgangspunktet: når kontakten åpner den og skriver
   til siden, knytter Vantigo dem. Lenken gjelder i 90 dager. **Send den bare til kontakten
@@ -253,6 +253,11 @@ er knyttet til den, og en **Messenger**-meny i raden med:
   samtalen sier fra om det). Krever `communications:conversations-manage`.
 - **Fjern kobling til Messenger** — fjerner koblingen. Krever
   `communications:conversations-manage`.
+
+Menyen viser bare det du har lov til: med bare `communications:conversations-reply`, **Skriv på
+Messenger**; med bare `communications:conversations-manage`, lenken og **Fjern kobling**; med
+ingen av dem, ingen meny. Den finnes også på en kunde som er slått sammen med en annen, og som
+ellers har et skrivebeskyttet kort.
 
 Med flere sider har menyen en overskrift for hver. En person knyttes i Kommunikasjon, og du
 kan knytte dem fra samtalen også:
