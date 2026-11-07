@@ -108,9 +108,11 @@ erklæringen din må beskrive det.
 2. Meta sender en `GET`-forespørsel til adressen med tokenet (håndtrykket). Vantigo svarer
    når tokenet er riktig. Melder Meta at adressen ikke kunne verifiseres, se [Hva som kan
    gå galt](#hva-som-kan-gå-galt).
-3. Abonner appen på sidefeltene **messages**, **messaging_postbacks**, **message_reads**,
-   **message_deliveries** og **message_echoes**. Vantigo abonnerer også hver side på disse
-   når du legger den til.
+3. Abonner appen på sidefeltene **messages**, **messaging_postbacks**,
+   **messaging_referrals**, **message_reads**, **message_deliveries** og **message_echoes**.
+   Vantigo abonnerer også hver side på disse når du legger den til. **messaging_referrals**
+   er det som lar en kontakts Messenger-lenke knytte personen som trykker på den (se
+   [Sider som ble koblet til tidligere](#sider-som-ble-koblet-til-tidligere)).
 
 ## Legg til en side
 
@@ -127,13 +129,25 @@ persons egen innlogging slutter å virke når personens passord eller tillatelse
 Vantigo spør Meta hvilke sider tokenet forvalter, og beholder de hvis oppgaver omfatter
 **MESSAGING**. Er det én, kobles den siden til. Er det flere, ber Vantigo deg om å **Velge
 siden som skal kobles til**: velg en og velg **Legg til side** på nytt. Så abonnerer
-Vantigo appen på sidens `messages`, `messaging_postbacks`, `message_reads`,
+Vantigo appen på sidens `messages`, `messaging_postbacks`, `messaging_referrals`, `message_reads`,
 `message_deliveries` og `message_echoes`, og lagrer **sidens eget token** kryptert, ikke
 tokenet du limte inn. Siden vises med navn og ID, og ingen token vises igjen.
 
 Et tilgangstoken for selve siden, limt inn direkte, fungerer også. Meta lister ikke sider
 for et slikt token, så Vantigo leser siden fra tokenet og sjekker at det har lov til å
 handle for den ved å abonnere appen; avviser Meta det, avvises siden.
+
+### Sider som ble koblet til tidligere
+
+En side som ble koblet til før Messenger-lenker for kontakter fantes, er abonnert uten
+`messaging_referrals`. Den virker som før, men en person som åpner en kontakts
+Messenger-lenke, knyttes ikke til kontakten, fordi Meta ikke forteller Vantigo om henvisningen.
+Velg **Abonner på nytt** på siden under **Sider**: Vantigo abonnerer siden på nytt med det
+lagrede tokenet, og sidens rad settes til aktiv. Du limer ikke inn tokenet igjen, og Vantigo
+ber Meta om ingenting annet enn den nye listen over felt. Gjør det én gang for hver side som
+ble koblet til tidligere, og sjekk med en kontakts Messenger-lenke at personen blir knyttet.
+Svarer Meta med en feil, får du beskjed om at *Siden kunne ikke abonnere på nytt*; er tokenet
+avvist, legg til siden på nytt med et nytt token (se under).
 
 **Fjern** en side for å koble den fra. Tokenet, de køede hendelsene og filene deres
 slettes, og kanaler på siden blir utilgjengelige. Vantigo trekker også appens abonnement
