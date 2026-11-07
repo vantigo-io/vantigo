@@ -201,7 +201,9 @@ Den tredje hører til Kommunikasjon, ikke til denne modulen: bildene til et prod
 i en melding må kunne nås fra internett, mens installasjonens lagring ikke har noen offentlig
 adresse. Den serverer ikke annet enn kortbilder i meldinger sendt på Messenger, og alt annet er
 en tom 404. En proxy som mellomlagrer den, kan beholde et bilde i opptil ett døgn
-(`Cache-Control: private, max-age=86400`).
+(`Cache-Control: private, max-age=86400`). Tokenet er en del av stien, og Vantigos egen
+forespørselslogg skriver hver sti slik den er, som for Kalenders feed; proxyens tilgangslogg bør
+derfor føre `public-media`-stien uten tokenet, eller ikke føre den i det hele tatt.
 
 Hver innsending sjekkes med `X-Hub-Signature-256`, en HMAC-SHA256 over **råbytene** i
 kroppen med apphemmeligheten. En proxy som skriver om kroppen (komprimering,

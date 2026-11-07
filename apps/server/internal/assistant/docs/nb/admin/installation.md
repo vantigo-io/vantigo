@@ -762,7 +762,8 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   `/api/v1/communications/public-media/{token}`, som Meta henter fra internett med et token
   som gjelder i 7 dager; proxyen må slippe den gjennom, som nøyaktig ett stisegment
   ([Meta](/nb/admin/meta/#rutene-på-den-offentlige-verten)). Uten `PUBLIC_BASE_URL` avvises et
-  svar med kort.
+  svar med kort. Tokenet står i stien, så proxyens tilgangslogg bør føre den stien uten
+  tokenet, eller ikke føre den i det hele tatt.
 - `vantigo.env.example` dokumenterer også `STAFF_IMPORT_MAX_ROWS`, hvor mange personer
   én import i Ansatte tar og én eksport skriver
   ([Ansatte](/nb/admin/staff/#importer-og-eksporter-registeret)), og
