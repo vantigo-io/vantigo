@@ -168,6 +168,45 @@ describe("SidePanelHost", () => {
     expect(isOpen()).toBe(true);
   });
 
+  it("keeps a panel's state while it is hidden by the route, and brings it back", () => {
+    const { rerender } = view();
+    fireEvent.click(screen.getByText("toggle b"));
+    fireEvent.change(screen.getByLabelText("draft b"), { target: { value: "half a reply" } });
+    const mountsBefore = mounts.length;
+    // The route hides b (the inbox): the host closes, but b stays rendered, out of reach.
+    rerender(
+      <MantineProvider env="test">
+        <Harness hiddenB />
+      </MantineProvider>,
+    );
+    expect(isOpen()).toBe(false);
+    expect(screen.getByLabelText("draft b", { selector: "textarea" })).toBeInTheDocument();
+    expect(shownNow.b).toBe(false);
+    rerender(
+      <MantineProvider env="test">
+        <Harness />
+      </MantineProvider>,
+    );
+    fireEvent.click(screen.getByText("toggle b"));
+    expect(mounts.length).toBe(mountsBefore);
+    expect(screen.getByLabelText("draft b")).toHaveValue("half a reply");
+  });
+
+  it("moves between tabs with the arrow keys, one tab in the tab order, tabs naming their panes", () => {
+    view();
+    fireEvent.click(screen.getByText("toggle a"));
+    const alpha = screen.getByRole("tab", { name: "Alpha" });
+    const beta = screen.getByRole("tab", { name: "Beta" });
+    expect(alpha).toHaveAttribute("tabindex", "0");
+    expect(beta).toHaveAttribute("tabindex", "-1");
+    expect(alpha).toHaveAttribute("aria-controls", "side-panel-pane-a");
+    expect(document.getElementById("side-panel-pane-a")).not.toBeNull();
+    fireEvent.keyDown(alpha, { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: "Beta" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(beta, { key: "ArrowLeft" });
+    expect(screen.getByRole("tab", { name: "Alpha" })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("resizes by the keyboard and remembers the width", () => {
     view();
     fireEvent.click(screen.getByText("toggle a"));
