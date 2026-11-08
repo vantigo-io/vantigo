@@ -85,6 +85,15 @@ export function useLiveTopic(
 }
 
 /**
+ * The signed-in person's id the live provider was mounted with, or null outside a provider: what
+ * a per-person topic (`calendar.mailbox-sync:<id>`) is keyed by.
+ */
+export function useLiveUserId(): string | null {
+  const client = useContext(LiveContext);
+  return client ? client.getUserId() : null;
+}
+
+/**
  * Announces `state` on a topic while mounted (repeated every 20 s, withdrawn on unmount) and
  * returns the others present: one entry per person, the strongest state, without the signed-in
  * person. Holds its own subscription to the topic. A `null` state or topic only watches / does nothing.

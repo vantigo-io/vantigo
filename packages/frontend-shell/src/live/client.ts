@@ -304,6 +304,9 @@ export class LiveClient {
   /** Whether the socket is live and the server answered `ok` for this topic: false while pending, denied or unavailable. */
   isTopicLive = (topic: string): boolean => this.status === "live" && this.topics.get(topic)?.ok === true;
 
+  /** The signed-in person's id this client was made for: what a per-person topic is keyed by. */
+  getUserId = (): string => this.options.userId;
+
   subscribeLive = (listener: () => void): (() => void) => {
     this.liveListeners.add(listener);
     return () => this.liveListeners.delete(listener);

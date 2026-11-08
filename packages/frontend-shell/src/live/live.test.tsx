@@ -11,6 +11,7 @@ import {
   useLiveClient,
   useLiveStatus,
   useLiveTopic,
+  useLiveUserId,
   usePresence,
 } from "./index";
 
@@ -337,6 +338,11 @@ describe("topic liveness and robustness", () => {
 
   it("is not live outside a provider", () => {
     expect(renderHook(() => useLiveTopic("t.a", () => {})).result.current).toBe(false);
+  });
+
+  it("names the signed-in person for a per-person topic, and nobody outside a provider", () => {
+    expect(renderHook(() => useLiveUserId(), { wrapper }).result.current).toBe("me");
+    expect(renderHook(() => useLiveUserId()).result.current).toBeNull();
   });
 
   it("counts a connection that closes right after opening as a failure, and 4429 goes straight to unavailable", () => {
