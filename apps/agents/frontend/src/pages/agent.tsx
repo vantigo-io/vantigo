@@ -7,10 +7,12 @@ import { useNavigate } from "@tanstack/react-router";
 import { EmptyState, PageHeader, PageSection, PageTabs, useI18n } from "@vantigo/frontend-shell";
 import { agentQueryKey, agentQueryOptions, agentsQueryKey, deleteAgent, pauseAgent, resumeAgent } from "../api/agents";
 import { NotFoundError } from "../api/request";
+import { ActivityTab } from "../components/activity-tab";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { PermissionsTab } from "../components/permissions-tab";
 import { PersonaTab } from "../components/persona-tab";
 import { RolesTab } from "../components/roles-tab";
+import { UsageTab } from "../components/usage-tab";
 import { useErrorText } from "../components/use-error-text";
 import { type AgentsAccess, noAgentsAccess } from "../lib/access";
 import { AGENTS_HOME_ROUTE_PATH, type AgentTab, agentTabs } from "../lib/routes";
@@ -145,12 +147,12 @@ export const AgentPage = ({ agentId, tab, onTabChange, access = noAgentsAccess }
         </Tabs.Panel>
         <Tabs.Panel value="usage" pt="md">
           <PageSection title={t("usageTitle")}>
-            <EmptyState title={t("comingLater")} size="sm" />
+            <UsageTab agent={agent} />
           </PageSection>
         </Tabs.Panel>
         <Tabs.Panel value="activity" pt="md">
           <PageSection title={t("activityTitle")}>
-            <EmptyState title={t("comingLater")} size="sm" />
+            <ActivityTab agent={agent} canSeeActivity={access.canSeeActivity} />
           </PageSection>
         </Tabs.Panel>
       </PageTabs>

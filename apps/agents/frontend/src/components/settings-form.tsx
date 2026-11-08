@@ -20,12 +20,14 @@ const Form = ({ settings, canManage }: { settings: AgentsSettings; canManage: bo
   const [companyName, setCompanyName] = useState(settings.companyName);
   const [retention, setRetention] = useState<number | string>(settings.retentionMonths);
 
+  // Never longer than Communications keeps its messages (V26): the server lowers a longer one, and says what it is.
+  const cap = Math.min(RETENTION_MAX, settings.retentionCapMonths);
   const retentionNumber = typeof retention === "number" ? retention : Number.NaN;
   const valid =
     companyName.trim() !== "" &&
     Number.isInteger(retentionNumber) &&
     retentionNumber >= RETENTION_MIN &&
-    retentionNumber <= RETENTION_MAX;
+    retentionNumber <= cap;
 
   const save = useMutation({
     mutationFn: () =>
@@ -62,11 +64,11 @@ const Form = ({ settings, canManage }: { settings: AgentsSettings; canManage: bo
         />
         <NumberInput
           label={t("retentionMonths")}
-          description={t("retentionHelp")}
+          description={t("retentionHelp", { max: cap })}
           value={retention}
           onChange={setRetention}
           min={RETENTION_MIN}
-          max={RETENTION_MAX}
+          max={cap}
           allowDecimal={false}
           disabled={!canManage}
         />

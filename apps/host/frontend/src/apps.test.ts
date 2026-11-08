@@ -138,6 +138,7 @@ describe("the app registry", () => {
       "/knowledge",
       "/knowledge/trash",
       "/agents",
+      "/agents/review",
       "/agents/settings",
       "/products",
       "/products/categories",

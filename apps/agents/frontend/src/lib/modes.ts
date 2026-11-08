@@ -8,6 +8,8 @@ export const THRESHOLD_MIN = 50;
 export const THRESHOLD_MAX = 100;
 export const RETENTION_MIN = 1;
 export const RETENTION_MAX = 60;
+/** The least a daily token budget may be; 0 removes it. */
+export const BUDGET_MIN = 1000;
 
 export const replyModes: readonly ReplyMode[] = ["review", "auto_above", "auto"];
 

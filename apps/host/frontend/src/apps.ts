@@ -226,6 +226,7 @@ const knowledgeNavPresentation: Record<KnowledgeNavItem["key"], Pick<NavItem, "l
  */
 const agentsNavPresentation: Record<AgentsNavItem["key"], Pick<NavItem, "label" | "icon">> = {
   agents: { label: "navigation.agentsList", icon: IconRobot },
+  review: { label: "navigation.agentsReview", icon: IconChecklist },
   settings: { label: "navigation.agentsSettings", icon: IconAdjustments },
 };
 
@@ -582,8 +583,10 @@ export const apps: readonly AppDefinition[] = [
       requiredPermissions,
     })),
   ),
-  // Every Agents screen is read with agents:view; the settings and every write
-  // need agents:manage (virtual employees design V10).
+  // Every Agents screen is read with agents:view; the review queue is
+  // agents:review's, so the app is offered to a reviewer who may not view the
+  // agents; the settings and every write need agents:manage (virtual employees
+  // design V10, V20).
   {
     ...moduleApp(
       "agents",
@@ -596,7 +599,7 @@ export const apps: readonly AppDefinition[] = [
         requiredPermissions,
       })),
     ),
-    requiredPermissions: ["agents:view"],
+    requiredPermissions: ["agents:view", "agents:review"],
   },
   moduleApp("products", "navigation.products", IconPackage, "/products", [
     {

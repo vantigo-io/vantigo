@@ -2,6 +2,7 @@ import { AreaChart, BarChart, DonutChart } from "@mantine/charts";
 import {
   Alert,
   Anchor,
+  Badge,
   Card,
   Grid,
   Group,
@@ -24,6 +25,7 @@ import {
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { reviewCountQueryOptions } from "@vantigo/agents-ui/api/agents";
 import { AgendaWidget } from "@vantigo/calendar-ui/components/agenda-widget";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { KpiCard, WidgetCard } from "@vantigo/frontend-shell/ui";
@@ -98,6 +100,11 @@ const DashboardPage = () => {
   const modules = visibleModuleCards(enabledModules, permissions);
   const kpiModules = kpiCards(modules, permissions);
   const allowed = (module: ModuleKey) => modules.some((item) => item.module === module);
+  // The review queue's count is the badge on the agents tile (virtual employees design V20).
+  const reviewCount = useQuery({
+    ...reviewCountQueryOptions(),
+    enabled: allowed("agents") && permissions?.includes("agents:review") === true,
+  });
   const range =
     search.preset === "custom" && search.from && search.to
       ? { from: startOfDay(new Date(`${search.from}T00:00:00`)), to: endOfDay(new Date(`${search.to}T00:00:00`)) }
@@ -1007,6 +1014,16 @@ const DashboardPage = () => {
                     <Text size="sm" fw={600}>
                       {t(module.title)}
                     </Text>
+                    {module.module === "agents" && (reviewCount.data?.waiting ?? 0) > 0 && (
+                      <Badge
+                        color="orange"
+                        size="sm"
+                        circle={false}
+                        aria-label={t("dashboard.agentsWaiting", { count: reviewCount.data?.waiting })}
+                      >
+                        {reviewCount.data?.waiting}
+                      </Badge>
+                    )}
                   </Group>
                   <Anchor component={Link} to={module.path} size="sm">
                     {t("dashboard.open")}

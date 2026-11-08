@@ -15,6 +15,23 @@ export type AgentUpdateRequest = Schemas["AgentUpdateRequest"];
 export type AgentRoleCreateRequest = Schemas["AgentRoleCreateRequest"];
 export type AgentRoleUpdateRequest = Schemas["AgentRoleUpdateRequest"];
 
+export type ReviewItem = Schemas["ReviewItem"];
+export type ReviewItemList = Schemas["ReviewItemList"];
+export type ReviewCount = Schemas["ReviewCount"];
+export type ReviewDiscardRequest = Schemas["ReviewDiscardRequest"];
+export type ReviewSendRequest = Schemas["ReviewSendRequest"];
+export type RoleCalibration = Schemas["RoleCalibration"];
+export type CalibrationPoint = Schemas["CalibrationPoint"];
+export type AgentUsage = Schemas["AgentUsage"];
+export type AgentUsageDay = Schemas["AgentUsageDay"];
+export type AgentRun = Schemas["AgentRun"];
+export type AgentRunList = Schemas["AgentRunList"];
+export type AgentRunDetail = Schemas["AgentRunDetail"];
+export type AgentRunAction = Schemas["AgentRunAction"];
+export type AgentRunMessage = Schemas["AgentRunMessage"];
+export type AgentAuditList = Schemas["AgentAuditList"];
+export type AgentAuditEvent = Schemas["AgentAuditEvent"];
+
 export type DisclosureWording = Agent["disclosureWording"];
 export type AgentLanguages = Agent["languages"];
 export type AgentState = Agent["state"];
@@ -23,6 +40,18 @@ export type NeededLevel = AgentSetupItem["needed"];
 export type ReplyMode = AgentRole["replyMode"];
 export type HandOffWarning = AgentRole["handOffWarning"];
 export type TemplateKey = AgentTemplate["key"];
+export type ReviewState = ReviewItem["state"];
+export type DiscardReason = ReviewDiscardRequest["reason"];
+export type RunState = AgentRun["state"];
+
+/** A tag as Communications lists it; only what the role page reads. */
+export interface TagOption {
+  id: string;
+  name: string;
+}
+
+/** What Communications answers about a hand-off (the contract's ConversationHandOff). */
+export type ConversationHandOff = Schemas["ConversationHandOff"];
 
 /** A channel as Communications lists it; only what the role page reads, so no other app's package is imported. */
 export interface ChannelOption {
