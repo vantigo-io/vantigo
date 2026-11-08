@@ -31,6 +31,7 @@ describe("gen:client", () => {
       google: "apps/google/frontend/src/api-schema.d.ts",
       meta: "apps/meta/frontend/src/api-schema.d.ts",
       assistant: "apps/assistant/frontend/src/api-schema.d.ts",
+      agents: "apps/agents/frontend/src/api-schema.d.ts",
     });
   });
 

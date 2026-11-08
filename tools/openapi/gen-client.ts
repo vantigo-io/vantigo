@@ -26,6 +26,7 @@ export const targets = [
   { module: "google", output: "apps/google/frontend/src/api-schema.d.ts" },
   { module: "meta", output: "apps/meta/frontend/src/api-schema.d.ts" },
   { module: "assistant", output: "apps/assistant/frontend/src/api-schema.d.ts" },
+  { module: "agents", output: "apps/agents/frontend/src/api-schema.d.ts" },
 ] as const;
 
 const header =
