@@ -44,6 +44,7 @@ import {
   IconReceiptTax,
   IconRepeat,
   IconReportMoney,
+  IconRobot,
   IconShieldCheck,
   IconShieldLock,
   IconShoppingCart,
@@ -60,6 +61,7 @@ import {
   IconUsers,
   IconUsersGroup,
 } from "@tabler/icons-react";
+import { type AgentsNavItem, agentsNavItems } from "@vantigo/agents-ui";
 import { type InventoryNavItem, inventoryNavItems } from "@vantigo/inventory-ui";
 import { type KnowledgeNavItem, knowledgeNavItems } from "@vantigo/knowledge-ui";
 import { type OrdersNavItem, ordersNavItems } from "@vantigo/orders-ui";
@@ -215,6 +217,16 @@ const ordersNavPresentation: Record<OrdersNavItem["key"], Pick<NavItem, "label" 
 const knowledgeNavPresentation: Record<KnowledgeNavItem["key"], Pick<NavItem, "label" | "icon">> = {
   articles: { label: "navigation.knowledgeArticles", icon: IconBook2 },
   trash: { label: "navigation.knowledgeTrash", icon: IconTrash },
+};
+
+/**
+ * The host's half of an Agents sidebar entry, as Orders' above: where each
+ * destination is and which permission offers it are the package's
+ * (`agentsNavItems`); the label and the icon are the host's.
+ */
+const agentsNavPresentation: Record<AgentsNavItem["key"], Pick<NavItem, "label" | "icon">> = {
+  agents: { label: "navigation.agentsList", icon: IconRobot },
+  settings: { label: "navigation.agentsSettings", icon: IconAdjustments },
 };
 
 /**
@@ -570,6 +582,22 @@ export const apps: readonly AppDefinition[] = [
       requiredPermissions,
     })),
   ),
+  // Every Agents screen is read with agents:view; the settings and every write
+  // need agents:manage (virtual employees design V10).
+  {
+    ...moduleApp(
+      "agents",
+      "navigation.agents",
+      IconRobot,
+      "/agents",
+      agentsNavItems.map(({ key, to, requiredPermissions }) => ({
+        ...agentsNavPresentation[key],
+        to,
+        requiredPermissions,
+      })),
+    ),
+    requiredPermissions: ["agents:view"],
+  },
   moduleApp("products", "navigation.products", IconPackage, "/products", [
     {
       label: "navigation.products",

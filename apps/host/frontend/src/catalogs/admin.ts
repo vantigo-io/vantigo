@@ -543,6 +543,30 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.ordersSettings",
     descriptionKey: "admin.permission.ordersSettingsDescription",
   },
+  "agents:view": {
+    moduleKey: "admin.permission.module.agents",
+    categoryKey: "admin.permission.category.agents",
+    displayNameKey: "admin.permission.agentsView",
+    descriptionKey: "admin.permission.agentsViewDescription",
+  },
+  "agents:manage": {
+    moduleKey: "admin.permission.module.agents",
+    categoryKey: "admin.permission.category.agents",
+    displayNameKey: "admin.permission.agentsManage",
+    descriptionKey: "admin.permission.agentsManageDescription",
+  },
+  "agents:review": {
+    moduleKey: "admin.permission.module.agents",
+    categoryKey: "admin.permission.category.agents",
+    displayNameKey: "admin.permission.agentsReview",
+    descriptionKey: "admin.permission.agentsReviewDescription",
+  },
+  "agents:activity": {
+    moduleKey: "admin.permission.module.agents",
+    categoryKey: "admin.permission.category.agents",
+    displayNameKey: "admin.permission.agentsActivity",
+    descriptionKey: "admin.permission.agentsActivityDescription",
+  },
   "knowledge:articles": {
     moduleKey: "admin.permission.module.knowledge",
     categoryKey: "admin.permission.category.knowledge",
@@ -1046,6 +1070,18 @@ const en = {
   "admin.permission.ordersSettings": "Manage Orders settings",
   "admin.permission.ordersSettingsDescription":
     "Change the settings, the number series, the templates and the warnings, and override a warning's block.",
+  "admin.permission.module.agents": "Virtual employees",
+  "admin.permission.category.agents": "Virtual employees",
+  "admin.permission.agentsView": "View virtual employees",
+  "admin.permission.agentsViewDescription": "See the agents, their personas, roles and settings.",
+  "admin.permission.agentsManage": "Manage virtual employees",
+  "admin.permission.agentsManageDescription":
+    "Create agents, edit their personas and instructions, and pause or delete them. Raising a level, choosing an Auto mode and binding a channel stay the Owner's.",
+  "admin.permission.agentsReview": "Review virtual employees' work",
+  "admin.permission.agentsReviewDescription": "Approve or discard what an agent proposes in the review queue.",
+  "admin.permission.agentsActivity": "Read virtual employees' activity",
+  "admin.permission.agentsActivityDescription":
+    "Read an agent's runs and their transcripts, which hold customers' data.",
   "admin.permission.knowledgeArticles": "Use Knowledge",
   "admin.permission.knowledgeArticlesDescription":
     "See the Knowledge app, and read and write articles as each article's access allows.",
@@ -1774,6 +1810,20 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.ordersSettings": "Håndtere innstillinger for Ordre",
   "admin.permission.ordersSettingsDescription":
     "Endre innstillingene, nummerseriene, malene og varslene, og overstyre blokkeringen fra et varsel.",
+  "admin.permission.module.agents": "Virtuelle ansatte",
+  "admin.permission.category.agents": "Virtuelle ansatte",
+  "admin.permission.agentsView": "Se virtuelle ansatte",
+  "admin.permission.agentsViewDescription":
+    "Se de virtuelle ansatte, personlighetene, rollene og innstillingene deres.",
+  "admin.permission.agentsManage": "Administrere virtuelle ansatte",
+  "admin.permission.agentsManageDescription":
+    "Opprette virtuelle ansatte, endre personlighet og instrukser, og sette dem på pause eller slette dem. Å heve et nivå, velge en Auto-modus og knytte en kanal er fortsatt eierens.",
+  "admin.permission.agentsReview": "Gjennomgå arbeidet til virtuelle ansatte",
+  "admin.permission.agentsReviewDescription":
+    "Godkjenne eller forkaste det en virtuell ansatt foreslår i gjennomgangskøen.",
+  "admin.permission.agentsActivity": "Lese aktiviteten til virtuelle ansatte",
+  "admin.permission.agentsActivityDescription":
+    "Lese kjøringene til en virtuell ansatt og samtalene deres, som inneholder kundedata.",
   "admin.permission.knowledgeArticles": "Bruke Kunnskap",
   "admin.permission.knowledgeArticlesDescription":
     "Se Kunnskap-appen, og lese og skrive artikler slik tilgangen til hver artikkel tillater.",

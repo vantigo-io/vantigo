@@ -22,5 +22,11 @@ export function useAssignableOptions(chosen: { id: string | null; name: string |
     }
     return list;
   }, [users.data, everyone.data, chosen.id, chosen.name]);
-  return { search, setSearch, options };
+  // Who is an AI agent, by user id, so the avatars can carry the AI badge.
+  const kinds = useMemo(() => {
+    const byId: Record<string, "person" | "agent" | undefined> = {};
+    for (const user of [...(everyone.data ?? []), ...(users.data ?? [])]) byId[user.userId] = user.kind;
+    return byId;
+  }, [users.data, everyone.data]);
+  return { search, setSearch, options, kinds };
 }

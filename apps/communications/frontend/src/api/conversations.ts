@@ -244,7 +244,7 @@ export const inboxCountsQueryOptions = (options: { enabled?: boolean; refetchInt
     refetchOnWindowFocus: true,
   });
 /** A user a conversation may be assigned to (design V2). */
-export type AssignableUser = { userId: string; displayName: string };
+export type AssignableUser = { userId: string; displayName: string; kind?: "person" | "agent" };
 export const assignableUsersQueryOptions = (query = "") =>
   queryOptions({
     queryKey: ["communications-assignable-users", query],

@@ -1,5 +1,5 @@
-import { Avatar, Select } from "@mantine/core";
-import { useI18n } from "@vantigo/frontend-shell";
+import { Group, Select } from "@mantine/core";
+import { UserAvatar, useI18n } from "@vantigo/frontend-shell";
 import { useAssignableOptions } from "../hooks/useAssignableOptions";
 
 export type AssigneeSelectProps = {
@@ -17,7 +17,7 @@ export type AssigneeSelectProps = {
  */
 export function AssigneeSelect({ value, name, disabled, onChange }: AssigneeSelectProps) {
   const { t } = useI18n("communications");
-  const { search, setSearch, options } = useAssignableOptions({ id: value, name });
+  const { search, setSearch, options, kinds } = useAssignableOptions({ id: value, name });
   return (
     <Select
       aria-label={t("assignee")}
@@ -32,7 +32,15 @@ export function AssigneeSelect({ value, name, disabled, onChange }: AssigneeSele
       searchValue={search}
       onSearchChange={setSearch}
       filter={({ options: all }) => all}
-      leftSection={value ? <Avatar size="xs" radius="xl" name={name || undefined} color="initials" /> : undefined}
+      leftSection={value ? <UserAvatar size="xs" name={name} kind={kinds[value]} /> : undefined}
+      renderOption={({ option }) => (
+        <Group gap="xs" wrap="nowrap">
+          <span aria-hidden="true">
+            <UserAvatar size="xs" name={option.label} kind={kinds[option.value]} />
+          </span>
+          {option.label}
+        </Group>
+      )}
       onChange={onChange}
     />
   );
