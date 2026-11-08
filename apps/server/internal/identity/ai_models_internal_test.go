@@ -143,3 +143,69 @@ func TestAIModels_ReadsTheTableThroughItsCache(t *testing.T) {
 		t.Errorf("ModelFor with no plan = %v, want errAINotConfigured", err)
 	}
 }
+
+// A PerSubject task resolves a subject's choice first, then the task's own,
+// then its recommendation and the plan's default; a task that is not PerSubject
+// refuses a subject, and SetModelFor writes, validates and forgets a choice.
+func TestAIModels_AModelPerSubject(t *testing.T) {
+	t.Parallel()
+	pool, _ := testdb.Migrated(t)
+	now := internalNow
+	d := module.Deps{
+		Pool:  pool,
+		Clock: func() time.Time { return now },
+		Config: &config.Config{
+			AIProvider: "openai", AIAPIKey: "sk", AIModels: []string{"small", "medium", "large"},
+		},
+		AITasks: map[string]contracts.AITask{
+			"agents.run": {Key: "agents.run", Module: "agents", Display: "Agent at work", Description: "r", Default: "medium", PerSubject: true},
+			"agents.one": {Key: "agents.one", Module: "agents", Display: "One", Description: "o"},
+		},
+	}
+	m := newAIModels(d)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	ask := func(task string) string {
+		t.Helper()
+		model, err := m.ModelFor(ctx, task)
+		if err != nil {
+			t.Fatalf("ModelFor(%s): %v", task, err)
+		}
+		return model
+	}
+
+	if got := ask("agents.run#a1"); got != "medium" {
+		t.Errorf("a subject with no choice = %q, want the task's recommendation", got)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO identity.ai_task_models (task_key, model, updated_at) VALUES ('agents.run', 'large', $1)`, now); err != nil {
+		t.Fatal(err)
+	}
+	m.evict()
+	if got := ask("agents.run#a1"); got != "large" {
+		t.Errorf("a subject with no choice = %q, want the task's own choice", got)
+	}
+	if err := m.SetModelFor(ctx, "agents.run", "a1", "small"); err != nil {
+		t.Fatal(err)
+	}
+	if a1, a2, own := ask("agents.run#a1"), ask("agents.run#a2"), ask("agents.run"); a1 != "small" || a2 != "large" || own != "large" {
+		t.Errorf("a1 = %q, a2 = %q, task = %q; want the subject's choice for a1 only", a1, a2, own)
+	}
+	if err := m.SetModelFor(ctx, "agents.run", "a1", "retired"); err == nil {
+		t.Error("SetModelFor(a model the plan does not allow) = nil, want an error")
+	}
+	if err := m.SetModelFor(ctx, "agents.one", "a1", "small"); err == nil {
+		t.Error("SetModelFor(a task that is not PerSubject) = nil, want an error")
+	}
+	if _, err := m.ModelFor(ctx, "agents.one#a1"); err == nil {
+		t.Error("ModelFor(a subject on a task that is not PerSubject) = nil error, want a refusal")
+	}
+	if _, err := m.ModelFor(ctx, "agents.run#"); err == nil {
+		t.Error("ModelFor(a blank subject after #) = nil error, want a refusal")
+	}
+	if err := m.SetModelFor(ctx, "agents.run", "a1", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := ask("agents.run#a1"); got != "large" {
+		t.Errorf("after forgetting = %q, want the task's choice again", got)
+	}
+}

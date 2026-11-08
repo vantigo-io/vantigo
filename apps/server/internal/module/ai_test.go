@@ -25,6 +25,8 @@ type fakeAIModels struct {
 
 func (f *fakeAIModels) ModelFor(context.Context, string) (string, error) { return f.model, nil }
 
+func (f *fakeAIModels) SetModelFor(context.Context, string, string, string) error { return nil }
+
 // chatTransport answers every request with one choice and remembers the body.
 type chatTransport struct{ body string }
 

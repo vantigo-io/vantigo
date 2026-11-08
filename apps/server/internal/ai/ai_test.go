@@ -166,6 +166,20 @@ func TestComplete_TheBaseURLIsTheConfiguredOne(t *testing.T) {
 	}
 }
 
+func TestTaskFor_NamesATaskForOneSubject(t *testing.T) {
+	if got := ai.TaskFor("agents.run", "a1"); got != "agents.run#a1" {
+		t.Errorf("TaskFor = %q, want the key and subject joined by #", got)
+	}
+	if got := ai.TaskFor("agents.run", ""); got != "agents.run" {
+		t.Errorf("TaskFor with no subject = %q, want the task", got)
+	}
+	tr := &fakeTransport{}
+	got, err := ai.New(configured("first", "second"), tr, choose{"agents.run#a1": "second"}).Complete(context.Background(), ai.TaskFor("agents.run", "a1"), ai.Request{Prompt: "p"})
+	if err != nil || got.Model != "second" {
+		t.Errorf("Complete for a subject = %q, %v; want the resolver's answer for the whole name", got.Model, err)
+	}
+}
+
 func TestComplete_ANilResolverGivesEveryTaskThePlanDefault(t *testing.T) {
 	tr := &fakeTransport{}
 	got, err := ai.New(configured("first", "second"), tr, nil).Complete(context.Background(), "any.task", ai.Request{Prompt: "p"})

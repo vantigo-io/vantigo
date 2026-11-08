@@ -52,6 +52,7 @@ type IdentityAiTaskModel struct {
 	Model     string
 	UpdatedAt time.Time
 	UpdatedBy *uuid.UUID
+	Subject   string
 }
 
 type IdentityAssistantGrant struct {

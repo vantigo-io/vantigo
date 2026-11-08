@@ -5,10 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
@@ -57,6 +61,14 @@ func resolveTaskModel(chosen, recommended string, allowed []string) (model, sour
 	return allowed[0], aiSourcePlan
 }
 
+// aiSubjectSeparator joins a task key and a subject in the name a PerSubject
+// task is asked for, ai.TaskFor's form.
+const aiSubjectSeparator = "#"
+
+// aiChoiceKey is one row of the table: a task and a subject, "" for the task's
+// own choice.
+type aiChoiceKey struct{ task, subject string }
+
 // aiModels is the table of choices through its cache, which is
 // contracts.AIModels, and the endpoints' source of truth for what a task
 // resolves to. Like ssoSettingsReader it never holds its mutex across the
@@ -65,12 +77,13 @@ func resolveTaskModel(chosen, recommended string, allowed []string) (model, sour
 // read.
 type aiModels struct {
 	q       *store.Queries
+	pool    *pgxpool.Pool
 	clock   func() time.Time
 	allowed []string
 	tasks   map[string]contracts.AITask
 
 	mu        sync.Mutex
-	cached    map[string]store.IdentityAiTaskModel
+	cached    map[aiChoiceKey]store.IdentityAiTaskModel
 	fetchedAt time.Time
 	fresh     bool
 	// evictions counts evict calls, so a fetch that began before one does not
@@ -87,28 +100,73 @@ func newAIModels(d module.Deps) *aiModels {
 	if d.Config != nil {
 		allowed = slices.Clone(d.Config.AIModels)
 	}
-	return &aiModels{q: store.New(d.Pool), clock: d.Clock, allowed: allowed, tasks: d.AITasks}
+	return &aiModels{q: store.New(d.Pool), pool: d.Pool, clock: d.Clock, allowed: allowed, tasks: d.AITasks}
 }
 
 // ModelFor answers the model task uses: always one of the allowed models. A
 // task no module declares resolves to the plan's default, since a caller with
-// no recommendation is a caller with no choice either.
+// no recommendation is a caller with no choice either. For a PerSubject task
+// the name may carry a subject, "<key>#<subject>": the subject's choice comes
+// first, then the task's own, the task's recommendation and the plan's default.
+// A subject on any other task is an error, so a mistyped key cannot silently
+// follow the task.
 func (m *aiModels) ModelFor(ctx context.Context, task string) (string, error) {
 	if len(m.allowed) == 0 {
 		return "", errAINotConfigured
+	}
+	key, subject, hasSubject := strings.Cut(task, aiSubjectSeparator)
+	if hasSubject && (subject == "" || !m.tasks[key].PerSubject) {
+		return "", fmt.Errorf("identity: AI task %q does not take a subject", key)
 	}
 	choices, err := m.get(ctx)
 	if err != nil {
 		return "", err
 	}
-	model, _ := resolveTaskModel(choices[task].Model, m.tasks[task].Default, m.allowed)
+	chosen := choices[aiChoiceKey{key, ""}].Model
+	if hasSubject {
+		if own, ok := choices[aiChoiceKey{key, subject}]; ok && slices.Contains(m.allowed, own.Model) {
+			return own.Model, nil
+		}
+	}
+	model, _ := resolveTaskModel(chosen, m.tasks[key].Default, m.allowed)
 	return model, nil
+}
+
+// SetModelFor chooses the model a PerSubject task uses for subject; a blank
+// model forgets the choice. It is the agent page's write, not the Owner's AI
+// models page's, so it is audited by the caller's own audit and not here.
+func (m *aiModels) SetModelFor(ctx context.Context, task, subject, model string) error {
+	if len(m.allowed) == 0 {
+		return errAINotConfigured
+	}
+	if subject == "" || strings.Contains(task, aiSubjectSeparator) || !m.tasks[task].PerSubject {
+		return fmt.Errorf("identity: AI task %q does not take a subject", task)
+	}
+	model = strings.TrimSpace(model)
+	if model != "" && !slices.Contains(m.allowed, model) {
+		return fmt.Errorf("identity: model %q is not one the AI plan allows", model)
+	}
+	err := db.WithTx(ctx, m.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		q := store.New(tx)
+		if err := q.LockAiTaskModel(ctx, store.LockAiTaskModelParams{TaskKey: task, Subject: subject}); err != nil {
+			return err
+		}
+		if model == "" {
+			return q.DeleteAiTaskModel(ctx, store.DeleteAiTaskModelParams{TaskKey: task, Subject: subject})
+		}
+		return q.SaveAiTaskModel(ctx, store.SaveAiTaskModelParams{TaskKey: task, Subject: subject, Model: model, Now: m.clock()})
+	})
+	if err != nil {
+		return fmt.Errorf("identity: save the AI task model for a subject: %w", err)
+	}
+	m.evict()
+	return nil
 }
 
 // get answers the cached choices while they were read within aiModelsCacheTTL,
 // else reads the table again with no lock held. A failed read is an error,
 // never "no choices", and is not cached.
-func (m *aiModels) get(ctx context.Context) (map[string]store.IdentityAiTaskModel, error) {
+func (m *aiModels) get(ctx context.Context) (map[aiChoiceKey]store.IdentityAiTaskModel, error) {
 	now := m.clock()
 	m.mu.Lock()
 	if m.fresh && now.Sub(m.fetchedAt) < aiModelsCacheTTL {
@@ -123,9 +181,9 @@ func (m *aiModels) get(ctx context.Context) (map[string]store.IdentityAiTaskMode
 	if err != nil {
 		return nil, fmt.Errorf("identity: read the AI task models: %w", err)
 	}
-	choices := make(map[string]store.IdentityAiTaskModel, len(rows))
+	choices := make(map[aiChoiceKey]store.IdentityAiTaskModel, len(rows))
 	for _, row := range rows {
-		choices[row.TaskKey] = row
+		choices[aiChoiceKey{row.TaskKey, row.Subject}] = row
 	}
 
 	m.mu.Lock()

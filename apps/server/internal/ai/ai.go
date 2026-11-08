@@ -279,6 +279,17 @@ func (c *Client) Provider() string { return c.provider }
 // The slice is a copy.
 func (c *Client) Models() []string { return slices.Clone(c.models) }
 
+// TaskFor names a PerSubject task (contracts.AITask) for one subject, such as
+// one agent, in the form Complete, Chat and ModelFor take as their task and the
+// resolver splits again: the subject's model, else the task's own, else the
+// task's recommendation, else the plan's default. A blank subject is the task.
+func TaskFor(task, subject string) string {
+	if subject == "" {
+		return task
+	}
+	return task + "#" + subject
+}
+
 // resolve is the model the resolver names for task, allowed or not.
 func (c *Client) resolve(ctx context.Context, task string) (string, error) {
 	if c.resolver == nil {
