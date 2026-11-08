@@ -166,7 +166,7 @@ func (s *server) PutCalendarMailboxSync(ctx context.Context, req gen.PutCalendar
 		return gen.PutCalendarMailboxSync409ApplicationProblemPlusJSONResponse(mailboxSyncUnavailable(string(availability))), nil
 	}
 	var row store.CalendarMailboxSync
-	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err = s.withLockedTxOn(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		cur, err := s.mailboxSyncRow(ctx, txq, me, true)
 		if err != nil {
 			return err
@@ -203,7 +203,7 @@ func (s *server) PutCalendarMailboxSync(ctx context.Context, req gen.PutCalendar
 			}
 			row.PutBackReason, row.PutBackKey, row.PutBackAt = nil, nil, nil
 		}
-		return nil
+		return notifySync(ctx, tx, me)
 	})
 	if r, ok := asRefusal(err); ok {
 		return gen.PutCalendarMailboxSync409ApplicationProblemPlusJSONResponse(r.problem), nil
@@ -247,6 +247,7 @@ func (s *server) PostCalendarMailboxSyncRun(ctx context.Context, _ gen.PostCalen
 	if err := q.NudgeMailboxSync(ctx, store.NudgeMailboxSyncParams{Now: s.deps.Clock(), UserIds: []uuid.UUID{me}}); err != nil {
 		return nil, fmt.Errorf("calendar: make the Outlook sync due: %w", err)
 	}
+	s.notifySyncOnPool(ctx, me)
 	if row, err = s.mailboxSyncRow(ctx, q, me, false); err != nil {
 		return nil, err
 	}

@@ -117,6 +117,8 @@ func Module() module.Module {
 		Mount:        mount,
 		Workers:      workers,
 		CalendarBusy: newCalendarBusy,
+		// LiveTopics is the Outlook sync card's topic (live design K41, live.go).
+		LiveTopics: liveTopics,
 	}
 }
 
