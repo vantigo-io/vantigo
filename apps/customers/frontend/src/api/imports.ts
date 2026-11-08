@@ -1,4 +1,5 @@
-import { queryOptions } from "@tanstack/react-query";
+import { queryOptions, useQueryClient } from "@tanstack/react-query";
+import { useLiveTopic } from "@vantigo/frontend-shell";
 import type { PaginatedResponse } from "./customers";
 import { type CsvDownload, downloadFile } from "./import-export";
 import { request } from "./request";
@@ -149,7 +150,7 @@ const normalizeRow = (raw: RawImportRow): ImportRow => ({
 /** The server's own cap (`maxImportUploadBytes`): a larger file is refused here rather than sent to be refused. */
 export const MAX_IMPORT_FILE_BYTES = 50 * 1024 * 1024;
 
-/** How often the page re-reads an import the worker is working on. */
+/** How often the page re-reads an import the worker is working on while the live channel is not available. */
 export const IMPORT_POLL_MS = 2000;
 
 /** Whether the worker is, or should be, working on the import. */
@@ -162,6 +163,28 @@ export const importStep = (state: ImportState): 0 | 1 | 2 =>
 export const importsQueryKey = ["customers", "imports"] as const;
 export const importQueryKey = (id: number) => ["customers", "imports", id] as const;
 
+/**
+ * Listens to the imports' live topic (live design K38) and refetches on an event: the list
+ * and every import's page sit under one key prefix. A page passes its import's id and ignores
+ * another import's event; an event with no id (the worker's sweep) and a resync refetch
+ * whatever is shown. Returns whether the topic is live: the polls below run only while it is not.
+ */
+export function useImportsLive(importId?: number): boolean {
+  const client = useQueryClient();
+  return useLiveTopic("customers.imports", (event) => {
+    if (importId !== undefined && "ids" in event && event.ids.length > 0 && !event.ids.includes(String(importId))) {
+      return;
+    }
+    // An import's own query only: its rows are read by their page, and refetching
+    // every cached page of them on each progress event would be a burst of requests.
+    void client.invalidateQueries(
+      importId === undefined
+        ? { queryKey: importsQueryKey, predicate: (query) => !query.queryKey.includes("rows") }
+        : { queryKey: importQueryKey(importId), exact: true },
+    );
+  });
+}
+
 /** `POST /customers/imports`: the file as the one part named `file`. Needs `customers:import`. */
 export const uploadImport = (file: File): Promise<CustomerImport> => {
   const form = new FormData();
@@ -169,17 +192,18 @@ export const uploadImport = (file: File): Promise<CustomerImport> => {
   return request<RawCustomerImport>("/api/v1/customers/imports", { method: "POST", body: form }).then(normalizeImport);
 };
 
-/** One import, re-read every two seconds while the worker works on it. */
-export const importQueryOptions = (id: number) =>
+/** One import, re-read every two seconds while the worker works on it and `live` is false. */
+export const importQueryOptions = (id: number, live = false) =>
   queryOptions({
     queryKey: importQueryKey(id),
     queryFn: ({ signal }) =>
       request<RawCustomerImport>(`/api/v1/customers/imports/${id}`, { signal }).then(normalizeImport),
-    refetchInterval: (query) => (query.state.data && isImportRunning(query.state.data.state) ? IMPORT_POLL_MS : false),
+    refetchInterval: (query) =>
+      !live && query.state.data && isImportRunning(query.state.data.state) ? IMPORT_POLL_MS : false,
   });
 
-/** The recent imports, newest change first. */
-export const importsQueryOptions = (page = 1, pageSize = 10) =>
+/** The recent imports, newest change first; re-read every two seconds while one is running and `live` is false. */
+export const importsQueryOptions = (page = 1, pageSize = 10, live = false) =>
   queryOptions({
     queryKey: [...importsQueryKey, { page, pageSize }],
     queryFn: async ({ signal }) => {
@@ -190,7 +214,7 @@ export const importsQueryOptions = (page = 1, pageSize = 10) =>
       return { ...result, data: result.data.map(normalizeImport) };
     },
     refetchInterval: (query) =>
-      query.state.data?.data.some((item) => isImportRunning(item.state)) ? IMPORT_POLL_MS : false,
+      !live && query.state.data?.data.some((item) => isImportRunning(item.state)) ? IMPORT_POLL_MS : false,
   });
 
 /** The cache key every page of an import's rows sits under, the check's and the run's alike. */

@@ -14,6 +14,7 @@ import {
   importStep,
   runImport,
   saveImportMapping,
+  useImportsLive,
 } from "../api/imports";
 import { type ImportCapabilities, ImportMappingStep } from "./-import-mapping-step";
 import { ImportProgress } from "./-import-progress";
@@ -185,7 +186,8 @@ const DoneResult = ({ imp }: { imp: CustomerImport }) => {
  */
 export const ImportPage = ({ importId, capabilities }: { importId: number; capabilities: ImportCapabilities }) => {
   const { t, formatters } = useI18n("customers");
-  const { data: imp, isPending, isError, error, refetch } = useQuery(importQueryOptions(importId));
+  const live = useImportsLive(importId);
+  const { data: imp, isPending, isError, error, refetch } = useQuery(importQueryOptions(importId, live));
 
   const breadcrumbs = [
     { label: t("customers"), to: "/customers" },
