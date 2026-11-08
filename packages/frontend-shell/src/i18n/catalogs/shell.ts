@@ -25,6 +25,8 @@ export const shellCatalog = {
     sidePanelClose: "Close the side panel",
     sidePanelResizeWidth: "Resize the side panel",
     sidePanelResizeSplit: "Resize the panels",
+    aiBadge: "AI",
+    aiAvatarLabel: "{{name}} (AI)",
   },
   nb: {
     closeNavigation: "Lukk navigasjon",
@@ -52,5 +54,7 @@ export const shellCatalog = {
     sidePanelClose: "Lukk sidepanelet",
     sidePanelResizeWidth: "Endre bredden på sidepanelet",
     sidePanelResizeSplit: "Endre størrelsen på panelene",
+    aiBadge: "KI",
+    aiAvatarLabel: "{{name}} (KI)",
   },
 } as const;
