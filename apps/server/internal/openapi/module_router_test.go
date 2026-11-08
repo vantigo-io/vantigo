@@ -73,6 +73,11 @@ func twoOperationDoc(t *testing.T, patterns ...string) *openapi3.T {
 	return doc
 }
 
+// UserSatisfies is not what this fake is about: false.
+func (noopAccess) UserSatisfies(context.Context, uuid.UUID, contracts.Rule) (bool, error) {
+	return false, nil
+}
+
 func (noopAccess) SessionLive(context.Context, uuid.UUID) (uuid.UUID, bool, error) {
 	return uuid.Nil, false, nil
 }

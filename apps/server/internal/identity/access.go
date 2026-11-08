@@ -290,6 +290,68 @@ func (a *Access) UserHolds(ctx context.Context, userID uuid.UUID, keys ...string
 	return true, nil
 }
 
+// UserSatisfies reports whether userID meets rule at the clock's now, for a
+// decision made on a person's authority with no request behind the question: a
+// reviewer approving what an agent proposes (virtual employees design V20).
+// The person must be one who may act (UserMayAct, as for UserHolds). A
+// permission rule is UserHolds. A policy rule is each of its names decided for
+// the user's roles as they stand: ActiveAccount and Business are met by anyone
+// who may act (Business's second factor is a session's), Owner, OwnerManagement
+// and SystemAdmin need their role, and AuthorizationManagement the Owner role or
+// an active delegation. A second factor is never assumed, so a name that
+// requires one is not met while owners are required to use it. A session rule is
+// met by anyone who may act, an anonymous one by anyone, and a SCIM rule by no
+// one. Any failure to read is an error, never a false.
+func (a *Access) UserSatisfies(ctx context.Context, userID uuid.UUID, rule contracts.Rule) (bool, error) {
+	switch rule.Kind {
+	case contracts.RuleAnonymous:
+		return true, nil
+	case contracts.RulePermission:
+		return a.UserHolds(ctx, userID, rule.Names...)
+	case contracts.RuleSession, contracts.RulePolicy:
+	default:
+		return false, nil // a SCIM rule is a directory's, never a person's
+	}
+	now := a.now()
+	sso, err := a.sso.get(ctx)
+	if err != nil {
+		return false, fmt.Errorf("identity: read whether the user may act: %w", err)
+	}
+	mayAct, err := a.q.UserMayAct(ctx, store.UserMayActParams{UserID: userID, Now: now, ScimEnabled: sso.SCIM != nil})
+	if err != nil {
+		return false, fmt.Errorf("identity: read whether the user may act: %w", err)
+	}
+	if !mayAct || rule.Kind == contracts.RuleSession {
+		return mayAct, nil
+	}
+	if len(rule.Names) == 0 {
+		return false, nil
+	}
+	u, err := a.q.GetAgentPrincipal(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("identity: read the user's roles: %w", err)
+	}
+	sub := subject{userID: userID, roles: orderRoles(u.RoleNames), disabled: u.IsDisabled, lockoutEnd: u.LockoutEnd}
+	for _, name := range rule.Names {
+		var ok bool
+		switch name {
+		case "ActiveAccount", "Business":
+			ok = true // the user may act; Business's second factor is a session's
+		default:
+			if ok, err = a.policySatisfied(ctx, name, sub, now); err != nil {
+				return false, err
+			}
+		}
+		if !ok {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 // SessionLive reports whether the session sessionID is live at the clock's
 // now and whose it is, through GetSessionByID, which rejects every state
 // GetSessionByTokenHash rejects. It never slides the idle window: the live
