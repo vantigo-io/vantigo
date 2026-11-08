@@ -167,11 +167,14 @@ export function useImportsLive(importId?: number): boolean {
     }
     // An import's own query only: its rows are read by their page, and refetching
     // every cached page of them on each progress event would be a burst of requests.
-    void client.invalidateQueries(
-      importId === undefined
-        ? { queryKey: importsQueryKey, predicate: (query) => !query.queryKey.includes("rows") }
-        : { queryKey: importQueryKey(importId), exact: true },
-    );
+    if (importId === undefined) {
+      void client.invalidateQueries({
+        queryKey: importsQueryKey,
+        predicate: (query) => !query.queryKey.includes("rows"),
+      });
+    } else {
+      void client.invalidateQueries({ queryKey: importQueryKey(importId), exact: true });
+    }
   });
 }
 
