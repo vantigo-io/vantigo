@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/db/migrations/00146_agents_runs.sql
   - apps/server/internal/db/migrations/00147_agents_review.sql
   - apps/server/internal/db/migrations/00148_agents_memory.sql
+  - apps/server/internal/db/migrations/00149_agents_roles.sql
   - apps/server/internal/config
   - apps/agents/frontend/src
 ---
@@ -187,6 +188,26 @@ kanal i installasjonen din, så to agenter på to kanaler kan ikke svare hverand
 adresse første gang en kjøring leser en samtale på den. Svar på Messenger følger 24-timersvinduet: når det
 er lukket, skriver en person svaret.
 
+### De andre rollene
+
+- **Salgsoppfølging.** Trenger **Ordrer** (tilbudslesingene) og en egen kanal som ingen annen rolle svarer
+  på: den skriver først fra den kanalen, og kundens svar går til Innboksen hos en person. Sett **Dager
+  etter at et tilbud er sendt** (standard er 7). Tilbudet må være *sendt* i Ordrer; å akseptere det tar
+  oppfølgingen bort. Agenten skriver bare til en kontaktadresse hos tilbudets kunde; tilbudslesingene i
+  Ordrer er knyttet til den kunden som de andre kundelesingene.
+- **Svar på purringer.** Skranken for faktura-postkassen: knytt kanalen, og gi rollen lesingene i Faktura.
+- **Påminnelse om timelister.** Trenger **Timer**. Fra tirsdagen etter en uke, i firmaets tidssone, melder
+  Timer fra om hver person som ikke leverte uken (en med utkast i den, eller en som leverte en av de åtte
+  ukene før), én gang. Rollen leser ingenting av personens timer: varselet sier uken og timene som er
+  ført. Den trenger at installasjonens e-post er satt opp, siden den skriver gjennom Vantigos varsler:
+  der e-post ikke er satt opp, sendes ingenting.
+- **Prosjektoppsummering.** Trenger **Prosjekter**. Sett en **timeplan** og **Send notatet til**; uten en
+  person har rollen ingen å skrive til og overleverer. Timeplanen følger firmaets tidssone (satt under
+  arbeidsområdet), ukentlig eller månedlig, og en forekomst sendes høyst 12 timer for sent.
+
+En overlevering fra en rolle uten samtale (tilbudet, uken, timeplanen) sender rollens overtaker en lenke
+til kjøringen på e-post, ikke det agenten fant, siden e-post forlater Vantigo.
+
 ### Svarmodusene, kort
 
 La hver rolle begynne i **Gjennomgang**. Flytt en rolle til **Auto over X %** eller **Auto** først når
@@ -283,3 +304,6 @@ To ting beholdes utover en kjøring, og begge går til modellen.
 | En sak er *trukket tilbake* og samtalen overlevert | En kollega tok samtalen, en nyere melding kom, Messenger-vinduet lukket seg, eller agentens nivå ble senket siden. | Ingenting er galt; en person svarer, eller en ny kjøring svarer den nyere meldingen. |
 | En godkjenning sier at en regel holder den igjen | Teksten sier nå at skribenten er et menneske, eller kundens data ville gått til noen som ikke er kundens kontakt. | Rediger teksten, eller forkast den. |
 | En lavere oppbevaring enn du lagret | Kommunikasjon beholder meldingene sine kortere. | Ingenting: oppbevaringen følger den. |
+| En Salgsoppfølging gjorde ingenting | Tilbudet var bare lagret (ikke *sendt*), ventetiden er ikke over, agenten er på pause, rollen har ingen egen kanal, eller kunden har ingen kontakt med e-postadresse. | Se kjøringen på agentens fane Aktivitet. Står rollen i Gjennomgang, ligger samtalen den ville startet i gjennomgangskøen. |
+| En timeplan vekket ikke rollen | Arbeideren ser etter hvert 30. sekund. En timeplan satt etter at tiden var passert venter på neste forekomst, en forekomst mer enn 12 timer for sen hoppes over, og firmaets tidssone avgjør ukedag og time. | Vent på neste forekomst, eller sjekk tidssonen under arbeidsområdet. |
+| En påminnelse eller en oppsummering kom ikke fram | E-post for varsler er ikke satt opp, personen er ikke aktiv, Prosjektoppsummering har ingen person, eller meldingen ble stoppet av regelen om at den ikke må påstå å være et menneske. | Sett opp e-post, velg personen og les kjøringen. |

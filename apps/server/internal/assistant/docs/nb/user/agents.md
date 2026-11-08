@@ -1,6 +1,6 @@
 ---
 title: Virtuelle ansatte
-description: Appen Virtuelle ansatte — hva en agent er, agenten i arbeid (når den svarer, hva den leser, hva den kan sende selv, åpningslinjen, overleveringen og å gi en samtale tilbake), gjennomgangskøen (hvorfor en sak venter, å godkjenne, redigere og sende, forkaste, hvor lenge den venter), kalibrering, hva en agent husker, bruk og aktivitet, å opprette en agent, Persona (navn, stil, språk, modell, bilde) og åpningslinjen med de tre formuleringene, å sette på pause, gjenoppta og slette, Roller (malen Skranke, instruksjoner, kanaler, den som overtar, Svarmodus og grenser, og de ukentlige forslagene til instruksjonene), Tillatelser (alt er Av til Eieren hever det) og hvor KI-merket vises.
+description: Appen Virtuelle ansatte — hva en agent er, agenten i arbeid (når den svarer, hva den leser, hva den kan sende selv, åpningslinjen, overleveringen og å gi en samtale tilbake), gjennomgangskøen (hvorfor en sak venter, å godkjenne, redigere og sende, forkaste, hvor lenge den venter), kalibrering, hva en agent husker, bruk og aktivitet, å opprette en agent, Persona (navn, stil, språk, modell, bilde) og åpningslinjen med de tre formuleringene, å sette på pause, gjenoppta og slette, Roller (de fem malene, instruksjoner, kanaler, den som overtar, Svarmodus, modusen for å starte en samtale og for trygge endringer, ventetiden etter et tilbud, timeplaner, oppfølginger, varsler til kolleger, grenser, og de ukentlige forslagene til instruksjonene), Tillatelser (alt er Av til Eieren hever det) og hvor KI-merket vises.
 sidebar:
   order: 75
 sources:
@@ -11,12 +11,15 @@ sources:
   - apps/server/internal/db/migrations/00146_agents_runs.sql
   - apps/server/internal/db/migrations/00147_agents_review.sql
   - apps/server/internal/db/migrations/00148_agents_memory.sql
+  - apps/server/internal/db/migrations/00149_agents_roles.sql
 ---
 
 En **virtuell ansatt** er en KI-bruker i Vantigo med eget navn og et tydelig KI-merke. Den
 gjør en del av en persons arbeid: den leser det en person med rollene dens kunne lest,
-og skriver der den har fått lov. I denne utgivelsen har den én rolle, **Skranke**, som
-svarer på samtalene som kommer inn på kanalene Eieren knytter til den. Reglene bak hver
+og skriver der den har fått lov. Den har en eller flere roller, hver fra en mal:
+**Skranke**, som svarer på samtalene som kommer inn på kanalene Eieren knytter til den, **Svar på
+purringer** for faktura-postkassen, **Salgsoppfølging**, **Påminnelse om timelister** og
+**Prosjektoppsummering** ([Roller](#roller)). Reglene bak hver
 skjerm står i [referansen](/en/reference/agents/); hvordan en administrator slår
 modulen på, står i [Virtuelle ansatte](/nb/admin/agents/).
 
@@ -39,7 +42,8 @@ Messenger, som seg selv.
   Kunnskap og produktkatalogen, spør hvem kunden er, eller leverer samtalen videre.
 - **Hva den skriver.** Et svar til den som skrev sist og til ingen andre: **aldri svar til alle**, og en
   kopimottaker blir aldri kopiert. Den kan også skrive et internt notat, merke samtalen og levere den
-  videre. En endring av en post, som å lukke samtalen, blir **alltid gjennomgått først**.
+  videre. En endring av en post, som å lukke samtalen, blir **gjennomgått først**, med mindre rollens mal
+  merker den som trygg og Eieren har valgt en Auto-modus for den ([Roller](#roller)).
 - **Poengsum og kilder.** Hvert svar har en poengsum fra 0 til 100 og kildene agenten leste for det. Et
   svar uten en kilde agenten faktisk leste får poengsummen 0, og selve samtalen teller aldri som kilde.
 - **Åpningslinjen.** Hver melding agenten sender begynner med en linje som sier hvem som skrev den og
@@ -142,10 +146,19 @@ modellen, så instruksjonene kan ikke fjerne den.
 
 ## Roller
 
-En rolle er en jobb agenten gjør. Åpne fanen **Roller** og trykk **Legg til rolle**. I denne
-utgivelsen er den eneste malen **Skranke**, som starter med instruksjoner om å være
-høflig, kort og konkret, og å overlate til en kollega når agenten ikke vet eller ikke
-kan avgjøre.
+En rolle er en jobb agenten gjør. Åpne fanen **Roller**, trykk **Legg til rolle** og velg **malen**
+rollen starter fra. Malen bestemmer hva rollen kan lese og gjøre, hva som vekker den og hvilke
+innstillinger rollesiden viser. Instruksjonene den starter med kan du redigere.
+
+| Mal | Hva den gjør | Vekkes av |
+| --- | --- | --- |
+| **Skranke** | Svarer kundene som skriver på kanalene sine. Høflig, kort og konkret; overlater til en kollega når den ikke vet eller ikke kan avgjøre. | En melding på en av kanalene. |
+| **Svar på purringer** | Skranken for faktura-postkassen (for eksempel `faktura@`): leser fakturaen kunden mener før den svarer, og lover aldri avdragsordning, utsatt forfall eller ettergitt gebyr. | En melding på en av kanalene. |
+| **Salgsoppfølging** | Skriver først til kontakten på et tilbud som er sendt og fortsatt ikke akseptert. | Et tilbud som er sendt, etter det antallet dager du velger. |
+| **Påminnelse om timelister** | Sender en kollega en kort påminnelse om at uken ikke er levert, på e-post gjennom Vantigos varsler. | En uke som sluttet uten å være levert. |
+| **Prosjektoppsummering** | Sender én person et ukentlig notat om hvordan prosjektene står, på e-post gjennom Vantigos varsler. | Timeplanen sin. |
+
+Rollesiden viser bare innstillingene malen bruker.
 
 | Innstilling | Hva den gjør |
 | --- | --- |
@@ -154,10 +167,36 @@ kan avgjøre.
 | **Kanaler** | Kanalene i Kommunikasjon rollen svarer på. En kanal hører til høyst én rolle, så to agenter svarer aldri på samme kanal. Å knytte en kanal er Eierens. |
 | **Overtas av** | Hvem en samtale gis til når agenten overleverer den. Tom betyr at den går til Innboksen, uten ansvarlig. Samme person får e-post når en sak legges igjen til gjennomgang. |
 | **Klagemerkelapper** | Merkelappene i Kommunikasjon som betyr en klage (høyst 20). En samtale med en av dem holdes igjen til gjennomgang i Gjennomgang og Auto over X %. |
-| **Svarmodus** | Hvordan agentens svar avgjøres ([under](#svarmodus)). |
+| **Svarmodus** | Hvordan agentens svar avgjøres ([under](#svarmodus)). Skranke og Svar på purringer. |
+| **Hvordan den starter en samtale** | De samme tre valgene, for samtalene Salgsoppfølging starter. Å velge en annen modus enn Gjennomgang er Eierens alene. |
+| **Hvordan den gjør trygge endringer** | De samme tre valgene, for endringene malen merker som trygge å automatisere. Siden lister dem. Alle andre endringer gjennomgås uansett hva dette sier. Å løsne det er Eierens alene. |
+| **Dager etter at et tilbud er sendt** | Salgsoppfølging: hvor lenge rollen venter, fra 1 til 60 dager, før den ser på et tilbud. |
+| **Timeplan** | Prosjektoppsummering: **hver uke** på en ukedag, eller **hver måned** på en dag fra 1 til 28, til et klokkeslett, i firmaets tidssone. |
+| **Send notatet til** | Prosjektoppsummering: personen som får notatet. Agenten velger aldri selv hvem den skriver til. |
 | **Grenser** | Flest verktøykall og runder én kjøring kan bruke, og flest svar rollen sender per dag. |
 
 Endringer i en rolle gjelder fra agentens neste skritt.
+
+### Å starte en samtale, oppfølginger og timeplaner
+
+- **Salgsoppfølging.** Når et tilbud er sendt, venter rollen det antallet dager du valgte og våkner. Den
+  leser tilbudet og kundens kontakter, og hvis tilbudet fortsatt venter, **starter den én samtale** på
+  e-post til en kontakt hos den kunden, fra en kanal som er rollens egen. Den skriver aldri til en adresse
+  som ikke er en av kundens kontakter, og aldri fra en annen rolles kanal. Et tilbud som aksepteres før
+  ventetiden er over, lar den være. Kundens svar havner i Innboksen hos en kollega: rollen svarer ikke på
+  det. En rolle trenger en egen kanal som ingen annen rolle bruker.
+- **Oppfølginger.** En agent kan be om å bli vekket igjen om det den jobber med: en samtale eller et
+  tilbud. Den oppgir et tidspunkt, høyst 30 dager fram, og en grunn den leser da. Det er én ventende
+  oppfølging for hver samtale eller hvert tilbud. En samtale som er levert til menneskene vekkes ikke. En
+  agent på pause beholder oppfølgingene sine til den er aktiv igjen, og en som er mer enn en uke forsinket
+  slippes.
+- **Timeplaner.** En rolle med timeplan våkner én gang for hver forekomst. En timeplan du nettopp har
+  satt, vekker ikke rollen for et tidspunkt som allerede er passert, og en forekomst systemet sov gjennom
+  i mer enn en halv dag hoppes over i stedet for å sendes for sent.
+- **Varsler til kolleger.** Påminnelse om timelister og Prosjektoppsummering skriver på e-post gjennom
+  Vantigos varsler, ikke gjennom Kommunikasjon. Hver melding har åpningslinjen som sier at den er en KI.
+  Agenten velger ikke mottaker: en påminnelse om timelister går til personen uken gjelder, en oppsummering
+  til personen som står på rollen. Disse varslene legges ikke igjen til gjennomgang.
 
 Er den som overtar deaktivert eller ikke lenger har lov til å se samtaler, går overleveringen
 til Innboksen, uten ansvarlig, og rollesiden viser en advarsel ved personen. Velg noen andre
@@ -175,8 +214,9 @@ for å få advarselen bort.
 Å velge **Auto** eller **Auto over X %**, og å heve modusen eller senke grensen senere, er
 Eierens alene.
 Å gå tilbake til **Gjennomgang** kan alle med `agents:manage`. Uansett modus blir
-endringer agenten gjør i Vantigo alltid gjennomgått først, og reglene i
-[Hva som skjer med et svar](#hva-som-skjer-med-et-svar) gjelder.
+endringer agenten gjør i Vantigo gjennomgått først, bortsett fra de få malen merker som trygge å
+automatisere (for eksempel statusendringen på Skrankens samtale), som følger sin egen modus på rollen.
+Reglene i [Hva som skjer med et svar](#hva-som-skjer-med-et-svar) gjelder.
 
 ## Tillatelser
 
@@ -196,8 +236,12 @@ aldri **Eier** eller **SystemAdmin**.
 
 ## Gjennomgangskøen
 
-Åpne **Virtuelle ansatte ▸ Gjennomgangskø**. Den lister, på tvers av alle agenter, alle svar og endringer en
-agent har lagt igjen til en person: de som utløper først øverst, og (velg **Avgjort**) de som allerede er
+Åpne **Virtuelle ansatte ▸ Gjennomgangskø**. Den lister, på tvers av alle agenter, alle svar, alle endringer og
+alle **nye samtaler** (merket *Ny samtale*, med adressen og emnet) en agent har lagt igjen til en person. En ny
+samtale godkjennes, redigeres og sendes eller forkastes som et svar; den har ennå ingen samtale å åpne, og å
+forkaste den overleverer ingenting.
+
+Listen viser det du har lov til å se: de som utløper først øverst, og (velg **Avgjort**) de som allerede er
 avgjort, trukket tilbake eller utløpt. Et tall på flisen **Virtuelle ansatte** på oversikten teller det som
 venter. Det interne notatet i en samtale (*Hanna har et svar som venter på gjennomgang*) lenker til saken.
 
