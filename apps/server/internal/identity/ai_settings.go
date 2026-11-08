@@ -115,7 +115,9 @@ func (s *server) GetIdentityOwnerAiSettings(ctx context.Context, _ gen.GetIdenti
 	}
 	choices := make(map[string]store.IdentityAiTaskModel, len(rows))
 	for _, row := range rows {
-		choices[row.TaskKey] = row
+		if row.Subject == "" {
+			choices[row.TaskKey] = row
+		}
 	}
 
 	allowed := s.deps.Config.AIModels
@@ -190,11 +192,11 @@ func (s *server) PutIdentityOwnerAiTasksByKey(ctx context.Context, req gen.PutId
 	var answer gen.AiSettingsTask
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
-		if err := q.LockAiTaskModel(ctx, task.Key); err != nil {
+		if err := q.LockAiTaskModel(ctx, store.LockAiTaskModelParams{TaskKey: task.Key}); err != nil {
 			return fmt.Errorf("identity: lock the AI task model: %w", err)
 		}
 		var current *store.IdentityAiTaskModel
-		row, err := q.GetAiTaskModel(ctx, task.Key)
+		row, err := q.GetAiTaskModel(ctx, store.GetAiTaskModelParams{TaskKey: task.Key})
 		switch {
 		case err == nil:
 			current = &row
@@ -208,7 +210,7 @@ func (s *server) PutIdentityOwnerAiTasksByKey(ctx context.Context, req gen.PutId
 		if err := q.SaveAiTaskModel(ctx, store.SaveAiTaskModelParams{TaskKey: task.Key, Model: model, Now: now, UpdatedBy: &p.UserID}); err != nil {
 			return fmt.Errorf("identity: save the AI task model: %w", err)
 		}
-		saved, err := q.GetAiTaskModel(ctx, task.Key)
+		saved, err := q.GetAiTaskModel(ctx, store.GetAiTaskModelParams{TaskKey: task.Key})
 		if err != nil {
 			return fmt.Errorf("identity: read the saved AI task model: %w", err)
 		}

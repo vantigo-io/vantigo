@@ -34,6 +34,8 @@ func (m taskModels) ModelFor(_ context.Context, task string) (string, error) {
 	return m.byTask[task], nil
 }
 
+func (taskModels) SetModelFor(context.Context, string, string, string) error { return nil }
+
 // newTaskHarness is newAIHarness over two allowed models with the choice per
 // task pinned to models.
 func newTaskHarness(t *testing.T, tr *fakeChatTransport, models taskModels) *modtest.Harness {

@@ -17,6 +17,7 @@ sql:
       - ../db/migrations/00102_identity_assistant_grants.sql
       - ../db/migrations/00141_identity_agent_users.sql
       - ../db/migrations/00142_identity_agent_grants.sql
+      - ../db/migrations/00143_identity_ai_task_model_subjects.sql
     queries: queries
     gen:
       go:

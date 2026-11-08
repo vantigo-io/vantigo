@@ -33,6 +33,11 @@ type AITask struct {
 	// plan's default. It applies only while the Owner has not chosen and only
 	// when the plan allows it.
 	Default string
+	// PerSubject says the task's model can be chosen per subject, such as per
+	// agent: ai.TaskFor(Key, subject) names the task for one subject, and its
+	// model falls back to the task's own choice, then Default. A task without
+	// it refuses a subject.
+	PerSubject bool
 }
 
 var aiTaskKey = regexp.MustCompile(`^[a-z][a-z0-9]*\.[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
@@ -71,5 +76,15 @@ type AIModels interface {
 	// the Owner's choice if there is one and it is still allowed, else the
 	// task's Default if allowed, else the first of AI_MODELS. An error is a
 	// failure to read the choice, never "no model".
+	//
+	// task is a task key, or for a PerSubject task a key and a subject as
+	// ai.TaskFor writes them, "<key>#<subject>": the model chosen for the
+	// subject, else the task's own, else its Default. A subject on a task
+	// that is not PerSubject is an error.
 	ModelFor(ctx context.Context, task string) (string, error)
+	// SetModelFor chooses the model a PerSubject task uses for subject, or
+	// with a blank model forgets the choice so the subject follows the task
+	// again. The model must be one AI_MODELS allows. The Owner's choice for
+	// the task itself is made on the AI models page, not here.
+	SetModelFor(ctx context.Context, task, subject, model string) error
 }

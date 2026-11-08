@@ -25,30 +25,53 @@ func (q *Queries) CountAiTaskModels(ctx context.Context) (int64, error) {
 	return count, err
 }
 
-const getAiTaskModel = `-- name: GetAiTaskModel :one
-SELECT task_key, model, updated_at, updated_by
-FROM identity.ai_task_models
-WHERE task_key = $1
+const deleteAiTaskModel = `-- name: DeleteAiTaskModel :exec
+DELETE FROM identity.ai_task_models
+WHERE task_key = $1 AND subject = $2::text
 `
 
-// GetAiTaskModel is one task's choice, or no row. A save reads it after
+type DeleteAiTaskModelParams struct {
+	TaskKey string
+	Subject string
+}
+
+// DeleteAiTaskModel forgets the choice for a subject, which then follows its
+// task again.
+func (q *Queries) DeleteAiTaskModel(ctx context.Context, arg DeleteAiTaskModelParams) error {
+	_, err := q.db.Exec(ctx, deleteAiTaskModel, arg.TaskKey, arg.Subject)
+	return err
+}
+
+const getAiTaskModel = `-- name: GetAiTaskModel :one
+SELECT task_key, model, updated_at, updated_by, subject
+FROM identity.ai_task_models
+WHERE task_key = $1 AND subject = $2::text
+`
+
+type GetAiTaskModelParams struct {
+	TaskKey string
+	Subject string
+}
+
+// GetAiTaskModel is one task's choice for a subject (the empty one is the task's own), or no row. A save reads it after
 // LockAiTaskModel, so its If-Match is compared with the row it replaces.
-func (q *Queries) GetAiTaskModel(ctx context.Context, taskKey string) (IdentityAiTaskModel, error) {
-	row := q.db.QueryRow(ctx, getAiTaskModel, taskKey)
+func (q *Queries) GetAiTaskModel(ctx context.Context, arg GetAiTaskModelParams) (IdentityAiTaskModel, error) {
+	row := q.db.QueryRow(ctx, getAiTaskModel, arg.TaskKey, arg.Subject)
 	var i IdentityAiTaskModel
 	err := row.Scan(
 		&i.TaskKey,
 		&i.Model,
 		&i.UpdatedAt,
 		&i.UpdatedBy,
+		&i.Subject,
 	)
 	return i, err
 }
 
 const importAiTaskModel = `-- name: ImportAiTaskModel :exec
-INSERT INTO identity.ai_task_models (task_key, model, updated_at, updated_by)
-VALUES ($1, $2, $3::timestamptz, NULL)
-ON CONFLICT (task_key) DO NOTHING
+INSERT INTO identity.ai_task_models (task_key, subject, model, updated_at, updated_by)
+VALUES ($1, '', $2, $3::timestamptz, NULL)
+ON CONFLICT (task_key, subject) DO NOTHING
 `
 
 type ImportAiTaskModelParams struct {
@@ -65,9 +88,9 @@ func (q *Queries) ImportAiTaskModel(ctx context.Context, arg ImportAiTaskModelPa
 }
 
 const listAiTaskModels = `-- name: ListAiTaskModels :many
-SELECT task_key, model, updated_at, updated_by
+SELECT task_key, model, updated_at, updated_by, subject
 FROM identity.ai_task_models
-ORDER BY task_key
+ORDER BY task_key, subject
 `
 
 // ListAiTaskModels is every Owner's choice of model per AI task (AI as a
@@ -87,6 +110,7 @@ func (q *Queries) ListAiTaskModels(ctx context.Context) ([]IdentityAiTaskModel, 
 			&i.Model,
 			&i.UpdatedAt,
 			&i.UpdatedBy,
+			&i.Subject,
 		); err != nil {
 			return nil, err
 		}
@@ -99,22 +123,27 @@ func (q *Queries) ListAiTaskModels(ctx context.Context) ([]IdentityAiTaskModel, 
 }
 
 const lockAiTaskModel = `-- name: LockAiTaskModel :exec
-SELECT pg_advisory_xact_lock(hashtextextended('identity.ai_task_models/' || $1::text, 0))
+SELECT pg_advisory_xact_lock(hashtextextended('identity.ai_task_models/' || $1::text || '#' || $2::text, 0))
 `
+
+type LockAiTaskModelParams struct {
+	TaskKey string
+	Subject string
+}
 
 // LockAiTaskModel serialises two saves of one task for the rest of the
 // transaction, also while the task has no row to lock: two Owners choosing for
 // a task that has no choice yet queue, and the second compares its If-Match
 // with the row the first wrote.
-func (q *Queries) LockAiTaskModel(ctx context.Context, taskKey string) error {
-	_, err := q.db.Exec(ctx, lockAiTaskModel, taskKey)
+func (q *Queries) LockAiTaskModel(ctx context.Context, arg LockAiTaskModelParams) error {
+	_, err := q.db.Exec(ctx, lockAiTaskModel, arg.TaskKey, arg.Subject)
 	return err
 }
 
 const saveAiTaskModel = `-- name: SaveAiTaskModel :exec
-INSERT INTO identity.ai_task_models (task_key, model, updated_at, updated_by)
-VALUES ($1, $2, $3::timestamptz, $4)
-ON CONFLICT (task_key) DO UPDATE
+INSERT INTO identity.ai_task_models (task_key, subject, model, updated_at, updated_by)
+VALUES ($1, $2::text, $3, $4::timestamptz, $5)
+ON CONFLICT (task_key, subject) DO UPDATE
 SET model = EXCLUDED.model,
     updated_at = EXCLUDED.updated_at,
     updated_by = EXCLUDED.updated_by
@@ -122,6 +151,7 @@ SET model = EXCLUDED.model,
 
 type SaveAiTaskModelParams struct {
 	TaskKey   string
+	Subject   string
 	Model     string
 	Now       time.Time
 	UpdatedBy *uuid.UUID
@@ -132,6 +162,7 @@ type SaveAiTaskModelParams struct {
 func (q *Queries) SaveAiTaskModel(ctx context.Context, arg SaveAiTaskModelParams) error {
 	_, err := q.db.Exec(ctx, saveAiTaskModel,
 		arg.TaskKey,
+		arg.Subject,
 		arg.Model,
 		arg.Now,
 		arg.UpdatedBy,
