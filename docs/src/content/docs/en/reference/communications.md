@@ -646,6 +646,12 @@ is decided by this module from the principal and never from the body:
   the window is `open`. In the `human_agent` extension, which would send it tagged as a human's, it is
   422 `reply_window_closed`; a person may still reply there.
 
+A **conversation an agent starts** (`POST /conversations` through an agent grant, for the virtual employees' sales follow-up,
+design V29) is marked the same way: `agent_id` on its first message, from the principal alone, and the header `X-Vantigo-Agent`
+when it goes out. Through an agent grant the request must name a `channelId` (400 otherwise), may not carry a `cc` or
+`sendFromPersonal` (422 `agent_start_not_allowed`), and goes from that channel to the addresses in `to`. Which channel and which
+address are allowed is the agents module's check, made before the call.
+
 The conversation detail answers **`capabilities`**, the same shape for every channel type, so a caller
 never branches on the type: `subject`, `html`, `cc` and `replyAll` (true for e-mail), `components` and
 `shareEmail` (the provider's, for Messenger), `maxText` (`2000` for Messenger, null for e-mail),
