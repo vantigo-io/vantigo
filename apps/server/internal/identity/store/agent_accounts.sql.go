@@ -65,7 +65,7 @@ type InsertAgentUserParams struct {
 
 // InsertAgentUser makes a user of kind agent (virtual employees design V5): a
 // confirmed address that never routes, no credential, and pending_since left
-// null, which UserMayAct and the session queries refuse.
+// null: a user with pending_since set may not act, and an agent must.
 func (q *Queries) InsertAgentUser(ctx context.Context, arg InsertAgentUserParams) error {
 	_, err := q.db.Exec(ctx, insertAgentUser,
 		arg.ID,

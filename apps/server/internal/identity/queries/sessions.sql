@@ -104,6 +104,7 @@ SELECT EXISTS (
     WHERE u.id = @user_id
       AND NOT u.is_disabled
       AND u.pending_since IS NULL
+      AND u.kind = 'person'
       AND (u.lockout_end IS NULL OR u.lockout_end <= @now::timestamptz)
       AND (NOT @scim_enabled::boolean OR m.upstream_active IS NOT FALSE OR r.is_owner)
 )::boolean AS may_act;

@@ -40,6 +40,19 @@ func newAgent(t *testing.T, h *harness, name string) uuid.UUID {
 	return id
 }
 
+// agentRule is a rule an agent holding the "Front desk" role of newAgentWithRole
+// meets while its grant stands.
+const agentRule = "permission:customers:view"
+
+// newAgentWithRole makes an agent holding a custom role with customers:view.
+func newAgentWithRole(t *testing.T, h *harness, name string) uuid.UUID {
+	t.Helper()
+	id := newAgent(t, h, name)
+	role := h.insertRole(t, "Role of "+id.String(), "customers:view")
+	h.exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, id, role)
+	return id
+}
+
 func issueAgent(t *testing.T, h *harness, agentUser uuid.UUID) uuid.UUID {
 	t.Helper()
 	id, err := agentGrants(h).Issue(context.Background(), contracts.IssueAgentGrant{AgentUserID: agentUser, AgentID: uuid.New(), RunID: uuid.New()})
@@ -119,7 +132,7 @@ func TestAgentAccounts_RenameDisableEnableAndAvatar(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	accounts := agentAccounts(h)
-	id := newAgent(t, h, "Hanna")
+	id := newAgentWithRole(t, h, "Hanna")
 	person := h.insertUser(t, "person@example.test")
 
 	if err := accounts.Rename(ctx, id, "Hanna Hansen"); err != nil {
@@ -175,7 +188,7 @@ func TestAgentAccounts_RenameDisableEnableAndAvatar(t *testing.T) {
 	if err := accounts.Disable(ctx, id); err != nil {
 		t.Errorf("Disable twice = %v, want nil", err)
 	}
-	if _, got := checkAgent(t, h, grant, "", "session"); got != u401 {
+	if _, got := checkAgent(t, h, grant, "", agentRule); got != u401 {
 		t.Errorf("a disabled agent's grant answered %v, want 401", got)
 	}
 	if _, err := agentGrants(h).Issue(ctx, contracts.IssueAgentGrant{AgentUserID: id, AgentID: uuid.New(), RunID: uuid.New()}); !errors.Is(err, contracts.ErrAgentInactive) {
@@ -444,19 +457,20 @@ func TestAgentGrant_AnswersTheAgentsPrincipalWithVia(t *testing.T) {
 		t.Errorf("Via = %+v, want the agent, run, customer and reviewer", via)
 	}
 
-	// What the role does not carry is forbidden, and the session rule is met
-	// by the agent itself (no cookie was read: the Owner's token was ignored).
+	// What the role does not carry is forbidden. An agent is admitted by a
+	// permission it holds alone: a session rule or a policy by itself would
+	// reach a person's self-service endpoints, so both are refused.
 	if _, got := checkAgent(t, h, id, "", "permission:customers:edit"); got != f403 {
 		t.Errorf("a permission its role lacks answered %v, want 403", got)
 	}
-	for _, rule := range []string{"anonymous", "session", "policy:ActiveAccount", "policy:Business"} {
-		if p, got := checkAgent(t, h, id, "", rule); got != allowed || p.UserID != agent {
-			t.Errorf("%s: answered %v for %v, want the agent allowed", rule, got, p.UserID)
-		}
+	if p, got := checkAgent(t, h, id, "", "anonymous"); got != allowed || p.UserID != agent {
+		t.Errorf("anonymous: answered %v for %v, want the agent allowed", got, p.UserID)
 	}
 
-	// The Owner tier, SCIM and what needs a second factor are never an agent's.
+	// The Owner tier, SCIM, a session rule and a policy by itself are never an
+	// agent's.
 	for _, rule := range []string{
+		"session", "policy:ActiveAccount", "policy:Business", "policy:ActiveAccount+Business",
 		"policy:Owner", "policy:OwnerManagement", "policy:Owner+OwnerManagement", "policy:SystemAdmin",
 		"policy:Owner+SystemAdmin", "policy:AuthorizationManagement", "policy:ActiveAccount+Owner", "scim",
 	} {
@@ -484,7 +498,7 @@ func TestAgentGrant_IssueRefusesWhatIsNotAnActiveAgentAndTheGrantEnds(t *testing
 		uuid.New(), person, uuid.New(), h.now(), h.now().Add(time.Minute))
 	wantViolation(t, "a grant for a person", err)
 
-	agent := newAgent(t, h, "Hanna")
+	agent := newAgentWithRole(t, h, "Hanna")
 	// A grant lives at most ten minutes.
 	_, err = h.pool.Exec(ctx, `INSERT INTO identity.agent_grants (id, user_id, agent_id, run_id, created_at, expires_at) VALUES ($1, $2, $3, $3, $4, $5)`,
 		uuid.New(), agent, uuid.New(), h.now(), h.now().Add(11*time.Minute))
@@ -492,7 +506,7 @@ func TestAgentGrant_IssueRefusesWhatIsNotAnActiveAgentAndTheGrantEnds(t *testing
 
 	// Revoke ends one; a repeat and an unknown id are not errors.
 	id := issueAgent(t, h, agent)
-	if _, got := checkAgent(t, h, id, "", "session"); got != allowed {
+	if _, got := checkAgent(t, h, id, "", agentRule); got != allowed {
 		t.Fatalf("a fresh grant answered %v", got)
 	}
 	if err := grants.Revoke(ctx, id); err != nil {
@@ -504,7 +518,7 @@ func TestAgentGrant_IssueRefusesWhatIsNotAnActiveAgentAndTheGrantEnds(t *testing
 	if err := grants.Revoke(ctx, uuid.New()); err != nil {
 		t.Errorf("Revoke unknown = %v", err)
 	}
-	if _, got := checkAgent(t, h, id, "", "session"); got != u401 {
+	if _, got := checkAgent(t, h, id, "", agentRule); got != u401 {
 		t.Errorf("a revoked grant answered %v, want 401", got)
 	}
 	if p, got := checkAgent(t, h, id, "", "anonymous"); got != allowed || p.UserID != uuid.Nil {
@@ -513,37 +527,37 @@ func TestAgentGrant_IssueRefusesWhatIsNotAnActiveAgentAndTheGrantEnds(t *testing
 
 	// RevokeForUser ends every grant of the agent, and only that agent's.
 	a, b := issueAgent(t, h, agent), issueAgent(t, h, agent)
-	other := issueAgent(t, h, newAgent(t, h, "Other"))
+	other := issueAgent(t, h, newAgentWithRole(t, h, "Other"))
 	if err := grants.RevokeForUser(ctx, agent); err != nil {
 		t.Fatalf("RevokeForUser: %v", err)
 	}
 	for _, g := range []uuid.UUID{a, b} {
-		if _, got := checkAgent(t, h, g, "", "session"); got != u401 {
+		if _, got := checkAgent(t, h, g, "", agentRule); got != u401 {
 			t.Errorf("a grant after RevokeForUser answered %v, want 401", got)
 		}
 	}
-	if _, got := checkAgent(t, h, other, "", "session"); got != allowed {
+	if _, got := checkAgent(t, h, other, "", agentRule); got != allowed {
 		t.Errorf("another agent's grant answered %v, want allowed", got)
 	}
 
 	// A grant expires after its ten minutes, and never before.
 	id = issueAgent(t, h, agent)
 	h.advance(contracts.MaxAgentGrantTTL - time.Second)
-	if _, got := checkAgent(t, h, id, "", "session"); got != allowed {
+	if _, got := checkAgent(t, h, id, "", agentRule); got != allowed {
 		t.Errorf("a grant just before its expiry answered %v, want allowed", got)
 	}
 	h.advance(time.Second)
-	if _, got := checkAgent(t, h, id, "", "session"); got != u401 {
+	if _, got := checkAgent(t, h, id, "", agentRule); got != u401 {
 		t.Errorf("a grant at its expiry answered %v, want 401", got)
 	}
 
 	// An unknown grant, and a grant of a kind Check does not know, are no caller.
-	if _, got := checkAgent(t, h, uuid.New(), "", "session"); got != u401 {
+	if _, got := checkAgent(t, h, uuid.New(), "", agentRule); got != u401 {
 		t.Errorf("an unknown grant answered %v, want 401", got)
 	}
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req = req.WithContext(contracts.WithGrant(req.Context(), contracts.GrantRef{Kind: "other", ID: id}))
-	rule, _ := contracts.ParseRule("session")
+	rule, _ := contracts.ParseRule(agentRule)
 	if _, err := h.access.Check(req, rule); !errors.Is(err, contracts.ErrUnauthenticated) {
 		t.Errorf("a grant of an unknown kind = %v, want ErrUnauthenticated", err)
 	}
@@ -552,10 +566,10 @@ func TestAgentGrant_IssueRefusesWhatIsNotAnActiveAgentAndTheGrantEnds(t *testing
 func TestAgentGrant_AnAgentThatStopsBeingActiveIsRefusedAtOnce(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	agent := newAgent(t, h, "Hanna")
+	agent := newAgentWithRole(t, h, "Hanna")
 	id := issueAgent(t, h, agent)
 	h.exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, agent)
-	if _, got := checkAgent(t, h, id, "", "session"); got != f403 {
+	if _, got := checkAgent(t, h, id, "", agentRule); got != f403 {
 		t.Errorf("the grant of a disabled agent answered %v, want 403", got)
 	}
 	if p, got := checkAgent(t, h, id, "", "anonymous"); got != allowed || p.UserID != uuid.Nil {
@@ -579,5 +593,75 @@ func TestGrantContext_KindsDoNotCross(t *testing.T) {
 	}
 	if _, ok := contracts.GrantFrom(contracts.WithGrant(context.Background(), contracts.GrantRef{Kind: contracts.GrantAgent})); ok {
 		t.Error("GrantFrom answered a nil id")
+	}
+}
+
+func TestAgent_UpdatesCannotPointARowAtAnAgentEither(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	ctx := context.Background()
+	agent := newAgent(t, h, "Hanna")
+	person := h.insertUser(t, "person@example.test", identity.RoleUserID)
+	custom := h.insertRole(t, "Front desk", "customers:view")
+
+	// The kind of an existing user never changes.
+	_, err := h.pool.Exec(ctx, `UPDATE identity.users SET kind = 'agent' WHERE id = $1`, person)
+	wantViolation(t, "a person turned into an agent", err)
+	_, err = h.pool.Exec(ctx, `UPDATE identity.users SET kind = 'person' WHERE id = $1`, agent)
+	wantViolation(t, "an agent turned into a person", err)
+
+	// A role row of the agent cannot be moved onto the Owner role, nor the
+	// Owner role's row onto the agent.
+	h.exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, agent, custom)
+	_, err = h.pool.Exec(ctx, `UPDATE identity.user_roles SET role_id = $2 WHERE user_id = $1`, agent, identity.RoleOwnerID)
+	wantViolation(t, "an agent's role updated to Owner", err)
+	h.exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, person, identity.RoleOwnerID)
+	_, err = h.pool.Exec(ctx, `UPDATE identity.user_roles SET user_id = $1 WHERE user_id = $2 AND role_id = $3`, agent, person, identity.RoleOwnerID)
+	wantViolation(t, "the Owner role's row moved to an agent", err)
+
+	// A session or a SCIM mapping or a grant moved onto an agent.
+	h.session(t, person, false)
+	_, err = h.pool.Exec(ctx, `UPDATE identity.sessions SET user_id = $1 WHERE user_id = $2`, agent, person)
+	wantViolation(t, "a session moved to an agent", err)
+	h.exec(t, `INSERT INTO identity.scim_user_mappings (resource_id, user_id, external_id, user_name, upstream_active, version, etag, created_at, updated_at)
+		VALUES ($1, $2, 'e', 'u', true, 1, 'etag', $3, $3)`, uuid.New(), person, h.now())
+	_, err = h.pool.Exec(ctx, `UPDATE identity.scim_user_mappings SET user_id = $1 WHERE user_id = $2`, agent, person)
+	wantViolation(t, "a SCIM mapping moved to an agent", err)
+	grant := issueAgent(t, h, agent)
+	_, err = h.pool.Exec(ctx, `UPDATE identity.agent_grants SET user_id = $1 WHERE id = $2`, person, grant)
+	wantViolation(t, "a grant moved to a person", err)
+}
+
+func TestAgentGrant_RefusesAnAgentHoldingOwnerOrSystemAdminEvenIfTheTableAllowedIt(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	for _, role := range []uuid.UUID{identity.RoleOwnerID, identity.RoleSystemAdminID} {
+		agent := newAgentWithRole(t, h, "Hanna")
+		grant := issueAgent(t, h, agent)
+		// Seed what the trigger forbids, as a mistake elsewhere would.
+		h.exec(t, `ALTER TABLE identity.user_roles DISABLE TRIGGER user_roles_refuse_agent_privileged`)
+		h.exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, agent, role)
+		h.exec(t, `ALTER TABLE identity.user_roles ENABLE TRIGGER user_roles_refuse_agent_privileged`)
+		if _, got := checkAgent(t, h, grant, "", agentRule); got != f403 {
+			t.Errorf("an agent holding %v answered %v, want 403", role, got)
+		}
+		if p, got := checkAgent(t, h, grant, "", "anonymous"); got != allowed || p.UserID != uuid.Nil {
+			t.Errorf("under anonymous = %v for %v, want a caller with none", got, p.UserID)
+		}
+	}
+}
+
+func TestAgent_IsNoOneWhoMayActOnAUsersBehalfOrSignInByPasskey(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	agent := newAgentWithRole(t, h, "Hanna")
+	if held, err := h.access.UserHolds(context.Background(), agent, "customers:view"); err != nil || held {
+		t.Errorf("UserHolds for an agent = %v, %v, want false", held, err)
+	}
+	person := h.insertUser(t, "person@example.test", identity.RoleUserID)
+	role := h.insertRole(t, "Viewer", "customers:view")
+	h.exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, person, role)
+	if held, err := h.access.UserHolds(context.Background(), person, "customers:view"); err != nil || !held {
+		t.Errorf("UserHolds for a person = %v, %v, want true", held, err)
 	}
 }

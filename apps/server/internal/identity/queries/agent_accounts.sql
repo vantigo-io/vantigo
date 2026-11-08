@@ -1,7 +1,7 @@
 -- name: InsertAgentUser :exec
 -- InsertAgentUser makes a user of kind agent (virtual employees design V5): a
 -- confirmed address that never routes, no credential, and pending_since left
--- null, which UserMayAct and the session queries refuse.
+-- null: a user with pending_since set may not act, and an agent must.
 INSERT INTO identity.users (
     id, email, normalized_email, email_confirmed, display_name, kind, version, created_at, updated_at
 ) VALUES (
