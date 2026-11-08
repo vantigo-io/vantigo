@@ -1782,3 +1782,11 @@ each operation's mode is derived from its access rule. Two operations are marked
 `x-vantigo-assistant: never` by hand, because their bodies carry an SMTP password that would
 pass through the model and its provider: `POST /channels` and `PUT /channels/{id}`. Everything
 behind `communications:conversations-view` is `never` already, that permission being sensitive.
+
+An **agent** (a virtual employee, a user of kind `agent`) calls the same operations through an agent
+grant. Two reads here return a customer's data and declare `x-vantigo-customer-scope`, which the
+dispatcher enforces for an agent's run ([module boundaries rule
+18](/en/contributing/module-boundaries/)): `GET /conversations` takes the run's customer as its
+`customerId` filter (filled in when left out, refused when it names another), and `GET
+/conversations/{id}` is refused when its `customerId` is not the run's customer. A run with no
+customer reads neither.

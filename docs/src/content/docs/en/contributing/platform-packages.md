@@ -248,9 +248,9 @@ Owner's choice that identity keeps: see [the AI platform](/en/contributing/modul
 
 [`apps/server/internal/operations`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/operations)
 is how the Assistant reads and changes things: it calls the operations of the merged contract
-in-process, through the composed router, as the person the assistant acts for. It is not
-available to a module. `module.Compose` hands it, as `Deps.Operations`, to the module named
-`assistant` alone, and depguard refuses every other import ([module boundaries rule
+in-process, through the composed router, as the person the assistant acts for, or as an agent. It is not
+available to a module. `module.Compose` hands it, as `Deps.Operations`, to the modules named
+`assistant` and `agents` alone, and depguard refuses every other import ([module boundaries rule
 18](/en/contributing/module-boundaries/), which also says how a call is the person's own).
 
 - **Building it.** `operations.New()` is unbound; `Bind(contract, catalog, access, handler,
@@ -265,13 +265,18 @@ available to a module. `module.Compose` hands it, as `Deps.Operations`, to the m
 - **`Info`** describes one operation: `ID`, `Method`, `Path`, `Tag`, `Summary`, `Description`,
   `Mode`, `Permissions` — the keys its access rule names, empty for a `policy:` or `session` rule —
   and `Sensitive`, true when any of them is `Sensitive` in the catalog. From `All` and `Info(id)`
-  `Mode` is the contract's; from `List` and `Search` it is the effective mode below.
-- **`SetGate(Gate)`** installs the function that narrows the contract's mode for the workspace:
-  `type Gate func(ctx, Info) Mode`. Only the assistant module calls it, while it mounts; the
+  `Mode` is the contract's; from `List` and `Search` it is the effective mode below. `CustomerScope`
+  is the operation's `x-vantigo-customer-scope`, `{param}` or `{resource}`, nil without one: a gate
+  can read it to allow only operations that carry a scope.
+- **`SetGate(kind, Gate)`** installs the function that narrows the contract's mode for one kind of
+  principal: `type Gate func(ctx, Info) Mode`, the kind being the grant's (`assistant` or `agent`,
+  `contracts.GrantAssistant` and `GrantAgent`). Each of the two modules calls it for its own kind
+  while it mounts, and every method takes the gate from the kind of grant on the context (a context
+  with no grant is the assistant's). A kind with no gate gets the closed default below; the
   dispatcher keeps the **narrower** of the contract's mode and the gate's answer (`never` over
   `confirm` over `auto`), so a gate can never widen the contract, and it is called for every
   operation on every `List` and `Search`, so it must be cheap and cache. **Without a gate — and
-  after `SetGate(nil)` — the dispatcher fails closed**: an operation whose `Info.Sensitive` is true
+  after `SetGate(kind, nil)` — the dispatcher fails closed**: an operation whose `Info.Sensitive` is true
   is `never`. A gate that cannot decide answers `never`. The Assistant's gate applies the Owner's
   permission levels ([the reference](/en/reference/assistant/#permission-levels-and-the-gate)).
 - **`Effective(ctx, id)`** is the **effective mode** — the contract's mode narrowed by the gate —
@@ -293,11 +298,14 @@ available to a module. `module.Compose` hands it, as `Deps.Operations`, to the m
   codes: `operation_unknown`, `operation_never`, `confirmation_required`, `no_grant`,
   `invalid_request`, `not_ready`, `call_failed`) before anything is dispatched when the
   operation is unknown, `never`, or `confirm` without `Confirmed`, when the context carries no
-  grant (`contracts.WithAssistantGrant`) or user (`contracts.AsUser`), or when the call does
-  not fit the operation. Once dispatched, the router's answer is a `CallResult` — a status and
+  grant (`contracts.WithGrant`, of either kind; an agent's also needs its run,
+  `contracts.WithAgentRun`) or user (`contracts.AsUser`), or when the call does not fit the
+  operation. For an agent's run an operation that declares `x-vantigo-customer-scope` is tied to the
+  run's customer (a `param` is filled in or must equal it, a `resource` field of the answer must
+  equal it, a run with no customer reads none), and breaking it is a `customer_scope` error. Once dispatched, the router's answer is a `CallResult` — a status and
   a JSON body, truncated to nothing with `Truncated` above 1 MiB, and the response's headers
   (`Header`: an `ETag` a change is guarded with, a `Location`). The request is built on a
-  fresh context holding only the grant, with `RemoteAddr` `assistant-<user id>`, so the
+  fresh context holding only the grant, with `RemoteAddr` `assistant-<user id>` (`agent-<user id>` for an agent), so the
   per-client rate limits are per person.
 - **`Validate(ctx, CallRequest)`** checks a request as `Call` would and dispatches nothing: the
   operation is known and not `never` (a `confirm` one passes, confirmed or not), every path

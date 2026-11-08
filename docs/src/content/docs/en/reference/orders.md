@@ -1462,6 +1462,21 @@ available. `GET /meta` gives every holder of `orders:access` what the screens ne
 not archived, through `contracts.Stock`, for the order's and the default site's pickers;
 empty without Inventory.
 
+## Agents and the customer scope
+
+An agent (a virtual employee) reads orders through the same API, and the operations dispatcher ties each
+call to the customer of its run ([module boundaries rule 18](/en/contributing/module-boundaries/)).
+Two operations declare `x-vantigo-customer-scope`:
+
+| Operation | Scope |
+| --- | --- |
+| `GET /orders` (the list) | `param: customerId`: the query filter is the run's customer, filled in when left out and refused when it names another |
+| `GET /orders/{id}` (one order) | `resource: customer.customerId`: the answer is dropped, as a `customer_scope` error, when the order's customer is not the run's |
+
+A run with no customer reads neither. Quotes, deliveries and shipments name no customer on their own
+(an order's shipments carry only the order), so they declare no scope and cannot be allowed to an agent's
+role; the order is how an agent finds a customer's goods.
+
 ## Assistant tour targets
 
 The Assistant can point at these controls in a guided tour ([the registry](/en/reference/assistant/#guided-tours)). The package registers them in `apps/orders/frontend/src/assist-targets.json`, exports them as `assistTargets` (`@vantigo/orders-ui/assist-targets`) and marks each control with `data-assist="<key>"`. A route with `{…}` is a record's screen.

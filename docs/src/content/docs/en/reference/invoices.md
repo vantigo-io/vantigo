@@ -5670,6 +5670,20 @@ worker, honouring `communications.suppressions`, bulk sending, a "paid" stamp on
 fact on the directory, user display names on payments and deliveries (ids only), and a
 purge of anything.
 
+## Agents and the customer scope
+
+An agent (a virtual employee) reads invoices through the same API, and the operations dispatcher ties each
+call to the customer of its run ([module boundaries rule 18](/en/contributing/module-boundaries/)).
+Two operations declare `x-vantigo-customer-scope`:
+
+| Operation | Scope |
+| --- | --- |
+| `GET /invoices` (the list) | `param: customerId`: the query filter is the run's customer, filled in when left out and refused when it names another |
+| `GET /invoices/{id}` (one invoice) | `resource: customerId`: the answer is dropped, as a `customer_scope` error, when the invoice's customer is not the run's |
+
+A run with no customer reads neither. No other operation declares a scope, so none can be allowed to an
+agent's role.
+
 ## Assistant tour targets
 
 The Assistant can point at these controls in a guided tour ([the registry](/en/reference/assistant/#guided-tours)). The package registers them in `apps/invoices/frontend/src/assist-targets.json`, exports them as `assistTargets` (`@vantigo/invoices-ui/assist-targets`) and marks each control with `data-assist="<key>"`; a test of the package fails when a key has no marker or a marker has no key. A route with `{…}` is a record's screen.

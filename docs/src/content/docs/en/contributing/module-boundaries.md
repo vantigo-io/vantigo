@@ -940,23 +940,26 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     system mailbox (`Deps.Mail`) keeps its one job, writing to the tenant's own employees.
     `modtest.FakeOutboundMail` backs tests.
 
-18. **The assistant calls the contract as the person.** The tenth sanctioned exception to
-    rule 6, and the only one that reaches an HTTP endpoint (the Assistant design S2–S4):
-    the platform's **`Operations` dispatcher** (`internal/operations`) may call any operation
-    of the merged contract of the enabled modules *in-process, through the composed router*,
-    for the assistant principal and no one else. No module learns the assistant exists: the
+18. **The assistant and the agents call the contract as their principal.** The tenth
+    sanctioned exception to rule 6, and the only one that reaches an HTTP endpoint (the
+    Assistant design S2–S4; virtual employees design V8): the platform's **`Operations`
+    dispatcher** (`internal/operations`) may call any operation of the merged contract of the
+    enabled modules *in-process, through the composed router*, for two principals and no
+    one else: the assistant (its person, through an assistant grant) and an agent (the
+    agent's own user, through an agent grant). No other module learns either exists: the
     coupling is to the public contract, which is the most stable surface there is.
 
-    - **Only the module named `assistant` receives it.** `Compose` builds the dispatcher
-      unbound before any module mounts, sets `Deps.Operations` on that module's `Deps` alone
-      (every other module's is nil, whatever the caller preset) and binds it, once the
-      router and the merged contract exist, to the contract, the composed catalog,
-      `Deps.Access` and the composed handler. It is for use while serving, never while
-      mounting. depguard forbids every other import of `internal/operations` — only
-      `internal/assistant`, `internal/agentloop` (the model loop it runs on, which reaches
-      the dispatcher through an interface), `internal/module`, `internal/server` and the test harnesses
-      `internal/modtest` and `internal/integration` may — and a test composes a module
-      called `alpha` and one called `assistant` and proves which of them is handed it.
+    - **Only the modules named `assistant` and `agents` receive it.** `Compose` builds one
+      dispatcher unbound before any module mounts, sets `Deps.Operations` on those two
+      modules' `Deps` alone (every other module's is nil, whatever the caller preset, and so
+      is a worker's) and binds it, once the router and the merged contract exist, to the
+      contract, the composed catalog, `Deps.Access` and the composed handler. It is for use
+      while serving, never while mounting. depguard forbids every other import of
+      `internal/operations` — only `internal/assistant`, `internal/agents`,
+      `internal/agentloop` (the model loop they run on, which reaches the dispatcher through
+      an interface), `internal/module`, `internal/server` and the test harnesses
+      `internal/modtest` and `internal/integration` may — and a test composes modules
+      called `alpha`, `assistant` and `agents` and proves which of them are handed it.
     - **A call is the person's own.** The assistant module asks identity for a *grant*
       (`Deps.AssistantGrants.Issue`, from the request of the person's message) and puts it on
       the call's context with `contracts.WithAssistantGrant`; the dispatcher builds an
@@ -975,8 +978,11 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       `agent` grant `Access.Check` answers the agent user's own principal — its roles, no
       session, no second factor — with `Via{Kind: "agent", AgentID, RunID, CustomerID,
       ApprovedBy}` (identity's `AgentGrants`), admitted by a permission rule alone: every
-      `session`, `scim` and `policy:` rule is refused. The dispatcher still accepts the assistant's grant only;
-      it learns the agent's with the `agents` module.
+      `session`, `scim` and `policy:` rule is refused. `Dispatcher.Call` accepts either
+      grant and refuses a call with none; the in-process request's `RemoteAddr` is
+      `assistant-<user>` or `agent-<user>`, so the router's rate limits are per principal. An
+      agent's context also carries its run (`contracts.WithAgentRun`: the agent, the run and
+      the run's customer, nil for a run with none), which the gate and the customer scope read.
     - **Every operation has a contract mode** (`auto`, `confirm`, `never`), computed once by
       `Compose`: the operation's `x-vantigo-assistant` when it has one (the OpenAPI lint
       checks the values, and refuses `auto` or `confirm` behind a rule an assistant is never
@@ -984,10 +990,16 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       policy, a permission missing from the catalog, a file upload or download, or the
       assistant's own API; otherwise `auto` for `GET` and `confirm` for every other method.
       The contract's mode is the widest an operation can ever be. **A gate narrows it for the
-      workspace**: the module named `assistant` installs one with `Operations.SetGate` while it
-      mounts, which applies the Owner's permission level of each permission the rule names (*Off*
-      makes it `never`, *Read* turns `confirm` into `never`), and the dispatcher keeps the narrower
-      of the two, so a gate can never widen the contract. `Info` carries the contract's `Mode`,
+      workspace**: there is one gate **per kind of principal**, installed with
+      `Operations.SetGate(kind, gate)` while the module mounts, the kind being the grant's
+      (`assistant` or `agent`). The `assistant` module installs the first, which applies the Owner's
+      permission level of each permission the rule names (*Off* makes it `never`, *Read* turns
+      `confirm` into `never`); the `agents` module installs the second, which applies the agent's
+      own levels and its role's allowlist. `List`, `Search`, `Effective`, `Validate` and `Call`
+      take the gate from the kind of grant on the context (a context with no grant, such as a
+      person confirming a change in a request of their own, is the assistant's). The dispatcher
+      keeps the narrower of the contract's mode and the gate's, so a gate can never widen the
+      contract. `Info` carries the contract's `Mode`,
       the `Permissions` the rule names and whether any is `Sensitive`; `List`, `Search`, `Effective`
       and `Call` answer the effective mode. **Without a gate the dispatcher fails closed**: an
       operation whose rule names a `Sensitive` permission is `never`, which is how the platform
@@ -998,6 +1010,23 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       marked `auto` by hand; an operation that would pass a secret through the model is marked
       `never`. `TestOperations_TheRealContract` derives every mode again from the contracts and
       pins the hand-written marks, so changing one is a decision.
+    - **An operation that returns a customer's data declares which customer.** The OpenAPI
+      extension `x-vantigo-customer-scope` is either `{param: <name>}` — a path or query
+      parameter that carries the customer's id — or `{resource: <field>}` — a field of the JSON
+      answer (a dotted path) that holds it. `Info.CustomerScope` carries it to a gate. For an
+      *agent's* call the dispatcher enforces it **before and after** the call, from the run's
+      customer in `contracts.AgentRun`: it fills a `param` the agent left out, refuses a
+      different value, and refuses an answer whose `resource` field is not the run's customer
+      (the body is dropped, so another customer's data never reaches the agent); a run with no
+      customer is refused every scoped operation; and a malformed scope refuses always. All
+      are `customer_scope` errors. The assistant is not scoped: its reach is its person's. The
+      agents' gate allows only the operations of its role's allowlist, so an operation that
+      returns customer data and declares no scope is never on one; a contract test keeps a
+      table of the customer-data operations the front desk uses and fails for one without the
+      extension. The marked set is small on purpose (Communications' conversations, Customers'
+      customer and contacts, Orders' sales orders, Invoices' list and invoice); an operation
+      that can name no customer, such as a delivery or a shipment of an order, is not marked and
+      so cannot be allowlisted.
     - **Modules do nothing for it.** No operation is written, annotated or exposed for the
       assistant but the optional `x-vantigo-assistant`; a module that grows an operation grows
       the assistant's reach with it, behind the same rule. The contract's `summary` is what the
@@ -1016,6 +1045,16 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       runs' own runners are untouched. The one rule the new runner shares with theirs is the lease
       rule: **it holds no transaction, advisory lock or connection across a dispatcher call**, and a
       test runs a whole job on a pool of one.
+    - **Work that needs the dispatcher and is not a person's request is an API runner.**
+      `Module.APIRunners func(Deps) []Runner` (a `Runner` is a `Name()` and a `Run(ctx)` that returns
+      when the context ends) is called by `module.ComposeAPI` for every enabled module, **after**
+      the dispatcher is bound, so a module that receives `Deps.Operations` can call through it from
+      the first tick. `cmd/vantigo` starts the runners with `module.StartRunners` in an API process
+      (`api`, or `server` mode) on the context that stops the workers, and waits for them on
+      shutdown; worker mode never starts one, because it has no dispatcher. `Compose`, for a caller
+      that has no process of its own, drops them; the `modtest` harness starts them and stops them
+      with the test. The agents' run poller is the first. It follows the lease rule above, and a
+      panic or an error in one runner is logged and does not touch the others.
     `modtest.Harness.Operations` and `AssistantContext` bind a dispatcher to a harness and
     issue a grant for a signed-in client.
 
@@ -1350,11 +1389,15 @@ The Assistant is the first caller ([The model loop](/en/reference/assistant/#the
   Communications' Messenger tests run a fake `ChannelMessenger` whose Profile, Send and
   OpenAttachment calls the same hook proves were never made inside a transaction.
 - **Rule 18**: by depguard and by test. depguard forbids every import of `internal/operations`
-  but `internal/assistant`, `internal/module`, `internal/server` and the test harnesses; a
-  `module` test composes a module called `alpha` and one called `assistant` and proves which is
-  handed the dispatcher; the dispatcher's own tests bind it to a small synthetic contract and
-  prove each mode, the gate (it narrows, never widens, and a missing or failing gate
-  falls back to the closed default) and that a call carries no value of the caller's; and
+  but `internal/assistant`, `internal/agents`, `internal/agentloop`, `internal/module`,
+  `internal/server` and the test harnesses; a `module` test composes modules called `alpha`,
+  `assistant` and `agents` and proves which are handed the dispatcher (the last two, the same
+  one), and another that runners start after the dispatcher is bound and stop on cancel; the
+  dispatcher's own tests bind it to a small synthetic contract and prove each mode, one gate
+  per kind (a kind with none falls back to the closed default, and one kind's gate never
+  answers for the other), a call under an agent grant, the customer scope (a parameter filled
+  or refused, an answer of another customer dropped, a run with no customer refused) and that a
+  call carries no value of the caller's; and
   `TestOperations_TheRealContract` derives the contract's mode and the default gate's mode of every
   operation of the shipped contract again from the catalog, pinning the hand-written marks. The
   assistant module's tests run every level, the switch and its overrides through the real

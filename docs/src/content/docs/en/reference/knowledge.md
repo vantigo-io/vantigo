@@ -87,8 +87,8 @@ on parent pages don't apply here.* for a detached page.
 
 Levels are `write` (can edit), `read` and `none`. A member row can lower as well as raise
 (`none` hides the article from one person). The whole is **bounded by `knowledge:articles`**.
-`ai_hidden` is separate and **monotone**: an article is hidden from the Assistant when it or any
-ancestor is.
+`ai_hidden` is separate and **monotone**: an article is hidden from the Assistant, and from agents
+(virtual employees), when it or any ancestor is.
 
 ### Materialisation
 
@@ -435,10 +435,13 @@ cannot read a document, the access, the history or the trash, and cannot change 
 `offset`; `nextOffset` is set while more remains, so a long article is read in parts.
 
 **Hidden from the Assistant** (`ai_hidden`) is enforced when the principal comes through the
-Assistant (`Via` = assistant): search leaves hidden articles out, the text operation answers 404
+Assistant or is an agent: whenever `Principal.Via` is set, whatever its kind. Search leaves hidden articles out, the text operation answers 404
 for one, and an article's `path` is cut at a hidden ancestor. Because the flag is monotone down
 the tree, hiding a page hides its whole subtree. It is **not an access rule**: nobody who could
-read the article loses it, and the interface and the API serve it as before.
+read the article loses it, and the interface and the API serve it as before. An agent is
+otherwise an ordinary user of the module: the member picker (`GET /assignable-users`) lists agents
+beside people, so an article can be shared with one as a member with `read`, and the agent's roles
+bound what it can reach as for anyone.
 
 ## Live
 

@@ -254,6 +254,12 @@ valg av en modell listen ikke lenger har, blir ignorert, og oppgaven faller tilb
 til en eier velger på nytt. Oppgavene deklareres av modulene, i koden: en modul som er av, har
 ingen, og en oppgave kommer sammen med funksjonen som utfører den.
 
+En oppgave kan også deklareres **per emne**: modellen kan da velges for ett emne, som én
+virtuell ansatt (agent), i tillegg til oppgavens egen modell. Emnets modell kommer først, så
+oppgavens, så modulens anbefaling og den første i `AI_MODELS`; en modell abonnementet ikke
+lenger tillater, blir ignorert på samme måte. Valget for et emne gjøres der emnet administreres,
+ikke under **KI-modeller**, som fortsatt viser oppgavens eget valg.
+
 #### De omdøpte variablene
 
 Kommunikasjons fire KI-variabler ble omdøpt da KI ble en plattforminnstilling. De gamle

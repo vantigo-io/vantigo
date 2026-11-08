@@ -249,6 +249,12 @@ model the list no longer holds is ignored, and the task falls back as above, unt
 Owner chooses again. Tasks are declared by the modules, in the code: a module that is off
 has none, and a task is added with the feature that performs it.
 
+A task can also be declared **per subject**: the model can then be chosen for one subject, such
+as one virtual employee (agent), besides the task's own choice. The subject's model comes first,
+then the task's, then the module's recommendation and the first of `AI_MODELS`; a model the plan
+no longer allows is ignored the same way. The choice for a subject is made where the subject is
+managed, not on **AI models**, which keeps showing the task's own choice.
+
 #### The renamed variables
 
 Communications' four AI variables were renamed when AI became a platform setting. The
