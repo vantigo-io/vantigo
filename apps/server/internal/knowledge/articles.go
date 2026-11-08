@@ -562,6 +562,8 @@ func (s *server) UpdateKnowledgeArticleContent(ctx context.Context, req gen.Upda
 			if st.UpdateRows == 0 {
 				return collabInactive()
 			}
+		} else if err := refuseActiveLog(ctx, q, req.Id, now); err != nil {
+			return err
 		} else if m.Version != *body.ExpectedVersion {
 			return versionConflict(m.Version, m.UpdatedAt, m.UpdatedBy)
 		}

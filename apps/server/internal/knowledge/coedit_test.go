@@ -530,6 +530,13 @@ func TestDocLog_ResetBySingleSaveRestoreAndEndpoint(t *testing.T) {
 		seedLog(t, h, s, art.ID, a)
 		expectDocEvent(t, events, docEvent{T: topic, K: "update", ID: "1", H: "hub-1"})
 	}
+	// makeStale ages the log's last row past collab_active's 2 minutes.
+	makeStale := func() {
+		if _, err := h.Pool().Exec(context.Background(),
+			`UPDATE knowledge.articles SET last_append_at = last_append_at - interval '3 minutes' WHERE id = $1`, art.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	// A collaborative save leaves the log alone and says nothing about it.
 	seed()
@@ -539,7 +546,18 @@ func TestDocLog_ResetBySingleSaveRestoreAndEndpoint(t *testing.T) {
 	}
 	noDocEvent(t, events)
 
-	// A single-editor save deletes it and starts epoch 2.
+	// A log that took a row a moment ago is being co-edited: a single-editor
+	// save and a restore are refused and change nothing (collab_active).
+	expectStatus(t, "single save of an active log", save(a, art.ID, "Reset", "fallback text", 2), http.StatusConflict, "collab_active")
+	expectStatus(t, "restore of an active log", a.c.Do(http.MethodPost, "/api/v1/knowledge/articles/"+art.ID+"/versions/2/restore", map[string]any{"expectedVersion": 2}), http.StatusConflict, "collab_active")
+	noDocEvent(t, events)
+	if epoch, version, rows, _ := logState(t, h, art.ID); logRows() != 1 || epoch != 1 || version != 2 || rows != 1 {
+		t.Errorf("after refusals: %d log rows, epoch %d, version %d, counter %d", logRows(), epoch, version, rows)
+	}
+
+	// With no row for 2 minutes the log is stale. A single-editor save deletes
+	// it and starts epoch 2.
+	makeStale()
 	expectStatus(t, "single save", save(a, art.ID, "Reset", "fallback text", 2), http.StatusOK, "")
 	expectDocEvent(t, events, docEvent{T: topic, K: "reset", ID: "2"})
 	if epoch, _, rows, bytes := logState(t, h, art.ID); logRows() != 0 || epoch != 2 || rows != 0 || bytes != 0 {
@@ -548,13 +566,15 @@ func TestDocLog_ResetBySingleSaveRestoreAndEndpoint(t *testing.T) {
 
 	// A restore deletes it and starts epoch 2.
 	seed()
+	makeStale()
 	expectStatus(t, "restore", a.c.Do(http.MethodPost, "/api/v1/knowledge/articles/"+art.ID+"/versions/3/restore", map[string]any{"expectedVersion": 3}), http.StatusOK, "")
 	expectDocEvent(t, events, docEvent{T: topic, K: "reset", ID: "3"})
 	if logRows() != 0 {
 		t.Errorf("a restore left %d rows", logRows())
 	}
 
-	// The endpoint: a writer may, a reader may not, a stranger sees nothing.
+	// The endpoint: a writer may, a reader may not, a stranger sees nothing;
+	// it resets an active log too.
 	seed()
 	path := "/api/v1/knowledge/articles/" + art.ID + "/collab/reset"
 	expectStatus(t, "reader resets", reader.c.Do(http.MethodPost, path, nil), http.StatusForbidden, "article_read_only")

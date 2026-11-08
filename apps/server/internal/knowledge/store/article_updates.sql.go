@@ -13,17 +13,24 @@ import (
 )
 
 const addDocCounters = `-- name: AddDocCounters :exec
-UPDATE knowledge.articles SET update_rows = update_rows + $1::int, update_bytes = update_bytes + $2::bigint WHERE id = $3::uuid
+UPDATE knowledge.articles SET update_rows = update_rows + $1::int, update_bytes = update_bytes + $2::bigint, last_append_at = $3::timestamptz WHERE id = $4::uuid
 `
 
 type AddDocCountersParams struct {
 	Rows  int32
 	Bytes int64
+	Now   time.Time
 	ID    uuid.UUID
 }
 
+// AddDocCounters counts an appended row and notes when it was (last_append_at).
 func (q *Queries) AddDocCounters(ctx context.Context, arg AddDocCountersParams) error {
-	_, err := q.db.Exec(ctx, addDocCounters, arg.Rows, arg.Bytes, arg.ID)
+	_, err := q.db.Exec(ctx, addDocCounters,
+		arg.Rows,
+		arg.Bytes,
+		arg.Now,
+		arg.ID,
+	)
 	return err
 }
 
@@ -96,7 +103,7 @@ func (q *Queries) DeleteUpdates(ctx context.Context, articleID uuid.UUID) (int64
 }
 
 const docState = `-- name: DocState :one
-SELECT doc_epoch::bigint AS epoch, version, update_rows::bigint AS update_rows, update_bytes, last_compaction_ask_at
+SELECT doc_epoch::bigint AS epoch, version, update_rows::bigint AS update_rows, update_bytes, last_compaction_ask_at, last_append_at
 FROM knowledge.articles WHERE id = $1::uuid
 `
 
@@ -106,6 +113,7 @@ type DocStateRow struct {
 	UpdateRows          int64
 	UpdateBytes         int64
 	LastCompactionAskAt *time.Time
+	LastAppendAt        *time.Time
 }
 
 // DocState is the log's state on the article row (K27, K32); the caller holds
@@ -119,6 +127,7 @@ func (q *Queries) DocState(ctx context.Context, id uuid.UUID) (DocStateRow, erro
 		&i.UpdateRows,
 		&i.UpdateBytes,
 		&i.LastCompactionAskAt,
+		&i.LastAppendAt,
 	)
 	return i, err
 }
@@ -244,7 +253,7 @@ func (q *Queries) NullUpdateAuthors(ctx context.Context, users []uuid.UUID) erro
 }
 
 const resetDocLog = `-- name: ResetDocLog :one
-UPDATE knowledge.articles SET doc_epoch = doc_epoch + 1, update_rows = 0, update_bytes = 0
+UPDATE knowledge.articles SET doc_epoch = doc_epoch + 1, update_rows = 0, update_bytes = 0, last_append_at = NULL
 WHERE id = $1::uuid RETURNING doc_epoch::bigint AS epoch
 `
 
@@ -284,17 +293,25 @@ func (q *Queries) SeedIfEmpty(ctx context.Context, arg SeedIfEmptyParams) (int64
 }
 
 const setDocCounters = `-- name: SetDocCounters :exec
-UPDATE knowledge.articles SET update_rows = $1::int, update_bytes = $2::bigint WHERE id = $3::uuid
+UPDATE knowledge.articles SET update_rows = $1::int, update_bytes = $2::bigint, last_append_at = $3::timestamptz WHERE id = $4::uuid
 `
 
 type SetDocCountersParams struct {
 	Rows  int32
 	Bytes int64
+	Now   time.Time
 	ID    uuid.UUID
 }
 
+// SetDocCounters sets the log's size after a seed or a compaction, which note
+// when they were (last_append_at) like an append.
 func (q *Queries) SetDocCounters(ctx context.Context, arg SetDocCountersParams) error {
-	_, err := q.db.Exec(ctx, setDocCounters, arg.Rows, arg.Bytes, arg.ID)
+	_, err := q.db.Exec(ctx, setDocCounters,
+		arg.Rows,
+		arg.Bytes,
+		arg.Now,
+		arg.ID,
+	)
 	return err
 }
 

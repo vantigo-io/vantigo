@@ -22,15 +22,21 @@ CREATE INDEX ix_article_updates_created_by ON knowledge.article_updates (created
 -- (K27, K32): doc_epoch (from 1; 0 on the wire means "none held") counts the resets of the log, so a client that holds
 -- a copy from before one is told (a seq alone is reused after a reset);
 -- update_rows and update_bytes are the log's size, so a write never scans the
--- log; last_compaction_ask_at spaces the requests to compact across replicas.
+-- log; last_compaction_ask_at spaces the requests to compact across replicas;
+-- last_append_at is when the log last took a row (an append, a seed or a
+-- compaction), null for a log reset or never written: a single-editor save or
+-- a restore is refused (409 collab_active) while the log is non-empty and
+-- took a row within the last 2 minutes.
 ALTER TABLE knowledge.articles
     ADD COLUMN doc_epoch               integer     NOT NULL DEFAULT 1,
     ADD COLUMN update_rows             integer     NOT NULL DEFAULT 0,
     ADD COLUMN update_bytes            bigint      NOT NULL DEFAULT 0,
-    ADD COLUMN last_compaction_ask_at  timestamptz;
+    ADD COLUMN last_compaction_ask_at  timestamptz,
+    ADD COLUMN last_append_at          timestamptz;
 
 -- +goose Down
 ALTER TABLE knowledge.articles
+    DROP COLUMN last_append_at,
     DROP COLUMN last_compaction_ask_at,
     DROP COLUMN update_bytes,
     DROP COLUMN update_rows,

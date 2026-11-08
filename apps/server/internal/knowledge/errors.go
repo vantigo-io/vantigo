@@ -31,6 +31,7 @@ const (
 	codeVersionConflict        = "version_conflict"
 	codeArticleLocked          = "article_locked"
 	codeCollabInactive         = "collab_inactive"
+	codeCollabActive           = "collab_active"
 	codeVisibilityChange       = "visibility_change"
 	codeNotTrashed             = "not_trashed"
 	codeDocumentTooLarge       = "document_too_large"
@@ -131,6 +132,13 @@ func locked() error {
 // single-editor one.
 func collabInactive() error {
 	return conflict(codeCollabInactive, "Live editing is not active", "The article has no live log; save it as a single editor.")
+}
+
+// collabActive is the 409 of a single-editor save or a restore of an article
+// whose live log took a row within collabActiveWindow: someone is co-editing
+// it, and the write would delete their log.
+func collabActive() error {
+	return conflict(codeCollabActive, "Live editing is active", "Someone is editing the article live. Try again when they are done, or reset the live log.")
 }
 
 // visibilityChange is the 409 of a change that moves an article between
