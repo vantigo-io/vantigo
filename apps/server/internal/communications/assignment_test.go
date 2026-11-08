@@ -3,12 +3,16 @@ package communications_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -46,8 +50,8 @@ func publishedEvents(t *testing.T, h *modtest.Harness, name string) (payloads []
 	return payloads, aggregates
 }
 
-func assign(c *modtest.Client, conversation string, assignee any) *modtest.Response {
-	return c.Do(http.MethodPatch, "/api/v1/communications/conversations/"+conversation, map[string]any{"assignedUserId": assignee})
+func assign(c *modtest.Client, conversation string, assignee any, opts ...modtest.RequestOption) *modtest.Response {
+	return c.Do(http.MethodPatch, "/api/v1/communications/conversations/"+conversation, map[string]any{"assignedUserId": assignee}, opts...)
 }
 
 // TestPatchConversation_AssigneeMustBeAKnownActiveUser: a user the directory
@@ -193,11 +197,18 @@ func TestAssignableUsers(t *testing.T) {
 	if r.Status != http.StatusOK {
 		t.Fatalf("status %d body %s", r.Status, r.Body)
 	}
+	var raw []map[string]any
+	r.JSON(&raw)
 	var users []struct {
 		UserId      string `json:"userId"`
 		DisplayName string `json:"displayName"`
 	}
 	r.JSON(&users)
+	for _, u := range raw {
+		if len(u) != 2 {
+			t.Errorf("a user carries %v, want only userId and displayName", u)
+		}
+	}
 	var sawMe bool
 	for _, u := range users {
 		sawMe = sawMe || u.UserId == me.String()
@@ -208,6 +219,19 @@ func TestAssignableUsers(t *testing.T) {
 	if !sawMe {
 		t.Errorf("the caller is not offered: %v", users)
 	}
+	_, named := h.SignInUser(t)
+	h.Exec(t, `UPDATE identity.users SET display_name = 'Zebulon Findable' WHERE id = $1`, named)
+	var found []struct {
+		UserId string `json:"userId"`
+	}
+	q := c.Do(http.MethodGet, "/api/v1/communications/assignable-users?query=zebulon", nil)
+	q.JSON(&found)
+	if q.Status != http.StatusOK || len(found) != 1 || found[0].UserId != named.String() {
+		t.Errorf("query zebulon = %d %s, want only %s", q.Status, q.Body, named)
+	}
+	if r := c.Do(http.MethodGet, "/api/v1/communications/assignable-users?query="+strings.Repeat("a", 201), nil); r.Status != http.StatusBadRequest {
+		t.Errorf("a 201-character query: status %d, want 400", r.Status)
+	}
 	if r := c.Do(http.MethodGet, "/api/v1/communications/assignable-users?limit=500", nil); r.Status != http.StatusBadRequest {
 		t.Errorf("limit 500: status %d, want 400", r.Status)
 	}
@@ -217,7 +241,7 @@ func TestAssignableUsers(t *testing.T) {
 }
 
 // TestMailboxSync_PublishesMessageReceived: an imported inbound message
-// publishes communications.message.received on the import's transaction, for a
+// publishes communications.conversation.message_received on the import's transaction, for a
 // new conversation and for a message that joins one, with the conversation's
 // assignee, the auto-reply flag and the unreadable flag, and no personal data.
 func TestMailboxSync_PublishesMessageReceived(t *testing.T) {
@@ -243,7 +267,7 @@ func TestMailboxSync_PublishesMessageReceived(t *testing.T) {
 		[]byte("this is not a message\r\n"))
 	in.sync(t)
 
-	events, aggregates := publishedEvents(t, in.h, "communications.message.received")
+	events, aggregates := publishedEvents(t, in.h, "communications.conversation.message_received")
 	if len(events) != 3 {
 		t.Fatalf("%d events, want one per imported message: %v", len(events), events)
 	}
@@ -300,7 +324,7 @@ func TestMessengerSync_PublishesMessageReceivedButNotForAnEcho(t *testing.T) {
 	if got := f.messageCount(t); got != 3 {
 		t.Fatalf("messages = %d, want the two of the participant and the echo", got)
 	}
-	events, _ := publishedEvents(t, f.h, "communications.message.received")
+	events, _ := publishedEvents(t, f.h, "communications.conversation.message_received")
 	if len(events) != 2 {
 		t.Fatalf("%d events, want one per participant message and none for the echo: %v", len(events), events)
 	}
@@ -312,5 +336,216 @@ func TestMessengerSync_PublishesMessageReceivedButNotForAnEcho(t *testing.T) {
 	}
 	if events[0]["assignedUserId"] != nil || events[1]["assignedUserId"] != assignee.String() {
 		t.Errorf("assignees = %v and %v, want none then %s", events[0]["assignedUserId"], events[1]["assignedUserId"], assignee)
+	}
+}
+
+// requireConversationLane fails t unless every event the module published for
+// the conversation is on the one outbox lane, communications.conversation, so a
+// handler receives a conversation's messages and assignments in order.
+func requireConversationLane(t *testing.T, h *modtest.Harness, conversation string, want int) {
+	t.Helper()
+	rows, err := h.Pool().Query(context.Background(),
+		`SELECT DISTINCT aggregate FROM platform.events WHERE module = 'communications' AND aggregate_id = $1`, conversation)
+	if err != nil {
+		t.Fatalf("read the outbox: %v", err)
+	}
+	defer rows.Close()
+	var lanes []string
+	for rows.Next() {
+		var lane string
+		if err := rows.Scan(&lane); err != nil {
+			t.Fatalf("scan the outbox: %v", err)
+		}
+		lanes = append(lanes, lane)
+	}
+	if len(lanes) != 1 || lanes[0] != "communications.conversation" {
+		t.Errorf("aggregates = %v, want only communications.conversation", lanes)
+	}
+	if got := h.Count(t, `SELECT count(*) FROM platform.events WHERE module = 'communications' AND aggregate_id = $1`, conversation); got != want {
+		t.Errorf("%d events for the conversation, want %d", got, want)
+	}
+}
+
+// TestEvents_ShareTheConversationLane: both events are on the outbox lane
+// communications.conversation, with the conversation as the aggregate id.
+func TestEvents_ShareTheConversationLane(t *testing.T) {
+	t.Parallel()
+	in := newInbox(t, nil, nil)
+	id := in.deliver(in.plainMail("Hello"), in.h.Now().Add(time.Minute), "graph-lane")
+	in.sync(t)
+	conv := in.importedMessage(t, id).conversationID
+	c := in.h.SignIn(t, "communications:conversations-manage", "communications:conversations-view")
+	_, user := in.h.SignInUser(t)
+	if r := assign(c, conv.String(), user.String()); r.Status != http.StatusOK {
+		t.Fatalf("assign: status %d body %s", r.Status, r.Body)
+	}
+	requireConversationLane(t, in.h, conv.String(), 2)
+}
+
+// failAtCommit makes every commit that touches the row of table matching where
+// fail, by a deferred constraint trigger, so the failure comes after the
+// handler has published; the trigger is dropped when the test ends.
+func failAtCommit(t *testing.T, h *modtest.Harness, table, where string) {
+	t.Helper()
+	name := "t_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	h.Exec(t, fmt.Sprintf(`CREATE FUNCTION public.%[1]s() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN IF %[3]s THEN RAISE EXCEPTION 'refused at commit'; END IF; RETURN NULL; END $$`, name, table, where))
+	h.Exec(t, fmt.Sprintf(`CREATE CONSTRAINT TRIGGER %[1]s AFTER INSERT OR UPDATE ON %[2]s DEFERRABLE INITIALLY DEFERRED
+		FOR EACH ROW EXECUTE FUNCTION public.%[1]s()`, name, table))
+	t.Cleanup(func() {
+		h.Exec(t, fmt.Sprintf(`DROP TRIGGER IF EXISTS %[1]s ON %[2]s`, name, table))
+		h.Exec(t, fmt.Sprintf(`DROP FUNCTION IF EXISTS public.%[1]s()`, name))
+	})
+}
+
+// TestPatchConversation_ARolledBackAssignmentPublishesNothing: a PATCH whose
+// transaction fails after the event was published leaves the assignee and the
+// outbox as they were.
+func TestPatchConversation_ARolledBackAssignmentPublishesNothing(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	reply := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	m := createConversation(t, reply, newConversationBody("x@example.test"))
+	c := h.SignIn(t, "communications:conversations-manage", "communications:conversations-view")
+	_, user := h.SignInUser(t)
+	failAtCommit(t, h, "communications.conversations", fmt.Sprintf("NEW.id = '%s' AND NEW.assigned_user_id IS NOT NULL", m.ConversationId))
+
+	r := assign(c, m.ConversationId, user.String(), modtest.SkipContract("the transaction is made to fail at commit"))
+	if r.Status != http.StatusInternalServerError {
+		t.Fatalf("status %d body %s, want 500", r.Status, r.Body)
+	}
+	if events, _ := publishedEvents(t, h, "communications.conversation.assigned"); len(events) != 0 {
+		t.Errorf("%d events after a rolled-back PATCH, want none", len(events))
+	}
+	if got := h.Count(t, `SELECT count(*) FROM communications.conversations WHERE id = $1 AND assigned_user_id IS NULL`, m.ConversationId); got != 1 {
+		t.Errorf("the rolled-back PATCH assigned the conversation")
+	}
+}
+
+// TestMailboxSync_ARolledBackImportPublishesNothing: an import whose
+// transaction fails at commit publishes no event and stores no message.
+func TestMailboxSync_ARolledBackImportPublishesNothing(t *testing.T) {
+	t.Parallel()
+	in := newInbox(t, nil, nil)
+	failAtCommit(t, in.h, "communications.inbound_receipts", fmt.Sprintf("NEW.channel_id = '%s'", in.channelID))
+	in.deliver(in.plainMail("Hello"), in.h.Now().Add(time.Minute), "graph-rollback")
+	in.sync(t)
+
+	if events, _ := publishedEvents(t, in.h, "communications.conversation.message_received"); len(events) != 0 {
+		t.Errorf("%d events after a rolled-back import, want none", len(events))
+	}
+	if n := countInbound(t, in.h, in.channelID); n != 0 {
+		t.Errorf("%d messages stored by a rolled-back import, want none", n)
+	}
+}
+
+// TestPatchConversation_AStatusPatchKeepsAnAssignmentMadeMeanwhile: a PATCH
+// that does not mention assignedUserId, held at the conversation's row lock
+// while another writer assigns, keeps that assignment and publishes nothing.
+func TestPatchConversation_AStatusPatchKeepsAnAssignmentMadeMeanwhile(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	reply := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	m := createConversation(t, reply, newConversationBody("x@example.test"))
+	c := h.SignIn(t, "communications:conversations-manage", "communications:conversations-view")
+	_, user := h.SignInUser(t)
+
+	ctx := context.Background()
+	tx, err := h.Pool().BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM communications.conversations WHERE id = $1 FOR UPDATE`, m.ConversationId); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan *modtest.Response, 1)
+	go func() {
+		done <- c.Do(http.MethodPatch, "/api/v1/communications/conversations/"+m.ConversationId, map[string]any{"status": "closed"})
+	}()
+	// The PATCH has read the conversation and waits for the lock.
+	for range 100 {
+		if h.Count(t, `SELECT count(*) FROM pg_locks WHERE NOT granted`) > 0 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE communications.conversations SET assigned_user_id = $2 WHERE id = $1`, m.ConversationId, user); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if r := <-done; r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s", r.Status, r.Body)
+	}
+	if got := h.Count(t, `SELECT count(*) FROM communications.conversations WHERE id = $1 AND status = 'closed' AND assigned_user_id = $2`, m.ConversationId, user); got != 1 {
+		t.Errorf("the status PATCH did not keep the assignee made meanwhile")
+	}
+	if events, _ := publishedEvents(t, h, "communications.conversation.assigned"); len(events) != 0 {
+		t.Errorf("%d assigned events for a status change, want none", len(events))
+	}
+}
+
+// TestPatchConversation_ConcurrentAssignmentsEachPublishOnce: two assignments
+// racing each see what the other committed, so the events chain: one real
+// change, one event, the second's previous assignee the first's.
+func TestPatchConversation_ConcurrentAssignmentsEachPublishOnce(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	reply := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	m := createConversation(t, reply, newConversationBody("x@example.test"))
+	c := h.SignIn(t, "communications:conversations-manage", "communications:conversations-view")
+	_, a := h.SignInUser(t)
+	_, b := h.SignInUser(t)
+
+	var wg sync.WaitGroup
+	for _, u := range []uuid.UUID{a, b} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if r := assign(c, m.ConversationId, u.String()); r.Status != http.StatusOK {
+				t.Errorf("assign: status %d body %s", r.Status, r.Body)
+			}
+		}()
+	}
+	wg.Wait()
+
+	events, _ := publishedEvents(t, h, "communications.conversation.assigned")
+	if len(events) != 2 {
+		t.Fatalf("%d events, want one per change: %v", len(events), events)
+	}
+	if events[0]["previousAssignedUserId"] != nil || events[1]["previousAssignedUserId"] != events[0]["assignedUserId"] {
+		t.Errorf("events do not chain: %v", events)
+	}
+	if got := h.Count(t, `SELECT count(*) FROM communications.conversations WHERE id = $1 AND assigned_user_id = $2`,
+		m.ConversationId, events[1]["assignedUserId"]); got != 1 {
+		t.Errorf("the conversation does not stand at the last event's assignee")
+	}
+}
+
+// TestPatchConversation_ResendingTheAssigneeDoesNotAskTheDirectory: naming the
+// assignee the conversation already has is a no-op even if that user has since
+// been disabled.
+func TestPatchConversation_ResendingTheAssigneeDoesNotAskTheDirectory(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	reply := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	m := createConversation(t, reply, newConversationBody("x@example.test"))
+	c := h.SignIn(t, "communications:conversations-manage", "communications:conversations-view")
+	_, user := h.SignInUser(t)
+	if r := assign(c, m.ConversationId, user.String()); r.Status != http.StatusOK {
+		t.Fatalf("assign: status %d body %s", r.Status, r.Body)
+	}
+	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, user)
+	if r := assign(c, m.ConversationId, user.String()); r.Status != http.StatusOK {
+		t.Fatalf("resend: status %d body %s, want 200", r.Status, r.Body)
+	}
+	if events, _ := publishedEvents(t, h, "communications.conversation.assigned"); len(events) != 1 {
+		t.Errorf("%d events, want only the first assignment", len(events))
 	}
 }

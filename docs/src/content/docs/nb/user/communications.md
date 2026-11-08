@@ -36,7 +36,7 @@ under [Messenger-samtaler](#messenger-samtaler).
 antall øverst. Hver rad viser motparten (navnet, eller adressen når navnet er ukjent) ved siden av et
 lite ikon for kanalen — en konvolutt for e-post, Messenger-logoen for en chat —, når noe
 sist skjedde, emnet (en chat har ikke noe, og viser **Facebook Messenger** i stedet),
-en forhåndsvisning av den siste teksten, samtalens tagger og statusen dens, og en liten avatar med initialene til den samtalen er tildelt,
+en forhåndsvisning av den siste teksten, samtalens tagger og statusen dens, og en liten avatar med initialene til personen samtalen er tildelt,
 når noen har den (hold musen over for å se navnet). En ulest samtale vises i fet skrift.
 
 Verktøylinjen filtrerer listen:

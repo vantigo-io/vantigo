@@ -17,7 +17,7 @@ Implements design V2 and V3 (`docs/superpowers/specs/2026-11-08-virtual-employee
    published when it changed.
 4. **List and detail** (`conversations.go`): `me`/`none`/uuid filter, `assignedUserName`,
    the assignable-users handler.
-5. **Events** (`contracts/events_communications.go`): `communications.message.received` v1 from
+5. **Events** (`contracts/events_communications.go`): `communications.conversation.message_received` v1 from
    the mailbox import (`inbound_import.go`) and the messenger sync (`messenger_import.go`), not for
    a Messenger echo, on the transaction that holds the conversation's lock.
 6. **Frontend** (`apps/communications/frontend`): `AssigneeSelect` in the thread (the panel's thread
@@ -39,3 +39,6 @@ Implements design V2 and V3 (`docs/superpowers/specs/2026-11-08-virtual-employee
   `conversations-view`.
 - PATCH now writes the assignee it read under the lock when the body does not mention it, so a
   stale pre-transaction read can no longer overwrite a concurrent assignment.
+- The design names the first event `communications.message.received`; it is published as
+  `communications.conversation.message_received`, so both events share the outbox lane
+  `communications.conversation` (the lane is the name less its last segment) and are ordered per conversation.
