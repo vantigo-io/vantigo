@@ -2,6 +2,26 @@
 // CI regenerates this file and fails when it is stale.
 
 export interface paths {
+    "/api/v1/communications/assignable-users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search users to assign a conversation to
+         * @description Active users from the user directory, for the assignee select and the inbox's person filter. Only display names are answered; a disabled user is never listed.
+         */
+        get: operations["getCommunicationsAssignableUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/communications/attachments/{id}/download": {
         parameters: {
             query?: never;
@@ -567,6 +587,11 @@ export interface components {
             subject: string | null;
             text: string;
         };
+        AssignableUser: {
+            displayName: string;
+            /** Format: uuid */
+            userId: string;
+        };
         AttachmentUploadResponse: {
             contentType: string;
             /** Format: date-time */
@@ -718,6 +743,8 @@ export interface components {
         ConversationDetailResponse: {
             /** Format: uuid */
             assignedUserId: string | null;
+            /** @description The assignee's display name, null when unassigned or when the user is no longer known. */
+            assignedUserName?: string | null;
             candidateCustomerIds: number[];
             /** @description The email address of the conversation's channel. Always answered; optional in the schema only because the recorded exchanges predate it. */
             channelAddress?: string;
@@ -873,6 +900,8 @@ export interface components {
         ConversationListItem: {
             /** Format: uuid */
             assignedUserId: string | null;
+            /** @description The assignee's display name, null when unassigned or when the user is no longer known. */
+            assignedUserName?: string | null;
             candidateCustomerIds: number[];
             /** Format: uuid */
             channelId: string;
@@ -1259,6 +1288,58 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getCommunicationsAssignableUsers: {
+        parameters: {
+            query?: {
+                /** @description Narrows the search by display name. Absent or blank lists the first page of active users. */
+                query?: string;
+                /** @description How many users to answer, 1-20. Defaults to 20. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignableUser"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     getCommunicationsAttachmentsByIdDownload: {
         parameters: {
             query?: never;
@@ -1826,6 +1907,7 @@ export interface operations {
                 page?: number;
                 pageSize?: number;
                 status?: string;
+                /** @description Only the conversations assigned to this user: a user id, "me" for the caller, or "none" for the unassigned ones. */
                 assignedUserId?: string;
                 tagId?: string;
                 customerId?: number;
@@ -1844,6 +1926,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaginatedResponseOfConversationListItem"];
+                };
+            };
+            /** @description Bad Request — assignedUserId is neither a user id, "me" nor "none". */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunicationErrorResponse"];
                 };
             };
             /** @description Unauthorized */
@@ -2107,7 +2198,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity — customer_invalid, or assignee_unknown when the assignee is a user the directory does not know or that is disabled. */
             422: {
                 headers: {
                     [name: string]: unknown;

@@ -71,7 +71,7 @@ LIMIT 1;
 -- name: LockConversationForInbound :one
 -- The matched conversation re-read inside the import's transaction, locked
 -- so its status and customer are decided on what is committed.
-SELECT id, status, customer_id
+SELECT id, status, customer_id, assigned_user_id
 FROM communications.conversations
 WHERE id = @id
 FOR UPDATE;

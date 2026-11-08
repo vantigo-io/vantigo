@@ -175,7 +175,7 @@ func (q *Queries) FailMessengerSync(ctx context.Context, arg FailMessengerSyncPa
 }
 
 const findOpenMessengerConversation = `-- name: FindOpenMessengerConversation :one
-SELECT c.id, c.customer_id
+SELECT c.id, c.customer_id, c.assigned_user_id
 FROM communications.conversations c
 JOIN communications.conversation_participants cp ON cp.conversation_id = c.id
 WHERE c.channel_id = $1 AND cp.participant_id = $2 AND c.status = 'open'
@@ -190,8 +190,9 @@ type FindOpenMessengerConversationParams struct {
 }
 
 type FindOpenMessengerConversationRow struct {
-	ID         uuid.UUID
-	CustomerID *int32
+	ID             uuid.UUID
+	CustomerID     *int32
+	AssignedUserID *uuid.UUID
 }
 
 // Threading by participant (N3a): the newest open conversation of the channel
@@ -199,7 +200,7 @@ type FindOpenMessengerConversationRow struct {
 func (q *Queries) FindOpenMessengerConversation(ctx context.Context, arg FindOpenMessengerConversationParams) (FindOpenMessengerConversationRow, error) {
 	row := q.db.QueryRow(ctx, findOpenMessengerConversation, arg.ChannelID, arg.ParticipantID)
 	var i FindOpenMessengerConversationRow
-	err := row.Scan(&i.ID, &i.CustomerID)
+	err := row.Scan(&i.ID, &i.CustomerID, &i.AssignedUserID)
 	return i, err
 }
 

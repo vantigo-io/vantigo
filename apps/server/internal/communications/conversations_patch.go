@@ -15,7 +15,9 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/events"
 )
 
 // PatchCommunicationsConversationsById Update a conversation
@@ -32,9 +34,10 @@ import (
 //     open, closed, or archived." (flat, no fields — same shape §3.2 lists).
 //  2. conversation lookup -> 404 bare.
 //  3. status assignment (already validated in step 1).
-//  4. assignedUserId, if the key is present in the raw JSON: null clears it,
-//     otherwise it is read completely unvalidated (task 5 dispatch point 7 —
-//     see the comment on the parse below).
+//  4. assignedUserId, if the key is present in the raw JSON: null clears it;
+//     a non-string or non-UUID value is a 400 under assignedUserId, and a
+//     user the directory does not know or that is disabled a 422
+//     assignee_unknown (virtual employees design V2).
 //  5. customerId, if the key is present: null clears it (and its
 //     association source, suggestion fields and candidates); a non-integer,
 //     non-null value -> 400 invalid_request "CustomerId must be an integer
@@ -85,30 +88,43 @@ func (s *server) PatchCommunicationsConversationsById(ctx context.Context, req g
 		finalStatus = *status
 	}
 
-	// assignedUserId (task 5 dispatch point 7): .NET's `assigned.GetGuid()`
-	// runs with no ValueKind check beyond "is it null" — a non-string value
-	// (a number, an object, an array) throws exactly the same as a
-	// string that is not a valid GUID, both unhandled exceptions the global
-	// handler turns into a sanitised 500. This is ported faithfully rather
-	// than hardened: a wrong-typed or malformed value here returns a wrapped
-	// error, which module.ResponseError turns into a 500 that never echoes
-	// it — deliberately not a 400, because .NET never produces one either.
-	assignedUserID := conv.AssignedUserID
+	// assignedUserId (virtual employees design V2): null clears it; anything
+	// but a JSON string holding a UUID is a 400 under assignedUserId, and a
+	// user the directory does not know, or that is disabled, is a 422
+	// assignee_unknown. The ported .NET handler read it with no check at all
+	// and answered a 500 for a wrong value; that is dropped on purpose. The
+	// directory is asked here, outside the transaction below, which reads
+	// the assignee again under the row lock.
+	var requestedAssignee *uuid.UUID
+	assigneeTouched := false
 	if rawAssigned, present := fields["assignedUserId"]; present {
+		assigneeTouched = true
 		trimmed := bytes.TrimSpace(rawAssigned)
-		if string(trimmed) == "null" {
-			assignedUserID = nil
-		} else {
+		if string(trimmed) != "null" {
 			var text string
-			if err := json.Unmarshal(trimmed, &text); err != nil {
-				return nil, fmt.Errorf("communications: assignedUserId is not a JSON string: %w", err)
+			var parsed uuid.UUID
+			var perr error
+			if perr = json.Unmarshal(trimmed, &text); perr == nil {
+				parsed, perr = uuid.Parse(text)
 			}
-			parsed, err := uuid.Parse(text)
-			if err != nil {
-				return nil, fmt.Errorf("communications: assignedUserId is not a valid guid: %w", err)
+			if perr != nil {
+				return gen.PatchCommunicationsConversationsById400JSONResponse(validationErrorBody(
+					map[string][]string{"assignedUserId": {"Must be a user id or null."}})), nil
 			}
-			assignedUserID = &parsed
+			user, derr := s.deps.Users.User(ctx, parsed)
+			if derr != nil {
+				return nil, fmt.Errorf("communications: look up assignee: %w", derr)
+			}
+			if user == nil || !user.Active {
+				return gen.PatchCommunicationsConversationsById422JSONResponse(flatErrorBody(
+					"assignee_unknown", "The selected user does not exist or is disabled.")), nil
+			}
+			requestedAssignee = &parsed
 		}
+	}
+	caller, err := callerUserID(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	customerID := conv.CustomerID
@@ -167,6 +183,18 @@ func (s *server) PatchCommunicationsConversationsById(ctx context.Context, req g
 	if err := db.WithTx(locked, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		ctx := locked
 		txq := store.New(tx)
+
+		// The assignee as committed, locked: the conversation was read
+		// before this transaction, and a change is compared with what
+		// stands now (design V3).
+		previous, aerr := txq.LockConversationAssignee(ctx, req.Id)
+		if aerr != nil {
+			return fmt.Errorf("communications: lock conversation assignee: %w", aerr)
+		}
+		assignedUserID := previous
+		if assigneeTouched {
+			assignedUserID = requestedAssignee
+		}
 		if touchedCustomer {
 			if err := txq.DeleteConversationCustomerCandidates(ctx, req.Id); err != nil {
 				return fmt.Errorf("communications: clear conversation candidates: %w", err)
@@ -182,6 +210,14 @@ func (s *server) PatchCommunicationsConversationsById(ctx context.Context, req g
 		})
 		if uerr != nil {
 			return fmt.Errorf("communications: update conversation: %w", uerr)
+		}
+
+		if assigneeTouched && !sameUser(previous, assignedUserID) {
+			if err := events.Publish(ctx, tx, moduleName, contracts.ConversationAssigned{
+				ConversationID: req.Id, AssignedUserID: assignedUserID, PreviousAssignedUserID: previous, ByUserID: caller,
+			}, s.deps.Clock()); err != nil {
+				return err
+			}
 		}
 
 		if conv.Status != "closed" && finalStatus == "closed" {
@@ -223,6 +259,14 @@ func (s *server) PatchCommunicationsConversationsById(ctx context.Context, req g
 		CustomerId: updated.CustomerID, CustomerAssociationSource: updated.CustomerAssociationSource,
 		SuggestedCustomerId: updated.SuggestedCustomerID, CandidateCustomerIds: candidateIDs,
 	}), nil
+}
+
+// sameUser reports whether a and b name the same user, or both none.
+func sameUser(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // isJSONIntegerLiteral reports whether b is a bare JSON integer token (an

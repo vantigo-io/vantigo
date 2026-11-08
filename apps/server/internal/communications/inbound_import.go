@@ -20,6 +20,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/events"
 	platformmail "github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
@@ -266,7 +267,7 @@ func (w *MailboxSyncWorker) importMessage(ctx context.Context, c *syncCycle, ite
 		ctx := locked
 		txq := store.New(tx)
 
-		conversationID, isNew, customerID, err := w.threadInTx(ctx, txq, threadID, in.AutoSubmitted)
+		conversationID, isNew, customerID, assignedUserID, err := w.threadInTx(ctx, txq, threadID, in.AutoSubmitted)
 		if err != nil {
 			return err
 		}
@@ -358,6 +359,14 @@ func (w *MailboxSyncWorker) importMessage(ctx context.Context, c *syncCycle, ite
 		}); err != nil {
 			return fmt.Errorf("communications: write the receipt: %w", err)
 		}
+		// Published under the conversation's lock, which the thread's
+		// FOR UPDATE or the insert holds (virtual employees design V3).
+		if err := events.Publish(ctx, tx, moduleName, contracts.MessageReceived{
+			ConversationID: conversationID, MessageID: messageID, ChannelID: c.channelID, ChannelType: channelTypeEmail,
+			AutoReply: in.AutoSubmitted, Unreadable: unreadable, AssignedUserID: assignedUserID,
+		}, now); err != nil {
+			return err
+		}
 		// Heard when this commits: the inbox, and whoever has the
 		// conversation open (live design L18).
 		return notifyMessage(ctx, tx, conversationID, eventMessageAdded, messageID)
@@ -387,29 +396,29 @@ func (w *MailboxSyncWorker) importMessage(ctx context.Context, c *syncCycle, ite
 // threadInTx re-reads the conversation findThread matched, locked: gone or
 // archived starts a new one; closed is reopened unless the message is an
 // automatic one (an out-of-office answer does not reopen). It answers the
-// conversation, whether a new one is to be made, and its customer.
-func (w *MailboxSyncWorker) threadInTx(ctx context.Context, txq *store.Queries, threadID uuid.UUID, auto bool) (uuid.UUID, bool, *int32, error) {
+// conversation, whether a new one is to be made, its customer and its assignee.
+func (w *MailboxSyncWorker) threadInTx(ctx context.Context, txq *store.Queries, threadID uuid.UUID, auto bool) (uuid.UUID, bool, *int32, *uuid.UUID, error) {
 	if threadID == uuid.Nil {
-		return uuid.Nil, true, nil, nil
+		return uuid.Nil, true, nil, nil, nil
 	}
 	conv, err := txq.LockConversationForInbound(ctx, threadID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, true, nil, nil
+		return uuid.Nil, true, nil, nil, nil
 	}
 	if err != nil {
-		return uuid.Nil, false, nil, fmt.Errorf("communications: lock the thread's conversation: %w", err)
+		return uuid.Nil, false, nil, nil, fmt.Errorf("communications: lock the thread's conversation: %w", err)
 	}
 	switch conv.Status {
 	case "archived":
-		return uuid.Nil, true, nil, nil
+		return uuid.Nil, true, nil, nil, nil
 	case "closed":
 		if !auto {
 			if err := txq.ReopenConversation(ctx, conv.ID); err != nil {
-				return uuid.Nil, false, nil, fmt.Errorf("communications: reopen the conversation: %w", err)
+				return uuid.Nil, false, nil, nil, fmt.Errorf("communications: reopen the conversation: %w", err)
 			}
 		}
 	}
-	return conv.ID, false, conv.CustomerID, nil
+	return conv.ID, false, conv.CustomerID, conv.AssignedUserID, nil
 }
 
 // inboundParticipant finds the channel's participant for a, in any case, or

@@ -17,6 +17,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/events"
 )
 
 // This file is one Messenger event's import (Messenger design N3, N3a, N5, N12):
@@ -165,7 +166,7 @@ func (w *MessengerSyncWorker) importMessage(ctx context.Context, c *messengerCyc
 				return err
 			}
 		}
-		conversationID, isNew, customerID, err := w.messengerThread(ctx, txq, c.channelID, participantID, occurredAt, now, event.Text)
+		conversationID, isNew, customerID, assignedUserID, err := w.messengerThread(ctx, txq, c.channelID, participantID, occurredAt, now, event.Text)
 		if err != nil {
 			return err
 		}
@@ -221,6 +222,15 @@ func (w *MessengerSyncWorker) importMessage(ctx context.Context, c *messengerCyc
 			Outcome: receiptImported, ReceivedAt: occurredAt, CreatedAt: now,
 		}); err != nil {
 			return fmt.Errorf("communications: write the receipt: %w", err)
+		}
+		// An echo is the Page's own message coming back: no one is to answer it.
+		if !event.Echo {
+			if err := events.Publish(ctx, tx, moduleName, contracts.MessageReceived{
+				ConversationID: conversationID, MessageID: messageID, ChannelID: c.channelID, ChannelType: channelTypeMessenger,
+				AssignedUserID: assignedUserID,
+			}, now); err != nil {
+				return err
+			}
 		}
 		if err := notifyMessage(ctx, tx, conversationID, eventMessageAdded, messageID); err != nil {
 			return err
@@ -544,7 +554,7 @@ func (w *MessengerSyncWorker) messengerParticipant(ctx context.Context, txq *sto
 // conversation stays closed. It answers the conversation, whether it was made,
 // and its customer.
 func (w *MessengerSyncWorker) messengerThread(ctx context.Context, txq *store.Queries, channelID, participantID uuid.UUID,
-	occurredAt, now time.Time, text string) (uuid.UUID, bool, *int32, error) {
+	occurredAt, now time.Time, text string) (uuid.UUID, bool, *int32, *uuid.UUID, error) {
 	open, err := txq.FindOpenMessengerConversation(ctx, store.FindOpenMessengerConversationParams{
 		ChannelID: channelID, ParticipantID: participantID,
 	})
@@ -553,24 +563,24 @@ func (w *MessengerSyncWorker) messengerThread(ctx context.Context, txq *store.Qu
 		if err := txq.InsertConversationParticipant(ctx, store.InsertConversationParticipantParams{
 			ConversationID: open.ID, ParticipantID: participantID,
 		}); err != nil {
-			return uuid.Nil, false, nil, fmt.Errorf("communications: link the participant: %w", err)
+			return uuid.Nil, false, nil, nil, fmt.Errorf("communications: link the participant: %w", err)
 		}
-		return open.ID, false, open.CustomerID, nil
+		return open.ID, false, open.CustomerID, open.AssignedUserID, nil
 	case !errors.Is(err, pgx.ErrNoRows):
-		return uuid.Nil, false, nil, fmt.Errorf("communications: find the open conversation: %w", err)
+		return uuid.Nil, false, nil, nil, fmt.Errorf("communications: find the open conversation: %w", err)
 	}
 	conversationID := uuid.New()
 	if _, err := txq.InsertConversation(ctx, store.InsertConversationParams{
 		ID: conversationID, ChannelID: channelID, LastActivityAt: occurredAt, PreviewText: preview(capText(text)), CreatedAt: now,
 	}); err != nil {
-		return uuid.Nil, false, nil, fmt.Errorf("communications: insert the conversation: %w", err)
+		return uuid.Nil, false, nil, nil, fmt.Errorf("communications: insert the conversation: %w", err)
 	}
 	if err := txq.InsertConversationParticipant(ctx, store.InsertConversationParticipantParams{
 		ConversationID: conversationID, ParticipantID: participantID,
 	}); err != nil {
-		return uuid.Nil, false, nil, fmt.Errorf("communications: link the participant: %w", err)
+		return uuid.Nil, false, nil, nil, fmt.Errorf("communications: link the participant: %w", err)
 	}
-	return conversationID, true, nil, nil
+	return conversationID, true, nil, nil, nil
 }
 
 // placeAnswer is where an answer an event carries belongs (N5): under the

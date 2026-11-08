@@ -20,6 +20,9 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
+// moduleName is the module's name on the events it publishes onto the outbox.
+const moduleName = "communications"
+
 // permissions is the module's permission catalog
 // (AZ/CommunicationsPermissionCatalog.cs, communications inventory
 // "Permissions" in the document preamble), ported verbatim: five keys, all
