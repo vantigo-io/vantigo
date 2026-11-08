@@ -161,7 +161,7 @@ func TestHandler_SubscribeAndHear(t *testing.T) {
 	}
 }
 
-// The close codes: 1009 for a client frame over 4 KiB, 1003 for a binary
+// The close codes: 1009 for a client frame over 4 KiB, 1007 for a malformed binary
 // frame, 4429 for the 21st socket, 4401 when the session ends, 1001 at
 // shutdown (L4, L11, L12).
 func TestHandler_CloseCodes(t *testing.T) {
@@ -177,7 +177,7 @@ func TestHandler_CloseCodes(t *testing.T) {
 			t.Errorf("closed with %d, want 1009", code)
 		}
 	})
-	t.Run("a binary frame", func(t *testing.T) {
+	t.Run("a malformed binary frame", func(t *testing.T) {
 		s := serve(t)
 		user, session := s.access.person()
 		c, _, err := s.dial(t, user, session, nil)
@@ -185,8 +185,8 @@ func TestHandler_CloseCodes(t *testing.T) {
 			t.Fatal(err)
 		}
 		_ = c.Write(context.Background(), websocket.MessageBinary, []byte{1, 2, 3})
-		if code := closedWith(t, c); code != websocket.StatusUnsupportedData {
-			t.Errorf("closed with %d, want 1003", code)
+		if code := closedWith(t, c); code != websocket.StatusInvalidFramePayloadData {
+			t.Errorf("closed with %d, want 1007", code)
 		}
 	})
 	t.Run("too many sockets", func(t *testing.T) {

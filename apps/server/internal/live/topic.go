@@ -48,6 +48,11 @@ type Topic struct {
 	// it. It returns nil or ErrForbidden; any other error is read as
 	// forbidden too.
 	Authorize func(ctx context.Context, key string) error
+	// Doc, when set, makes the topic a document's (K26): binary frames for it
+	// are stored and relayed through the module's DocStore, and the hub
+	// answers doc_sync, acks and the rest of the document protocol. Nil for
+	// every other topic.
+	Doc DocStore
 }
 
 // ValidTopic reports whether topic follows the grammar.

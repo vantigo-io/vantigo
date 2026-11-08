@@ -27,8 +27,13 @@ const (
 	closeGoingAway = 1001
 	// closePolicy (1008): a slow consumer, three times in a minute.
 	closePolicy = 1008
-	// closeUnsupported (1003): a binary frame, reserved for K-C.
-	closeUnsupported = 1003
+	// closeInvalid (1007): a binary frame that is not a frame.
+	closeInvalid = 1007
+	// closeTooBig (1009): a text frame over 4 KiB.
+	closeTooBig = 1009
+	// closeInternal (1011): a document store failed; the client reconnects
+	// and sends again what was not acknowledged.
+	closeInternal = 1011
 	// closeNormal (1000).
 	closeNormal = 1000
 	// closeDead is no code on the wire: a connection that stopped answering
@@ -58,6 +63,15 @@ type limits struct {
 	backoffMin      time.Duration // the listener's reconnect backoff
 	backoffMax      time.Duration //
 	shutdownPublish time.Duration // bound on publishing the leaving members
+
+	docRate    float64       // update frames a second per connection (K25)
+	docBurst   int           // and the burst
+	docBlock   time.Duration // a replay frame waits this long for room in the queue (K28)
+	docReplay  time.Duration // bound on one replay
+	docStore   time.Duration // bound on one store call
+	awareness  time.Duration // awareness batch period (K30)
+	awareRate  float64       // awareness frames a second per connection (K30)
+	awareBurst int           // and the burst
 }
 
 var defaultLimits = limits{
@@ -81,6 +95,14 @@ var defaultLimits = limits{
 	backoffMin:      time.Second,
 	backoffMax:      30 * time.Second,
 	shutdownPublish: 5 * time.Second,
+	docRate:         50,
+	docBurst:        200,
+	docBlock:        10 * time.Second,
+	docReplay:       60 * time.Second,
+	docStore:        10 * time.Second,
+	awareness:       250 * time.Millisecond,
+	awareRate:       30,
+	awareBurst:      60,
 }
 
 // connectPolicy is the rate limit on opening a socket, per user (L2).
@@ -132,6 +154,13 @@ type Hub struct {
 	closed     bool
 	presence   presenceState
 
+	// docMu guards the fetch workers (K28);
+	// awMu the pending awareness frames (K30). Neither is held with mu.
+	docMu      sync.Mutex
+	docWorkers map[string]*docWorker
+	awMu       sync.Mutex
+	awareness  map[string]map[*client][]byte
+
 	pubMu sync.Mutex
 	pub   *pgx.Conn
 	// pushMu guards pushSent: the newest presence snapshot each socket was
@@ -157,20 +186,22 @@ func New(o Options) *Hub {
 		o.Registry = NewRegistry()
 	}
 	h := &Hub{
-		id:       uuid.NewString(),
-		opts:     o,
-		reg:      o.Registry,
-		logger:   o.Logger,
-		now:      o.Clock,
-		metrics:  newMetrics(o.MeterProvider),
-		limits:   defaultLimits,
-		clients:  map[*client]struct{}{},
-		perUser:  map[uuid.UUID]int{},
-		subs:     map[string]map[*client]struct{}{},
-		presence: newPresenceState(),
-		pushSent: map[string]map[*client]uint64{},
-		base:     context.Background(),
-		stopped:  make(chan struct{}),
+		id:         uuid.NewString(),
+		opts:       o,
+		reg:        o.Registry,
+		logger:     o.Logger,
+		now:        o.Clock,
+		metrics:    newMetrics(o.MeterProvider),
+		limits:     defaultLimits,
+		clients:    map[*client]struct{}{},
+		perUser:    map[uuid.UUID]int{},
+		subs:       map[string]map[*client]struct{}{},
+		presence:   newPresenceState(),
+		pushSent:   map[string]map[*client]uint64{},
+		docWorkers: map[string]*docWorker{},
+		awareness:  map[string]map[*client][]byte{},
+		base:       context.Background(),
+		stopped:    make(chan struct{}),
 	}
 	h.names = newNameCache(h)
 	h.connect = h.dial
@@ -192,10 +223,14 @@ func (h *Hub) Start(ctx context.Context) {
 		h.logger.Warn("live: the listener is down; sockets are degraded until it reconnects", "error", err)
 		h.setListener(false, 0)
 	}
-	h.wg.Add(2)
+	h.wg.Add(3)
 	go func() {
 		defer h.wg.Done()
 		h.listen(ctx, first)
+	}()
+	go func() {
+		defer h.wg.Done()
+		h.awarenessLoop(ctx)
 	}()
 	go func() {
 		defer h.wg.Done()
@@ -271,7 +306,13 @@ type client struct {
 	code      int
 	reason    string
 
-	subs map[string]struct{} // guarded by Hub.mu
+	subs  map[string]struct{} // guarded by Hub.mu
+	docMu sync.Mutex          // guards docs, a leaf lock
+	docs  map[string]*docSub  // the document subscriptions among subs
+
+	// The read loop's alone: the rate limits (K25, K30) and the stray binary frames.
+	writes, aware updateBucket
+	strays        []time.Time
 }
 
 func (c *client) close(code int, reason string) {
@@ -302,7 +343,7 @@ func (h *Hub) attach(user, session uuid.UUID) (*client, error) {
 	if h.perUser[user] >= h.limits.connsPerUser {
 		return nil, errTooManyClients
 	}
-	c := &client{user: user, session: session, send: make(chan []byte, h.limits.queue), done: make(chan struct{}), subs: map[string]struct{}{}}
+	c := &client{user: user, session: session, send: make(chan []byte, h.limits.queue), done: make(chan struct{}), subs: map[string]struct{}{}, docs: map[string]*docSub{}}
 	h.clients[c] = struct{}{}
 	h.perUser[user]++
 	h.wg.Add(1) // detach's Done: Wait waits for every socket
@@ -344,6 +385,7 @@ func (h *Hub) dropSubLocked(c *client, topic string) {
 		return
 	}
 	delete(c.subs, topic)
+	c.delDoc(topic)
 	h.pushMu.Lock()
 	if sent := h.pushSent[topic]; sent != nil {
 		delete(sent, c)
@@ -384,8 +426,21 @@ drain:
 			break drain
 		}
 	}
-	c.send <- frameResyncSlow
+	select {
+	case c.send <- frameResyncSlow:
+	default: // a replay refilled the queue meanwhile; it will be resynced by the next overflow
+	}
 	h.metrics.resync("slow_consumer", 1)
+	// Frames of a document may have been among those discarded: say so, and
+	// the client syncs again from its contiguous watermark.
+	for _, s := range c.allDocs() {
+		if s.stale.CompareAndSwap(false, true) {
+			select {
+			case c.send <- frameDocSignal("doc_stale", s.topic):
+			default:
+			}
+		}
+	}
 	now := h.now()
 	kept := c.overflows[:0]
 	for _, at := range c.overflows {
@@ -404,6 +459,12 @@ type inFrame struct {
 	Type  string  `json:"type"`
 	Topic string  `json:"topic"`
 	State *string `json:"state"`
+	// After is a doc_sync's: the newest seq the client holds (K28).
+	After int64 `json:"after"`
+	// Epoch is a doc_sync's: the epoch of the log the client holds, 0 for none.
+	Epoch int64 `json:"epoch"`
+	// Message is a doc_error's: what the client could not apply (K35).
+	Message string `json:"message"`
 }
 
 // handleFrame acts on one text frame from c. A frame it cannot read is
@@ -423,6 +484,11 @@ func (h *Hub) handleFrame(ctx context.Context, c *client, data []byte) {
 		h.unsubscribe(c, f.Topic)
 	case "presence":
 		h.setPresence(c, f.Topic, f.State)
+	case "doc_sync":
+		h.docSync(c, f.Topic, f.After, f.Epoch)
+	case "doc_error":
+		h.metrics.docApplyErrors.Add(context.Background(), 1)
+		h.logger.Warn("live: a client could not apply a document update", "topic", f.Topic, "user", c.user, "message", truncate(f.Message, 200))
 	}
 }
 
@@ -464,6 +530,11 @@ func (h *Hub) subscribe(ctx context.Context, c *client, topic string) {
 		h.deny(c, topic, reason)
 		return
 	}
+	var doc *docSub
+	if t.Doc != nil {
+		doc = &docSub{h: h, c: c, topic: topic, key: key, store: t.Doc,
+			canWrite: h.canWrite(ctx, newCycleAccess(h.opts.Access), c, t, key)}
+	}
 	h.mu.Lock()
 	if c.isClosed() || h.closed {
 		h.mu.Unlock()
@@ -476,6 +547,9 @@ func (h *Hub) subscribe(ctx context.Context, c *client, topic string) {
 	}
 	if _, already := c.subs[topic]; !already {
 		c.subs[topic] = struct{}{}
+		if doc != nil {
+			c.setDoc(topic, doc)
+		}
 		set := h.subs[topic]
 		if set == nil {
 			set = map[*client]struct{}{}
@@ -586,6 +660,10 @@ func (h *Hub) recheck(ctx context.Context, c *client) {
 		}
 		if (!ok || err != nil) && h.revoke(c, topic) {
 			h.deny(c, topic, "forbidden")
+			continue
+		}
+		if ok {
+			h.refreshCanWrite(ctx, access, c, topic, t, key)
 		}
 	}
 }
@@ -604,6 +682,12 @@ func (h *Hub) dispatch(raw string) {
 		return
 	}
 	h.metrics.notifications.Add(context.Background(), 1)
+	if kind, _, ok := SplitTopic(p.T); ok {
+		if t, ok := h.reg.lookup(kind); ok && t.Doc != nil {
+			h.dispatchDoc(t, p)
+			return
+		}
+	}
 	frame := frameEvent(p.T, p.K, p.ID)
 	h.mu.Lock()
 	targets := make([]*client, 0, len(h.subs[p.T]))
@@ -672,4 +756,12 @@ func (h *Hub) Health(ctx context.Context) Health {
 		}
 	}
 	return out
+}
+
+// truncate cuts s to at most n bytes, for a log line.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
 }
