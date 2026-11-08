@@ -30,7 +30,7 @@ import {
 } from "../api/agents";
 import { errorCode, isVersionConflict } from "../api/request";
 import type { DiscardReason, ReviewItem } from "../api/types";
-import { discardReasons, heldKey, isUrgent, msUntil, remaining } from "../lib/review";
+import { discardReasons, heldKey, isUrgent, msUntil, outcomeKey, remaining } from "../lib/review";
 import { runLinkOptions } from "../lib/routes";
 import { useDecisionError, useRemainingText } from "./use-decision-error";
 
@@ -45,7 +45,7 @@ const useNow = (): number => {
 };
 
 /** What a decided or withdrawn item came to, in words. */
-const outcomeKey = (item: ReviewItem): string => `state.${item.state}`;
+const stateKey = (item: ReviewItem): string => `state.${item.state}`;
 
 /**
  * One review item (V20, screen 4): why it waits, the score and the sources, the
@@ -121,7 +121,7 @@ export const ReviewItemCard = ({ item, canReview }: { item: ReviewItem; canRevie
             </Badge>
             {!waiting && (
               <Badge variant="outline" color={item.state === "discarded" ? "red" : "gray"}>
-                {t(outcomeKey(item))}
+                {t(stateKey(item))}
               </Badge>
             )}
           </Group>
@@ -222,6 +222,12 @@ export const ReviewItemCard = ({ item, canReview }: { item: ReviewItem; canRevie
             </Text>
             {change.body && <Code block>{JSON.stringify(change.body, null, 2)}</Code>}
           </Stack>
+        )}
+
+        {(item.state === "withdrawn" || item.state === "expired") && item.outcome && (
+          <Text size="sm" c="dimmed" data-testid="outcome">
+            {t(outcomeKey(item.outcome))}
+          </Text>
         )}
 
         {item.discardReason && (

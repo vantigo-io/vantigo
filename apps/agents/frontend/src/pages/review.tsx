@@ -1,9 +1,9 @@
-import { Alert, Button, Group, Loader, SegmentedControl, Select, Stack, Text } from "@mantine/core";
+import { Alert, Button, Group, Loader, Pagination, SegmentedControl, Select, Stack, Text } from "@mantine/core";
 import { IconInbox } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
-import { agentsQueryOptions, reviewQueryOptions } from "../api/agents";
+import { agentsQueryOptions, REVIEW_PAGE_SIZE, reviewQueryOptions } from "../api/agents";
 import { errorCode } from "../api/request";
 import { ReviewItemCard } from "../components/review-item-card";
 import { type AgentsAccess, noAgentsAccess } from "../lib/access";
@@ -21,14 +21,21 @@ export const ReviewPage = ({ access = noAgentsAccess }: { access?: AgentsAccess 
   const { t } = useI18n("agents");
   const [which, setWhich] = useState<Which>("waiting");
   const [agentId, setAgentId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
   const agents = useQuery(agentsQueryOptions());
-  // "Decided" is every state but waiting: the API lists the waiting ones first, so they are left out here.
-  const query = useQuery(
-    reviewQueryOptions({ state: which === "waiting" ? "waiting" : undefined, agentId: agentId ?? undefined }),
-  );
+  // "Decided" is every state but waiting, filtered and paged on the server.
+  const query = useQuery({
+    ...reviewQueryOptions({
+      state: which === "waiting" ? "waiting" : "decided",
+      agentId: agentId ?? undefined,
+      page: which === "decided" ? page : undefined,
+    }),
+    placeholderData: keepPreviousData,
+  });
   const pending = query.isPending;
   const failed = query.isError ? query : undefined;
-  const items = (query.data?.items ?? []).filter((item) => (which === "waiting") === (item.state === "waiting"));
+  const items = query.data?.items ?? [];
+  const pages = Math.max(1, Math.ceil((query.data?.total ?? 0) / REVIEW_PAGE_SIZE));
 
   let body: ReactNode;
   if (pending) body = <Loader size="sm" />;
@@ -59,6 +66,9 @@ export const ReviewPage = ({ access = noAgentsAccess }: { access?: AgentsAccess 
         {items.map((item) => (
           <ReviewItemCard key={item.id} item={item} canReview={access.canReview} />
         ))}
+        {which === "decided" && pages > 1 && (
+          <Pagination aria-label={t("queuePage")} total={pages} value={page} onChange={setPage} />
+        )}
       </Stack>
     );
 
@@ -76,12 +86,18 @@ export const ReviewPage = ({ access = noAgentsAccess }: { access?: AgentsAccess 
               clearable
               data={(agents.data ?? []).map((agent) => ({ value: agent.id, label: agent.name }))}
               value={agentId}
-              onChange={setAgentId}
+              onChange={(value) => {
+                setAgentId(value);
+                setPage(1);
+              }}
             />
             <SegmentedControl
               aria-label={t("reviewTitle")}
               value={which}
-              onChange={(value) => setWhich(value as Which)}
+              onChange={(value) => {
+                setWhich(value as Which);
+                setPage(1);
+              }}
               data={[
                 { value: "waiting", label: t("queueWaiting") },
                 { value: "decided", label: t("queueDecided") },

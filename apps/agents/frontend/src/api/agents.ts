@@ -146,15 +146,20 @@ export const reviewItemQueryKey = (id: string) => [AGENTS_QUERY_KEY, "review-ite
 
 export interface ReviewFilter {
   agentId?: string;
-  /** One state, or none for every state (the waiting ones first). */
-  state?: ReviewState;
+  /** One state, "decided" for every state but waiting, or none for every state (the waiting ones first). */
+  state?: ReviewState | "decided";
+  /** The page, from 1, for a list that is read a page at a time (the decided ones). */
+  page?: number;
 }
+
+export const REVIEW_PAGE_SIZE = 20;
 
 export const reviewQueryOptions = (filter: ReviewFilter) =>
   queryOptions({
     queryKey: [...reviewQueryKey, filter],
     queryFn: ({ signal }) => {
-      const query = new URLSearchParams({ limit: "100" });
+      const query = new URLSearchParams({ limit: filter.page ? String(REVIEW_PAGE_SIZE) : "100" });
+      if (filter.page) query.set("offset", String((filter.page - 1) * REVIEW_PAGE_SIZE));
       if (filter.state) query.set("state", filter.state);
       if (filter.agentId) query.set("agentId", filter.agentId);
       return request<ReviewItemList>(`${base}/review?${query}`, { signal });
