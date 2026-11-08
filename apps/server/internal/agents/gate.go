@@ -27,7 +27,11 @@ type agentTable struct {
 	allowed map[string]bool
 }
 
+// gateEntry is one agent's table with its own lock, so a read of the database
+// for one agent holds up that agent's calls only, and concurrent calls for it
+// share one read.
 type gateEntry struct {
+	mu        sync.Mutex
 	table     *agentTable
 	checkedAt time.Time
 }
@@ -35,8 +39,23 @@ type gateEntry struct {
 // gateCache keeps each agent's table, cached by the agent's version (V9: a
 // change takes effect at the next tool call).
 type gateCache struct {
-	mu      sync.Mutex
+	mu      sync.Mutex // the map only, never held across a read
 	entries map[uuid.UUID]*gateEntry
+}
+
+// entry is the agent's entry, made when there is none.
+func (c *gateCache) entry(agentID uuid.UUID) *gateEntry {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = map[uuid.UUID]*gateEntry{}
+	}
+	e := c.entries[agentID]
+	if e == nil {
+		e = &gateEntry{}
+		c.entries[agentID] = e
+	}
+	return e
 }
 
 // invalidate forgets the agent's table, so the next gate call reads the
@@ -51,11 +70,10 @@ func (c *gateCache) invalidate(agentID uuid.UUID) {
 // version at most once per gateRecheck, and reads the levels and roles only when
 // the version moved. An agent that is not there, or is deleted, does not act.
 func (s *server) table(ctx context.Context, agentID uuid.UUID) (*agentTable, error) {
-	c := &s.gates
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	e := c.entries[agentID]
-	if e != nil && time.Since(e.checkedAt) < gateRecheck {
+	e := s.gates.entry(agentID)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.table != nil && time.Since(e.checkedAt) < gateRecheck {
 		return e.table, nil
 	}
 	q := store.New(s.deps.Pool)
@@ -66,12 +84,13 @@ func (s *server) table(ctx context.Context, agentID uuid.UUID) (*agentTable, err
 		}
 		return nil, err
 	}
-	if e != nil && e.table.version == row.Version && e.table.acts == (row.State != stateDeleted) {
+	acts := row.State != stateDeleted
+	if e.table != nil && e.table.version == row.Version && e.table.acts == acts {
 		e.checkedAt = time.Now()
 		return e.table, nil
 	}
-	table := &agentTable{version: row.Version, acts: row.State != stateDeleted, levels: map[string]string{}, allowed: map[string]bool{}}
-	if table.acts {
+	table := &agentTable{version: row.Version, acts: acts, levels: map[string]string{}, allowed: map[string]bool{}}
+	if acts {
 		levels, err := q.ListAgentLevels(ctx, agentID)
 		if err != nil {
 			return nil, err
@@ -89,10 +108,7 @@ func (s *server) table(ctx context.Context, agentID uuid.UUID) (*agentTable, err
 			}
 		}
 	}
-	if c.entries == nil {
-		c.entries = map[uuid.UUID]*gateEntry{}
-	}
-	c.entries[agentID] = &gateEntry{table: table, checkedAt: time.Now()}
+	e.table, e.checkedAt = table, time.Now()
 	return table, nil
 }
 
@@ -117,7 +133,13 @@ func (s *server) gate(ctx context.Context, info operations.Info) operations.Mode
 		return operations.ModeNever
 	}
 	table, err := s.table(ctx, run.AgentID)
-	if err != nil || !table.acts || !table.allowed[info.ID] {
+	if err != nil {
+		if s.deps.Logger != nil {
+			s.deps.Logger.Warn("agents: the gate could not read the agent, so it refuses", "agent", run.AgentID, "operation", info.ID, "err", err)
+		}
+		return operations.ModeNever
+	}
+	if !table.acts || !table.allowed[info.ID] {
 		return operations.ModeNever
 	}
 	mode := info.Mode

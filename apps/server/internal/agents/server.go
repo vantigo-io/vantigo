@@ -98,3 +98,11 @@ func (s *server) audit(ctx context.Context, q *store.Queries, actor uuid.UUID, a
 
 // isNoRows says err is "no row", as a read of one that is not there answers.
 func isNoRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }
+
+// warn logs a failure that is not the caller's to act on, such as a step undone
+// after another failed.
+func (s *server) warn(msg string, args ...any) {
+	if s.deps.Logger != nil {
+		s.deps.Logger.Warn(msg, args...)
+	}
+}

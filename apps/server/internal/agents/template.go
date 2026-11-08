@@ -127,7 +127,10 @@ var templates = map[string]*template{templateFrontDesk: &frontDesk}
 // health data, the sealed national identity number and bank account, and the
 // personal data Customers and Staff reveal or erase; identity's and every
 // Owner-tier permission; this module's own; Invoices' issue and payments; and
-// every approval in Time, Expenses and Staff. The Assistant's API is not here:
+// every approval in Time, Expenses and Staff; and every other permission that
+// cannot be delegated (Delegable false), which is Owner-tier: Entra's and
+// Google's administration, Knowledge's, and Orders' carriers and settings. The
+// Assistant's API is not here:
 // it names no permission, and the dispatcher refuses it by its path. A new
 // permission that matches one of these families must be added (the test in
 // internal/integration fails until it is), and a level for a listed key is
@@ -135,9 +138,13 @@ var templates = map[string]*template{templateFrontDesk: &frontDesk}
 var agentNever = []string{
 	"agents:activity", "agents:manage", "agents:review", "agents:view",
 	"customers:personal-data",
+	"entra:manage",
 	"expenses:approve",
+	"google:manage",
 	"identity:manage",
 	"invoices:issue", "invoices:payments",
+	"knowledge:manage",
+	"orders:carriers-manage", "orders:settings",
 	"staff:approve", "staff:manage", "staff:personal-data",
 	"time:approve",
 }

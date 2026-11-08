@@ -594,3 +594,46 @@ func TestTemplates_ListTheFrontDesk(t *testing.T) {
 		}
 	}
 }
+
+func TestDelete_ADeletedAgentsRolesCannotBeChangedOrBound(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	mgr := manager(t, h)
+	o := owner(t, h)
+	setCompany(t, mgr, "Hansen Rør")
+	a := createAgent(t, mgr, "Hanna")
+	rl := addRole(t, mgr, a.ID, "Front desk")
+	if r := mgr.Do(http.MethodDelete, "/api/v1/agents/agents/"+a.ID, nil); r.Status != http.StatusNoContent {
+		t.Fatalf("delete: %d %s", r.Status, r.Body)
+	}
+	if r := mgr.Do(http.MethodPut, rolePath(a, rl), roleBody(rl), ifMatch(rl.Version)); r.Status != http.StatusNotFound {
+		t.Errorf("update a role of a deleted agent = %d, want 404", r.Status)
+	}
+	if r := o.Do(http.MethodPut, rolePath(a, rl)+"/channels", map[string]any{"channelIds": []string{newID()}}); r.Status != http.StatusNotFound {
+		t.Errorf("bind a channel to a role of a deleted agent = %d, want 404", r.Status)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM agents.role_channels`); n != 0 {
+		t.Errorf("channels bound to a deleted agent: %d", n)
+	}
+}
+
+// A delete that failed after it had disabled the user is sent again: the steps
+// in identity are idempotent and the row is marked last.
+func TestDelete_IsRetrySafeAfterAPartialFailure(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	mgr := manager(t, h)
+	setCompany(t, mgr, "Hansen Rør")
+	a := createAgent(t, mgr, "Hanna")
+	// The first attempt got as far as disabling the user.
+	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, a.UserID)
+	if got := getAgent(t, mgr, a.ID); got.State != "active" {
+		t.Fatalf("the agent after a partial delete = %q, want still active", got.State)
+	}
+	if r := mgr.Do(http.MethodDelete, "/api/v1/agents/agents/"+a.ID, nil); r.Status != http.StatusNoContent {
+		t.Fatalf("the retry: %d %s", r.Status, r.Body)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM agents.agents WHERE id = $1 AND state = 'deleted'`, a.ID); n != 1 {
+		t.Errorf("the agent is not deleted after the retry")
+	}
+}
