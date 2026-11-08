@@ -15,6 +15,7 @@ sources:
   - apps/server/internal/db/migrations/00138_communications_inbox_counts.sql
   - apps/server/internal/db/migrations/00139_communications_contact_hints.sql
   - apps/server/internal/contracts/contact_channels.go
+  - apps/server/internal/contracts/events_communications.go
   - apps/server/internal/contracts/outbound_mail.go
   - apps/server/internal/contracts/channel_mailbox.go
   - apps/server/internal/contracts/channel_messenger.go
@@ -584,6 +585,66 @@ or any other failure to read or import (`sync_failed`) — and not a cycle held 
 unavailable provider, nor one that lost its lease. A rise means a channel's mail is not
 arriving. There are deliberately no others — no retention, cleanup, storage, SMTP or AI
 metrics, and no histograms.
+
+## Assigning a conversation
+
+`PATCH /api/v1/communications/conversations/{id}` sets or clears `assignedUserId`. It needs
+`communications:conversations-manage` with `communications:conversations-view`, and a person who
+may manage a conversation may assign it to anyone, themselves included.
+
+**The check** (virtual employees design V2). The key is read from the raw body, so absent and `null`
+are told apart: absent leaves the assignee as it stands, `null` clears it.
+
+| Value | Answer |
+| --- | --- |
+| `null` | 200, unassigned |
+| a string holding a UUID of an active user | 200 |
+| anything else: a number, an object, an array, a string that is not a UUID | 400 `invalid_request`, with a field error under `assignedUserId` |
+| a UUID `contracts.UserDirectory` does not know, or whose user is disabled | 422 `assignee_unknown` |
+
+The directory is asked before the transaction opens, because a call out of the module is never made
+from inside one. Earlier versions read the value unchecked and answered a 500 for a wrong one, as
+the .NET service this module was ported from did; that is dropped on purpose.
+
+**The list.** `GET /api/v1/communications/conversations` takes `assignedUserId` as a user id, `me`
+(the caller, resolved on the server) or `none` (conversations nobody holds). Any other value is a 400
+under `assignedUserId`. Each row of the list and the detail carry `assignedUserName`, the assignee's
+display name from the directory; it is null when unassigned or when the directory no longer knows the
+user.
+
+**The users to pick from.** `GET /api/v1/communications/assignable-users?query=&limit=` answers
+`[{ userId, displayName }]`: active users from the directory's search, ordered by name, `limit` 1 to
+20 (default 20), `query` at most 200 characters. It needs `communications:conversations-view`, because
+identity's own user listing needs a permission a person answering mail need not hold. Only display
+names are answered.
+
+## Events
+
+Communications publishes two events onto the
+[domain-events outbox](/en/contributing/platform-packages/#the-domain-events-outbox), each on the
+transaction that makes the change and while it holds the conversation's row (rule 23 of the
+[module boundaries](/en/contributing/module-boundaries/)). A payload carries ids and states, never
+personal data: no names, addresses or message text. The aggregate of both is the conversation.
+
+| Event (v1) | When | Payload |
+| --- | --- | --- |
+| `communications.message.received` | The mailbox import or the Messenger sync inserts an **inbound** message | `conversationId`, `messageId`, `channelId`, `channelType` (`email` or `messenger`), `autoReply`, `unreadable`, `assignedUserId` |
+| `communications.conversation.assigned` | `PATCH` changes the assignee | `conversationId`, `assignedUserId` (null when cleared), `previousAssignedUserId` (null when there was none), `byUserId` |
+
+- `communications.message.received` is published for every imported inbound message, in a new
+  conversation and in an existing one. `autoReply` is the [auto-reply](#auto-replies) flag;
+  `unreadable` is true when the import stored the placeholder text *Vantigo could not read this
+  message.*; `assignedUserId` is the conversation's assignee after the insert, so a new conversation
+  has none. A **Messenger echo**, the Page's own outgoing message coming back, publishes nothing: an
+  event for it would make whoever answers on the event answer itself.
+- `communications.conversation.assigned` is published when the assignee **changes**. `PATCH` reads
+  the assignee `FOR UPDATE` inside its transaction, compares it with the request there and publishes
+  there, so two concurrent changes each see what the other committed. A request that names the
+  assignee the conversation already has, or changes only the status, publishes nothing. The
+  conversation's other fields are written with the assignee read under that lock, so a `PATCH` that
+  does not mention `assignedUserId` never overwrites a concurrent assignment.
+
+Nothing in the module handles either event.
 
 ## Live updates
 
