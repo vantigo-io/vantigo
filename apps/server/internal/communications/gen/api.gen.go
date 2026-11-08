@@ -685,7 +685,10 @@ type ReplyRequest struct {
 	// Components Answer options, a request for an e-mail address or cards, on a messenger conversation only.
 	Components *MessageComponents `json:"components,omitempty"`
 	HtmlBody   *string            `json:"htmlBody,omitempty"`
-	ReplyMode  *string            `json:"replyMode,omitempty"`
+
+	// InReplyToMessageId The inbound message this reply answers. A reply through an agent grant must name it, and is 409 conversation_moved when a newer inbound message has arrived, so an agent never answers a sender who is no longer the latest. A person may name it too.
+	InReplyToMessageId *openapi_types.UUID `json:"inReplyToMessageId,omitempty"`
+	ReplyMode          *string             `json:"replyMode,omitempty"`
 
 	// SendFromPersonal When true, sends the reply from the caller's own connected address, through the personal mailbox provider personal-sender names, with Reply-To set to the channel's address.
 	SendFromPersonal *bool   `json:"sendFromPersonal,omitempty"`

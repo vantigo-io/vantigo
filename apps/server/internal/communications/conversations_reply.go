@@ -317,6 +317,11 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 			return gen.PostCommunicationsConversationsByIdReply422JSONResponse(flatErrorBody(
 				"reply_all_not_allowed", "An agent never answers everyone the message was sent to.")), nil
 		}
+		if body.InReplyToMessageId == nil {
+			return gen.PostCommunicationsConversationsByIdReply400JSONResponse(validationErrorBody(map[string][]string{
+				"inReplyToMessageId": {"An agent's reply names the inbound message it answers."},
+			})), nil
+		}
 	}
 
 	// Step 4: conversation (+ channel) lookup -> 404 bare.
@@ -325,6 +330,18 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 		return gen.PostCommunicationsConversationsByIdReply404Response{}, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("communications: get conversation for reply: %w", err)
+	}
+	// The sender moved on while the agent worked: a newer inbound message is
+	// there, perhaps from someone else, and the reply would go to the wrong person.
+	if body.InReplyToMessageId != nil {
+		latest, err := q.GetLatestInboundMessageID(ctx, req.Id)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("communications: get the latest inbound message: %w", err)
+		}
+		if err != nil || latest != *body.InReplyToMessageId {
+			return gen.PostCommunicationsConversationsByIdReply409JSONResponse(flatErrorBody(
+				"conversation_moved", "A newer message has arrived in the conversation.")), nil
+		}
 	}
 	// Someone took the conversation while the agent was working (design §10):
 	// the agent's reply is refused, and the agent withdraws it.

@@ -77,8 +77,11 @@ type Outbound struct {
 	InReplyTo   string
 	References  []string
 	Attachments []Attachment
-	// Headers are extra headers the message carries, such as
-	// X-Vantigo-Agent; a name the message sets itself is not overridden.
+	// Headers are extra headers the message carries, such as X-Vantigo-Agent.
+	// A name the message sets itself (From, To, Cc, Bcc, Subject, Date,
+	// Message-ID, In-Reply-To, References, MIME-Version and Content-*) is
+	// reserved: ExtraHeaders drops it, so a header can never rewrite who a
+	// message is from or for.
 	Headers map[string]string
 	// Calendar is the invitation or cancellation the message carries, nil
 	// for none (see CalendarPart).
@@ -232,7 +235,7 @@ func (o Outbound) message(from string) (*gomail.Msg, error) {
 	if o.InReplyTo != "" {
 		msg.SetGenHeader(gomail.HeaderInReplyTo, o.InReplyTo)
 	}
-	for name, value := range o.Headers {
+	for name, value := range o.ExtraHeaders() {
 		msg.SetGenHeader(gomail.Header(name), value)
 	}
 	if len(o.References) > 0 {
@@ -282,4 +285,25 @@ func (o Outbound) message(from string) (*gomail.Msg, error) {
 		}
 	}
 	return msg, nil
+}
+
+// reservedHeaders are the headers a message builds itself.
+var reservedHeaders = map[string]bool{
+	"from": true, "to": true, "cc": true, "bcc": true, "subject": true, "date": true, "reply-to": true,
+	"sender": true, "message-id": true, "in-reply-to": true, "references": true, "return-path": true,
+}
+
+// ExtraHeaders is Headers without the reserved names (compared in any case) and
+// without a name or value that could break the header block.
+func (o Outbound) ExtraHeaders() map[string]string {
+	out := map[string]string{}
+	for name, value := range o.Headers {
+		lower := strings.ToLower(strings.TrimSpace(name))
+		if lower == "" || reservedHeaders[lower] || strings.HasPrefix(lower, "content-") || strings.HasPrefix(lower, "mime-") ||
+			strings.ContainsAny(name, " :\r\n") || strings.ContainsAny(value, "\r\n") {
+			continue
+		}
+		out[name] = value
+	}
+	return out
 }

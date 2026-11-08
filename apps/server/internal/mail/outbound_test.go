@@ -447,3 +447,15 @@ func TestRenderMIME_RequiresARecipient(t *testing.T) {
 		t.Fatal("RenderMIME with no recipient = nil error, want a refusal")
 	}
 }
+
+func TestOutbound_ExtraHeadersNeverRewriteWhoAMessageIsFromOrFor(t *testing.T) {
+	t.Parallel()
+	o := mail.Outbound{Headers: map[string]string{
+		"X-Vantigo-Agent": "a; ai-generated", "From": "x@evil.test", "bcc": "x@evil.test", "Message-ID": "<x>",
+		"Content-Type": "text/html", "MIME-Version": "2", "Reply-To": "x@evil.test", "X-Bad": "a\r\nBcc: x@evil.test", "X Bad": "v",
+	}}
+	got := o.ExtraHeaders()
+	if len(got) != 1 || got["X-Vantigo-Agent"] != "a; ai-generated" {
+		t.Errorf("ExtraHeaders = %v, want the agent header alone", got)
+	}
+}

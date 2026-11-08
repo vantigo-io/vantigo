@@ -358,6 +358,14 @@ UPDATE communications.conversations
 SET subject = COALESCE(subject, @message_subject), last_activity_at = @last_activity_at, preview_text = @preview_text
 WHERE id = @id;
 
+-- name: GetLatestInboundMessageID :one
+-- The newest inbound message of a conversation, by occurred_at and id: what a
+-- reply made through an agent grant must answer (conversation_moved).
+SELECT id FROM communications.conversation_messages
+WHERE conversation_id = @conversation_id AND direction = 'inbound'
+ORDER BY occurred_at DESC, id DESC
+LIMIT 1;
+
 -- name: GetReplyRecipientsSource :one
 -- Who a reply answers (M15, inventory §4.3, §4.4; ReplyRecipients
 -- `:446-455`, which QueueOutboundAsync inlines at `:277`, `:283`): the latest

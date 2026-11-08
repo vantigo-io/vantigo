@@ -1450,6 +1450,11 @@ components:
                 htmlBody:
                     nullable: true
                     type: string
+                inReplyToMessageId:
+                    description: The inbound message this reply answers. A reply through an agent grant must name it, and is 409 conversation_moved when a newer inbound message has arrived, so an agent never answers a sender who is no longer the latest. A person may name it too.
+                    format: uuid
+                    nullable: true
+                    type: string
                 replyMode:
                     default: reply
                     nullable: true
@@ -2765,7 +2770,7 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
-                    description: Conflict — idempotency_key_reused, attachments_not_ready, and for a reply made through an agent grant conversation_taken (the conversation is assigned to someone other than that agent).
+                    description: Conflict — idempotency_key_reused, attachments_not_ready, and for a reply made through an agent grant conversation_taken (the conversation is assigned to someone other than that agent) and conversation_moved (inReplyToMessageId is no longer the latest inbound message; a person who names it gets the same).
                 "422":
                     content:
                         application/json:

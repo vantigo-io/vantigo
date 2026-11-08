@@ -1217,6 +1217,11 @@ export interface components {
             /** @description Answer options, a request for an e-mail address or cards, on a messenger conversation only. */
             components?: components["schemas"]["MessageComponents"] | null;
             htmlBody?: string | null;
+            /**
+             * Format: uuid
+             * @description The inbound message this reply answers. A reply through an agent grant must name it, and is 409 conversation_moved when a newer inbound message has arrived, so an agent never answers a sender who is no longer the latest. A person may name it too.
+             */
+            inReplyToMessageId?: string | null;
             /** @default reply */
             replyMode: string | null;
             /** @description When true, sends the reply from the caller's own connected address, through the personal mailbox provider personal-sender names, with Reply-To set to the channel's address. */
@@ -2751,7 +2756,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — idempotency_key_reused, attachments_not_ready, and for a reply made through an agent grant conversation_taken (the conversation is assigned to someone other than that agent). */
+            /** @description Conflict — idempotency_key_reused, attachments_not_ready, and for a reply made through an agent grant conversation_taken (the conversation is assigned to someone other than that agent) and conversation_moved (inReplyToMessageId is no longer the latest inbound message; a person who names it gets the same). */
             409: {
                 headers: {
                     [name: string]: unknown;

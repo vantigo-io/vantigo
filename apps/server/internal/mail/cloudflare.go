@@ -189,7 +189,7 @@ func (s *cloudflareSender) request(out Outbound) (cloudflareRequest, error) {
 			req.Headers["References"] = strings.Join(refs, " ")
 		}
 	}
-	for name, value := range out.Headers {
+	for name, value := range out.ExtraHeaders() {
 		if req.Headers == nil {
 			req.Headers = map[string]string{}
 		}
