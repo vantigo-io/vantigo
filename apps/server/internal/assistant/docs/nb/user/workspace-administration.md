@@ -131,13 +131,13 @@ grunnen under (nedenfor).
 
 ## Agenter blant brukerne
 
-En **virtuell medarbeider** er en KI-agent, og kontoen er en bruker av en egen type. Den
-står oppført etter personene, aldri blant dem, og tellingene skiller de to: arbeidsområdet
+En **virtuell ansatt** er en KI-agent, og kontoen er en bruker av en egen type. Den
+står oppført i en egen del etter personene, aldri blant dem, merket med **KI**-merket på avataren, og tellingene skiller de to: arbeidsområdet
 har så mange personer og så mange agenter, og ingenting begrenser noen av dem. En agent
 logger aldri inn, har ikke passord, ikke autentiseringsapp og ingen innloggingslenke, så ingen
 av handlingene over — **Rediger bruker**, et passord, **Deaktiver tilgang**, **Slett
 bruker**, en kobling til single sign-on, en invitasjon — gjelder den. Den opprettes,
-omdøpes, settes på pause og fjernes under Virtuelle medarbeidere, og den får aldri e-post fra
+omdøpes, settes på pause og fjernes under [Virtuelle ansatte](/nb/user/agents/), og den får aldri e-post fra
 Vantigo.
 
 Gi en agent rollene dens under **Roller og tilgang**, som for alle andre. To ting nektes for

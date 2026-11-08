@@ -79,6 +79,13 @@ applikasjonen.
   sending fra Gmail-adressen sin, og kanalene i Kommunikasjon kan bruke lisensierte
   Gmail-postbokser. Ingenting av det står i
   `vantigo.env`; siden ligger under **Integrasjoner** i Administrer arbeidsområde.
+- **Virtuelle ansatte.** [Virtuelle ansatte](/nb/admin/agents/) er på når `agents` står i
+  `MODULES` ved siden av `communications`, som den krever, og en KI-leverandør med en modell
+  som støtter verktøykall er satt opp; de fire tillatelsene, firmanavnet og oppbevaringen,
+  modellen per agent, Identitet-rollene og nivåene Eieren gir en agent (Av til de heves, med
+  tillatelsene som er låst for alle agenter), hva som bør holdes utenfor Kunnskap og
+  personvernerklæringen. I denne utgivelsen settes agenter opp og forberedes; de svarer
+  ikke ennå.
 - **Meta.** [Meta](/nb/admin/meta/) kobler Vantigo til Facebook Messenger gjennom din egen
   Meta-app: `meta` i `MODULES` ved siden av `communications`, som den krever; en offentlig
   vert for Metas webhook; appen opprettet i Metas utviklerportal, med App Review og
