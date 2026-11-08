@@ -7,15 +7,17 @@ sources:
   - apps/server/internal/agents
   - openapi/agents.yaml
   - apps/server/internal/db/migrations/00144_agents_baseline.sql
+  - apps/server/internal/db/migrations/00146_agents_runs.sql
+  - apps/server/internal/config
   - apps/agents/frontend/src
 ---
 
 The Virtual employees module (**Virtuelle ansatte** in Norwegian) lets the business
 put AI agents to work under names of their own. This page covers turning it on and
 setting it up; how people use it is in [Virtual employees](/en/user/agents/), and every
-rule in the [reference](/en/reference/agents/). In this release an agent can be set up
-and prepared. The trigger that makes it answer a message, the record of its runs and the
-review queue come in a later release.
+rule in the [reference](/en/reference/agents/). An agent that is set up answers the
+conversations on its channels; the review queue's screens, with the calibration and the Usage
+and Activity screens, come in the next release.
 
 ## Before you start
 
@@ -149,6 +151,45 @@ itself in the disclosure line of every message. Where the data goes for your ins
 is described under [Configuration](/en/admin/configuration/#the-assistants-model); a model on your
 own network sends nothing outside it.
 
+## How an agent runs
+
+Runs happen in the **API process**, not in the workers, because they call the application's own
+operations as the agent. A new message on a bound channel makes a request, and a replica takes it
+after a wait of 20 seconds (at most two minutes after the first message of a burst). Check the
+following.
+
+- **`AGENTS_CONCURRENCY`** (default `4`, from `1` to `32`) is how many runs one replica carries at the
+  same time ([Configuration](/en/admin/configuration/)). A run is one agent on one conversation, for at most
+  five minutes, and holds one model call at a time. Raise it when conversations wait; lower it when your
+  model server cannot take that many calls at once.
+- **A replica that stops** in the middle of a run leaves it claimed; within a few minutes the run is
+  taken over once, and the second time the conversation is handed to the hand-off person with a note.
+- **Only one run** works on a conversation at a time. A message that arrives during a run makes a new
+  request, which runs after it and sees both messages.
+- **Without AI** (no provider, or a model that cannot call tools) a run fails as `ai_unavailable` and
+  the conversation is handed off with a note; requests that wait more than a day are handed off too.
+
+### The daily token budget
+
+An agent can have a **daily token budget**, set on the agent (`dailyTokenBudget`; 0 removes it, and a
+value below 1,000 is refused). It counts the tokens the agent's model and its content check use on the
+business day. At the budget no new run starts, every request that waits is handed off with the note
+*Daily budget reached.*, and the next day the agent starts again, on new messages only. The budget is
+set through the API for now; the Usage tab, which shows the last 30 days, comes in the next release.
+
+### Which channels
+
+The channels the agent answers are the ones you bind to its role. An agent never answers a message from
+another channel of your installation, so two agents bound to two channels cannot answer each other; the
+module learns a channel's address the first time a run reads a conversation on it. Messenger replies
+follow the 24-hour window: when it has closed, a person writes the reply.
+
+### Reply modes, in short
+
+Start every role on **Review**. Move a role to **Auto above X %** or **Auto** only when its replies have
+been right for a while. The rules that protect a customer's data and the opening line that says the
+agent is an AI hold in **every** mode, Auto too ([the reference](/en/reference/agents/#the-pipeline)).
+
 ## Pause and delete an agent
 
 - **Pause** stops new runs; roles, channels and levels stay. **Resume** starts them
@@ -176,3 +217,6 @@ own network sends nothing outside it.
 | `version_conflict` | Someone saved the same agent, role or settings since you opened it. | Reload and make the change again. |
 | *AI is not set up* | `AI_PROVIDER` is unset or the model cannot be reached. | Configure the provider ([Configuration](/en/admin/configuration/)). |
 | A warning beside the hand-off person | The person is disabled, or may no longer see conversations. | Choose someone else. Until then handed-off conversations go to the Inbox, unassigned. |
+| An agent does not answer a conversation | The conversation is assigned to a person, the agent is paused, the conversation was handed off, the message was automatic, or the permissions the role needs are still Off. | Assign it to the agent, or give it back ([Virtual employees](/en/user/agents/#hand-off)); resume the agent; raise the Needs. |
+| Every run ends in a hand-off with *The AI model did not answer* | The provider is down, or the agent's model cannot call tools. | Check `AI_PROVIDER` and choose another model on the Persona tab. |
+| *Daily budget reached.* | The agent used its daily token budget. | Raise the budget, or wait for the next business day. |

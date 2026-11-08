@@ -434,6 +434,21 @@ channel does. A Messenger channel has no credentials of its own and no mailbox: 
 the default Messenger channel, and making another channel default never changes the
 default of the other type.
 
+## An agent in the inbox
+
+When a [virtual employee](/en/user/agents/) answers a channel, you see it in the Inbox like a
+colleague, with the **AI** badge on its avatar:
+
+- **Its messages** carry a line at the top that says who wrote them and that it is an AI, such as
+  *«Hanna» er «Hansen Rør» sin virtuelle assistent (KI).* The mail also carries the header
+  `X-Vantigo-Agent`, so a mail rule can tell it from a person's.
+- **An internal note** says when the agent has a reply **waiting for review**, with a link to it, and when
+  it has **handed the conversation to a colleague**, with what the customer wants.
+- **A conversation assigned to you is yours.** The agent does not answer it, and if it was writing when you
+  took it, its reply is not sent. Assign a conversation to the agent, or to nobody, to let it answer.
+- **After a hand-off** the agent leaves the conversation alone until a person replies in it or assigns it,
+  or it is given back to the agent.
+
 ## Add an internal note
 
 **Add note** switches the composer to **Internal note**. A note is kept in the

@@ -7,15 +7,17 @@ sources:
   - apps/server/internal/agents
   - openapi/agents.yaml
   - apps/server/internal/db/migrations/00144_agents_baseline.sql
+  - apps/server/internal/db/migrations/00146_agents_runs.sql
+  - apps/server/internal/config
   - apps/agents/frontend/src
 ---
 
 Modulen Virtuelle ansatte lar virksomheten sette KI-agenter i arbeid under egne navn. Denne
 siden dekker å slå den på og sette den opp; hvordan folk bruker den, står i
 [Virtuelle ansatte](/nb/user/agents/), og alle reglene i
-[referansen](/en/reference/agents/). I denne utgivelsen kan en agent settes opp og
-forberedes. Utløseren som får den til å svare på en melding, oversikten over kjøringene
-og gjennomgangskøen kommer i en senere utgivelse.
+[referansen](/en/reference/agents/). En agent som er satt opp svarer på samtalene på kanalene
+sine; køskjermene for gjennomgang, med kalibreringen og skjermene Bruk og Aktivitet, kommer i
+neste utgivelse.
 
 ## Før du begynner
 
@@ -147,6 +149,47 @@ KI-leverandøren, som til enhver databehandler. Agenten sier det også selv i å
 hver melding. Hvor dataene går for din installasjon, står i
 [Konfigurasjon](/nb/admin/configuration/); en modell på eget nett sender ingenting ut av det.
 
+## Hvordan en agent kjører
+
+Kjøringer skjer i **API-prosessen**, ikke i arbeiderne, fordi de kaller applikasjonens egne
+operasjoner som agenten. En ny melding på en knyttet kanal gir en forespørsel, og en replika tar den
+etter 20 sekunders ventetid (høyst to minutter etter den første meldingen i en rekke). Se etter
+følgende.
+
+- **`AGENTS_CONCURRENCY`** (standard `4`, fra `1` til `32`) er hvor mange kjøringer én replika
+  bærer samtidig ([Konfigurasjon](/nb/admin/configuration/)). En kjøring er én agent på én samtale, i
+  høyst fem minutter, og holder ett modellkall om gangen. Hev den når samtaler venter; senk den når
+  modellserveren din ikke tåler så mange kall samtidig.
+- **En replika som stopper** midt i en kjøring lar den stå som tatt; innen få minutter overtas kjøringen
+  én gang, og andre gang leveres samtalen til overtakeren med et notat.
+- **Bare én kjøring** arbeider på en samtale om gangen. En melding som kommer under en kjøring gir en ny
+  forespørsel, som kjører etter den og ser begge meldingene.
+- **Uten KI** (ingen leverandør, eller en modell som ikke kan kalle verktøy) feiler en kjøring som
+  `ai_unavailable`, og samtalen leveres videre med et notat; forespørsler som har ventet mer enn et
+  døgn leveres også videre.
+
+### Det daglige tokenbudsjettet
+
+En agent kan ha et **daglig tokenbudsjett**, satt på agenten (`dailyTokenBudget`; 0 fjerner det, og en
+verdi under 1 000 avvises). Det teller tokenene agentens modell og innholdskontrollen bruker i
+forretningsdøgnet. Ved budsjettet starter ingen ny kjøring, hver forespørsel som venter leveres videre med
+notatet *Daglig budsjett er nådd.*, og neste dag starter agenten igjen, bare på nye meldinger. Budsjettet
+settes foreløpig gjennom API-et; fanen Bruk, som viser de siste 30 dagene, kommer i neste utgivelse.
+
+### Hvilke kanaler
+
+Kanalene agenten svarer på er de du knytter til rollen. En agent svarer aldri på en melding fra en annen
+kanal i installasjonen din, så to agenter på to kanaler kan ikke svare hverandre; modulen lærer en kanals
+adresse første gang en kjøring leser en samtale på den. Svar på Messenger følger 24-timersvinduet: når det
+er lukket, skriver en person svaret.
+
+### Svarmodusene, kort
+
+La hver rolle begynne i **Gjennomgang**. Flytt en rolle til **Auto over X %** eller **Auto** først når
+svarene har vært riktige en stund. Reglene som beskytter en kundes data og åpningslinjen som sier at
+agenten er en KI gjelder i **alle** moduser, også Auto
+([referansen](/en/reference/agents/#the-pipeline)).
+
 ## Sett en agent på pause og slett den
 
 - **Pause** stopper nye kjøringer; roller, kanaler og nivåer blir stående. **Gjenoppta**
@@ -173,3 +216,6 @@ hver melding. Hvor dataene går for din installasjon, står i
 | `version_conflict` | Noen lagret samme agent, rolle eller innstillinger etter at du åpnet den. | Last på nytt og gjør endringen igjen. |
 | *KI er ikke satt opp* | `AI_PROVIDER` er ikke satt, eller modellen kan ikke nås. | Sett opp leverandøren ([Konfigurasjon](/nb/admin/configuration/)). |
 | En advarsel ved den som overtar | Personen er deaktivert eller har ikke lenger lov til å se samtaler. | Velg noen andre. Fram til da går overleverte samtaler til Innboksen, uten ansvarlig. |
+| En agent svarer ikke på en samtale | Samtalen er tildelt en person, agenten er på pause, samtalen ble levert videre, meldingen var automatisk, eller tillatelsene rollen trenger er fortsatt Av. | Tildel den til agenten, eller gi den tilbake ([Virtuelle ansatte](/nb/user/agents/#overlevering)); gjenoppta agenten; hev Trenger. |
+| Hver kjøring ender i en overlevering med *KI-modellen svarte ikke* | Leverandøren er nede, eller agentens modell kan ikke kalle verktøy. | Sjekk `AI_PROVIDER` og velg en annen modell på fanen Persona. |
+| *Daglig budsjett er nådd.* | Agenten brukte det daglige tokenbudsjettet sitt. | Hev budsjettet, eller vent til neste forretningsdøgn. |
