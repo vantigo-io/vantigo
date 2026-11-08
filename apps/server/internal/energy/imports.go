@@ -245,7 +245,10 @@ func (s *server) PostEnergyImports(ctx context.Context, req gen.PostEnergyImport
 			pgx.CopyFromSlice(len(file.Rows), func(i int) ([]any, error) {
 				return []any{id, int32(file.Rows[i].Row), file.Rows[i].Cells}, nil
 			}))
-		return err
+		if err != nil {
+			return err
+		}
+		return notifyImport(ctx, tx, id)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("energy: store an import: %w", err)
@@ -442,7 +445,10 @@ func (s *server) PutEnergyImportsByImportIdMapping(ctx context.Context, req gen.
 			return err
 		}
 		saved = true
-		return txq.ClearImportRowResults(ctx, imp.ID)
+		if err := txq.ClearImportRowResults(ctx, imp.ID); err != nil {
+			return err
+		}
+		return notifyImport(ctx, tx, imp.ID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("energy: save a mapping: %w", err)
@@ -490,7 +496,10 @@ func (s *server) PostEnergyImportsByImportIdCheck(ctx context.Context, req gen.P
 			return err
 		}
 		queued = true
-		return txq.ClearImportRowResults(ctx, imp.ID)
+		if err := txq.ClearImportRowResults(ctx, imp.ID); err != nil {
+			return err
+		}
+		return notifyImport(ctx, tx, imp.ID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("energy: queue a check: %w", err)
@@ -548,7 +557,10 @@ func (s *server) PostEnergyImportsByImportIdRun(ctx context.Context, req gen.Pos
 			return err
 		}
 		queued = true
-		return txq.ClearImportRowResults(ctx, imp.ID)
+		if err := txq.ClearImportRowResults(ctx, imp.ID); err != nil {
+			return err
+		}
+		return notifyImport(ctx, tx, imp.ID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("energy: queue a run: %w", err)
@@ -615,7 +627,10 @@ func (s *server) PostEnergyImportsByImportIdAttach(ctx context.Context, req gen.
 			return err
 		}
 		queued = true
-		return txq.PreparePendingRowsForAttach(ctx, imp.ID)
+		if err := txq.PreparePendingRowsForAttach(ctx, imp.ID); err != nil {
+			return err
+		}
+		return notifyImport(ctx, tx, imp.ID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("energy: queue an attach: %w", err)
@@ -663,11 +678,15 @@ func (s *server) PostEnergyImportsByImportIdStop(ctx context.Context, req gen.Po
 		if err != nil {
 			return nil, fmt.Errorf("energy: revert an unstarted import: %w", err)
 		}
+		if reverted > 0 {
+			s.notifyImportOnPool(ctx, imp.ID)
+		}
 	}
 	if reverted == 0 {
 		if _, err := q.RequestImportStop(ctx, store.RequestImportStopParams{ID: imp.ID, UpdatedAt: now}); err != nil {
 			return nil, fmt.Errorf("energy: ask an import to stop: %w", err)
 		}
+		s.notifyImportOnPool(ctx, imp.ID)
 	}
 	view, err := s.importByID(ctx, imp.ID)
 	if err != nil || view == nil {
@@ -692,6 +711,7 @@ func (s *server) DeleteEnergyImportsByImportId(ctx context.Context, req gen.Dele
 		}
 		return gen.DeleteEnergyImportsByImportId409ApplicationProblemPlusJSONResponse(importRunningConflict()), nil
 	}
+	s.notifyImportOnPool(ctx, req.ImportId)
 	return gen.DeleteEnergyImportsByImportId204Response{}, nil
 }
 

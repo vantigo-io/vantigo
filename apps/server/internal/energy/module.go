@@ -98,6 +98,8 @@ func Module() module.Module {
 		Consumption:          newConsumptionProvider,
 		InvoicedWork:         newInvoicedWorkHolder,
 		Workers:              workers,
+		// LiveTopics is the imports screens' topic (live design K39, live.go).
+		LiveTopics: liveTopics,
 	}
 }
 
