@@ -160,6 +160,7 @@ LEFT JOIN identity.users u
   ON u.normalized_email = $1
  AND NOT u.is_disabled
  AND u.pending_since IS NULL
+ AND u.kind = 'person'
  AND (u.lockout_end IS NULL OR u.lockout_end <= $2::timestamptz)
  AND EXISTS (SELECT 1 FROM identity.passkeys p WHERE p.user_id = u.id)
  AND NOT (

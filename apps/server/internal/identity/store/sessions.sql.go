@@ -365,6 +365,7 @@ SELECT EXISTS (
     WHERE u.id = $1
       AND NOT u.is_disabled
       AND u.pending_since IS NULL
+      AND u.kind = 'person'
       AND (u.lockout_end IS NULL OR u.lockout_end <= $2::timestamptz)
       AND (NOT $3::boolean OR m.upstream_active IS NOT FALSE OR r.is_owner)
 )::boolean AS may_act

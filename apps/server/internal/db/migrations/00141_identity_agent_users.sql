@@ -19,9 +19,11 @@ ALTER TABLE identity.users
 -- to an identity provider, an invitation, a SCIM mapping, a delegation, the stewardship of a
 -- role, and the Owner and SystemAdmin roles. The Owner role passes every
 -- permission check, so an agent holding it would bypass every other lock.
--- Each guards the insert alone, the only write these columns ever get: a BEFORE
--- UPDATE trigger on identity.roles would make an edit of a role lock its row
--- FOR UPDATE, which an assignment in flight must not be blocked by.
+-- Each guards the insert, and an update of the column that names the user (or
+-- role), so a row cannot be pointed at an agent afterwards. identity.roles is
+-- the exception, guarded on insert alone, the only write its steward gets: a
+-- BEFORE UPDATE trigger there would make an edit of a role lock its row FOR
+-- UPDATE, which an assignment in flight must not be blocked by.
 -- +goose StatementBegin
 CREATE FUNCTION identity.refuse_agent_user() RETURNS trigger LANGUAGE plpgsql AS $function$
 DECLARE
@@ -36,19 +38,19 @@ END;
 $function$;
 -- +goose StatementEnd
 
-CREATE TRIGGER sessions_refuse_agent BEFORE INSERT ON identity.sessions
+CREATE TRIGGER sessions_refuse_agent BEFORE INSERT OR UPDATE OF user_id ON identity.sessions
     FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('user_id');
-CREATE TRIGGER login_tickets_refuse_agent BEFORE INSERT ON identity.login_tickets
+CREATE TRIGGER login_tickets_refuse_agent BEFORE INSERT OR UPDATE OF user_id ON identity.login_tickets
     FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('user_id');
-CREATE TRIGGER passkeys_refuse_agent BEFORE INSERT ON identity.passkeys
+CREATE TRIGGER passkeys_refuse_agent BEFORE INSERT OR UPDATE OF user_id ON identity.passkeys
     FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('user_id');
-CREATE TRIGGER invitations_refuse_agent BEFORE INSERT ON identity.invitations
+CREATE TRIGGER invitations_refuse_agent BEFORE INSERT OR UPDATE OF user_id ON identity.invitations
     FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('user_id');
-CREATE TRIGGER oidc_links_refuse_agent BEFORE INSERT ON identity.oidc_links
+CREATE TRIGGER oidc_links_refuse_agent BEFORE INSERT OR UPDATE OF user_id ON identity.oidc_links
     FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('user_id');
-CREATE TRIGGER scim_user_mappings_refuse_agent BEFORE INSERT ON identity.scim_user_mappings
+CREATE TRIGGER scim_user_mappings_refuse_agent BEFORE INSERT OR UPDATE OF user_id ON identity.scim_user_mappings
     FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('user_id');
-CREATE TRIGGER authorization_delegations_refuse_agent BEFORE INSERT ON identity.authorization_delegations
+CREATE TRIGGER authorization_delegations_refuse_agent BEFORE INSERT OR UPDATE OF grantee_user_id ON identity.authorization_delegations
     FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('grantee_user_id');
 CREATE TRIGGER roles_refuse_agent_steward BEFORE INSERT ON identity.roles
     FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('steward_user_id');
@@ -70,10 +72,28 @@ END;
 $function$;
 -- +goose StatementEnd
 
-CREATE TRIGGER user_roles_refuse_agent_privileged BEFORE INSERT ON identity.user_roles
+CREATE TRIGGER user_roles_refuse_agent_privileged BEFORE INSERT OR UPDATE OF user_id, role_id ON identity.user_roles
     FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_privileged_role();
 
+-- A person cannot be turned into an agent (nor back) once it exists: the guards
+-- above read the kind at the time of each write.
+-- +goose StatementBegin
+CREATE FUNCTION identity.refuse_kind_change() RETURNS trigger LANGUAGE plpgsql AS $function$
+BEGIN
+    IF NEW.kind IS DISTINCT FROM OLD.kind THEN
+        RAISE EXCEPTION 'identity.users.kind may not change' USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END;
+$function$;
+-- +goose StatementEnd
+
+CREATE TRIGGER users_refuse_kind_change BEFORE UPDATE OF kind ON identity.users
+    FOR EACH ROW EXECUTE FUNCTION identity.refuse_kind_change();
+
 -- +goose Down
+DROP TRIGGER users_refuse_kind_change ON identity.users;
+DROP FUNCTION identity.refuse_kind_change();
 DROP TRIGGER user_roles_refuse_agent_privileged ON identity.user_roles;
 DROP FUNCTION identity.refuse_agent_privileged_role();
 DROP TRIGGER roles_refuse_agent_steward ON identity.roles;

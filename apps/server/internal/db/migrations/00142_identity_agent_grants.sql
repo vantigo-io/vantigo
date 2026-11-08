@@ -46,7 +46,7 @@ END;
 $function$;
 -- +goose StatementEnd
 
-CREATE TRIGGER agent_grants_require_agent BEFORE INSERT ON identity.agent_grants
+CREATE TRIGGER agent_grants_require_agent BEFORE INSERT OR UPDATE OF user_id ON identity.agent_grants
     FOR EACH ROW EXECUTE FUNCTION identity.require_agent_user();
 
 -- +goose Down

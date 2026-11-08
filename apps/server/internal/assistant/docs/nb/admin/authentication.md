@@ -925,14 +925,17 @@ En agent handler under en **agenttilgang**, en post identitetsmodulen holder for
   rollene agenten har, uten økt og uten tofaktor. Hver tilgangsregel vurderes for den brukeren
   som for en person, og forespørselen bærer at den kom gjennom en agent og hvilken agent,
   kjøring, kunde og gjennomgåer (`Principal.Via`).
-- **Hva den aldri er.** Den nektes eiernivået (`Owner`, `OwnerManagement`,
-  `AuthorizationManagement`, `SystemAdmin`), SCIM og hver regel som krever tofaktor, som en
-  agent aldri har.
+- **Hva den aldri er.** Den slippes inn av en tillatelse rollene dens har, og av ingenting
+  mindre. Den nektes (`403`) hver policy på eiernivå (`Owner`, `OwnerManagement`,
+  `AuthorizationManagement`, `SystemAdmin`), SCIM, hver `session`-regel og hver regel som bare
+  er en policy (`ActiveAccount`, `Business`); det er en persons egne endepunkter for profil,
+  e-post, avatar, passnøkler og autentiseringsapp. En agent som mot formodning hadde Eier eller
+  SystemAdmin, nektes også.
 - **Hvordan den tar slutt.** Ved det første av: ti minutter, som er det dobbelte av en
   kjørings tak og aldri fornyes (en godkjenning fra en gjennomgåer får en ny tilgang),
   tilbakekallingen, og at agenten deaktiveres. Agenten stopper ved sitt neste steg:
   forespørselen svarer `401`, eller `403` for en deaktivert agent. Tilganger som tok slutt for
-  mer enn et døgn siden, slettes når agentens neste utstedes.
+  mer enn et døgn siden, slettes når agentens neste utstedes. Å avslutte en tilgang som er ukjent eller allerede har tatt slutt, er ikke en feil.
 
 En installasjon uten virtuelle medarbeidere har aldri en bruker av typen `agent` eller en rad i
 `identity.agent_grants`.
