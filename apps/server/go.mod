@@ -12,7 +12,7 @@ require (
 	github.com/getkin/kin-openapi v0.152.0
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.11.0
+	github.com/jackc/pgx/v5 v5.12.0
 	github.com/johnfercher/go-tree v1.1.0
 	github.com/johnfercher/maroto/v2 v2.4.4
 	github.com/microcosm-cc/bluemonday v1.0.27
