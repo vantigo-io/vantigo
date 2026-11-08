@@ -43,7 +43,11 @@ type fakeMsg struct {
 	Address string
 	Text    string
 	At      time.Time
+	// Author is set for an outbound message: the user who wrote it.
+	Author *uuid.UUID
 }
+
+func (m fakeMsg) outbound() bool { return m.Author != nil }
 
 // sentReply is a reply the fake received.
 type sentReply struct {
@@ -97,9 +101,22 @@ func commsError(w http.ResponseWriter, status int, code string) {
 	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": code}})
 }
 
+func (c *fakeConv) lastInbound() fakeMsg {
+	for i := len(c.Messages) - 1; i >= 0; i-- {
+		if !c.Messages[i].outbound() {
+			return c.Messages[i]
+		}
+	}
+	return fakeMsg{}
+}
+
 func (c *fakeConv) json() map[string]any {
 	msgs := make([]map[string]any, 0, len(c.Messages))
 	for _, m := range c.Messages {
+		if m.outbound() {
+			msgs = append(msgs, map[string]any{"id": m.ID, "direction": "outbound", "occurredAt": m.At, "textBody": m.Text, "authorUserId": m.Author})
+			continue
+		}
 		msgs = append(msgs, map[string]any{
 			"id": m.ID, "direction": "inbound", "occurredAt": m.At, "textBody": m.Text,
 			"participant": map[string]any{"address": m.Address, "displayName": "Kari"},
@@ -188,7 +205,7 @@ func (f *fakeComms) handler() http.Handler {
 		case c.WindowState == "closed":
 			commsError(w, http.StatusUnprocessableEntity, "reply_window_closed")
 			return
-		case c.Messages[len(c.Messages)-1].ID != body.InReplyToMessageID:
+		case c.lastInbound().ID != body.InReplyToMessageID:
 			commsError(w, http.StatusConflict, "conversation_moved")
 			return
 		case c.AssignedTo != nil && !strings.HasPrefix(r.RemoteAddr, "agent-"+c.AssignedTo.String()):
@@ -198,6 +215,9 @@ func (f *fakeComms) handler() http.Handler {
 		sent := sentReply{Conversation: c.ID, Text: body.TextBody, Key: key, InReplyTo: body.InReplyToMessageID, Components: string(body.Components), MessageID: uuid.New()}
 		c.keys[key] = sent
 		f.replies = append(f.replies, sent)
+		if user, err := uuid.Parse(strings.TrimPrefix(r.RemoteAddr, "agent-")); err == nil {
+			c.Messages = append(c.Messages, fakeMsg{ID: sent.MessageID, Text: body.TextBody, At: time.Now().AddDate(5, 0, 0), Author: &user})
+		}
 		writeJSON(w, http.StatusAccepted, map[string]any{"conversationId": c.ID, "messageId": sent.MessageID, "status": "queued"})
 	})
 	return mux

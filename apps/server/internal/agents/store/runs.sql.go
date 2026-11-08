@@ -691,7 +691,7 @@ func (q *Queries) ListAgentsWithBudget(ctx context.Context) ([]ListAgentsWithBud
 }
 
 const listReviewItemsOfRun = `-- name: ListReviewItemsOfRun :many
-SELECT id, run_id, agent_id, role_id, conversation_id, customer_id, kind, item, score, sources, model_score, held_by, state, version, decided_by_user_id, decided_at, discard_reason, discard_text, edit_ratio, outcome, expires_at, created_at, channel_id FROM agents.review_items WHERE run_id = $1 ORDER BY created_at
+SELECT id, run_id, agent_id, role_id, conversation_id, customer_id, kind, item, score, sources, model_score, held_by, state, version, decided_by_user_id, decided_at, discard_reason, discard_text, edit_ratio, outcome, expires_at, created_at, channel_id, claimed_at FROM agents.review_items WHERE run_id = $1 ORDER BY created_at
 `
 
 func (q *Queries) ListReviewItemsOfRun(ctx context.Context, runID uuid.UUID) ([]AgentsReviewItem, error) {
@@ -727,6 +727,7 @@ func (q *Queries) ListReviewItemsOfRun(ctx context.Context, runID uuid.UUID) ([]
 			&i.ExpiresAt,
 			&i.CreatedAt,
 			&i.ChannelID,
+			&i.ClaimedAt,
 		); err != nil {
 			return nil, err
 		}

@@ -120,12 +120,11 @@ func (a *approvalCtx) readConversation(ctx context.Context) (conversation, *revi
 	return c, nil, nil
 }
 
-// blocking are the rules that stop an approval: S1 and S2 when they were not
-// already what the reviewer was shown, C1 always, and the check's own failure
-// when the text is the reviewer's or the check had answered before. A rule that
-// held the item in the first place is what the reviewer decides on, so it does
-// not hold the approval again; the same rule on text the reviewer wrote is
-// judged again.
+// blocking are the rules that stop an approval. S1 and S2 stop it only when
+// they are new: a rule that already held the item is what the reviewer was
+// shown and decides on, and the text does not change what S1 and S2 judge (the
+// recipient and what the run read). C1 always stops it, and so does the check's
+// own failure when the text is the reviewer's or the check had answered before.
 func blocking(held, previously []string, edited bool) []string {
 	var out []string
 	for _, code := range held {
@@ -219,7 +218,7 @@ func (s *server) approveReply(ctx context.Context, row itemRow, reviewer uuid.UU
 		Mode: modeReview, MaxRepliesPerDay: int(ap.role.MaxRepliesPerDay), Score: int(row.Score), CarriesCustomerData: scoped, Facts: facts, Check: chk,
 	})
 	if len(dec.Refused) > 0 {
-		return withdrawn("window_closed", handGuard, "The reply window is closed, so the reply was not sent. The agent wrote: "+stored.Text), nil, nil
+		return withdrawn("window_closed", handGuard, "The reply window is closed, so the reply was not sent."), nil, nil
 	}
 	if stop := blocking(dec.Held, row.HeldBy, edited); len(stop) > 0 {
 		now := append(slices.Clone(row.HeldBy), stop...)
@@ -233,10 +232,6 @@ func (s *server) approveReply(ctx context.Context, row itemRow, reviewer uuid.UU
 	}
 
 	// The send.
-	if !ap.rs.reviewerStillCurrent(ctx, row) {
-		rf := itemDecided()
-		return reviewOutcome{}, &rf, nil
-	}
 	res, err := ap.rs.call(ctx, replyRequest(ap.agent.ID, row.ConversationID, answered, full, components))
 	if err != nil {
 		var oe *operations.Error
@@ -244,7 +239,7 @@ func (s *server) approveReply(ctx context.Context, row itemRow, reviewer uuid.UU
 			// The gate or the contract refuses before any dispatch: the agent may no
 			// longer reply here, as its levels were lowered since.
 			s.warn("agents: an approved reply was refused before it was sent", "item", row.ID, "err", err)
-			return withdrawn("not_allowed", handGuard, "The agent may no longer send this reply ("+oe.Code+"). The agent wrote: "+stored.Text), nil, nil
+			return withdrawn("not_allowed", handGuard, "The agent may no longer send this reply ("+oe.Code+")."), nil, nil
 		}
 		s.warn("agents: the outcome of an approved reply is unknown", "item", row.ID, "err", err)
 		rf := refuse(http.StatusBadGateway, codeSendUnknown, "It is not known whether the reply was sent")
@@ -268,9 +263,22 @@ func (s *server) approveReply(ctx context.Context, row itemRow, reviewer uuid.UU
 	case res.Status == http.StatusConflict && code == "conversation_moved":
 		return reviewOutcome{state: itemWithdrawn, outcome: "conversation_moved", rerun: true}, nil, nil
 	case res.Status == http.StatusUnprocessableEntity && code == "reply_window_closed":
-		return withdrawn("window_closed", handGuard, "The reply window closed before the reply was sent. The agent wrote: "+stored.Text), nil, nil
+		return withdrawn("window_closed", handGuard, "The reply window closed before the reply was sent."), nil, nil
 	case res.Status == http.StatusConflict && code == "idempotency_key_reused":
-		rf := refuse(http.StatusConflict, codeItemDecided, "A reply to this message was already sent")
+		// A reply to this message was queued earlier, with other text (a send that failed
+		// after the text was stored, or another reviewer's). If the agent's reply is in the
+		// conversation, the item is done; if not, say so plainly instead of leaving it waiting.
+		again, stop, rerr := ap.readConversation(ctx)
+		if rerr != nil || stop != nil {
+			if stop != nil {
+				return *stop, nil, nil
+			}
+			return reviewOutcome{}, nil, rerr
+		}
+		if again.agentRepliedSince(ap.agent.UserID, latest.OccurredAt) {
+			return reviewOutcome{state: itemSent, outcome: "already_sent"}, nil, nil
+		}
+		rf := refuse(http.StatusConflict, codeKeyReused, "A different reply to this message was queued before and is not in the conversation")
 		return reviewOutcome{}, &rf, nil
 	case res.Status >= 500:
 		rf := refuse(http.StatusBadGateway, codeSendUnknown, "It is not known whether the reply was sent")
@@ -279,14 +287,6 @@ func (s *server) approveReply(ctx context.Context, row itemRow, reviewer uuid.UU
 	s.warn("agents: an approved reply was refused", "item", row.ID, "status", res.Status, "code", code)
 	rf := refuse(http.StatusUnprocessableEntity, codeChannelRefused, "The channel refused the message ("+code+"); change it and send again")
 	return reviewOutcome{}, &rf, nil
-}
-
-// reviewerStillCurrent says the item still waits at the version the reviewer
-// read, just before the send: a second reviewer who decided first stops this one
-// before a message is made.
-func (rs *runState) reviewerStillCurrent(ctx context.Context, row itemRow) bool {
-	cur, err := store.New(rs.s.deps.Pool).GetReviewItem(ctx, row.ID)
-	return err == nil && cur.State == itemWaiting && cur.Version == row.Version
 }
 
 // log writes the approved call in the run's action log (V25), with the reviewer.

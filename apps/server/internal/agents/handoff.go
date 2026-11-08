@@ -120,7 +120,10 @@ func (s *server) GiveBackConversation(ctx context.Context, req gen.GiveBackConve
 
 // handOffNote is the internal note a hand-off writes: what the agent says, and
 // why. It names the agent, so a colleague reading the thread knows who handed off.
-func handOffNote(agentName, summary string) string {
+func handOffNote(agentName, summary string, personHasIt bool) string {
+	if personHasIt {
+		return fmt.Sprintf("%s stopped working on this conversation. %s", agentName, summary)
+	}
 	return fmt.Sprintf("%s handed this conversation to a colleague. %s", agentName, summary)
 }
 
@@ -139,13 +142,19 @@ func (s *server) callAs(ctx context.Context, grantID uuid.UUID, req operations.C
 // the marker already keeps the agent away and a person finds the conversation in
 // the Inbox.
 func (s *server) handOffEffects(ctx context.Context, grantID uuid.UUID, agent store.AgentsAgent, role store.AgentsRole, conversationID uuid.UUID, assigned *uuid.UUID, summary string) {
-	body, _ := json.Marshal(map[string]string{"textBody": handOffNote(agent.Name, summary)})
+	// A person who has the conversation keeps it: the agent never takes a conversation from
+	// them, whatever the cause of the hand-off (a colleague took it, a reply was withdrawn).
+	personHasIt := assigned != nil && *assigned != agent.UserID
+	body, _ := json.Marshal(map[string]string{"textBody": handOffNote(agent.Name, summary, personHasIt)})
 	if res, err := s.callAs(ctx, grantID, operations.CallRequest{
 		OperationID: opNote, PathParams: map[string]any{"id": conversationID.String()}, Body: body,
 	}); err != nil || res.Status >= 300 {
 		s.warn("agents: the hand-off note was not written", "conversation", conversationID, "status", res.Status, "err", err)
 	}
 
+	if personHasIt {
+		return
+	}
 	var target *uuid.UUID
 	if role.HandOffUserID != nil {
 		warnings, err := s.handOffWarnings(ctx, []store.AgentsRole{role})

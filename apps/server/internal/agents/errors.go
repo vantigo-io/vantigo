@@ -24,6 +24,7 @@ const (
 	codeChannelRefused  = "channel_refused"
 	codeChangeRefused   = "change_refused"
 	codeSendUnknown     = "send_unknown"
+	codeKeyReused       = "reply_key_reused"
 	statusOwnerRequired = http.StatusForbidden
 )
 

@@ -16,8 +16,9 @@ FROM agents.review_items i
 JOIN agents.agents a ON a.id = i.agent_id
 LEFT JOIN agents.roles r ON r.id = i.role_id
 WHERE (sqlc.narg(agent_id)::uuid IS NULL OR i.agent_id = sqlc.narg(agent_id)::uuid)
-  AND (sqlc.narg(state)::text IS NULL OR i.state = sqlc.narg(state)::text)
-ORDER BY (i.state = 'waiting') DESC,
+  AND (sqlc.narg(state)::text IS NULL OR i.state = sqlc.narg(state)::text
+       OR (sqlc.narg(state)::text = 'decided' AND i.state NOT IN ('waiting', 'deciding')))
+ORDER BY (i.state IN ('waiting', 'deciding')) DESC,
          CASE WHEN i.state = 'waiting' THEN i.expires_at END ASC,
          i.created_at DESC
 LIMIT @n OFFSET @off;
@@ -25,13 +26,31 @@ LIMIT @n OFFSET @off;
 -- name: CountReviewItems :one
 SELECT count(*) FROM agents.review_items i
 WHERE (sqlc.narg(agent_id)::uuid IS NULL OR i.agent_id = sqlc.narg(agent_id)::uuid)
-  AND (sqlc.narg(state)::text IS NULL OR i.state = sqlc.narg(state)::text);
+  AND (sqlc.narg(state)::text IS NULL OR i.state = sqlc.narg(state)::text
+       OR (sqlc.narg(state)::text = 'decided' AND i.state NOT IN ('waiting', 'deciding')));
 
 -- name: CountWaitingItems :one
 SELECT count(*) FROM agents.review_items WHERE state = 'waiting';
 
+-- name: ClaimReviewItem :execrows
+-- A reviewer claims a waiting item at the version they read, before acting on it. Only
+-- one claim wins; the version does not move.
+UPDATE agents.review_items SET state = 'deciding', claimed_at = @now::timestamptz
+WHERE id = @id AND version = @version AND state = 'waiting';
+
+-- name: ReleaseReviewItem :exec
+-- Gives a claim back when nothing was done (a refusal, a hold).
+UPDATE agents.review_items SET state = 'waiting', claimed_at = NULL
+WHERE id = @id AND state = 'deciding';
+
+-- name: ResetStaleClaims :execrows
+-- A claim never finished (the process stopped) goes back to waiting.
+UPDATE agents.review_items SET state = 'waiting', claimed_at = NULL, version = version + 1
+WHERE state = 'deciding' AND claimed_at < @before::timestamptz;
+
 -- name: DecideReviewItem :one
--- Decides a waiting item at the version the reviewer read. item replaces the
+-- Decides an item: a discard of a waiting one at the version the reviewer read, or the
+-- end of a claim (from_state deciding, the version no longer matters). item replaces the
 -- stored item when given (an edited reply keeps the disclosure and the rest).
 UPDATE agents.review_items SET
     state = @state,
@@ -43,13 +62,13 @@ UPDATE agents.review_items SET
     outcome = sqlc.narg(outcome)::text,
     item = COALESCE(sqlc.narg(item)::jsonb, item),
     version = version + 1
-WHERE id = @id AND version = @version AND state = 'waiting'
+WHERE id = @id AND state = @from_state AND (NOT @check_version::boolean OR version = @version)
 RETURNING *;
 
 -- name: HoldReviewItem :exec
 -- A rule that failed again at approval is added to what holds the item.
 UPDATE agents.review_items SET held_by = @held_by::text[], version = version + 1
-WHERE id = @id AND state = 'waiting';
+WHERE id = @id AND state IN ('waiting', 'deciding');
 
 -- name: ListExpiredItems :many
 SELECT * FROM agents.review_items
@@ -130,7 +149,9 @@ RETURNING *;
 -- Retention (V26): runs, and with them their transcripts, actions and review
 -- items (ON DELETE CASCADE), that ended before the cutoff.
 DELETE FROM agents.runs WHERE id IN (
-    SELECT id FROM agents.runs WHERE started_at < @cutoff::timestamptz AND state NOT IN ('queued', 'running') ORDER BY started_at LIMIT @n
+    SELECT r.id FROM agents.runs r WHERE r.started_at < @cutoff::timestamptz AND r.state NOT IN ('queued', 'running')
+      AND NOT EXISTS (SELECT 1 FROM agents.review_items i WHERE i.run_id = r.id AND i.state IN ('waiting', 'deciding'))
+    ORDER BY r.started_at LIMIT @n
 );
 
 -- name: DeleteHandedOffBefore :execrows

@@ -6,6 +6,14 @@
 -- withdraws the items that wait on it (design §10).
 ALTER TABLE agents.review_items ADD COLUMN channel_id uuid;
 
+-- A reviewer claims an item before acting on it (waiting to deciding, by version), so two
+-- reviewers never both act: the loser is told it was decided. claimed_at lets the
+-- reviews worker give a claim back that was never finished.
+ALTER TABLE agents.review_items DROP CONSTRAINT review_items_state_check;
+ALTER TABLE agents.review_items ADD CONSTRAINT review_items_state_check
+    CHECK (state IN ('waiting', 'deciding', 'sent', 'edited_sent', 'discarded', 'withdrawn', 'expired'));
+ALTER TABLE agents.review_items ADD COLUMN claimed_at timestamptz;
+
 -- What the pipeline decided for a run's reply: the mode, the threshold, the
 -- score before and after the sources were checked, the valid sources, the rules
 -- that held or stopped it and whether it was sent. The activity screen shows it,
@@ -28,8 +36,20 @@ CREATE INDEX ix_conversation_links_contacts ON agents.conversation_links USING g
 -- Retention (V26) deletes by age; the worker reads the oldest first.
 CREATE INDEX ix_runs_started ON agents.runs (started_at);
 
+-- Erasure finds a customer's rows by customer_id (V26).
+CREATE INDEX ix_runs_customer ON agents.runs (customer_id) WHERE customer_id IS NOT NULL;
+CREATE INDEX ix_review_items_customer ON agents.review_items (customer_id) WHERE customer_id IS NOT NULL;
+CREATE INDEX ix_actions_customer ON agents.actions (customer_id) WHERE customer_id IS NOT NULL;
+
 -- +goose Down
+DROP INDEX agents.ix_actions_customer;
+DROP INDEX agents.ix_review_items_customer;
+DROP INDEX agents.ix_runs_customer;
 DROP INDEX agents.ix_runs_started;
 DROP TABLE agents.conversation_links;
 ALTER TABLE agents.runs DROP COLUMN verdict;
+ALTER TABLE agents.review_items DROP COLUMN claimed_at;
+ALTER TABLE agents.review_items DROP CONSTRAINT review_items_state_check;
+ALTER TABLE agents.review_items ADD CONSTRAINT review_items_state_check
+    CHECK (state IN ('waiting', 'sent', 'edited_sent', 'discarded', 'withdrawn', 'expired'));
 ALTER TABLE agents.review_items DROP COLUMN channel_id;

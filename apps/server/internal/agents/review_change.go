@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -80,9 +81,9 @@ func (s *server) approveChange(ctx context.Context, row itemRow, reviewer uuid.U
 	if len(req.Body) == 0 || string(req.Body) == "null" {
 		req.Body = nil
 	}
-	if !ap.rs.reviewerStillCurrent(ctx, row) {
-		rf := itemDecided()
-		return reviewOutcome{}, &rf, nil
+	// A change that takes an Idempotency-Key is made once, whoever else tries: the key is the item's.
+	if raw, derr := s.deps.Operations.Describe(ch.OperationID); derr == nil && strings.Contains(string(raw), "Idempotency-Key") {
+		req.Headers = map[string]string{"Idempotency-Key": "agents-item-" + row.ID.String()}
 	}
 	res, err := ap.rs.call(ctx, req)
 	if err != nil {

@@ -539,6 +539,7 @@ func (e ListAgentRunsParamsState) Valid() bool {
 
 // Defines values for ListReviewItemsParamsState.
 const (
+	ListReviewItemsParamsStateDecided    ListReviewItemsParamsState = "decided"
 	ListReviewItemsParamsStateDiscarded  ListReviewItemsParamsState = "discarded"
 	ListReviewItemsParamsStateEditedSent ListReviewItemsParamsState = "edited_sent"
 	ListReviewItemsParamsStateExpired    ListReviewItemsParamsState = "expired"
@@ -550,6 +551,8 @@ const (
 // Valid indicates whether the value is a known member of the ListReviewItemsParamsState enum.
 func (e ListReviewItemsParamsState) Valid() bool {
 	switch e {
+	case ListReviewItemsParamsStateDecided:
+		return true
 	case ListReviewItemsParamsStateDiscarded:
 		return true
 	case ListReviewItemsParamsStateEditedSent:
@@ -967,7 +970,7 @@ type AgentUsageDay struct {
 	Sent         int32              `json:"sent"`
 }
 
-// AgentsProblem An RFC 9457 problem with this module's refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503), and for the review queue reviewer_not_permitted (403), item_decided (409), held (422, rules names them), channel_refused (422) and send_unknown (502). errors carries the field errors of a 400.
+// AgentsProblem An RFC 9457 problem with this module's refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503), and for the review queue reviewer_not_permitted (403), item_decided (409), reply_key_reused (409), held (422, rules names them), channel_refused (422) and send_unknown (502). errors carries the field errors of a 400.
 type AgentsProblem struct {
 	Code   *string              `json:"code,omitempty"`
 	Detail *string              `json:"detail,omitempty"`
@@ -1224,7 +1227,7 @@ type ListReviewItemsParams struct {
 	// AgentId Only this agent's items.
 	AgentId *openapi_types.UUID `form:"agentId,omitempty" json:"agentId,omitempty"`
 
-	// State Only items in this state.
+	// State Only items in this state; decided is every state but waiting.
 	State *ListReviewItemsParamsState `form:"state,omitempty" json:"state,omitempty"`
 
 	// Limit At most this many, 1 to 200; 50 by default.

@@ -87,7 +87,7 @@ cannot call this module.
 | `GET /runs/{runId}` | `agents:activity` + [seeing](#the-review-queue) | 200, 403, 404 | A run with its actions (the timeline), its `verdict`, its review items and its transcript. |
 | `GET /roles/{roleId}/calibration` | `agents:view` | 200, 404 | The [calibration](#calibration) of the role. |
 | `GET /audit?limit=&offset=` | `agents:view` | 200 | The Owner's changes ([audit](#audit)), newest first. |
-| `GET /review?agentId=&state=&limit=&offset=` | `agents:review` + [seeing](#the-review-queue) | 200, 400, 403 | The queue: waiting items first, those that lapse soonest first, then the rest, newest first. |
+| `GET /review?agentId=&state=&limit=&offset=` (`state` may be `decided`: every state but waiting) | `agents:review` + [seeing](#the-review-queue) | 200, 400, 403 | The queue: waiting items first, those that lapse soonest first, then the rest, newest first. |
 | `GET /review/count` | `agents:review` | 200 | `{waiting}`: the badge on the agents tile. Holds no content. |
 | `GET /review/{itemId}` | `agents:review` + [seeing](#the-review-queue) | 200, 403, 404 | One item. |
 | `POST /review/{itemId}/approve` | `agents:review` + the item's own rule | 200, 400, 403, 404, 409, 422, 502 | [Sends the reply or makes the change](#how-a-decision-is-made). `If-Match`. |
@@ -117,6 +117,7 @@ code, never the words. `errors` carries the field errors of a 400.
 | `held` | 422 | A rule that holds in every mode holds the text now; `rules` names them, and the item stays waiting with them added to `held_by`. |
 | `channel_refused` | 422 | The channel refused the message (too long, components unsupported …); edit it. |
 | `change_refused` | 422 | The operation answered a 4xx; discard it or fix the record. |
+| `reply_key_reused` | 409 | A different reply to this message was queued before (an edit after a send that failed) and the agent's reply is not in the conversation. When it is, the item is finished as sent instead. |
 | `send_unknown` | 502 | It is not known whether the reply was sent. Sending again is safe: the reply is idempotent. |
 
 The fields: an agent's `name` 1 to 60 characters; `style` at most 1,500; `languages`
@@ -145,7 +146,7 @@ The `agents` schema. A user, a channel and a hand-off person are opaque ids.
 | `runs` | One run: `agent_id`, `role_id`, `conversation_id`, `customer_id` (the run's scope), `reason`, `attempt`, `state` (`queued`, `running`, `done`, `waiting_review`, `handed_off`, `failed`, `stopped`), `outcome` (`sent`, `review`, `handed_off`, `no_reply`), `error_code`, `summary`, `claimed_by`, `claimed_until`, the counts of tool calls, turns and tokens, `started_at`, `ended_at`, `sent_at`. `verdict` (jsonb, what the pipeline decided: `mode`, `threshold`, `score`, `modelScore`, `sources`, `held`, `refused`, `sent`). A partial unique index on `(role_id, conversation_id)` for `queued` and `running` keeps one run at a time. |
 | `run_messages` | The transcript: `run_id`, `role`, `text`, `tool_calls`, `tool_call_id`. Copies of message bodies, so retention deletes them with the run. |
 | `actions` | The action log, one row per tool call: `operation_id`, `ref` (the operation and the ids it named), `scoped` (it returned a customer's data), `mode`, `status`, `http_status`, `duration_ms`, `approved_by`. Never a body. |
-| `review_items` | What a run leaves for a person: `kind` (`reply` or `change`), `item` (jsonb), `score`, `sources`, `model_score`, `held_by` (rule codes), `state` (`waiting`, `sent`, `edited_sent`, `discarded`, `withdrawn`, `expired`), `version`, the decision's columns, `expires_at` (24 hours, or a Messenger window's close less 15 minutes), `channel_id` (so unbinding the channel withdraws what waits on it), `discard_reason`, `discard_text`, `edit_ratio`, `outcome`. A reply's `item` holds `text`, `disclosure`, `components`, `inReplyToMessageId` and `windowClosesAt`; a change's holds `operationId`, `summary`, `explain`, `pathParams`, `query` and `body`. |
+| `review_items` | What a run leaves for a person: `kind` (`reply` or `change`), `item` (jsonb), `score`, `sources`, `model_score`, `held_by` (rule codes), `state` (`waiting`, `deciding` while a reviewer acts on it, `sent`, `edited_sent`, `discarded`, `withdrawn`, `expired`), `claimed_at`, `version`, the decision's columns, `expires_at` (24 hours, or a Messenger window's close less 15 minutes), `channel_id` (so unbinding the channel withdraws what waits on it), `discard_reason`, `discard_text`, `edit_ratio`, `outcome`. A reply's `item` holds `text`, `disclosure`, `components`, `inReplyToMessageId` and `windowClosesAt`; a change's holds `operationId`, `summary`, `explain`, `pathParams`, `query` and `body`. |
 | `usage_days` | `(agent_id, day)`: runs, input and output tokens, sent, held and discarded. |
 | `channel_addresses`, `seen_senders` | The addresses of the channels the module has read (V23), and the senders it has met (S4). |
 | `conversation_links` | `conversation_id` (key), `customer_id` and `contact_ids` as the module last saw the conversation linked, `seen_at`: what [erasure](#retention-and-erasure) finds a customer's or a contact's conversations by. |
@@ -473,6 +474,8 @@ installation does not require one for owners.
 
 ### How a decision is made
 
+**Claim.** Before anything is called or sent the decision claims the item (`waiting` to `deciding`, by the version read). Only one claim wins; the loser is 409 `item_decided`. A refusal or a hold gives the claim back; a claim never finished goes back to waiting after ten minutes, and an item being decided is never expired. A change that takes an `Idempotency-Key` is called with `agents-item-<id>`.
+
 **Approve and edit and send** run as the agent: a grant for the agent and the item's run, with the item's
 customer and `approved_by` the reviewer (ten minutes, revoked after). Then:
 
@@ -511,6 +514,8 @@ withdrawn and a colleague is told to check.
 **A newer reply supersedes** the one that waits: queuing a reply withdraws the conversation's other
 waiting replies.
 
+A hand-off note never quotes the draft: it says why and links `/agents/review/<id>`, which is gated. A hand-off never takes a conversation from a person who has it (it changes the assignee only when it is empty or the agent's own), and the note then says the agent stopped working on it.
+
 Expiry, withdrawals and discards hand off by recording the marker and a run handed off with no outcome,
 which the runner completes with the note and the assignee ([the hand-off](#the-hand-off)).
 
@@ -531,7 +536,7 @@ labelled replies (changes, waiting, withdrawn and expired items are no labels) a
 ## Retention and erasure
 
 - **Retention.** `settings.retention_months` is the age at which the `agents-retention` worker (hourly)
-  deletes runs, which cascade to their transcripts, action logs and review items, and the hand-off markers,
+  deletes runs (never one with an item still waiting or being decided), which cascade to their transcripts, action logs and review items, and the hand-off markers,
   taken run requests, senders and conversation links of that age. The cutoff is the later of the months
   and Communications' `COMMUNICATIONS_RETENTION_DAYS`. The setting itself is lowered, on save and by the
   worker (audited as `settings.retention_lowered`), to `retentionCapMonths`: that value divided by 30,
