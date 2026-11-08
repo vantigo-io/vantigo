@@ -623,7 +623,7 @@ func TestAccessMe_AndTheDirectoryExposeSafeProjections(t *testing.T) {
 				}
 			}
 		})
-		if !slices.Equal(keys, []string{"active", "displayName", "email", "id", "isDisabled", "roles", "version"}) {
+		if !slices.Equal(keys, []string{"active", "displayName", "email", "id", "isDisabled", "kind", "roles", "version"}) {
 			t.Errorf("a directory entry has the fields %v", keys)
 		}
 		found = found || string(u["id"]) == `"`+ordinaryID.String()+`"`

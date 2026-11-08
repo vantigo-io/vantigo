@@ -12,8 +12,9 @@
 -- announced link, if any (Entra phase 2 design L1): the handler reads its
 -- state against oidc_issuer, since an announcement under another issuer
 -- fulfils nothing. has_avatar is the effective avatar's existence: a
--- managed one (Staff's photo) or the user's own (staff photo sync §3.1).
-SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabled,
+-- managed one (Staff's photo) or the user's own (staff photo sync §3.1). The
+-- people come first and the agents after them (kind).
+SELECT u.id, u.email, u.display_name, u.kind, u.is_disabled, u.lockout_end, u.totp_enabled,
        u.managed_by, u.employee_number, (u.pending_since IS NOT NULL)::boolean AS pending, u.disabled_by,
        el.issuer AS expected_issuer, el.object_id AS expected_object_id,
        el.user_principal_name AS expected_upn, el.created_at AS expected_at,
@@ -32,7 +33,15 @@ SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabl
 FROM identity.users u
 LEFT JOIN identity.expected_links el ON el.user_id = u.id
 WHERE sqlc.narg(id)::uuid IS NULL OR u.id = sqlc.narg(id)::uuid
-ORDER BY is_owner DESC, u.display_name COLLATE "C", u.id;
+ORDER BY (u.kind = 'agent'), is_owner DESC, u.display_name COLLATE "C", u.id;
+
+-- name: CountUsersByKind :one
+-- CountUsersByKind is how many people and how many agents there are, disabled
+-- ones included: the counts owner user management shows (virtual employees
+-- design V5). Nothing enforces a limit.
+SELECT count(*) FILTER (WHERE kind = 'person') AS people,
+       count(*) FILTER (WHERE kind = 'agent') AS agents
+FROM identity.users;
 
 -- name: IsLastActiveOwner :one
 -- IsLastActiveOwner is .NET's AuthAccountState.IsLastActiveOwner

@@ -68,7 +68,7 @@ func (s *server) PostIdentityPasswordRecoveryRequest(ctx context.Context, req ge
 		case errors.Is(err, pgx.ErrNoRows):
 		case err != nil:
 			return nil, fmt.Errorf("identity: password recovery: %w", err)
-		case u.PasswordHash != nil && u.EmailConfirmed && !isPending(u):
+		case u.PasswordHash != nil && u.EmailConfirmed && !isPending(u) && !isAgent(u):
 			// A pending user's only way to a password is their invitation.
 			if err := s.sendPasswordReset(ctx, u); err != nil {
 				return nil, err
@@ -101,6 +101,9 @@ func (s *server) PostIdentityPasswordRecoveryReset(ctx context.Context, req gen.
 	}
 	if err != nil {
 		return nil, fmt.Errorf("identity: password reset: %w", err)
+	}
+	if isAgent(u) {
+		return invalidResetToken, nil
 	}
 	tokenHash, ok := parseToken(*body.Token)
 	if !ok {

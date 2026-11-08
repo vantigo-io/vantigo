@@ -21,6 +21,24 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// Defines values for AccessUserResponseKind.
+const (
+	AccessUserResponseKindAgent  AccessUserResponseKind = "agent"
+	AccessUserResponseKindPerson AccessUserResponseKind = "person"
+)
+
+// Valid indicates whether the value is a known member of the AccessUserResponseKind enum.
+func (e AccessUserResponseKind) Valid() bool {
+	switch e {
+	case AccessUserResponseKindAgent:
+		return true
+	case AccessUserResponseKindPerson:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AccountResponseAvatarManagedBy.
 const (
 	AvatarManagedByStaff AccountResponseAvatarManagedBy = "staff"
@@ -162,6 +180,24 @@ func (e OwnerUserResponseDisabledBy) Valid() bool {
 	}
 }
 
+// Defines values for OwnerUserResponseKind.
+const (
+	OwnerUserResponseKindAgent  OwnerUserResponseKind = "agent"
+	OwnerUserResponseKindPerson OwnerUserResponseKind = "person"
+)
+
+// Valid indicates whether the value is a known member of the OwnerUserResponseKind enum.
+func (e OwnerUserResponseKind) Valid() bool {
+	switch e {
+	case OwnerUserResponseKindAgent:
+		return true
+	case OwnerUserResponseKindPerson:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OwnerUserResponseManagedBy.
 const (
 	OwnerUserResponseManagedByStaff OwnerUserResponseManagedBy = "staff"
@@ -295,14 +331,20 @@ type AccessRoleSummary struct {
 
 // AccessUserResponse defines model for AccessUserResponse.
 type AccessUserResponse struct {
-	Active      bool                `json:"active"`
-	DisplayName string              `json:"displayName"`
-	Email       *string             `json:"email"`
-	Id          openapi_types.UUID  `json:"id"`
-	IsDisabled  bool                `json:"isDisabled"`
-	Roles       []AccessRoleSummary `json:"roles"`
-	Version     *string             `json:"version"`
+	Active      bool               `json:"active"`
+	DisplayName string             `json:"displayName"`
+	Email       *string            `json:"email"`
+	Id          openapi_types.UUID `json:"id"`
+	IsDisabled  bool               `json:"isDisabled"`
+
+	// Kind person for a user who signs in, agent for an AI agent (virtual employees design V5). An agent has no credential and is listed apart from the people.
+	Kind    *AccessUserResponseKind `json:"kind,omitempty"`
+	Roles   []AccessRoleSummary     `json:"roles"`
+	Version *string                 `json:"version"`
 }
+
+// AccessUserResponseKind person for a user who signs in, agent for an AI agent (virtual employees design V5). An agent has no credential and is listed apart from the people.
+type AccessUserResponseKind string
 
 // AccountPasswordRequest defines model for AccountPasswordRequest.
 type AccountPasswordRequest struct {
@@ -691,6 +733,12 @@ type OwnerSsoLinkRequest struct {
 	UserPrincipalName *string `json:"userPrincipalName,omitempty"`
 }
 
+// OwnerUserCountsResponse How many people and how many agents the workspace has, disabled ones included. Nothing enforces a limit.
+type OwnerUserCountsResponse struct {
+	Agents int32 `json:"agents"`
+	People int32 `json:"people"`
+}
+
 // OwnerUserCreateRequest defines model for OwnerUserCreateRequest.
 type OwnerUserCreateRequest struct {
 	DisplayName       *string `json:"displayName"`
@@ -728,8 +776,11 @@ type OwnerUserResponse struct {
 	// EmployeeNumber The employee number of a user Staff manages; absent otherwise.
 	EmployeeNumber *string            `json:"employeeNumber,omitempty"`
 	Id             openapi_types.UUID `json:"id"`
-	LockedOut      bool               `json:"lockedOut"`
-	LockoutEnd     *time.Time         `json:"lockoutEnd"`
+
+	// Kind person for a user who signs in, agent for an AI agent (virtual employees design V5). An agent has no credential and is listed apart from the people.
+	Kind       *OwnerUserResponseKind `json:"kind,omitempty"`
+	LockedOut  bool                   `json:"lockedOut"`
+	LockoutEnd *time.Time             `json:"lockoutEnd"`
 
 	// ManagedBy staff for a user Staff's provisioning manages (created by Staff or adopted by an Owner); absent otherwise.
 	ManagedBy *OwnerUserResponseManagedBy `json:"managedBy,omitempty"`
@@ -748,6 +799,9 @@ type OwnerUserResponse struct {
 
 // OwnerUserResponseDisabledBy Who disabled the user, owner or staff; absent while the user is enabled. An Owner's disable wins over Staff's, and Staff never re-enables a user an Owner disabled.
 type OwnerUserResponseDisabledBy string
+
+// OwnerUserResponseKind person for a user who signs in, agent for an AI agent (virtual employees design V5). An agent has no credential and is listed apart from the people.
+type OwnerUserResponseKind string
 
 // OwnerUserResponseManagedBy staff for a user Staff's provisioning manages (created by Staff or adopted by an Owner); absent otherwise.
 type OwnerUserResponseManagedBy string
@@ -2425,6 +2479,9 @@ type ServerInterface interface {
 	// GetIdentityOwnerSystemStatus Get non-sensitive static identity and account status
 	// (GET /api/v1/identity/owner/system-status)
 	GetIdentityOwnerSystemStatus(w http.ResponseWriter, r *http.Request)
+	// GetIdentityOwnerUserCounts Count the people and the agents
+	// (GET /api/v1/identity/owner/user-counts)
+	GetIdentityOwnerUserCounts(w http.ResponseWriter, r *http.Request)
 	// GetIdentityOwnerUsers List the users
 	// (GET /api/v1/identity/owner/users)
 	GetIdentityOwnerUsers(w http.ResponseWriter, r *http.Request)
@@ -4164,6 +4221,20 @@ func (siw *ServerInterfaceWrapper) GetIdentityOwnerSystemStatus(w http.ResponseW
 	handler.ServeHTTP(w, r)
 }
 
+// GetIdentityOwnerUserCounts operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityOwnerUserCounts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityOwnerUserCounts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetIdentityOwnerUsers operation middleware
 func (siw *ServerInterfaceWrapper) GetIdentityOwnerUsers(w http.ResponseWriter, r *http.Request) {
 
@@ -5383,6 +5454,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/identity/owner/sso/scim/previous", wrapper.DeleteIdentityOwnerSsoScimPrevious)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/sso/scim/token", wrapper.PostIdentityOwnerSsoScimToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/system-status", wrapper.GetIdentityOwnerSystemStatus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/user-counts", wrapper.GetIdentityOwnerUserCounts)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/users", wrapper.GetIdentityOwnerUsers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users", wrapper.PostIdentityOwnerUsers)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}", wrapper.DeleteIdentityOwnerUsersById)
@@ -11659,6 +11731,79 @@ func (response GetIdentityOwnerSystemStatus403JSONResponse) VisitGetIdentityOwne
 	return err
 }
 
+type GetIdentityOwnerUserCountsRequestObject struct {
+}
+
+type GetIdentityOwnerUserCountsResponseObject interface {
+	VisitGetIdentityOwnerUserCountsResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityOwnerUserCounts200JSONResponse OwnerUserCountsResponse
+
+func (response GetIdentityOwnerUserCounts200JSONResponse) VisitGetIdentityOwnerUserCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerUserCounts401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerUserCounts401JSONResponse) VisitGetIdentityOwnerUserCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerUserCounts403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerUserCounts403JSONResponse) VisitGetIdentityOwnerUserCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerUserCounts429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type GetIdentityOwnerUserCounts429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers GetIdentityOwnerUserCounts429ResponseHeaders
+}
+
+func (response GetIdentityOwnerUserCounts429JSONResponse) VisitGetIdentityOwnerUserCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetIdentityOwnerUsersRequestObject struct {
 }
 
@@ -15163,6 +15308,9 @@ type StrictServerInterface interface {
 	// GetIdentityOwnerSystemStatus Get non-sensitive static identity and account status
 	// (GET /api/v1/identity/owner/system-status)
 	GetIdentityOwnerSystemStatus(ctx context.Context, request GetIdentityOwnerSystemStatusRequestObject) (GetIdentityOwnerSystemStatusResponseObject, error)
+	// GetIdentityOwnerUserCounts Count the people and the agents
+	// (GET /api/v1/identity/owner/user-counts)
+	GetIdentityOwnerUserCounts(ctx context.Context, request GetIdentityOwnerUserCountsRequestObject) (GetIdentityOwnerUserCountsResponseObject, error)
 	// GetIdentityOwnerUsers List the users
 	// (GET /api/v1/identity/owner/users)
 	GetIdentityOwnerUsers(ctx context.Context, request GetIdentityOwnerUsersRequestObject) (GetIdentityOwnerUsersResponseObject, error)
@@ -17769,6 +17917,30 @@ func (sh *strictHandler) GetIdentityOwnerSystemStatus(w http.ResponseWriter, r *
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetIdentityOwnerSystemStatusResponseObject); ok {
 		if err := validResponse.VisitGetIdentityOwnerSystemStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityOwnerUserCounts operation middleware
+func (sh *strictHandler) GetIdentityOwnerUserCounts(w http.ResponseWriter, r *http.Request) {
+	var request GetIdentityOwnerUserCountsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityOwnerUserCounts(ctx, request.(GetIdentityOwnerUserCountsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityOwnerUserCounts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityOwnerUserCountsResponseObject); ok {
+		if err := validResponse.VisitGetIdentityOwnerUserCountsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

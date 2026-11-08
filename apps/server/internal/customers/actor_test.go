@@ -37,11 +37,11 @@ func (d stubUserDirectory) Users(context.Context, []uuid.UUID) ([]contracts.User
 	panic("actorFor never calls Users")
 }
 
-func (d stubUserDirectory) SearchUsers(context.Context, string, int) ([]contracts.UserEntry, error) {
+func (d stubUserDirectory) SearchUsers(context.Context, string, int, ...contracts.DirectoryOption) ([]contracts.UserEntry, error) {
 	panic("actorFor never calls SearchUsers")
 }
 
-func (d stubUserDirectory) PermissionHolders(context.Context, string) ([]contracts.Holder, error) {
+func (d stubUserDirectory) PermissionHolders(context.Context, string, ...contracts.DirectoryOption) ([]contracts.Holder, error) {
 	panic("actorFor never calls PermissionHolders")
 }
 

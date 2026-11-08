@@ -172,23 +172,24 @@ func (q *Queries) InsertRolePermissions(ctx context.Context, arg InsertRolePermi
 }
 
 const listAccessUsers = `-- name: ListAccessUsers :many
-SELECT id, display_name, email, is_disabled, lockout_end, version
+SELECT id, display_name, email, kind, is_disabled, lockout_end, version
 FROM identity.users
-ORDER BY display_name COLLATE "C", id
+ORDER BY (kind = 'agent'), display_name COLLATE "C", id
 `
 
 type ListAccessUsersRow struct {
 	ID          uuid.UUID
 	DisplayName string
 	Email       string
+	Kind        string
 	IsDisabled  bool
 	LockoutEnd  *time.Time
 	Version     uuid.UUID
 }
 
 // ListAccessUsers is the authorization user directory
-// (EA/AuthorizationManagementEndpoints.cs:475-487): every user, by display
-// name (ordinal), then id.
+// (EA/AuthorizationManagementEndpoints.cs:475-487): every user, the people
+// first and the agents after them (kind), by display name (ordinal), then id.
 func (q *Queries) ListAccessUsers(ctx context.Context) ([]ListAccessUsersRow, error) {
 	rows, err := q.db.Query(ctx, listAccessUsers)
 	if err != nil {
@@ -202,6 +203,7 @@ func (q *Queries) ListAccessUsers(ctx context.Context) ([]ListAccessUsersRow, er
 			&i.ID,
 			&i.DisplayName,
 			&i.Email,
+			&i.Kind,
 			&i.IsDisabled,
 			&i.LockoutEnd,
 			&i.Version,

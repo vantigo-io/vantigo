@@ -40,7 +40,7 @@ type countingUsers struct {
 	err   error
 }
 
-func (u *countingUsers) PermissionHolders(context.Context, string) ([]contracts.Holder, error) {
+func (u *countingUsers) PermissionHolders(context.Context, string, ...contracts.DirectoryOption) ([]contracts.Holder, error) {
 	u.calls++
 	if u.err != nil {
 		return nil, u.err

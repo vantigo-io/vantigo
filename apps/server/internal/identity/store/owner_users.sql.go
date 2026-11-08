@@ -12,6 +12,27 @@ import (
 	"github.com/google/uuid"
 )
 
+const countUsersByKind = `-- name: CountUsersByKind :one
+SELECT count(*) FILTER (WHERE kind = 'person') AS people,
+       count(*) FILTER (WHERE kind = 'agent') AS agents
+FROM identity.users
+`
+
+type CountUsersByKindRow struct {
+	People int64
+	Agents int64
+}
+
+// CountUsersByKind is how many people and how many agents there are, disabled
+// ones included: the counts owner user management shows (virtual employees
+// design V5). Nothing enforces a limit.
+func (q *Queries) CountUsersByKind(ctx context.Context) (CountUsersByKindRow, error) {
+	row := q.db.QueryRow(ctx, countUsersByKind)
+	var i CountUsersByKindRow
+	err := row.Scan(&i.People, &i.Agents)
+	return i, err
+}
+
 const deleteUser = `-- name: DeleteUser :exec
 DELETE FROM identity.users WHERE id = $1
 `
@@ -149,7 +170,7 @@ func (q *Queries) IsLastActiveOwner(ctx context.Context, arg IsLastActiveOwnerPa
 }
 
 const listManagedUsers = `-- name: ListManagedUsers :many
-SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabled,
+SELECT u.id, u.email, u.display_name, u.kind, u.is_disabled, u.lockout_end, u.totp_enabled,
        u.managed_by, u.employee_number, (u.pending_since IS NOT NULL)::boolean AS pending, u.disabled_by,
        el.issuer AS expected_issuer, el.object_id AS expected_object_id,
        el.user_principal_name AS expected_upn, el.created_at AS expected_at,
@@ -168,7 +189,7 @@ SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabl
 FROM identity.users u
 LEFT JOIN identity.expected_links el ON el.user_id = u.id
 WHERE $2::uuid IS NULL OR u.id = $2::uuid
-ORDER BY is_owner DESC, u.display_name COLLATE "C", u.id
+ORDER BY (u.kind = 'agent'), is_owner DESC, u.display_name COLLATE "C", u.id
 `
 
 type ListManagedUsersParams struct {
@@ -180,6 +201,7 @@ type ListManagedUsersRow struct {
 	ID               uuid.UUID
 	Email            string
 	DisplayName      string
+	Kind             string
 	IsDisabled       bool
 	LockoutEnd       *time.Time
 	TotpEnabled      bool
@@ -209,7 +231,8 @@ type ListManagedUsersRow struct {
 // announced link, if any (Entra phase 2 design L1): the handler reads its
 // state against oidc_issuer, since an announcement under another issuer
 // fulfils nothing. has_avatar is the effective avatar's existence: a
-// managed one (Staff's photo) or the user's own (staff photo sync §3.1).
+// managed one (Staff's photo) or the user's own (staff photo sync §3.1). The
+// people come first and the agents after them (kind).
 func (q *Queries) ListManagedUsers(ctx context.Context, arg ListManagedUsersParams) ([]ListManagedUsersRow, error) {
 	rows, err := q.db.Query(ctx, listManagedUsers, arg.OidcIssuer, arg.ID)
 	if err != nil {
@@ -223,6 +246,7 @@ func (q *Queries) ListManagedUsers(ctx context.Context, arg ListManagedUsersPara
 			&i.ID,
 			&i.Email,
 			&i.DisplayName,
+			&i.Kind,
 			&i.IsDisabled,
 			&i.LockoutEnd,
 			&i.TotpEnabled,

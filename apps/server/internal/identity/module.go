@@ -69,6 +69,7 @@ var limits = map[string]ratelimit.Policy{
 	"postIdentityAccountPassword": policyPasswordRecovery,
 
 	"getIdentityOwnerUsers":                   policyUserManagement,
+	"getIdentityOwnerUserCounts":              policyUserManagement,
 	"postIdentityOwnerUsers":                  policyUserManagement,
 	"putIdentityOwnerUsersById":               policyUserManagement,
 	"deleteIdentityOwnerUsersById":            policyUserManagement,
@@ -147,7 +148,9 @@ func Module(a *Access) module.Module {
 		AssistantGrants: func(d module.Deps) contracts.AssistantGrants {
 			return newAssistantGrants(a, d)
 		},
-		Accounts: func(d module.Deps) contracts.AccountProvisioning { return newProvisioning(a, d) },
+		AgentAccounts: func(d module.Deps) contracts.AgentAccounts { return newAgentAccounts(a, d) },
+		AgentGrants:   func(d module.Deps) contracts.AgentGrants { return newAgentGrants(a, d) },
+		Accounts:      func(d module.Deps) contracts.AccountProvisioning { return newProvisioning(a, d) },
 		SSOConnections: func(d module.Deps) contracts.SSOConnections {
 			return newSSOConnections(a, d)
 		},

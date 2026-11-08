@@ -3,7 +3,7 @@ SELECT id, email, normalized_email, email_confirmed, display_name, preferred_lan
        password_hash, is_disabled, lockout_end, failed_login_count, totp_secret,
        totp_enabled, totp_last_step, version, created_at, updated_at,
        managed_by, employee_number, employee_number_key, pending_since, invitations_since, disabled_by,
-       time_zone, provisioning_roles_at
+       time_zone, provisioning_roles_at, kind
 FROM identity.users
 WHERE normalized_email = $1;
 
@@ -20,7 +20,7 @@ SELECT id, email, normalized_email, email_confirmed, display_name, preferred_lan
        password_hash, is_disabled, lockout_end, failed_login_count, totp_secret,
        totp_enabled, totp_last_step, version, created_at, updated_at,
        managed_by, employee_number, employee_number_key, pending_since, invitations_since, disabled_by,
-       time_zone, provisioning_roles_at
+       time_zone, provisioning_roles_at, kind
 FROM identity.users
 WHERE id = $1;
 
@@ -30,7 +30,8 @@ WHERE id = $1;
 -- and whether it is "effectively disabled" beyond is_disabled: while SCIM
 -- is configured, a non-Owner the directory deactivated
 -- (SV/ScimLifecycleService.cs:21-44). A pending user reads as disabled: their
--- only way in is accepting their invitation.
+-- only way in is accepting their invitation. A user of kind agent is no
+-- candidate at all: it has no credential and never signs in.
 SELECT u.id, u.email, u.display_name, u.password_hash, (u.is_disabled OR u.pending_since IS NOT NULL)::boolean AS is_disabled, u.lockout_end, u.totp_enabled,
        r.role_names,
        (@scim_enabled::boolean AND m.upstream_active IS FALSE AND NOT r.is_owner)::boolean AS scim_inactive
@@ -43,7 +44,8 @@ CROSS JOIN LATERAL (
     WHERE ur.user_id = u.id
 ) r
 LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id
-WHERE u.normalized_email = @normalized_email;
+WHERE u.normalized_email = @normalized_email
+  AND u.kind = 'person';
 
 -- name: RecordLoginFailure :one
 -- RecordLoginFailure counts one wrong password, as ASP.NET Identity's

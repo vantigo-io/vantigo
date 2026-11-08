@@ -19,6 +19,10 @@ type UserEntry struct {
 	// sensitive, for a module writing something in the user's own language
 	// (calendar invitations design D3).
 	PreferredLanguage string
+	// Kind is UserKindPerson or UserKindAgent: whether the user is a person or
+	// an AI agent (virtual employees design V5), for a caller that shows the
+	// AI badge on an agent's avatar.
+	Kind string
 }
 
 // UserDirectory is the one sanctioned way a module reads identity's user
@@ -43,6 +47,11 @@ type UserEntry struct {
 //     User/Users still resolve it so that reference can be decorated — but
 //     nothing should let a caller newly assign work to someone who can no
 //     longer act, so search excludes them.
+//   - SearchUsers and PermissionHolders leave out users of kind agent unless
+//     the caller passes IncludeAgents. A caller that lists people to assign
+//     work to, bill or notify never meets an agent by accident; the ones that
+//     want agents too (Communications' assignee select, Knowledge's member
+//     picker) say so.
 type UserDirectory interface {
 	// User looks up a user by ID. It returns (nil, nil) if id does not
 	// exist.
@@ -52,12 +61,13 @@ type UserDirectory interface {
 	Users(ctx context.Context, ids []uuid.UUID) ([]UserEntry, error)
 	// SearchUsers finds active users whose display name matches query,
 	// ordered by display name, capped at limit.
-	SearchUsers(ctx context.Context, query string, limit int) ([]UserEntry, error)
+	SearchUsers(ctx context.Context, query string, limit int, opts ...DirectoryOption) ([]UserEntry, error)
 	// PermissionHolders lists the active users who hold the permission key,
 	// ordered by display name. See Holder for who counts.
-	PermissionHolders(ctx context.Context, key string) ([]Holder, error)
+	PermissionHolders(ctx context.Context, key string, opts ...DirectoryOption) ([]Holder, error)
 	// Notify mails the user through the installation's mail driver. An
-	// inactive or unknown user is not mailed and is not an error; a driver
+	// inactive or unknown user, and an agent (whose address never routes),
+	// is not mailed and is not an error; a driver
 	// that is not configured is not an error either (the notice is simply not
 	// sent). A send that fails is an error that names no address.
 	//
@@ -75,6 +85,30 @@ type UserDirectory interface {
 	// only compares or shows when it changed. It returns (nil, nil) when the
 	// user has none, or does not exist.
 	AvatarInfo(ctx context.Context, userID uuid.UUID) (*AvatarInfo, error)
+}
+
+// DirectoryOptions are the choices SearchUsers and PermissionHolders take.
+type DirectoryOptions struct {
+	// IncludeAgents lists users of kind agent too. The default is false.
+	IncludeAgents bool
+}
+
+// DirectoryOption sets one of DirectoryOptions.
+type DirectoryOption func(*DirectoryOptions)
+
+// IncludeAgents makes a search or a holders list include users of kind agent
+// (virtual employees design V5).
+func IncludeAgents() DirectoryOption {
+	return func(o *DirectoryOptions) { o.IncludeAgents = true }
+}
+
+// ResolveDirectoryOptions folds opts into the DirectoryOptions they set.
+func ResolveDirectoryOptions(opts []DirectoryOption) DirectoryOptions {
+	var o DirectoryOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return o
 }
 
 // AvatarInfo is a user's effective avatar as AvatarInfo answers it: an
@@ -135,4 +169,5 @@ type Holder struct {
 	DisplayName       string
 	Email             string
 	PreferredLanguage string // "en", "nb" or "" when the user chose none
+	Kind              string // UserKindPerson or UserKindAgent
 }
