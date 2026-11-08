@@ -77,6 +77,13 @@ application.
   each person connects their own Google account for calendar sync and sending from their
   Gmail address, and Communications' channels can use licensed Gmail mailboxes. Nothing of it is in `vantigo.env`; its page
   is under **Integrations** in Workspace admin.
+- **Virtual employees.** [Virtual employees](/en/admin/agents/) is on when `agents` is in
+  `MODULES` beside `communications`, which it requires, and an AI provider with a model that
+  supports tool calls is set up; its four permissions, the company's name and the retention,
+  the model per agent, the Identity roles and the levels the Owner gives an agent (Off until
+  raised, with the permissions locked for every agent), what to keep out of Knowledge and
+  the privacy notice. In this release agents are set up and prepared; they do not answer
+  yet.
 - **Meta.** [Meta](/en/admin/meta/) connects Vantigo to Facebook Messenger through your own
   Meta app: `meta` in `MODULES` beside `communications`, which it requires; a public host
   for Meta's webhook; the app created in Meta's developer portal, with App Review and
