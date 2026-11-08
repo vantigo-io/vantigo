@@ -121,6 +121,7 @@ Ingen nivåer kan gis for disse; skjermen viser dem som låst, og serveren avvis
 - Identitet: administrere.
 - Alle godkjenninger i Timer, Utlegg og Ansatte.
 - Fakturaer: utstede og betalinger.
+- Alle andre tillatelser som bare en eier kan gi videre: administrasjon av Entra og Google, administrasjon av Kunnskap, og fraktselskaper og innstillinger i Ordre.
 - Agentenes egne tillatelser.
 
 ### Tillatelseslisten og kundeavgrensningen
