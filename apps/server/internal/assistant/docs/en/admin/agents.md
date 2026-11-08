@@ -122,6 +122,7 @@ with `level_locked`:
 - Identity: manage.
 - Every approval in Time, Expenses and Staff.
 - Invoices: issue and payments.
+- Every other permission that only an Owner can hand on: Entra and Google administration, Knowledge administration, and Orders' carriers and settings.
 - The agents' own permissions.
 
 ### The allowlist and the customer scope
