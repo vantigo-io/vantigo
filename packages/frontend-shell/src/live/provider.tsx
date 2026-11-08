@@ -41,6 +41,11 @@ const noop = () => {};
 const noopSubscribe = () => noop;
 const NO_MEMBERS: readonly PresenceMember[] = [];
 
+/** The tab's live client, or null outside a provider: for a screen that sends binary frames (K34). */
+export function useLiveClient(): LiveClient | null {
+  return useContext(LiveContext);
+}
+
 /** `connecting | live | degraded | unavailable`. Only `live` means a screen may stop its fallback polling. */
 export function useLiveStatus(): LiveStatus {
   const client = useContext(LiveContext);

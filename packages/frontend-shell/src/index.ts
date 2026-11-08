@@ -62,12 +62,23 @@ export {
 } from "./i18n";
 export { type ShellLinkComponent, ShellLinkProvider, useShellLink } from "./link-context";
 export {
+  type DocControlFrame,
+  type DocHandlers,
+  decodeFrame,
+  encodeFrame,
+  KIND_AWARENESS,
+  KIND_COMPACT,
+  KIND_SEED,
+  KIND_UPDATE,
+  LiveClient,
   type LiveEvent,
   LiveProvider,
   type LiveProviderProps,
+  type LiveSocket,
   type LiveStatus,
   type PresenceMember,
   type PresenceState,
+  useLiveClient,
   useLiveStatus,
   useLiveTopic,
   usePresence,

@@ -19,12 +19,81 @@ export type LiveEvent = { kind: string; ids: string[] } | { kind: "resync" };
 
 /** The part of `WebSocket` the client uses, so a test can supply a fake. */
 export interface LiveSocket {
-  send(data: string): void;
+  send(data: string | Uint8Array): void;
+  /** Set to `"arraybuffer"` by the client, so binary frames arrive as `ArrayBuffer`. */
+  binaryType?: string;
   close(code?: number): void;
   onopen: (() => void) | null;
   onclose: ((event: { code: number }) => void) | null;
   onmessage: ((event: { data: unknown }) => void) | null;
 }
+
+/**
+ * What a document topic's listener hears (knowledge design K25, K34). The shell carries the
+ * frames and knows nothing of Yjs: `payload` is the bytes after the topic, `frame` a JSON control
+ * frame of the document protocol (`synced`, `ack`, `update_rejected`, `doc_reset`, ...).
+ */
+export interface DocHandlers {
+  /** The subscription is in place on this connection, or the server asked every document to resync: send `doc_sync`. */
+  onSubscribed(): void;
+  /** The connection or the subscription is gone; nothing sent now reaches the server. */
+  onUnsubscribed(): void;
+  /** A binary frame for the topic: `0x01` update (seq then update) or `0x03` awareness. */
+  onBinary(kind: number, payload: Uint8Array): void;
+  /** A JSON control frame for the topic, other than the events and presence of the ordinary protocol. */
+  onControl(frame: DocControlFrame): void;
+}
+
+export type DocControlFrame = { type: string; topic: string; [key: string]: unknown };
+
+/** Binary frame kinds (K25). */
+export const KIND_UPDATE = 0x01;
+export const KIND_SEED = 0x02;
+export const KIND_AWARENESS = 0x03;
+export const KIND_COMPACT = 0x04;
+
+const DOC_CONTROL = new Set([
+  "synced",
+  "ack",
+  "update_rejected",
+  "seed_accepted",
+  "seed_rejected",
+  "compact_requested",
+  "compact_rejected",
+  "doc_reset",
+  "doc_stale",
+]);
+
+const encoder = new TextEncoder();
+
+/** `kind` (1 byte), the topic's length (2 bytes, big endian), the topic, the payload (K25). */
+export const encodeFrame = (kind: number, topic: string, payload: Uint8Array): Uint8Array => {
+  const name = encoder.encode(topic);
+  const out = new Uint8Array(3 + name.length + payload.length);
+  out[0] = kind;
+  out[1] = name.length >> 8;
+  out[2] = name.length & 0xff;
+  out.set(name, 3);
+  out.set(payload, 3 + name.length);
+  return out;
+};
+
+/** The inverse of `encodeFrame`; null for anything that is not a frame. */
+export const decodeFrame = (data: unknown): { kind: number; topic: string; payload: Uint8Array } | null => {
+  let bytes: Uint8Array;
+  if (data instanceof ArrayBuffer) bytes = new Uint8Array(data);
+  else if (ArrayBuffer.isView(data)) bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  else return null;
+  if (bytes.length < 3) return null;
+  const length = (bytes[1] << 8) | bytes[2];
+  if (length === 0 || bytes.length < 3 + length) return null;
+  try {
+    const topic = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(3, 3 + length));
+    return { kind: bytes[0], topic, payload: bytes.subarray(3 + length) };
+  } catch {
+    return null;
+  }
+};
 
 export type LiveClientOptions = {
   /** The signed-in person's id, to leave them out of the presence members. */
@@ -65,12 +134,15 @@ export const defaultLiveUrl = (): string => {
 type Pending = { kinds: Map<string, Set<string>>; resync: boolean; timer: ReturnType<typeof setTimeout> | null };
 type TopicEntry = {
   listeners: Set<(event: LiveEvent) => void>;
+  docs: Set<DocHandlers>;
   pending: Pending;
   /** The server answered `ok` for this subscription on the current connection. */
   ok: boolean;
   retries: number;
   retryTimer: ReturnType<typeof setTimeout> | null;
 };
+
+const noop = () => {};
 
 const isPresenceState = (value: unknown): value is PresenceState =>
   value === "viewing" || value === "editing" || value === "replying";
@@ -161,6 +233,7 @@ export class LiveClient {
     if (!entry) {
       entry = {
         listeners: new Set(),
+        docs: new Set(),
         pending: { kinds: new Map(), resync: false, timer: null },
         ok: false,
         retries: 0,
@@ -184,6 +257,41 @@ export class LiveClient {
       this.send({ type: "unsub", topic });
       this.notifyLive();
     };
+  }
+
+  /**
+   * Listens to a document topic's binary and control frames (K34); shares the topic's one
+   * subscription with `listen`. `onSubscribed` is called at once when the subscription is
+   * already confirmed, then after every `ok` and every server `resync`.
+   */
+  listenDoc(topic: string, handlers: DocHandlers): () => void {
+    const stop = this.listen(topic, noop);
+    const entry = this.topics.get(topic);
+    entry?.docs.add(handlers);
+    if (entry?.ok && this.status === "live") handlers.onSubscribed();
+    return () => {
+      this.topics.get(topic)?.docs.delete(handlers);
+      stop();
+    };
+  }
+
+  /** Sends one binary frame of the document protocol; false when the socket is not open (nothing is queued). */
+  sendBinary(topic: string, kind: number, payload: Uint8Array): boolean {
+    if (!this.socket || !this.opened) return false;
+    this.socket.send(encodeFrame(kind, topic, payload));
+    return true;
+  }
+
+  /** Sends one JSON frame (a document's `doc_sync` or `doc_error`); false when the socket is not open. */
+  sendJson(frame: Record<string, unknown>): boolean {
+    if (!this.socket || !this.opened) return false;
+    this.send(frame);
+    return true;
+  }
+
+  /** The signed-in person's id. */
+  get userId(): string {
+    return this.options.userId;
   }
 
   /** Announces `state` on a topic for as long as the returned function is not called; `null` announces nothing. */
@@ -262,6 +370,7 @@ export class LiveClient {
     const create = this.options.createSocket ?? ((url: string) => new WebSocket(url) as unknown as LiveSocket);
     const socket = create(this.options.url ?? defaultLiveUrl());
     this.socket = socket;
+    socket.binaryType = "arraybuffer";
     socket.onopen = () => this.handleOpen(socket);
     socket.onmessage = (event) => this.handleMessage(socket, event.data);
     socket.onclose = (event) => this.handleClose(socket, event.code);
@@ -307,9 +416,11 @@ export class LiveClient {
 
   private resetTopics(): void {
     for (const entry of this.topics.values()) {
+      const wasOk = entry.ok;
       entry.ok = false;
       if (entry.retryTimer) clearTimeout(entry.retryTimer);
       entry.retryTimer = null;
+      if (wasOk) for (const doc of [...entry.docs]) doc.onUnsubscribed();
     }
     this.notifyLive();
   }
@@ -345,7 +456,11 @@ export class LiveClient {
   }
 
   private handleMessage(socket: LiveSocket, data: unknown): void {
-    if (socket !== this.socket || typeof data !== "string") return;
+    if (socket !== this.socket) return;
+    if (typeof data !== "string") {
+      this.handleBinary(data);
+      return;
+    }
     let frame: { type?: string; topic?: string; kind?: string; id?: string; reason?: string; members?: unknown };
     try {
       frame = JSON.parse(data);
@@ -380,9 +495,24 @@ export class LiveClient {
         this.setStatus("degraded");
         break;
       default:
+        if (frame.type && DOC_CONTROL.has(frame.type) && typeof frame.topic === "string") {
+          const entry = this.topics.get(frame.topic);
+          for (const doc of [...(entry?.docs ?? [])]) doc.onControl(frame as DocControlFrame);
+        }
         // pong needs nothing beyond the proof of life above.
         break;
     }
+  }
+
+  /** A binary frame: any that is not one, or whose topic holds no document listener, is ignored. */
+  private handleBinary(data: unknown): void {
+    const frame = decodeFrame(data);
+    if (!frame) return;
+    this.markSucceeded();
+    if (this.pongTimer) clearTimeout(this.pongTimer);
+    this.pongTimer = null;
+    if (frame.kind !== KIND_UPDATE && frame.kind !== KIND_AWARENESS) return;
+    for (const doc of [...(this.topics.get(frame.topic)?.docs ?? [])]) doc.onBinary(frame.kind, frame.payload);
   }
 
   /** The subscription is in place: refetch once, since an event may have committed before it was. */
@@ -394,12 +524,15 @@ export class LiveClient {
     entry.pending.resync = true;
     this.schedule(topic, entry);
     this.notifyLive();
+    for (const doc of [...entry.docs]) doc.onSubscribed();
   }
 
   private handleDenied(topic: string, reason: string | undefined): void {
     const entry = this.topics.get(topic);
     if (!entry) return;
+    const wasOk = entry.ok;
     entry.ok = false;
+    if (wasOk) for (const doc of [...entry.docs]) doc.onUnsubscribed();
     if (reason === "unavailable") {
       // A transient server error: ask again, 2 s doubling to 60 s.
       const delay = Math.min(SUB_RETRY_MAX_MS, SUB_RETRY_START_MS * 2 ** entry.retries);
@@ -438,6 +571,8 @@ export class LiveClient {
     for (const [topic, entry] of this.topics) {
       entry.pending.resync = true;
       this.schedule(topic, entry);
+      // A document's missed rows come back with a new `doc_sync` (K28).
+      if (entry.ok) for (const doc of [...entry.docs]) doc.onSubscribed();
     }
   }
 
