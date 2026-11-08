@@ -142,6 +142,8 @@ export type ConversationListItem = {
   subject: string | null;
   status: ConversationStatus;
   assignedUserId: string | null;
+  /** The assignee's display name; null when unassigned or the user is no longer known. */
+  assignedUserName?: string | null;
   customerId: number | null;
   customerAssociationSource: string | null;
   suggestedCustomerId: number | null;
@@ -202,6 +204,7 @@ export type ConversationFilters = {
   page?: number;
   pageSize?: number;
   status?: ConversationStatus;
+  /** A user id, "me" for the caller or "none" for the unassigned. */
   assignedUserId?: string;
   tagId?: string;
   customerId?: number;
@@ -239,6 +242,19 @@ export const inboxCountsQueryOptions = (options: { enabled?: boolean; refetchInt
     enabled: options.enabled ?? true,
     refetchInterval: options.refetchInterval ?? false,
     refetchOnWindowFocus: true,
+  });
+/** A user a conversation may be assigned to (design V2). */
+export type AssignableUser = { userId: string; displayName: string };
+export const assignableUsersQueryOptions = (query = "") =>
+  queryOptions({
+    queryKey: ["communications-assignable-users", query],
+    queryFn: ({ signal }) =>
+      request<AssignableUser[]>(
+        `/api/v1/communications/assignable-users${query ? `?query=${encodeURIComponent(query)}` : ""}`,
+        { signal },
+      ),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
   });
 export const personalSenderQueryOptions = () =>
   queryOptions({

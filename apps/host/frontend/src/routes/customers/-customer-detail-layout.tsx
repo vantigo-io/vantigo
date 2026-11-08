@@ -186,6 +186,7 @@ export const CustomerDetailLayout = () => {
                       conversationId: undefined,
                       status: undefined,
                       tagId: undefined,
+                      assignedUserId: undefined,
                       unreadOnly: undefined,
                     }}
                     {...props}

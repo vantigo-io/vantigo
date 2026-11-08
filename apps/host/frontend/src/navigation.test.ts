@@ -131,6 +131,7 @@ describe("navigation permissions", () => {
       status: undefined,
       customerId: undefined,
       tagId: undefined,
+      assignedUserId: undefined,
       unreadOnly: undefined,
     });
     expect(navSearchFor("products-list")).toEqual({ page: 1, search: "", status: "", categoryId: "" });

@@ -1,4 +1,4 @@
-import { ActionIcon, Alert, Badge, Group, Text } from "@mantine/core";
+import { ActionIcon, Alert, Avatar, Badge, Group, Text, Tooltip } from "@mantine/core";
 import { IconBrandMessenger, IconCheck, IconMail } from "@tabler/icons-react";
 import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
 import type { ConversationListItem, Page } from "../api/conversations";
@@ -79,6 +79,17 @@ export function ConversationList({
               <Badge size="xs" variant="light" color={item.status === "open" ? "teal" : "gray"}>
                 {item.status}
               </Badge>
+              {item.assignedUserId && (
+                <Tooltip label={item.assignedUserName || t("assignee")}>
+                  <Avatar
+                    size="xs"
+                    radius="xl"
+                    color="initials"
+                    name={item.assignedUserName || undefined}
+                    aria-label={t("assignedTo", { name: item.assignedUserName || "" })}
+                  />
+                </Tooltip>
+              )}
             </Group>
           </button>
         ))

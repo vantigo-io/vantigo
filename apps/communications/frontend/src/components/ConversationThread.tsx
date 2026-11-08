@@ -28,6 +28,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import type { ConversationDetail, ConversationMessage, ConversationStatus, Tag } from "../api/conversations";
 import { inlineImages, rawMessageDownloadUrl, retryMessage, safeHtmlSrcDoc } from "../api/conversations";
+import { AssigneeSelect } from "./AssigneeSelect";
 import { AttachmentLinks } from "./AttachmentLinks";
 import { ChatMessage } from "./ChatMessage";
 import { type ConnectionButtonProps, ConversationComposer } from "./ConversationComposer";
@@ -40,7 +41,11 @@ export type ConversationThreadProps = {
   conversation: ConversationDetail;
   tags: Tag[];
   onRead: () => void;
-  onWorkflow: (body: { status?: ConversationStatus; customerId?: number | null }) => void;
+  onWorkflow: (body: {
+    status?: ConversationStatus;
+    assignedUserId?: string | null;
+    customerId?: number | null;
+  }) => void;
   onTag: (id: string, remove?: boolean) => void;
   onSent: () => Promise<unknown>;
   onSuggest: () => void;
@@ -154,6 +159,12 @@ export function ConversationThread({
           )}
         </div>
         <Group>
+          <AssigneeSelect
+            value={conversation.assignedUserId}
+            name={conversation.assignedUserName}
+            disabled={!canManage}
+            onChange={(userId) => onWorkflow({ assignedUserId: userId })}
+          />
           <Select
             aria-label={t("statusLabel")}
             value={conversation.status}

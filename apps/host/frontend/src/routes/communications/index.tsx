@@ -13,6 +13,7 @@ export const Route = createFileRoute("/communications/")({
         status: undefined,
         customerId: undefined,
         tagId: undefined,
+        assignedUserId: undefined,
         unreadOnly: undefined,
       },
     });
