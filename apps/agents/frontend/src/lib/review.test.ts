@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { agentsCatalog } from "../i18n";
-import { discardReasons, heldCodes, heldKey, isUrgent, msUntil, remaining } from "./review";
+import { discardReasons, heldCodes, heldKey, isUrgent, msUntil, outcomeCodes, outcomeKey, remaining } from "./review";
 
 describe("the review queue's words", () => {
   it("words every code a held item may carry, and an unknown one as other", () => {
     for (const code of heldCodes) expect(agentsCatalog.en, code).toHaveProperty([heldKey(code)]);
     expect(heldKey("S99")).toBe("held.other");
     expect(agentsCatalog.en).toHaveProperty(["held.other"]);
+  });
+
+  it("words every outcome of a withdrawn item, and an unknown one as other", () => {
+    for (const code of outcomeCodes) expect(agentsCatalog.en, code).toHaveProperty([outcomeKey(code)]);
+    expect(outcomeKey("something_new")).toBe("outcome.other");
+    expect(agentsCatalog.en).toHaveProperty(["outcome.other"]);
   });
 
   it("words every discard reason", () => {
