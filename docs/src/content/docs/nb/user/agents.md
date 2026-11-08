@@ -1,6 +1,6 @@
 ---
 title: Virtuelle ansatte
-description: Appen Virtuelle ansatte — hva en agent er, agenten i arbeid (når den svarer, hva den leser, hva den kan sende selv, åpningslinjen, overleveringen og å gi en samtale tilbake), gjennomgangskøen (hvorfor en sak venter, å godkjenne, redigere og sende, forkaste, hvor lenge den venter), kalibrering, bruk og aktivitet, å opprette en agent, Persona (navn, stil, språk, modell, bilde) og åpningslinjen med de tre formuleringene, å sette på pause, gjenoppta og slette, Roller (malen Skranke, instruksjoner, kanaler, den som overtar, Svarmodus og grenser), Tillatelser (alt er Av til Eieren hever det) og hvor KI-merket vises.
+description: Appen Virtuelle ansatte — hva en agent er, agenten i arbeid (når den svarer, hva den leser, hva den kan sende selv, åpningslinjen, overleveringen og å gi en samtale tilbake), gjennomgangskøen (hvorfor en sak venter, å godkjenne, redigere og sende, forkaste, hvor lenge den venter), kalibrering, hva en agent husker, bruk og aktivitet, å opprette en agent, Persona (navn, stil, språk, modell, bilde) og åpningslinjen med de tre formuleringene, å sette på pause, gjenoppta og slette, Roller (malen Skranke, instruksjoner, kanaler, den som overtar, Svarmodus og grenser, og de ukentlige forslagene til instruksjonene), Tillatelser (alt er Av til Eieren hever det) og hvor KI-merket vises.
 sidebar:
   order: 75
 sources:
@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/db/migrations/00144_agents_baseline.sql
   - apps/server/internal/db/migrations/00146_agents_runs.sql
   - apps/server/internal/db/migrations/00147_agents_review.sql
+  - apps/server/internal/db/migrations/00148_agents_memory.sql
 ---
 
 En **virtuell ansatt** er en KI-bruker i Vantigo med eget navn og et tydelig KI-merke. Den
@@ -245,6 +246,24 @@ arbeid*: også `communications:conversations-view` og lesetillatelsene Skranken 
 ordrer, fakturaer og produkter, og Kunnskap). Uten dem svarer køen at du ikke har lov. Å lese en
 [kjøring](#aktivitet) krever det samme i tillegg til `agents:activity`.
 
+### Foreslåtte endringer i instruksjonene
+
+Én gang i uken, mandag morgen i firmaets tidssone, leses det folk har rettet de siste ukene: svarene de
+**forkastet**, med årsaken de oppga, og svarene de **redigerte mer enn 20 %**, med teksten før og etter. Når
+minst tre rettelser har kommet inn, foreslår systemet **høyst tre** endringer i rollens instruksjoner.
+Rollesiden viser da **Foreslåtte endringer i instruksjonene** over skjemaet, hver med begrunnelsen, passasjen
+den ville erstatte eller avsnittet den ville legge til, og rettelsene den bygger på (tallene åpner dem).
+
+- **Bruk i instruksjonene** gjør endringen med en gang. Det er en vanlig endring av rollen: den tar rollens
+  versjon, så hvis noen lagret rollen i mellomtiden blir du bedt om å lese den på nytt, den føres i
+  endringshistorikken, og den krever `agents:manage` som enhver endring av instruksjonene. Et forslag
+  hvis passasje ikke lenger står i instruksjonene kan ikke brukes; avvis det.
+- **Avvis** lar instruksjonene stå som de er.
+
+Ingenting endrer noen gang instruksjonene av seg selv. Kontrollmodellen får se årsakene og tekstene i
+rettelsene og de gjeldende instruksjonene, aldri samtalen, og får beskjed om å skrive regler, ikke eksempler.
+Les et forslag som du ville lest en kollegas: det kan være feil.
+
 ## Kalibrering
 
 Rollesiden viser, under **Hvordan den svarer**, hva rollens poengsummer er verdt. Hvert svar en person har
@@ -256,6 +275,10 @@ Over rollens siste 200 merkede svar, flytt glidebryteren til en terskel X fra 50
 - av dem, hvor mange en person **redigerte mer enn 20 % eller forkastet**;
 - hvor mange en regel holdt igjen **uansett poengsum**.
 
+Et svar agenten sendte **av seg selv** (Auto) er også en merkelapp: når en person svarer i samme samtale
+innen 24 timer, regnes agentens svar som **dårlig**, siden en kollega mente de måtte svare over det; et som
+står ubesvart i 24 timer regnes som bra. Du trenger ikke gjøre noe for dette.
+
 To linjer og en markør ved X tegner det samme. Under 50 merkede svar sier panelet *Ikke nok historikk ennå* og
 hvor mange det er. Tallene kommer fra rollens egen historikk, så en rolle som har stått en stund i Gjennomgang
 er den hvis poengsummer kan stoles på når du velger *Auto over X %*.
@@ -266,6 +289,25 @@ Agentens fane **Bruk** viser de siste 30 dagene: kjøringer, tokens (lest og skr
 ble sendt, holdt igjen for en person og forkastet, dag for dag, med summer øverst og dagens tokens mot det
 daglige budsjettet når det finnes. Dagen er virkedagen. Kortene på siden **Virtuelle ansatte** viser dagens
 tall. Tallene beholdes i 24 måneder og inneholder ikke noe innhold.
+
+## Hva en agent husker
+
+En agent kan ta vare på **korte notater** til senere: et varig faktum den lærte i en kundes samtale, som
+*foretrekker e-post, aldri telefon*, eller en avtale. Et notat er på høyst 500 tegn, en agent skriver høyst
+tre i en kjøring, og den beholder høyst 50 om én kunde eller samtale, de eldste faller bort.
+
+- **Hvem notatene gjelder.** Et notat gjelder kjøringens kunde. Er samtalen ikke knyttet til noen kunde,
+  gjelder det bare den samtalen. En agent leser en kundes notater bare i en samtale med den kunden, aldri i
+  en annens, og leser høyst de 20 nyeste når en kjøring begynner.
+- **Leses som fakta, ikke ordre.** Notatene kommer til agenten som data, som kundens meldinger: agenten
+  veier dem, men en instruks i et notat endrer ingenting, og et svar kan ikke vise til et som kilde.
+- **Hvor du ser dem.** På kundens side er **Hva Hanna husker** en sammenfoldet del under vedleggene, vist for
+  dem som har `customers:view` og `agents:view`. Åpne den for å lese notatene med datoer. Den som har
+  `agents:manage` har en **Slett** ved hvert notat, etter en bekreftelse; slett et notat som er feil eller
+  ikke bør beholdes. Agentens fane **Bruk** teller dem.
+- **Hvor lenge.** Et notat utløper sammen med kjøringene, etter oppbevaringstiden administratoren satte, og
+  slettes sammen med kunden eller kontakten det handler om
+  ([Virtuelle ansatte](/nb/admin/agents/#oppbevaring-og-sletting)). Å slette en agent sletter notatene dens.
 
 ## Aktivitet
 

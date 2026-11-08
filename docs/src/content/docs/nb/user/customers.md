@@ -273,6 +273,16 @@ kontaktkort, med **Legg til kunde**. Kontakter krever `customers:contacts-view` 
 `customers:contacts-manage`; koblingene `customers:associations-view` og
 `customers:associations-manage`.
 
+## Hva en agent husker
+
+Når en virtuell ansatt har tatt vare på notater om kunden, viser kundesiden en sammenfoldet del,
+**Hva Hanna husker**, under vedleggene, med antall notater. Den vises for dem som har `customers:view` og
+`agents:view`, og ikke i det hele tatt når ingenting huskes eller modulen Virtuelle ansatte er av. Åpne den for
+å lese hvert notat med dato. Den som i tillegg har `agents:manage` har en **Slett notatet**-knapp ved hvert
+notat; den spør først, og det som slettes er borte. Et notat er et kort faktum agenten skrev ned fra denne
+kundens samtaler og leser før den svarer på neste, så slett et som er feil. Mer i
+[Virtuelle ansatte](/nb/user/agents/#hva-en-agent-husker).
+
 ## Tidslinjen
 
 Kortet **Tidslinje** er kundens historikk, nyeste først: automatiske hendelser

@@ -1,6 +1,6 @@
 ---
 title: Virtuelle ansatte
-description: Å slå på Virtuelle ansatte — modulene og KI-leverandøren den trenger, de fire tillatelsene og hvilke endringer som er Eierens, firmanavnet og oppbevaringen, å opprette den første agenten, modellen per agent, å gi agenten Identitet-roller, nivåene (Av som standard, hva skranken trenger, hva som er låst for alle agenter), tillatelseslisten og kundeavgrensningen, hva som bør holdes utenfor Kunnskap, personvernerklæringen, hvem som gjennomgår, oppbevaring og sletting, å sette en agent på pause og slette den; hvordan du kontrollerer det, og hva som kan gå galt.
+description: Å slå på Virtuelle ansatte — modulene og KI-leverandøren den trenger, de fire tillatelsene og hvilke endringer som er Eierens, firmanavnet og oppbevaringen, å opprette den første agenten, modellen per agent, å gi agenten Identitet-roller, nivåene (Av som standard, hva skranken trenger, hva som er låst for alle agenter), tillatelseslisten og kundeavgrensningen, hva som bør holdes utenfor Kunnskap, personvernerklæringen, hvem som gjennomgår, den ukentlige kontrollen av instruksjonene, oppbevaring og sletting, å sette en agent på pause og slette den; hvordan du kontrollerer det, og hva som kan gå galt.
 sidebar:
   order: 52
 sources:
@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/db/migrations/00144_agents_baseline.sql
   - apps/server/internal/db/migrations/00146_agents_runs.sql
   - apps/server/internal/db/migrations/00147_agents_review.sql
+  - apps/server/internal/db/migrations/00148_agents_memory.sql
   - apps/server/internal/config
   - apps/agents/frontend/src
 ---
@@ -213,18 +214,36 @@ Gi dem til gjennomgåerne; holder du en tilbake, skjules køen for den gjennomg�
 Å lese en agents kjøringer og utskrifter er en egen, sensitiv tillatelse (`agents:activity`), fordi en
 utskrift inneholder kundenes meldinger.
 
+## Minne og den ukentlige kontrollen
+
+To ting beholdes utover en kjøring, og begge går til modellen.
+
+- **Notater.** En agent skriver korte notater om en kunde (eller om en samtale uten kunde) og leser de 20
+  nyeste når neste kjøring begynner. De når modellen som data sammen med samtalen. Et notat er det en modell
+  skrev etter å ha lest en kundes melding, så det kan være feil eller plantet; det vises for folk på kundens
+  side, der den som har `agents:manage` kan slette det, og det er aldri en instruks eller en kilde for et
+  svar. En agent beholder høyst 50 per kunde.
+- **Den ukentlige kontrollen.** Én gang i uken ber en API-prosess modellen til KI-oppgaven
+  **Agentens innholdskontroll** (`agents.check`) om å lese det folk rettet for hver rolle: årsakene til at de
+  forkastet svar, og teksten før og etter redigeringer over 20 %. Den får ingen samtale og ingen kunde-id, men
+  svarene den leser kan nevne en kunde, så personvernerklæringen ovenfor gjelder også her. Den foreslår høyst
+  tre endringer i rollens instruksjoner, som en Eier eller den som har `agents:manage` bruker eller avviser på
+  rollesiden. Uten KI-leverandør hoppes kontrollen over. Modellen kan byttes på siden for KI-modeller.
+
 ## Oppbevaring og sletting
 
 - **Kjøringer.** En kjøring, med utskrift, handlingslogg, saker til gjennomgang og overleveringsmarkørene til
   samtalen, slettes etter oppbevaringsmånedene, og beholdes aldri lenger enn Kommunikasjon beholder
   meldingene sine, fordi en utskrift kopierer meldingstekster. Arbeideren `agents-retention` gjør det hver
   time, i porsjoner. Dagens **bruk** (bare tall) beholdes i 24 måneder.
+- **Notater og forslag.** Notatene en agent husker og forslagene fra den ukentlige kontrollen utløper
+  sammen med kjøringene, etter samme oppbevaring. Å slette en agent sletter notatene dens.
 - **Saker som venter** slettes aldri av oppbevaringen; de utløper først (24 timer), og en utløpt sak leverer
   samtalen videre. Arbeideren `agents-reviews` gjør det hvert minutt.
-- **Sletting av en kunde.** Når en privatkunde anonymiseres i Kunder, sletter modulen kundens kjøringer,
-  utskrifter og saker til gjennomgang, etter kunden og etter **hver samtale av dem den har sett knyttet til
+- **Sletting av en kunde.** Når en privatkunde anonymiseres i Kunder, sletter modulen kundens notater, forslagene som bygger på svarene deres, og kjøringene,
+  utskriftene og sakene til gjennomgang, etter kunden og etter **hver samtale av dem den har sett knyttet til
   dem**, så en samtale som ble knyttet etter at kjøringen begynte, er dekket; og den visker kundens id i
-  handlingsloggen. En slettet **kontakt** tar med seg samtalene de deltok i. Eksporten av en kundes
+  handlingsloggen. En slettet **kontakt** tar med seg samtalene de deltok i, og notatene skrevet i dem. Eksporten av en kundes
   personopplysninger lister kjøringene og svarene som er lagret for dem. En samtale som ble knyttet til kunden
   først etter at modulen sist så på den, er ikke kjent for modulen: den fjernes av oppbevaringen i stedet.
 - **Sletting av en person** (en gjennomgåer eller en Eier) beholder id-en til avgjørelsene som en

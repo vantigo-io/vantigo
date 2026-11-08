@@ -6,6 +6,7 @@ sources:
   - apps/customers/frontend
   - openapi/customers.yaml
   - apps/server/internal/contracts/directory.go
+  - apps/server/internal/contracts/agent_memory.go
 ---
 The Customers module is where every other module finds out who the work is for: a
 customer's name, number, legal identity, contacts and activity history, served under
@@ -343,6 +344,16 @@ the association — so this delivery adds no permission key.
 billing contact" is found by scanning the list, which is what the UI does. A
 directory accessor (`CustomerDirectory.PrimaryContact`) is one added method the
 day Invoices asks for it, and not before.
+
+**What the agents remember** (virtual employees design V27).
+`GET /customers/{id}/agent-memory` answers `{agents: [{agentId, agentName, notes: [{id, text, createdAt}]}], canDelete}`
+from `contracts.AgentMemory` (`Deps.AgentMemory`, provided by the agents module, nil when it is off). The
+operation's access is `customers:view`; the contract performs no authorization, so the handler asks for
+`agents:view` itself and answers an empty list — never a 403 — for a caller without it, for a customer
+nothing is remembered about and when the slot is nil, and the contract is not asked in the first two. It is
+asked once, outside any transaction. `canDelete` is `agents:manage`; a note is deleted with
+`DELETE /api/v1/agents/memory/{noteId}`, which is the agents module's. 404 for a customer that does not
+exist. Customers stores nothing of it.
 
 **The Messenger channels of a contact** (Communications' Messenger design N22).
 `GET /customers/{id}/contacts` gives each association a `channels` array when
