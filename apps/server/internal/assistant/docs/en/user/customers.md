@@ -410,7 +410,9 @@ customer list to open **Import customers**.
    checks the file again instead. When it is done the page shows **Created**,
    **Updated**, **Skipped** and **Failed**, and lists the new customers as links and
    the skipped rows with the row each repeats. Skipped rows are not in the failed
-   rows file.
+   rows file. The page and the list of recent imports update by themselves as the
+   import works, with no reload; if the live connection is unavailable they refresh
+   every few seconds, as before.
 
 **Organisation numbers fill in the rest.** When a row has a Norwegian organisation
 number for a business, Vantigo looks up what the row leaves out in Brønnøysund: a new

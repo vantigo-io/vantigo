@@ -583,7 +583,9 @@ the customers you name — in one go: Vantigo makes one invoice per customer, ex
 4. **Customer ids** — leave it empty to bill every customer with consumption due
    through the day, or write the ids of the customers to bill only them.
 5. Click **Start the run**. It opens on its own page and works through the customers in the
-   background; the page follows it as it goes.
+   background; the page follows it as it goes, and so does the list of **Billing runs**,
+   by themselves and with no reload. If the live connection is unavailable they refresh
+   every few seconds instead.
 
 The run is refused, and nothing is made, when the Energy module is off, when another run
 has not finished, when nothing is due through the day, or when more than 5 000 supplies
