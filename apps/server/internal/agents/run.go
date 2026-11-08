@@ -574,6 +574,10 @@ func (rs *runState) seed() []aiMessage {
 		"subject": subject, "status": rs.conv.Status, "customerId": rs.customerID, "capabilities": rs.conv.Capabilities,
 		"replyWindow": rs.conv.Reply, "messages": msgs,
 	}
+	if rs.note != "" {
+		// What a follow-up asked to be woken for: the agent's own words, still data.
+		data["wakeup"] = rs.note
+	}
 	if len(rs.memory) > 0 {
 		data["memory"] = rs.memoryData()
 	}
