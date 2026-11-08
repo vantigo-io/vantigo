@@ -40,6 +40,7 @@ import { isReadOnlyCustomer } from "../lib/customer-read-only";
 import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import { formatDateOnly } from "../lib/format-date-only";
 import { getLegalSource } from "../lib/legal-sources";
+import { CustomerAgentMemory } from "./-customer-agent-memory";
 import { CustomerAttachmentsCard } from "./-customer-attachments-card";
 import { CustomerBillingCard } from "./-customer-billing-card";
 import { CustomerContactCard } from "./-customer-contact-card";
@@ -504,6 +505,7 @@ export const CustomerOverview = ({
       />
       <CustomerContactsCard customerId={customerId} readOnly={!editable} />
       <CustomerAttachmentsCard customerId={customerId} canManageTimeline={canManageTimeline && editable} />
+      <CustomerAgentMemory customerId={customerId} />
       <CustomerTimeline
         customerId={customerId}
         canManageTimeline={canManageTimeline && editable}

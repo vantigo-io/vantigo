@@ -4,6 +4,7 @@ import { formatDate, formatNumber, useI18n } from "@vantigo/frontend-shell";
 import { usageQueryOptions } from "../api/agents";
 import type { Agent } from "../api/types";
 import { budgetShare, totalsOf } from "../lib/usage";
+import { MemorySummary } from "./memory-summary";
 
 const Figure = ({ label, value }: { label: string; value: string }) => (
   <Stack gap={0}>
@@ -40,6 +41,7 @@ export const UsageTab = ({ agent }: { agent: Agent }) => {
   const rows = days.filter((day) => day.runs > 0 || day.sent > 0 || day.held > 0 || day.discarded > 0).reverse();
   return (
     <Stack gap="md">
+      <MemorySummary agent={agent} />
       <SimpleGrid cols={{ base: 2, sm: 5 }} data-testid="usage-totals">
         <Figure label={t("usageRuns")} value={formatNumber(totals.runs)} />
         <Figure label={t("usageTokens")} value={formatNumber(totals.tokens)} />

@@ -4,6 +4,7 @@ import { EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-
 import { agentQueryOptions } from "../api/agents";
 import { NotFoundError } from "../api/request";
 import { RoleForm } from "../components/role-form";
+import { SuggestionsPanel } from "../components/suggestions-panel";
 import { type AgentsAccess, noAgentsAccess } from "../lib/access";
 import { AGENTS_HOME_ROUTE_PATH } from "../lib/routes";
 import "../i18n";
@@ -53,6 +54,7 @@ export const RolePage = ({ agentId, roleId, access = noAgentsAccess }: RolePageP
         title={role?.name ?? t("tabRoles")}
         description={t("rolesDescription")}
       />
+      {role && access.canManage && <SuggestionsPanel agentId={agent.id} role={role} />}
       {role ? (
         <PageSection>
           {/* Keyed by the version, so a newer one (a stale save's reload) replaces what was typed. */}

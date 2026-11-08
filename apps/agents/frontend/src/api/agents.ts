@@ -5,6 +5,7 @@ import type {
   Agent,
   AgentAuditList,
   AgentCreateRequest,
+  AgentMemoryCounts,
   AgentRole,
   AgentRoleCreateRequest,
   AgentRoleUpdateRequest,
@@ -19,6 +20,8 @@ import type {
   AssignableUser,
   ChannelOption,
   DiscardReason,
+  InstructionSuggestion,
+  InstructionSuggestionList,
   PermissionLevel,
   ReviewCount,
   ReviewItem,
@@ -232,3 +235,32 @@ export const auditQueryOptions = () =>
     queryKey: [AGENTS_QUERY_KEY, "audit"],
     queryFn: ({ signal }) => request<AgentAuditList>(`${base}/audit?limit=20`, { signal }),
   });
+
+// -- Memory and feedback (V27, V28) ---------------------------------------------------------------------
+
+/** How many notes the agent keeps; the notes themselves are read on the customer's page. */
+export const memoryCountsQueryOptions = (agentId: string) =>
+  queryOptions({
+    queryKey: [AGENTS_QUERY_KEY, "memory", agentId],
+    queryFn: ({ signal }) => request<AgentMemoryCounts>(`${base}/agents/${agentId}/memory`, { signal }),
+    retry: false,
+  });
+
+export const suggestionsQueryKey = (roleId: string) => [AGENTS_QUERY_KEY, "suggestions", roleId] as const;
+
+/** What the weekly check proposes for the role's instructions and nobody has decided yet. */
+export const suggestionsQueryOptions = (roleId: string) =>
+  queryOptions({
+    queryKey: suggestionsQueryKey(roleId),
+    queryFn: async ({ signal }) =>
+      (await request<InstructionSuggestionList>(`${base}/roles/${roleId}/suggestions?state=proposed`, { signal }))
+        .items,
+    retry: false,
+  });
+
+/** An ordinary role edit: it names the ROLE's version, so a role changed since is a 409 `version_conflict`. */
+export const applySuggestion = (suggestionId: string, roleVersion: number) =>
+  request<AgentRole>(`${base}/suggestions/${suggestionId}/apply`, { method: "POST", headers: ifMatch(roleVersion) });
+
+export const dismissSuggestion = (suggestionId: string) =>
+  request<InstructionSuggestion>(`${base}/suggestions/${suggestionId}/dismiss`, { method: "POST" });
