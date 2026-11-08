@@ -42,6 +42,7 @@ import {
   mailboxSyncQueryOptions,
   runMailboxSync,
   updateMailboxSync,
+  useMailboxSyncLive,
   waitsForConnection,
 } from "../api/mailbox-sync";
 import { calendarMetaQueryOptions } from "../api/meta";
@@ -291,7 +292,8 @@ const MailboxSection = ({ connectionButton }: SettingsPageProps) => {
   const { t, i18n, locale } = useI18n("calendar");
   const queryClient = useQueryClient();
   const titleId = useId();
-  const sync = useQuery(mailboxSyncQueryOptions());
+  const live = useMailboxSyncLive();
+  const sync = useQuery(mailboxSyncQueryOptions(live));
   const providerName = sync.data?.provider?.displayName;
   const provider = providerName ?? t("mailboxSync.unnamed");
   const exists = (key: string) => i18n.exists(key, { ns: "calendar" });

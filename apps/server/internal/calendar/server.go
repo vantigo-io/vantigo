@@ -67,9 +67,18 @@ func inOpenTx(ctx context.Context) bool {
 // Whatever a write needs from the directory is read before the transaction
 // opens; contractscalls.go is where that is checked.
 func (s *server) withLockedTx(ctx context.Context, fn func(ctx context.Context, txq *store.Queries) error) error {
+	return s.withLockedTxOn(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		return fn(ctx, txq)
+	})
+}
+
+// withLockedTxOn is withLockedTx for a write that also notifies live
+// screens: fn gets the transaction itself, which live.Notify runs on so the
+// event is heard only if the transaction commits (live design L6).
+func (s *server) withLockedTxOn(ctx context.Context, fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error) error {
 	locked := context.WithValue(ctx, lockedTxKey{}, true)
 	return db.WithTx(locked, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
-		return fn(locked, store.New(tx))
+		return fn(locked, tx, store.New(tx))
 	})
 }
 

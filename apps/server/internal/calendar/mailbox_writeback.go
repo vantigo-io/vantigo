@@ -272,7 +272,7 @@ func (run *writeBackRun) commit() error {
 		return nil
 	}
 	userID, now := run.r.UserID, run.now
-	err := run.w.srv.withLockedTx(run.ctx, func(ctx context.Context, txq *store.Queries) error {
+	err := run.w.srv.withLockedTxOn(run.ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		for _, m := range run.writes {
 			var err error
 			switch m.kind {
@@ -298,6 +298,8 @@ func (run *writeBackRun) commit() error {
 			if err := txq.SetMailboxPutBack(ctx, store.SetMailboxPutBackParams{Reason: run.putBack.kind, Key: run.putBack.key, At: now, UserID: userID}); err != nil {
 				return fmt.Errorf("calendar: record the change put back: %w", err)
 			}
+			// The card shows the change put back.
+			return notifySync(ctx, tx, userID)
 		}
 		return nil
 	})

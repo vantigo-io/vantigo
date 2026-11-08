@@ -1048,6 +1048,7 @@ func (w *MailboxSyncWorker) cleanup(ctx, call context.Context, r *store.Calendar
 	if err := w.srv.queries().ClearMailboxPutBack(ctx, r.UserID); err != nil {
 		return fmt.Errorf("calendar: forget the change put back: %w", err)
 	}
+	w.srv.notifySyncOnPool(ctx, r.UserID)
 	r.CalendarID, r.Reconcile = nil, true
 	r.BusyLink, r.BusyFrom, r.BusyTo, r.BusySyncedAt = nil, pgtype.Date{}, pgtype.Date{}, nil
 	return w.setMailbox(ctx, *r, now)
@@ -1382,6 +1383,7 @@ func (w *MailboxSyncWorker) write(ctx context.Context, r store.CalendarMailboxSy
 	if err != nil {
 		return fmt.Errorf("calendar: record a mailbox sync: %w", err)
 	}
+	w.srv.notifySyncOnPool(ctx, r.UserID)
 	if res.state == mailboxStateOff || res.state == mailboxStateUnavailable {
 		return w.forgetBusy(ctx, r.UserID, now)
 	}
@@ -1395,6 +1397,7 @@ func (w *MailboxSyncWorker) setMailbox(ctx context.Context, r store.CalendarMail
 	}); err != nil {
 		return fmt.Errorf("calendar: record the person's mailbox: %w", err)
 	}
+	w.srv.notifySyncOnPool(ctx, r.UserID)
 	return nil
 }
 

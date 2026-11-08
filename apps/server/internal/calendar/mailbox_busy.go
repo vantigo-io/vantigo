@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/calendar/gen"
 	"github.com/vantigo-io/vantigo/server/internal/calendar/store"
@@ -185,7 +186,7 @@ func (w *MailboxSyncWorker) writeBusyPage(ctx context.Context, b *busyRead, page
 		stored = map[string]bool{}
 	}
 	capped := false
-	err = w.srv.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err = w.srv.withLockedTxOn(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		// The link first, only while the sync is on: a sync turned off
 		// during the read keeps nothing of it.
 		n, err := txq.SetMailboxBusyLink(ctx, store.SetMailboxBusyLinkParams{
@@ -227,6 +228,8 @@ func (w *MailboxSyncWorker) writeBusyPage(ctx context.Context, b *busyRead, page
 			if err := txq.SetMailboxBusySynced(ctx, store.SetMailboxBusySyncedParams{Now: now, UserID: b.userID}); err != nil {
 				return fmt.Errorf("calendar: record the busy read: %w", err)
 			}
+			// The card shows when Outlook's busy time was last read.
+			return notifySync(ctx, tx, b.userID)
 		}
 		return nil
 	})
@@ -267,14 +270,14 @@ func busyRow(userID uuid.UUID, c contracts.MailboxChange, now time.Time) store.U
 // forgetBusy forgets the person's busy rows and their delta — its link, its
 // window and the last read — in one short transaction (design O9.4, O9.9).
 func (w *MailboxSyncWorker) forgetBusy(ctx context.Context, userID uuid.UUID, now time.Time) error {
-	return w.srv.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	return w.srv.withLockedTxOn(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		if _, err := txq.DeleteMailboxBusyForUser(ctx, userID); err != nil {
 			return fmt.Errorf("calendar: forget the busy rows: %w", err)
 		}
 		if err := txq.ClearMailboxBusyLink(ctx, store.ClearMailboxBusyLinkParams{Now: now, UserID: userID}); err != nil {
 			return fmt.Errorf("calendar: forget the busy link: %w", err)
 		}
-		return nil
+		return notifySync(ctx, tx, userID)
 	})
 }
 
