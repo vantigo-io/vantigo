@@ -218,9 +218,12 @@ type CustomerAgentMemory struct {
 
 // CustomerAgentMemoryEntry defines model for CustomerAgentMemoryEntry.
 type CustomerAgentMemoryEntry struct {
-	AgentId   openapi_types.UUID        `json:"agentId"`
-	AgentName string                    `json:"agentName"`
-	Notes     []CustomerAgentMemoryNote `json:"notes"`
+	AgentId   openapi_types.UUID `json:"agentId"`
+	AgentName string             `json:"agentName"`
+
+	// Full The agent holds the most notes it may about the customer (50) and keeps no more until a person deletes one.
+	Full  bool                      `json:"full"`
+	Notes []CustomerAgentMemoryNote `json:"notes"`
 }
 
 // CustomerAgentMemoryNote defines model for CustomerAgentMemoryNote.

@@ -12,25 +12,25 @@ WHERE agent_id = @agent_id
 ORDER BY created_at DESC, id
 LIMIT @n;
 
--- name: InsertMemory :execrows
--- A note the agent already holds for the subject is not written twice.
+-- name: InsertMemory :exec
 INSERT INTO agents.memory (id, agent_id, subject_type, subject_id, text, created_at, run_id)
-SELECT @id::uuid, @agent_id::uuid, @subject_type::varchar, @subject_id::text, @text::varchar, @now::timestamptz, sqlc.narg(run_id)::uuid
-WHERE NOT EXISTS (
-    SELECT 1 FROM agents.memory x
-    WHERE x.agent_id = @agent_id::uuid AND x.subject_type = @subject_type::varchar AND x.subject_id = @subject_id::text AND x.text = @text::varchar
-);
+VALUES (@id, @agent_id, @subject_type, @subject_id, @text, @now::timestamptz, @run_id);
+
+-- name: LockMemoryKey :exec
+-- Serialises the writers of one key (a run, or an agent's subject) for the transaction.
+SELECT pg_advisory_xact_lock(hashtextextended(@key::text, 0));
 
 -- name: CountMemoryOfRun :one
 SELECT count(*) FROM agents.memory WHERE run_id = @run_id;
 
--- name: TrimMemory :exec
--- Keeps the newest notes of a subject and drops the older ones (V27).
-DELETE FROM agents.memory WHERE id IN (
-    SELECT x.id FROM agents.memory x
-    WHERE x.agent_id = @agent_id AND x.subject_type = @subject_type AND x.subject_id = @subject_id
-    ORDER BY x.created_at DESC, x.id
-    OFFSET @keep::integer
+-- name: CountMemoryOfSubject :one
+SELECT count(*) FROM agents.memory
+WHERE agent_id = @agent_id AND subject_type = @subject_type AND subject_id = @subject_id;
+
+-- name: MemoryExists :one
+SELECT EXISTS (
+    SELECT 1 FROM agents.memory x
+    WHERE x.agent_id = @agent_id AND x.subject_type = @subject_type AND x.subject_id = @subject_id AND x.text = @text
 );
 
 -- name: GetMemory :one
@@ -95,11 +95,12 @@ WHERE item_ids && (SELECT coalesce(array_agg(id), '{}'::uuid[]) FROM agents.revi
 DELETE FROM agents.instruction_suggestions WHERE created_at < @cutoff::timestamptz;
 
 -- name: MarkAnsweredOver :execrows
--- A person answered in the conversation (V21): an Auto reply the agent sent in
--- the 24 hours before is answered over.
-UPDATE agents.runs SET answered_over_at = @now::timestamptz
-WHERE conversation_id = @conversation_id AND outcome = 'sent' AND answered_over_at IS NULL
-  AND sent_at IS NOT NULL AND sent_at <= @now::timestamptz AND sent_at > @since::timestamptz;
+-- A person answered in the conversation (V21): the Auto reply the agent sent last, in
+-- the 24 hours before, is answered over; the ones before it are not.
+UPDATE agents.runs u SET answered_over_at = @now::timestamptz
+WHERE u.conversation_id = @conversation_id AND u.outcome = 'sent' AND u.answered_over_at IS NULL
+  AND u.sent_at IS NOT NULL AND u.sent_at <= @now::timestamptz AND u.sent_at > @since::timestamptz
+  AND u.id = (SELECT l.id FROM agents.runs l WHERE l.conversation_id = @conversation_id AND l.outcome = 'sent' ORDER BY l.sent_at DESC, l.id LIMIT 1);
 
 -- name: ListRolesDueFeedback :many
 -- The roles of active agents the weekly check has not looked at since the week began.
@@ -111,6 +112,10 @@ ORDER BY r.created_at, r.id;
 -- One replica claims a role's check for the week; the others find it claimed.
 UPDATE agents.roles SET feedback_checked_at = @now::timestamptz
 WHERE id = @id AND (feedback_checked_at IS NULL OR feedback_checked_at < @week_start::timestamptz);
+
+-- name: SetRoleFeedbackSince :exec
+-- A real check has read the corrections up to at.
+UPDATE agents.roles SET feedback_since = @at::timestamptz WHERE id = @id;
 
 -- name: SetRoleFeedbackChecked :exec
 -- Gives a claim back (to the time before it), when the check could not be made.

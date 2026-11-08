@@ -139,12 +139,22 @@ func cut(s string, n int) string {
 // made gives the claim back, so the next pass tries again.
 func (s *server) checkRole(ctx context.Context, role store.AgentsRole, weekStart, now time.Time) error {
 	q := store.New(s.deps.Pool)
+	// The week is claimed first, whatever there is to read: a role with too little to read is
+	// looked at once a week and not counted again every hour. The corrections it left stay
+	// for the next week (feedback_since moves only when they were read).
+	if claimed, err := q.ClaimRoleFeedback(ctx, store.ClaimRoleFeedbackParams{ID: role.ID, Now: now, WeekStart: weekStart}); err != nil || claimed == 0 {
+		return err // another replica has it
+	}
+	giveBack := func() {
+		_ = q.SetRoleFeedbackChecked(context.WithoutCancel(ctx), store.SetRoleFeedbackCheckedParams{ID: role.ID, At: role.FeedbackCheckedAt})
+	}
 	since := now.Add(-feedbackLookback)
-	if role.FeedbackCheckedAt != nil && role.FeedbackCheckedAt.After(since) {
-		since = *role.FeedbackCheckedAt
+	if role.FeedbackSince != nil && role.FeedbackSince.After(since) {
+		since = *role.FeedbackSince
 	}
 	n, err := q.CountFeedbackItems(ctx, store.CountFeedbackItemsParams{RoleID: role.ID, Since: since, Ratio: float32(largeEdit)})
 	if err != nil {
+		giveBack()
 		return fmt.Errorf("count the corrections: %w", err)
 	}
 	room := maxSuggestions
@@ -153,12 +163,6 @@ func (s *server) checkRole(ctx context.Context, role store.AgentsRole, weekStart
 	}
 	if n < feedbackMinItems || room <= 0 {
 		return nil
-	}
-	if claimed, err := q.ClaimRoleFeedback(ctx, store.ClaimRoleFeedbackParams{ID: role.ID, Now: now, WeekStart: weekStart}); err != nil || claimed == 0 {
-		return err // another replica has it
-	}
-	giveBack := func() {
-		_ = q.SetRoleFeedbackChecked(context.WithoutCancel(ctx), store.SetRoleFeedbackCheckedParams{ID: role.ID, At: role.FeedbackCheckedAt})
 	}
 	rows, err := q.ListFeedbackItems(ctx, store.ListFeedbackItemsParams{RoleID: role.ID, Since: since, Ratio: float32(largeEdit), N: feedbackMaxItems})
 	if err != nil {
@@ -192,7 +196,6 @@ func (s *server) checkRole(ctx context.Context, role store.AgentsRole, weekStart
 		shown = append(shown, c)
 	}
 	if len(shown) < feedbackMinItems {
-		giveBack()
 		return nil
 	}
 	proposals, usedIn, usedOut, err := s.askFeedback(ctx, role, shown, counts)
@@ -202,6 +205,9 @@ func (s *server) checkRole(ctx context.Context, role store.AgentsRole, weekStart
 	}
 	if usedIn > 0 || usedOut > 0 {
 		s.countTokens(ctx, role.AgentID, usedIn, usedOut)
+	}
+	if err := q.SetRoleFeedbackSince(ctx, store.SetRoleFeedbackSinceParams{ID: role.ID, At: now}); err != nil {
+		return fmt.Errorf("remember what was read: %w", err)
 	}
 	existing, _ := q.ListSuggestionsOfRole(ctx, store.ListSuggestionsOfRoleParams{RoleID: role.ID, State: ptr("proposed"), N: 20})
 	for _, p := range proposals {

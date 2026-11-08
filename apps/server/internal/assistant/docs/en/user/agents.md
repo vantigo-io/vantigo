@@ -286,7 +286,8 @@ the role's last 200 labelled replies, move the slider to a threshold X from 50 t
 
 A reply the agent sent **by itself** (Auto) is a label too: when a person answers in the same conversation
 within 24 hours, the agent's reply counts as **bad**, since a colleague felt they had to answer over it; one
-that stands unanswered for 24 hours counts as good. The conversation page needs nothing from you for this.
+that stands unanswered for 24 hours counts as good, which is weak evidence (a customer may simply not have
+needed more), so read the *good* side of the figures with that in mind. The conversation page needs nothing from you for this.
 
 Two lines and a marker at X draw the same thing. Under 50 labelled replies the panel says *Not enough
 history yet* and how many there are. The figures come from the role's own history, so a role that has
@@ -301,13 +302,17 @@ show today's figures. The counts are kept for 24 months and hold no content.
 
 ## What an agent remembers
 
-An agent can keep **short notes** for later: a lasting fact it learned from a customer's conversation, such as
-*prefers e-mail, never phone*, or an agreement. A note is at most 500 characters, an agent writes at most
-three in a run, and it keeps at most 50 about one customer or conversation, the oldest dropped.
+An agent can keep **short notes** about a customer for later: a lasting fact it learned from the customer's
+conversation, such as *prefers e-mail, never phone*, or an agreement. A note is at most 500 characters, and an
+agent writes at most three in a run.
 
-- **Whose notes.** A note is about the run's customer. When the conversation is linked to no customer, it is
-  about that conversation alone. An agent reads a customer's notes only in a conversation with that customer,
-  never in another's, and reads at most the 20 newest at the start of a run.
+- **Whose notes.** A note is about the run's customer. When the conversation is linked to no customer the
+  agent keeps nothing: it is told so, and writes an internal note to the colleagues instead. An agent reads a
+  customer's notes only in a conversation with that customer, never in another's, and reads at most the 20
+  newest at the start of a run.
+- **A full memory.** An agent keeps at most 50 notes about one customer. When it is full the agent keeps no
+  more, and nothing is deleted behind your back: the customer page says the memory is full, and a person
+  deletes a note that is out of date to make room.
 - **Read as facts, not as orders.** The notes come to the agent as data, like the customer's messages: the
   agent weighs them, but an instruction in a note changes nothing, and a reply cannot cite one as its source.
 - **Where you see them.** On the customer's page, **What Hanna remembers** is a collapsed section under the

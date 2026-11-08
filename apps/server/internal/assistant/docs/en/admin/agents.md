@@ -220,15 +220,17 @@ Reading an agent's runs and transcripts is a separate, sensitive permission
 
 Two things are kept beyond a run, and both go to the model.
 
-- **Notes.** An agent writes short notes about a customer (or about a conversation with no customer) and reads
+- **Notes.** An agent writes short notes about a customer (none when the conversation has no customer) and reads
   the newest 20 at the start of the next run. They reach the model as data with the conversation. A note is
   what a model wrote after reading a customer's message, so it can be wrong or planted; it is shown to people
   on the customer's page, where someone with `agents:manage` can delete it, and it is never an instruction
-  or a source for a reply. An agent keeps at most 50 per customer.
+  or a source for a reply. An agent keeps at most 50 per customer; when it is full it refuses new notes and a person
+  deletes one, the customer page says so.
 - **The weekly check.** Once a week an API process asks the model of the AI task **Agent content check**
   (`agents.check`) to read what people corrected for each role: the reasons they discarded replies, and the text
-  before and after the edits beyond 20 %. It is sent no conversation and no customer's id, but the replies it
-  reads can mention a customer, so the privacy notice above applies to it too. It proposes at most three
+  before and after the edits beyond 20 %. It is sent no conversation and no customer's id, but **the texts of the
+  replies and the notes reviewers wrote when they discarded one are sent to the model**, and they can mention a
+  customer, so the privacy notice above applies to it too. It proposes at most three
   changes to the role's instructions, which an Owner or someone with `agents:manage` applies or dismisses
   on the role page. With no AI provider the check is skipped. You can change the model on the AI models page.
 

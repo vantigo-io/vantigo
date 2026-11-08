@@ -88,7 +88,7 @@ var aiTasks = []contracts.AITask{
 		Key:         aiTaskCheck,
 		Module:      "agents",
 		Display:     "Agent content check",
-		Description: "Checks a virtual employee's draft against a fixed rubric before it is sent: whether it claims to be a person and whether it promises what the instructions do not allow. The model is sent the instructions and the draft, never the conversation. Once a week it also reads the corrections people made in the review queue (the reasons they gave for discarding, and the text before and after their edits) and proposes edits to the role's instructions; a suggestion is applied by the Owner, never by itself.",
+		Description: "Checks a virtual employee's draft against a fixed rubric before it is sent: whether it claims to be a person and whether it promises what the instructions do not allow. The model is sent the instructions and the draft, never the conversation. Once a week it also reads the corrections people made in the review queue (the reasons and notes reviewers wrote when they discarded, and the text of the replies before and after their edits, which can mention a customer) and proposes edits to the role's instructions; a suggestion is applied by the Owner, never by itself.",
 	},
 }
 

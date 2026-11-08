@@ -163,7 +163,7 @@ The `agents` schema. A user, a channel and a hand-off person are opaque ids.
 | `memory` | A note (V27): `agent_id` (cascade), `subject_type` (`customer` or `conversation`), `subject_id` (the customer's number or the conversation's id, opaque text), `text` 1 to 500 characters, `created_at`, `run_id` (no foreign key: the note outlives the run's deletion by its own age). |
 | `instruction_suggestions` | A suggestion (V28): `role_id` (cascade), `old_text` (the passage to replace, null to append), `new_text` (at most 1,000), `rationale` (at most 500), `item_ids` (the review items it rests on, ids only), `state` (`proposed`, `applied`, `dismissed`), `created_at`, `decided_by`, `decided_at`. |
 
-`roles.feedback_checked_at` says when the weekly check last looked at the role; `runs.answered_over_at` is set when a person answered over the run's Auto reply ([calibration](#calibration)).
+`roles.feedback_checked_at` says when the weekly check last looked at the role and `feedback_since` the end of the corrections it last read; `runs.answered_over_at` is set when a person answered over the run's Auto reply ([calibration](#calibration)).
 
 The agent's `version` moves on with a change of the persona, a level or a role, so the gate
 can cache by it. The model of an agent is not a column: it is the per-subject choice for
@@ -341,7 +341,7 @@ From `agentloop`, as the agent and limited to the run's role's allowlist by the 
 | `reply` | `text`, `components?`, `attachments?`, `sources[]`, `score`. Proposes the one reply of the run through [the pipeline](#the-pipeline). It takes no recipient. `attachments` are refused (`attachments_unavailable`): fetching a Vantigo document under the customer's scope needs an operation that does not exist yet. |
 | `note` | An internal note on the conversation. |
 | `tag` | Tags the conversation. |
-| `remember` | `text` (at most 500 characters). Keeps a [note](#memory) about the run's customer, or about its conversation when the run has none. Refused (`note_too_long`, `too_many_notes`) over the limits. It writes nothing to Communications and needs no level. |
+| `remember` | `text` (at most 500 characters). Keeps a [note](#memory) about the run's customer. Refused with `no_customer` when the run has none, `note_too_long`, `too_many_notes` (3 a run) and `memory_full` (50 for the customer, nothing evicted). A note the agent already holds answers `already_remembered`. It writes nothing to Communications and needs no level. |
 | `hand_off` | A note with the summary, the conversation assigned to the role's hand-off person (or the assignee cleared), the marker written, the run ended. |
 
 **Pinned.** Every operation that names a conversation (`getCommunicationsConversationsById`,
@@ -541,9 +541,12 @@ language, with a link when the installation has an origin).
 ## Memory
 
 V27. The tool `remember(text)` writes a note for the **run's customer** (`subject_type` `customer`, the
-customer's number) or, when the run has none, for its **conversation**. At most 3 notes a run
-(`too_many_notes`), 500 characters (`note_too_long`), and a note the agent already holds for the subject is
-not written twice; after a write the oldest beyond 50 for the subject are deleted.
+customer's number). A run with no customer keeps none (`no_customer`): a note about a stranger's conversation
+would be a way to plant text for the next run, so no `conversation` note is written (the subject type and the
+reading and erasure of one stay in the schema). The caps are checked and the note written in one transaction
+under advisory locks per run and per customer, so concurrent calls cannot pass them together: at most 3 notes a
+run (`too_many_notes`), 500 characters (`note_too_long`), 50 for the customer (`memory_full`, the tool answers
+that a person must delete a note; nothing is evicted), and a note already held is `already_remembered`.
 
 At the start of a run, after the run's customer is settled (V9b) and before the first model turn, the run
 reads the agent's own notes: those about **the run's customer only** and those about the run's own
@@ -555,7 +558,7 @@ the notes are data. The `promptVersion` moved to `2026-11-08.2`.
 
 `contracts.AgentMemory` (`apps/server/internal/contracts/agent_memory.go`, the single-provider slot
 `Deps.AgentMemory`, provided by this module and nil when it is off) answers `AboutCustomer`: one entry per
-agent, with its notes newest first. It performs no authorization; Customers consumes it for
+agent, with its notes newest first and `Full` when it holds 50. It performs no authorization; Customers consumes it for
 `GET /customers/{id}/agent-memory` ([Customers](/en/reference/customers/)). Deleting a note is
 `DELETE /memory/{noteId}`.
 
@@ -566,7 +569,7 @@ the API process has) runs hourly and checks each role of an active agent once a 
 the business time zone, `roles.feedback_checked_at` is claimed with a conditional update so that replicas
 share the work. It reads the role's corrections since the last check (28 days at the first): replies
 `discarded` and replies `edited_sent` with an `edit_ratio` above 0.20, whose original text the item keeps in
-`item.agentText`. With fewer than three it does nothing and the week is not spent. Otherwise it asks the
+`item.agentText`. The role is claimed first (`feedback_checked_at`), whatever there is to read, so a role with fewer than three corrections is looked at once a week and not counted again every hour; the corrections it left stay for the next week, because `feedback_since` moves only when they were read. Otherwise it asks the
 `agents.check` model with the role's instructions and at most 40 corrections (each: the item id, the outcome,
 the reason and note of a discard, or the text before and after of an edit, cut at 1,200 characters), never a
 conversation, customer or person id. The answer is one JSON object; a suggestion is kept when its text fits,
@@ -583,7 +586,7 @@ A decided reply is a label for its score: `sent` is good, `edited_sent` good wit
 `edit_ratio` is above 0.20), `discarded` bad. A reply the agent **sent by itself** is a label too: when a
 person's reply in the same conversation (`conversation.replied` with `byAgent` false) arrives within 24
 hours of its `sent_at`, the run gets `answered_over_at` and counts as bad; one that has stood 24 hours
-unanswered counts as good, a younger one as nothing. `GET /roles/{roleId}/calibration` reads the role's last 200
+unanswered counts as good (weak evidence: silence is not approval), a younger one as nothing. Only the newest Auto reply of a conversation is marked: the ones before it were not what the person answered. `GET /roles/{roleId}/calibration` reads the role's last 200
 labelled replies (changes, waiting, withdrawn and expired items are no labels) and answers, for each X from
 50 to 100, `autoCount` and `autoShare` (score at least X and no rule in `held_by`), `badCount` and
 `badShare` (the share of those that are bad) and, once, `heldCount` (replies a rule held, whatever the score;

@@ -82,6 +82,24 @@ func (q *Queries) CountMemoryOfRun(ctx context.Context, runID *uuid.UUID) (int64
 	return count, err
 }
 
+const countMemoryOfSubject = `-- name: CountMemoryOfSubject :one
+SELECT count(*) FROM agents.memory
+WHERE agent_id = $1 AND subject_type = $2 AND subject_id = $3
+`
+
+type CountMemoryOfSubjectParams struct {
+	AgentID     uuid.UUID
+	SubjectType string
+	SubjectID   string
+}
+
+func (q *Queries) CountMemoryOfSubject(ctx context.Context, arg CountMemoryOfSubjectParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countMemoryOfSubject, arg.AgentID, arg.SubjectType, arg.SubjectID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countMemoryToErase = `-- name: CountMemoryToErase :one
 SELECT count(*) FROM agents.memory
 WHERE (subject_type = 'customer' AND subject_id = ($1::integer)::text)
@@ -339,13 +357,9 @@ func (q *Queries) GetSuggestion(ctx context.Context, id uuid.UUID) (AgentsInstru
 	return i, err
 }
 
-const insertMemory = `-- name: InsertMemory :execrows
+const insertMemory = `-- name: InsertMemory :exec
 INSERT INTO agents.memory (id, agent_id, subject_type, subject_id, text, created_at, run_id)
-SELECT $1::uuid, $2::uuid, $3::varchar, $4::text, $5::varchar, $6::timestamptz, $7::uuid
-WHERE NOT EXISTS (
-    SELECT 1 FROM agents.memory x
-    WHERE x.agent_id = $2::uuid AND x.subject_type = $3::varchar AND x.subject_id = $4::text AND x.text = $5::varchar
-)
+VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7)
 `
 
 type InsertMemoryParams struct {
@@ -358,9 +372,8 @@ type InsertMemoryParams struct {
 	RunID       *uuid.UUID
 }
 
-// A note the agent already holds for the subject is not written twice.
-func (q *Queries) InsertMemory(ctx context.Context, arg InsertMemoryParams) (int64, error) {
-	result, err := q.db.Exec(ctx, insertMemory,
+func (q *Queries) InsertMemory(ctx context.Context, arg InsertMemoryParams) error {
+	_, err := q.db.Exec(ctx, insertMemory,
 		arg.ID,
 		arg.AgentID,
 		arg.SubjectType,
@@ -369,10 +382,7 @@ func (q *Queries) InsertMemory(ctx context.Context, arg InsertMemoryParams) (int
 		arg.Now,
 		arg.RunID,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	return err
 }
 
 const insertSuggestion = `-- name: InsertSuggestion :exec
@@ -561,7 +571,7 @@ func (q *Queries) ListMemoryOfCustomer(ctx context.Context, customerID string) (
 }
 
 const listRolesDueFeedback = `-- name: ListRolesDueFeedback :many
-SELECT r.id, r.agent_id, r.template, r.name, r.instructions, r.reply_mode, r.threshold, r.caps_tool_calls, r.caps_turns, r.max_replies_per_day, r.hand_off_user_id, r.version, r.created_at, r.updated_at, r.complaint_tag_ids, r.feedback_checked_at FROM agents.roles r JOIN agents.agents a ON a.id = r.agent_id
+SELECT r.id, r.agent_id, r.template, r.name, r.instructions, r.reply_mode, r.threshold, r.caps_tool_calls, r.caps_turns, r.max_replies_per_day, r.hand_off_user_id, r.version, r.created_at, r.updated_at, r.complaint_tag_ids, r.feedback_checked_at, r.feedback_since FROM agents.roles r JOIN agents.agents a ON a.id = r.agent_id
 WHERE a.state = 'active' AND (r.feedback_checked_at IS NULL OR r.feedback_checked_at < $1::timestamptz)
 ORDER BY r.created_at, r.id
 `
@@ -593,6 +603,7 @@ func (q *Queries) ListRolesDueFeedback(ctx context.Context, weekStart time.Time)
 			&i.UpdatedAt,
 			&i.ComplaintTagIds,
 			&i.FeedbackCheckedAt,
+			&i.FeedbackSince,
 		); err != nil {
 			return nil, err
 		}
@@ -648,10 +659,21 @@ func (q *Queries) ListSuggestionsOfRole(ctx context.Context, arg ListSuggestions
 	return items, nil
 }
 
+const lockMemoryKey = `-- name: LockMemoryKey :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))
+`
+
+// Serialises the writers of one key (a run, or an agent's subject) for the transaction.
+func (q *Queries) LockMemoryKey(ctx context.Context, key string) error {
+	_, err := q.db.Exec(ctx, lockMemoryKey, key)
+	return err
+}
+
 const markAnsweredOver = `-- name: MarkAnsweredOver :execrows
-UPDATE agents.runs SET answered_over_at = $1::timestamptz
-WHERE conversation_id = $2 AND outcome = 'sent' AND answered_over_at IS NULL
-  AND sent_at IS NOT NULL AND sent_at <= $1::timestamptz AND sent_at > $3::timestamptz
+UPDATE agents.runs u SET answered_over_at = $1::timestamptz
+WHERE u.conversation_id = $2 AND u.outcome = 'sent' AND u.answered_over_at IS NULL
+  AND u.sent_at IS NOT NULL AND u.sent_at <= $1::timestamptz AND u.sent_at > $3::timestamptz
+  AND u.id = (SELECT l.id FROM agents.runs l WHERE l.conversation_id = $2 AND l.outcome = 'sent' ORDER BY l.sent_at DESC, l.id LIMIT 1)
 `
 
 type MarkAnsweredOverParams struct {
@@ -660,14 +682,40 @@ type MarkAnsweredOverParams struct {
 	Since          time.Time
 }
 
-// A person answered in the conversation (V21): an Auto reply the agent sent in
-// the 24 hours before is answered over.
+// A person answered in the conversation (V21): the Auto reply the agent sent last, in
+// the 24 hours before, is answered over; the ones before it are not.
 func (q *Queries) MarkAnsweredOver(ctx context.Context, arg MarkAnsweredOverParams) (int64, error) {
 	result, err := q.db.Exec(ctx, markAnsweredOver, arg.Now, arg.ConversationID, arg.Since)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const memoryExists = `-- name: MemoryExists :one
+SELECT EXISTS (
+    SELECT 1 FROM agents.memory x
+    WHERE x.agent_id = $1 AND x.subject_type = $2 AND x.subject_id = $3 AND x.text = $4
+)
+`
+
+type MemoryExistsParams struct {
+	AgentID     uuid.UUID
+	SubjectType string
+	SubjectID   string
+	Text        string
+}
+
+func (q *Queries) MemoryExists(ctx context.Context, arg MemoryExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, memoryExists,
+		arg.AgentID,
+		arg.SubjectType,
+		arg.SubjectID,
+		arg.Text,
+	)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const setRoleFeedbackChecked = `-- name: SetRoleFeedbackChecked :exec
@@ -685,29 +733,17 @@ func (q *Queries) SetRoleFeedbackChecked(ctx context.Context, arg SetRoleFeedbac
 	return err
 }
 
-const trimMemory = `-- name: TrimMemory :exec
-DELETE FROM agents.memory WHERE id IN (
-    SELECT x.id FROM agents.memory x
-    WHERE x.agent_id = $1 AND x.subject_type = $2 AND x.subject_id = $3
-    ORDER BY x.created_at DESC, x.id
-    OFFSET $4::integer
-)
+const setRoleFeedbackSince = `-- name: SetRoleFeedbackSince :exec
+UPDATE agents.roles SET feedback_since = $1::timestamptz WHERE id = $2
 `
 
-type TrimMemoryParams struct {
-	AgentID     uuid.UUID
-	SubjectType string
-	SubjectID   string
-	Keep        int32
+type SetRoleFeedbackSinceParams struct {
+	At time.Time
+	ID uuid.UUID
 }
 
-// Keeps the newest notes of a subject and drops the older ones (V27).
-func (q *Queries) TrimMemory(ctx context.Context, arg TrimMemoryParams) error {
-	_, err := q.db.Exec(ctx, trimMemory,
-		arg.AgentID,
-		arg.SubjectType,
-		arg.SubjectID,
-		arg.Keep,
-	)
+// A real check has read the corrections up to at.
+func (q *Queries) SetRoleFeedbackSince(ctx context.Context, arg SetRoleFeedbackSinceParams) error {
+	_, err := q.db.Exec(ctx, setRoleFeedbackSince, arg.At, arg.ID)
 	return err
 }

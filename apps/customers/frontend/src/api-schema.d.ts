@@ -340,7 +340,7 @@ export interface paths {
         };
         /**
          * What the agents remember about a customer
-         * @description What the virtual employees remember about this customer (virtual employees design V27): one entry per agent, with its notes newest first - the short facts an agent wrote from the customer's conversations, such as "prefers e-mail". canDelete says the caller may delete a note (agents:manage); a note is deleted with DELETE /api/v1/agents/memory/{noteId}. Needs customers:view and agents:view. An empty agents list when nothing is remembered and when the agents module is off. 404 when the customer does not exist.
+         * @description What the virtual employees remember about this customer (virtual employees design V27): one entry per agent, with its notes newest first - the short facts an agent wrote from the customer's conversations, such as "prefers e-mail". canDelete says the caller may delete a note (agents:manage); a note is deleted with DELETE /api/v1/agents/memory/{noteId}. Needs customers:view; the notes are shown only to a caller who also holds agents:view - another caller, a customer nothing is remembered about and a deployment without the agents module all answer an empty agents list, as the page was before, never a 403. 404 when the customer does not exist.
          */
         get: operations["getCustomersByIdAgentMemory"];
         put?: never;
@@ -1092,6 +1092,8 @@ export interface components {
             /** Format: uuid */
             agentId: string;
             agentName: string;
+            /** @description The agent holds the most notes it may about the customer (50) and keeps no more until a person deletes one. */
+            full: boolean;
             notes: components["schemas"]["CustomerAgentMemoryNote"][];
         };
         CustomerAgentMemoryNote: {

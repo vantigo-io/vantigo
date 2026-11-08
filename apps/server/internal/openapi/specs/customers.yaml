@@ -215,6 +215,9 @@ components:
                     type: string
                 agentName:
                     type: string
+                full:
+                    description: The agent holds the most notes it may about the customer (50) and keeps no more until a person deletes one.
+                    type: boolean
                 notes:
                     items:
                         $ref: '#/components/schemas/CustomerAgentMemoryNote'
@@ -222,6 +225,7 @@ components:
             required:
                 - agentId
                 - agentName
+                - full
                 - notes
             type: object
         CustomerAgentMemoryNote:

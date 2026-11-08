@@ -12,6 +12,8 @@ export interface AgentMemoryNote {
 export interface AgentMemoryEntry {
   agentId: string;
   agentName: string;
+  /** The agent holds the most notes it may about the customer and keeps no more until one is deleted. */
+  full: boolean;
   notes: AgentMemoryNote[];
 }
 

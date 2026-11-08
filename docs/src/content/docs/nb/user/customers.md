@@ -280,7 +280,8 @@ Når en virtuell ansatt har tatt vare på notater om kunden, viser kundesiden en
 `agents:view`, og ikke i det hele tatt når ingenting huskes eller modulen Virtuelle ansatte er av. Åpne den for
 å lese hvert notat med dato. Den som i tillegg har `agents:manage` har en **Slett notatet**-knapp ved hvert
 notat; den spør først, og det som slettes er borte. Et notat er et kort faktum agenten skrev ned fra denne
-kundens samtaler og leser før den svarer på neste, så slett et som er feil. Mer i
+kundens samtaler og leser før den svarer på neste, så slett et som er feil. En agent beholder høyst 50 notater om en kunde; når delen sier **fullt**, tar agenten
+vare på ingen flere før du sletter et som er utdatert. Mer i
 [Virtuelle ansatte](/nb/user/agents/#hva-en-agent-husker).
 
 ## Tidslinjen

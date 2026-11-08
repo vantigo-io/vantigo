@@ -218,15 +218,15 @@ utskrift inneholder kundenes meldinger.
 
 To ting beholdes utover en kjøring, og begge går til modellen.
 
-- **Notater.** En agent skriver korte notater om en kunde (eller om en samtale uten kunde) og leser de 20
+- **Notater.** En agent skriver korte notater om en kunde (ingen når samtalen er uten kunde) og leser de 20
   nyeste når neste kjøring begynner. De når modellen som data sammen med samtalen. Et notat er det en modell
   skrev etter å ha lest en kundes melding, så det kan være feil eller plantet; det vises for folk på kundens
   side, der den som har `agents:manage` kan slette det, og det er aldri en instruks eller en kilde for et
-  svar. En agent beholder høyst 50 per kunde.
+  svar. En agent beholder høyst 50 per kunde; er det fullt avviser den nye notater, og en person sletter et,
+  kundesiden sier fra.
 - **Den ukentlige kontrollen.** Én gang i uken ber en API-prosess modellen til KI-oppgaven
   **Agentens innholdskontroll** (`agents.check`) om å lese det folk rettet for hver rolle: årsakene til at de
-  forkastet svar, og teksten før og etter redigeringer over 20 %. Den får ingen samtale og ingen kunde-id, men
-  svarene den leser kan nevne en kunde, så personvernerklæringen ovenfor gjelder også her. Den foreslår høyst
+  forkastet svar, og teksten før og etter redigeringer over 20 %. Den får ingen samtale og ingen kunde-id, men **teksten i svarene og notatene gjennomgåere skrev da de forkastet et svar sendes til modellen**, og de kan nevne en kunde, så personvernerklæringen ovenfor gjelder også her. Den foreslår høyst
   tre endringer i rollens instruksjoner, som en Eier eller den som har `agents:manage` bruker eller avviser på
   rollesiden. Uten KI-leverandør hoppes kontrollen over. Modellen kan byttes på siden for KI-modeller.
 

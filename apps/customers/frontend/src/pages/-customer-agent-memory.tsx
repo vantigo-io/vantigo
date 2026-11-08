@@ -34,6 +34,7 @@ export const CustomerAgentMemory = ({ customerId }: { customerId: number }) => {
   const entries = (data?.agents ?? []).filter((entry) => entry.notes.length > 0);
   if (entries.length === 0) return null;
   const canDelete = data?.canDelete ?? false;
+  const full = entries.some((entry) => entry.full);
   const total = entries.reduce((sum, entry) => sum + entry.notes.length, 0);
   const names = entries.map((entry) => entry.agentName).join(", ");
 
@@ -61,6 +62,11 @@ export const CustomerAgentMemory = ({ customerId }: { customerId: number }) => {
             <Text size="sm" c="dimmed">
               {t("agentMemoryCount", { count: total })}
             </Text>
+            {full && (
+              <Text size="sm" c="orange.8">
+                {t("agentMemoryFullBadge")}
+              </Text>
+            )}
           </Group>
         </UnstyledButton>
         <Collapse expanded={open} id="agent-memory-notes">
@@ -70,6 +76,11 @@ export const CustomerAgentMemory = ({ customerId }: { customerId: number }) => {
             </Text>
             {entries.map((entry) => (
               <Stack key={entry.agentId} gap={4}>
+                {entry.full && (
+                  <Text size="xs" c="orange.8" data-testid="agent-memory-full">
+                    {t("agentMemoryFull", { agent: entry.agentName })}
+                  </Text>
+                )}
                 {entries.length > 1 && (
                   <Text size="sm" fw={500}>
                     {entry.agentName}

@@ -49,7 +49,7 @@ func (s *server) GetCustomersByIdAgentMemory(ctx context.Context, req gen.GetCus
 		for _, n := range e.Notes {
 			notes = append(notes, gen.CustomerAgentMemoryNote{Id: n.ID, Text: n.Text, CreatedAt: n.CreatedAt})
 		}
-		out.Agents = append(out.Agents, gen.CustomerAgentMemoryEntry{AgentId: e.AgentID, AgentName: e.AgentName, Notes: notes})
+		out.Agents = append(out.Agents, gen.CustomerAgentMemoryEntry{AgentId: e.AgentID, AgentName: e.AgentName, Full: e.Full, Notes: notes})
 	}
 	return gen.GetCustomersByIdAgentMemory200JSONResponse(out), nil
 }

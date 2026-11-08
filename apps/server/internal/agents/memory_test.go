@@ -45,6 +45,15 @@ func TestMemory_TheContractAnswersOneCustomersNotesNewestFirstPerAgent(t *testin
 	if len(got) != 1 || got[0].AgentName != "Hanna" || len(got[0].Notes) != 2 || got[0].Notes[0].ID != newer || got[0].Notes[1].ID != older {
 		t.Fatalf("notes = %+v, want Hanna's two about customer 42, the newer first", got)
 	}
+	if got[0].Full {
+		t.Error("two notes are a full memory")
+	}
+	for i := range 48 {
+		g.note(t, "customer", "42", fmt.Sprintf("more %d", i), now.Add(-time.Duration(i+3)*time.Hour))
+	}
+	if full, err := slot.AboutCustomer(context.Background(), 42); err != nil || len(full) != 1 || !full[0].Full {
+		t.Errorf("fifty notes = %+v, %v, want the memory full", full, err)
+	}
 	if none, err := slot.AboutCustomer(context.Background(), 999); err != nil || len(none) != 0 {
 		t.Errorf("a customer nothing is remembered about = %v, %v, want none", none, err)
 	}

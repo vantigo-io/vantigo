@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/agents"
+	"github.com/vantigo-io/vantigo/server/internal/events"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -138,6 +141,24 @@ func TestAgentReview_AnApprovedReplyIsSentAsTheAgentWithTheDisclosureAndTheHeade
 	}
 	if got := modtest.One[uuid.UUID](t, r.h, `SELECT author_user_id FROM communications.conversation_messages WHERE conversation_id = $1 AND direction = 'outbound'`, conv); got != r.userID {
 		t.Errorf("the message's author = %s, want the agent's user %s: the reviewer did not write it", got, r.userID)
+	}
+	// A reviewer-approved reply is the agent's own: its replied event says byAgent, so it is not a
+	// person answering over an earlier Auto reply of the conversation (V21).
+	if n := r.h.Count(t, `SELECT count(*) FROM platform.events WHERE name = 'communications.conversation.replied' AND aggregate_id = $1 AND payload->>'byAgent' = 'true'`, conv.String()); n != 1 {
+		t.Errorf("replied events by the agent = %d, want 1", n)
+	}
+	if n := r.h.Count(t, `SELECT count(*) FROM platform.events WHERE name = 'communications.conversation.replied' AND aggregate_id = $1 AND payload->>'byAgent' <> 'true'`, conv.String()); n != 0 {
+		t.Errorf("replied events by a person = %d, want none", n)
+	}
+	earlier := uuid.New()
+	r.h.Exec(t, `INSERT INTO agents.runs (id, agent_id, role_id, conversation_id, reason, state, outcome, verdict, started_at, ended_at, sent_at)
+	             VALUES ($1, $2, $3, $4, 'message', 'done', 'sent', '{"score":90}', $5, $5, $5)`, earlier, r.agentID, r.roleID, conv, r.h.Now())
+	d := events.NewDispatcher(r.h.Pool(), agents.Module().EventHandlers(r.h.Deps()), r.h.Deps().Logger, r.h.Now)
+	if err := d.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n := r.h.Count(t, `SELECT count(*) FROM agents.runs WHERE id = $1 AND answered_over_at IS NOT NULL`, earlier); n != 0 {
+		t.Error("an approved agent reply marked the earlier Auto reply as answered over")
 	}
 	// The audit: the action log names the reviewer, and so did the grant the send was made under.
 	if n := r.h.Count(t, `SELECT count(*) FROM agents.actions a JOIN agents.runs x ON x.id = a.run_id
