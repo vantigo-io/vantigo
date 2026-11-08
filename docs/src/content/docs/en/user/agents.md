@@ -1,6 +1,6 @@
 ---
 title: Virtual employees
-description: The Virtual employees app — what an agent is, the agent at work (when it answers, what it reads, what it may send by itself, the opening line, the hand-off and giving a conversation back), the review queue (why an item waits, approving, editing and sending, discarding, how long it waits), calibration, usage and activity, creating an agent, its Persona (name, style, languages, model, picture) and the disclosure line with its three wordings, pausing, resuming and deleting, its Roles (the Front desk template, instructions, channels, the hand-off person, Reply mode and caps), its Permissions (everything Off until the Owner raises it) and where the AI badge appears.
+description: The Virtual employees app — what an agent is, the agent at work (when it answers, what it reads, what it may send by itself, the opening line, the hand-off and giving a conversation back), the review queue (why an item waits, approving, editing and sending, discarding, how long it waits), calibration, what an agent remembers, usage and activity, creating an agent, its Persona (name, style, languages, model, picture) and the disclosure line with its three wordings, pausing, resuming and deleting, its Roles (the Front desk template, instructions, channels, the hand-off person, Reply mode and caps, and the weekly suggestions for the instructions), its Permissions (everything Off until the Owner raises it) and where the AI badge appears.
 sidebar:
   order: 75
 sources:
@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/db/migrations/00144_agents_baseline.sql
   - apps/server/internal/db/migrations/00146_agents_runs.sql
   - apps/server/internal/db/migrations/00147_agents_review.sql
+  - apps/server/internal/db/migrations/00148_agents_memory.sql
 ---
 
 A **virtual employee** is an AI user of Vantigo with a name of its own and a visible AI
@@ -253,6 +254,25 @@ virtual employees' work*: also `communications:conversations-view` and the read 
 (customers, contacts, orders, invoices and products, and Knowledge). Without them the queue answers that
 you may not. Reading a [run](#activity) needs the same besides `agents:activity`.
 
+### Suggested changes to the instructions
+
+Once a week, on Monday morning in your business time zone, the system reads what people corrected in
+the role's last weeks: the replies they **discarded**, with the reason they gave, and the replies they
+**edited beyond 20 %**, with the text before and after. When at least three corrections have come in, it
+proposes **at most three** changes to the role's instructions. The role page then shows
+**Suggested changes to the instructions** above the form, each with the reason, the passage it would
+replace or the paragraph it would add, and the corrections it rests on (the numbers open them).
+
+- **Apply to the instructions** makes the change at once. It is an ordinary edit of the role: it takes the
+  role's version, so if someone saved the role in the meantime you are asked to read it again, it is
+  recorded in the change history, and it needs `agents:manage` like any edit of the instructions. A
+  suggestion whose passage is no longer in the instructions cannot be applied; dismiss it.
+- **Dismiss** leaves the instructions as they are.
+
+Nothing ever changes the instructions by itself. The check model is sent the reasons and the texts of the
+corrections and the current instructions, never the conversation, and is told to write rules, not
+examples. Read a suggestion as you would read a colleague's: it may be wrong.
+
 ## Calibration
 
 The role page shows, under **How it replies**, what the role's scores are worth. Every reply a person has
@@ -264,6 +284,10 @@ the role's last 200 labelled replies, move the slider to a threshold X from 50 t
 - of those, how many a person **edited beyond 20 % or discarded**;
 - how many a rule held **whatever the score**.
 
+A reply the agent sent **by itself** (Auto) is a label too: when a person answers in the same conversation
+within 24 hours, the agent's reply counts as **bad**, since a colleague felt they had to answer over it; one
+that stands unanswered for 24 hours counts as good. The conversation page needs nothing from you for this.
+
 Two lines and a marker at X draw the same thing. Under 50 labelled replies the panel says *Not enough
 history yet* and how many there are. The figures come from the role's own history, so a role that has
 been in Review for a while is the one whose scores can be trusted to choose *Auto above X %*.
@@ -274,6 +298,25 @@ The agent's **Usage** tab shows the last 30 days: runs, tokens (read and written
 were sent, held for a person and discarded, a day at a time, with totals above and today's tokens against
 the daily budget when there is one. The day is the business day. The cards on the **Virtual employees** page
 show today's figures. The counts are kept for 24 months and hold no content.
+
+## What an agent remembers
+
+An agent can keep **short notes** for later: a lasting fact it learned from a customer's conversation, such as
+*prefers e-mail, never phone*, or an agreement. A note is at most 500 characters, an agent writes at most
+three in a run, and it keeps at most 50 about one customer or conversation, the oldest dropped.
+
+- **Whose notes.** A note is about the run's customer. When the conversation is linked to no customer, it is
+  about that conversation alone. An agent reads a customer's notes only in a conversation with that customer,
+  never in another's, and reads at most the 20 newest at the start of a run.
+- **Read as facts, not as orders.** The notes come to the agent as data, like the customer's messages: the
+  agent weighs them, but an instruction in a note changes nothing, and a reply cannot cite one as its source.
+- **Where you see them.** On the customer's page, **What Hanna remembers** is a collapsed section under the
+  attachments, shown to those who hold `customers:view` and `agents:view`. Open it to read the notes with
+  their dates. Someone with `agents:manage` has a **Delete** beside each one, after a confirmation; delete a
+  note that is wrong or that should not be kept. The agent's **Usage** tab counts them.
+- **How long.** A note expires with the runs, after the retention the administrator set, and is erased
+  with the customer or the contact it is about ([Virtual employees](/en/admin/agents/#retention-and-erasure)).
+  Deleting an agent deletes its notes.
 
 ## Activity
 

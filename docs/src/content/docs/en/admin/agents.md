@@ -1,6 +1,6 @@
 ---
 title: Virtual employees
-description: Turning Virtual employees on — the modules and the AI provider it needs, its four permissions and which changes stay the Owner's, the company's name and the retention, creating the first agent, the model per agent, giving the agent Identity roles, the levels (Off by default, what the front desk needs, what is locked for every agent), the allowlist and the customer scope, what to keep out of Knowledge, the privacy notice, who reviews, retention and erasure, pausing and deleting an agent; how to verify it, and what can go wrong.
+description: Turning Virtual employees on — the modules and the AI provider it needs, its four permissions and which changes stay the Owner's, the company's name and the retention, creating the first agent, the model per agent, giving the agent Identity roles, the levels (Off by default, what the front desk needs, what is locked for every agent), the allowlist and the customer scope, what to keep out of Knowledge, the privacy notice, who reviews, the weekly check of the instructions, retention and erasure, pausing and deleting an agent; how to verify it, and what can go wrong.
 sidebar:
   order: 52
 sources:
@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/db/migrations/00144_agents_baseline.sql
   - apps/server/internal/db/migrations/00146_agents_runs.sql
   - apps/server/internal/db/migrations/00147_agents_review.sql
+  - apps/server/internal/db/migrations/00148_agents_memory.sql
   - apps/server/internal/config
   - apps/agents/frontend/src
 ---
@@ -215,19 +216,37 @@ that reviewer, and nothing else.
 Reading an agent's runs and transcripts is a separate, sensitive permission
 (`agents:activity`), because a transcript holds the customers' messages.
 
+## Memory and the weekly check
+
+Two things are kept beyond a run, and both go to the model.
+
+- **Notes.** An agent writes short notes about a customer (or about a conversation with no customer) and reads
+  the newest 20 at the start of the next run. They reach the model as data with the conversation. A note is
+  what a model wrote after reading a customer's message, so it can be wrong or planted; it is shown to people
+  on the customer's page, where someone with `agents:manage` can delete it, and it is never an instruction
+  or a source for a reply. An agent keeps at most 50 per customer.
+- **The weekly check.** Once a week an API process asks the model of the AI task **Agent content check**
+  (`agents.check`) to read what people corrected for each role: the reasons they discarded replies, and the text
+  before and after the edits beyond 20 %. It is sent no conversation and no customer's id, but the replies it
+  reads can mention a customer, so the privacy notice above applies to it too. It proposes at most three
+  changes to the role's instructions, which an Owner or someone with `agents:manage` applies or dismisses
+  on the role page. With no AI provider the check is skipped. You can change the model on the AI models page.
+
 ## Retention and erasure
 
 - **Runs.** A run, with its transcript, its action log, its review items and the hand-off markers of its
   conversation, is deleted after the retention months, and never kept longer than Communications keeps
   its messages, because a transcript copies message bodies. The worker `agents-retention` does it every
   hour, in batches. The day's **usage** (counts only) is kept for 24 months.
+- **Notes and suggestions.** The notes an agent remembers and the suggestions of the weekly check expire with
+  the runs, after the same retention. Deleting an agent deletes its notes.
 - **Items that wait** are never deleted by retention; they expire first (24 hours), and an expired item
   hands the conversation off. The worker `agents-reviews` does this every minute.
 - **A customer's erasure.** When a private person's customer is anonymised in Customers, the module
-  deletes that customer's runs, transcripts and review items, by the customer and by **every conversation
+  deletes that customer's notes, the suggestions that rest on their replies, and their runs, transcripts and review items, by the customer and by **every conversation
   of theirs it has seen linked to them**, so a conversation linked after its run began is covered; and it
   blanks the customer's id in the action log. A deleted **contact** takes the conversations they took part
-  in with them. The export of a customer's personal data lists the runs and replies held for them. A
+  in with them, and the notes written in them. The export of a customer's personal data lists the runs and replies held for them. A
   conversation that was linked to the customer only after the module last looked at it is not known to the
   module: it is removed by retention instead.
 - **A person's erasure** (a reviewer or an Owner) keeps the id of their decisions as an opaque id, so the

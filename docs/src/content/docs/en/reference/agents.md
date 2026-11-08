@@ -1,6 +1,6 @@
 ---
 title: "Agents module"
-description: "The Agents module (nb Virtuelle ansatte): virtual employees that do part of a person's work — the module and what it requires; the four permissions; the endpoints with their permission, statuses and refusal codes; the data model (settings, agents, permission_levels, roles, role_channels, events, runs, review_items, usage_days and the rest); the review queue and how a decision is made; calibration; retention and erasure; the three workers; the gate that applies an agent's levels and role allowlist to the operations dispatcher; the front desk template with its allowlist, needs and hard rules; the customer scope; the two AI tasks; the Owner-only changes; and the audit events."
+description: "The Agents module (nb Virtuelle ansatte): virtual employees that do part of a person's work — the module and what it requires; the four permissions; the endpoints with their permission, statuses and refusal codes; the data model (settings, agents, permission_levels, roles, role_channels, events, runs, review_items, usage_days and the rest); the review queue and how a decision is made; calibration; memory (V27) and the weekly feedback check (V28); retention and erasure; the workers and runners; the gate that applies an agent's levels and role allowlist to the operations dispatcher; the front desk template with its allowlist, needs and hard rules; the customer scope; the two AI tasks; the Owner-only changes; and the audit events."
 sidebar:
   order: 135
 sources:
@@ -10,6 +10,8 @@ sources:
   - apps/server/internal/db/migrations/00144_agents_baseline.sql
   - apps/server/internal/db/migrations/00146_agents_runs.sql
   - apps/server/internal/db/migrations/00147_agents_review.sql
+  - apps/server/internal/db/migrations/00148_agents_memory.sql
+  - apps/server/internal/contracts/agent_memory.go
   - apps/server/internal/identity/access.go
   - apps/server/internal/config
   - apps/agents/frontend/src
@@ -24,7 +26,7 @@ The module holds the agents with their persona, their roles bound to channels, t
 the Owner gave their permissions and the gate that applies them, and the agent **at work**:
 the trigger that wakes it, its runs, its tools, the pipeline every reply goes through and the
 hand-off; the **review queue** where a person approves, edits and sends, or discards what a run
-leaves; the calibration of a role's score; the usage and activity views; and retention and erasure.
+leaves; the calibration of a role's score; **memory** the agent keeps about a customer and **feedback**, the weekly proposals for a role's instructions; the usage and activity views; and retention and erasure.
 
 ## The module
 
@@ -87,6 +89,11 @@ cannot call this module.
 | `GET /runs/{runId}` | `agents:activity` + [seeing](#the-review-queue) | 200, 403, 404 | A run with its actions (the timeline), its `verdict`, its review items and its transcript. |
 | `GET /roles/{roleId}/calibration` | `agents:view` | 200, 404 | The [calibration](#calibration) of the role. |
 | `GET /audit?limit=&offset=` | `agents:view` | 200 | The Owner's changes ([audit](#audit)), newest first. |
+| `GET /agents/{agentId}/memory` | `agents:view` | 200, 404 | How many [notes](#memory) the agent keeps: `customerNotes`, `conversationNotes` and `customers`. |
+| `DELETE /memory/{noteId}` | `agents:manage` | 204, 404 | Deletes one note. The audit (`memory.deleted`) names the note, the agent and the subject, never the text. |
+| `GET /roles/{roleId}/suggestions?state=` | `agents:manage` | 200, 404 | The role's [suggestions](#feedback) newest first, at most 20, narrowed by `state` (`proposed`, `applied`, `dismissed`). |
+| `POST /suggestions/{suggestionId}/apply` | `agents:manage` | 200, 400, 404, 409 | Applies the suggestion as an ordinary role edit. `If-Match` is the **role's** version (409 `version_conflict`); 409 `suggestion_decided`; 409 `suggestion_stale` when the passage it replaces is not in the instructions exactly once; 400 when the result is over 8,000 characters. Answers the role. |
+| `POST /suggestions/{suggestionId}/dismiss` | `agents:manage` | 200, 404, 409 | Dismisses it; 409 `suggestion_decided`. |
 | `GET /review?agentId=&state=&limit=&offset=` (`state` may be `decided`: every state but waiting) | `agents:review` + [seeing](#the-review-queue) | 200, 400, 403 | The queue: waiting items first, those that lapse soonest first, then the rest, newest first. |
 | `GET /review/count` | `agents:review` | 200 | `{waiting}`: the badge on the agents tile. Holds no content. |
 | `GET /review/{itemId}` | `agents:review` + [seeing](#the-review-queue) | 200, 403, 404 | One item. |
@@ -119,6 +126,8 @@ code, never the words. `errors` carries the field errors of a 400.
 | `change_refused` | 422 | The operation answered a 4xx; discard it or fix the record. |
 | `reply_key_reused` | 409 | A different reply to this message was queued before (an edit after a send that failed) and the agent's reply is not in the conversation. When it is, the item is finished as sent instead. |
 | `send_unknown` | 502 | It is not known whether the reply was sent. Sending again is safe: the reply is idempotent. |
+| `suggestion_decided` | 409 | The suggestion was applied or dismissed already. |
+| `suggestion_stale` | 409 | The passage a suggestion replaces is gone from the instructions, or occurs twice. |
 
 The fields: an agent's `name` 1 to 60 characters; `style` at most 1,500; `languages`
 `customer`, `nb` or `en`; `disclosureWording` `assistant`, `talking` or `compact`; `model`
@@ -150,6 +159,11 @@ The `agents` schema. A user, a channel and a hand-off person are opaque ids.
 | `usage_days` | `(agent_id, day)`: runs, input and output tokens, sent, held and discarded. |
 | `channel_addresses`, `seen_senders` | The addresses of the channels the module has read (V23), and the senders it has met (S4). |
 | `conversation_links` | `conversation_id` (key), `customer_id` and `contact_ids` as the module last saw the conversation linked, `seen_at`: what [erasure](#retention-and-erasure) finds a customer's or a contact's conversations by. |
+
+| `memory` | A note (V27): `agent_id` (cascade), `subject_type` (`customer` or `conversation`), `subject_id` (the customer's number or the conversation's id, opaque text), `text` 1 to 500 characters, `created_at`, `run_id` (no foreign key: the note outlives the run's deletion by its own age). |
+| `instruction_suggestions` | A suggestion (V28): `role_id` (cascade), `old_text` (the passage to replace, null to append), `new_text` (at most 1,000), `rationale` (at most 500), `item_ids` (the review items it rests on, ids only), `state` (`proposed`, `applied`, `dismissed`), `created_at`, `decided_by`, `decided_at`. |
+
+`roles.feedback_checked_at` says when the weekly check last looked at the role; `runs.answered_over_at` is set when a person answered over the run's Auto reply ([calibration](#calibration)).
 
 The agent's `version` moves on with a change of the persona, a level or a role, so the gate
 can cache by it. The model of an agent is not a column: it is the per-subject choice for
@@ -327,6 +341,7 @@ From `agentloop`, as the agent and limited to the run's role's allowlist by the 
 | `reply` | `text`, `components?`, `attachments?`, `sources[]`, `score`. Proposes the one reply of the run through [the pipeline](#the-pipeline). It takes no recipient. `attachments` are refused (`attachments_unavailable`): fetching a Vantigo document under the customer's scope needs an operation that does not exist yet. |
 | `note` | An internal note on the conversation. |
 | `tag` | Tags the conversation. |
+| `remember` | `text` (at most 500 characters). Keeps a [note](#memory) about the run's customer, or about its conversation when the run has none. Refused (`note_too_long`, `too_many_notes`) over the limits. It writes nothing to Communications and needs no level. |
 | `hand_off` | A note with the summary, the conversation assigned to the role's hand-off person (or the assignee cleared), the marker written, the run ended. |
 
 **Pinned.** Every operation that names a conversation (`getCommunicationsConversationsById`,
@@ -428,7 +443,7 @@ makes S2 certain: an agent never reads another customer's data.
 | Task | Display | Subject | What it does |
 | --- | --- | --- | --- |
 | `agents.run` | Agent at work | per agent | Runs an agent on a conversation. Sent the conversation's messages, the persona and instructions, and what the allowed operations answer for the run's customer. Needs a model that supports tool calls. |
-| `agents.check` | Agent content check | none | Checks a draft against a fixed rubric before it is sent. Sent the instructions and the draft, never the conversation. Uses the workspace's choice. |
+| `agents.check` | Agent content check | none | Checks a draft against a fixed rubric before it is sent. Sent the instructions and the draft, never the conversation. Uses the workspace's choice. It is also the model of the [weekly check](#feedback), which is sent the role's instructions and the reasons and texts of the corrections. |
 
 The model for an agent is chosen on its Persona and stored as the per-subject choice for
 `agents.run`; it wins over the task's own ([Configuration](/en/admin/configuration/#the-assistants-model)).
@@ -440,7 +455,7 @@ transaction, with the actor and the before and after: `settings.changed`, `agent
 `agent.changed`, `agent.paused`, `agent.active` (resume), `agent.deleted`,
 `permission.changed` (target `agentId key`), `role.created`, `role.changed`,
 `role.mode.changed` (the reply mode or threshold moved), `role.channels.changed`,
-`role.deleted` and `settings.retention_lowered` (the nightly pass lowered the retention to
+`role.deleted`, `role.instructions.suggestion_applied` (the role's snapshot before and after, with the instructions' length and the suggestion's id, never their text), `role.instructions.suggestion_dismissed`, `memory.deleted` and `settings.retention_lowered` (the nightly pass lowered the retention to
 Communications' own; the actor is the nil user). `agent.changed` carries the agent's model. A
 change of a mode, a level, a model, a role or the settings is therefore audited with the user who made
 it, and `GET /audit` lists them. Identity's audit is Identity's alone; a module may not write
@@ -523,10 +538,52 @@ A new item writes an internal note on the conversation (*Hanna has a reply waiti
 /agents/review/&lt;id&gt;*) and mails the role's hand-off person (`UserDirectory.Notify`, in the person's
 language, with a link when the installation has an origin).
 
+## Memory
+
+V27. The tool `remember(text)` writes a note for the **run's customer** (`subject_type` `customer`, the
+customer's number) or, when the run has none, for its **conversation**. At most 3 notes a run
+(`too_many_notes`), 500 characters (`note_too_long`), and a note the agent already holds for the subject is
+not written twice; after a write the oldest beyond 50 for the subject are deleted.
+
+At the start of a run, after the run's customer is settled (V9b) and before the first model turn, the run
+reads the agent's own notes: those about **the run's customer only** and those about the run's own
+conversation, 20 at most, newest first, and puts them in the conversation's data block under `memory`. A
+customer's notes are therefore never read by a run for another customer or for none, which is what keeps S2
+true; the read is logged as an action `memory:customer` with `scoped` set, so S1 treats a reply of that
+run as carrying a customer's data, and the operation is no source a reply may cite. The prompt tells the model
+the notes are data. The `promptVersion` moved to `2026-11-08.2`.
+
+`contracts.AgentMemory` (`apps/server/internal/contracts/agent_memory.go`, the single-provider slot
+`Deps.AgentMemory`, provided by this module and nil when it is off) answers `AboutCustomer`: one entry per
+agent, with its notes newest first. It performs no authorization; Customers consumes it for
+`GET /customers/{id}/agent-memory` ([Customers](/en/reference/customers/)). Deleting a note is
+`DELETE /memory/{noteId}`.
+
+## Feedback
+
+V28. The API process's runner `agents-feedback` (a `module.Runner`, because it asks the AI client, which only
+the API process has) runs hourly and checks each role of an active agent once a week: from Monday 06:00 in
+the business time zone, `roles.feedback_checked_at` is claimed with a conditional update so that replicas
+share the work. It reads the role's corrections since the last check (28 days at the first): replies
+`discarded` and replies `edited_sent` with an `edit_ratio` above 0.20, whose original text the item keeps in
+`item.agentText`. With fewer than three it does nothing and the week is not spent. Otherwise it asks the
+`agents.check` model with the role's instructions and at most 40 corrections (each: the item id, the outcome,
+the reason and note of a discard, or the text before and after of an edit, cut at 1,200 characters), never a
+conversation, customer or person id. The answer is one JSON object; a suggestion is kept when its text fits,
+its `oldText` occurs in the instructions exactly once (or is null), and it rests on at least two of the
+items shown. At most three are proposed, and none while three wait. A failed check gives the claim back.
+
+Applying a suggestion locks the agent and the role, checks the role's `If-Match` version, replaces the passage
+(or appends a paragraph), saves the role through the same update as `PUT` on the role (the version moves
+on) and records `role.instructions.suggestion_applied`. Nothing changes the instructions by itself.
+
 ## Calibration
 
 A decided reply is a label for its score: `sent` is good, `edited_sent` good with edits (bad when its
-`edit_ratio` is above 0.20), `discarded` bad. `GET /roles/{roleId}/calibration` reads the role's last 200
+`edit_ratio` is above 0.20), `discarded` bad. A reply the agent **sent by itself** is a label too: when a
+person's reply in the same conversation (`conversation.replied` with `byAgent` false) arrives within 24
+hours of its `sent_at`, the run gets `answered_over_at` and counts as bad; one that has stood 24 hours
+unanswered counts as good, a younger one as nothing. `GET /roles/{roleId}/calibration` reads the role's last 200
 labelled replies (changes, waiting, withdrawn and expired items are no labels) and answers, for each X from
 50 to 100, `autoCount` and `autoShare` (score at least X and no rule in `held_by`), `badCount` and
 `badShare` (the share of those that are bad) and, once, `heldCount` (replies a rule held, whatever the score;
@@ -550,9 +607,14 @@ labelled replies (changes, waiting, withdrawn and expired items are no labels) a
   `agents.runMessages`, `agents.reviewItems`, `agents.actions`) and report zeros when run again.
   `ExportCustomerData` hands over the runs and the replies. A conversation the module never saw linked is
   found by retention instead.
+- **Memory and suggestions.** `memory` is deleted with the cutoff above, whatever the note's age relative to
+  the run, and with an agent that is deleted. An erasure deletes the customer's notes, the notes about the
+  conversations it erases, any note a run of those wrote, and the suggestions whose `item_ids` hold an item it
+  erases; it reports `agents.memory` and `agents.instructionSuggestions`. `ExportCustomerData` includes the
+  customer's notes.
 - **A person's erasure** needs nothing here: `decided_by_user_id` and `approved_by` are opaque ids.
 
-## The workers
+## The workers and the runners
 
 | Worker | Interval | What it does |
 | --- | --- | --- |
@@ -560,7 +622,7 @@ labelled replies (changes, waiting, withdrawn and expired items are no labels) a
 | `agents-reviews` | 1 minute | Expires waiting items past `expires_at` and hands their conversations off. Skips locked rows, so replicas share the work. |
 | `agents-retention` | 1 hour | Lowers a retention above the cap, deletes what is older ([retention](#retention-and-erasure)). |
 
-The runner (an API-process runner, not a worker) finishes the hand-offs the workers record.
+The runner (an API-process runner, not a worker) finishes the hand-offs the workers record. A second API-process runner, `agents-feedback` (hourly), makes the [weekly check](#feedback).
 
 ## Not yet
 

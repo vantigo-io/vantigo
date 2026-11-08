@@ -106,7 +106,7 @@ lag, never what must refuse — go through the platform's domain-events outbox,
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are twenty-one single-provider slots, each filled by at most one enabled module:
+   There are twenty-two single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
    identity — the workspace's business time zone and the day an instant falls on in
@@ -159,7 +159,12 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    calls; it never carries the person's page-scoped id, which belongs to a Page; optional for
    its consumer, nil when Communications is off, which it reads as "no channels"; resolved by
    Compose after the channel messengers its provider reads, never by `module.Workers`;
-   `modtest.WithContactChannels` presets one), and `AIModels` (`contracts.AIModels`,
+   `modtest.WithContactChannels` presets one), `AgentMemory` (`contracts.AgentMemory`, agents — the
+   notes the virtual employees keep about a customer, which Customers' page shows in a collapsed section:
+   `AboutCustomer` answers one entry per agent with its notes newest first; consumer-gated — Customers asks
+   for `agents:view` before it calls; optional for its consumer, nil when Agents is off, which it reads as
+   "nothing is remembered"; resolved by Compose after `ContactChannels`, never by `module.Workers`;
+   `modtest.WithAgentMemory` presets one), and `AIModels` (`contracts.AIModels`,
    identity — the model an Owner chose for each AI task, which the platform AI client asks
    and no module calls; [The AI platform](#the-ai-platform)), and `AssistantGrants`
    (`contracts.AssistantGrants`, identity — issues and ends the grants the assistant acts

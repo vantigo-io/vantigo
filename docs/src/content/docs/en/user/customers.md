@@ -270,6 +270,16 @@ with **Add customer**. Contacts need `customers:contacts-view` to see and
 `customers:contacts-manage` to change; the links `customers:associations-view` and
 `customers:associations-manage`.
 
+## What an agent remembers
+
+When a virtual employee has kept notes about the customer, the customer page shows a collapsed section,
+**What Hanna remembers**, below the attachments, with the number of notes. It shows for those who hold
+`customers:view` and `agents:view`, and not at all when nothing is remembered or the Virtual employees
+module is off. Open it to read each note with its date. Someone who also holds `agents:manage` has a
+**Delete the note** button beside each one; it asks first, and what is deleted is gone. A note is a short
+fact the agent wrote down from this customer's conversations and reads before it answers the next one, so
+delete one that is wrong. More in [Virtual employees](/en/user/agents/#what-an-agent-remembers).
+
 ## The timeline
 
 The **Timeline** card is the customer's history, newest first: automatic events the
