@@ -106,6 +106,8 @@ func (s *server) roleViews(ctx context.Context, q *store.Queries, roles []store.
 			Instructions: r.Instructions, ReplyMode: gen.AgentRoleReplyMode(r.ReplyMode), Threshold: int32(r.Threshold),
 			CapsToolCalls: int32(r.CapsToolCalls), CapsTurns: int32(r.CapsTurns), MaxRepliesPerDay: int32(r.MaxRepliesPerDay),
 			HandOffUserId: r.HandOffUserID, HandOffWarning: "none", ChannelIds: channels[r.ID], ComplaintTagIds: &complaintTags,
+			StartMode: gen.AgentRoleStartMode(r.StartMode), ChangeMode: gen.AgentRoleChangeMode(r.ChangeMode), WaitDays: int32(r.WaitDays),
+			RecipientUserId: r.RecipientUserID, Schedule: scheduleView(r),
 			Version: r.Version, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		}
 		if v.ChannelIds == nil {
@@ -158,4 +160,13 @@ func (s *server) agentViews(ctx context.Context, q *store.Queries, rows []store.
 		out = append(out, v)
 	}
 	return out, nil
+}
+
+// scheduleView is the role's schedule as the contract answers it.
+func scheduleView(r store.AgentsRole) gen.AgentRoleSchedule {
+	if r.ScheduleKind == nil || r.ScheduleDay == nil || r.ScheduleTime == nil {
+		return gen.AgentRoleSchedule{Kind: "none"}
+	}
+	day := int32(*r.ScheduleDay)
+	return gen.AgentRoleSchedule{Kind: gen.AgentRoleScheduleKind(*r.ScheduleKind), Day: &day, Time: r.ScheduleTime}
 }

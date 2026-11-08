@@ -39,6 +39,7 @@ const (
 
 	kindReply  = "reply"
 	kindChange = "change"
+	kindStart  = "start"
 )
 
 const (
@@ -97,6 +98,11 @@ func itemView(r itemRow) gen.ReviewItem {
 		}
 		v.Reply = &reply
 		v.WindowClosesAt = in.WindowClosesAt
+	case kindStart:
+		var in storedStart
+		_ = json.Unmarshal(r.Item, &in)
+		v.Reply = &gen.ReviewReply{Text: in.Text, Disclosure: in.Disclosure}
+		v.Start = &gen.ReviewStart{ChannelId: in.ChannelID, To: in.To, Subject: in.Subject}
 	case kindChange:
 		var in storedChange
 		_ = json.Unmarshal(r.Item, &in)
@@ -175,11 +181,15 @@ func (s *server) maySee(ctx context.Context, templateKeys ...string) bool {
 	return contracts.HasPermissions(ctx, s.deps.Access, keys...)
 }
 
-// allTemplateKeys are the keys of every template of this build.
-func allTemplateKeys() []string {
+// visibleTemplates are the templates of this build whose agents' work the caller
+// may see: each needs its own reads (V20), so a list holds only what its reader
+// could have read, and the rest is left out, not refused.
+func (s *server) visibleTemplates(ctx context.Context) []string {
 	keys := make([]string, 0, len(templates))
 	for k := range templates {
-		keys = append(keys, k)
+		if s.maySee(ctx, k) {
+			keys = append(keys, k)
+		}
 	}
 	slices.Sort(keys)
 	return keys
@@ -209,16 +219,17 @@ func (s *server) ListReviewItems(ctx context.Context, req gen.ListReviewItemsReq
 		}
 		state = &st
 	}
-	if !s.maySee(ctx, allTemplateKeys()...) {
+	visible := s.visibleTemplates(ctx)
+	if len(visible) == 0 {
 		return notPermitted(), nil
 	}
 	limit, offset := page(req.Params.Limit, req.Params.Offset)
 	q := store.New(s.deps.Pool)
-	rows, err := q.ListReviewItems(ctx, store.ListReviewItemsParams{AgentID: req.Params.AgentId, State: state, N: limit, Off: offset})
+	rows, err := q.ListReviewItems(ctx, store.ListReviewItemsParams{AgentID: req.Params.AgentId, State: state, Templates: visible, N: limit, Off: offset})
 	if err != nil {
 		return nil, fmt.Errorf("agents: list the review items: %w", err)
 	}
-	total, err := q.CountReviewItems(ctx, store.CountReviewItemsParams{AgentID: req.Params.AgentId, State: state})
+	total, err := q.CountReviewItems(ctx, store.CountReviewItemsParams{AgentID: req.Params.AgentId, State: state, Templates: visible})
 	if err != nil {
 		return nil, fmt.Errorf("agents: count the review items: %w", err)
 	}
@@ -325,7 +336,7 @@ func (s *server) finish(ctx context.Context, row itemRow, reviewer uuid.UUID, ou
 		usage := store.AddUsageParams{AgentID: row.AgentID, Day: s.day(now)}
 		switch out.state {
 		case itemSent, itemEditedSent:
-			if row.Kind == kindReply {
+			if row.Kind == kindReply || row.Kind == kindStart {
 				usage.Sent = 1
 			}
 		case itemDiscarded:
@@ -416,7 +427,7 @@ func (s *server) SendEditedReviewItem(ctx context.Context, req gen.SendEditedRev
 	}
 	text := strings.TrimSpace(req.Body.Text)
 	switch {
-	case row.Kind != kindReply:
+	case row.Kind != kindReply && row.Kind != kindStart:
 		return invalid("Only a reply can be edited", map[string][]string{"text": {"a change is approved or discarded as it is"}}), nil
 	case text == "":
 		return invalid("The text is not valid", map[string][]string{"text": {"text is required"}}), nil
@@ -466,6 +477,8 @@ func (s *server) approve(ctx context.Context, row itemRow, reviewer uuid.UUID, e
 	switch row.Kind {
 	case kindReply:
 		out, rf, err = s.approveReply(ctx, row, reviewer, edit)
+	case kindStart:
+		out, rf, err = s.approveStart(ctx, row, reviewer, edit)
 	default:
 		out, rf, err = s.approveChange(ctx, row, reviewer)
 	}

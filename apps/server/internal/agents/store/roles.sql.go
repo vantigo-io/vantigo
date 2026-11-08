@@ -42,7 +42,7 @@ func (q *Queries) DeleteRoleChannels(ctx context.Context, roleID uuid.UUID) erro
 }
 
 const getRole = `-- name: GetRole :one
-SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since FROM agents.roles WHERE id = $1 AND agent_id = $2
+SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since, start_mode, change_mode, wait_days, recipient_user_id, schedule_kind, schedule_day, schedule_time, schedule_fired_at FROM agents.roles WHERE id = $1 AND agent_id = $2
 `
 
 type GetRoleParams struct {
@@ -71,6 +71,14 @@ func (q *Queries) GetRole(ctx context.Context, arg GetRoleParams) (AgentsRole, e
 		&i.ComplaintTagIds,
 		&i.FeedbackCheckedAt,
 		&i.FeedbackSince,
+		&i.StartMode,
+		&i.ChangeMode,
+		&i.WaitDays,
+		&i.RecipientUserID,
+		&i.ScheduleKind,
+		&i.ScheduleDay,
+		&i.ScheduleTime,
+		&i.ScheduleFiredAt,
 	)
 	return i, err
 }
@@ -78,7 +86,7 @@ func (q *Queries) GetRole(ctx context.Context, arg GetRoleParams) (AgentsRole, e
 const insertRole = `-- name: InsertRole :one
 INSERT INTO agents.roles (id, agent_id, template, name, instructions, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $6::timestamptz)
-RETURNING id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since
+RETURNING id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since, start_mode, change_mode, wait_days, recipient_user_id, schedule_kind, schedule_day, schedule_time, schedule_fired_at
 `
 
 type InsertRoleParams struct {
@@ -118,6 +126,14 @@ func (q *Queries) InsertRole(ctx context.Context, arg InsertRoleParams) (AgentsR
 		&i.ComplaintTagIds,
 		&i.FeedbackCheckedAt,
 		&i.FeedbackSince,
+		&i.StartMode,
+		&i.ChangeMode,
+		&i.WaitDays,
+		&i.RecipientUserID,
+		&i.ScheduleKind,
+		&i.ScheduleDay,
+		&i.ScheduleTime,
+		&i.ScheduleFiredAt,
 	)
 	return i, err
 }
@@ -161,7 +177,7 @@ func (q *Queries) ListChannelsOfRoles(ctx context.Context, roleIds []uuid.UUID) 
 }
 
 const listRolesOfAgent = `-- name: ListRolesOfAgent :many
-SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since FROM agents.roles WHERE agent_id = $1 ORDER BY created_at, id
+SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since, start_mode, change_mode, wait_days, recipient_user_id, schedule_kind, schedule_day, schedule_time, schedule_fired_at FROM agents.roles WHERE agent_id = $1 ORDER BY created_at, id
 `
 
 func (q *Queries) ListRolesOfAgent(ctx context.Context, agentID uuid.UUID) ([]AgentsRole, error) {
@@ -191,6 +207,14 @@ func (q *Queries) ListRolesOfAgent(ctx context.Context, agentID uuid.UUID) ([]Ag
 			&i.ComplaintTagIds,
 			&i.FeedbackCheckedAt,
 			&i.FeedbackSince,
+			&i.StartMode,
+			&i.ChangeMode,
+			&i.WaitDays,
+			&i.RecipientUserID,
+			&i.ScheduleKind,
+			&i.ScheduleDay,
+			&i.ScheduleTime,
+			&i.ScheduleFiredAt,
 		); err != nil {
 			return nil, err
 		}
@@ -203,7 +227,7 @@ func (q *Queries) ListRolesOfAgent(ctx context.Context, agentID uuid.UUID) ([]Ag
 }
 
 const listRolesOfAgents = `-- name: ListRolesOfAgents :many
-SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since FROM agents.roles WHERE agent_id = ANY($1::uuid[]) ORDER BY created_at, id
+SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since, start_mode, change_mode, wait_days, recipient_user_id, schedule_kind, schedule_day, schedule_time, schedule_fired_at FROM agents.roles WHERE agent_id = ANY($1::uuid[]) ORDER BY created_at, id
 `
 
 func (q *Queries) ListRolesOfAgents(ctx context.Context, agentIds []uuid.UUID) ([]AgentsRole, error) {
@@ -233,6 +257,121 @@ func (q *Queries) ListRolesOfAgents(ctx context.Context, agentIds []uuid.UUID) (
 			&i.ComplaintTagIds,
 			&i.FeedbackCheckedAt,
 			&i.FeedbackSince,
+			&i.StartMode,
+			&i.ChangeMode,
+			&i.WaitDays,
+			&i.RecipientUserID,
+			&i.ScheduleKind,
+			&i.ScheduleDay,
+			&i.ScheduleTime,
+			&i.ScheduleFiredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRolesOfTemplate = `-- name: ListRolesOfTemplate :many
+SELECT r.id, r.agent_id, r.template, r.name, r.instructions, r.reply_mode, r.threshold, r.caps_tool_calls, r.caps_turns, r.max_replies_per_day, r.hand_off_user_id, r.version, r.created_at, r.updated_at, r.complaint_tag_ids, r.feedback_checked_at, r.feedback_since, r.start_mode, r.change_mode, r.wait_days, r.recipient_user_id, r.schedule_kind, r.schedule_day, r.schedule_time, r.schedule_fired_at FROM agents.roles r JOIN agents.agents a ON a.id = r.agent_id
+WHERE r.template = $1 AND a.state <> 'deleted'
+ORDER BY r.id
+`
+
+// The roles of agents that are not deleted that use a template: a paused agent's
+// roles are woken too, and its wakeups wait until it is active again.
+func (q *Queries) ListRolesOfTemplate(ctx context.Context, template string) ([]AgentsRole, error) {
+	rows, err := q.db.Query(ctx, listRolesOfTemplate, template)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AgentsRole
+	for rows.Next() {
+		var i AgentsRole
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentID,
+			&i.Template,
+			&i.Name,
+			&i.Instructions,
+			&i.ReplyMode,
+			&i.Threshold,
+			&i.CapsToolCalls,
+			&i.CapsTurns,
+			&i.MaxRepliesPerDay,
+			&i.HandOffUserID,
+			&i.Version,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ComplaintTagIds,
+			&i.FeedbackCheckedAt,
+			&i.FeedbackSince,
+			&i.StartMode,
+			&i.ChangeMode,
+			&i.WaitDays,
+			&i.RecipientUserID,
+			&i.ScheduleKind,
+			&i.ScheduleDay,
+			&i.ScheduleTime,
+			&i.ScheduleFiredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listScheduledRoles = `-- name: ListScheduledRoles :many
+SELECT r.id, r.agent_id, r.template, r.name, r.instructions, r.reply_mode, r.threshold, r.caps_tool_calls, r.caps_turns, r.max_replies_per_day, r.hand_off_user_id, r.version, r.created_at, r.updated_at, r.complaint_tag_ids, r.feedback_checked_at, r.feedback_since, r.start_mode, r.change_mode, r.wait_days, r.recipient_user_id, r.schedule_kind, r.schedule_day, r.schedule_time, r.schedule_fired_at FROM agents.roles r JOIN agents.agents a ON a.id = r.agent_id
+WHERE r.schedule_kind IS NOT NULL AND a.state = 'active'
+ORDER BY r.id
+`
+
+// The roles of active agents that have a schedule (V29).
+func (q *Queries) ListScheduledRoles(ctx context.Context) ([]AgentsRole, error) {
+	rows, err := q.db.Query(ctx, listScheduledRoles)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AgentsRole
+	for rows.Next() {
+		var i AgentsRole
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentID,
+			&i.Template,
+			&i.Name,
+			&i.Instructions,
+			&i.ReplyMode,
+			&i.Threshold,
+			&i.CapsToolCalls,
+			&i.CapsTurns,
+			&i.MaxRepliesPerDay,
+			&i.HandOffUserID,
+			&i.Version,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ComplaintTagIds,
+			&i.FeedbackCheckedAt,
+			&i.FeedbackSince,
+			&i.StartMode,
+			&i.ChangeMode,
+			&i.WaitDays,
+			&i.RecipientUserID,
+			&i.ScheduleKind,
+			&i.ScheduleDay,
+			&i.ScheduleTime,
+			&i.ScheduleFiredAt,
 		); err != nil {
 			return nil, err
 		}
@@ -245,7 +384,7 @@ func (q *Queries) ListRolesOfAgents(ctx context.Context, agentIds []uuid.UUID) (
 }
 
 const lockRole = `-- name: LockRole :one
-SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since FROM agents.roles WHERE id = $1 AND agent_id = $2 FOR UPDATE
+SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since, start_mode, change_mode, wait_days, recipient_user_id, schedule_kind, schedule_day, schedule_time, schedule_fired_at FROM agents.roles WHERE id = $1 AND agent_id = $2 FOR UPDATE
 `
 
 type LockRoleParams struct {
@@ -274,8 +413,30 @@ func (q *Queries) LockRole(ctx context.Context, arg LockRoleParams) (AgentsRole,
 		&i.ComplaintTagIds,
 		&i.FeedbackCheckedAt,
 		&i.FeedbackSince,
+		&i.StartMode,
+		&i.ChangeMode,
+		&i.WaitDays,
+		&i.RecipientUserID,
+		&i.ScheduleKind,
+		&i.ScheduleDay,
+		&i.ScheduleTime,
+		&i.ScheduleFiredAt,
 	)
 	return i, err
+}
+
+const markScheduleFired = `-- name: MarkScheduleFired :exec
+UPDATE agents.roles SET schedule_fired_at = $1::timestamptz WHERE id = $2
+`
+
+type MarkScheduleFiredParams struct {
+	FiredAt time.Time
+	ID      uuid.UUID
+}
+
+func (q *Queries) MarkScheduleFired(ctx context.Context, arg MarkScheduleFiredParams) error {
+	_, err := q.db.Exec(ctx, markScheduleFired, arg.FiredAt, arg.ID)
+	return err
 }
 
 const updateRole = `-- name: UpdateRole :one
@@ -289,10 +450,18 @@ UPDATE agents.roles SET
     max_replies_per_day = $7,
     hand_off_user_id = $8::uuid,
     complaint_tag_ids = $9::uuid[],
+    start_mode = $10,
+    change_mode = $11,
+    wait_days = $12,
+    recipient_user_id = $13::uuid,
+    schedule_kind = $14::text,
+    schedule_day = $15::smallint,
+    schedule_time = $16::text,
+    schedule_fired_at = $17::timestamptz,
     version = version + 1,
-    updated_at = $10::timestamptz
-WHERE id = $11
-RETURNING id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since
+    updated_at = $18::timestamptz
+WHERE id = $19
+RETURNING id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since, start_mode, change_mode, wait_days, recipient_user_id, schedule_kind, schedule_day, schedule_time, schedule_fired_at
 `
 
 type UpdateRoleParams struct {
@@ -305,6 +474,14 @@ type UpdateRoleParams struct {
 	MaxRepliesPerDay int16
 	HandOffUserID    *uuid.UUID
 	ComplaintTagIds  []uuid.UUID
+	StartMode        string
+	ChangeMode       string
+	WaitDays         int16
+	RecipientUserID  *uuid.UUID
+	ScheduleKind     *string
+	ScheduleDay      *int16
+	ScheduleTime     *string
+	ScheduleFiredAt  *time.Time
 	Now              time.Time
 	ID               uuid.UUID
 }
@@ -320,6 +497,14 @@ func (q *Queries) UpdateRole(ctx context.Context, arg UpdateRoleParams) (AgentsR
 		arg.MaxRepliesPerDay,
 		arg.HandOffUserID,
 		arg.ComplaintTagIds,
+		arg.StartMode,
+		arg.ChangeMode,
+		arg.WaitDays,
+		arg.RecipientUserID,
+		arg.ScheduleKind,
+		arg.ScheduleDay,
+		arg.ScheduleTime,
+		arg.ScheduleFiredAt,
 		arg.Now,
 		arg.ID,
 	)
@@ -342,6 +527,14 @@ func (q *Queries) UpdateRole(ctx context.Context, arg UpdateRoleParams) (AgentsR
 		&i.ComplaintTagIds,
 		&i.FeedbackCheckedAt,
 		&i.FeedbackSince,
+		&i.StartMode,
+		&i.ChangeMode,
+		&i.WaitDays,
+		&i.RecipientUserID,
+		&i.ScheduleKind,
+		&i.ScheduleDay,
+		&i.ScheduleTime,
+		&i.ScheduleFiredAt,
 	)
 	return i, err
 }

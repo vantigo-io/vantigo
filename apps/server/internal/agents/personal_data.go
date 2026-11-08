@@ -215,6 +215,12 @@ func erase(ctx context.Context, q *store.Queries, convs []uuid.UUID, customerID 
 	if _, err := q.DeleteRequestsOfConversations(ctx, convs); err != nil {
 		return nil, fmt.Errorf("agents: erase run requests: %w", err)
 	}
+	if _, err := q.DeleteWakeupsOfCustomer(ctx, customerID); err != nil {
+		return nil, fmt.Errorf("agents: erase wakeups: %w", err)
+	}
+	if _, err := q.DeleteRequestsOfCustomer(ctx, customerID); err != nil {
+		return nil, fmt.Errorf("agents: erase the customer's run requests: %w", err)
+	}
 	if _, err := q.DeleteSeenSendersOfConversations(ctx, convs); err != nil {
 		return nil, fmt.Errorf("agents: erase senders: %w", err)
 	}

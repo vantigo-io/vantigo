@@ -571,7 +571,7 @@ func (q *Queries) ListMemoryOfCustomer(ctx context.Context, customerID string) (
 }
 
 const listRolesDueFeedback = `-- name: ListRolesDueFeedback :many
-SELECT r.id, r.agent_id, r.template, r.name, r.instructions, r.reply_mode, r.threshold, r.caps_tool_calls, r.caps_turns, r.max_replies_per_day, r.hand_off_user_id, r.version, r.created_at, r.updated_at, r.complaint_tag_ids, r.feedback_checked_at, r.feedback_since FROM agents.roles r JOIN agents.agents a ON a.id = r.agent_id
+SELECT r.id, r.agent_id, r.template, r.name, r.instructions, r.reply_mode, r.threshold, r.caps_tool_calls, r.caps_turns, r.max_replies_per_day, r.hand_off_user_id, r.version, r.created_at, r.updated_at, r.complaint_tag_ids, r.feedback_checked_at, r.feedback_since, r.start_mode, r.change_mode, r.wait_days, r.recipient_user_id, r.schedule_kind, r.schedule_day, r.schedule_time, r.schedule_fired_at FROM agents.roles r JOIN agents.agents a ON a.id = r.agent_id
 WHERE a.state = 'active' AND (r.feedback_checked_at IS NULL OR r.feedback_checked_at < $1::timestamptz)
 ORDER BY r.created_at, r.id
 `
@@ -604,6 +604,14 @@ func (q *Queries) ListRolesDueFeedback(ctx context.Context, weekStart time.Time)
 			&i.ComplaintTagIds,
 			&i.FeedbackCheckedAt,
 			&i.FeedbackSince,
+			&i.StartMode,
+			&i.ChangeMode,
+			&i.WaitDays,
+			&i.RecipientUserID,
+			&i.ScheduleKind,
+			&i.ScheduleDay,
+			&i.ScheduleTime,
+			&i.ScheduleFiredAt,
 		); err != nil {
 			return nil, err
 		}

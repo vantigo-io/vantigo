@@ -161,6 +161,13 @@ components:
                     description: Model turns a run may take, 1 to 16.
                     format: int32
                     type: integer
+                changeMode:
+                    description: How the changes the template marks as safe to automate are decided (V29). Every other change is reviewed whatever this says.
+                    enum:
+                        - review
+                        - auto_above
+                        - auto
+                    type: string
                 channelIds:
                     items:
                         format: uuid
@@ -200,8 +207,22 @@ components:
                     type: integer
                 name:
                     type: string
+                recipientUserId:
+                    description: The person a template that writes a note to one person sends it to (the project digest); null for none.
+                    format: uuid
+                    nullable: true
+                    type: string
                 replyMode:
                     description: How the role's replies are decided (V19). Stored in this delivery and acted on from the next.
+                    enum:
+                        - review
+                        - auto_above
+                        - auto
+                    type: string
+                schedule:
+                    $ref: '#/components/schemas/AgentRoleSchedule'
+                startMode:
+                    description: How a conversation the agent starts is decided (V29), by the same score and threshold as replies.
                     enum:
                         - review
                         - auto_above
@@ -210,6 +231,10 @@ components:
                 template:
                     enum:
                         - front_desk
+                        - reminder_replies
+                        - sales_followup
+                        - timesheet_reminders
+                        - project_digest
                     type: string
                 threshold:
                     description: '50 to 100: the score from which auto_above sends a reply.'
@@ -219,6 +244,10 @@ components:
                     format: date-time
                     type: string
                 version:
+                    format: int32
+                    type: integer
+                waitDays:
+                    description: Days after a quote is sent before the sales follow-up looks at it, 1 to 60.
                     format: int32
                     type: integer
             required:
@@ -235,9 +264,41 @@ components:
                 - handOffUserId
                 - handOffWarning
                 - channelIds
+                - waitDays
+                - recipientUserId
+                - schedule
+                - startMode
+                - changeMode
                 - version
                 - createdAt
                 - updatedAt
+            type: object
+        AgentRoleSchedule:
+            additionalProperties: false
+            description: 'When a role wakes by itself (V29): every week on a day, or every month on a day of the month, at a time in the business time zone. kind none is no schedule.'
+            properties:
+                day:
+                    description: For weekly, the weekday, 1 (Monday) to 7 (Sunday); for monthly, the day of the month, 1 to 28. Null for none.
+                    format: int32
+                    maximum: 28
+                    minimum: 1
+                    nullable: true
+                    type: integer
+                kind:
+                    enum:
+                        - none
+                        - weekly
+                        - monthly
+                    type: string
+                time:
+                    description: HH:MM, 24 hours, in the business time zone. Null for none.
+                    nullable: true
+                    pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+                    type: string
+            required:
+                - kind
+                - day
+                - time
             type: object
         ConversationHandOff:
             additionalProperties: false
@@ -288,6 +349,10 @@ components:
                 template:
                     enum:
                         - front_desk
+                        - reminder_replies
+                        - sales_followup
+                        - timesheet_reminders
+                        - project_digest
                     type: string
             required:
                 - template
@@ -309,6 +374,13 @@ components:
                     maximum: 16
                     minimum: 1
                     type: integer
+                changeMode:
+                    description: Loosening it is the Owner's alone. Absent keeps the role's.
+                    enum:
+                        - review
+                        - auto_above
+                        - auto
+                    type: string
                 complaintTagIds:
                     description: The Communications tags that mark a complaint (S5), at most 20. Absent keeps the role's.
                     items:
@@ -336,7 +408,20 @@ components:
                     maxLength: 80
                     minLength: 1
                     type: string
+                recipientUserId:
+                    description: An active person; the project digest goes to them. Absent keeps the role's, the nil uuid clears it.
+                    format: uuid
+                    type: string
                 replyMode:
+                    enum:
+                        - review
+                        - auto_above
+                        - auto
+                    type: string
+                schedule:
+                    $ref: '#/components/schemas/AgentRoleSchedule'
+                startMode:
+                    description: Loosening it is the Owner's alone. Absent keeps the role's.
                     enum:
                         - review
                         - auto_above
@@ -347,6 +432,12 @@ components:
                     format: int32
                     maximum: 100
                     minimum: 50
+                    type: integer
+                waitDays:
+                    description: 1 to 60. Absent keeps the role's.
+                    format: int32
+                    maximum: 60
+                    minimum: 1
                     type: integer
             required:
                 - name
@@ -425,6 +516,20 @@ components:
                     type: string
                 defaultName:
                     type: string
+                fields:
+                    description: The role fields the template uses, so the role page shows only these.
+                    items:
+                        enum:
+                            - channels
+                            - replyMode
+                            - startMode
+                            - changeMode
+                            - complaintTags
+                            - waitDays
+                            - schedule
+                            - recipient
+                        type: string
+                    type: array
                 hardRules:
                     items:
                         $ref: '#/components/schemas/AgentTemplateRule'
@@ -432,16 +537,42 @@ components:
                 key:
                     enum:
                         - front_desk
+                        - reminder_replies
+                        - sales_followup
+                        - timesheet_reminders
+                        - project_digest
                     type: string
                 needs:
                     items:
                         $ref: '#/components/schemas/AgentTemplateNeed'
                     type: array
+                safeOperations:
+                    description: "The allowlisted operations the template marks as safe to automate (V29): only a change by one of these follows the role's change mode."
+                    items:
+                        type: string
+                    type: array
+                tools:
+                    description: The agent's own tools the template offers.
+                    items:
+                        type: string
+                    type: array
+                trigger:
+                    description: What wakes the template's roles.
+                    enum:
+                        - conversation
+                        - quote_sent
+                        - week_unsubmitted
+                        - schedule
+                    type: string
             required:
                 - key
                 - defaultName
                 - defaultInstructions
                 - allowlist
+                - safeOperations
+                - tools
+                - fields
+                - trigger
                 - needs
                 - hardRules
             type: object
@@ -1151,6 +1282,7 @@ components:
                     enum:
                         - reply
                         - change
+                        - start
                     type: string
                 modelScore:
                     description: The model's own score before the sources were checked.
@@ -1161,6 +1293,8 @@ components:
                     type: string
                 reply:
                     $ref: '#/components/schemas/ReviewReply'
+                start:
+                    $ref: '#/components/schemas/ReviewStart'
                 roleId:
                     format: uuid
                     type: string
@@ -1242,6 +1376,23 @@ components:
                 - total
                 - limit
                 - offset
+            type: object
+        ReviewStart:
+            additionalProperties: false
+            description: "A conversation the agent would start (V29), to a contact of the run's customer on one of the role's channels. The text and the disclosure are in the item's reply object; there is no conversation yet, so conversationId is the nil uuid."
+            properties:
+                channelId:
+                    format: uuid
+                    type: string
+                subject:
+                    type: string
+                to:
+                    description: The contact's e-mail address.
+                    type: string
+            required:
+                - channelId
+                - to
+                - subject
             type: object
         ReviewReply:
             additionalProperties: false

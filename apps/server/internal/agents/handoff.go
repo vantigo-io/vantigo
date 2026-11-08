@@ -32,6 +32,8 @@ const (
 	reasonRetry    = "retry"
 )
 
+// reasonWakeup and reasonEvent, for a run about a subject, are in subject.go.
+
 // The states of a run (V14) and the outcomes it ends in.
 const (
 	runQueued        = "queued"
@@ -70,6 +72,9 @@ const (
 // and the marker that keeps the trigger away. It also drops the conversation's
 // waiting requests.
 func markHandedOff(ctx context.Context, q *store.Queries, agentID, roleID, conversationID uuid.UUID, code, summary string, now time.Time) error {
+	if conversationID == uuid.Nil {
+		return nil
+	}
 	if err := q.InsertHandedOffRun(ctx, store.InsertHandedOffRunParams{
 		ID: uuid.New(), AgentID: agentID, RoleID: roleID, ConversationID: conversationID, Reason: reasonMessage,
 		ErrorCode: &code, Summary: &summary, Now: now,
@@ -86,6 +91,9 @@ func handOffAtOnce(ctx context.Context, q *store.Queries, role store.RoleOfChann
 
 // writeMarker writes the hand-off marker and drops the requests that wait.
 func writeMarker(ctx context.Context, q *store.Queries, roleID, conversationID uuid.UUID, code string, now time.Time) error {
+	if conversationID == uuid.Nil {
+		return nil // a run about a subject has no conversation to keep the agent away from
+	}
 	if err := q.UpsertHandedOff(ctx, store.UpsertHandedOffParams{ConversationID: conversationID, RoleID: roleID, At: now, Reason: code}); err != nil {
 		return fmt.Errorf("agents: mark the conversation handed off: %w", err)
 	}
@@ -210,6 +218,10 @@ func (s *server) finishHandOff(ctx context.Context, q *store.Queries, run store.
 	}
 	if err != nil {
 		return err
+	}
+	if run.ConversationID == uuid.Nil {
+		s.handOffSubject(ctx, agent, role, run.ID)
+		return q.SetRunOutcome(ctx, store.SetRunOutcomeParams{ID: run.ID, Outcome: ptr(outcomeHandedOf)})
 	}
 	grant, err := s.deps.AgentGrants.Issue(ctx, contracts.IssueAgentGrant{AgentUserID: agent.UserID, AgentID: agent.ID, RunID: run.ID})
 	if errors.Is(err, contracts.ErrAgentInactive) || errors.Is(err, contracts.ErrNotAgent) {

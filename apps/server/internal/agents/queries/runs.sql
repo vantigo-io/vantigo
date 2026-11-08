@@ -1,6 +1,6 @@
 -- name: RoleOfChannel :one
 -- The role that answers a channel, with whether its agent is active and its user.
-SELECT r.id AS role_id, r.agent_id, a.user_id AS agent_user_id, a.state AS agent_state
+SELECT r.id AS role_id, r.agent_id, r.template, a.user_id AS agent_user_id, a.state AS agent_state
 FROM agents.role_channels rc
 JOIN agents.roles r ON r.id = rc.role_id
 JOIN agents.agents a ON a.id = r.agent_id
@@ -32,28 +32,36 @@ DELETE FROM agents.run_queue WHERE conversation_id = @conversation_id AND taken_
 -- name: UpsertRunRequest :exec
 -- One untaken request per (role, conversation): a second message moves
 -- not_before to now + the wait, never past due_by (first + the ceiling).
-INSERT INTO agents.run_queue (role_id, conversation_id, reason, not_before, due_by, created_at)
-VALUES (@role_id, @conversation_id, @reason, @not_before::timestamptz, @due_by::timestamptz, @now::timestamptz)
-ON CONFLICT (role_id, conversation_id) WHERE taken_at IS NULL
-DO UPDATE SET not_before = LEAST(EXCLUDED.not_before, agents.run_queue.due_by);
+INSERT INTO agents.run_queue (role_id, conversation_id, reason, note, not_before, due_by, created_at)
+VALUES (@role_id, @conversation_id, @reason, @note, @not_before::timestamptz, @due_by::timestamptz, @now::timestamptz)
+ON CONFLICT (role_id, conversation_id, subject_id) WHERE taken_at IS NULL
+DO UPDATE SET not_before = LEAST(EXCLUDED.not_before, agents.run_queue.due_by),
+              note = CASE WHEN EXCLUDED.note <> '' THEN EXCLUDED.note ELSE agents.run_queue.note END;
 
 -- name: InsertRetryRequest :exec
-INSERT INTO agents.run_queue (role_id, conversation_id, reason, attempt, not_before, due_by, created_at)
-VALUES (@role_id, @conversation_id, 'retry', @attempt, @now::timestamptz, @now::timestamptz, @now::timestamptz)
-ON CONFLICT (role_id, conversation_id) WHERE taken_at IS NULL DO NOTHING;
+INSERT INTO agents.run_queue (role_id, conversation_id, subject_type, subject_id, customer_id, reason, attempt, not_before, due_by, created_at)
+VALUES (@role_id, @conversation_id, @subject_type, @subject_id, sqlc.narg(customer_id)::integer, 'retry', @attempt, @now::timestamptz, @now::timestamptz, @now::timestamptz)
+ON CONFLICT (role_id, conversation_id, subject_id) WHERE taken_at IS NULL DO NOTHING;
+
+-- name: InsertSubjectRequest :exec
+-- A request to run a role about a subject that is not a conversation (V29): a
+-- wakeup that came due, or an event. One untaken request per role and subject.
+INSERT INTO agents.run_queue (role_id, conversation_id, subject_type, subject_id, customer_id, reason, note, not_before, due_by, created_at)
+VALUES (@role_id, '00000000-0000-0000-0000-000000000000', @subject_type, @subject_id, sqlc.narg(customer_id)::integer, @reason, @note, @now::timestamptz, @now::timestamptz, @now::timestamptz)
+ON CONFLICT (role_id, conversation_id, subject_id) WHERE taken_at IS NULL DO NOTHING;
 
 -- name: ClaimDueRequest :one
 -- The oldest due request of an active agent whose conversation has no run in
 -- progress, locked so another replica skips it. The caller commits before the
 -- run starts.
-SELECT q.id, q.role_id, q.conversation_id, q.reason, q.attempt, r.agent_id
+SELECT q.id, q.role_id, q.conversation_id, q.subject_type, q.subject_id, q.customer_id, q.reason, q.attempt, r.agent_id
 FROM agents.run_queue q
 JOIN agents.roles r ON r.id = q.role_id
 JOIN agents.agents a ON a.id = r.agent_id
 WHERE q.taken_at IS NULL AND q.not_before <= @now::timestamptz AND a.state = 'active'
   AND NOT EXISTS (
       SELECT 1 FROM agents.runs x
-      WHERE x.role_id = q.role_id AND x.conversation_id = q.conversation_id AND x.state IN ('queued', 'running'))
+      WHERE x.role_id = q.role_id AND x.conversation_id = q.conversation_id AND x.subject_id = q.subject_id AND x.state IN ('queued', 'running'))
 ORDER BY q.not_before, q.id
 LIMIT 1
 FOR UPDATE OF q SKIP LOCKED;
@@ -62,8 +70,8 @@ FOR UPDATE OF q SKIP LOCKED;
 UPDATE agents.run_queue SET taken_at = @now::timestamptz, run_id = @run_id WHERE id = @id;
 
 -- name: InsertRun :exec
-INSERT INTO agents.runs (id, agent_id, role_id, conversation_id, reason, attempt, state, claimed_by, claimed_until, started_at)
-VALUES (@id, @agent_id, @role_id, @conversation_id, @reason, @attempt, 'running', @claimed_by, @claimed_until::timestamptz, @now::timestamptz);
+INSERT INTO agents.runs (id, agent_id, role_id, conversation_id, subject_type, subject_id, customer_id, reason, attempt, state, claimed_by, claimed_until, started_at)
+VALUES (@id, @agent_id, @role_id, @conversation_id, @subject_type, @subject_id, sqlc.narg(customer_id)::integer, @reason, @attempt, 'running', @claimed_by, @claimed_until::timestamptz, @now::timestamptz);
 
 -- name: InsertHandedOffRun :exec
 -- A run that never started: a request handed off before it could (the budget,
@@ -120,7 +128,7 @@ UPDATE agents.runs SET state = @state, error_code = @error_code, summary = sqlc.
 WHERE id = @id;
 
 -- name: ListStaleRequests :many
-SELECT q.id, q.role_id, q.conversation_id, q.reason, r.agent_id
+SELECT q.id, q.role_id, q.conversation_id, q.subject_type, q.reason, r.agent_id
 FROM agents.run_queue q
 JOIN agents.roles r ON r.id = q.role_id
 WHERE q.taken_at IS NULL AND q.created_at < @before::timestamptz
@@ -129,7 +137,7 @@ LIMIT @n
 FOR UPDATE OF q SKIP LOCKED;
 
 -- name: ListUntakenRequestsOfAgent :many
-SELECT q.id, q.role_id, q.conversation_id, q.reason
+SELECT q.id, q.role_id, q.conversation_id, q.subject_type, q.reason
 FROM agents.run_queue q
 JOIN agents.roles r ON r.id = q.role_id
 WHERE q.taken_at IS NULL AND r.agent_id = @agent_id
@@ -213,3 +221,15 @@ WHERE conversation_id = @conversation_id AND state = 'waiting';
 UPDATE agents.review_items SET state = 'withdrawn', decided_at = @now::timestamptz, version = version + 1
 WHERE role_id = @role_id AND state = 'waiting'
 RETURNING id, agent_id, role_id, conversation_id;
+
+-- name: GetRequestOfRun :one
+-- The request a run was made from: what a wakeup or an event said (V29).
+SELECT * FROM agents.run_queue WHERE run_id = @run_id;
+
+-- name: CountStartsSince :one
+-- Conversations a role started to a customer since a moment (S7 for V29): a run's
+-- own start and a reviewer's approval, and the ones still waiting.
+SELECT (
+    (SELECT count(*) FROM agents.runs r WHERE r.role_id = @role_id AND r.customer_id = sqlc.narg(customer_id)::integer AND r.conversation_id = '00000000-0000-0000-0000-000000000000' AND r.sent_at >= @since::timestamptz) +
+    (SELECT count(*) FROM agents.review_items i WHERE i.role_id = @role_id AND i.customer_id = sqlc.narg(customer_id)::integer AND i.kind = 'start' AND i.state IN ('waiting', 'deciding', 'sent', 'edited_sent') AND i.created_at >= @since::timestamptz)
+)::bigint;

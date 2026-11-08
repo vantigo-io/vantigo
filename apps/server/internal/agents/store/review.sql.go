@@ -139,35 +139,41 @@ func (q *Queries) CountPersonalRows(ctx context.Context, arg CountPersonalRowsPa
 
 const countReviewItems = `-- name: CountReviewItems :one
 SELECT count(*) FROM agents.review_items i
+LEFT JOIN agents.roles r ON r.id = i.role_id
 WHERE ($1::uuid IS NULL OR i.agent_id = $1::uuid)
-  AND ($2::text IS NULL OR i.state = $2::text
-       OR ($2::text = 'decided' AND i.state NOT IN ('waiting', 'deciding')))
+  AND COALESCE(r.template, 'front_desk') = ANY($2::text[])
+  AND ($3::text IS NULL OR i.state = $3::text
+       OR ($3::text = 'decided' AND i.state NOT IN ('waiting', 'deciding')))
 `
 
 type CountReviewItemsParams struct {
-	AgentID *uuid.UUID
-	State   *string
+	AgentID   *uuid.UUID
+	Templates []string
+	State     *string
 }
 
 func (q *Queries) CountReviewItems(ctx context.Context, arg CountReviewItemsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countReviewItems, arg.AgentID, arg.State)
+	row := q.db.QueryRow(ctx, countReviewItems, arg.AgentID, arg.Templates, arg.State)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
 const countRunsOfAgent = `-- name: CountRunsOfAgent :one
-SELECT count(*) FROM agents.runs
-WHERE agent_id = $1 AND ($2::text IS NULL OR state = $2::text)
+SELECT count(*) FROM agents.runs x
+LEFT JOIN agents.roles r ON r.id = x.role_id
+WHERE x.agent_id = $1 AND ($2::text IS NULL OR x.state = $2::text)
+  AND COALESCE(r.template, 'front_desk') = ANY($3::text[])
 `
 
 type CountRunsOfAgentParams struct {
-	AgentID uuid.UUID
-	State   *string
+	AgentID   uuid.UUID
+	State     *string
+	Templates []string
 }
 
 func (q *Queries) CountRunsOfAgent(ctx context.Context, arg CountRunsOfAgentParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countRunsOfAgent, arg.AgentID, arg.State)
+	row := q.db.QueryRow(ctx, countRunsOfAgent, arg.AgentID, arg.State, arg.Templates)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -780,19 +786,21 @@ FROM agents.review_items i
 JOIN agents.agents a ON a.id = i.agent_id
 LEFT JOIN agents.roles r ON r.id = i.role_id
 WHERE ($1::uuid IS NULL OR i.agent_id = $1::uuid)
-  AND ($2::text IS NULL OR i.state = $2::text
-       OR ($2::text = 'decided' AND i.state NOT IN ('waiting', 'deciding')))
+  AND COALESCE(r.template, 'front_desk') = ANY($2::text[])
+  AND ($3::text IS NULL OR i.state = $3::text
+       OR ($3::text = 'decided' AND i.state NOT IN ('waiting', 'deciding')))
 ORDER BY (i.state IN ('waiting', 'deciding')) DESC,
          CASE WHEN i.state = 'waiting' THEN i.expires_at END ASC,
          i.created_at DESC
-LIMIT $4 OFFSET $3
+LIMIT $5 OFFSET $4
 `
 
 type ListReviewItemsParams struct {
-	AgentID *uuid.UUID
-	State   *string
-	Off     int32
-	N       int32
+	AgentID   *uuid.UUID
+	Templates []string
+	State     *string
+	Off       int32
+	N         int32
 }
 
 type ListReviewItemsRow struct {
@@ -830,6 +838,7 @@ type ListReviewItemsRow struct {
 func (q *Queries) ListReviewItems(ctx context.Context, arg ListReviewItemsParams) ([]ListReviewItemsRow, error) {
 	rows, err := q.db.Query(ctx, listReviewItems,
 		arg.AgentID,
+		arg.Templates,
 		arg.State,
 		arg.Off,
 		arg.N,
@@ -913,23 +922,27 @@ func (q *Queries) ListRunMessages(ctx context.Context, runID uuid.UUID) ([]Agent
 }
 
 const listRunsOfAgent = `-- name: ListRunsOfAgent :many
-SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict, answered_over_at FROM agents.runs
-WHERE agent_id = $1 AND ($2::text IS NULL OR state = $2::text)
-ORDER BY started_at DESC, id
-LIMIT $4 OFFSET $3
+SELECT x.id, x.agent_id, x.role_id, x.conversation_id, x.customer_id, x.reason, x.attempt, x.state, x.outcome, x.error_code, x.summary, x.claimed_by, x.claimed_until, x.tool_calls, x.model_turns, x.input_tokens, x.output_tokens, x.started_at, x.ended_at, x.sent_at, x.verdict, x.answered_over_at, x.subject_type, x.subject_id FROM agents.runs x
+LEFT JOIN agents.roles r ON r.id = x.role_id
+WHERE x.agent_id = $1 AND ($2::text IS NULL OR x.state = $2::text)
+  AND COALESCE(r.template, 'front_desk') = ANY($3::text[])
+ORDER BY x.started_at DESC, x.id
+LIMIT $5 OFFSET $4
 `
 
 type ListRunsOfAgentParams struct {
-	AgentID uuid.UUID
-	State   *string
-	Off     int32
-	N       int32
+	AgentID   uuid.UUID
+	State     *string
+	Templates []string
+	Off       int32
+	N         int32
 }
 
 func (q *Queries) ListRunsOfAgent(ctx context.Context, arg ListRunsOfAgentParams) ([]AgentsRun, error) {
 	rows, err := q.db.Query(ctx, listRunsOfAgent,
 		arg.AgentID,
 		arg.State,
+		arg.Templates,
 		arg.Off,
 		arg.N,
 	)
@@ -963,6 +976,8 @@ func (q *Queries) ListRunsOfAgent(ctx context.Context, arg ListRunsOfAgentParams
 			&i.SentAt,
 			&i.Verdict,
 			&i.AnsweredOverAt,
+			&i.SubjectType,
+			&i.SubjectID,
 		); err != nil {
 			return nil, err
 		}

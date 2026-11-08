@@ -11,6 +11,7 @@ sources:
   - apps/server/internal/db/migrations/00146_agents_runs.sql
   - apps/server/internal/db/migrations/00147_agents_review.sql
   - apps/server/internal/db/migrations/00148_agents_memory.sql
+  - apps/server/internal/db/migrations/00149_agents_roles.sql
   - apps/server/internal/contracts/agent_memory.go
   - apps/server/internal/identity/access.go
   - apps/server/internal/config
@@ -77,8 +78,8 @@ cannot call this module.
 | `POST /agents/{agentId}/pause` | `agents:manage` | 200, 404 | Active to paused. Pausing a paused agent is not an error. |
 | `POST /agents/{agentId}/resume` | `agents:manage` | 200, 404 | Paused to active. |
 | `PUT /agents/{agentId}/permissions/{key}` | `agents:manage` | 200, 400, 404, 409 | Sets the level `off`, `read` or `change`. 403 `owner_required` when raising and not the Owner; 409 `level_locked` for a key in the never list; 404 for a key the catalog lacks. |
-| `POST /agents/{agentId}/roles` | `agents:manage` | 201, 400, 404 | Adds a role from a template, in `review` with no channel. Empty instructions take the template's. |
-| `PUT /agents/{agentId}/roles/{roleId}` | `agents:manage` | 200, 400, 404, 409 | Replaces the role. `If-Match`; 403 `owner_required` when it loosens the mode or lowers the threshold outside `review`. |
+| `POST /agents/{agentId}/roles` | `agents:manage` | 201, 400, 404 | Adds a role from a template (any of the five), in `review` with no channel. Empty instructions take the template's. |
+| `PUT /agents/{agentId}/roles/{roleId}` | `agents:manage` | 200, 400, 404, 409 | Replaces the role. `If-Match`; 403 `owner_required` when it loosens the reply, start or change mode, or lowers the threshold while any of the three is not `review`. `startMode`, `changeMode`, `waitDays` (1 to 60), `recipientUserId` (an active person; the nil uuid clears it) and `schedule` (`kind` `none`, `weekly` or `monthly`, with `day` and `time`) are optional and an absent one keeps the role's; a schedule on a template with none is 400. |
 | `DELETE /agents/{agentId}/roles/{roleId}` | `agents:manage` | 204, 404 | Removes the role and its channels. |
 | `PUT /agents/{agentId}/roles/{roleId}/channels` | `agents:manage` | 200, 400, 404, 409 | Replaces the role's channels (at most 50). 409 `channel_bound` when another role holds one. |
 | `GET /agents/{agentId}/setup` | `agents:view` | 200, 404 | What the agent's roles need against the levels it has, and whether its Identity roles hold each permission. |
@@ -100,7 +101,7 @@ cannot call this module.
 | `POST /review/{itemId}/approve` | `agents:review` + the item's own rule | 200, 400, 403, 404, 409, 422, 502 | [Sends the reply or makes the change](#how-a-decision-is-made). `If-Match`. |
 | `POST /review/{itemId}/send` | `agents:review` + the reply's rule | 200, 400, 403, 404, 409, 422, 502 | Sends the reviewer's `text` (and optional `components`) under the reply's disclosure. Only a reply. `If-Match`. |
 | `POST /review/{itemId}/discard` | `agents:review` | 200, 400, 403, 404, 409 | Discards with a `reason` (`wrong_facts`, `wrong_tone`, `should_not_answer`, `other`) and an optional `text`. Discarding a reply hands off. `If-Match`. |
-| `GET /templates` | `agents:view` | 200 | The role templates: default name and instructions, allowlist, needs and hard rules. |
+| `GET /templates` | `agents:view` | 200 | The five role templates: default name and instructions, allowlist, the operations marked safe to automate, needs, hard rules, tools, the role fields the template uses and its trigger. |
 | `GET /conversations/{conversationId}/hand-off` | `communications:conversations-view` | 200 | Whether the conversation is handed off (`handedOff`, `at`, `reason`, `roleId`). |
 | `DELETE /conversations/{conversationId}/hand-off` | `communications:conversations-manage` | 204 | Gives the conversation back to the agent: the marker is cleared. Nothing happens when there is none. |
 
@@ -147,15 +148,16 @@ The `agents` schema. A user, a channel and a hand-off person are opaque ids.
 | `settings` | One row (unique index on `(true)`). `company_name` varchar(120), empty until set; `retention_months` 1 to 60, default 6, never above the cap of [retention](#retention-and-erasure); `version`, `updated_at`, `updated_by_user_id`. |
 | `agents` | `id`, `user_id` (unique), `name` 1 to 60, `style` at most 1,500, `languages` (`customer`, `nb`, `en`), `disclosure_wording` (`assistant`, `talking`, `compact`), `state` (`active`, `paused`, `deleted`), `daily_token_budget` (null for none, else above 0), `version`, timestamps and `created_by_user_id`. A deleted row stays so the audit's references stay true. |
 | `permission_levels` | `(agent_id, permission_key)` key, `level` (`off`, `read`, `change`). Only what was given is stored; **off deletes the row**. Cascades with the agent. |
-| `roles` | `template` (`front_desk`), `name` 1 to 80, `instructions` at most 8,000, `reply_mode` (default `review`), `threshold` 50 to 100 (default 85), `caps_tool_calls` (default 30), `caps_turns` (default 8), `max_replies_per_day` (default 5), `hand_off_user_id`, `complaint_tag_ids` (the tags that mark a complaint, S5), `version`. Cascades with the agent. |
+| `roles` | `template` (`front_desk`, `reminder_replies`, `sales_followup`, `timesheet_reminders`, `project_digest`), `start_mode` and `change_mode` (as `reply_mode`, default `review`; the threshold is shared), `wait_days` 1 to 60 (default 7), `recipient_user_id`, the schedule (`schedule_kind` `weekly` or `monthly`, `schedule_day` 1 to 28, `schedule_time` `HH:MM`, all three or none, and `schedule_fired_at`), `name` 1 to 80, `instructions` at most 8,000, `reply_mode` (default `review`), `threshold` 50 to 100 (default 85), `caps_tool_calls` (default 30), `caps_turns` (default 8), `max_replies_per_day` (default 5), `hand_off_user_id`, `complaint_tag_ids` (the tags that mark a complaint, S5), `version`. Cascades with the agent. |
 | `role_channels` | `(role_id, channel_id)` key with `channel_id` unique: a channel belongs to at most one role. |
 | `events` | The Owner's changes: `at`, `actor_user_id`, `action`, `target`, `before` and `after` as jsonb. |
-| `run_queue` | A request for a run: `role_id`, `conversation_id`, `reason` (`message`, `assigned`, `retry`), `attempt`, `not_before`, `due_by`, `taken_at`, `run_id`. A partial unique index on `(role_id, conversation_id)` where `taken_at` is null holds one request that waits. |
+| `run_queue` | A request for a run: `role_id`, `conversation_id`, `subject_type` and `subject_id` (see [runs about a subject](#runs-about-a-subject)), `customer_id`, `reason` (`message`, `assigned`, `retry`, `wakeup`, `event`), `note` (what the wakeup or the event said), `attempt`, `not_before`, `due_by`, `taken_at`, `run_id`. A partial unique index on `(role_id, conversation_id, subject_id)` where `taken_at` is null holds one request that waits. |
+| `wakeups` | A moment a role is to look at a subject again: `role_id` (cascade), `subject_type` (`conversation`, `quote`, `schedule`, `person_week`), `subject_id`, `customer_id` (from the event that made it, never from a message), `at`, `reason` (at most 200), `taken_at`. A partial unique index on `(role_id, subject_type, subject_id)` where `taken_at` is null holds one pending wakeup, which a second moves. |
 | `handed_off` | `conversation_id` (key), `role_id`, `at`, `reason`: the marker that keeps the trigger away. |
-| `runs` | One run: `agent_id`, `role_id`, `conversation_id`, `customer_id` (the run's scope), `reason`, `attempt`, `state` (`queued`, `running`, `done`, `waiting_review`, `handed_off`, `failed`, `stopped`), `outcome` (`sent`, `review`, `handed_off`, `no_reply`), `error_code`, `summary`, `claimed_by`, `claimed_until`, the counts of tool calls, turns and tokens, `started_at`, `ended_at`, `sent_at`. `verdict` (jsonb, what the pipeline decided: `mode`, `threshold`, `score`, `modelScore`, `sources`, `held`, `refused`, `sent`). A partial unique index on `(role_id, conversation_id)` for `queued` and `running` keeps one run at a time. |
+| `runs` | One run: `agent_id`, `role_id`, `conversation_id`, `customer_id` (the run's scope), `reason`, `attempt`, `state` (`queued`, `running`, `done`, `waiting_review`, `handed_off`, `failed`, `stopped`), `outcome` (`sent`, `review`, `handed_off`, `no_reply`), `error_code`, `summary`, `claimed_by`, `claimed_until`, the counts of tool calls, turns and tokens, `started_at`, `ended_at`, `sent_at`. `verdict` (jsonb, what the pipeline decided: `mode`, `threshold`, `score`, `modelScore`, `sources`, `held`, `refused`, `sent`). `subject_type` and `subject_id`. A partial unique index on `(role_id, conversation_id, subject_id)` for `queued` and `running` keeps one run at a time. |
 | `run_messages` | The transcript: `run_id`, `role`, `text`, `tool_calls`, `tool_call_id`. Copies of message bodies, so retention deletes them with the run. |
 | `actions` | The action log, one row per tool call: `operation_id`, `ref` (the operation and the ids it named), `scoped` (it returned a customer's data), `mode`, `status`, `http_status`, `duration_ms`, `approved_by`. Never a body. |
-| `review_items` | What a run leaves for a person: `kind` (`reply` or `change`), `item` (jsonb), `score`, `sources`, `model_score`, `held_by` (rule codes), `state` (`waiting`, `deciding` while a reviewer acts on it, `sent`, `edited_sent`, `discarded`, `withdrawn`, `expired`), `claimed_at`, `version`, the decision's columns, `expires_at` (24 hours, or a Messenger window's close less 15 minutes), `channel_id` (so unbinding the channel withdraws what waits on it), `discard_reason`, `discard_text`, `edit_ratio`, `outcome`. A reply's `item` holds `text`, `disclosure`, `components`, `inReplyToMessageId` and `windowClosesAt`; a change's holds `operationId`, `summary`, `explain`, `pathParams`, `query` and `body`. |
+| `review_items` | What a run leaves for a person: `kind` (`reply`, `change` or `start`), `item` (jsonb), `score`, `sources`, `model_score`, `held_by` (rule codes), `state` (`waiting`, `deciding` while a reviewer acts on it, `sent`, `edited_sent`, `discarded`, `withdrawn`, `expired`), `claimed_at`, `version`, the decision's columns, `expires_at` (24 hours, or a Messenger window's close less 15 minutes), `channel_id` (so unbinding the channel withdraws what waits on it), `discard_reason`, `discard_text`, `edit_ratio`, `outcome`. A reply's `item` holds `text`, `disclosure`, `components`, `inReplyToMessageId` and `windowClosesAt`; a start's holds `text`, `disclosure`, `channelId`, `to` and `subject`; a change's holds `operationId`, `summary`, `explain`, `pathParams`, `query` and `body`. |
 | `usage_days` | `(agent_id, day)`: runs, input and output tokens, sent, held and discarded. |
 | `channel_addresses`, `seen_senders` | The addresses of the channels the module has read (V23), and the senders it has met (S4). |
 | `conversation_links` | `conversation_id` (key), `customer_id` and `contact_ids` as the module last saw the conversation linked, `seen_at`: what [erasure](#retention-and-erasure) finds a customer's or a contact's conversations by. |
@@ -212,9 +214,39 @@ with a reason.
 The Assistant's API is not on the list because it names no permission, and the dispatcher
 refuses it by its path.
 
-## The front desk template
+## Templates
 
-The one template of this delivery, `front_desk` (default name *Front desk*). It answers
+Five templates, in code. Each declares its trigger, the levels it needs, its allowlist with the
+operations it marks **safe to automate**, its default instructions, the tools it offers and the role fields it uses.
+
+| Key | Trigger | Tools | Role fields |
+| --- | --- | --- | --- |
+| `front_desk` | `communications.conversation.message_received` and `assigned`, on a bound channel | `reply`, `note`, `tag`, `remember`, `follow_up`, `hand_off` | channels, reply mode, change mode, complaint tags |
+| `reminder_replies` | the same; the allowlist is the front desk's, which holds Invoices' reads | the same | the same |
+| `sales_followup` | `orders.quote.sent`, `wait_days` later | `start_conversation`, `remember`, `follow_up`, `hand_off` | channels, start mode, wait days |
+| `timesheet_reminders` | `time.week.unsubmitted` | `notify`, `hand_off` | none |
+| `project_digest` | the role's schedule | `notify`, `hand_off` | schedule, recipient |
+
+Only a template that answers conversations is woken by a message: a reply to a conversation the sales follow-up
+started waits in the Inbox. The timesheet reminders' allowlist is empty (the event names the week and the hours), the project
+digest's holds Projects' `getProjects`, `getProjectsById` and `getProjectsByIdMilestones`, and the sales follow-up's holds
+`getQuote`, `getCustomer`, `getCustomersByIdContacts`, `getCommunicationsConversations` (all four customer-scoped:
+`getQuote` by `customer.customerId`, the list by `customerId`), `postCommunicationsConversations` (reserved for `start_conversation`: refused
+through `call_operation`), and Knowledge's two reads. `GET /templates` answers the five with `fields`, `tools`, `trigger` and
+`safeOperations`.
+
+### Safe to automate
+
+A template marks an allowlisted operation as safe. Only such a change follows the role's `change_mode` (decided by
+S3 and the threshold, as [a reply is](#the-pipeline)); every other change is a review item of kind `change`. A change
+that is not made, because the mode holds it, a score is under the threshold or the call was refused before dispatch,
+becomes a review item as before; one whose outcome is unknown is not retried or queued, and hands the conversation
+off. The front desk and the reminder replies mark `patchCommunicationsConversationsById` (its body pinned to `status`).
+Raising `start_mode` or `change_mode`, or lowering the threshold while any mode is not Review, is the Owner's alone.
+
+### The front desk
+
+`front_desk` (default name *Front desk*). It answers
 the conversations that come in on the channels its role is bound to.
 
 ### The allowlist
@@ -283,6 +315,32 @@ unlocked ones hold in Review and Auto above X %.
 
 The rules are applied by [the pipeline](#the-pipeline).
 
+## Runs about a subject
+
+A run is about a conversation, or about a **subject**: a `quote`, a `person_week` (`<user id>|<Monday>`) or a
+`schedule` (the occurrence's date in the business time zone). Such a run has the nil uuid for its conversation
+(`runs.conversation_id`), names the subject in `subject_type` and `subject_id`, and has the customer the event named
+(`run_queue.customer_id`, carried to `runs.customer_id`) or none. It marks and hands off no conversation: a hand-off
+mails the role's hand-off person a link to the run. A run that ends having done nothing (the quote was accepted) is `done` with outcome
+`no_reply`. Memory is kept only about a customer. S7's hourly run count and the reply count are the conversation runs'.
+
+## Wakeups
+
+The `agents-wakeups` worker (every 30 seconds, needing only the database):
+
+1. **Schedules.** For each role of an active agent with a schedule, the latest occurrence at or before now in the business
+   time zone (`weekly` on an ISO weekday 1 to 7, `monthly` on a day 1 to 28, at `HH:MM`; a local time the clocks skip is
+   the moment after the jump, one they repeat the later) is written as a `schedule` wakeup, once, and `schedule_fired_at`
+   moved to it, in one transaction. An occurrence more than 12 hours old is not written, only marked. Setting or
+   changing a schedule sets `schedule_fired_at` to now.
+2. **Due wakeups.** Wakeups that came due, of active agents' roles (a paused agent's wait), become run requests: a
+   `conversation` wakeup an ordinary request with reason `wakeup` unless the conversation is handed off; any other subject
+   a request with the subject, the customer and the wakeup's reason as `note`. A wakeup more than 7 days late is dropped. Each is marked taken.
+
+`agents.trigger` also takes `orders.quote.sent` (a `quote` wakeup at the sent time plus each sales follow-up role's `wait_days`,
+replacing the quote's pending one), `orders.quote.accepted` (removes the quote's pending wakeups) and `time.week.unsubmitted`
+(a request, reason `event`, for each timesheet reminders role). Roles of paused agents are woken too; their requests lapse after a day.
+
 ## The trigger
 
 `agents.trigger` is a handler of the [domain-events outbox](/en/contributing/platform-packages/#the-domain-events-outbox)
@@ -342,7 +400,10 @@ From `agentloop`, as the agent and limited to the run's role's allowlist by the 
 | `note` | An internal note on the conversation. |
 | `tag` | Tags the conversation. |
 | `remember` | `text` (at most 500 characters). Keeps a [note](#memory) about the run's customer. Refused with `no_customer` when the run has none, `note_too_long`, `too_many_notes` (3 a run) and `memory_full` (50 for the customer, nothing evicted). A note the agent already holds answers `already_remembered`. It writes nothing to Communications and needs no level. |
-| `hand_off` | A note with the summary, the conversation assigned to the role's hand-off person (or the assignee cleared), the marker written, the run ended. |
+| `hand_off` | A note with the summary, the conversation assigned to the role's hand-off person (or the assignee cleared), the marker written, the run ended. In a run about a subject: the hand-off person is mailed a link, the run ended. |
+| `follow_up` | `at` (RFC 3339, or a date taken as 08:00 in the business time zone), `reason` (at most 200). Writes the one pending wakeup of the run's own subject (the conversation, or the quote): refused `out_of_range` unless `at` is in the future and at most 30 days ahead, `no_subject` for a scheduled run, `handed_off` once the run handed the conversation off. |
+| `start_conversation` | `channelId`, `to`, `subject`, `text`, `sources[]`, `score`. Starts one conversation a run through Communications' `POST /conversations` as the agent, with the customer linked and `Idempotency-Key` per role, subject, day and address. Refused in code: `channel_not_yours` (the channel is not one of the role's), `no_customer`, `not_a_contact` (the address is not an e-mail of the run's customer's contacts, or is a channel of this installation), `already_followed_up` (the role has started `max_replies_per_day` conversations to the customer in 24 hours), `already_started`. The verdict, the rules and the disclosure are the reply's; the mode is `start_mode`; held, it is a review item of kind `start`. |
+| `notify` | `title`, `text`. One message to one colleague by `UserDirectory.Notify`, with the disclosure line on top and C1 applied (a failed or positive check refuses it: `rejected`); the recipient is the person of the subject (`person_week`) or the role's `recipient_user_id`, never the model's. Refused for an inactive person or an agent. Not reviewed. |
 
 **Pinned.** Every operation that names a conversation (`getCommunicationsConversationsById`,
 `postCommunicationsConversationsByIdReply`, `…Notes`, `patchCommunicationsConversationsById`, the tag
@@ -467,14 +528,19 @@ reads `Via` is not built; the message Communications stores names the agent as i
 
 ## The review queue
 
-An item is a reply or a change that a run left for a person (`review_items`). A reply carries the
+An item is a reply, a change or a **start** that a run left for a person (`review_items`). A reply carries the
 agent's text and its disclosure line apart; a change carries the operation with its arguments and the
-preview.
+preview; a start (`kind` `start`, from `start_conversation`) carries the text and the disclosure line apart and the
+channel, the address and the subject, with `conversationId` the nil uuid since no conversation exists yet. Approving a start
+(or editing its text and sending) judges again that the role may still start conversations on the channel and that the
+address is still a contact of the customer, applies S1, S2 and C1, and sends through `POST /conversations` with the item's
+idempotency key; discarding one hands nothing off.
 
 **Seeing.** Listing or opening an item, a run and its transcript need `agents:review` (`agents:activity`
 for a run) **and** `communications:conversations-view` **and** every read permission of the template's
-needs, because an item shows what the agent read. The count needs `agents:review` alone. Any one
-missing is 403 `reviewer_not_permitted`. The handler-level conditions found on the front desk's
+needs, because an item shows what the agent read. A **list** holds the items and runs of the templates the caller
+may see, and is 403 `reviewer_not_permitted` only when there are none; opening one of a template the caller
+may not see is 403. The count needs `agents:review` alone. The handler-level conditions found on the front desk's
 allowlisted operations (Invoices without `invoices:payments` or `invoices:issue`, Customers without the
 legal identity) only narrow what is shown, and both of those permissions are in the never list, so the
 agent saw the narrowed form.
@@ -623,7 +689,8 @@ labelled replies (changes, waiting, withdrawn and expired items are no labels) a
 | --- | --- | --- |
 | `agents-runs` | 30 seconds | Re-queues a run whose claim lapsed once and hands it off the second time; hands off requests that waited more than a day. |
 | `agents-reviews` | 1 minute | Expires waiting items past `expires_at` and hands their conversations off. Skips locked rows, so replicas share the work. |
-| `agents-retention` | 1 hour | Lowers a retention above the cap, deletes what is older ([retention](#retention-and-erasure)). |
+| `agents-retention` | 1 hour | Lowers a retention above the cap, deletes what is older ([retention](#retention-and-erasure)), including taken wakeups. |
+| `agents-wakeups` | 30 seconds | Writes the schedules' occurrences and turns due [wakeups](#wakeups) into run requests. |
 
 The runner (an API-process runner, not a worker) finishes the hand-offs the workers record. A second API-process runner, `agents-feedback` (hourly), makes the [weekly check](#feedback).
 

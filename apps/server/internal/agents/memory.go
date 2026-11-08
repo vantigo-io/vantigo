@@ -47,6 +47,15 @@ const (
 	memoryOperation = "memory:customer"
 )
 
+// conversationKey is the conversation the run's notes may be about; none for a
+// run about a subject, whose conversation is the nil uuid.
+func (rs *runState) conversationKey() string {
+	if rs.isSubjectRun() {
+		return ""
+	}
+	return rs.run.ConversationID.String()
+}
+
 // loadMemory reads the notes the run starts with. The customer's are read only
 // for the run's own customer; the conversation's for the run's own conversation.
 func (rs *runState) loadMemory(ctx context.Context) error {
@@ -56,7 +65,7 @@ func (rs *runState) loadMemory(ctx context.Context) error {
 		customer = &c
 	}
 	notes, err := store.New(rs.s.deps.Pool).ListMemory(ctx, store.ListMemoryParams{
-		AgentID: rs.agent.ID, CustomerID: customer, ConversationID: rs.run.ConversationID.String(), N: readNotes,
+		AgentID: rs.agent.ID, CustomerID: customer, ConversationID: rs.conversationKey(), N: readNotes,
 	})
 	if err != nil {
 		return fmt.Errorf("read the agent's memory: %w", err)

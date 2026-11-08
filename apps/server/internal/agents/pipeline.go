@@ -232,6 +232,25 @@ func decideReply(in ruleInput) decision {
 	return d
 }
 
+// decideChange is the mode of a change a template marks as safe to automate
+// (V29). A change has no recipient and no window, so only S3 applies: a change
+// built on no source the run read is held in Review and Auto above X %, and Auto
+// makes it. A change that is not decided to be sent is a review item.
+func decideChange(mode string, threshold, score int) decision {
+	var d decision
+	if score == 0 {
+		d.Held = append(d.Held, ruleS3)
+	}
+	switch mode {
+	case modeAuto:
+		d.Held = nil
+		d.Send = true
+	case modeAutoAbove:
+		d.Send = len(d.Held) == 0 && score >= threshold
+	}
+	return d
+}
+
 // lockedRule says a rule holds in every mode, Auto too (S1, S2, C1, and a check
 // that did not answer).
 func lockedRule(code string) bool {

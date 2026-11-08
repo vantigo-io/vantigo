@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -44,89 +45,133 @@ func accessKeys(op *openapi3.Operation) []string {
 	return strings.Split(list, "+")
 }
 
-// TestFrontDesk_EveryAllowlistedOperationExistsAndCustomerDataIsScoped is the
-// contract test of V9b: an operation on a template's allowlist that returns a
-// customer's data carries x-vantigo-customer-scope, and one that does not
-// return it carries none, so a scope cannot be dropped or invented unnoticed.
-// Customers', Orders' and Invoices' operations all return a customer's data.
-func TestFrontDesk_EveryAllowlistedOperationExistsAndCustomerDataIsScoped(t *testing.T) {
+// TestTemplates_EveryAllowlistedOperationExistsAndCustomerDataIsScoped is the
+// contract test of V9b, for every template: an operation on a template's
+// allowlist that returns a customer's data carries x-vantigo-customer-scope, and
+// one that does not return it carries none, so a scope cannot be dropped or
+// invented unnoticed. Customers', Orders' and Invoices' operations all return a
+// customer's data.
+func TestTemplates_EveryAllowlistedOperationExistsAndCustomerDataIsScoped(t *testing.T) {
 	t.Parallel()
 	ops := contractOperations(t)
-	seen := map[string]bool{}
-	for _, a := range frontDesk.Allowlist {
-		if seen[a.ID] {
-			t.Errorf("%s is on the allowlist twice", a.ID)
-		}
-		seen[a.ID] = true
-		c, ok := ops[a.ID]
-		if !ok {
-			t.Errorf("%s is on the allowlist and in no contract", a.ID)
-			continue
-		}
-		_, scoped := c.op.Extensions[openapi.CustomerScopeExtension]
-		switch {
-		case a.CustomerData && !scoped:
-			t.Errorf("%s is marked as returning a customer's data and declares no %s", a.ID, openapi.CustomerScopeExtension)
-		case !a.CustomerData && scoped:
-			t.Errorf("%s declares a customer scope and the allowlist does not mark it as customer data", a.ID)
-		}
-		if !a.CustomerData && (c.module == "customers" || c.module == "orders" || c.module == "invoices") {
-			t.Errorf("%s is a %s operation, which returns a customer's data, and is not marked", a.ID, c.module)
-		}
-		if a.OwnConversation && !strings.Contains(c.path, "/conversations/{id}") {
-			t.Errorf("%s is marked as naming the run's conversation and its path %s does not", a.ID, c.path)
-		}
-		if mark, _ := c.op.Extensions[openapi.AssistantExtension].(string); mark == "never" {
-			t.Errorf("%s is on the allowlist and says never, so no agent could call it", a.ID)
+	for _, key := range templateOrder {
+		tpl := templates[key]
+		seen := map[string]bool{}
+		for _, a := range tpl.Allowlist {
+			if seen[a.ID] {
+				t.Errorf("%s: %s is on the allowlist twice", key, a.ID)
+			}
+			seen[a.ID] = true
+			c, ok := ops[a.ID]
+			if !ok {
+				t.Errorf("%s: %s is on the allowlist and in no contract", key, a.ID)
+				continue
+			}
+			_, scoped := c.op.Extensions[openapi.CustomerScopeExtension]
+			switch {
+			case a.CustomerData && !scoped:
+				t.Errorf("%s: %s is marked as returning a customer's data and declares no %s", key, a.ID, openapi.CustomerScopeExtension)
+			case !a.CustomerData && scoped:
+				t.Errorf("%s: %s declares a customer scope and the allowlist does not mark it as customer data", key, a.ID)
+			}
+			if !a.CustomerData && (c.module == "customers" || c.module == "orders" || c.module == "invoices") {
+				t.Errorf("%s: %s is a %s operation, which returns a customer's data, and is not marked", key, a.ID, c.module)
+			}
+			if a.OwnConversation && !strings.Contains(c.path, "/conversations/{id}") {
+				t.Errorf("%s: %s is marked as naming the run's conversation and its path %s does not", key, a.ID, c.path)
+			}
+			if a.Safe && c.method == strings.ToLower(http.MethodGet) {
+				t.Errorf("%s: %s is marked safe to automate and is a read", key, a.ID)
+			}
+			if mark, _ := c.op.Extensions[openapi.AssistantExtension].(string); mark == "never" {
+				t.Errorf("%s: %s is on the allowlist and says never, so no agent could call it", key, a.ID)
+			}
 		}
 	}
 }
 
-// TestFrontDesk_NeedsCoverWhatTheAllowlistedOperationsRequire holds the needs to
-// the contract: each permission an allowlisted operation's access rule names
-// is a need, at change for an operation that is not a read (the gate turns a
-// confirm-mode operation into never when any permission it names is only read),
-// and none is locked off.
-func TestFrontDesk_NeedsCoverWhatTheAllowlistedOperationsRequire(t *testing.T) {
+// TestTemplates_NeedsCoverWhatTheAllowlistedOperationsRequire holds each
+// template's needs to the contract: each permission an allowlisted operation's
+// access rule names is a need, at change for an operation that is not a read (the
+// gate turns a confirm-mode operation into never when any permission it names is
+// only read), and none is locked off.
+func TestTemplates_NeedsCoverWhatTheAllowlistedOperationsRequire(t *testing.T) {
 	t.Parallel()
 	ops := contractOperations(t)
-	needs := map[string]string{}
-	for _, n := range frontDesk.Needs {
-		if isNever(n.Permission) {
-			t.Errorf("the front desk needs %s, which no level can raise", n.Permission)
+	for _, key := range templateOrder {
+		tpl := templates[key]
+		needs := map[string]string{}
+		for _, n := range tpl.Needs {
+			if isNever(n.Permission) {
+				t.Errorf("%s needs %s, which no level can raise", key, n.Permission)
+			}
+			needs[n.Permission] = n.Level
 		}
-		needs[n.Permission] = n.Level
-	}
-	required := map[string]string{}
-	for _, a := range frontDesk.Allowlist {
-		c := ops[a.ID]
-		level := levelChange
-		if c.method == strings.ToLower(http.MethodGet) || c.method == http.MethodGet {
-			level = levelRead
+		required := map[string]string{}
+		for _, a := range tpl.Allowlist {
+			c := ops[a.ID]
+			level := levelChange
+			if c.method == strings.ToLower(http.MethodGet) || c.method == http.MethodGet {
+				level = levelRead
+			}
+			keys := accessKeys(c.op)
+			if len(keys) == 0 {
+				t.Errorf("%s: %s names no permission, so the gate would refuse it", key, a.ID)
+			}
+			for _, k := range keys {
+				if levelRank(level) > levelRank(required[k]) {
+					required[k] = level
+				}
+			}
 		}
-		keys := accessKeys(c.op)
-		if len(keys) == 0 {
-			t.Errorf("%s names no permission, so the gate would refuse it", a.ID)
+		for k, level := range required {
+			got, ok := needs[k]
+			switch {
+			case !ok:
+				t.Errorf("%s: the allowlist needs %s at %s and the template does not list it", key, k, level)
+			case levelRank(got) < levelRank(level):
+				t.Errorf("%s: the allowlist needs %s at %s and the template lists %s", key, k, level, got)
+			}
 		}
-		for _, key := range keys {
-			if levelRank(level) > levelRank(required[key]) {
-				required[key] = level
+		for k := range needs {
+			if _, ok := required[k]; !ok {
+				t.Errorf("%s needs %s and no allowlisted operation names it", key, k)
 			}
 		}
 	}
-	for key, level := range required {
-		got, ok := needs[key]
-		switch {
-		case !ok:
-			t.Errorf("the allowlist needs %s at %s and the template does not list it", key, level)
-		case levelRank(got) < levelRank(level):
-			t.Errorf("the allowlist needs %s at %s and the template lists %s", key, level, got)
+}
+
+// Every tool a template offers exists, a template that starts conversations or
+// writes to a colleague has what the tool needs (a channel field, a recipient),
+// and a run about a subject offers no tool that names a conversation.
+func TestTemplates_ToolsAndFieldsAgree(t *testing.T) {
+	t.Parallel()
+	for _, key := range templateOrder {
+		tpl := templates[key]
+		rs := &runState{tpl: tpl}
+		for _, tool := range tpl.Tools {
+			if _, ok := rs.ownTool(tool); !ok {
+				t.Errorf("%s offers %s, which is no tool", key, tool)
+			}
+			if !tpl.answersConversations() && (tool == toolReply || tool == toolNote || tool == toolTag) {
+				t.Errorf("%s runs about a %s and offers %s, which names a conversation", key, tpl.Subject, tool)
+			}
+		}
+		if tpl.offers(toolStartConversation) != tpl.uses(fieldStartMode) || tpl.offers(toolStartConversation) && !tpl.uses(fieldChannels) {
+			t.Errorf("%s: start_conversation, the start mode and the channels do not go together", key)
+		}
+		if tpl.offers(toolStartConversation) && !slices.ContainsFunc(tpl.Allowlist, func(a allowedOperation) bool { return a.ID == opStart }) {
+			t.Errorf("%s starts conversations and has not %s on its allowlist, so the gate would refuse", key, opStart)
+		}
+		if tpl.Recipient != tpl.uses(fieldRecipient) {
+			t.Errorf("%s: the recipient and its field do not go together", key)
+		}
+		if tpl.uses(fieldSchedule) != (tpl.Subject == subjectSchedule) {
+			t.Errorf("%s: the schedule and its subject do not go together", key)
 		}
 	}
-	for key := range needs {
-		if _, ok := required[key]; !ok {
-			t.Errorf("the template needs %s and no allowlisted operation names it", key)
-		}
+	if !slices.Contains(reservedOperations, opStart) {
+		t.Errorf("%s is not reserved, so the model could start a conversation past the rules", opStart)
 	}
 }
 

@@ -165,24 +165,45 @@ func (e AgentPermissionRequestLevel) Valid() bool {
 	}
 }
 
+// Defines values for AgentRoleChangeMode.
+const (
+	AgentRoleChangeModeAuto      AgentRoleChangeMode = "auto"
+	AgentRoleChangeModeAutoAbove AgentRoleChangeMode = "auto_above"
+	AgentRoleChangeModeReview    AgentRoleChangeMode = "review"
+)
+
+// Valid indicates whether the value is a known member of the AgentRoleChangeMode enum.
+func (e AgentRoleChangeMode) Valid() bool {
+	switch e {
+	case AgentRoleChangeModeAuto:
+		return true
+	case AgentRoleChangeModeAutoAbove:
+		return true
+	case AgentRoleChangeModeReview:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentRoleHandOffWarning.
 const (
-	Disabled     AgentRoleHandOffWarning = "disabled"
-	NoPermission AgentRoleHandOffWarning = "no_permission"
-	None         AgentRoleHandOffWarning = "none"
-	NotAPerson   AgentRoleHandOffWarning = "not_a_person"
+	AgentRoleHandOffWarningDisabled     AgentRoleHandOffWarning = "disabled"
+	AgentRoleHandOffWarningNoPermission AgentRoleHandOffWarning = "no_permission"
+	AgentRoleHandOffWarningNone         AgentRoleHandOffWarning = "none"
+	AgentRoleHandOffWarningNotAPerson   AgentRoleHandOffWarning = "not_a_person"
 )
 
 // Valid indicates whether the value is a known member of the AgentRoleHandOffWarning enum.
 func (e AgentRoleHandOffWarning) Valid() bool {
 	switch e {
-	case Disabled:
+	case AgentRoleHandOffWarningDisabled:
 		return true
-	case NoPermission:
+	case AgentRoleHandOffWarningNoPermission:
 		return true
-	case None:
+	case AgentRoleHandOffWarningNone:
 		return true
-	case NotAPerson:
+	case AgentRoleHandOffWarningNotAPerson:
 		return true
 	default:
 		return false
@@ -210,15 +231,48 @@ func (e AgentRoleReplyMode) Valid() bool {
 	}
 }
 
+// Defines values for AgentRoleStartMode.
+const (
+	AgentRoleStartModeAuto      AgentRoleStartMode = "auto"
+	AgentRoleStartModeAutoAbove AgentRoleStartMode = "auto_above"
+	AgentRoleStartModeReview    AgentRoleStartMode = "review"
+)
+
+// Valid indicates whether the value is a known member of the AgentRoleStartMode enum.
+func (e AgentRoleStartMode) Valid() bool {
+	switch e {
+	case AgentRoleStartModeAuto:
+		return true
+	case AgentRoleStartModeAutoAbove:
+		return true
+	case AgentRoleStartModeReview:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentRoleTemplate.
 const (
-	AgentRoleTemplateFrontDesk AgentRoleTemplate = "front_desk"
+	AgentRoleTemplateFrontDesk          AgentRoleTemplate = "front_desk"
+	AgentRoleTemplateProjectDigest      AgentRoleTemplate = "project_digest"
+	AgentRoleTemplateReminderReplies    AgentRoleTemplate = "reminder_replies"
+	AgentRoleTemplateSalesFollowup      AgentRoleTemplate = "sales_followup"
+	AgentRoleTemplateTimesheetReminders AgentRoleTemplate = "timesheet_reminders"
 )
 
 // Valid indicates whether the value is a known member of the AgentRoleTemplate enum.
 func (e AgentRoleTemplate) Valid() bool {
 	switch e {
 	case AgentRoleTemplateFrontDesk:
+		return true
+	case AgentRoleTemplateProjectDigest:
+		return true
+	case AgentRoleTemplateReminderReplies:
+		return true
+	case AgentRoleTemplateSalesFollowup:
+		return true
+	case AgentRoleTemplateTimesheetReminders:
 		return true
 	default:
 		return false
@@ -227,13 +281,67 @@ func (e AgentRoleTemplate) Valid() bool {
 
 // Defines values for AgentRoleCreateRequestTemplate.
 const (
-	AgentRoleCreateRequestTemplateFrontDesk AgentRoleCreateRequestTemplate = "front_desk"
+	AgentRoleCreateRequestTemplateFrontDesk          AgentRoleCreateRequestTemplate = "front_desk"
+	AgentRoleCreateRequestTemplateProjectDigest      AgentRoleCreateRequestTemplate = "project_digest"
+	AgentRoleCreateRequestTemplateReminderReplies    AgentRoleCreateRequestTemplate = "reminder_replies"
+	AgentRoleCreateRequestTemplateSalesFollowup      AgentRoleCreateRequestTemplate = "sales_followup"
+	AgentRoleCreateRequestTemplateTimesheetReminders AgentRoleCreateRequestTemplate = "timesheet_reminders"
 )
 
 // Valid indicates whether the value is a known member of the AgentRoleCreateRequestTemplate enum.
 func (e AgentRoleCreateRequestTemplate) Valid() bool {
 	switch e {
 	case AgentRoleCreateRequestTemplateFrontDesk:
+		return true
+	case AgentRoleCreateRequestTemplateProjectDigest:
+		return true
+	case AgentRoleCreateRequestTemplateReminderReplies:
+		return true
+	case AgentRoleCreateRequestTemplateSalesFollowup:
+		return true
+	case AgentRoleCreateRequestTemplateTimesheetReminders:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentRoleScheduleKind.
+const (
+	AgentRoleScheduleKindMonthly AgentRoleScheduleKind = "monthly"
+	AgentRoleScheduleKindNone    AgentRoleScheduleKind = "none"
+	AgentRoleScheduleKindWeekly  AgentRoleScheduleKind = "weekly"
+)
+
+// Valid indicates whether the value is a known member of the AgentRoleScheduleKind enum.
+func (e AgentRoleScheduleKind) Valid() bool {
+	switch e {
+	case AgentRoleScheduleKindMonthly:
+		return true
+	case AgentRoleScheduleKindNone:
+		return true
+	case AgentRoleScheduleKindWeekly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentRoleUpdateRequestChangeMode.
+const (
+	AgentRoleUpdateRequestChangeModeAuto      AgentRoleUpdateRequestChangeMode = "auto"
+	AgentRoleUpdateRequestChangeModeAutoAbove AgentRoleUpdateRequestChangeMode = "auto_above"
+	AgentRoleUpdateRequestChangeModeReview    AgentRoleUpdateRequestChangeMode = "review"
+)
+
+// Valid indicates whether the value is a known member of the AgentRoleUpdateRequestChangeMode enum.
+func (e AgentRoleUpdateRequestChangeMode) Valid() bool {
+	switch e {
+	case AgentRoleUpdateRequestChangeModeAuto:
+		return true
+	case AgentRoleUpdateRequestChangeModeAutoAbove:
+		return true
+	case AgentRoleUpdateRequestChangeModeReview:
 		return true
 	default:
 		return false
@@ -255,6 +363,27 @@ func (e AgentRoleUpdateRequestReplyMode) Valid() bool {
 	case AgentRoleUpdateRequestReplyModeAutoAbove:
 		return true
 	case AgentRoleUpdateRequestReplyModeReview:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentRoleUpdateRequestStartMode.
+const (
+	AgentRoleUpdateRequestStartModeAuto      AgentRoleUpdateRequestStartMode = "auto"
+	AgentRoleUpdateRequestStartModeAutoAbove AgentRoleUpdateRequestStartMode = "auto_above"
+	AgentRoleUpdateRequestStartModeReview    AgentRoleUpdateRequestStartMode = "review"
+)
+
+// Valid indicates whether the value is a known member of the AgentRoleUpdateRequestStartMode enum.
+func (e AgentRoleUpdateRequestStartMode) Valid() bool {
+	switch e {
+	case AgentRoleUpdateRequestStartModeAuto:
+		return true
+	case AgentRoleUpdateRequestStartModeAutoAbove:
+		return true
+	case AgentRoleUpdateRequestStartModeReview:
 		return true
 	default:
 		return false
@@ -333,15 +462,87 @@ func (e AgentSetupItemNeeded) Valid() bool {
 	}
 }
 
+// Defines values for AgentTemplateFields.
+const (
+	AgentTemplateFieldsChangeMode    AgentTemplateFields = "changeMode"
+	AgentTemplateFieldsChannels      AgentTemplateFields = "channels"
+	AgentTemplateFieldsComplaintTags AgentTemplateFields = "complaintTags"
+	AgentTemplateFieldsRecipient     AgentTemplateFields = "recipient"
+	AgentTemplateFieldsReplyMode     AgentTemplateFields = "replyMode"
+	AgentTemplateFieldsSchedule      AgentTemplateFields = "schedule"
+	AgentTemplateFieldsStartMode     AgentTemplateFields = "startMode"
+	AgentTemplateFieldsWaitDays      AgentTemplateFields = "waitDays"
+)
+
+// Valid indicates whether the value is a known member of the AgentTemplateFields enum.
+func (e AgentTemplateFields) Valid() bool {
+	switch e {
+	case AgentTemplateFieldsChangeMode:
+		return true
+	case AgentTemplateFieldsChannels:
+		return true
+	case AgentTemplateFieldsComplaintTags:
+		return true
+	case AgentTemplateFieldsRecipient:
+		return true
+	case AgentTemplateFieldsReplyMode:
+		return true
+	case AgentTemplateFieldsSchedule:
+		return true
+	case AgentTemplateFieldsStartMode:
+		return true
+	case AgentTemplateFieldsWaitDays:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentTemplateKey.
 const (
-	AgentTemplateKeyFrontDesk AgentTemplateKey = "front_desk"
+	AgentTemplateKeyFrontDesk          AgentTemplateKey = "front_desk"
+	AgentTemplateKeyProjectDigest      AgentTemplateKey = "project_digest"
+	AgentTemplateKeyReminderReplies    AgentTemplateKey = "reminder_replies"
+	AgentTemplateKeySalesFollowup      AgentTemplateKey = "sales_followup"
+	AgentTemplateKeyTimesheetReminders AgentTemplateKey = "timesheet_reminders"
 )
 
 // Valid indicates whether the value is a known member of the AgentTemplateKey enum.
 func (e AgentTemplateKey) Valid() bool {
 	switch e {
 	case AgentTemplateKeyFrontDesk:
+		return true
+	case AgentTemplateKeyProjectDigest:
+		return true
+	case AgentTemplateKeyReminderReplies:
+		return true
+	case AgentTemplateKeySalesFollowup:
+		return true
+	case AgentTemplateKeyTimesheetReminders:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentTemplateTrigger.
+const (
+	AgentTemplateTriggerConversation    AgentTemplateTrigger = "conversation"
+	AgentTemplateTriggerQuoteSent       AgentTemplateTrigger = "quote_sent"
+	AgentTemplateTriggerSchedule        AgentTemplateTrigger = "schedule"
+	AgentTemplateTriggerWeekUnsubmitted AgentTemplateTrigger = "week_unsubmitted"
+)
+
+// Valid indicates whether the value is a known member of the AgentTemplateTrigger enum.
+func (e AgentTemplateTrigger) Valid() bool {
+	switch e {
+	case AgentTemplateTriggerConversation:
+		return true
+	case AgentTemplateTriggerQuoteSent:
+		return true
+	case AgentTemplateTriggerSchedule:
+		return true
+	case AgentTemplateTriggerWeekUnsubmitted:
 		return true
 	default:
 		return false
@@ -481,6 +682,7 @@ func (e ReviewItemDiscardReason) Valid() bool {
 const (
 	ReviewItemKindChange ReviewItemKind = "change"
 	ReviewItemKindReply  ReviewItemKind = "reply"
+	ReviewItemKindStart  ReviewItemKind = "start"
 )
 
 // Valid indicates whether the value is a known member of the ReviewItemKind enum.
@@ -489,6 +691,8 @@ func (e ReviewItemKind) Valid() bool {
 	case ReviewItemKindChange:
 		return true
 	case ReviewItemKindReply:
+		return true
+	case ReviewItemKindStart:
 		return true
 	default:
 		return false
@@ -739,7 +943,10 @@ type AgentRole struct {
 	CapsToolCalls int32 `json:"capsToolCalls"`
 
 	// CapsTurns Model turns a run may take, 1 to 16.
-	CapsTurns  int32                `json:"capsTurns"`
+	CapsTurns int32 `json:"capsTurns"`
+
+	// ChangeMode How the changes the template marks as safe to automate are decided (V29). Every other change is reviewed whatever this says.
+	ChangeMode AgentRoleChangeMode  `json:"changeMode"`
 	ChannelIds []openapi_types.UUID `json:"channelIds"`
 
 	// ComplaintTagIds The Communications tags that mark a complaint (S5): a conversation carrying one is held in Review and Auto above X %.
@@ -760,21 +967,39 @@ type AgentRole struct {
 	MaxRepliesPerDay int32  `json:"maxRepliesPerDay"`
 	Name             string `json:"name"`
 
+	// RecipientUserId The person a template that writes a note to one person sends it to (the project digest); null for none.
+	RecipientUserId *openapi_types.UUID `json:"recipientUserId"`
+
 	// ReplyMode How the role's replies are decided (V19). Stored in this delivery and acted on from the next.
 	ReplyMode AgentRoleReplyMode `json:"replyMode"`
+
+	// Schedule When a role wakes by itself (V29): every week on a day, or every month on a day of the month, at a time in the business time zone. kind none is no schedule.
+	Schedule AgentRoleSchedule `json:"schedule"`
+
+	// StartMode How a conversation the agent starts is decided (V29), by the same score and threshold as replies.
+	StartMode AgentRoleStartMode `json:"startMode"`
 	Template  AgentRoleTemplate  `json:"template"`
 
 	// Threshold 50 to 100: the score from which auto_above sends a reply.
 	Threshold int32     `json:"threshold"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	Version   int32     `json:"version"`
+
+	// WaitDays Days after a quote is sent before the sales follow-up looks at it, 1 to 60.
+	WaitDays int32 `json:"waitDays"`
 }
+
+// AgentRoleChangeMode How the changes the template marks as safe to automate are decided (V29). Every other change is reviewed whatever this says.
+type AgentRoleChangeMode string
 
 // AgentRoleHandOffWarning Why the hand-off would go to the Inbox instead: the person is disabled, no longer holds communications:conversations-view, or is not a person.
 type AgentRoleHandOffWarning string
 
 // AgentRoleReplyMode How the role's replies are decided (V19). Stored in this delivery and acted on from the next.
 type AgentRoleReplyMode string
+
+// AgentRoleStartMode How a conversation the agent starts is decided (V29), by the same score and threshold as replies.
+type AgentRoleStartMode string
 
 // AgentRoleTemplate defines model for AgentRole.Template.
 type AgentRoleTemplate string
@@ -797,6 +1022,19 @@ type AgentRoleCreateRequest struct {
 // AgentRoleCreateRequestTemplate defines model for AgentRoleCreateRequest.Template.
 type AgentRoleCreateRequestTemplate string
 
+// AgentRoleSchedule When a role wakes by itself (V29): every week on a day, or every month on a day of the month, at a time in the business time zone. kind none is no schedule.
+type AgentRoleSchedule struct {
+	// Day For weekly, the weekday, 1 (Monday) to 7 (Sunday); for monthly, the day of the month, 1 to 28. Null for none.
+	Day  *int32                `json:"day"`
+	Kind AgentRoleScheduleKind `json:"kind"`
+
+	// Time HH:MM, 24 hours, in the business time zone. Null for none.
+	Time *string `json:"time"`
+}
+
+// AgentRoleScheduleKind defines model for AgentRoleSchedule.Kind.
+type AgentRoleScheduleKind string
+
 // AgentRoleUpdateRequest defines model for AgentRoleUpdateRequest.
 type AgentRoleUpdateRequest struct {
 	// CapsToolCalls 1 to 60.
@@ -804,6 +1042,9 @@ type AgentRoleUpdateRequest struct {
 
 	// CapsTurns 1 to 16.
 	CapsTurns int32 `json:"capsTurns"`
+
+	// ChangeMode Loosening it is the Owner's alone. Absent keeps the role's.
+	ChangeMode *AgentRoleUpdateRequestChangeMode `json:"changeMode,omitempty"`
 
 	// ComplaintTagIds The Communications tags that mark a complaint (S5), at most 20. Absent keeps the role's.
 	ComplaintTagIds *[]openapi_types.UUID `json:"complaintTagIds,omitempty"`
@@ -818,15 +1059,33 @@ type AgentRoleUpdateRequest struct {
 	MaxRepliesPerDay int32 `json:"maxRepliesPerDay"`
 
 	// Name 1 to 80 characters.
-	Name      string                          `json:"name"`
-	ReplyMode AgentRoleUpdateRequestReplyMode `json:"replyMode"`
+	Name string `json:"name"`
+
+	// RecipientUserId An active person; the project digest goes to them. Absent keeps the role's, the nil uuid clears it.
+	RecipientUserId *openapi_types.UUID             `json:"recipientUserId,omitempty"`
+	ReplyMode       AgentRoleUpdateRequestReplyMode `json:"replyMode"`
+
+	// Schedule When a role wakes by itself (V29): every week on a day, or every month on a day of the month, at a time in the business time zone. kind none is no schedule.
+	Schedule *AgentRoleSchedule `json:"schedule,omitempty"`
+
+	// StartMode Loosening it is the Owner's alone. Absent keeps the role's.
+	StartMode *AgentRoleUpdateRequestStartMode `json:"startMode,omitempty"`
 
 	// Threshold 50 to 100.
 	Threshold int32 `json:"threshold"`
+
+	// WaitDays 1 to 60. Absent keeps the role's.
+	WaitDays *int32 `json:"waitDays,omitempty"`
 }
+
+// AgentRoleUpdateRequestChangeMode Loosening it is the Owner's alone. Absent keeps the role's.
+type AgentRoleUpdateRequestChangeMode string
 
 // AgentRoleUpdateRequestReplyMode defines model for AgentRoleUpdateRequest.ReplyMode.
 type AgentRoleUpdateRequestReplyMode string
+
+// AgentRoleUpdateRequestStartMode Loosening it is the Owner's alone. Absent keeps the role's.
+type AgentRoleUpdateRequestStartMode string
 
 // AgentRun One run of an agent on a conversation (V14).
 type AgentRun struct {
@@ -945,16 +1204,34 @@ type AgentSetupItemNeeded string
 
 // AgentTemplate defines model for AgentTemplate.
 type AgentTemplate struct {
-	Allowlist           []string            `json:"allowlist"`
-	DefaultInstructions string              `json:"defaultInstructions"`
-	DefaultName         string              `json:"defaultName"`
-	HardRules           []AgentTemplateRule `json:"hardRules"`
-	Key                 AgentTemplateKey    `json:"key"`
-	Needs               []AgentTemplateNeed `json:"needs"`
+	Allowlist           []string `json:"allowlist"`
+	DefaultInstructions string   `json:"defaultInstructions"`
+	DefaultName         string   `json:"defaultName"`
+
+	// Fields The role fields the template uses, so the role page shows only these.
+	Fields    []AgentTemplateFields `json:"fields"`
+	HardRules []AgentTemplateRule   `json:"hardRules"`
+	Key       AgentTemplateKey      `json:"key"`
+	Needs     []AgentTemplateNeed   `json:"needs"`
+
+	// SafeOperations The allowlisted operations the template marks as safe to automate (V29): only a change by one of these follows the role's change mode.
+	SafeOperations []string `json:"safeOperations"`
+
+	// Tools The agent's own tools the template offers.
+	Tools []string `json:"tools"`
+
+	// Trigger What wakes the template's roles.
+	Trigger AgentTemplateTrigger `json:"trigger"`
 }
+
+// AgentTemplateFields defines model for AgentTemplate.Fields.
+type AgentTemplateFields string
 
 // AgentTemplateKey defines model for AgentTemplate.Key.
 type AgentTemplateKey string
+
+// AgentTemplateTrigger What wakes the template's roles.
+type AgentTemplateTrigger string
 
 // AgentTemplateList defines model for AgentTemplateList.
 type AgentTemplateList struct {
@@ -1192,7 +1469,10 @@ type ReviewItem struct {
 	Score int32 `json:"score"`
 
 	// Sources The sources the run read that support the item.
-	Sources []string        `json:"sources"`
+	Sources []string `json:"sources"`
+
+	// Start A conversation the agent would start (V29), to a contact of the run's customer on one of the role's channels. The text and the disclosure are in the item's reply object; there is no conversation yet, so conversationId is the nil uuid.
+	Start   *ReviewStart    `json:"start,omitempty"`
 	State   ReviewItemState `json:"state"`
 	Version int32           `json:"version"`
 
@@ -1239,6 +1519,15 @@ type ReviewSendRequest struct {
 
 	// Text The reviewer's text, without the disclosure, which is added.
 	Text string `json:"text"`
+}
+
+// ReviewStart A conversation the agent would start (V29), to a contact of the run's customer on one of the role's channels. The text and the disclosure are in the item's reply object; there is no conversation yet, so conversationId is the nil uuid.
+type ReviewStart struct {
+	ChannelId openapi_types.UUID `json:"channelId"`
+	Subject   string             `json:"subject"`
+
+	// To The contact's e-mail address.
+	To string `json:"to"`
 }
 
 // RoleCalibration How the role's score has agreed with its reviewers over its last labelled replies (V21).
