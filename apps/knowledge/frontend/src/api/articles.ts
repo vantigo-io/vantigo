@@ -156,3 +156,6 @@ export const problemOf = (error: unknown): KnowledgeProblem | undefined => {
   const problem = (error as { problem?: unknown } | null)?.problem;
   return problem && typeof problem === "object" ? (problem as KnowledgeProblem) : undefined;
 };
+
+/** Deletes the article's live log, so the next open seeds from the saved JSON (K32, K35). */
+export const resetLog = (id: string) => send<void>(`${base}/articles/${id}/collab/reset`, { method: "POST" });

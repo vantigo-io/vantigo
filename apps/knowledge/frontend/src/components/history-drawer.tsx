@@ -11,7 +11,7 @@ import {
   versionQueryOptions,
   versionsQueryOptions,
 } from "../api/articles";
-import { isVersionConflict } from "../api/request";
+import { isVersionConflict, refusalCode } from "../api/request";
 import { ArticleEditor } from "../editor/article-editor";
 import { useArticleEditor } from "../editor/use-article-editor";
 import { useKnowledgeFormat } from "../lib/format";
@@ -27,12 +27,19 @@ export const HistoryDrawer = ({
   onClose,
   canRestore,
   onRestored,
+  onRestoreInEditor,
 }: {
   article: KnowledgeArticle;
   opened: boolean;
   onClose: () => void;
   canRestore: boolean;
   onRestored: (saved: KnowledgeSaved) => void;
+  /**
+   * Set while the page is edited together with others (knowledge design K33): Restore then puts the
+   * version's text into the editor in one change instead of calling the restore endpoint, which
+   * would delete the live log. The page saves it.
+   */
+  onRestoreInEditor?: (version: KnowledgeVersion) => void;
 }) => {
   const { t, dateTime, actor } = useKnowledgeFormat();
   const queryClient = useQueryClient();
@@ -52,7 +59,13 @@ export const HistoryDrawer = ({
     onError: (error) =>
       notifications.show({
         color: "red",
-        message: t(isVersionConflict(error) ? "historyRestoreConflict" : "historyRestoreFailed"),
+        message: t(
+          refusalCode(error) === "collab_active"
+            ? "historyRestoreLive"
+            : isVersionConflict(error)
+              ? "historyRestoreConflict"
+              : "historyRestoreFailed",
+        ),
       }),
   });
 
@@ -75,7 +88,20 @@ export const HistoryDrawer = ({
               {t("historyBack")}
             </Button>
             {canRestore && version.data && !versions.data?.find((v) => v.version === selected)?.current && (
-              <Button size="xs" loading={restore.isPending} onClick={() => restore.mutate(selected)}>
+              <Button
+                size="xs"
+                loading={restore.isPending}
+                onClick={() => {
+                  if (!onRestoreInEditor) {
+                    restore.mutate(selected);
+                    return;
+                  }
+                  onRestoreInEditor(version.data);
+                  notifications.show({ color: "green", message: t("historyRestored") });
+                  setSelected(null);
+                  onClose();
+                }}
+              >
                 {t("historyRestore")}
               </Button>
             )}
