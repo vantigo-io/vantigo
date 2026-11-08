@@ -18,6 +18,7 @@ sql:
       - ../db/migrations/00118_invoices_tax_category_vat_codes.sql
       - ../db/migrations/00122_invoices_order_sources.sql
       - ../db/migrations/00123_invoices_order_allocation_ledger.sql
+      - ../db/migrations/00150_invoices_events.sql
     queries: queries
     gen:
       go:

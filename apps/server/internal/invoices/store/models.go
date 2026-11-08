@@ -361,6 +361,12 @@ type InvoicesOrderAllocationsTaken struct {
 	ReleasedAt   *time.Time
 }
 
+type InvoicesOverdueAnnounced struct {
+	InvoiceID   int64
+	AnnouncedOn pgtype.Date
+	AnnouncedAt time.Time
+}
+
 type InvoicesPayLink struct {
 	ID              int64
 	InvoiceID       int64

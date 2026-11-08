@@ -3,6 +3,7 @@ title: "Time module"
 description: "Time entries, the rate chain and its snapshots, the approval state machine, weekly submission, the period lock and permissions, and what Time reports to other modules — the project actuals, the billable hours and a user's hours in a week."
 sources:
   - apps/server/internal/time
+  - apps/server/internal/db/migrations/00151_time_week_events.sql
   - apps/time/frontend
   - openapi/time.yaml
 ---
@@ -243,6 +244,17 @@ line and task, seven day columns, per-day and week totals — plus `submittedAt`
 records the submission. It leaves rejected entries alone: an edit turns them into
 drafts first, which is the point of rejecting them. Submitting an empty week is
 allowed, so "I worked nothing this week" is a thing a person can say.
+
+### The week nobody submitted
+
+The **`time-weeks`** worker (every 30 minutes) publishes `time.week.unsubmitted` (v1) onto the
+[domain-events outbox](/en/contributing/platform-packages/#the-domain-events-outbox) for the
+[virtual employees](/en/reference/agents/) (design V30), from the **Tuesday** of the business week after a week, for the week just
+ended only (a worker that was down for a fortnight announces no older week). A person is announced when they have **draft entries**
+in the week, or submitted **any of the eight weeks before it**, and have no row in `week_submissions` for it; Time knows no one else
+to expect a week from. The row in `time.week_announced` and the event are written in one transaction, so each person and week is
+announced once. The payload is `userId`, `weekStart` (the Monday) and `hours` (what they registered in the week, of any status, as decimal
+text): ids, a date and a figure, no personal data. The aggregate is the person's week.
 
 ## The period lock
 

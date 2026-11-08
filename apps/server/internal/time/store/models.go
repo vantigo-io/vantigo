@@ -62,6 +62,12 @@ type TimeSetting struct {
 	Value string
 }
 
+type TimeWeekAnnounced struct {
+	UserID      uuid.UUID
+	WeekStart   pgtype.Date
+	AnnouncedAt time.Time
+}
+
 type TimeWeekSubmission struct {
 	UserID      uuid.UUID
 	WeekStart   pgtype.Date

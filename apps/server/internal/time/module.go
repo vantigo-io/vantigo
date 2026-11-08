@@ -43,6 +43,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 	"github.com/vantigo-io/vantigo/server/internal/time/gen"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
 // permissions is the module's permission catalog (design §6). Every
@@ -84,6 +85,8 @@ func Module() module.Module {
 		// CalendarSource is the caller's own entries on the calendar
 		// (calendar design D1, calendar_source.go).
 		CalendarSource: newCalendarSource,
+		// The weeks nobody submitted are announced (virtual employees design V30).
+		Workers: func(d module.Deps) []worker.Worker { return []worker.Worker{NewWeeksWorker(d)} },
 	}
 }
 

@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/db/migrations/00096_invoices_send_channel.sql
   - apps/server/internal/db/migrations/00118_invoices_tax_category_vat_codes.sql
   - apps/server/internal/db/migrations/00122_invoices_order_sources.sql
+  - apps/server/internal/db/migrations/00150_invoices_events.sql
   - apps/server/internal/docmath
 ---
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
@@ -5669,6 +5670,24 @@ worker, honouring `communications.suppressions`, bulk sending, a "paid" stamp on
 (the PDF is immutable), timeseries and attention stats (attention came in phase 4), per-currency stats, a public-body
 fact on the directory, user display names on payments and deliveries (ids only), and a
 purge of anything.
+
+## Events
+
+Two events go onto the [domain-events outbox](/en/contributing/platform-packages/#the-domain-events-outbox) for the
+[virtual employees](/en/reference/agents/) (design V30). A payload carries ids, numbers, amounts and dates and never personal
+data: no buyer name, address or e-mail, and none of a payment's free text (`reference`, `note`).
+
+| Event (v1) | When | Payload |
+| --- | --- | --- |
+| `invoices.invoice.overdue` | An issued invoice's state became overdue (`invoices.document_state` on the business day, the overdue list's and the stats'). Published **once for each invoice** | `invoiceId`, `number`, `customerId`, `dueDate`, `day`, `currency`, `grossTotal` |
+| `invoices.payment.received` | A payment is registered against an invoice, by a person, a matched or applied bank line, or a Vipps capture. A removal is not an event | `paymentId`, `invoiceId`, `number`, `customerId`, `amount`, `currency`, `paidOn`, `source` (`manual`, `ocr`, `camt054`, `vipps`), `registeredAt` |
+
+**`invoices-overdue-events`** (every 15 minutes) selects the issued invoices that are overdue on the business day and not yet
+in `invoices.overdue_announced`, `FOR UPDATE OF` the invoice row with `SKIP LOCKED` so replicas share the work, and for each writes
+its row in `overdue_announced` and publishes the event in the same transaction, up to 200 a pass. **`payment.received`** is published
+by a trigger on `invoices.payments` (`tr_payments_received`, migration 00150), because four write paths register payments, two of
+them without the transaction in hand; every one holds the invoice `FOR UPDATE` and the event commits with the payment or not at all.
+The aggregate of the payment event is the payment.
 
 ## Agents and the customer scope
 
