@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/agentloop"
 	"github.com/vantigo-io/vantigo/server/internal/assistant/gen"
 	"github.com/vantigo-io/vantigo/server/internal/assistant/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -588,7 +589,7 @@ func bulkSummary(job store.AssistantBulkJob, failures []store.AssistantBulkJobIt
 	if job.ErrorCode != nil {
 		body["endedBecause"] = *job.ErrorCode
 	}
-	return wrap(body)
+	return agentloop.Wrap(body)
 }
 
 // endBulk ends a job once: its row (redacted), its pending action, the waiting
@@ -687,7 +688,7 @@ func (s *server) summariseBulk(job store.AssistantBulkJob) {
 	}
 	r := &runner{
 		s: s, ctx: runCtx, runID: job.RunID, convID: job.ConversationID, userID: job.UserID, grantID: grant, queue: queue, lang: lang, name: name,
-		tools: &toolbox{s: s, ctx: runCtx, userID: job.UserID, lang: lang, params: map[string]map[string]string{}},
+		tools: s.newToolbox(runCtx, job.UserID, lang),
 		final: true,
 	}
 	r.execute()

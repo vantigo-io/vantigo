@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/agentloop"
 	"github.com/vantigo-io/vantigo/server/internal/assistant/gen"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/operations"
@@ -580,7 +581,7 @@ func (t *toolbox) proposeBulk(raw json.RawMessage) outcome {
 		return o
 	}
 	var args bulkArgs
-	if err := toolArgs(raw, &args); err != nil || args.Selector.OperationID == "" || args.Operation.OperationID == "" {
+	if err := agentloop.ToolArgs(raw, &args); err != nil || args.Selector.OperationID == "" || args.Operation.OperationID == "" {
 		return fail("invalid_arguments", "selector.operationId and operation.operationId are required")
 	}
 	if len(args.Bind) == 0 {
@@ -594,9 +595,9 @@ func (t *toolbox) proposeBulk(raw json.RawMessage) outcome {
 		return fail("operation_unavailable", "bulk changes are not available")
 	}
 
-	selInfo, ok, err := t.mayUse(args.Selector.OperationID)
+	selInfo, ok, err := t.ops.MayUse(t.ctx, args.Selector.OperationID)
 	if err != nil {
-		return outcome{content: wrap(map[string]string{"error": "call_failed"}), status: "error", operation: "tool:" + toolProposeBulk, mode: "tool"}
+		return outcome{content: agentloop.Wrap(map[string]string{"error": "call_failed"}), status: "error", operation: "tool:" + toolProposeBulk, mode: "tool"}
 	}
 	if !ok || selInfo.Mode != operations.ModeAuto {
 		return fail("selector_unavailable", "the selector must be an operation that reads data and that you may use, found with search_operations")
@@ -604,7 +605,7 @@ func (t *toolbox) proposeBulk(raw json.RawMessage) outcome {
 	if selInfo.Method != "GET" && selInfo.Method != "POST" {
 		return fail("selector_unavailable", "the selector must be a GET list, or a POST that only reads")
 	}
-	opInfo, ok, _ := t.mayUse(args.Operation.OperationID)
+	opInfo, ok, _ := t.ops.MayUse(t.ctx, args.Operation.OperationID)
 	switch {
 	case !ok:
 		return fail("operation_unavailable", "that operation does not exist or you may not use it; search again with search_operations")
@@ -615,7 +616,7 @@ func (t *toolbox) proposeBulk(raw json.RawMessage) outcome {
 	}
 
 	// Where each parameter of the operation goes.
-	locations := t.locationsFor(args.Operation.OperationID)
+	locations := t.ops.Locations(args.Operation.OperationID)
 	tpl := bulkTemplate{
 		OperationID: args.Operation.OperationID, PathParams: args.Operation.PathParams, Query: args.Operation.Query,
 		Bind: args.Bind, BindIn: map[string]string{},
@@ -727,7 +728,7 @@ func (t *toolbox) proposeBulk(raw json.RawMessage) outcome {
 			preview: doc,
 			bulk:    &bulkDraft{selector: sel, template: tpl, items: runnable, excluded: excluded},
 		},
-		content: wrap(map[string]any{
+		content: agentloop.Wrap(map[string]any{
 			"status":   stateAwaiting,
 			"summary":  opInfo.Summary,
 			"items":    len(runnable),
