@@ -85,6 +85,7 @@ SELECT user_id::uuid AS user_id FROM (
     UNION SELECT v.created_by FROM knowledge.article_versions v WHERE v.created_by IS NOT NULL
     UNION SELECT f.created_by FROM knowledge.article_files f WHERE f.created_by IS NOT NULL
     UNION SELECT n.user_id FROM knowledge.mention_notices n
+    UNION SELECT u.created_by FROM knowledge.article_updates u WHERE u.created_by IS NOT NULL
 ) held
 WHERE user_id > $1::uuid
 ORDER BY user_id

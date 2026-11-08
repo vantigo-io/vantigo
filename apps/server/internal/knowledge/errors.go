@@ -30,6 +30,7 @@ const (
 	codeArticleReadOnly        = "article_read_only"
 	codeVersionConflict        = "version_conflict"
 	codeArticleLocked          = "article_locked"
+	codeCollabInactive         = "collab_inactive"
 	codeVisibilityChange       = "visibility_change"
 	codeNotTrashed             = "not_trashed"
 	codeDocumentTooLarge       = "document_too_large"
@@ -123,6 +124,13 @@ func versionConflict(current int32, updatedAt time.Time, updatedBy *uuid.UUID) e
 // locked is the 409 of a content edit of a locked article (K11a).
 func locked() error {
 	return conflict(codeArticleLocked, "The article is locked", "A writer locked this article; unlock it to change its content.")
+}
+
+// collabInactive is the 409 of a collaborative save of an article whose live
+// log is empty: nobody is co-editing it (K32), so the save would race a
+// single-editor one.
+func collabInactive() error {
+	return conflict(codeCollabInactive, "Live editing is not active", "The article has no live log; save it as a single editor.")
 }
 
 // visibilityChange is the 409 of a change that moves an article between

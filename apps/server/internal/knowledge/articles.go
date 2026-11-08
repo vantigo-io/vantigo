@@ -496,7 +496,10 @@ func equalString(a, b *string) bool {
 
 // UpdateKnowledgeArticleContent is the editor's autosave (K9): the title and
 // the document over expectedVersion. It takes the article's row lock only,
-// never the tree's.
+// never the tree's. A save with mode collab (K32) is a live co-editor's: no
+// version is compared, and the article's log stays. Any other save is the
+// single editor's, and deletes the log in its transaction, since the JSON is
+// then the truth again.
 func (s *server) UpdateKnowledgeArticleContent(ctx context.Context, req gen.UpdateKnowledgeArticleContentRequestObject) (gen.UpdateKnowledgeArticleContentResponseObject, error) {
 	fail := func(err error) (gen.UpdateKnowledgeArticleContentResponseObject, error) {
 		return answer(ctx, s, err, answers[gen.UpdateKnowledgeArticleContentResponseObject]{
@@ -521,9 +524,10 @@ func (s *server) UpdateKnowledgeArticleContent(ctx context.Context, req gen.Upda
 		return fail(invalid("body", "", "A body is required."))
 	}
 	body := *req.Body
+	collab := body.Mode != nil && *body.Mode == gen.Collab
 	var f fieldErrors
 	checkTitle(&f, body.Title)
-	if body.ExpectedVersion < 1 {
+	if !collab && (body.ExpectedVersion == nil || *body.ExpectedVersion < 1) {
 		f.add("expectedVersion", "Must be at least 1.")
 	}
 	if err := f.err(); err != nil {
@@ -550,7 +554,15 @@ func (s *server) UpdateKnowledgeArticleContent(ctx context.Context, req gen.Upda
 		if m.Locked {
 			return locked()
 		}
-		if m.Version != body.ExpectedVersion {
+		if collab {
+			st, err := q.DocState(ctx, req.Id)
+			if err != nil {
+				return fmt.Errorf("knowledge: read the log's state of %s: %w", req.Id, err)
+			}
+			if st.UpdateRows == 0 {
+				return collabInactive()
+			}
+		} else if m.Version != *body.ExpectedVersion {
 			return versionConflict(m.Version, m.UpdatedAt, m.UpdatedBy)
 		}
 		if err := checkFiles(ctx, q, req.Id, d.refs); err != nil {
@@ -566,6 +578,11 @@ func (s *server) UpdateKnowledgeArticleContent(ctx context.Context, req gen.Upda
 		}
 		if err := rewriteLinks(ctx, q, req.Id, d.refs); err != nil {
 			return err
+		}
+		if !collab {
+			if err := resetLog(ctx, tx, q, req.Id); err != nil {
+				return err
+			}
 		}
 		if err := notifyArticle(ctx, tx, req.Id, eventContentChanged); err != nil {
 			return err
@@ -817,4 +834,33 @@ func (s *server) ListKnowledgeTree(ctx context.Context, req gen.ListKnowledgeTre
 		})
 	}
 	return gen.ListKnowledgeTree200JSONResponse{Items: items}, nil
+}
+
+// ResetKnowledgeArticleLog deletes the article's live log and tells its
+// subscribers to discard their copy (K32, K35): the way out of a log a client
+// cannot apply. A writer may call it, and it takes the article's row lock like
+// any write to the log. It changes no saved content, so a locked article may
+// be reset too.
+func (s *server) ResetKnowledgeArticleLog(ctx context.Context, req gen.ResetKnowledgeArticleLogRequestObject) (gen.ResetKnowledgeArticleLogResponseObject, error) {
+	user := callerID(ctx)
+	err := s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error {
+		if err := q.LockArticle(ctx, req.Id); err != nil {
+			return fmt.Errorf("knowledge: lock article %s: %w", req.Id, err)
+		}
+		if _, err := writableMeta(ctx, q, req.Id, user); err != nil {
+			return err
+		}
+		return resetLog(ctx, tx, q, req.Id)
+	})
+	if err != nil {
+		return answer(ctx, s, err, answers[gen.ResetKnowledgeArticleLogResponseObject]{
+			forbidden: func(p gen.KnowledgeProblem) gen.ResetKnowledgeArticleLogResponseObject {
+				return gen.ResetKnowledgeArticleLog403ApplicationProblemPlusJSONResponse(p)
+			},
+			notFound: func() gen.ResetKnowledgeArticleLogResponseObject {
+				return gen.ResetKnowledgeArticleLog404Response{}
+			},
+		})
+	}
+	return gen.ResetKnowledgeArticleLog204Response{}, nil
 }

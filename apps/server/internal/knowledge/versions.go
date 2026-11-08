@@ -93,7 +93,7 @@ func (s *server) GetKnowledgeArticleVersion(ctx context.Context, req gen.GetKnow
 
 // RestoreKnowledgeArticleVersion saves a version's title and document as a
 // new version over expectedVersion; every version before it stays (K9). It
-// is never coalesced.
+// is never coalesced, and it deletes the article's live log (K32).
 func (s *server) RestoreKnowledgeArticleVersion(ctx context.Context, req gen.RestoreKnowledgeArticleVersionRequestObject) (gen.RestoreKnowledgeArticleVersionResponseObject, error) {
 	fail := func(err error) (gen.RestoreKnowledgeArticleVersionResponseObject, error) {
 		return answer(ctx, s, err, answers[gen.RestoreKnowledgeArticleVersionResponseObject]{
@@ -145,6 +145,9 @@ func (s *server) RestoreKnowledgeArticleVersion(ctx context.Context, req gen.Res
 			return err
 		}
 		if err := rewriteLinks(ctx, q, req.Id, d.refs); err != nil {
+			return err
+		}
+		if err := resetLog(ctx, tx, q, req.Id); err != nil {
 			return err
 		}
 		if err := notifyArticle(ctx, tx, req.Id, eventContentChanged); err != nil {

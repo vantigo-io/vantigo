@@ -90,6 +90,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge/articles/{id}/collab/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset an article's live log
+         * @description Deletes the article's live log and tells its subscribers to discard their copy and reopen it from the last saved version (K32, K35). The way out of a log a client cannot apply. Idempotent; it works on a locked article, since it changes no saved content.
+         */
+        post: operations["resetKnowledgeArticleLog"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/knowledge/articles/{id}/content": {
         parameters: {
             query?: never;
@@ -100,7 +120,7 @@ export interface paths {
         get?: never;
         /**
          * Save an article's title and content
-         * @description The editor's autosave (K9). A save by the same person less than 10 minutes after their previous one replaces that version; any other adds one.
+         * @description The editor's autosave (K9). A save by the same person less than 10 minutes after their previous one replaces that version; any other adds one. With mode collab (K32) no version is compared; with mode single the article's live log is deleted and its subscribers told (doc_reset).
          */
         put: operations["updateKnowledgeArticleContent"];
         post?: never;
@@ -635,11 +655,19 @@ export interface components {
             title: string;
         };
         KnowledgeBacklinkList: components["schemas"]["KnowledgeBacklink"][];
-        /** @description An autosave (K9): the title and the document, with the version the editor last read. */
+        /** @description An autosave (K9): the title and the document. A single-editor save (the default) carries the version the editor last read; a collaborative save (K32) does not. */
         KnowledgeContentUpdate: {
             content: components["schemas"]["KnowledgeDocument"];
-            /** Format: int32 */
-            expectedVersion: number;
+            /**
+             * Format: int32
+             * @description The version the editor last read. Required with mode single (a missing one is 400, a stale one 409 version_conflict); ignored with mode collab.
+             */
+            expectedVersion?: number;
+            /**
+             * @description Absent means single. single: today's save over expectedVersion, which also deletes the article's live log (K32). collab: a save by a client in live co-editing, which compares no version, keeps the lock and the document checks, leaves the log, and is refused (409 collab_inactive) while the log is empty.
+             * @enum {string}
+             */
+            mode?: "single" | "collab";
             /** @description The article's title; empty is shown as Untitled. */
             title: string;
         };
@@ -1274,6 +1302,53 @@ export interface operations {
             };
         };
     };
+    resetKnowledgeArticleLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The article. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The log is gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the permission is missing (application/json), or article_read_only: the caller can read the article but not write it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["KnowledgeProblem"];
+                };
+            };
+            /** @description Not Found — no article the caller can read. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     updateKnowledgeArticleContent: {
         parameters: {
             query?: never;
@@ -1334,7 +1409,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, article_locked. */
+            /** @description Conflict — version_conflict (mode single only), article_locked, collab_inactive (mode collab, and the article's live log is empty). */
             409: {
                 headers: {
                     [name: string]: unknown;

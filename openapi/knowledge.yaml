@@ -272,14 +272,21 @@ components:
             type: array
         KnowledgeContentUpdate:
             additionalProperties: false
-            description: "An autosave (K9): the title and the document, with the version the editor last read."
+            description: "An autosave (K9): the title and the document. A single-editor save (the default) carries the version the editor last read; a collaborative save (K32) does not."
             properties:
                 content:
                     $ref: "#/components/schemas/KnowledgeDocument"
                 expectedVersion:
+                    description: "The version the editor last read. Required with mode single (a missing one is 400, a stale one 409 version_conflict); ignored with mode collab."
                     format: int32
                     minimum: 1
                     type: integer
+                mode:
+                    description: "Absent means single. single: today's save over expectedVersion, which also deletes the article's live log (K32). collab: a save by a client in live co-editing, which compares no version, keeps the lock and the document checks, leaves the log, and is refused (409 collab_inactive) while the log is empty."
+                    enum:
+                        - single
+                        - collab
+                    type: string
                 title:
                     description: "The article's title; empty is shown as Untitled."
                     maxLength: 200
@@ -287,7 +294,6 @@ components:
             required:
                 - title
                 - content
-                - expectedVersion
             type: object
         KnowledgeDocument:
             additionalProperties: true
@@ -1139,9 +1145,46 @@ paths:
                 - Knowledge
             x-vantigo-access: permission:knowledge:articles
             x-vantigo-assistant: never
+    /api/v1/knowledge/articles/{id}/collab/reset:
+        post:
+            description: "Deletes the article's live log and tells its subscribers to discard their copy and reopen it from the last saved version (K32, K35). The way out of a log a client cannot apply. Idempotent; it works on a locked article, since it changes no saved content."
+            operationId: resetKnowledgeArticleLog
+            parameters:
+                - description: The article.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                      format: uuid
+                      type: string
+            responses:
+                "204":
+                    description: The log is gone.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/KnowledgeProblem"
+                    description: "Forbidden — the permission is missing (application/json), or article_read_only: the caller can read the article but not write it."
+                "404":
+                    description: "Not Found — no article the caller can read. The body is empty."
+            summary: Reset an article's live log
+            tags:
+                - Knowledge
+            x-vantigo-access: permission:knowledge:articles
+            x-vantigo-assistant: never
     /api/v1/knowledge/articles/{id}/content:
         put:
-            description: "The editor's autosave (K9). A save by the same person less than 10 minutes after their previous one replaces that version; any other adds one."
+            description: "The editor's autosave (K9). A save by the same person less than 10 minutes after their previous one replaces that version; any other adds one. With mode collab (K32) no version is compared; with mode single the article's live log is deleted and its subscribers told (doc_reset)."
             operationId: updateKnowledgeArticleContent
             parameters:
                 - description: The article.
@@ -1192,7 +1235,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/KnowledgeProblem"
-                    description: "Conflict — version_conflict, article_locked."
+                    description: "Conflict — version_conflict (mode single only), article_locked, collab_inactive (mode collab, and the article's live log is empty)."
                 "413":
                     content:
                         application/problem+json:

@@ -8,6 +8,7 @@ sql:
     schema:
       - ../db/migrations/00135_knowledge_baseline.sql
       - ../db/migrations/00136_knowledge_files_links.sql
+      - ../db/migrations/00140_knowledge_coediting.sql
     queries: queries
     gen:
       go:
