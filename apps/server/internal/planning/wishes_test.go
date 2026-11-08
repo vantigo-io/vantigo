@@ -292,7 +292,7 @@ func TestWishes_HoldersUnread(t *testing.T) {
 // failing, every other method identity's own.
 type failingHolders struct{ contracts.UserDirectory }
 
-func (failingHolders) PermissionHolders(context.Context, string) ([]contracts.Holder, error) {
+func (failingHolders) PermissionHolders(context.Context, string, ...contracts.DirectoryOption) ([]contracts.Holder, error) {
 	return nil, errors.New("the directory is down")
 }
 

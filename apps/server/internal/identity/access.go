@@ -96,12 +96,21 @@ func NewAccess(d module.Deps) *Access {
 // ASP.NET Core authorizes such an endpoint only when every one of its
 // policies succeeds.
 //
-// A request whose context carries an assistant grant (contracts.WithAssistantGrant,
-// set only by the operations dispatcher, never from a header or a cookie) is
-// resolved by checkGrant instead, and no cookie is read.
+// A request whose context carries a grant (contracts.WithGrant, set only by
+// the operations dispatcher, never from a header or a cookie) is resolved by
+// checkGrant, for an assistant grant, or checkAgentGrant, for an agent grant,
+// instead, and no cookie is read. A grant of a kind this method does not know
+// is no caller at all.
 func (a *Access) Check(r *http.Request, rule contracts.Rule) (contracts.Principal, error) {
-	if grantID, ok := contracts.AssistantGrantFrom(r.Context()); ok {
-		return a.checkGrant(r.Context(), grantID, rule)
+	if ref, ok := contracts.GrantFrom(r.Context()); ok {
+		switch ref.Kind {
+		case contracts.GrantAssistant:
+			return a.checkGrant(r.Context(), ref.ID, rule)
+		case contracts.GrantAgent:
+			return a.checkAgentGrant(r.Context(), ref.ID, rule)
+		default:
+			return contracts.Principal{}, contracts.ErrUnauthenticated
+		}
 	}
 	if rule.Kind == contracts.RuleSCIM {
 		token, ok := scimBearer(r)
@@ -130,7 +139,30 @@ func (a *Access) Check(r *http.Request, rule contracts.Rule) (contracts.Principa
 		}
 		return contracts.Principal{}, contracts.ErrUnauthenticated
 	}
-	return a.evaluate(ctx, sessionPrincipal(s), s, rule, now)
+	return a.evaluate(ctx, sessionPrincipal(s), sessionSubject(s), rule, now)
+}
+
+// subject is who a rule is evaluated for: a user, the roles they hold and the
+// state the predicates read — and whether the way they came in verified a
+// second factor. A person's subject is their live session's (sessionSubject);
+// an agent's is its user's alone (checkAgentGrant), with no session behind it.
+type subject struct {
+	userID      uuid.UUID
+	roles       []string
+	disabled    bool
+	lockoutEnd  *time.Time
+	mfaVerified bool
+}
+
+// sessionSubject is the subject a live session is.
+func sessionSubject(s store.GetSessionByTokenHashRow) subject {
+	return subject{
+		userID:      s.UserID,
+		roles:       s.RoleNames,
+		disabled:    s.IsDisabled,
+		lockoutEnd:  s.LockoutEnd,
+		mfaVerified: s.MfaVerifiedAt != nil,
+	}
 }
 
 // sessionPrincipal is the caller a live session is.
@@ -143,11 +175,11 @@ func sessionPrincipal(s store.GetSessionByTokenHashRow) contracts.Principal {
 	}
 }
 
-// evaluate decides rule for the live session s, whose caller is p, and
-// returns p when it is met. Check evaluates a cookie's session with it, and
-// checkGrant an assistant grant's, so a grant is held to exactly the rule the
-// session itself would be.
-func (a *Access) evaluate(ctx context.Context, p contracts.Principal, s store.GetSessionByTokenHashRow, rule contracts.Rule, now time.Time) (contracts.Principal, error) {
+// evaluate decides rule for the subject sub, whose caller is p, and returns p
+// when it is met. Check evaluates a cookie's session with it, checkGrant an
+// assistant grant's, so a grant is held to exactly the rule the session itself
+// would be, and checkAgentGrant an agent's.
+func (a *Access) evaluate(ctx context.Context, p contracts.Principal, sub subject, rule contracts.Rule, now time.Time) (contracts.Principal, error) {
 	switch rule.Kind {
 	case contracts.RuleAnonymous, contracts.RuleSession:
 		return p, nil
@@ -156,7 +188,7 @@ func (a *Access) evaluate(ctx context.Context, p contracts.Principal, s store.Ge
 			return contracts.Principal{}, contracts.ErrForbidden // ParseRule admits no empty rule; fail closed regardless
 		}
 		for _, name := range rule.Names {
-			ok, err := a.policySatisfied(ctx, name, s, now)
+			ok, err := a.policySatisfied(ctx, name, sub, now)
 			if err != nil {
 				return contracts.Principal{}, err
 			}
@@ -169,7 +201,7 @@ func (a *Access) evaluate(ctx context.Context, p contracts.Principal, s store.Ge
 		if len(rule.Names) == 0 {
 			return contracts.Principal{}, contracts.ErrForbidden // as for policies: an empty rule grants nothing
 		}
-		allowed, err := a.permitted(ctx, s, rule.Names, now)
+		allowed, err := a.permitted(ctx, sub, rule.Names, now)
 		if err != nil {
 			return contracts.Principal{}, err
 		}
@@ -350,35 +382,35 @@ func interval(d time.Duration) pgtype.Interval {
 	return pgtype.Interval{Microseconds: d.Microseconds(), Valid: true}
 }
 
-// policySatisfied evaluates one name of a policy: rule for the live session
-// s, with the requirements each .NET policy carries
+// policySatisfied evaluates one name of a policy: rule for the subject
+// sub, with the requirements each .NET policy carries
 // (EA/AuthServiceCollectionExtensions.cs:281-304). Roles are the user's
 // current ones, read with the session, where .NET read them from a cookie
 // principal refreshed every 15 minutes.
-func (a *Access) policySatisfied(ctx context.Context, name string, s store.GetSessionByTokenHashRow, now time.Time) (bool, error) {
+func (a *Access) policySatisfied(ctx context.Context, name string, sub subject, now time.Time) (bool, error) {
 	// ActiveAccountRequirement checks IsDisabled only, not lockout or SCIM
 	// state (EA/AuthAuthorization.cs:44-45). Session validation already
 	// refused a disabled user; it is spelled out so each policy reads as
 	// its .NET definition.
-	active := !s.IsDisabled
+	active := !sub.disabled
 	switch name {
 	case "ActiveAccount":
 		return active, nil
 	case "Owner", "OwnerManagement":
 		// Two names, one definition: role Owner + ActiveAccount + MFA (:294-298).
-		return hasRole(s, RoleOwner) && active && a.mfaSatisfied(s), nil
+		return hasRole(sub, RoleOwner) && active && a.mfaSatisfied(sub), nil
 	case "SystemAdmin":
-		return hasRole(s, RoleSystemAdmin) && active && a.mfaSatisfied(s), nil
+		return hasRole(sub, RoleSystemAdmin) && active && a.mfaSatisfied(sub), nil
 	case "AuthorizationManagement":
 		// ActiveAccount + MFA + AuthorizationManagementRequirement (:301-303).
 		// The MFA requirement binds a delegate as it binds an Owner.
-		if !active || !a.mfaSatisfied(s) {
+		if !active || !a.mfaSatisfied(sub) {
 			return false, nil
 		}
-		return a.managesAuthorization(ctx, s, now)
+		return a.managesAuthorization(ctx, sub, now)
 	case "Business":
 		// ActiveAccount + BusinessAccessRequirement (:299-300).
-		return active && a.businessSatisfied(s), nil
+		return active && a.businessSatisfied(sub), nil
 	default:
 		return false, nil // ParseRule admits no other name; fail closed regardless
 	}
@@ -391,11 +423,11 @@ func (a *Access) policySatisfied(ctx context.Context, name string, s store.GetSe
 // custom and whose keys the catalog all lets be delegated (loadScopes). A
 // revoked, expired or malformed delegation is refused at the very next
 // request.
-func (a *Access) managesAuthorization(ctx context.Context, s store.GetSessionByTokenHashRow, now time.Time) (bool, error) {
-	if hasRole(s, RoleOwner) {
+func (a *Access) managesAuthorization(ctx context.Context, sub subject, now time.Time) (bool, error) {
+	if hasRole(sub, RoleOwner) {
 		return true, nil
 	}
-	scopes, err := activeScopes(ctx, a.q, a.catalog, s.UserID, now)
+	scopes, err := activeScopes(ctx, a.q, a.catalog, sub.userID, now)
 	if err != nil {
 		return false, err
 	}
@@ -406,34 +438,34 @@ func (a *Access) managesAuthorization(ctx context.Context, s store.GetSessionByT
 // met while owners are not required to use MFA, or when this session's
 // sign-in verified a second factor. It binds every caller of a policy that
 // carries it (SystemAdmins and delegates too), not only Owners.
-func (a *Access) mfaSatisfied(s store.GetSessionByTokenHashRow) bool {
-	return !a.cfg.OwnersRequireMFA || s.MfaVerifiedAt != nil
+func (a *Access) mfaSatisfied(sub subject) bool {
+	return !a.cfg.OwnersRequireMFA || sub.mfaVerified
 }
 
 // businessSatisfied is BusinessAccessRequirement
 // (EA/AuthAuthorization.cs:52-78): only an Owner is ever held to MFA here,
 // and only while owners are required to use it.
-func (a *Access) businessSatisfied(s store.GetSessionByTokenHashRow) bool {
-	return !hasRole(s, RoleOwner) || a.mfaSatisfied(s)
+func (a *Access) businessSatisfied(sub subject) bool {
+	return !hasRole(sub, RoleOwner) || a.mfaSatisfied(sub)
 }
 
-// permitted evaluates a permission: rule's keys for the live session s.
+// permitted evaluates a permission: rule's keys for the subject sub.
 // Every .NET permission policy is PermissionRequirement + ActiveAccount +
 // Business (AZ/PermissionAuthorization.cs:36). The handler denies a
 // disabled or locked-out user (:56-61), then allows an Owner every key
 // without consulting the permission table (:70-74); anyone else needs each
 // key through an effective role (EffectivePermissionForUser). A key missing
 // from the catalog (:48-49) never gets here: the router refuses to mount it.
-func (a *Access) permitted(ctx context.Context, s store.GetSessionByTokenHashRow, keys []string, now time.Time) (bool, error) {
-	if !isActive(s.IsDisabled, s.LockoutEnd, now) || !a.businessSatisfied(s) {
+func (a *Access) permitted(ctx context.Context, sub subject, keys []string, now time.Time) (bool, error) {
+	if !isActive(sub.disabled, sub.lockoutEnd, now) || !a.businessSatisfied(sub) {
 		return false, nil
 	}
-	if hasRole(s, RoleOwner) {
+	if hasRole(sub, RoleOwner) {
 		return true, nil
 	}
 	for _, key := range keys {
 		ok, err := a.q.EffectivePermissionForUser(ctx, store.EffectivePermissionForUserParams{
-			UserID:        s.UserID,
+			UserID:        sub.userID,
 			PermissionKey: key,
 			Now:           now,
 		})
@@ -447,8 +479,8 @@ func (a *Access) permitted(ctx context.Context, s store.GetSessionByTokenHashRow
 	return true, nil
 }
 
-func hasRole(s store.GetSessionByTokenHashRow, role string) bool {
-	return slices.Contains(s.RoleNames, role)
+func hasRole(sub subject, role string) bool {
+	return slices.Contains(sub.roles, role)
 }
 
 // isLockedOut reports whether a lockout is in force at now

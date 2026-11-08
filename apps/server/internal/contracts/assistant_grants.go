@@ -48,18 +48,19 @@ type AssistantGrants interface {
 	RevokeForUser(ctx context.Context, userID uuid.UUID) error
 }
 
-// assistantGrantContextKey is unexported so only this package can set or read
-// the grant: a context value cannot be supplied by a network request.
-type assistantGrantContextKey struct{}
-
-// WithAssistantGrant attaches the id of an assistant grant to ctx. The
-// operations dispatcher is its only caller.
+// WithAssistantGrant attaches the id of an assistant grant to ctx: WithGrant
+// with Kind GrantAssistant. The operations dispatcher is its only caller.
 func WithAssistantGrant(ctx context.Context, grantID uuid.UUID) context.Context {
-	return context.WithValue(ctx, assistantGrantContextKey{}, grantID)
+	return WithGrant(ctx, GrantRef{Kind: GrantAssistant, ID: grantID})
 }
 
 // AssistantGrantFrom retrieves the grant WithAssistantGrant attached to ctx.
+// It answers false for a grant of another kind: a caller that understands only
+// the assistant's grant never mistakes an agent's for it.
 func AssistantGrantFrom(ctx context.Context) (uuid.UUID, bool) {
-	id, ok := ctx.Value(assistantGrantContextKey{}).(uuid.UUID)
-	return id, ok && id != uuid.Nil
+	ref, ok := GrantFrom(ctx)
+	if !ok || ref.Kind != GrantAssistant {
+		return uuid.Nil, false
+	}
+	return ref.ID, true
 }

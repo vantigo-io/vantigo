@@ -1,15 +1,16 @@
 -- name: DirectoryUser :one
-SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language
+SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language, kind
 FROM identity.users WHERE id = $1;
 
 -- name: DirectoryUsers :many
-SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language
+SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language, kind
 FROM identity.users WHERE id = ANY($1::uuid[]);
 
 -- name: DirectorySearchUsers :many
-SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language
+-- DirectorySearchUsers leaves out users of kind agent unless include_agents.
+SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language, kind
 FROM identity.users
-WHERE NOT is_disabled AND display_name ILIKE '%' || sqlc.arg(pattern)::text || '%' ESCAPE '\'
+WHERE NOT is_disabled AND (sqlc.arg(include_agents)::boolean OR kind = 'person') AND display_name ILIKE '%' || sqlc.arg(pattern)::text || '%' ESCAPE '\'
 ORDER BY display_name, id
 LIMIT sqlc.arg(max_rows);
 
@@ -22,8 +23,8 @@ LIMIT sqlc.arg(max_rows);
 -- access.go's permitted), or through a role among their direct roles and the
 -- roles mapped to every active access group they are effectively a member of
 -- — exactly EffectivePermissionForUser's rule (roles.sql). A delegation
--- grants no key.
-SELECT u.id, u.display_name, u.email, coalesce(u.preferred_language, '')::text AS preferred_language
+-- grants no key. A user of kind agent is left out unless include_agents.
+SELECT u.id, u.display_name, u.email, coalesce(u.preferred_language, '')::text AS preferred_language, u.kind
 FROM identity.users u
 CROSS JOIN LATERAL (
     SELECT EXISTS (
@@ -35,6 +36,7 @@ CROSS JOIN LATERAL (
 ) o
 LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id
 WHERE NOT u.is_disabled
+  AND (@include_agents::boolean OR u.kind = 'person')
   AND u.pending_since IS NULL
   AND (NOT @scim_enabled::boolean OR m.upstream_active IS NOT FALSE OR o.is_owner)
   AND (o.is_owner OR EXISTS (
@@ -61,12 +63,14 @@ ORDER BY u.display_name, u.id;
 -- DirectoryUserForNotice is contracts.UserDirectory.Notify's one read: the
 -- address and language of the user, when active as DirectoryPermissionHolders
 -- means it — not disabled, not pending, and, while SCIM is configured, not
--- deactivated by the directory unless an Owner. No row for a user who is not.
+-- deactivated by the directory unless an Owner. No row for a user who is not,
+-- nor for a user of kind agent, whose address never routes.
 SELECT u.email, coalesce(u.preferred_language, '')::text AS preferred_language
 FROM identity.users u
 LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id
 WHERE u.id = @id
   AND NOT u.is_disabled
+  AND u.kind = 'person'
   AND u.pending_since IS NULL
   AND (NOT @scim_enabled::boolean OR m.upstream_active IS NOT FALSE OR EXISTS (
       SELECT 1

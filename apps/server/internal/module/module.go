@@ -359,6 +359,13 @@ type Deps struct {
 	// Workers does not, since a grant is issued while the person's own message
 	// request is being served.
 	AssistantGrants contracts.AssistantGrants
+	// AgentAccounts makes and changes the users of kind agent
+	// (contracts.AgentAccounts, virtual employees design V5) and AgentGrants
+	// issues and ends the agents' grants (contracts.AgentGrants, design V6).
+	// Compose resolves both from the enabled modules (identity provides them),
+	// beside AssistantGrants; Workers does not resolve them.
+	AgentAccounts contracts.AgentAccounts
+	AgentGrants   contracts.AgentGrants
 	// Operations is the dispatcher that calls the merged contract's operations
 	// in-process, through the composed router, as the assistant principal
 	// (the Assistant design S2, module boundaries rule 18). Compose sets it
@@ -696,6 +703,11 @@ type Module struct {
 	// AssistantGrants provides contracts.AssistantGrants. At most one enabled
 	// module may declare it; identity does.
 	AssistantGrants func(Deps) contracts.AssistantGrants
+	// AgentAccounts provides contracts.AgentAccounts and AgentGrants provides
+	// contracts.AgentGrants. At most one enabled module may declare each;
+	// identity does.
+	AgentAccounts func(Deps) contracts.AgentAccounts
+	AgentGrants   func(Deps) contracts.AgentGrants
 	// LiveTopics builds the live topics this module serves (live design L9),
 	// if it has any: each kind is <module>.<kind>, its prefix the module's
 	// name. Compose calls it for every enabled module, right after its

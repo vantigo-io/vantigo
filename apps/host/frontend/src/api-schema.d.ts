@@ -1085,6 +1085,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/owner/user-counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Count the people and the agents */
+        get: operations["getIdentityOwnerUserCounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/owner/users": {
         parameters: {
             query?: never;
@@ -1629,6 +1646,12 @@ export interface components {
             /** Format: uuid */
             id: string;
             isDisabled: boolean;
+            /**
+             * @description person for a user who signs in, agent for an AI agent (virtual employees design V5). An agent has no credential and is listed apart from the people.
+             * @default person
+             * @enum {string}
+             */
+            kind: "person" | "agent";
             roles: components["schemas"]["AccessRoleSummary"][];
             version: string | null;
         };
@@ -1948,6 +1971,13 @@ export interface components {
         OwnerUserPasswordRequest: {
             password: string | null;
         };
+        /** @description How many people and how many agents the workspace has, disabled ones included. Nothing enforces a limit. */
+        OwnerUserCountsResponse: {
+            /** Format: int32 */
+            agents: number;
+            /** Format: int32 */
+            people: number;
+        };
         OwnerUserResponse: {
             active: boolean;
             avatarUrl: string | null;
@@ -1963,6 +1993,12 @@ export interface components {
             employeeNumber?: string;
             /** Format: uuid */
             id: string;
+            /**
+             * @description person for a user who signs in, agent for an AI agent (virtual employees design V5). An agent has no credential and is listed apart from the people.
+             * @default person
+             * @enum {string}
+             */
+            kind: "person" | "agent";
             lockedOut: boolean;
             /** Format: date-time */
             lockoutEnd: string | null;
@@ -7118,6 +7154,54 @@ export interface operations {
             /** @description Forbidden */
             403: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityOwnerUserCounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerUserCountsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
                     [name: string]: unknown;
                 };
                 content: {

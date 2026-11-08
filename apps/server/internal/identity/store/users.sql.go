@@ -58,6 +58,7 @@ CROSS JOIN LATERAL (
 ) r
 LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id
 WHERE u.normalized_email = $2
+  AND u.kind = 'person'
 `
 
 type GetLoginCandidateParams struct {
@@ -82,7 +83,8 @@ type GetLoginCandidateRow struct {
 // and whether it is "effectively disabled" beyond is_disabled: while SCIM
 // is configured, a non-Owner the directory deactivated
 // (SV/ScimLifecycleService.cs:21-44). A pending user reads as disabled: their
-// only way in is accepting their invitation.
+// only way in is accepting their invitation. A user of kind agent is no
+// candidate at all: it has no credential and never signs in.
 func (q *Queries) GetLoginCandidate(ctx context.Context, arg GetLoginCandidateParams) (GetLoginCandidateRow, error) {
 	row := q.db.QueryRow(ctx, getLoginCandidate, arg.ScimEnabled, arg.NormalizedEmail)
 	var i GetLoginCandidateRow
@@ -105,7 +107,7 @@ SELECT id, email, normalized_email, email_confirmed, display_name, preferred_lan
        password_hash, is_disabled, lockout_end, failed_login_count, totp_secret,
        totp_enabled, totp_last_step, version, created_at, updated_at,
        managed_by, employee_number, employee_number_key, pending_since, invitations_since, disabled_by,
-       time_zone, provisioning_roles_at
+       time_zone, provisioning_roles_at, kind
 FROM identity.users
 WHERE id = $1
 `
@@ -138,6 +140,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (IdentityUser, 
 		&i.DisabledBy,
 		&i.TimeZone,
 		&i.ProvisioningRolesAt,
+		&i.Kind,
 	)
 	return i, err
 }
@@ -147,7 +150,7 @@ SELECT id, email, normalized_email, email_confirmed, display_name, preferred_lan
        password_hash, is_disabled, lockout_end, failed_login_count, totp_secret,
        totp_enabled, totp_last_step, version, created_at, updated_at,
        managed_by, employee_number, employee_number_key, pending_since, invitations_since, disabled_by,
-       time_zone, provisioning_roles_at
+       time_zone, provisioning_roles_at, kind
 FROM identity.users
 WHERE normalized_email = $1
 `
@@ -180,6 +183,7 @@ func (q *Queries) GetUserByNormalizedEmail(ctx context.Context, normalizedEmail 
 		&i.DisabledBy,
 		&i.TimeZone,
 		&i.ProvisioningRolesAt,
+		&i.Kind,
 	)
 	return i, err
 }

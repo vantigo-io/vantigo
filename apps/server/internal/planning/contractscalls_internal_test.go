@@ -72,7 +72,7 @@ func (silentUsers) User(context.Context, uuid.UUID) (*contracts.UserEntry, error
 
 func (silentUsers) Notify(context.Context, uuid.UUID, contracts.Notice) error { return nil }
 
-func (silentUsers) PermissionHolders(context.Context, string) ([]contracts.Holder, error) {
+func (silentUsers) PermissionHolders(context.Context, string, ...contracts.DirectoryOption) ([]contracts.Holder, error) {
 	return nil, nil
 }
 

@@ -494,6 +494,13 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		return nil, err
 	}
 
+	// The agents' accounts and grants (contracts.AgentAccounts and
+	// AgentGrants, virtual employees design V5 and V6) resolve beside them.
+	// Workers does not resolve them.
+	if deps, err = withAgentSlots(deps, mods); err != nil {
+		return nil, err
+	}
+
 	// The calendar's busy time (contracts.CalendarBusy, calendar Outlook sync
 	// design O9.8) resolves last, after the mailbox calendar: its provider,
 	// the calendar's server, reads the rest of Deps while it is built.

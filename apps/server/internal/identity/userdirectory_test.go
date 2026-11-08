@@ -47,8 +47,8 @@ func TestUserDirectory_ResolvesAUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("User: %v", err)
 	}
-	if got == nil || *got != (contracts.UserEntry{ID: id, DisplayName: "Ola Nordmann", Active: true}) {
-		t.Errorf("User = %+v, want {%s Ola Nordmann true}", got, id)
+	if got == nil || *got != (contracts.UserEntry{ID: id, DisplayName: "Ola Nordmann", Active: true, Kind: contracts.UserKindPerson}) {
+		t.Errorf("User = %+v, want {%s Ola Nordmann true person}", got, id)
 	}
 }
 
@@ -338,7 +338,7 @@ func TestUserDirectory_PermissionHoldersUnderSCIM(t *testing.T) {
 	if names := f.names(got); !slices.Equal(names, want) {
 		t.Fatalf("holders = %v, want %v", names, want)
 	}
-	if got[0] != (contracts.Holder{ID: f.users["a-direct"], DisplayName: "a-direct@example.test", Email: "a-direct@example.test", PreferredLanguage: "nb"}) {
+	if got[0] != (contracts.Holder{ID: f.users["a-direct"], DisplayName: "a-direct@example.test", Email: "a-direct@example.test", PreferredLanguage: "nb", Kind: contracts.UserKindPerson}) {
 		t.Errorf("the direct holder = %+v, want their name, address and language", got[0])
 	}
 	if got[1].PreferredLanguage != "" {

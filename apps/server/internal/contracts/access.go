@@ -17,22 +17,33 @@ type Principal struct {
 	SCIM        bool // authenticated by the SCIM bearer token; no user
 	// Via is set when the principal is the session's own, reached through
 	// something acting for the person rather than by the person's browser:
-	// today the assistant, through an assistant grant. It is nil for every
-	// other principal, and a module's audit can say "on the person's behalf
-	// through the assistant, in this run".
+	// the assistant, through an assistant grant. It is also set, with no
+	// person and no session, for an agent acting through an agent grant. It is
+	// nil for every other principal, and a module's audit can say "on the
+	// person's behalf through the assistant, in this run".
 	Via *Via
 }
 
 // Via says what acted for the principal.
 type Via struct {
-	// Kind names it: "assistant".
-	Kind           string
+	// Kind names it: "assistant" or "agent".
+	Kind string
+	// ConversationID is the assistant conversation of an "assistant" Via.
 	ConversationID uuid.UUID
 	RunID          uuid.UUID
+	// AgentID, CustomerID and ApprovedBy are set for an "agent" Via: the
+	// agent, the customer the run is scoped to (nil for a run with none) and
+	// the reviewer whose approval the grant carries (nil for a run's own).
+	AgentID    uuid.UUID
+	CustomerID *int32
+	ApprovedBy *uuid.UUID
 }
 
-// ViaAssistant is Via.Kind of an assistant grant.
-const ViaAssistant = "assistant"
+// ViaAssistant is Via.Kind of an assistant grant, ViaAgent of an agent grant.
+const (
+	ViaAssistant = "assistant"
+	ViaAgent     = "agent"
+)
 
 // principalContextKey is unexported so only this package can set or read the
 // context value.

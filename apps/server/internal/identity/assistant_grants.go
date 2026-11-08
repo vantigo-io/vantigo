@@ -97,7 +97,7 @@ func (a *Access) checkGrant(ctx context.Context, grantID uuid.UUID, rule contrac
 
 	p := sessionPrincipal(s)
 	p.Via = &contracts.Via{Kind: contracts.ViaAssistant, ConversationID: grant.ConversationID, RunID: grant.RunID}
-	return a.evaluate(ctx, p, s, rule, now)
+	return a.evaluate(ctx, p, sessionSubject(s), rule, now)
 }
 
 // assistantGrants is identity's contracts.AssistantGrants.
@@ -123,7 +123,7 @@ func (g assistantGrants) Issue(ctx context.Context, conversationID, runID uuid.U
 	if !ok {
 		return uuid.Nil, contracts.ErrNoSessionRequest
 	}
-	if _, viaGrant := contracts.AssistantGrantFrom(r.Context()); viaGrant {
+	if _, viaGrant := contracts.GrantFrom(r.Context()); viaGrant {
 		return uuid.Nil, contracts.ErrNoSessionRequest
 	}
 	now := g.a.now()
