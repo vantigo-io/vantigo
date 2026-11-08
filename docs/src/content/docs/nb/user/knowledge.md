@@ -1,6 +1,6 @@
 ---
 title: Kunnskap
-description: Kunnskap-appen — hvem som kan bruke den, sidepanelets deler Favoritter, Arbeidsområde, Delt og Privat, å opprette og organisere sider, å skrive med redigeringsverktøyet, automatisk lagring og hva som skjer når noen andre har endret siden, å dele og låse en side, å skjule den for assistenten, historikk, papirkurv, favoritter, søk og å se hvem andre som er på siden.
+description: Kunnskap-appen — hvem som kan bruke den, sidepanelets deler Favoritter, Arbeidsområde, Delt og Privat, å opprette og organisere sider, å skrive med redigeringsverktøyet, automatisk lagring og hva som skjer når noen andre har endret siden, å redigere sammen med levende markører, å dele og låse en side, å skjule den for assistenten, historikk, papirkurv, favoritter, søk og å se hvem andre som er på siden.
 sidebar:
   order: 57
 sources:
@@ -139,6 +139,10 @@ andre filtyper, HTML, bilder på nettet og skjulte mapper som `.obsidian`. Oppla
 
 ## Lagring, og når noen andre har endret siden
 
+Slik oppfører en side seg når den redigeres av én person om gangen, som er måten det fungerer på
+når direkte oppdateringer er av eller ikke kan nås. Når direkte oppdateringer er på, kan flere
+skrive på samme side samtidig; se [Rediger sammen](#rediger-sammen).
+
 Det finnes ingen Lagre-knapp. Siden lagrer seg selv et øyeblikk etter at du slutter å skrive, og
 statusen ved siden av tittelen sier hvor det står: **Ulagrede endringer**, **Lagrer …**,
 **Lagret** eller **Ikke lagret**. Under tittelen står *Sist endret av …*, med hvem som lagret sist
@@ -159,6 +163,60 @@ redigerte**, med to valg:
 Mister du forbindelsen eller lukker fanen før en endring er lagret, tas teksten vare på i denne
 nettleseren. Neste gang du åpner siden, står det **Ulagrede endringer i denne nettleseren**, med
 klokkeslettet, og du kan velge **Gjenopprett dem** eller **Forkast**.
+
+## Rediger sammen
+
+Når direkte oppdateringer er på, kan en side redigeres av flere samtidig, gjerne i samme avsnitt.
+Det er ingenting å slå på. Du ser alles endringer mens de skrives, og hver persons markør og
+markering vises i personens egen farge med navnet over. Samme farge følger en person på alle sider.
+
+- **Ingen konfliktdialog, ingen *Kari redigerer*, ingen lokal kopi.** Endringene flettes sammen
+  mens de gjøres, så ingens tekst forkastes og ingen må velge. Siden lagrer seg fortsatt selv, noen
+  sekunder etter at teksten sist ble endret, og statusen ved tittelen sier **Ulagrede endringer**,
+  **Lagrer …** eller **Lagret** som før. Den lagrede kopien — det søk, assistenten, lenker,
+  eksport og [historikken](#historikk-og-gjenoppretting) ser — kan ligge opptil et halvt minutt
+  etter den levende teksten.
+- **Angre er ditt eget.** **Angre** tar tilbake det du skrev, ikke det andre skrev etterpå.
+- **Hvem som får æren.** En versjon i historikken tilskrives personen hvis nettleser lagret den,
+  som ikke alltid er den som skrev mest.
+- **Lesere** ser teksten endre seg og markørene bevege seg, men kan ikke skrive. En låst side blir
+  skrivebeskyttet for alle innen ett minutt, med en gang for dem som har den åpen.
+- **Tittelen** er fortsatt et eget felt. Gir noen andre siden nytt navn og du ikke har rørt
+  tittelen, endres den hos deg; for titler gjelder den siste lagringen.
+- **Første gang en side åpnes direkte** blir den lagrede teksten til den levende teksten. Åpner to
+  personer en gammel side i samme øyeblikk, gjør den ene det og den andre følger med; teksten
+  dobles aldri.
+
+### Når forbindelsen blir borte
+
+Mister du forbindelsen mens du redigerer, sier siden **Frakoblet. Endringene dine tas vare på og
+deles når tilkoblingen er tilbake.** Fortsett å skrive: teksten blir stående på siden og lagres så
+snart forbindelsen er tilbake, da siden også henter inn det andre har skrevet og endringene dine
+deles. Ingenting lagres over de andres tekst mens du er frakoblet. Hvis siden ble erstattet i
+mellomtiden — av en lagring uten direkte forbindelse, eller fordi andre begynte å redigere den mens
+du skrev uten — sier siden **Siden ble erstattet av en lagring gjort uten direkte tilkobling, eller
+andre begynte å redigere den** og tilbyr teksten du hadde skrevet som **Ulagrede endringer i denne
+nettleseren**.
+
+En side som åpnes mens direkte oppdateringer er av eller utilgjengelige, redigeres én person om
+gangen, som beskrevet over, og slutter seg til de andre når forbindelsen er tilbake.
+
+To meldinger hører til direkte redigering:
+
+- **Direkte redigering er satt på pause for denne siden.** Sidens direkte logg er full.
+  Endringene dine tas vare på og lagres så snart direkte redigering kommer tilbake, når loggen er
+  ryddet.
+- **Den direkte kopien av siden kan ikke åpnes.** Den lagrede versjonen vises, skrivebeskyttet.
+  Har du lov til å redigere siden, lager **Bygg på nytt fra siste lagrede versjon** en ny direkte
+  kopi fra den; tekst skrevet siden siste lagring (opptil et halvt minutt) går tapt.
+
+### Gjenopprett mens andre redigerer
+
+**Gjenopprett denne versjonen** i [historikken](#historikk-og-gjenoppretting) legger versjonens
+tekst på siden som én endring: alle ser den dukke opp med en gang, **Angre** tar den tilbake, og den
+lagres som en ny versjon. Ingenting går tapt; teksten den erstattet ligger i historikken. Er siden
+ikke åpen direkte hos deg mens andre redigerer den, sier **Gjenopprett** *Andre redigerer denne
+siden akkurat nå* og gjør ingenting; prøv igjen om et øyeblikk.
 
 ## Organiser sider ved å dra
 
@@ -261,6 +319,7 @@ de andre appene, og åpner dem direkte.
 
 Når noen andre redigerer siden du har åpen, står det øverst på siden *Kari redigerer* (eller *Kari
 og Ola redigerer*); andre som har siden åpen, vises under **Også her**, som redigerer eller ser
-på. Siden oppdaterer seg også selv når noen andre endrer den, og sidepanelet når sider opprettes,
+på. Når siden [redigeres sammen](#rediger-sammen), vises ikke banneret: markørene tar plassen
+dets, og **Også her** består. Siden oppdaterer seg også selv når noen andre endrer den, og sidepanelet når sider opprettes,
 flyttes eller kastes — du trenger ikke laste inn på nytt. Er du midt i å skrive når noen andre
 lagrer, får du dialogen som er beskrevet under [Lagring](#lagring-og-når-noen-andre-har-endret-siden).

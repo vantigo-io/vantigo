@@ -1,6 +1,6 @@
 ---
 title: Knowledge
-description: The Knowledge app — who can use it, the sidebar's Favourites, Workspace, Shared and Private sections, creating and organising pages, writing with the editor, autosave and what happens when someone else changed the page, sharing a page and locking it, hiding it from the Assistant, history, trash, favourites, search, and seeing who else is on a page.
+description: The Knowledge app — who can use it, the sidebar's Favourites, Workspace, Shared and Private sections, creating and organising pages, writing with the editor, autosave and what happens when someone else changed the page, editing together with live cursors, sharing a page and locking it, hiding it from the Assistant, history, trash, favourites, search, and seeing who else is on a page.
 sidebar:
   order: 57
 sources:
@@ -141,6 +141,10 @@ Parts the editor cannot hold are left out and listed as well; images inside head
 
 ## Saving, and when someone else changed the page
 
+This is how a page behaves when it is edited by one person at a time, which is how it works
+when live updates are off or cannot be reached. When live updates are on, several people can
+type in the same page at once; see [Edit together](#edit-together).
+
 There is no Save button. The page saves by itself a moment after you stop typing, and the
 status beside the title says where it stands: **Unsaved changes**, **Saving…**, **Saved** or
 **Not saved**. Under the title, *Last changed by …* says who saved last and when.
@@ -160,6 +164,60 @@ while you were editing**, with two choices:
 If you lose your connection or close the tab before a change is saved, the text is kept in
 this browser. The next time you open the page it says **Unsaved changes on this device**,
 with the time, and offers **Restore them** or **Discard**.
+
+## Edit together
+
+When live updates are on, a page can be edited by several people at the same time, in the same
+paragraph if they like. There is nothing to switch on. You see everyone's changes as they type,
+and each person's cursor and selection show in their own colour with their name above it. The
+same colour follows a person on every page.
+
+- **No conflict dialog, no *Kari is editing*, no local copy.** Changes are merged as they are
+  made, so nobody's text is dropped and nobody is asked to choose. The page still saves by
+  itself, a few seconds after the text last changed, and the status beside the title says
+  **Unsaved changes**, **Saving…** or **Saved** as before. The saved copy — what search, the
+  Assistant, links, export and the [history](#history-and-restore) see — can trail the live text by
+  up to half a minute.
+- **Undo is your own.** **Undo** takes back what you typed, not what others typed after it.
+- **Who is credited.** A version in the history is credited to the person whose browser saved
+  it, which is not always the person who wrote most of it.
+- **Readers** see the text change and the cursors move, but cannot type. A locked page turns
+  read-only for everyone within a minute, at once for people who have it open.
+- **The title** is still a field of its own. If someone else renames the page and you have not
+  touched the title, it changes for you; titles are last-saved-wins.
+- **The first time a page is opened live**, its saved text becomes the live text. If two people
+  open an old page at the same moment, one of them does it and the other follows; the text is
+  never doubled.
+
+### When the connection is lost
+
+If you are disconnected while editing, the page says **Offline. Your changes are kept and
+shared when the connection returns.** Keep typing: your text stays on the page and is saved as soon as
+the connection returns, when the page also catches up with what others wrote and your changes
+are shared. Nothing is saved over the others' text while you are offline.
+If the page was replaced meanwhile — by a save made without the live connection, or because
+others started editing it while you typed without one — the page says **This page was replaced
+by a save made without the live connection, or others started editing it** and offers the text
+you had typed as **Unsaved changes on this device**.
+
+A page opened while live updates are off or unreachable is edited one person at a time, as
+described above, and joins the others when the connection returns.
+
+Two messages are specific to live editing:
+
+- **Live editing is paused for this page.** The page's live record is full. Your changes are
+  kept and saved as soon as live editing returns, once the record has been tidied.
+- **The live copy of this page cannot be opened.** The saved version is shown, read-only. If
+  you may edit the page, **Rebuild from the last saved version** makes a new live copy from it;
+  text typed since the last save (up to about half a minute) is lost.
+
+### Restore while others are editing
+
+**Restore this version** in the [history](#history-and-restore) puts that version's text on the
+page as one change: everyone sees it appear at once, **Undo** takes it back, and it is saved as
+a new version. Nothing is lost; the text it replaced stays in the history. If the page is not
+open live for you while others are editing it, **Restore** says *Others are editing this page
+right now* and does nothing; try again in a moment.
 
 ## Organise pages by dragging
 
@@ -261,7 +319,8 @@ other apps' pages, and opens them directly.
 
 When someone else is editing the page you have open, the top of the page says *Kari is editing*
 (or *Kari and Ola are editing*); other people who have the page open show under **Also here**,
-as editing or viewing. The page also refreshes by itself when someone else changes it, and
+as editing or viewing. When the page is [edited together](#edit-together), the banner is not
+shown: the cursors take its place, and **Also here** stays. The page also refreshes by itself when someone else changes it, and
 the sidebar when pages are created, moved or trashed — you do not need to reload. If you are
 in the middle of typing when someone else saves, you get the dialog described under
 [Saving](#saving-and-when-someone-else-changed-the-page).

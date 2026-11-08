@@ -1,6 +1,6 @@
 ---
 title: Knowledge module
-description: "The Knowledge module (nb Kunnskap): the articles tree with fractional positions and a depth of 10; the access model — the nearest member row, else the nearest default, bounded by knowledge:articles — materialised under one advisory lock, the Workspace, Shared and Private sections, and what knowledge:manage may and may not do; the document allowlist (callouts, toggles, tables, images, attachments, mentions, article and record links) and the plain text derived from it; files in articles; links, backlinks and mentions; Markdown export and import; autosave with expectedVersion, the lock, the history and its coalescing; the trash and its groups; favourites; search in Norwegian and English; the Assistant's two tools and Hidden from the Assistant; the live topics; live co-editing — the update log, the binary frames, the seed, compaction, the reset endpoint and the collaborative save; the retention worker and the erasure sweep; the editor's and the server's licences; the endpoints and their refusals."
+description: "The Knowledge module (nb Kunnskap): the articles tree with fractional positions and a depth of 10; the access model — the nearest member row, else the nearest default, bounded by knowledge:articles — materialised under one advisory lock, the Workspace, Shared and Private sections, and what knowledge:manage may and may not do; the document allowlist (callouts, toggles, tables, images, attachments, mentions, article and record links) and the plain text derived from it; files in articles; links, backlinks and mentions; Markdown export and import; autosave with expectedVersion, the lock, the history and its coalescing; the trash and its groups; favourites; search in Norwegian and English; the Assistant's two tools and Hidden from the Assistant; the live topics; live co-editing — the update log, the binary frames, the seed, compaction, the reset endpoint and the collaborative save; the browser's side of co-editing; the retention worker and the erasure sweep; the editor's and the server's licences; the endpoints and their refusals."
 sidebar:
   order: 125
 sources:
@@ -611,6 +611,65 @@ save does, and leaves the log. It cannot check that the JSON matches the log: wh
 recorded as the author, so a version may be attributed to the person whose browser saved last.
 Search, history, the Assistant and export therefore trail the live text.
 
+### The browser's side
+
+`apps/knowledge/frontend/src/editor/collab` holds the client of the protocol above. The shell
+(`packages/frontend-shell/src/live`) carries the frames and knows nothing of Yjs
+([Frontend architecture](/en/contributing/frontend-architecture/#binary-frames-and-documents)); the module's
+`CollabProvider` is the Yjs side.
+
+- **The provider** owns a `Y.Doc` and a y-protocols `Awareness`. After the subscription's `ok`,
+  after every reconnect and after every `resync` or `doc_stale`, it sends `doc_sync` with its
+  **contiguous watermark** (the newest row such that it has applied every row up to it; its own
+  acknowledged rows count) and its epoch (0 for the first sync). It writes nothing until `synced`.
+- **Updates** from `doc.on("update")` are collected for 100 ms, merged with `Y.mergeUpdates`
+  (in groups of at most 256 KiB) and sent as one frame, and kept until their `ack`. A lost
+  connection puts every unacknowledged update back to be sent after the next `synced`. `rate`,
+  `log_full` and `unavailable` keep the update and retry with backoff and jitter (1 s doubling
+  to 30 s); `log_full` also shows the *paused* message until an ack. `read_only` stops writing
+  and `too_large` stops the live copy.
+- **Seeding.** A writer that gets `synced` with `seq` 0 reads the article afresh, normalises its
+  JSON through a throwaway editor (so every block has the id of the editor's `UniqueID`), builds
+  the document with `prosemirrorJSONToYDoc` and sends one seed naming the version it read. On
+  `seed_accepted` it applies the seed to its own document (a seed is not echoed to its sender).
+  On `seed_rejected` it throws the seed away and syncs again; it never merges its own seed.
+  A reader on an empty log shows the saved JSON and binds when the first update arrives.
+- **Compaction.** On `compact_requested {upTo}` it sends the whole state with `upTo` set to its
+  **watermark**, only when the watermark covers `upTo`, and never while one is in flight.
+- **Awareness.** The local state (the person's name, a colour chosen from twelve by hashing the
+  user id, the cursor) is sent whole, at most every 100 ms, by writers only; a removal is sent on
+  leaving the page.
+- **When it breaks.** An update that cannot be applied stops the provider (`doc_error` is sent) and
+  the page shows the saved text, read-only, with **Rebuild from the last saved version** for
+  writers, which calls `resetKnowledgeArticleLog`. `doc_reset` finishes the provider: the page
+  discards its document, fetches the article again and starts a new provider; text that had not
+  reached the log or the JSON is kept as the local draft.
+- **The editor** is TipTap's `Collaboration` and `CollaborationCaret` over the provider's
+  document, with StarterKit's undo history off (Yjs's undo is used: a person undoes only their
+  own changes). The editor's schema is unchanged, so `schema.json` is too.
+- **The page** is in collaborative mode once the provider is `ready` and the page has nothing
+  unsaved; until then, and whenever the live channel is off, it is the single editor exactly as
+  before. In collaborative mode the JSON is saved with `mode: "collab"` 5 s after the document
+  last changed and at most every 30 s (each with 0 to 2 s of jitter), skipped when the saved
+  JSON already equals the editor's; the conflict dialog, *… is editing* and the local draft are
+  not used, and only the person's own typing (and undo) marks the page changed. A `409
+  collab_inactive` makes the provider sync again. **A page that has a live log never takes the
+  single-editor save path:** while the connection is down or the log is paused the save waits
+  until the log's save is possible. A page that was typed in as a single editor when the log turns
+  out to be live (`409 collab_active` from a single save or a restore, or the log binding while
+  the page has unsaved text) keeps that text as the local draft, says so, and joins the log.
+  **Restore** in collaborative mode replaces the editor's content in one transaction and saves it
+  once the change is acknowledged, instead of calling the restore endpoint; in single mode a
+  `collab_active` refusal is shown as *Others are editing this page right now*.
+- **Safeguards.** A seed or compaction unanswered for 10 s is given up on and the provider syncs
+  again. `read_only` from the server keeps the text and makes the editor read-only until access is
+  read again or the connection returns. Leaving the page flushes what is waiting and removes the
+  cursor; closing the tab with unacknowledged text asks first. A cursor's name is cut to 60
+  characters and its colour is one of the twelve or derived from the user id. The awareness
+  state is still whatever a writer's browser sends: the server does not stamp identities on it yet,
+  so a writer could show another name. After a reset the rebuilt editor is read-only until the
+  article has been fetched again.
+
 ## The retention worker
 
 `knowledge.retention` runs **every 24 hours**. A cycle takes an advisory lease
@@ -727,7 +786,7 @@ unless noted:
 | `@tiptap/extension-code-block-lowlight`, `-details`, `-drag-handle`, `-drag-handle-react`, `-mention`, `-node-range`, `-table`, `-unique-id`, `@tiptap/suggestion` | MIT |
 | `lowlight` 3.3.0 | MIT |
 | `highlight.js` 11.11.2 (through lowlight) | BSD-3-Clause |
-| `yjs`, `y-protocols`, `@tiptap/extension-collaboration`, `@tiptap/y-tiptap` (peers of the drag handle) | MIT |
+| `yjs` 13.6.33, `y-protocols` 1.0.7, `lib0` 0.2.119 (through them), `@tiptap/extension-collaboration`, `@tiptap/extension-collaboration-caret`, `@tiptap/y-tiptap` 3.2.0 | MIT |
 
 The server parses Markdown on import with [goldmark](https://github.com/yuin/goldmark)
 (`github.com/yuin/goldmark`, **MIT**).
