@@ -53,6 +53,7 @@ your thing, a managed **SaaS offering** is available where we run the platform f
 | **Inventory**          | Stock of the catalog's goods in warehouses and stores: sites, locations, receipts, adjustments, moves, counts and labels. | 🚧 In development |
 | **Orders**             | Quotes and sales orders for customers, their PDFs and their sending.  | 🚧 In development |
 | **Knowledge**          | The company's own articles in a tree: routines, policies and how-tos. | 🚧 In development |
+| **Virtual employees**  | AI employees that answer customers on the channels they are given, under rules the Owner sets. | 🚧 In development |
 | **Calendar**           | One calendar per person: appointments and what the other apps hold.   | 🚧 In development |
 | **Microsoft Entra ID** | The accounts of Staff's people in your Entra tenant, kept in step.    | 🚧 In development |
 | **Google Workspace**   | The connection to your Google Workspace organisation; accounts, calendar and Gmail to come. | 🚧 In development |
@@ -127,6 +128,7 @@ vantigo/
 │   │       ├── inventory/           # Inventory vertical slice (stock in sites and locations)
 │   │       ├── orders/              # Orders vertical slice (quotes and sales orders)
 │   │       ├── knowledge/           # Knowledge vertical slice (articles in a tree)
+│   │       ├── agents/              # Agents vertical slice (virtual employees)
 │   │       ├── calendar/            # Calendar vertical slice
 │   │       ├── entra/               # Microsoft Entra ID (accounts in the tenant, for Staff)
 │   │       ├── google/              # Google Workspace (the organisation's connection, for Staff)
@@ -148,6 +150,7 @@ vantigo/
 │   ├── inventory/frontend/          # @vantigo/inventory-ui
 │   ├── orders/frontend/             # @vantigo/orders-ui
 │   ├── knowledge/frontend/          # @vantigo/knowledge-ui
+│   ├── agents/frontend/             # @vantigo/agents-ui
 │   ├── calendar/frontend/           # @vantigo/calendar-ui
 │   ├── entra/frontend/              # @vantigo/entra-ui
 │   ├── google/frontend/             # @vantigo/google-ui

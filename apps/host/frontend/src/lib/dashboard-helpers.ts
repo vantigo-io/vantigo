@@ -10,6 +10,7 @@ import {
   IconMessage,
   IconPackage,
   IconReceipt2,
+  IconRobot,
   IconShoppingCart,
   IconUsers,
   IconUsersGroup,
@@ -141,6 +142,15 @@ export const moduleCards = [
     // Every Knowledge call asks for the app's own key (knowledge design K2).
     requiredPermissions: ["knowledge:articles"],
   },
+  {
+    title: "dashboard.agents",
+    description: "dashboard.manageAgents",
+    path: "/agents",
+    icon: IconRobot,
+    module: "agents" as ModuleKey,
+    // Every Agents call asks for agents:view or a key above it.
+    requiredPermissions: ["agents:view"],
+  },
 ] as const;
 
 /** The module cards the caller may see: module enabled for the tenant and permission granted. */
@@ -194,6 +204,7 @@ export const kpiCards = <Card extends { module: ModuleKey }>(
     (card) =>
       card.module !== "calendar" &&
       card.module !== "orders" &&
+      card.module !== "agents" &&
       card.module !== "knowledge" &&
       (card.module !== "staff" || canReadStaffStats(permissions)) &&
       (card.module !== "planning" || canReadPlanningStats(permissions)) &&

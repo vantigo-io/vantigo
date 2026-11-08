@@ -30,6 +30,7 @@
     "@tiptap/pm": "catalog:",
     "@tiptap/react": "catalog:",
     "@tiptap/starter-kit": "catalog:",
+    "@vantigo/agents-ui": "workspace:*",
     "@vantigo/assistant-ui": "workspace:*",
     "@vantigo/calendar-ui": "workspace:*",
     "@vantigo/communications-ui": "workspace:*",

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AcceptInvitationRouteImport } from './routes/accept-invitation'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as AssistantRouteImport } from './routes/assistant'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as CommunicationsRouteImport } from './routes/communications'
@@ -40,6 +41,8 @@ import { Route as StaffRouteImport } from './routes/staff'
 import { Route as TimeRouteImport } from './routes/time'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as AgentsIndexRouteImport } from './routes/agents/index'
+import { Route as AgentsSettingsRouteImport } from './routes/agents/settings'
 import { Route as AssistantIndexRouteImport } from './routes/assistant/index'
 import { Route as AssistantConversationIdRouteImport } from './routes/assistant/$conversationId'
 import { Route as CalendarIndexRouteImport } from './routes/calendar/index'
@@ -116,6 +119,7 @@ import { Route as WorkspaceOverviewRouteImport } from './routes/workspace/overvi
 import { Route as WorkspaceRolesRouteImport } from './routes/workspace/roles'
 import { Route as WorkspaceShippingRouteImport } from './routes/workspace/shipping'
 import { Route as WorkspaceUsersRouteImport } from './routes/workspace/users'
+import { Route as AgentsAgentIdIndexRouteImport } from './routes/agents/$agentId.index'
 import { Route as CustomersCustomerIdIndexRouteImport } from './routes/customers/$customerId.index'
 import { Route as CustomersCustomerIdEnergyRouteImport } from './routes/customers/$customerId.energy'
 import { Route as CustomersCustomerIdInvoicesRouteImport } from './routes/customers/$customerId.invoices'
@@ -177,6 +181,7 @@ import { Route as WorkspaceGoogleIndexRouteImport } from './routes/workspace/goo
 import { Route as WorkspaceGoogleAccountsRouteImport } from './routes/workspace/google/accounts'
 import { Route as WorkspaceGoogleCalendarGmailRouteImport } from './routes/workspace/google/calendar-gmail'
 import { Route as WorkspaceGoogleConnectionRouteImport } from './routes/workspace/google/connection'
+import { Route as AgentsAgentIdRolesRoleIdRouteImport } from './routes/agents/$agentId.roles.$roleId'
 import { Route as EnergyMeteringPointsImportIndexRouteImport } from './routes/energy/metering-points/import.index'
 import { Route as EnergyMeteringPointsImportImportIdRouteImport } from './routes/energy/metering-points/import.$importId'
 import { Route as InventoryMovementsNewAdjustmentRouteImport } from './routes/inventory/movements.new.adjustment'
@@ -197,6 +202,11 @@ const AcceptInvitationRoute = AcceptInvitationRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AgentsRoute = AgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AssistantRoute = AssistantRouteImport.update({
@@ -338,6 +348,16 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AdminRoute,
+} as any)
+const AgentsIndexRoute = AgentsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AgentsRoute,
+} as any)
+const AgentsSettingsRoute = AgentsSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AgentsRoute,
 } as any)
 const AssistantIndexRoute = AssistantIndexRouteImport.update({
   id: '/',
@@ -720,6 +740,11 @@ const WorkspaceUsersRoute = WorkspaceUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const AgentsAgentIdIndexRoute = AgentsAgentIdIndexRouteImport.update({
+  id: '/$agentId/',
+  path: '/$agentId/',
+  getParentRoute: () => AgentsRoute,
+} as any)
 const CustomersCustomerIdIndexRoute =
   CustomersCustomerIdIndexRouteImport.update({
     id: '/',
@@ -1052,6 +1077,12 @@ const WorkspaceGoogleConnectionRoute =
     path: '/connection',
     getParentRoute: () => WorkspaceGoogleRoute,
   } as any)
+const AgentsAgentIdRolesRoleIdRoute =
+  AgentsAgentIdRolesRoleIdRouteImport.update({
+    id: '/$agentId/roles/$roleId',
+    path: '/$agentId/roles/$roleId',
+    getParentRoute: () => AgentsRoute,
+  } as any)
 const EnergyMeteringPointsImportIndexRoute =
   EnergyMeteringPointsImportIndexRouteImport.update({
     id: '/metering-points/import/',
@@ -1093,6 +1124,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
   '/admin': typeof AdminRouteWithChildren
+  '/agents': typeof AgentsRouteWithChildren
   '/assistant': typeof AssistantRouteWithChildren
   '/calendar': typeof CalendarRouteWithChildren
   '/communications': typeof CommunicationsRouteWithChildren
@@ -1120,6 +1152,7 @@ export interface FileRoutesByFullPath {
   '/staff': typeof StaffRouteWithChildren
   '/time': typeof TimeRouteWithChildren
   '/workspace': typeof WorkspaceRouteWithChildren
+  '/agents/settings': typeof AgentsSettingsRoute
   '/assistant/$conversationId': typeof AssistantConversationIdRoute
   '/calendar/settings': typeof CalendarSettingsRoute
   '/communications/channels': typeof CommunicationsChannelsRoute
@@ -1179,6 +1212,7 @@ export interface FileRoutesByFullPath {
   '/workspace/shipping': typeof WorkspaceShippingRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/admin/': typeof AdminIndexRoute
+  '/agents/': typeof AgentsIndexRoute
   '/assistant/': typeof AssistantIndexRoute
   '/calendar/': typeof CalendarIndexRoute
   '/communications/': typeof CommunicationsIndexRoute
@@ -1241,6 +1275,7 @@ export interface FileRoutesByFullPath {
   '/workspace/google/accounts': typeof WorkspaceGoogleAccountsRoute
   '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
   '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
+  '/agents/$agentId/': typeof AgentsAgentIdIndexRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/customers/import/': typeof CustomersImportIndexRoute
@@ -1258,6 +1293,7 @@ export interface FileRoutesByFullPath {
   '/staff/people/': typeof StaffPeopleIndexRoute
   '/workspace/entra/': typeof WorkspaceEntraIndexRoute
   '/workspace/google/': typeof WorkspaceGoogleIndexRoute
+  '/agents/$agentId/roles/$roleId': typeof AgentsAgentIdRolesRoleIdRoute
   '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
   '/inventory/movements/new/adjustment': typeof InventoryMovementsNewAdjustmentRoute
   '/inventory/movements/new/move': typeof InventoryMovementsNewMoveRoute
@@ -1277,6 +1313,7 @@ export interface FileRoutesByTo {
   '/session-expired': typeof SessionExpiredRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/agents/settings': typeof AgentsSettingsRoute
   '/assistant/$conversationId': typeof AssistantConversationIdRoute
   '/calendar/settings': typeof CalendarSettingsRoute
   '/communications/channels': typeof CommunicationsChannelsRoute
@@ -1332,6 +1369,7 @@ export interface FileRoutesByTo {
   '/workspace/shipping': typeof WorkspaceShippingRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/admin': typeof AdminIndexRoute
+  '/agents': typeof AgentsIndexRoute
   '/assistant': typeof AssistantIndexRoute
   '/calendar': typeof CalendarIndexRoute
   '/communications': typeof CommunicationsIndexRoute
@@ -1394,6 +1432,7 @@ export interface FileRoutesByTo {
   '/workspace/google/accounts': typeof WorkspaceGoogleAccountsRoute
   '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
   '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
+  '/agents/$agentId': typeof AgentsAgentIdIndexRoute
   '/customers/$customerId': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts': typeof CustomersContactsIndexRoute
   '/customers/import': typeof CustomersImportIndexRoute
@@ -1411,6 +1450,7 @@ export interface FileRoutesByTo {
   '/staff/people': typeof StaffPeopleIndexRoute
   '/workspace/entra': typeof WorkspaceEntraIndexRoute
   '/workspace/google': typeof WorkspaceGoogleIndexRoute
+  '/agents/$agentId/roles/$roleId': typeof AgentsAgentIdRolesRoleIdRoute
   '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
   '/inventory/movements/new/adjustment': typeof InventoryMovementsNewAdjustmentRoute
   '/inventory/movements/new/move': typeof InventoryMovementsNewMoveRoute
@@ -1423,6 +1463,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
   '/admin': typeof AdminRouteWithChildren
+  '/agents': typeof AgentsRouteWithChildren
   '/assistant': typeof AssistantRouteWithChildren
   '/calendar': typeof CalendarRouteWithChildren
   '/communications': typeof CommunicationsRouteWithChildren
@@ -1450,6 +1491,7 @@ export interface FileRoutesById {
   '/staff': typeof StaffRouteWithChildren
   '/time': typeof TimeRouteWithChildren
   '/workspace': typeof WorkspaceRouteWithChildren
+  '/agents/settings': typeof AgentsSettingsRoute
   '/assistant/$conversationId': typeof AssistantConversationIdRoute
   '/calendar/settings': typeof CalendarSettingsRoute
   '/communications/channels': typeof CommunicationsChannelsRoute
@@ -1509,6 +1551,7 @@ export interface FileRoutesById {
   '/workspace/shipping': typeof WorkspaceShippingRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/admin/': typeof AdminIndexRoute
+  '/agents/': typeof AgentsIndexRoute
   '/assistant/': typeof AssistantIndexRoute
   '/calendar/': typeof CalendarIndexRoute
   '/communications/': typeof CommunicationsIndexRoute
@@ -1571,6 +1614,7 @@ export interface FileRoutesById {
   '/workspace/google/accounts': typeof WorkspaceGoogleAccountsRoute
   '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
   '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
+  '/agents/$agentId/': typeof AgentsAgentIdIndexRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/customers/import/': typeof CustomersImportIndexRoute
@@ -1588,6 +1632,7 @@ export interface FileRoutesById {
   '/staff/people/': typeof StaffPeopleIndexRoute
   '/workspace/entra/': typeof WorkspaceEntraIndexRoute
   '/workspace/google/': typeof WorkspaceGoogleIndexRoute
+  '/agents/$agentId/roles/$roleId': typeof AgentsAgentIdRolesRoleIdRoute
   '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
   '/inventory/movements/new/adjustment': typeof InventoryMovementsNewAdjustmentRoute
   '/inventory/movements/new/move': typeof InventoryMovementsNewMoveRoute
@@ -1601,6 +1646,7 @@ export interface FileRouteTypes {
     | '/'
     | '/accept-invitation'
     | '/admin'
+    | '/agents'
     | '/assistant'
     | '/calendar'
     | '/communications'
@@ -1628,6 +1674,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/time'
     | '/workspace'
+    | '/agents/settings'
     | '/assistant/$conversationId'
     | '/calendar/settings'
     | '/communications/channels'
@@ -1687,6 +1734,7 @@ export interface FileRouteTypes {
     | '/workspace/shipping'
     | '/workspace/users'
     | '/admin/'
+    | '/agents/'
     | '/assistant/'
     | '/calendar/'
     | '/communications/'
@@ -1749,6 +1797,7 @@ export interface FileRouteTypes {
     | '/workspace/google/accounts'
     | '/workspace/google/calendar-gmail'
     | '/workspace/google/connection'
+    | '/agents/$agentId/'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/customers/import/'
@@ -1766,6 +1815,7 @@ export interface FileRouteTypes {
     | '/staff/people/'
     | '/workspace/entra/'
     | '/workspace/google/'
+    | '/agents/$agentId/roles/$roleId'
     | '/energy/metering-points/import/$importId'
     | '/inventory/movements/new/adjustment'
     | '/inventory/movements/new/move'
@@ -1785,6 +1835,7 @@ export interface FileRouteTypes {
     | '/session-expired'
     | '/setup'
     | '/sign-in'
+    | '/agents/settings'
     | '/assistant/$conversationId'
     | '/calendar/settings'
     | '/communications/channels'
@@ -1840,6 +1891,7 @@ export interface FileRouteTypes {
     | '/workspace/shipping'
     | '/workspace/users'
     | '/admin'
+    | '/agents'
     | '/assistant'
     | '/calendar'
     | '/communications'
@@ -1902,6 +1954,7 @@ export interface FileRouteTypes {
     | '/workspace/google/accounts'
     | '/workspace/google/calendar-gmail'
     | '/workspace/google/connection'
+    | '/agents/$agentId'
     | '/customers/$customerId'
     | '/customers/contacts'
     | '/customers/import'
@@ -1919,6 +1972,7 @@ export interface FileRouteTypes {
     | '/staff/people'
     | '/workspace/entra'
     | '/workspace/google'
+    | '/agents/$agentId/roles/$roleId'
     | '/energy/metering-points/import/$importId'
     | '/inventory/movements/new/adjustment'
     | '/inventory/movements/new/move'
@@ -1930,6 +1984,7 @@ export interface FileRouteTypes {
     | '/'
     | '/accept-invitation'
     | '/admin'
+    | '/agents'
     | '/assistant'
     | '/calendar'
     | '/communications'
@@ -1957,6 +2012,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/time'
     | '/workspace'
+    | '/agents/settings'
     | '/assistant/$conversationId'
     | '/calendar/settings'
     | '/communications/channels'
@@ -2016,6 +2072,7 @@ export interface FileRouteTypes {
     | '/workspace/shipping'
     | '/workspace/users'
     | '/admin/'
+    | '/agents/'
     | '/assistant/'
     | '/calendar/'
     | '/communications/'
@@ -2078,6 +2135,7 @@ export interface FileRouteTypes {
     | '/workspace/google/accounts'
     | '/workspace/google/calendar-gmail'
     | '/workspace/google/connection'
+    | '/agents/$agentId/'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/customers/import/'
@@ -2095,6 +2153,7 @@ export interface FileRouteTypes {
     | '/staff/people/'
     | '/workspace/entra/'
     | '/workspace/google/'
+    | '/agents/$agentId/roles/$roleId'
     | '/energy/metering-points/import/$importId'
     | '/inventory/movements/new/adjustment'
     | '/inventory/movements/new/move'
@@ -2107,6 +2166,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AcceptInvitationRoute: typeof AcceptInvitationRoute
   AdminRoute: typeof AdminRouteWithChildren
+  AgentsRoute: typeof AgentsRouteWithChildren
   AssistantRoute: typeof AssistantRouteWithChildren
   CalendarRoute: typeof CalendarRouteWithChildren
   CommunicationsRoute: typeof CommunicationsRouteWithChildren
@@ -2158,6 +2218,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/agents': {
+      id: '/agents'
+      path: '/agents'
+      fullPath: '/agents'
+      preLoaderRoute: typeof AgentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assistant': {
@@ -2355,6 +2422,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/agents/': {
+      id: '/agents/'
+      path: '/'
+      fullPath: '/agents/'
+      preLoaderRoute: typeof AgentsIndexRouteImport
+      parentRoute: typeof AgentsRoute
+    }
+    '/agents/settings': {
+      id: '/agents/settings'
+      path: '/settings'
+      fullPath: '/agents/settings'
+      preLoaderRoute: typeof AgentsSettingsRouteImport
+      parentRoute: typeof AgentsRoute
     }
     '/assistant/': {
       id: '/assistant/'
@@ -2888,6 +2969,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceUsersRouteImport
       parentRoute: typeof WorkspaceRoute
     }
+    '/agents/$agentId/': {
+      id: '/agents/$agentId/'
+      path: '/$agentId'
+      fullPath: '/agents/$agentId/'
+      preLoaderRoute: typeof AgentsAgentIdIndexRouteImport
+      parentRoute: typeof AgentsRoute
+    }
     '/customers/$customerId/': {
       id: '/customers/$customerId/'
       path: '/'
@@ -3315,6 +3403,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceGoogleConnectionRouteImport
       parentRoute: typeof WorkspaceGoogleRoute
     }
+    '/agents/$agentId/roles/$roleId': {
+      id: '/agents/$agentId/roles/$roleId'
+      path: '/$agentId/roles/$roleId'
+      fullPath: '/agents/$agentId/roles/$roleId'
+      preLoaderRoute: typeof AgentsAgentIdRolesRoleIdRouteImport
+      parentRoute: typeof AgentsRoute
+    }
     '/energy/metering-points/import/': {
       id: '/energy/metering-points/import/'
       path: '/metering-points/import'
@@ -3369,6 +3464,23 @@ const AdminRouteChildren: AdminRouteChildren = {
 }
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
+interface AgentsRouteChildren {
+  AgentsSettingsRoute: typeof AgentsSettingsRoute
+  AgentsIndexRoute: typeof AgentsIndexRoute
+  AgentsAgentIdIndexRoute: typeof AgentsAgentIdIndexRoute
+  AgentsAgentIdRolesRoleIdRoute: typeof AgentsAgentIdRolesRoleIdRoute
+}
+
+const AgentsRouteChildren: AgentsRouteChildren = {
+  AgentsSettingsRoute: AgentsSettingsRoute,
+  AgentsIndexRoute: AgentsIndexRoute,
+  AgentsAgentIdIndexRoute: AgentsAgentIdIndexRoute,
+  AgentsAgentIdRolesRoleIdRoute: AgentsAgentIdRolesRoleIdRoute,
+}
+
+const AgentsRouteWithChildren =
+  AgentsRoute._addFileChildren(AgentsRouteChildren)
 
 interface AssistantRouteChildren {
   AssistantConversationIdRoute: typeof AssistantConversationIdRoute
@@ -3871,6 +3983,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AcceptInvitationRoute: AcceptInvitationRoute,
   AdminRoute: AdminRouteWithChildren,
+  AgentsRoute: AgentsRouteWithChildren,
   AssistantRoute: AssistantRouteWithChildren,
   CalendarRoute: CalendarRouteWithChildren,
   CommunicationsRoute: CommunicationsRouteWithChildren,

@@ -13,6 +13,7 @@ import "@vantigo/inventory-ui/i18n";
 import "@vantigo/invoices-ui/i18n";
 import "@vantigo/knowledge-ui/i18n";
 import "@vantigo/meta-ui/i18n";
+import "@vantigo/agents-ui/i18n";
 import "@vantigo/orders-ui/i18n";
 import "@vantigo/planning-ui/i18n";
 import "@vantigo/products-ui/i18n";

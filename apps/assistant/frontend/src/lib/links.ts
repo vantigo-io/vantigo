@@ -29,6 +29,7 @@ export const APP_ROUTE_PREFIXES: readonly string[] = [
   "/orders",
   "/knowledge",
   "/calendar",
+  "/agents",
   "/assistant",
   "/settings",
 ];

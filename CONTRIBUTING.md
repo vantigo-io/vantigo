@@ -136,6 +136,7 @@ vantigo/
 │   │       ├── inventory/           # Inventory vertical slice (stock in sites and locations)
 │   │       ├── orders/              # Orders vertical slice (quotes and sales orders)
 │   │       ├── knowledge/           # Knowledge vertical slice (articles in a tree)
+│   │       ├── agents/              # Agents vertical slice (virtual employees)
 │   │       ├── calendar/            # Calendar vertical slice
 │   │       ├── entra/               # Microsoft Entra ID (accounts in the tenant, for Staff)
 │   │       ├── google/              # Google Workspace (the organisation's connection, for Staff)
@@ -165,6 +166,7 @@ vantigo/
 │   ├── inventory/frontend/          # @vantigo/inventory-ui
 │   ├── orders/frontend/             # @vantigo/orders-ui
 │   ├── knowledge/frontend/          # @vantigo/knowledge-ui
+│   ├── agents/frontend/             # @vantigo/agents-ui
 │   ├── calendar/frontend/           # @vantigo/calendar-ui
 │   ├── entra/frontend/              # @vantigo/entra-ui
 │   ├── google/frontend/             # @vantigo/google-ui
@@ -229,7 +231,7 @@ own deployable without a rewrite.
 
 One PostgreSQL database, one schema per module: `identity`, `customers`, `products`,
 `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`,
-`planning`, `inventory`, `orders`, `knowledge`, `calendar`, `entra`, `google` and `assistant`. Schemas are hard boundaries:
+`planning`, `inventory`, `orders`, `knowledge`, `agents`, `calendar`, `entra`, `google` and `assistant`. Schemas are hard boundaries:
 
 - **No cross-schema foreign keys or joins.** Reference other modules' data by
   opaque ID only. This is what keeps a future "move this schema to its own
@@ -542,7 +544,7 @@ that does not match `identity.yaml` fails the test that produced it. `go test
 must have been exercised by at least one successful exchange, with no allow-list, so a newly
 added operation without a passing test fails the whole package.
 
-### Customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, knowledge, calendar, entra, google and assistant
+### Customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, knowledge, agents, calendar, entra, google and assistant
 
 Fifteen business modules mount on that platform, each serving its own contract and
 owning its own schema:
@@ -649,7 +651,7 @@ owning its own schema:
 
 `MODULES` chooses which of them a deployment serves: a comma-separated list,
 parsed once at startup, defaulting to
-`customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,orders,knowledge,calendar,entra,google,assistant` — every module
+`customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,orders,knowledge,agents,calendar,entra,google,assistant` — every module
 this binary can mount. Identity is always mounted and is never
 listed. A name the binary does not know fails
 startup, naming the name and the known set. `energy`, `communications` and

@@ -1,7 +1,8 @@
-import { ActionIcon, Alert, Avatar, Badge, Group, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Group, Text, Tooltip } from "@mantine/core";
 import { IconBrandMessenger, IconCheck, IconMail } from "@tabler/icons-react";
-import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
-import type { ConversationListItem, Page } from "../api/conversations";
+import { useQuery } from "@tanstack/react-query";
+import { ContentSkeleton, EmptyState, UserAvatar, useI18n } from "@vantigo/frontend-shell";
+import { assignableUsersQueryOptions, type ConversationListItem, type Page } from "../api/conversations";
 import { participantName, relative } from "./conversationHelpers";
 
 export type ConversationListProps = {
@@ -24,6 +25,9 @@ export function ConversationList({
   onRefresh,
 }: ConversationListProps) {
   const { t } = useI18n("communications");
+  // Who is an AI agent, from the assignable users' first page, so a row's avatar carries the AI badge.
+  const assignable = useQuery(assignableUsersQueryOptions(""));
+  const kinds = Object.fromEntries((assignable.data ?? []).map((user) => [user.userId, user.kind]));
 
   return (
     <section className="conversation-list">
@@ -81,11 +85,10 @@ export function ConversationList({
               </Badge>
               {item.assignedUserId && (
                 <Tooltip label={item.assignedUserName || t("assignee")}>
-                  <Avatar
+                  <UserAvatar
                     size="xs"
-                    radius="xl"
-                    color="initials"
-                    name={item.assignedUserName || undefined}
+                    name={item.assignedUserName}
+                    kind={kinds[item.assignedUserId]}
                     aria-label={t("assignedTo", { name: item.assignedUserName || "" })}
                   />
                 </Tooltip>

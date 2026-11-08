@@ -241,6 +241,42 @@ describe("the admin permission catalog", () => {
     expect(en["admin.permission.inventoryCountsManageDescription"]).toBe("Open, count, post and cancel stock counts.");
   });
 
+  // Hand-kept in step with `apps/server/internal/agents/module.go` (`var
+  // permissions`), for the same reason as the lists above.
+  it("names the four agents permissions in English and Norwegian, the English the server's own", () => {
+    const server: Record<string, [string, string]> = {
+      "agents:view": ["View virtual employees", "See the agents, their personas, roles and settings."],
+      "agents:manage": [
+        "Manage virtual employees",
+        "Create agents, edit their personas and instructions, and pause or delete them. Raising a level, choosing an Auto mode and binding a channel stay the Owner's.",
+      ],
+      "agents:review": [
+        "Review virtual employees' work",
+        "Approve or discard what an agent proposes in the review queue.",
+      ],
+      "agents:activity": [
+        "Read virtual employees' activity",
+        "Read an agent's runs and their transcripts, which hold customers' data.",
+      ],
+    };
+    const en = adminCatalog.en as Record<string, string>;
+    for (const [key, [display, description]] of Object.entries(server)) {
+      const translation = hostPermissionTranslationKeys[key as keyof typeof hostPermissionTranslationKeys];
+      expect(translation, `no catalog entry for ${key}`).toBeDefined();
+      expect(translation.moduleKey).toBe("admin.permission.module.agents");
+      expect(translation.categoryKey).toBe("admin.permission.category.agents");
+      expect(en[translation.displayNameKey]).toBe(display);
+      expect(en[translation.descriptionKey]).toBe(description);
+      for (const lng of ["en", "nb"] as const) {
+        const catalog = adminCatalog[lng] as Record<string, string>;
+        expect(catalog[translation.displayNameKey], `${key} display name (${lng})`).toBeTruthy();
+        expect(catalog[translation.descriptionKey], `${key} description (${lng})`).toBeTruthy();
+        expect(catalog[translation.moduleKey], `${key} module (${lng})`).toBeTruthy();
+        expect(catalog[translation.categoryKey], `${key} category (${lng})`).toBeTruthy();
+      }
+    }
+  });
+
   // Hand-kept in step with `apps/server/internal/orders/module.go` (`var
   // permissions`), for the same reason as the lists above.
   it("names the nine orders permissions in English and Norwegian, the English the server's own", () => {
