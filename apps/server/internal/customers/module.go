@@ -76,6 +76,8 @@ func Module() module.Module {
 		Mount:       mount,
 		Directory:   newDirectory,
 		Workers:     workers,
+		// LiveTopics is the imports screens' topic (live design K38, live.go).
+		LiveTopics: liveTopics,
 		// EventHandlers is the orders documents on the timeline (orders design
 		// O31, timeline_orders.go).
 		EventHandlers: eventHandlers,

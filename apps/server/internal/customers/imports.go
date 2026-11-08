@@ -199,7 +199,10 @@ func (s *server) PostCustomersImports(ctx context.Context, req gen.PostCustomers
 			pgx.CopyFromSlice(len(file.Rows), func(i int) ([]any, error) {
 				return []any{id, int32(file.Rows[i].Row), file.Rows[i].Cells}, nil
 			}))
-		return err
+		if err != nil {
+			return err
+		}
+		return notifyImport(ctx, tx, id)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: store an import: %w", err)
@@ -403,7 +406,10 @@ func (s *server) PutCustomersImportsByImportIdMapping(ctx context.Context, req g
 			return err
 		}
 		saved = true
-		return txq.ClearImportRowResults(ctx, imp.ID)
+		if err := txq.ClearImportRowResults(ctx, imp.ID); err != nil {
+			return err
+		}
+		return notifyImport(ctx, tx, imp.ID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: save a mapping: %w", err)
@@ -451,7 +457,10 @@ func (s *server) PostCustomersImportsByImportIdCheck(ctx context.Context, req ge
 			return err
 		}
 		queued = true
-		return txq.ClearImportRowResults(ctx, imp.ID)
+		if err := txq.ClearImportRowResults(ctx, imp.ID); err != nil {
+			return err
+		}
+		return notifyImport(ctx, tx, imp.ID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: queue a check: %w", err)
@@ -497,7 +506,10 @@ func (s *server) PostCustomersImportsByImportIdRun(ctx context.Context, req gen.
 			return err
 		}
 		queued = true
-		return txq.ClearImportRowResults(ctx, imp.ID)
+		if err := txq.ClearImportRowResults(ctx, imp.ID); err != nil {
+			return err
+		}
+		return notifyImport(ctx, tx, imp.ID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: queue a run: %w", err)
@@ -539,10 +551,14 @@ func (s *server) PostCustomersImportsByImportIdStop(ctx context.Context, req gen
 			// checked again, so the page never shows counts with no rows.
 			reverted, err = q.RecheckUnstartedRun(ctx, store.RecheckUnstartedRunParams{ID: imp.ID, RequestedAt: ptrTime(now)})
 			if reverted > 0 {
+				s.notifyImportOnPool(ctx, imp.ID)
 				nudgeImportWorker()
 			}
 		} else {
 			reverted, err = q.RevertUnstartedImport(ctx, store.RevertUnstartedImportParams{ID: imp.ID, State: string(gen.Draft), UpdatedAt: now, State_2: imp.State})
+			if err == nil && reverted > 0 {
+				s.notifyImportOnPool(ctx, imp.ID)
+			}
 		}
 		if err != nil {
 			return nil, fmt.Errorf("customers: revert an unstarted import: %w", err)
@@ -552,6 +568,7 @@ func (s *server) PostCustomersImportsByImportIdStop(ctx context.Context, req gen
 		if _, err := q.RequestImportStop(ctx, store.RequestImportStopParams{ID: imp.ID, UpdatedAt: now}); err != nil {
 			return nil, fmt.Errorf("customers: ask an import to stop: %w", err)
 		}
+		s.notifyImportOnPool(ctx, imp.ID)
 	}
 	view, err := s.importByID(ctx, imp.ID)
 	if err != nil || view == nil {
@@ -576,6 +593,7 @@ func (s *server) DeleteCustomersImportsByImportId(ctx context.Context, req gen.D
 		}
 		return gen.DeleteCustomersImportsByImportId409ApplicationProblemPlusJSONResponse(importRunningConflict()), nil
 	}
+	s.notifyImportOnPool(ctx, req.ImportId)
 	return gen.DeleteCustomersImportsByImportId204Response{}, nil
 }
 

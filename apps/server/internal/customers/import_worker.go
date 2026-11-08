@@ -153,6 +153,7 @@ func (w *ImportWorker) RunCycle(ctx context.Context) (bool, error) {
 				if failErr := q.FailImport(ctx, store.FailImportParams{ID: imp.ID, Error: &message, UpdatedAt: w.now()}); failErr != nil {
 					return fmt.Errorf("customers: record an import's failure: %w", failErr)
 				}
+				w.notifyImportFromWorker(ctx, conn, imp.ID)
 				w.logger().Error("customers: an import failed and is tried again next cycle",
 					"worker", importWorkerName, "importId", imp.ID, "error", message)
 				return nil
@@ -163,6 +164,9 @@ func (w *ImportWorker) RunCycle(ctx context.Context) (bool, error) {
 			return fmt.Errorf("customers: sweep old imports: %w", err)
 		}
 		if swept > 0 {
+			if err := notifyImportsSwept(ctx, conn); err != nil {
+				w.logger().Warn("customers: notify swept imports", "worker", importWorkerName, "error", err)
+			}
 			w.logger().Info("old imports swept", "worker", importWorkerName, "imports", swept)
 		}
 		return nil
@@ -191,6 +195,7 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 		// take up as read, and the queue is read again.
 		return nil
 	}
+	w.notifyImportFromWorker(ctx, conn, imp.ID)
 	if importRunHookForTest != nil {
 		if err := importRunHookForTest(ctx, imp.ID); err != nil {
 			return err
@@ -211,6 +216,8 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 		return fmt.Errorf("customers: count import %d's rows: %w", imp.ID, err)
 	}
 	processed, created, updated, failed, skipped := int32(counts.Processed), int32(counts.Created), int32(counts.Updated), int32(counts.Failed), int32(counts.Skipped)
+	progress := &importProgress{}
+	defer progress.stop()
 	// The counts on the import are now this run's — a run just started shows
 	// zeros, not the check's figures it carried until the worker took it up.
 	if err := q.UpdateImportProgress(ctx, store.UpdateImportProgressParams{
@@ -218,6 +225,7 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 	}); err != nil {
 		return fmt.Errorf("customers: write import %d's progress: %w", imp.ID, err)
 	}
+	progress.notify(ctx, w, conn, imp.ID)
 
 	// firstCells is the cells of the earlier rows the repeats are compared
 	// with, read once each.
@@ -310,21 +318,23 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 		}); err != nil {
 			return fmt.Errorf("customers: write import %d's progress: %w", imp.ID, err)
 		}
+		progress.notify(ctx, w, conn, imp.ID)
 		stop, err := q.ImportStopRequested(ctx, imp.ID)
 		if err != nil {
 			return fmt.Errorf("customers: read import %d's stop flag: %w", imp.ID, err)
 		}
 		if stop {
-			return w.finish(ctx, q, imp, dryRun, true)
+			return w.finish(ctx, conn, imp, dryRun, true)
 		}
 	}
-	return w.finish(ctx, q, imp, dryRun, false)
+	return w.finish(ctx, conn, imp, dryRun, false)
 }
 
 // finish closes a run (design D5): a check stopped goes back to draft with its
 // results cleared; a check finished is checked; a run, finished or stopped,
 // is done. The counts are recounted from the rows, the one source of truth.
-func (w *ImportWorker) finish(ctx context.Context, q *store.Queries, imp store.CustomersImport, dryRun, stopped bool) error {
+func (w *ImportWorker) finish(ctx context.Context, conn *pgxpool.Conn, imp store.CustomersImport, dryRun, stopped bool) error {
+	q := store.New(conn)
 	now := w.now()
 	if dryRun && stopped {
 		if err := q.ClearImportRowResults(ctx, imp.ID); err != nil {
@@ -333,6 +343,7 @@ func (w *ImportWorker) finish(ctx context.Context, q *store.Queries, imp store.C
 		if err := q.FinishImport(ctx, store.FinishImportParams{ID: imp.ID, State: string(gen.Draft), FinishedAt: nil, UpdatedAt: now}); err != nil {
 			return fmt.Errorf("customers: finish import %d: %w", imp.ID, err)
 		}
+		w.notifyImportFromWorker(ctx, conn, imp.ID)
 		w.logger().Info("import check stopped", "worker", importWorkerName, "importId", imp.ID)
 		return nil
 	}
@@ -350,6 +361,7 @@ func (w *ImportWorker) finish(ctx context.Context, q *store.Queries, imp store.C
 	}); err != nil {
 		return fmt.Errorf("customers: finish import %d: %w", imp.ID, err)
 	}
+	w.notifyImportFromWorker(ctx, conn, imp.ID)
 	w.logger().Info("import finished", "worker", importWorkerName, "importId", imp.ID, "state", state, "stopped", stopped,
 		"rows", imp.RowCount, "processed", counts.Processed, "created", counts.Created, "updated", counts.Updated, "failed", counts.Failed, "skipped", counts.Skipped)
 	return nil
