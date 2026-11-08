@@ -21,6 +21,24 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// Defines values for AssignableUserKind.
+const (
+	Agent  AssignableUserKind = "agent"
+	Person AssignableUserKind = "person"
+)
+
+// Valid indicates whether the value is a known member of the AssignableUserKind enum.
+func (e AssignableUserKind) Valid() bool {
+	switch e {
+	case Agent:
+		return true
+	case Person:
+		return true
+	default:
+		return false
+	}
+}
+
 // AiCustomerSuggestionResponse defines model for AiCustomerSuggestionResponse.
 type AiCustomerSuggestionResponse struct {
 	Confidence    *float64           `json:"confidence"`
@@ -47,9 +65,15 @@ type AiDraftResponse struct {
 
 // AssignableUser defines model for AssignableUser.
 type AssignableUser struct {
-	DisplayName string             `json:"displayName"`
-	UserId      openapi_types.UUID `json:"userId"`
+	DisplayName string `json:"displayName"`
+
+	// Kind person for a user who signs in, agent for an AI agent, which the interface shows with the AI badge on its avatar.
+	Kind   AssignableUserKind `json:"kind"`
+	UserId openapi_types.UUID `json:"userId"`
 }
+
+// AssignableUserKind person for a user who signs in, agent for an AI agent, which the interface shows with the AI badge on its avatar.
+type AssignableUserKind string
 
 // AttachmentUploadResponse defines model for AttachmentUploadResponse.
 type AttachmentUploadResponse struct {

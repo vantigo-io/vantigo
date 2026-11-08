@@ -589,6 +589,11 @@ export interface components {
         };
         AssignableUser: {
             displayName: string;
+            /**
+             * @description person for a user who signs in, agent for an AI agent, which the interface shows with the AI badge on its avatar.
+             * @enum {string}
+             */
+            kind: "person" | "agent";
             /** Format: uuid */
             userId: string;
         };

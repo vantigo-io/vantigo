@@ -64,12 +64,19 @@ components:
             properties:
                 displayName:
                     type: string
+                kind:
+                    description: person for a user who signs in, agent for an AI agent, which the interface shows with the AI badge on its avatar.
+                    enum:
+                        - person
+                        - agent
+                    type: string
                 userId:
                     format: uuid
                     type: string
             required:
                 - userId
                 - displayName
+                - kind
             type: object
         AttachmentUploadResponse:
             properties:
