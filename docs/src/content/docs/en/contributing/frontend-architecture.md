@@ -176,6 +176,29 @@ reconnects. The shell takes no TanStack Query dependency: a module's callback ca
   then replying, then viewing) and leaves the signed-in person out. A screen shows it as it
   fits; the Communications thread shows "Also here: …" and "… is replying …".
 
+### Binary frames and documents
+
+`LiveClient` also carries the binary frames of a document topic
+([Platform packages](/en/contributing/platform-packages/#binary-frames-and-documents)): it
+sets the socket's `binaryType` to `arraybuffer` and a screen that edits a document uses
+`useLiveClient()` for the client. The shell never imports Yjs; the Yjs side is the module's.
+
+- **`encodeFrame` / `decodeFrame`** code the frame: `kind` (1 byte), the topic's length (2 bytes,
+  big endian), the topic, the payload. `KIND_UPDATE`, `KIND_SEED`, `KIND_AWARENESS` and
+  `KIND_COMPACT` name the kinds. A binary frame that does not decode, has an unknown kind or is
+  for a topic without a listener is ignored.
+- **`client.listenDoc(topic, handlers)`** shares the topic's one subscription with `listen` and
+  `useLiveTopic`. `onSubscribed` is called after every `ok` and every server `resync` (the document
+  must send `doc_sync` again); `onUnsubscribed` when the connection or subscription is lost;
+  `onBinary(kind, payload)` for update and awareness frames; `onControl(frame)` for the JSON
+  frames of the document protocol (`synced`, `ack`, `update_rejected`, `seed_accepted`,
+  `seed_rejected`, `compact_requested`, `compact_rejected`, `doc_reset`, `doc_stale`).
+- **`client.sendBinary(topic, kind, payload)`** and **`client.sendJson(frame)`** send on the open
+  socket and return `false` when it is not open. Nothing is queued: a document keeps what it
+  could not send and sends it after `onSubscribed`.
+- **Tests** use the fake socket of `live.test.tsx`; Knowledge's `src/test/collab-server.ts` is an
+  in-memory server of the whole document protocol that a module's tests can reuse.
+
 ## Internationalisation (`en` and `nb`)
 
 Every user-facing string is translated in both English (`en`) and Norwegian Bokmål (`nb`):
