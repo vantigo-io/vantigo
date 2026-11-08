@@ -471,6 +471,11 @@ func TestServer_PublicHostRefusesAnEncodedSlash(t *testing.T) {
 	}
 }
 
+// UserSatisfies is not what this fake is about: true.
+func (allowAllAccess) UserSatisfies(context.Context, uuid.UUID, contracts.Rule) (bool, error) {
+	return true, nil
+}
+
 func (allowAllAccess) SessionLive(context.Context, uuid.UUID) (uuid.UUID, bool, error) {
 	return uuid.Nil, false, nil
 }

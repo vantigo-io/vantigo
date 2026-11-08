@@ -411,6 +411,22 @@ func (d *Dispatcher) Info(id string) (Info, bool) {
 	return e.Info, true
 }
 
+// AccessRule is the access rule an operation names (x-vantigo-access), and
+// false when there is no such operation or its rule does not parse. A person
+// who approves a call made on their authority is held to it (virtual employees
+// design V20, contracts.Access.UserSatisfies).
+func (d *Dispatcher) AccessRule(id string) (contracts.Rule, bool) {
+	st, err := d.bound()
+	if err != nil {
+		return contracts.Rule{}, false
+	}
+	e, ok := st.byID[id]
+	if !ok || !e.ruleOK {
+		return contracts.Rule{}, false
+	}
+	return e.rule, true
+}
+
 // List is the operations userID may call, as the assistant sees them: those
 // whose effective mode (the contract's, narrowed by the gate) is not never
 // and whose access rule the user meets; each carries that effective mode. A permission

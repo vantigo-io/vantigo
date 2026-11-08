@@ -88,6 +88,11 @@ func (a *fakeAccess) UserHolds(_ context.Context, user uuid.UUID, keys ...string
 	return len(keys) > 0, nil
 }
 
+// UserSatisfies is not what this fake is about: false.
+func (a *fakeAccess) UserSatisfies(context.Context, uuid.UUID, contracts.Rule) (bool, error) {
+	return false, nil
+}
+
 func (a *fakeAccess) SessionLive(_ context.Context, session uuid.UUID) (uuid.UUID, bool, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

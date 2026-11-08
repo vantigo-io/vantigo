@@ -406,6 +406,83 @@ func TestAccess_UserHolds(t *testing.T) {
 	}
 }
 
+// TestAccess_UserSatisfies pins the decision on a person's authority with no
+// session (virtual employees design V20): a permission rule is UserHolds, a
+// policy rule is decided for the user's roles with no second factor assumed, and
+// a user who may not act satisfies nothing.
+func TestAccess_UserSatisfies(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, withEnv("OWNERS_REQUIRE_MFA", "0"))
+	auditor := h.insertRole(t, "Auditor", "identity:manage")
+	users := map[string]uuid.UUID{
+		"owner":    h.insertUser(t, "owner@example.test", identity.RoleOwnerID),
+		"admin":    h.insertUser(t, "admin@example.test", identity.RoleUserID, identity.RoleSystemAdminID),
+		"auditor":  h.insertUser(t, "auditor@example.test", identity.RoleUserID, auditor),
+		"plain":    h.insertUser(t, "plain@example.test", identity.RoleUserID),
+		"disabled": h.insertUser(t, "disabled@example.test", identity.RoleUserID, auditor),
+		"unknown":  uuid.New(),
+	}
+	h.exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, users["disabled"])
+
+	perm := func(keys ...string) contracts.Rule {
+		return contracts.Rule{Kind: contracts.RulePermission, Names: keys}
+	}
+	policy := func(names ...string) contracts.Rule { return contracts.Rule{Kind: contracts.RulePolicy, Names: names} }
+	cases := []struct {
+		name string
+		user string
+		rule contracts.Rule
+		want bool
+	}{
+		{"a permission held", "auditor", perm("identity:manage"), true},
+		{"a permission not held", "plain", perm("identity:manage"), false},
+		{"an Owner holds every permission", "owner", perm("identity:manage"), true},
+		{"the Owner policy for an Owner", "owner", policy("Owner"), true},
+		{"the Owner policy for a plain user", "plain", policy("Owner"), false},
+		{"the Owner policy for a system administrator", "admin", policy("Owner"), false},
+		{"the SystemAdmin policy for a system administrator", "admin", policy("SystemAdmin"), true},
+		{"ActiveAccount for any active user", "plain", policy("ActiveAccount"), true},
+		{"Business for any active user", "plain", policy("Business"), true},
+		{"a compound policy needs every name", "plain", policy("ActiveAccount", "Owner"), false},
+		{"AuthorizationManagement for an Owner", "owner", policy("AuthorizationManagement"), true},
+		{"AuthorizationManagement for a plain user", "plain", policy("AuthorizationManagement"), false},
+		{"a session rule for an active user", "plain", contracts.Rule{Kind: contracts.RuleSession}, true},
+		{"a session rule for a disabled user", "disabled", contracts.Rule{Kind: contracts.RuleSession}, false},
+		{"a disabled user", "disabled", perm("identity:manage"), false},
+		{"a disabled user and a policy", "disabled", policy("ActiveAccount"), false},
+		{"an unknown user", "unknown", policy("ActiveAccount"), false},
+		{"a SCIM rule is never a person's", "owner", contracts.Rule{Kind: contracts.RuleSCIM}, false},
+		{"an empty policy", "owner", contracts.Rule{Kind: contracts.RulePolicy}, false},
+	}
+	ctx := context.Background()
+	for _, c := range cases {
+		got, err := h.access.UserSatisfies(ctx, users[c.user], c.rule)
+		if err != nil {
+			t.Errorf("%s: UserSatisfies error %v, want none", c.name, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("%s: UserSatisfies = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// TestAccess_UserSatisfiesAssumesNoSecondFactor: while owners are required to
+// use one, a policy that needs it is not met on a person's word alone, though
+// UserHolds still gives the Owner every key.
+func TestAccess_UserSatisfiesAssumesNoSecondFactor(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, withEnv("OWNERS_REQUIRE_MFA", "1"))
+	owner := h.insertUser(t, "owner@example.test", identity.RoleOwnerID)
+	ctx := context.Background()
+	if got, err := h.access.UserSatisfies(ctx, owner, contracts.Rule{Kind: contracts.RulePolicy, Names: []string{"Owner"}}); err != nil || got {
+		t.Errorf("the Owner policy under required MFA: %v, %v; want false", got, err)
+	}
+	if got, err := h.access.UserSatisfies(ctx, owner, contracts.Rule{Kind: contracts.RulePermission, Names: []string{"identity:manage"}}); err != nil || !got {
+		t.Errorf("an Owner's permission under required MFA: %v, %v; want true", got, err)
+	}
+}
+
 // TestAccess_UserHoldsAppliesTheSessionsSCIMRule pins UserHolds to the user
 // predicates GetSessionByTokenHash applies (UserMayAct): while SCIM is
 // configured, a non-Owner the directory deactivated holds nothing, whatever

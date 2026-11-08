@@ -190,6 +190,18 @@ type Access interface {
 	// is for a read made on a user's behalf where there is no request to
 	// check: the calendar feed. Any failure is an error, never a false.
 	UserHolds(ctx context.Context, userID uuid.UUID, keys ...string) (bool, error)
+	// UserSatisfies reports whether userID — active, not locked out — meets
+	// rule, a permission rule as UserHolds, or a policy rule as far as it can be
+	// known with no session behind the question: the policies that name a role
+	// (Owner, SystemAdmin) and the stewardship of roles are decided for the
+	// user's roles as they stand, and a second factor, which only a session has,
+	// is not assumed (so a policy that requires one is not satisfied unless the
+	// installation requires none). It is for a person who decides what another
+	// principal may do on the person's authority: the agents module's review
+	// queue, where a reviewer's approval must not grant more than the reviewer
+	// could do (virtual employees design V20). Any failure is an error, never a
+	// false.
+	UserSatisfies(ctx context.Context, userID uuid.UUID, rule Rule) (bool, error)
 	// SessionLive reports whether the session sessionID is still live — not
 	// revoked, expired or idle-expired, and its user still one a session may
 	// belong to — and whose it is. Unlike Check it never slides the idle

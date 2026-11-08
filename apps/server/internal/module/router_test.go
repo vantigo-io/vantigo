@@ -826,6 +826,11 @@ func TestRouter_BodyLimitProblems(t *testing.T) {
 	}
 }
 
+// UserSatisfies is not what this fake is about: false.
+func (f *fakeAccess) UserSatisfies(context.Context, uuid.UUID, contracts.Rule) (bool, error) {
+	return false, nil
+}
+
 func (f *fakeAccess) SessionLive(context.Context, uuid.UUID) (uuid.UUID, bool, error) {
 	return uuid.Nil, false, nil
 }

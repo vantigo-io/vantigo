@@ -107,6 +107,11 @@ func TestMount_ForbiddenPatchNeverReadsTheBody(t *testing.T) {
 	}
 }
 
+// UserSatisfies is not what this fake is about: false.
+func (denyingAccess) UserSatisfies(context.Context, uuid.UUID, contracts.Rule) (bool, error) {
+	return false, nil
+}
+
 func (denyingAccess) SessionLive(context.Context, uuid.UUID) (uuid.UUID, bool, error) {
 	return uuid.Nil, false, nil
 }

@@ -198,6 +198,11 @@ func TestHasPermissions_AsUserAsksUserHolds(t *testing.T) {
 	}
 }
 
+// UserSatisfies is not what this fake is about: false.
+func (a *grantingAccess) UserSatisfies(context.Context, uuid.UUID, contracts.Rule) (bool, error) {
+	return false, nil
+}
+
 func (a *grantingAccess) SessionLive(context.Context, uuid.UUID) (uuid.UUID, bool, error) {
 	return uuid.Nil, false, nil
 }
