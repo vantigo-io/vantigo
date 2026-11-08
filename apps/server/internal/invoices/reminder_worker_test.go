@@ -708,10 +708,10 @@ func TestWorkers_PerSwitch(t *testing.T) {
 		ehf, vipps bool
 		want       []string
 	}{
-		{false, false, []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile"}},
-		{true, false, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-billing", "invoices.allocation_reconcile"}},
-		{false, true, []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-payments"}},
-		{true, true, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-payments"}},
+		{false, false, []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events"}},
+		{true, false, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events"}},
+		{false, true, []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices-payments"}},
+		{true, true, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices-payments"}},
 	} {
 		d := h.Deps()
 		cfg := *d.Config

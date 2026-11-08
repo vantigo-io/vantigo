@@ -26,8 +26,12 @@ var customerDataOperations = map[string]string{
 	"getCustomersByIdContacts": "param:id",
 	"listSalesOrders":          "param:customerId",
 	"getSalesOrder":            "resource:customer.customerId",
-	"getInvoices":              "param:customerId",
-	"getInvoicesById":          "resource:customerId",
+	// The two quote reads are what the sales follow-up reads (virtual employees design V30):
+	// the quote of the run's customer, and no other.
+	"listQuotes":      "param:customerId",
+	"getQuote":        "resource:customer.customerId",
+	"getInvoices":     "param:customerId",
+	"getInvoicesById": "resource:customerId",
 }
 
 func TestCustomerDataOperationsDeclareTheirCustomerScope(t *testing.T) {
