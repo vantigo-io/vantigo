@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,6 +38,10 @@ type agentResult struct {
 
 func agentReply(t *testing.T, h *modtest.Harness, ctx context.Context, conversation string, body map[string]any) (agentResult, error) {
 	t.Helper()
+	if _, named := body["inReplyToMessageId"]; !named {
+		body["inReplyToMessageId"] = modtest.One[uuid.UUID](t, h, `SELECT id FROM communications.conversation_messages
+			WHERE conversation_id = $1 AND direction = 'inbound' ORDER BY occurred_at DESC, id DESC LIMIT 1`, uuid.MustParse(conversation))
+	}
 	status, resp, err := h.AgentCall(t, ctx, "postCommunicationsConversationsByIdReply", map[string]any{"id": conversation},
 		map[string]string{"Idempotency-Key": uuid.NewString()}, body)
 	return agentResult{status, resp}, err
@@ -291,4 +296,41 @@ func TestReply_PublishesWhoAnswered(t *testing.T) {
 	if payloads[0]["byAgent"] != false || payloads[1]["byAgent"] != true || payloads[1]["byUserId"] != user.String() {
 		t.Errorf("payloads = %v, want a person's then the agent's", payloads)
 	}
+}
+
+func TestAgentReply_MustNameTheMessageItAnswersAndIsRefusedWhenANewerOneArrived(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	chID := setupChannel(t, h)
+	m := createConversation(t, c, newConversationBody("seed@example.test"))
+	insertInboundParticipant(t, h, chID, m.ConversationId, strings.ToUpper("first-"+uuid.NewString()+"@example.test"))
+	ctx, _ := asAgent(t, h, uuid.New())
+
+	// Naming nothing is a 400.
+	raw := map[string]any{"textBody": "Hei"}
+	status, body, err := h.AgentCall(t, ctx, "postCommunicationsConversationsByIdReply", map[string]any{"id": m.ConversationId},
+		map[string]string{"Idempotency-Key": uuid.NewString()}, raw)
+	if err != nil || status != http.StatusBadRequest {
+		t.Fatalf("an agent's reply naming no message = %d %s (%v), want 400", status, body, err)
+	}
+	first := modtest.One[uuid.UUID](t, h, `SELECT id FROM communications.conversation_messages WHERE conversation_id = $1 AND direction = 'inbound'`, uuid.MustParse(m.ConversationId))
+
+	// Someone else writes in the meantime: the first message is no longer the latest.
+	h.Advance(time.Minute)
+	insertInboundParticipant(t, h, chID, m.ConversationId, strings.ToUpper("second-"+uuid.NewString()+"@example.test"))
+	res, err := agentReply(t, h, ctx, m.ConversationId, map[string]any{"textBody": "Hei", "inReplyToMessageId": first.String()})
+	if err != nil || res.Status != http.StatusConflict || errorCode(res.Body) != "conversation_moved" {
+		t.Errorf("a reply to a message that is no longer the latest = %d %s (%v), want 409 conversation_moved", res.Status, res.Body, err)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM communications.conversation_messages WHERE conversation_id = $1 AND direction = 'outbound' AND agent_id IS NOT NULL`, uuid.MustParse(m.ConversationId)); n != 0 {
+		t.Errorf("a refused reply left %d messages", n)
+	}
+	// Naming the latest one is answered, and a person naming a stale one is refused too.
+	if res, err := agentReply(t, h, ctx, m.ConversationId, map[string]any{"textBody": "Hei"}); err != nil || res.Status != http.StatusCreated {
+		t.Errorf("a reply to the latest message = %d %s (%v), want 201", res.Status, res.Body, err)
+	}
+	stale := replyBody()
+	stale["inReplyToMessageId"] = first.String()
+	wantCode(t, doReply(c, m.ConversationId, uuid.NewString(), stale), http.StatusConflict, "conversation_moved")
 }

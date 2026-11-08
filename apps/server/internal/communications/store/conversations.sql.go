@@ -456,6 +456,22 @@ func (q *Queries) GetIdempotencyRecordByKey(ctx context.Context, key string) (Co
 	return i, err
 }
 
+const getLatestInboundMessageID = `-- name: GetLatestInboundMessageID :one
+SELECT id FROM communications.conversation_messages
+WHERE conversation_id = $1 AND direction = 'inbound'
+ORDER BY occurred_at DESC, id DESC
+LIMIT 1
+`
+
+// The newest inbound message of a conversation, by occurred_at and id: what a
+// reply made through an agent grant must answer (conversation_moved).
+func (q *Queries) GetLatestInboundMessageID(ctx context.Context, conversationID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getLatestInboundMessageID, conversationID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getMessageConversationID = `-- name: GetMessageConversationID :one
 SELECT conversation_id FROM communications.conversation_messages WHERE id = $1
 `

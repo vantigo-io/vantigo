@@ -638,6 +638,10 @@ is decided by this module from the principal and never from the body:
 - **`conversation_taken`.** When the conversation is assigned to someone other than the agent whose
   grant it is, the reply is **409 `conversation_taken`** and nothing is written. An unassigned
   conversation, or one assigned to that agent, is answered. A person is not held to it.
+- **`inReplyToMessageId` and `conversation_moved`.** A reply through an agent grant must name the inbound
+  message it answers (400 `invalid_request`, field `inReplyToMessageId`, without it). When a newer inbound
+  message has arrived, from anyone, the reply is **409 `conversation_moved`** and nothing is written, so an
+  agent never answers a sender it has not read. A person may name the message too and gets the same refusal.
 - **Never the human-agent window.** On a Messenger conversation, an agent's reply is accepted only while
   the window is `open`. In the `human_agent` extension, which would send it tagged as a human's, it is
   422 `reply_window_closed`; a person may still reply there.
