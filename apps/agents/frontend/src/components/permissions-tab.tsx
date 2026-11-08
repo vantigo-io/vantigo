@@ -11,7 +11,7 @@ import { IDENTITY_ROLES_ROUTE_PATH } from "../lib/routes";
 import { useErrorText } from "./use-error-text";
 
 /** The levels and Identity roles the agent's roles need, and which are missing (V12). */
-export const PermissionsTab = ({ agent }: { agent: Agent }) => {
+export const PermissionsTab = ({ agent, isOwner }: { agent: Agent; isOwner: boolean }) => {
   const { t } = useI18n("agents");
   const errorText = useErrorText();
   const queryClient = useQueryClient();
@@ -109,14 +109,17 @@ export const PermissionsTab = ({ agent }: { agent: Agent }) => {
                   </Table.Td>
                   <Table.Td>
                     {gap.needsRaise && !gap.locked && (
-                      <Button
-                        size="xs"
-                        variant="light"
-                        loading={raise.isPending && raise.variables?.permissionKey === item.permissionKey}
-                        onClick={() => raise.mutate(item)}
-                      >
-                        {t("raiseTo", { level: t(`level.${item.needed}`) })}
-                      </Button>
+                      <Tooltip label={t("ownerRequired")} disabled={isOwner}>
+                        <Button
+                          size="xs"
+                          variant="light"
+                          disabled={!isOwner}
+                          loading={raise.isPending && raise.variables?.permissionKey === item.permissionKey}
+                          onClick={() => raise.mutate(item)}
+                        >
+                          {t("raiseTo", { level: t(`level.${item.needed}`) })}
+                        </Button>
+                      </Tooltip>
                     )}
                   </Table.Td>
                 </Table.Tr>

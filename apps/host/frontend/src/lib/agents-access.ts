@@ -7,10 +7,12 @@ import { hasAllPermissions } from "../navigation";
 /**
  * What the Agents pages may offer, judged from the caller's permissions:
  * `agents:manage` creates, edits, pauses and deletes. Raising a level, an Auto
- * mode and binding a channel are the Owner's besides, which the API decides.
+ * mode and binding a channel are the Owner's besides (`isOwner`, which the
+ * pages use to disable those controls); the API decides too.
  */
-export const agentsAccessOf = (permissions: string[] | undefined): AgentsAccess => ({
+export const agentsAccessOf = (permissions: string[] | undefined, isOwner = false): AgentsAccess => ({
   canManage: hasAllPermissions(permissions, ["agents:manage"]),
+  isOwner,
 });
 
 /** The Agents pages' access from the root layout's session and authorization, and whether it has answered. */
@@ -25,6 +27,6 @@ export const useAgentsAccess = (): { ready: boolean; access: AgentsAccess } => {
   });
   return {
     ready: authorization.isSuccess || authorization.isError,
-    access: agentsAccessOf(authorization.data?.permissions),
+    access: agentsAccessOf(authorization.data?.permissions, authorization.data?.administrationScope.isOwner === true),
   };
 };
