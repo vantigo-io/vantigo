@@ -24,6 +24,24 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/operations"
 )
 
+// errClaimLost is why a run's context is cancelled when its claim was taken over.
+var errClaimLost = errors.New("agents: the run's claim was lost")
+
+// stillMine says the run may go on: its agent is active and this replica still
+// holds the claim. It is asked before every turn and again just before a send.
+func (rs *runState) stillMine(ctx context.Context) bool {
+	q := store.New(rs.s.deps.Pool)
+	agent, err := q.GetAgentByID(context.WithoutCancel(ctx), rs.agent.ID)
+	if err != nil || agent.State != stateActive {
+		return false
+	}
+	run, err := q.GetRun(context.WithoutCancel(ctx), rs.run.ID)
+	if err != nil || run.State != runRunning || run.ClaimedBy == nil || rs.run.ClaimedBy == nil || *run.ClaimedBy != *rs.run.ClaimedBy {
+		return false
+	}
+	return context.Cause(ctx) == nil
+}
+
 // runCeiling is how long a run may take (V14).
 const runCeiling = 5 * time.Minute
 
@@ -62,6 +80,7 @@ type runState struct {
 	mu         sync.Mutex
 	replied    bool // an outbound message was sent or proposed: the run's one
 	sent       bool
+	noReply    bool // the reply was withdrawn: a colleague took the conversation, or a newer message came
 	sentAt     time.Time
 	items      int // review items the run left waiting
 	handOff    *handOffRequest
@@ -149,9 +168,11 @@ func (s *server) executeRun(parent context.Context, run store.AgentsRun) {
 		s.warn("agents: count the run", "run", run.ID, "err", err)
 	}
 
-	ctx, cancel := context.WithTimeout(parent, runCeiling)
+	claimed, cancelClaim := context.WithCancelCause(parent)
+	defer cancelClaim(nil)
+	ctx, cancel := context.WithTimeout(claimed, runCeiling)
 	defer cancel()
-	stopRenew := s.renewClaim(ctx, run)
+	stopRenew := s.renewClaim(ctx, run, cancelClaim)
 	defer stopRenew()
 	defer func() { rs.revoke(persist, rs.grant) }()
 
@@ -183,8 +204,8 @@ func (s *server) executeRun(parent context.Context, run store.AgentsRun) {
 	}
 
 	outcome, loopErr := rs.loop().Run(rs.withGrant(ctx), agentloop.Input{System: rs.systemPrompt(), History: rs.seed()})
-	if parent.Err() != nil {
-		return
+	if parent.Err() != nil || errors.Is(context.Cause(claimed), errClaimLost) {
+		return // the process is stopping, or the worker took the run over
 	}
 	rs.conclude(persist, outcome, loopErr)
 }
@@ -302,7 +323,16 @@ func (rs *runState) conclude(persist context.Context, out agentloop.Outcome, loo
 	rs.mu.Unlock()
 	rs.recordProgress(persist)
 
+	if out.State == agentloop.StateStopped {
+		// The agent was paused while the run worked: nothing more is done, and the
+		// conversation is left as it is (a hand-off would answer a pause with a
+		// reassignment nobody asked for).
+		rs.s.finishRun(persist, rs.run, runStopped, "", out.Code, "")
+		return
+	}
 	switch {
+	case rs.noReply:
+		rs.s.finishRun(persist, rs.run, runDone, outcomeNoReply, "", "")
 	case out.State == agentloop.StateFailed && handOff == nil && !replied:
 		code := out.Code
 		switch code {
@@ -368,8 +398,10 @@ func (rs *runState) doHandOff(ctx context.Context, code, summary string) {
 	if err := writeMarker(ctx, q, rs.role.ID, rs.run.ConversationID, code, rs.s.deps.Clock()); err != nil {
 		rs.s.warn("agents: mark a hand-off", "run", rs.run.ID, "err", err)
 	}
-	grant := rs.grant
+	grant, assigned := rs.grant, rs.conv.AssignedUserID
 	if grant == uuid.Nil {
+		// A hand-off before the conversation was read (the budget, a guard, no AI):
+		// read it now, so an assignee that is the agent is cleared.
 		g, err := rs.issue(ctx, nil)
 		if err != nil {
 			rs.s.warn("agents: no grant for a hand-off", "run", rs.run.ID, "err", err)
@@ -377,8 +409,13 @@ func (rs *runState) doHandOff(ctx context.Context, code, summary string) {
 		}
 		defer rs.revoke(ctx, g)
 		grant = g
+		if res, err := rs.s.callAs(ctx, g, operations.CallRequest{OperationID: opGetConversation, PathParams: rs.own()}); err == nil && res.Status == 200 {
+			if c, err := parseConversation(res.Body); err == nil {
+				assigned = c.AssignedUserID
+			}
+		}
 	}
-	rs.s.handOffEffects(ctx, grant, rs.agent, rs.role, rs.run.ConversationID, rs.conv.AssignedUserID, summary)
+	rs.s.handOffEffects(ctx, grant, rs.agent, rs.role, rs.run.ConversationID, assigned, summary)
 }
 
 // finishRun ends a running run in a state, records the day's counts and
@@ -405,7 +442,7 @@ func (s *server) finishRun(ctx context.Context, run store.AgentsRun, state, outc
 // renewClaim extends the run's claim every 30 seconds, each renewal its own
 // statement, and answers the function that stops it. A claim that cannot be
 // renewed is lost: the worker has taken the run over.
-func (s *server) renewClaim(ctx context.Context, run store.AgentsRun) (stop func()) {
+func (s *server) renewClaim(ctx context.Context, run store.AgentsRun, lost context.CancelCauseFunc) (stop func()) {
 	if run.ClaimedBy == nil {
 		return func() {}
 	}
@@ -423,11 +460,15 @@ func (s *server) renewClaim(ctx context.Context, run store.AgentsRun) (stop func
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				_, err := store.New(s.deps.Pool).RenewClaim(context.WithoutCancel(ctx), store.RenewClaimParams{
+				n, err := store.New(s.deps.Pool).RenewClaim(context.WithoutCancel(ctx), store.RenewClaimParams{
 					ID: run.ID, ClaimedBy: run.ClaimedBy, ClaimedUntil: s.deps.Clock().Add(claimFor),
 				})
 				if err != nil {
 					s.warn("agents: renew a run's claim", "run", run.ID, "err", err)
+				} else if n == 0 {
+					// The worker took the run over: this replica must stop, and say nothing more.
+					lost(errClaimLost)
+					return
 				}
 			}
 		}
@@ -459,6 +500,9 @@ func (rs *runState) seed() []aiMessage {
 	}
 	var msgs []msg
 	for _, m := range rs.conv.Messages {
+		if m.Direction == "internal_note" {
+			continue // colleagues' notes are not the customer's words, and may name others
+		}
 		from := "customer"
 		switch m.Direction {
 		case "outbound":

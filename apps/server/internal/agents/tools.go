@@ -11,6 +11,7 @@ package agents
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -128,6 +129,9 @@ func (rs *runState) callOperationTool(base agentloop.Tool) agentloop.Tool {
 		rs.mu.Lock()
 		rs.pending = nil
 		rs.mu.Unlock()
+		if a.ID == opGetConversation {
+			res.Content = sanitizeConversation(res.Content, rs.customerID == nil)
+		}
 		return res, err
 	}
 	return def
@@ -391,8 +395,14 @@ func (st runStore) Stopped(ctx context.Context) (agentloop.Outcome, bool) {
 	if handedOff {
 		return agentloop.Outcome{State: agentloop.StateDone}, true
 	}
+	if errors.Is(context.Cause(ctx), errClaimLost) {
+		return agentloop.Outcome{State: agentloop.StateStopped, Code: "claim_lost"}, true
+	}
 	if ctx.Err() != nil {
 		return agentloop.Outcome{State: agentloop.StateFailed, Code: "timeout"}, true
+	}
+	if !rs.stillMine(ctx) {
+		return agentloop.Outcome{State: agentloop.StateStopped, Code: "paused"}, true
 	}
 	return agentloop.Outcome{}, false
 }
@@ -473,3 +483,57 @@ func (st runStore) AppendResult(ctx context.Context, call ai.ToolCall, res agent
 }
 
 func (st runStore) Attach(context.Context, any, []any) {}
+
+// customerHintKeys are the fields of a conversation that point at a customer:
+// the link, the linker's suggestion and its reasoning, and the candidates. A run
+// with no customer (V9b) must not learn which customer the conversation might be.
+var customerHintKeys = map[string]bool{
+	"customerId": true, "customerAssociationSource": true, "suggestedCustomerId": true,
+	"suggestedCustomerConfidence": true, "suggestedCustomerReasoning": true, "candidateCustomerIds": true,
+	"customerName": true, "suggestedCustomerName": true,
+}
+
+// sanitizeConversation takes out of a conversation read what the model must not
+// see: the colleagues' internal notes, and, for a run with no customer, the
+// customerHintKeys, wherever they nest. It wraps the rest again as data.
+func sanitizeConversation(content string, dropHints bool) string {
+	var v any
+	if json.Unmarshal([]byte(content), &v) != nil {
+		return content
+	}
+	var walk func(v any)
+	walk = func(v any) {
+		switch t := v.(type) {
+		case map[string]any:
+			for k := range t {
+				if dropHints && customerHintKeys[k] {
+					delete(t, k)
+					continue
+				}
+				if list, ok := t[k].([]any); ok && k == "messages" {
+					kept := list[:0]
+					for _, e := range list {
+						if m, ok := e.(map[string]any); ok && m["direction"] == "internal_note" {
+							continue
+						}
+						kept = append(kept, e)
+					}
+					t[k] = kept
+				}
+				walk(t[k])
+			}
+		case []any:
+			for _, e := range t {
+				walk(e)
+			}
+		}
+	}
+	walk(v)
+	if m, ok := v.(map[string]any); ok {
+		if data, ok := m["data"]; ok {
+			return agentloop.Wrap(data)
+		}
+	}
+	out, _ := json.Marshal(v)
+	return string(out)
+}

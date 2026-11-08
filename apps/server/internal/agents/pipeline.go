@@ -77,6 +77,12 @@ func validSources(sources []string, log []action) (valid []string, scoped bool) 
 	return valid, scoped
 }
 
+// runHasScopedRead says the run read a customer's data: any successful read of
+// an operation that returns it, whatever the reply cites (S1).
+func runHasScopedRead(log []action) bool {
+	return slices.ContainsFunc(log, func(a action) bool { return a.OK && a.Scoped })
+}
+
 // sourceMatches says src names a: its reference as written, or one of the ids it
 // read (an article id, an invoice number).
 func sourceMatches(src string, a action) bool {
