@@ -416,7 +416,9 @@ kundelisten for å åpne **Importer kunder**.
    filen på nytt i stedet. Når den er ferdig, viser siden **Opprettet**,
    **Oppdatert**, **Hoppet over** og **Feilet**, og lister de nye kundene som lenker
    og radene som ble hoppet over med raden hver av dem gjentar. Radene som ble hoppet
-   over, er ikke med i filen med radene som feilet.
+   over, er ikke med i filen med radene som feilet. Siden og listen over siste importer
+   oppdateres av seg selv mens importen arbeider, uten at du laster siden på nytt; er
+   den levende forbindelsen ikke tilgjengelig, oppdateres de hvert par sekund, som før.
 
 **Organisasjonsnummeret fyller inn resten.** Har en rad et norsk organisasjonsnummer
 for en bedrift, slår Vantigo opp det raden mangler i Brønnøysundregistrene: en ny
