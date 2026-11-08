@@ -95,6 +95,21 @@ export const knowledgeCatalog = {
     draftBody: "You have changes from {{when}} that were not saved.",
     draftRestore: "Restore them",
     draftDiscard: "Discard",
+    historyRestoreLive: "Others are editing this page right now. Try again in a moment.",
+    collabSomeone: "Someone",
+    collabOffline: "Offline. Your changes are kept and shared when the connection returns.",
+    collabPausedTitle: "Live editing is paused for this page",
+    collabPausedBody:
+      "The page's live log is full. Your changes are kept and are saved as soon as live editing returns, when the log has been tidied.",
+    collabBrokenTitle: "The live copy of this page cannot be opened",
+    collabBrokenBodyWriter:
+      "The saved version is shown. Rebuild the live copy from it to edit again; text typed since the last save is lost.",
+    collabBrokenBodyReader: "You are seeing the last saved version.",
+    collabRebuild: "Rebuild from the last saved version",
+    collabRebuildFailed: "The live copy could not be rebuilt.",
+    collabReplacedTitle:
+      "This page was replaced by a save made without the live connection, or others started editing it",
+    collabReplacedBody: "Your own text is kept on this device and offered back below as unsaved changes.",
 
     lockedBanner: "This page is locked.",
     lockedBannerWriter: "This page is locked. Unlock it from the page menu to edit it.",
@@ -406,6 +421,21 @@ export const knowledgeCatalog = {
     draftBody: "Du har endringer fra {{when}} som ikke ble lagret.",
     draftRestore: "Gjenopprett dem",
     draftDiscard: "Forkast",
+    historyRestoreLive: "Andre redigerer denne siden akkurat nå. Prøv igjen om et øyeblikk.",
+    collabSomeone: "Noen",
+    collabOffline: "Frakoblet. Endringene dine tas vare på og deles når tilkoblingen er tilbake.",
+    collabPausedTitle: "Direkte redigering er satt på pause for denne siden",
+    collabPausedBody:
+      "Sidens direkte logg er full. Endringene dine tas vare på og lagres så snart direkte redigering kommer tilbake, når loggen er ryddet.",
+    collabBrokenTitle: "Den direkte kopien av siden kan ikke åpnes",
+    collabBrokenBodyWriter:
+      "Den lagrede versjonen vises. Bygg den direkte kopien på nytt fra den for å redigere igjen; tekst skrevet siden siste lagring går tapt.",
+    collabBrokenBodyReader: "Du ser den sist lagrede versjonen.",
+    collabRebuild: "Bygg på nytt fra siste lagrede versjon",
+    collabRebuildFailed: "Den direkte kopien kunne ikke bygges på nytt.",
+    collabReplacedTitle:
+      "Siden ble erstattet av en lagring gjort uten direkte tilkobling, eller andre begynte å redigere den",
+    collabReplacedBody: "Din siste tekst tilbys under som ulagrede endringer i denne nettleseren.",
 
     lockedBanner: "Siden er låst.",
     lockedBannerWriter: "Siden er låst. Lås den opp fra sidemenyen for å redigere.",

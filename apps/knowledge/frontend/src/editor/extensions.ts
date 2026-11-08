@@ -1,3 +1,5 @@
+import Collaboration from "@tiptap/extension-collaboration";
+import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { Details, DetailsContent, DetailsSummary } from "@tiptap/extension-details";
 import Link from "@tiptap/extension-link";
 import TaskItem from "@tiptap/extension-task-item";
@@ -6,6 +8,8 @@ import UniqueID from "@tiptap/extension-unique-id";
 import { Placeholder } from "@tiptap/extensions";
 import StarterKit from "@tiptap/starter-kit";
 import type { RecordModule } from "../lib/record-modules";
+import type { CollabProvider } from "./collab/provider";
+import { CURSOR_COLOURS, colourOf } from "./collab/user";
 import { Callout } from "./nodes/callout";
 import { CodeBlock } from "./nodes/code-block";
 import { FileAttachment, KnowledgeImage } from "./nodes/files";
@@ -50,6 +54,46 @@ export const blockIdTypes = [
   "fileAttachment",
 ] as const;
 
+/** The name of the Yjs fragment the editor's `Collaboration` extension binds to. */
+export const COLLAB_FIELD = "default";
+
+/**
+ * What another person's awareness may put on this screen. The state is whatever a writer's
+ * browser sent, so the name is cut and the colour is one of ours or derived from the id: never a
+ * string that reaches a style attribute as sent. (The server does not stamp identities yet; see the reference.)
+ */
+const MAX_CARET_NAME = 60;
+export const safeCaretUser = (user: Record<string, unknown>): { name: string; color: string } => {
+  const color = (CURSOR_COLOURS as readonly string[]).includes(String(user.color))
+    ? String(user.color)
+    : colourOf(String(user.id ?? user.name ?? ""));
+  return { name: String(user.name ?? "").slice(0, MAX_CARET_NAME), color };
+};
+
+/** Another person's cursor: a bar in their colour with their name above it (K30). */
+const renderCaret = (raw: Record<string, unknown>): HTMLElement => {
+  const user = safeCaretUser(raw);
+  const caret = document.createElement("span");
+  caret.classList.add("collaboration-carets__caret");
+  caret.style.borderColor = user.color;
+  const label = document.createElement("div");
+  label.classList.add("collaboration-carets__label");
+  label.style.backgroundColor = user.color;
+  label.textContent = user.name;
+  caret.append(label);
+  return caret;
+};
+
+const renderSelection = (raw: Record<string, unknown>) => {
+  const user = safeCaretUser(raw);
+  return {
+    nodeName: "span",
+    class: "collaboration-carets__selection",
+    "data-user": user.name,
+    style: `background-color: ${user.color}33`,
+  };
+};
+
 /**
  * The editor's extensions. K-A (K7): StarterKit with headings 1–3 (its own
  * Markdown input rules: `#`, `-`, `1.`, `>`, three backticks), Underline kept,
@@ -64,9 +108,35 @@ export const blockIdTypes = [
  */
 export const editorExtensions = (
   placeholder = "",
-  { articleId = null, moduleName }: { articleId?: string | null; moduleName?: (module: RecordModule) => string } = {},
+  {
+    articleId = null,
+    moduleName,
+    collab,
+  }: {
+    articleId?: string | null;
+    moduleName?: (module: RecordModule) => string;
+    /** Live co-editing (K-C, K33): the editor is bound to the provider's document, with its own undo history and the others' cursors. */
+    collab?: { provider: CollabProvider; user: { name: string; color: string } };
+  } = {},
 ) => [
-  StarterKit.configure({ heading: { levels: [1, 2, 3] }, link: false, codeBlock: false }),
+  // With `Collaboration` the undo history is Yjs's (a person undoes only their own changes), so StarterKit's is off.
+  StarterKit.configure({
+    heading: { levels: [1, 2, 3] },
+    link: false,
+    codeBlock: false,
+    undoRedo: collab ? false : undefined,
+  }),
+  ...(collab
+    ? [
+        Collaboration.configure({ document: collab.provider.doc, field: COLLAB_FIELD }),
+        CollaborationCaret.configure({
+          provider: collab.provider,
+          user: collab.user,
+          render: renderCaret,
+          selectionRender: renderSelection,
+        }),
+      ]
+    : []),
   Link.configure({
     openOnClick: false,
     autolink: true,

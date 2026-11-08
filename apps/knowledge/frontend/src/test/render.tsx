@@ -10,6 +10,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
+import { LiveProvider, type LiveProviderProps } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import "../i18n";
 import { type KnowledgePageAccess, noKnowledgeAccess } from "../lib/access";
@@ -41,18 +42,30 @@ const routeTree = (access: KnowledgePageAccess, extra?: ReactNode) => {
   return root.addChildren([home, articleRoute, trash, here]);
 };
 
-/** Mounts the stand-in routes at a URL; `extra` renders at `/here`. */
-export const renderRoute = (url: string, access: KnowledgePageAccess = noKnowledgeAccess, extra?: ReactNode) => {
+/** Mounts the stand-in routes at a URL; `extra` renders at `/here`; `live` puts the page under a live socket (a fake server's). */
+export const renderRoute = (
+  url: string,
+  access: KnowledgePageAccess = noKnowledgeAccess,
+  extra?: ReactNode,
+  live?: Pick<LiveProviderProps, "userId" | "createSocket">,
+) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const router = createRouter({
     routeTree: routeTree(access, extra),
     history: createMemoryHistory({ initialEntries: [url] }),
   });
+  const routes = <RouterProvider router={router} />;
   const view = render(
     <MantineProvider env="test">
       <Notifications />
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        {live ? (
+          <LiveProvider userId={live.userId} url="ws://test/api/v1/live?v=1" createSocket={live.createSocket}>
+            {routes}
+          </LiveProvider>
+        ) : (
+          routes
+        )}
       </QueryClientProvider>
     </MantineProvider>,
   );

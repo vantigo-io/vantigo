@@ -1,4 +1,5 @@
 import "@mantine/tiptap/styles.css";
+import "./collab/carets.css";
 import { RichTextEditor } from "@mantine/tiptap";
 import type { Editor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
