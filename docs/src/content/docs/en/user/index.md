@@ -16,7 +16,7 @@ shown.
 ## Apps and the switcher
 
 Each module is an **app** with its own sidebar: Customers, Projects, Time, Calendar,
-Expenses, Staff, Planning, Invoices, Orders, Knowledge, Communications, Products, Inventory and Energy — and Microsoft Entra ID
+Expenses, Staff, Planning, Invoices, Orders, Knowledge, Communications, Products, Inventory, Energy and Virtual employees — and Microsoft Entra ID
 and Google Workspace, where an administrator connects the company's tenant or organisation. The [Assistant](/en/user/assistant/) is an app
 too, and also a panel that opens beside any screen with the button in the top bar or Cmd/Ctrl+J, and it can [show you where to click](/en/user/assistant/#show-me-how) in the main create flows. The app switcher in the top bar lists
 the apps you can open; **Home** is the dashboard, which opens with Calendar's **Today and
@@ -79,6 +79,7 @@ shorter than yours:
 | [Planning](/en/user/planning/) | Plan (the board), a project's plan and a person's timeline, Requests, Intake, Unbooked, Wishes, My planning, Planning settings |
 | [Invoices](/en/user/invoices/) | Invoices, Quick invoice, Invoice journal, Overdue, Payments, Invoice settings |
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
+| [Virtual employees](/en/user/agents/) | Agents (Persona, Roles, Permissions, Usage, Activity), Settings |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |
 | [Inventory](/en/user/inventory/) | Overview, Movements, Receipts, Counts, Import opening balances |
 | [Orders](/en/user/orders/) | Quotes, Sales orders, Deliveries, Subscriptions, Quote templates, Sales analysis, Orders settings |
