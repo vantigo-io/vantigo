@@ -154,7 +154,7 @@ func (w *ImportWorker) RunCycle(ctx context.Context) (bool, error) {
 		var head *store.EnergyImport
 		acquired, err := w.underLease(ctx, func(ctx context.Context, conn *pgxpool.Conn) error {
 			var err error
-			head, err = w.headOrSweep(ctx, store.New(conn))
+			head, err = w.headOrSweep(ctx, conn)
 			return err
 		})
 		ran = ran || acquired
@@ -180,7 +180,8 @@ func (w *ImportWorker) RunCycle(ctx context.Context) (bool, error) {
 
 // headOrSweep is the oldest import asked for, or, the queue empty, nil and the
 // sweep of the imports past their retention.
-func (w *ImportWorker) headOrSweep(ctx context.Context, q *store.Queries) (*store.EnergyImport, error) {
+func (w *ImportWorker) headOrSweep(ctx context.Context, conn *pgxpool.Conn) (*store.EnergyImport, error) {
+	q := store.New(conn)
 	imp, err := q.NextQueuedImport(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
 		swept, err := q.SweepImports(ctx, w.now().Add(-w.retention()))
@@ -188,6 +189,9 @@ func (w *ImportWorker) headOrSweep(ctx context.Context, q *store.Queries) (*stor
 			return nil, fmt.Errorf("energy: sweep old imports: %w", err)
 		}
 		if swept > 0 {
+			if err := notifyImportsSwept(ctx, conn); err != nil {
+				w.logger().Warn("energy: notify swept imports", "worker", importWorkerName, "error", err)
+			}
 			w.logger().Info("old imports swept", "worker", importWorkerName, "imports", swept)
 		}
 		return nil, nil
@@ -279,6 +283,7 @@ func (w *ImportWorker) takeUp(ctx context.Context, conn *pgxpool.Conn, prep impo
 		if failErr := q.FailImport(ctx, store.FailImportParams{ID: imp.ID, Error: &message, UpdatedAt: w.now()}); failErr != nil {
 			return false, fmt.Errorf("energy: record an import's failure: %w", failErr)
 		}
+		w.notifyImportFromWorker(ctx, conn, imp.ID)
 		w.logger().Error("energy: an import failed and is tried again next cycle",
 			"worker", importWorkerName, "importId", imp.ID, "error", message)
 		return false, nil
@@ -298,13 +303,15 @@ func countsOf(c store.ImportRowCountsRow) importCounts {
 	}
 }
 
-func (w *ImportWorker) writeProgress(ctx context.Context, q *store.Queries, id int32, c importCounts) error {
+func (w *ImportWorker) writeProgress(ctx context.Context, conn *pgxpool.Conn, progress *importProgress, id int32, c importCounts) error {
+	q := store.New(conn)
 	if err := q.UpdateImportProgress(ctx, store.UpdateImportProgressParams{
 		ID: id, Processed: c.processed, Created: c.created, Updated: c.updated, Failed: c.failed, Skipped: c.skipped,
 		Switched: c.switched, Pending: c.pending, Attached: c.attached, UpdatedAt: w.now(),
 	}); err != nil {
 		return fmt.Errorf("energy: write import %d's progress: %w", id, err)
 	}
+	progress.notify(ctx, w, conn, id)
 	return nil
 }
 
@@ -329,13 +336,16 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 		// take up as read, and the queue is read again.
 		return nil
 	}
+	w.notifyImportFromWorker(ctx, conn, imp.ID)
+	progress := &importProgress{}
+	defer progress.stop()
 	if importRunHookForTest != nil {
 		if err := importRunHookForTest(ctx, imp.ID); err != nil {
 			return err
 		}
 	}
 	if imp.State == string(gen.Attaching) {
-		return w.runAttach(ctx, conn, imp, prep.entries)
+		return w.runAttach(ctx, conn, imp, prep.entries, progress)
 	}
 	dryRun := imp.State == string(gen.Checking)
 
@@ -352,7 +362,7 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 	if !dryRun {
 		budget = switchBudget{bounded: true, left: int(imp.ConfirmedSwitches), importID: imp.ID}
 	}
-	if err := w.writeProgress(ctx, q, imp.ID, counts); err != nil {
+	if err := w.writeProgress(ctx, conn, progress, imp.ID, counts); err != nil {
 		return err
 	}
 
@@ -409,7 +419,7 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 				}
 			}
 		}
-		if err := w.writeProgress(ctx, q, imp.ID, counts); err != nil {
+		if err := w.writeProgress(ctx, conn, progress, imp.ID, counts); err != nil {
 			return err
 		}
 		stop, err := q.ImportStopRequested(ctx, imp.ID)
@@ -417,10 +427,10 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 			return fmt.Errorf("energy: read import %d's stop flag: %w", imp.ID, err)
 		}
 		if stop {
-			return w.finish(ctx, q, imp, dryRun, true)
+			return w.finish(ctx, conn, imp, dryRun, true)
 		}
 	}
-	return w.finish(ctx, q, imp, dryRun, false)
+	return w.finish(ctx, conn, imp, dryRun, false)
 }
 
 // writeRowOutcome writes a row's result outside its transaction: a dry run's
@@ -468,7 +478,8 @@ func importRowErrorsFromJSON(data []byte) ([]gen.EnergyImportRowError, error) {
 // finish closes a check or a run: a check stopped goes back to draft with its
 // results cleared; a check finished is checked; a run, finished or stopped, is
 // done. The counts are recounted from the rows, the one source of truth.
-func (w *ImportWorker) finish(ctx context.Context, q *store.Queries, imp store.EnergyImport, dryRun, stopped bool) error {
+func (w *ImportWorker) finish(ctx context.Context, conn *pgxpool.Conn, imp store.EnergyImport, dryRun, stopped bool) error {
+	q := store.New(conn)
 	now := w.now()
 	if dryRun && stopped {
 		if err := q.ClearImportRowResults(ctx, imp.ID); err != nil {
@@ -477,6 +488,7 @@ func (w *ImportWorker) finish(ctx context.Context, q *store.Queries, imp store.E
 		if err := q.FinishImport(ctx, store.FinishImportParams{ID: imp.ID, State: string(gen.Draft), UpdatedAt: now}); err != nil {
 			return fmt.Errorf("energy: finish import %d: %w", imp.ID, err)
 		}
+		w.notifyImportFromWorker(ctx, conn, imp.ID)
 		w.logger().Info("import check stopped", "worker", importWorkerName, "importId", imp.ID)
 		return nil
 	}
@@ -484,12 +496,13 @@ func (w *ImportWorker) finish(ctx context.Context, q *store.Queries, imp store.E
 	if !dryRun {
 		state = gen.Done
 	}
-	return w.close(ctx, q, imp, state, now, stopped)
+	return w.close(ctx, conn, imp, state, now, stopped)
 }
 
 // close writes an import's final state with its counts recounted from the
 // rows.
-func (w *ImportWorker) close(ctx context.Context, q *store.Queries, imp store.EnergyImport, state gen.EnergyImportState, finishedAt time.Time, stopped bool) error {
+func (w *ImportWorker) close(ctx context.Context, conn *pgxpool.Conn, imp store.EnergyImport, state gen.EnergyImportState, finishedAt time.Time, stopped bool) error {
+	q := store.New(conn)
 	rowCounts, err := q.ImportRowCounts(ctx, imp.ID)
 	if err != nil {
 		return fmt.Errorf("energy: count import %d's rows: %w", imp.ID, err)
@@ -501,6 +514,7 @@ func (w *ImportWorker) close(ctx context.Context, q *store.Queries, imp store.En
 	}); err != nil {
 		return fmt.Errorf("energy: finish import %d: %w", imp.ID, err)
 	}
+	w.notifyImportFromWorker(ctx, conn, imp.ID)
 	w.logger().Info("import finished", "worker", importWorkerName, "importId", imp.ID, "state", state, "stopped", stopped,
 		"rows", imp.RowCount, "processed", c.processed, "created", c.created, "updated", c.updated, "failed", c.failed,
 		"skipped", c.skipped, "switched", c.switched, "pending", c.pending, "attached", c.attached)
@@ -575,7 +589,7 @@ func (w *ImportWorker) resolveCustomers(ctx context.Context, legalIDs []string) 
 // (same). A row that cannot be attached stays pending with its error, so the
 // attach can be asked for again. The customers the rows name are entries,
 // read once before the lease was taken (attachCustomers).
-func (w *ImportWorker) runAttach(ctx context.Context, conn *pgxpool.Conn, imp store.EnergyImport, entries map[int32]contracts.CustomerEntry) error {
+func (w *ImportWorker) runAttach(ctx context.Context, conn *pgxpool.Conn, imp store.EnergyImport, entries map[int32]contracts.CustomerEntry, progress *importProgress) error {
 	q := store.New(conn)
 	if imp.AttachStart == nil {
 		return errors.New("energy: the import has no attach start")
@@ -620,7 +634,7 @@ func (w *ImportWorker) runAttach(ctx context.Context, conn *pgxpool.Conn, imp st
 				counts.attached++
 			}
 		}
-		if err := w.writeProgress(ctx, q, imp.ID, counts); err != nil {
+		if err := w.writeProgress(ctx, conn, progress, imp.ID, counts); err != nil {
 			return err
 		}
 		stop, err := q.ImportStopRequested(ctx, imp.ID)
@@ -628,10 +642,10 @@ func (w *ImportWorker) runAttach(ctx context.Context, conn *pgxpool.Conn, imp st
 			return fmt.Errorf("energy: read import %d's stop flag: %w", imp.ID, err)
 		}
 		if stop {
-			return w.close(ctx, q, imp, gen.Done, w.now(), true)
+			return w.close(ctx, conn, imp, gen.Done, w.now(), true)
 		}
 	}
-	return w.close(ctx, q, imp, gen.Done, w.now(), false)
+	return w.close(ctx, conn, imp, gen.Done, w.now(), false)
 }
 
 // attachCustomers is the customers the attach's untried rows name, read once

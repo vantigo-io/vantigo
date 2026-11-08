@@ -15,6 +15,7 @@ import {
   isImportRunning,
   MAX_IMPORT_FILE_BYTES,
   uploadImport,
+  useImportsLive,
 } from "../api/imports";
 import { ApiValidationError } from "../api/request";
 import "../i18n";
@@ -43,7 +44,8 @@ export const ImportStartPage = () => {
   const dropTextId = useId();
   const [over, setOver] = useState(false);
   const [problem, setProblem] = useState<string[] | null>(null);
-  const imports = useQuery(importsQueryOptions(1, 10));
+  const live = useImportsLive();
+  const imports = useQuery(importsQueryOptions(1, 10, live));
 
   const upload = useMutation({
     mutationFn: uploadImport,

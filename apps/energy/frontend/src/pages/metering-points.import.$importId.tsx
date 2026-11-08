@@ -16,6 +16,7 @@ import {
   SWITCH_NOT_CONFIRMED,
   saveFile,
   saveImportMapping,
+  useImportsLive,
 } from "../api/imports";
 import { ApiConflictError } from "../api/request";
 import { type ImportCapabilities, ImportMappingStep } from "./-import-mapping-step";
@@ -390,7 +391,8 @@ const DoneResult = ({ imp, capabilities }: { imp: EnergyImport; capabilities: Im
  */
 export const ImportPage = ({ importId, capabilities }: { importId: number; capabilities: ImportCapabilities }) => {
   const { t, formatters } = useI18n("energy");
-  const { data: imp, isPending, isError, error, refetch } = useQuery(importQueryOptions(importId));
+  const live = useImportsLive(importId);
+  const { data: imp, isPending, isError, error, refetch } = useQuery(importQueryOptions(importId, live));
 
   const breadcrumbs = [
     { label: t("meteringPoints"), to: "/energy/metering-points" },
