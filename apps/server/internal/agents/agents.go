@@ -131,6 +131,24 @@ func (s *server) CreateAgent(ctx context.Context, req gen.CreateAgentRequestObje
 	}
 	actor := callerID(ctx)
 	id := uuid.New()
+	// The steps in other modules come first and are undone when a later one
+	// fails, so a failed create leaves no user and no model choice behind.
+	undo := func() {
+		if err := s.deps.AgentAccounts.Disable(ctx, userID); err != nil {
+			s.warn("agents: disable the user of an agent that was not created", "user", userID, "err", err)
+		}
+		if p.Model != "" {
+			if err := s.deps.AIModels.SetModelFor(ctx, aiTaskRun, id.String(), ""); err != nil {
+				s.warn("agents: forget the model of an agent that was not created", "agent", id, "err", err)
+			}
+		}
+	}
+	if p.Model != "" {
+		if err := s.deps.AIModels.SetModelFor(ctx, aiTaskRun, id.String(), p.Model); err != nil {
+			undo()
+			return nil, fmt.Errorf("agents: choose the agent's model: %w", err)
+		}
+	}
 	var row store.AgentsAgent
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		q := store.New(tx)
@@ -145,13 +163,8 @@ func (s *server) CreateAgent(ctx context.Context, req gen.CreateAgentRequestObje
 		return s.audit(ctx, q, actor, "agent.created", id.String(), nil, agentSnapshot(row, p.Model))
 	})
 	if err != nil {
-		_ = s.deps.AgentAccounts.Disable(ctx, userID)
+		undo()
 		return nil, err
-	}
-	if p.Model != "" {
-		if err := s.deps.AIModels.SetModelFor(ctx, aiTaskRun, id.String(), p.Model); err != nil {
-			return nil, fmt.Errorf("agents: choose the agent's model: %w", err)
-		}
 	}
 	view, err := s.agentView(ctx, row)
 	if err != nil {
@@ -217,7 +230,29 @@ func (s *server) UpdateAgent(ctx context.Context, req gen.UpdateAgentRequestObje
 		}); err != nil {
 			return fmt.Errorf("agents: change the agent: %w", err)
 		}
-		return s.audit(ctx, q, actor, "agent.changed", current.ID.String(), agentSnapshot(current, beforeModel), agentSnapshot(saved, p.Model))
+		if err := s.audit(ctx, q, actor, "agent.changed", current.ID.String(), agentSnapshot(current, beforeModel), agentSnapshot(saved, p.Model)); err != nil {
+			return err
+		}
+		// The steps in other modules run before the commit, under the row's
+		// lock and after the version check, so a refused or conflicting update
+		// changes nothing of theirs. Both set the value the body names, so a
+		// commit that fails after them is mended by sending the same body again.
+		if before.Name != saved.Name {
+			if err := s.deps.AgentAccounts.Rename(ctx, saved.UserID, saved.Name); err != nil {
+				return fmt.Errorf("agents: rename the agent's user: %w", err)
+			}
+		}
+		if s.deps.AIModels != nil && s.deps.AI != nil {
+			if err := s.deps.AIModels.SetModelFor(ctx, aiTaskRun, saved.ID.String(), p.Model); err != nil {
+				if before.Name != saved.Name {
+					if rerr := s.deps.AgentAccounts.Rename(ctx, saved.UserID, before.Name); rerr != nil {
+						s.warn("agents: restore the agent's user name", "user", saved.UserID, "err", rerr)
+					}
+				}
+				return fmt.Errorf("agents: choose the agent's model: %w", err)
+			}
+		}
+		return nil
 	})
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
@@ -226,16 +261,6 @@ func (s *server) UpdateAgent(ctx context.Context, req gen.UpdateAgentRequestObje
 		return versionConflict(), nil
 	case err != nil:
 		return nil, err
-	}
-	if before.Name != saved.Name {
-		if err := s.deps.AgentAccounts.Rename(ctx, saved.UserID, saved.Name); err != nil {
-			return nil, fmt.Errorf("agents: rename the agent's user: %w", err)
-		}
-	}
-	if s.deps.AIModels != nil && s.deps.AI != nil {
-		if err := s.deps.AIModels.SetModelFor(ctx, aiTaskRun, saved.ID.String(), p.Model); err != nil {
-			return nil, fmt.Errorf("agents: choose the agent's model: %w", err)
-		}
 	}
 	s.gates.invalidate(saved.ID)
 	view, err := s.agentView(ctx, saved)
@@ -313,16 +338,35 @@ func (s *server) ResumeAgent(ctx context.Context, req gen.ResumeAgentRequestObje
 //
 // The agent is marked deleted, its channels are freed and its grants and user
 // end (V26). The user is never deleted, so the audit's references stay true.
+// The steps in identity come first and are idempotent, and the row is marked
+// last, so a delete that fails half way leaves an agent that is still there and
+// is deleted by sending it again.
 func (s *server) DeleteAgent(ctx context.Context, req gen.DeleteAgentRequestObject) (gen.DeleteAgentResponseObject, error) {
+	row, err := s.loadAgent(ctx, req.AgentId)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		return notFound(), nil
+	}
+	if err := s.deps.AgentGrants.RevokeForUser(ctx, row.UserID); err != nil {
+		return nil, fmt.Errorf("agents: end the agent's grants: %w", err)
+	}
+	if err := s.deps.AgentAccounts.Disable(ctx, row.UserID); err != nil {
+		return nil, fmt.Errorf("agents: disable the agent's user: %w", err)
+	}
+	if s.deps.AIModels != nil && s.deps.AI != nil {
+		if err := s.deps.AIModels.SetModelFor(ctx, aiTaskRun, row.ID.String(), ""); err != nil {
+			return nil, fmt.Errorf("agents: forget the agent's model: %w", err)
+		}
+	}
 	actor := callerID(ctx)
-	var userID uuid.UUID
-	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		current, err := q.LockAgent(ctx, req.AgentId)
 		if err != nil {
 			return err
 		}
-		userID = current.UserID
 		if _, err := q.SetAgentState(ctx, store.SetAgentStateParams{ID: current.ID, State: stateDeleted, Now: s.deps.Clock()}); err != nil {
 			return fmt.Errorf("agents: delete the agent: %w", err)
 		}
@@ -338,17 +382,6 @@ func (s *server) DeleteAgent(ctx context.Context, req gen.DeleteAgentRequestObje
 		return nil, err
 	}
 	s.gates.invalidate(req.AgentId)
-	if err := s.deps.AgentGrants.RevokeForUser(ctx, userID); err != nil {
-		return nil, fmt.Errorf("agents: end the agent's grants: %w", err)
-	}
-	if err := s.deps.AgentAccounts.Disable(ctx, userID); err != nil {
-		return nil, fmt.Errorf("agents: disable the agent's user: %w", err)
-	}
-	if s.deps.AIModels != nil && s.deps.AI != nil {
-		if err := s.deps.AIModels.SetModelFor(ctx, aiTaskRun, req.AgentId.String(), ""); err != nil {
-			return nil, fmt.Errorf("agents: forget the agent's model: %w", err)
-		}
-	}
 	return gen.DeleteAgent204Response{}, nil
 }
 

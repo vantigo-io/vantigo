@@ -178,6 +178,9 @@ func (s *server) UpdateAgentRole(ctx context.Context, req gen.UpdateAgentRoleReq
 	var saved store.AgentsRole
 	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		q := store.New(tx)
+		if _, err := q.LockAgent(ctx, req.AgentId); err != nil {
+			return err
+		}
 		current, err := q.LockRole(ctx, store.LockRoleParams{ID: req.RoleId, AgentID: req.AgentId})
 		if err != nil {
 			return err
@@ -273,6 +276,9 @@ func (s *server) SetAgentRoleChannels(ctx context.Context, req gen.SetAgentRoleC
 	var role store.AgentsRole
 	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		q := store.New(tx)
+		if _, err := q.LockAgent(ctx, req.AgentId); err != nil {
+			return err
+		}
 		var err error
 		if role, err = q.LockRole(ctx, store.LockRoleParams{ID: req.RoleId, AgentID: req.AgentId}); err != nil {
 			return err

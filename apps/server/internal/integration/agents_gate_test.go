@@ -52,6 +52,35 @@ func TestAgentNever_CoversEveryFamilyInTheCatalog(t *testing.T) {
 	}
 }
 
+// notDelegableWaivers are permissions that cannot be delegated and that an
+// agent may nevertheless be given a level for, each with why. A permission that
+// only the Owner may hand on is Owner-tier, and an agent must not hold it
+// unless it is listed here on purpose.
+var notDelegableWaivers = map[string]string{}
+
+// TestAgentNever_EveryNonDelegablePermissionIsLockedOrWaived holds the catalog
+// to agentNever: a permission with Delegable false is Owner-tier, so no level
+// may raise it for an agent unless this list says why it may.
+func TestAgentNever_EveryNonDelegablePermissionIsLockedOrWaived(t *testing.T) {
+	t.Parallel()
+	never, _ := agents.NeverPermissions()
+	for _, m := range append([]module.Module{identityPermissions()}, everyModule()...) {
+		for _, p := range m.Permissions {
+			if p.Delegable || slices.Contains(never, p.Key) {
+				continue
+			}
+			if _, waived := notDelegableWaivers[p.Key]; !waived {
+				t.Errorf("%s is not delegable and is neither in agentNever nor waived", p.Key)
+			}
+		}
+	}
+	for key := range notDelegableWaivers {
+		if slices.Contains(never, key) {
+			t.Errorf("%s is waived and also in agentNever", key)
+		}
+	}
+}
+
 type agentsInstall struct {
 	h     *modtest.Harness
 	owner *modtest.Client
