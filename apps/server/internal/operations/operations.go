@@ -38,6 +38,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"unicode"
 
@@ -66,6 +67,11 @@ type Info struct {
 	Permissions []string `json:"permissions,omitempty"`
 	// Sensitive says any of Permissions is Sensitive in the catalog.
 	Sensitive bool `json:"sensitive,omitempty"`
+	// CustomerScope is the operation's x-vantigo-customer-scope, nil for an
+	// operation without one. A gate may read it: an agent's gate allows only
+	// the operations of its role's allowlist, and treats a customer-data
+	// operation without a scope as never.
+	CustomerScope *CustomerScope `json:"-"`
 }
 
 // entry is one operation with what List, Describe and Call need.
@@ -106,28 +112,50 @@ type Options struct {
 // Dispatcher lists, describes and calls operations. The zero value is not
 // usable; build it with New and Bind it.
 type Dispatcher struct {
-	st   atomic.Pointer[state]
-	gate atomic.Pointer[Gate]
+	st atomic.Pointer[state]
+
+	gatesMu sync.RWMutex
+	gates   map[string]Gate
 }
 
-// SetGate installs the gate that narrows each operation's contract mode (the
-// Assistant design S16): only the assistant module calls it, while it mounts.
-// Without one — and after SetGate(nil) — the dispatcher fails closed: an
-// operation whose access rule names a Sensitive permission is never.
-func (d *Dispatcher) SetGate(g Gate) {
+// SetGate installs the gate that narrows each operation's contract mode for
+// one kind of principal (the Assistant design S16; virtual employees design
+// V8): kind is the Via.Kind the grant stands for, contracts.GrantAssistant or
+// contracts.GrantAgent, and a module installs only its own, while it mounts.
+// For a kind without a gate — and after SetGate(kind, nil) — the dispatcher
+// fails closed: an operation whose access rule names a Sensitive permission is
+// never.
+func (d *Dispatcher) SetGate(kind string, g Gate) {
+	d.gatesMu.Lock()
+	defer d.gatesMu.Unlock()
 	if g == nil {
-		d.gate.Store(nil)
+		delete(d.gates, kind)
 		return
 	}
-	d.gate.Store(&g)
+	if d.gates == nil {
+		d.gates = map[string]Gate{}
+	}
+	d.gates[kind] = g
 }
 
-// effective is the mode the assistant may use e in now: the gate's answer,
-// never wider than the contract's.
+// grantKind is the kind of the grant ctx carries. A context with no grant is
+// the assistant's: its confirm and bulk paths ask what an operation's mode is
+// from a person's request, which carries none.
+func grantKind(ctx context.Context) string {
+	if ref, ok := contracts.GrantFrom(ctx); ok {
+		return ref.Kind
+	}
+	return contracts.GrantAssistant
+}
+
+// effective is the mode the principal ctx names may use e in now: its kind's
+// gate's answer, never wider than the contract's.
 func (d *Dispatcher) effective(ctx context.Context, e *entry) Mode {
-	gate := Gate(defaultGate)
-	if g := d.gate.Load(); g != nil {
-		gate = *g
+	d.gatesMu.RLock()
+	gate, ok := d.gates[grantKind(ctx)]
+	d.gatesMu.RUnlock()
+	if !ok {
+		gate = defaultGate
 	}
 	return narrower(e.Mode, gate(ctx, e.Info))
 }
@@ -203,6 +231,7 @@ func newEntry(path, method string, item *openapi3.PathItem, op *openapi3.Operati
 		e.Tag = op.Tags[0]
 	}
 	e.Mode = contractMode(method, path, op, rule, e.ruleOK, catalog)
+	e.CustomerScope = parseCustomerScope(op.Extensions)
 	if e.ruleOK && rule.Kind == contracts.RulePermission {
 		e.Permissions = slices.Clone(rule.Names)
 		for _, key := range rule.Names {
@@ -536,7 +565,11 @@ func (d *Dispatcher) Validate(ctx context.Context, req CallRequest) error {
 		return &Error{Code: CodeUnknownOperation, Message: fmt.Sprintf("there is no operation %q", req.OperationID)}
 	}
 	if d.effective(ctx, e) == ModeNever {
-		return &Error{Code: CodeNever, Message: fmt.Sprintf("the assistant may not call %s", e.ID)}
+		return &Error{Code: CodeNever, Message: fmt.Sprintf("this principal may not call %s", e.ID)}
+	}
+	req, err = e.scoped(ctx, req)
+	if err != nil {
+		return err
 	}
 	_, body, err := e.build(req)
 	if err != nil {
@@ -550,10 +583,14 @@ func (d *Dispatcher) Validate(ctx context.Context, req CallRequest) error {
 
 // Call serves req through the composed router as the grant's principal.
 //
-// ctx must carry the assistant grant (contracts.WithAssistantGrant) and the
-// user it is for (contracts.AsUser), which names the rate-limit bucket: the
-// in-process request's RemoteAddr is "assistant-<user id>", so the router's
-// per-client limits are per person. The request context is built afresh, from
+// ctx must carry a grant (contracts.WithGrant: the assistant's, or an agent's
+// with its run, contracts.WithAgentRun) and the user it is for
+// (contracts.AsUser), which names the rate-limit bucket: the in-process
+// request's RemoteAddr is "assistant-<user id>" or "agent-<user id>", so the
+// router's per-client limits are per person or per agent. For an agent, an
+// operation that declares x-vantigo-customer-scope is tied to the run's
+// customer: the dispatcher fills or checks its parameter before the call, or
+// refuses an answer that is another customer's, with CodeCustomerScope. The request context is built afresh, from
 // nothing but the grant and ctx's cancellation, so no principal, forwarded
 // address or other value of the caller's leaks into it.
 //
@@ -575,21 +612,30 @@ func (d *Dispatcher) Call(ctx context.Context, req CallRequest) (CallResult, err
 	// refused as never whether or not the person confirmed.
 	switch d.effective(ctx, e) {
 	case ModeNever:
-		return CallResult{}, &Error{Code: CodeNever, Message: fmt.Sprintf("the assistant may not call %s", e.ID)}
+		return CallResult{}, &Error{Code: CodeNever, Message: fmt.Sprintf("this principal may not call %s", e.ID)}
 	case ModeConfirm:
 		if !req.Confirmed {
 			return CallResult{}, &Error{Code: CodeConfirmationRequired, Message: fmt.Sprintf("%s changes something and needs the person's confirmation", e.ID)}
 		}
 	}
-	grantID, ok := contracts.AssistantGrantFrom(ctx)
-	if !ok {
-		return CallResult{}, &Error{Code: CodeNoGrant, Message: "the call carries no assistant grant"}
+	ref, ok := contracts.GrantFrom(ctx)
+	if !ok || (ref.Kind != contracts.GrantAssistant && ref.Kind != contracts.GrantAgent) {
+		return CallResult{}, &Error{Code: CodeNoGrant, Message: "the call carries no assistant or agent grant"}
 	}
 	userID, ok := contracts.UserID(ctx)
 	if !ok {
 		return CallResult{}, &Error{Code: CodeNoGrant, Message: "the call names no user (contracts.AsUser)"}
 	}
+	if ref.Kind == contracts.GrantAgent {
+		if _, ok := contracts.AgentRunFrom(ctx); !ok {
+			return CallResult{}, &Error{Code: CodeNoGrant, Message: "the call names no agent run (contracts.WithAgentRun)"}
+		}
+	}
 
+	req, err = e.scoped(ctx, req)
+	if err != nil {
+		return CallResult{}, err
+	}
 	target, body, err := e.build(req)
 	if err != nil {
 		return CallResult{}, err
@@ -601,7 +647,7 @@ func (d *Dispatcher) Call(ctx context.Context, req CallRequest) (CallResult, err
 	defer cancel()
 	stop := context.AfterFunc(ctx, cancel)
 	defer stop()
-	rctx = contracts.WithAssistantGrant(rctx, grantID)
+	rctx = contracts.WithGrant(rctx, ref)
 
 	var reader io.Reader // a nil *bytes.Reader in an io.Reader is not nil
 	if body != nil {
@@ -611,7 +657,7 @@ func (d *Dispatcher) Call(ctx context.Context, req CallRequest) (CallResult, err
 	if err != nil {
 		return CallResult{}, &Error{Code: CodeInvalidRequest, Message: "the request could not be built: " + err.Error()}
 	}
-	hreq.RemoteAddr = "assistant-" + userID.String()
+	hreq.RemoteAddr = ref.Kind + "-" + userID.String()
 	hreq.Header.Set("Accept", "application/json")
 	if body != nil {
 		hreq.Header.Set("Content-Type", "application/json")
@@ -624,7 +670,11 @@ func (d *Dispatcher) Call(ctx context.Context, req CallRequest) (CallResult, err
 	if err := serve(st.handler, rec, hreq); err != nil {
 		return CallResult{}, err
 	}
-	return rec.result(), nil
+	res := rec.result()
+	if err := e.checkResource(ctx, res); err != nil {
+		return CallResult{}, err
+	}
+	return res, nil
 }
 
 // serve runs the handler, turning a panic into an error: the real server

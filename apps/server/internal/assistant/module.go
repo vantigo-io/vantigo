@@ -69,7 +69,7 @@ func mount(d module.Deps) (http.Handler, error) {
 		return nil, errors.New("assistant: no operations dispatcher; Compose gives it to the module named assistant only")
 	}
 	s := newServer(d)
-	d.Operations.SetGate(s.gate)
+	d.Operations.SetGate(contracts.GrantAssistant, s.gate)
 	s.registerBulkHost()
 	router := module.NewRouter(module.RouterOptions{
 		Doc:     d.Doc,

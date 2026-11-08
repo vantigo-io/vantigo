@@ -46,12 +46,25 @@ paths:
           content: { application/json: { schema: { type: object } } }
 `
 
+const agentsContract = `
+openapi: 3.0.3
+info: { title: Agents, version: "1" }
+paths:
+  /api/v1/agents/ping:
+    get:
+      operationId: getAgentsPing
+      summary: Ping the agents
+      x-vantigo-access: session
+      responses:
+        "204": { description: ok }
+`
+
 var (
 	widgetsView = contracts.Permission{Key: "widgets:view", Display: "View widgets", Description: "See widgets.", Category: "Widgets"}
 	assistUse   = contracts.Permission{Key: "assistant:use", Display: "Use", Description: "Use.", Category: "Assistant"}
 )
 
-func TestCompose_OnlyTheAssistantModuleReceivesTheOperationsDispatcher(t *testing.T) {
+func TestCompose_OnlyTheAssistantAndAgentsModulesReceiveTheOperationsDispatcher(t *testing.T) {
 	given := map[string]*operations.Dispatcher{}
 	mount := func(name string) func(Deps) (http.Handler, error) {
 		return func(d Deps) (http.Handler, error) {
@@ -59,25 +72,46 @@ func TestCompose_OnlyTheAssistantModuleReceivesTheOperationsDispatcher(t *testin
 			return staticHandler(name)(d)
 		}
 	}
-	loads := fakeLoad(map[string]string{"assistant": assistantContract, "widgets": widgetContract})
+	loads := fakeLoad(map[string]string{"assistant": assistantContract, "agents": agentsContract, "widgets": widgetContract})
 
 	// A preset on the Deps Compose is given is not passed on either.
 	preset := operations.New()
 	_, err := compose(Deps{Access: &fakeAccess{}, Operations: preset}, loads,
 		Module{Name: "widgets", Permissions: []contracts.Permission{widgetsView}, Mount: mount("widgets")},
 		Module{Name: "assistant", Permissions: []contracts.Permission{assistUse}, Mount: mount("assistant")},
+		Module{Name: "agents", Mount: mount("agents")},
 	)
 	if err != nil {
 		t.Fatalf("compose: %v", err)
 	}
 	if given["widgets"] != nil {
-		t.Error("a module other than the assistant was handed the operations dispatcher")
+		t.Error("a module other than the assistant and the agents was handed the operations dispatcher")
 	}
-	if given["assistant"] == nil {
-		t.Fatal("the assistant module was not handed the operations dispatcher")
+	if given["assistant"] == nil || given["agents"] == nil {
+		t.Fatal("the assistant and the agents modules are both handed the operations dispatcher")
+	}
+	if given["assistant"] != given["agents"] {
+		t.Error("the two principals call through two dispatchers; they share the one Compose binds, with a gate per kind")
 	}
 	if given["assistant"] == preset {
 		t.Error("the assistant was handed the preset dispatcher, not the one Compose binds")
+	}
+}
+
+// The agents module alone is enough for a dispatcher: it calls as the agent.
+func TestCompose_TheAgentsModuleAloneGetsADispatcher(t *testing.T) {
+	var got *operations.Dispatcher
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"agents": agentsContract}),
+		Module{Name: "agents", Mount: func(d Deps) (http.Handler, error) {
+			got = d.Operations
+			return staticHandler("agents")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got == nil {
+		t.Error("the agents module was not handed the operations dispatcher")
 	}
 }
 

@@ -464,6 +464,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		}
 	}()
 
+	var apiRunners []module.Runner
 	if withAPI {
 		assets := web.Assets()
 		index, err := web.NewIndex(assets, cfg.BasePath, cfg.Branding, cfg.Modules)
@@ -481,11 +482,12 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		if cfg.LiveEnabled {
 			deps.Live = live.NewRegistry() // Compose fills it with the enabled modules' topics
 		}
-		api, err := module.Compose(deps, mods...)
+		api, runners, err := module.ComposeAPI(deps, mods...)
 		if err != nil {
 			logger.Error("startup failed", "error", err)
 			return 1
 		}
+		apiRunners = runners
 		// identity.RunStartup runs on every host start (api after migrating,
 		// server on each replica), so it gets the same "finish, don't abort"
 		// treatment as opening the pool above: context.WithoutCancel(ctx), so a
@@ -542,6 +544,17 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	// cancels it too, with no separate call required there.
 	workerCtx, cancelWorkers := context.WithCancel(ctx)
 	defer cancelWorkers()
+
+	// The API-process runners start here, after Compose has bound the
+	// operations dispatcher they call through, on the same context as the
+	// workers; the deferred wait cancels it first, so an early return cannot
+	// strand them. serveUntilDone cancels and waits for the workers on the
+	// normal path, and the runners return when the same context ends.
+	waitRunners := module.StartRunners(workerCtx, logger, apiRunners)
+	defer func() {
+		cancelWorkers()
+		waitRunners()
+	}()
 
 	var runner *worker.Runner
 	if wantWorkers {

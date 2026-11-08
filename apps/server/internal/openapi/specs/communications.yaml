@@ -2108,6 +2108,8 @@ paths:
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-view
+            x-vantigo-customer-scope:
+                param: customerId
         post:
             operationId: postCommunicationsConversations
             parameters:
@@ -2249,6 +2251,8 @@ paths:
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-view
+            x-vantigo-customer-scope:
+                resource: customerId
         patch:
             operationId: patchCommunicationsConversationsById
             parameters:

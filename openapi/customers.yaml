@@ -2472,6 +2472,8 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:view
+            x-vantigo-customer-scope:
+                param: id
         put:
             operationId: putCustomersById
             parameters:
@@ -3200,6 +3202,8 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:associations-view+customers:contacts-view
+            x-vantigo-customer-scope:
+                param: id
         post:
             operationId: postCustomersByIdContacts
             parameters:

@@ -77,6 +77,8 @@ type callerKey struct{}
 type recordingHandler struct {
 	mu      sync.Mutex
 	last    seen
+	lastRef contracts.GrantRef
+	hasRef  bool
 	count   int
 	respond func(w http.ResponseWriter, r *http.Request)
 }
@@ -94,9 +96,11 @@ func (h *recordingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	grant, hasGrant := contracts.AssistantGrantFrom(r.Context())
+	ref, hasRef := contracts.GrantFrom(r.Context())
 	_, principal := contracts.PrincipalFrom(r.Context())
 	h.mu.Lock()
 	h.count++
+	h.lastRef, h.hasRef = ref, hasRef
 	h.last = seen{
 		Method: r.Method, Path: r.URL.Path, EscapedPath: r.URL.EscapedPath(), RawQuery: r.URL.RawQuery,
 		RemoteAddr: r.RemoteAddr, Header: r.Header.Clone(), Body: body.String(),
@@ -1065,8 +1069,8 @@ func TestMode_TheDefaultGateFailsClosed(t *testing.T) {
 	if !errors.Is(err, ErrNever) {
 		t.Errorf("Call(getSecret) with no gate = %v, want ErrNever", err)
 	}
-	f.d.SetGate(func(context.Context, Info) Mode { return ModeAuto })
-	f.d.SetGate(nil)
+	f.d.SetGate(contracts.GrantAssistant, func(context.Context, Info) Mode { return ModeAuto })
+	f.d.SetGate(contracts.GrantAssistant, nil)
 	if got, _ := f.d.Effective(context.Background(), "getSecret"); got != ModeNever {
 		t.Errorf("after SetGate(nil) getSecret = %q, want the default gate back", got)
 	}
@@ -1079,7 +1083,7 @@ func TestGate_NarrowsListSearchAndCall(t *testing.T) {
 	f := newFixture(t, "things:view", "things:edit", "things:sensitive")
 	// A gate that reads things:view, switches things:edit off and opens the
 	// sensitive permission to reading.
-	f.d.SetGate(func(_ context.Context, info Info) Mode {
+	f.d.SetGate(contracts.GrantAssistant, func(_ context.Context, info Info) Mode {
 		mode := info.Mode
 		for _, key := range info.Permissions {
 			switch key {
@@ -1131,7 +1135,7 @@ func TestGate_NarrowsListSearchAndCall(t *testing.T) {
 
 func TestGate_NeverWidensTheContract(t *testing.T) {
 	f := newFixture(t, "things:view", "things:edit")
-	f.d.SetGate(func(context.Context, Info) Mode { return ModeAuto })
+	f.d.SetGate(contracts.GrantAssistant, func(context.Context, Info) Mode { return ModeAuto })
 	for id, want := range map[string]Mode{"ruleOwner": ModeNever, "updateThing": ModeConfirm, "getThing": ModeAuto, "ruleSession": ModeNever} {
 		if got, _ := f.d.Effective(context.Background(), id); got != want {
 			t.Errorf("a gate answering auto: Effective(%s) = %q, want the contract's %q", id, got, want)

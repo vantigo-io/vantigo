@@ -26,6 +26,14 @@ var AssistantModes = []string{"auto", "confirm", "never"}
 // operation behind one cannot be marked callable.
 var assistantRefusedPolicies = []string{"Owner", "OwnerManagement", "AuthorizationManagement", "SystemAdmin"}
 
+// CustomerScopeExtension is the operation extension that says the operation
+// returns a customer's data and how a call is tied to one customer (virtual
+// employees design V9b): an object with exactly one key, `param` — the name of
+// a path or query parameter that carries the customer's id — or `resource` —
+// the (dotted) name of a field of the JSON answer that holds it. The operations
+// dispatcher enforces it for an agent's run.
+const CustomerScopeExtension = "x-vantigo-customer-scope"
+
 // Problem is one structural rule an operation breaks.
 type Problem struct {
 	OperationID string
@@ -34,7 +42,7 @@ type Problem struct {
 
 // Lint checks the rules every operation must meet: an operationId, a summary
 // (the assistant searches by it, the Assistant design S15), a valid
-// x-vantigo-access, a valid x-vantigo-assistant when present, and a documented
+// x-vantigo-access, a valid x-vantigo-assistant and x-vantigo-customer-scope when present, and a documented
 // success response (see hasSuccessResponse).
 func Lint(doc *openapi3.T) []Problem {
 	var problems []Problem
@@ -61,11 +69,47 @@ func Lint(doc *openapi3.T) []Problem {
 				problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: %s %s is not possible behind x-vantigo-access %q: an assistant is never admitted to it", where, AssistantExtension, mode, access)})
 			}
 		}
+		if value, present := op.Op.Extensions[CustomerScopeExtension]; present {
+			if msg := customerScopeProblem(op, value); msg != "" {
+				problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: %s %s", where, CustomerScopeExtension, msg)})
+			}
+		}
 		if !hasSuccessResponse(op.Op) {
 			problems = append(problems, Problem{op.OperationID, where + ": no 2xx response with a body schema, 204, or 3xx with a Location header"})
 		}
 	}
 	return problems
+}
+
+// customerScopeProblem is why value is not a valid x-vantigo-customer-scope for
+// op, "" when it is: one key, param (naming a path or query parameter the
+// operation or its path declares) or resource (naming a field), with a
+// non-blank string.
+func customerScopeProblem(op operation, value any) string {
+	obj, ok := value.(map[string]any)
+	if !ok || len(obj) != 1 {
+		return "must be an object with exactly one of param and resource"
+	}
+	if name, ok := obj["resource"].(string); ok {
+		if strings.TrimSpace(name) == "" {
+			return "resource must name a field"
+		}
+		return ""
+	}
+	name, ok := obj["param"].(string)
+	if !ok || strings.TrimSpace(name) == "" {
+		return "must be an object with exactly one of param and resource, each a name"
+	}
+	params := op.Op.Parameters
+	if op.Item != nil {
+		params = append(slices.Clone(params), op.Item.Parameters...)
+	}
+	for _, ref := range params {
+		if ref != nil && ref.Value != nil && ref.Value.Name == name && (ref.Value.In == "path" || ref.Value.In == "query") {
+			return ""
+		}
+	}
+	return fmt.Sprintf("param %q is not a path or query parameter of the operation", name)
 }
 
 // assistantNeverCallable reports whether an assistant grant is refused the

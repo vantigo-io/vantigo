@@ -553,6 +553,16 @@ type Module struct {
 	// any Mount runs — for every module MODULES enables, and concatenates
 	// the results in mods order. A module with none leaves it nil.
 	Workers func(Deps) []worker.Worker
+	// APIRunners builds this module's runners (Runner), if it has any: work
+	// that needs the operations dispatcher, which only the API process has
+	// (virtual employees design V14; the Assistant's bulk host has no poller
+	// either). ComposeAPI calls it for every enabled module, in mods order,
+	// after the dispatcher is bound to the composed router — so Deps.Operations
+	// of a module that receives it is ready to call — and the caller starts
+	// the runners (StartRunners) on the process's context, in the API process
+	// and never in worker mode. Unlike Workers, which Workers (workers.go)
+	// collects without composing, this is not available to a worker process.
+	APIRunners func(Deps) []Runner
 	// CustomerReferences builds this module's
 	// contracts.CustomerReferenceHolder, if it stores customer ids in its own
 	// schema (customers merge design D1). Unlike Directory, and like Workers,

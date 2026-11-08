@@ -42,6 +42,19 @@ func Compose(deps Deps, mods ...Module) (http.Handler, error) {
 	if deps.Config == nil {
 		return nil, fmt.Errorf("module: Compose requires a non-nil Deps.Config to know which modules MODULES enables")
 	}
+	api, _, err := composeFrom(deps, embedded, mods...)
+	return api, err
+}
+
+// ComposeAPI is Compose for the API process: it also answers the runners the
+// enabled modules declare (Module.APIRunners), built after the operations
+// dispatcher is bound, for the caller to start with StartRunners on the
+// process's context. Compose, for a caller with no process of its own (a
+// test of the router), drops them.
+func ComposeAPI(deps Deps, mods ...Module) (http.Handler, []Runner, error) {
+	if deps.Config == nil {
+		return nil, nil, fmt.Errorf("module: ComposeAPI requires a non-nil Deps.Config to know which modules MODULES enables")
+	}
 	return composeFrom(deps, embedded, mods...)
 }
 
@@ -49,6 +62,12 @@ func Compose(deps Deps, mods ...Module) (http.Handler, error) {
 // compose in-memory contracts instead of the embedded specs. Nothing it
 // loads is remembered: every call parses its contracts afresh.
 func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error), mods ...Module) (http.Handler, error) {
+	api, _, err := composeFrom(deps, freshContracts(load), mods...)
+	return api, err
+}
+
+// composeRunners is compose with the runners, for the tests of APIRunners.
+func composeRunners(deps Deps, load func(context.Context, string) (*openapi3.T, error), mods ...Module) (http.Handler, []Runner, error) {
 	return composeFrom(deps, freshContracts(load), mods...)
 }
 
@@ -139,7 +158,7 @@ func (c *rememberedContracts) combined(ctx context.Context, order []string) ([]b
 	return kept.([]byte), nil
 }
 
-func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.Handler, error) {
+func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.Handler, []Runner, error) {
 	ctx := context.Background()
 	// Every module given, before enablement drops any: both customer slots
 	// below — the reference holders and the personal-data providers — are
@@ -152,16 +171,16 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	var aiTasks map[string]contracts.AITask
 	for _, mod := range mods {
 		if names[mod.Name] {
-			return nil, fmt.Errorf("module: duplicate module name %q", mod.Name)
+			return nil, nil, fmt.Errorf("module: duplicate module name %q", mod.Name)
 		}
 		names[mod.Name] = true
 
 		for _, perm := range mod.Permissions {
 			if err := contracts.ValidatePermission(mod.Name, perm); err != nil {
-				return nil, fmt.Errorf("module: %w", err)
+				return nil, nil, fmt.Errorf("module: %w", err)
 			}
 			if _, ok := catalog[perm.Key]; ok {
-				return nil, fmt.Errorf("module: duplicate permission %q", perm.Key)
+				return nil, nil, fmt.Errorf("module: duplicate permission %q", perm.Key)
 			}
 			catalog[perm.Key] = perm
 		}
@@ -171,10 +190,10 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		// do, and a disabled module's vanish with its permissions.
 		for _, task := range mod.AITasks {
 			if err := contracts.ValidateAITask(mod.Name, task); err != nil {
-				return nil, fmt.Errorf("module: %w", err)
+				return nil, nil, fmt.Errorf("module: %w", err)
 			}
 			if _, ok := aiTasks[task.Key]; ok {
-				return nil, fmt.Errorf("module: duplicate AI task %q", task.Key)
+				return nil, nil, fmt.Errorf("module: duplicate AI task %q", task.Key)
 			}
 			if aiTasks == nil {
 				aiTasks = make(map[string]contracts.AITask)
@@ -209,7 +228,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// point regardless.
 	directoryProvider, err := soleProvider(mods, "a customer directory", func(m Module) bool { return m.Directory != nil })
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if directoryProvider != nil {
 		deps.Directory = directoryProvider.Directory(deps)
@@ -217,7 +236,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 
 	usersProvider, err := soleProvider(mods, "a user directory", func(m Module) bool { return m.Users != nil })
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if usersProvider != nil {
 		deps.Users = usersProvider.Users(deps)
@@ -230,7 +249,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// judges its "today" by it.
 	calendarProvider, err := soleProvider(mods, "a business calendar", func(m Module) bool { return m.Calendar != nil })
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if calendarProvider != nil {
 		deps.Calendar = calendarProvider.Calendar(deps)
@@ -242,7 +261,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// Workers resolves both the same way, since worker mode never composes.
 	accountsProvider, err := soleProvider(mods, "account provisioning", func(m Module) bool { return m.Accounts != nil })
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if accountsProvider != nil {
 		deps.Accounts = accountsProvider.Accounts(deps)
@@ -253,7 +272,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// way Accounts does; worker mode has no use for it.
 	ssoConnectionsProvider, err := soleProvider(mods, "SSO connections", func(m Module) bool { return m.SSOConnections != nil })
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if ssoConnectionsProvider != nil {
 		deps.SSOConnections = ssoConnectionsProvider.SSOConnections(deps)
@@ -261,14 +280,14 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 
 	productsProvider, err := soleProvider(mods, "a product catalog", func(m Module) bool { return m.Products != nil })
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if productsProvider != nil {
 		deps.Products = productsProvider.Products(deps)
 	}
 
 	if deps, err = withProjects(deps, mods); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Actuals resolves after the project directory: the module that
@@ -277,7 +296,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// it serves (contracts.ProjectActuals).
 	actualsProvider, err := soleProvider(mods, "project actuals", func(m Module) bool { return m.Actuals != nil })
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if actualsProvider != nil {
 		deps.Actuals = actualsProvider.Actuals(deps)
@@ -288,7 +307,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// transaction (contracts.Timesheets).
 	timesheetsProvider, err := soleProvider(mods, "timesheets", func(m Module) bool { return m.Timesheets != nil })
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if timesheetsProvider != nil {
 		deps.Timesheets = timesheetsProvider.Timesheets(deps)
@@ -301,7 +320,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// neither.
 	expensesProvider, err := soleProvider(mods, "project expenses", func(m Module) bool { return m.Expenses != nil })
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if expensesProvider != nil {
 		deps.Expenses = expensesProvider.Expenses(deps)
@@ -314,7 +333,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// clock; it never calls the customer directory while it serves.
 	receivablesProvider, err := soleProvider(mods, "customer receivables", func(m Module) bool { return m.Receivables != nil })
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if receivablesProvider != nil {
 		deps.Receivables = receivablesProvider.Receivables(deps)
@@ -324,7 +343,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// receivables: the same module provides both, from its own tables only.
 	salesTaxProvider, err := soleProvider(mods, "sales tax", func(m Module) bool { return m.SalesTax != nil })
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if salesTaxProvider != nil {
 		deps.SalesTax = salesTaxProvider.SalesTax(deps)
@@ -334,14 +353,14 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// beside actuals and expenses, after the project directory (withBillables
 	// says why); Workers resolves them the same way.
 	if deps, err = withBillables(deps, mods); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// The workforce register (contracts.Workforce, staff competence design
 	// S15) resolves after the business calendar, so its provider may read
 	// deps.Calendar while it is built; Workers resolves it the same way.
 	if deps, err = withWorkforce(deps, mods); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Customer reference holders are the first many-provider contract slot
@@ -390,7 +409,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// module given (withStock says why), after the product catalog, by the
 	// helper Workers uses too.
 	if deps, err = withStock(deps, given, mods); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// The outbox's event handlers (orders design O2), a many-provider slot
@@ -398,7 +417,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// API runs none of them — the dispatcher, a worker, does — but a
 	// duplicate name is refused here, at startup, all the same.
 	if _, err := EventHandlers(deps, given...); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Customer personal data is the second many-provider slot (customers GDPR
@@ -412,7 +431,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// uses too: the issue reads it through a Mount, and a worker-mode invoices
 	// server through Workers.
 	if deps, err = withInvoicedWork(deps, given); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Calendar sources are the fourth many-provider slot (calendar design D1)
@@ -426,7 +445,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// sources, by the helper Workers uses too: Staff's accounts worker
 	// drives them in worker mode as the API does.
 	if deps, err = withIdentityProvisioners(deps, mods); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// The mailbox calendars (contracts.MailboxCalendar, calendar Outlook
@@ -435,7 +454,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// helper Workers uses too: the calendar's sync worker writes through
 	// them in worker mode as the API does.
 	if deps, err = withMailboxCalendars(deps, mods); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// The channel mailboxes (contracts.ChannelMailbox, Outlook connection
@@ -443,7 +462,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// uses too: Communications' outbox sends through them in worker mode as
 	// the API does.
 	if deps, err = withChannelMailboxes(deps, mods); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// The channel messengers (contracts.ChannelMessenger, Messenger design
@@ -452,7 +471,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// run through them in worker mode as the API does. A key filled in both
 	// slots is refused.
 	if deps, err = withChannelMessengers(deps, mods); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// The personal mailboxes (contracts.PersonalMailbox, Outlook connection
@@ -461,7 +480,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// uses too: Communications' outbox sends through them in worker mode as
 	// the API does.
 	if deps, err = withPersonalMailboxes(deps, mods); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// The directory searches (contracts.DirectorySearch, Google Workspace
@@ -469,7 +488,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// enabled modules after SSOConnections, which a provider holds. Workers
 	// does not collect them: no worker searches a directory.
 	if deps, err = withDirectorySearches(deps, mods); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// The outbound mail (contracts.OutboundMail, integrations design T4)
@@ -477,7 +496,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// Invoices' reminder worker sends through it in worker mode as the API
 	// does, and its provider, Communications, reads deps.ChannelMailboxes.
 	if deps, err = withOutboundMail(deps, mods); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// The model per AI task (contracts.AIModels) and the AI client built over it
@@ -485,20 +504,20 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// provider reads the tasks while it is built. Workers does not resolve
 	// them, since no worker performs a task.
 	if deps, err = withAI(deps, mods); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// The assistant's grants (contracts.AssistantGrants, the Assistant design
 	// S3) resolve after the AI slot. Workers does not resolve them.
 	if deps, err = withAssistantGrants(deps, mods); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// The agents' accounts and grants (contracts.AgentAccounts and
 	// AgentGrants, virtual employees design V5 and V6) resolve beside them.
 	// Workers does not resolve them.
 	if deps, err = withAgentSlots(deps, mods); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// The calendar's busy time (contracts.CalendarBusy, calendar Outlook sync
@@ -507,7 +526,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// Workers does not resolve it — no worker reads it.
 	busyProvider, err := soleProvider(mods, "calendar busy time", func(m Module) bool { return m.CalendarBusy != nil })
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if busyProvider != nil {
 		deps.CalendarBusy = busyProvider.CalendarBusy(deps)
@@ -519,20 +538,24 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// them.
 	channelsProvider, err := soleProvider(mods, "contact channels", func(m Module) bool { return m.ContactChannels != nil })
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if channelsProvider != nil {
 		deps.ContactChannels = channelsProvider.ContactChannels(deps)
 	}
 
 	// The operations dispatcher (module boundaries rule 18) exists before any
-	// module mounts, so the assistant module can hold it, and is bound once the
-	// router it dispatches through exists, below. Only the module named
-	// assistant is given it; no other module's Deps carries it.
+	// module mounts, so those modules can hold it, and is bound once the
+	// router it dispatches through exists, below. Only the modules in
+	// operationsModules (the assistant and the agents) are given it; no
+	// other module's Deps carries it.
 	var ops *operations.Dispatcher
-	if names[AssistantModule] {
-		ops = operations.New()
+	for name := range operationsModules {
+		if names[name] {
+			ops = operations.New()
+		}
 	}
+	depsOf := make(map[string]Deps, len(mods))
 
 	outer := http.NewServeMux()
 	mounts := make([]moduleMount, 0, len(mods))
@@ -541,23 +564,24 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	for _, mod := range mods {
 		doc, err := contractsFrom.doc(ctx, mod.Name)
 		if err != nil {
-			return nil, fmt.Errorf("module: load %s contract: %w", mod.Name, err)
+			return nil, nil, fmt.Errorf("module: load %s contract: %w", mod.Name, err)
 		}
 
 		modDeps := deps
 		modDeps.Doc = doc
 		modDeps.Catalog = catalog
 		modDeps.Operations = nil
-		if mod.Name == AssistantModule {
+		if operationsModules[mod.Name] {
 			modDeps.Operations = ops
 		}
+		depsOf[mod.Name] = modDeps
 		handler, err := mod.Mount(modDeps)
 		if err != nil {
-			return nil, fmt.Errorf("module: mount %s: %w", mod.Name, err)
+			return nil, nil, fmt.Errorf("module: mount %s: %w", mod.Name, err)
 		}
 		if mod.LiveTopics != nil {
 			if err := deps.Live.Register(mod.Name, mod.LiveTopics(modDeps)...); err != nil {
-				return nil, fmt.Errorf("module: %w", err)
+				return nil, nil, fmt.Errorf("module: %w", err)
 			}
 		}
 		// A pattern ending in "/" matches the whole subtree and hands the
@@ -593,7 +617,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 
 	body, err := contractsFrom.combined(ctx, order)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	sessionRule := contracts.Rule{Kind: contracts.RuleSession}
@@ -625,15 +649,32 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 			origin = deps.Config.AppOrigin
 		}
 		if err := ops.Bind(body, catalog, deps.Access, api, operations.Options{Origin: origin}); err != nil {
-			return nil, fmt.Errorf("module: bind the operations dispatcher: %w", err)
+			return nil, nil, fmt.Errorf("module: bind the operations dispatcher: %w", err)
 		}
 	}
-	return api, nil
+	// The API-process runners start from the dispatcher bound above, and only
+	// the caller that owns the process context may start them (APIRunners).
+	var runners []Runner
+	for _, mod := range mods {
+		if mod.APIRunners != nil {
+			runners = append(runners, mod.APIRunners(depsOf[mod.Name])...)
+		}
+	}
+	return api, runners, nil
 }
 
-// AssistantModule is the name of the one module that receives
-// Deps.Operations.
+// AssistantModule is the name of the module that receives Deps.Operations for
+// the assistant principal.
 const AssistantModule = "assistant"
+
+// AgentsModule is the name of the other module that receives Deps.Operations,
+// for the agent principal (virtual employees design V8).
+const AgentsModule = "agents"
+
+// operationsModules are the modules whose Deps carry the operations dispatcher
+// (module boundaries rule 18): one per principal it calls as. Workers never
+// carries it.
+var operationsModules = map[string]bool{AssistantModule: true, AgentsModule: true}
 
 // soleProvider returns the one module among mods for which declares reports
 // true, nil when none does, and an error naming both when two do. what

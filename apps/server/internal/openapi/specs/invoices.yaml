@@ -7589,6 +7589,8 @@ paths:
             tags:
                 - Invoices
             x-vantigo-access: permission:invoices:access
+            x-vantigo-customer-scope:
+                param: customerId
         post:
             description: Creates an invoice draft (D4). The buyer's billing profile is read before anything is written, for the prefills and the customer gates. A line naming sources, or refreshSources, is a 400 — work is added to a draft through the uninvoiced view (invoices work design D2).
             operationId: postInvoices
@@ -7874,6 +7876,8 @@ paths:
             tags:
                 - Invoices
             x-vantigo-access: permission:invoices:access
+            x-vantigo-customer-scope:
+                resource: customerId
         put:
             description: Replaces a draft whole, with revision (D4). Only a draft is edited (409 invoice_issued otherwise). A credit-note draft changes only what D8 allows — lines removed, a quantity or a unit price lowered, a description, the note and the internal note — and anything else — another customer, currency, delivery, place of delivery or reference, payment terms, a line's VAT code or unit changed, a quantity or unit price raised, a discount lowered, a line added or one credited twice — is a 400 on the field, and so is a line naming sources or deductsInvoiceId, or refreshSources; a credit line's quantity is negative exactly when the line it credits is a deduction line (invoices work design D7), compared with it by magnitude and of the same sign; its revision is checked first, so a stale copy is the revision 409. On an invoice draft that holds work (invoices work design D2) every line names its sources — absent is a 400 on lines[i].sources, [] drops — each one the draft holds, once — a save never adds work. A source left out of every line, on a removed line or under a changed customer is dropped and named in releasedSources. refreshSources re-reads the held work first. A line holding an order allocation (orders design O39) keeps its quantity, unit price, discount and VAT code — only its description may change — else 409 line_holds_order_allocation.
             operationId: putInvoicesById
