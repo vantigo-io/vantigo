@@ -99,6 +99,9 @@ type state struct {
 	access  contracts.Access
 	handler http.Handler
 	origin  string
+	// agents resolves an agent grant to the run it stands for; nil refuses
+	// every agent call.
+	agents contracts.AgentGrants
 }
 
 // Options configure Bind.
@@ -107,6 +110,11 @@ type Options struct {
 	// that builds an absolute link builds the installation's own (APP_URL's
 	// origin). It defaults to http://localhost.
 	Origin string
+	// AgentGrants is identity's slot for the agent principal. The dispatcher
+	// resolves the run (and so the customer scope) from the grant on a call's
+	// context through it, and refuses a grant that is not current. Without it
+	// every agent call is refused.
+	AgentGrants contracts.AgentGrants
 }
 
 // Dispatcher lists, describes and calls operations. The zero value is not
@@ -148,6 +156,55 @@ func grantKind(ctx context.Context) string {
 	return contracts.GrantAssistant
 }
 
+// agentRunKey carries the run an agent grant stands for, resolved from the
+// grant by requirePrincipal. Only this package sets it, so a caller cannot
+// supply a customer scope of its own.
+type agentRunKey struct{}
+
+type resolvedRun struct {
+	grant uuid.UUID
+	run   contracts.AgentRun
+}
+
+// AgentRunFrom is the run the dispatcher resolved from the agent grant on the
+// context it passes to a gate: for an agent's gate to know which agent and run
+// it is deciding for. It is false outside a gate or a call of an agent.
+func AgentRunFrom(ctx context.Context) (contracts.AgentRun, bool) {
+	r, ok := ctx.Value(agentRunKey{}).(resolvedRun)
+	return r.run, ok
+}
+
+// requirePrincipal is the first step of List, Search, Effective, Validate and
+// Call: it answers the context to use, on which an agent grant has been
+// resolved to its run (AgentRunFrom), once for this call. A context with an
+// agent grant always takes the agent path: the grant must be current and its
+// user an active agent, or the call is refused with CodeNoGrant. A context with
+// no grant is the assistant's own confirm and bulk paths, which ask for modes
+// from a person's request; any other kind of grant is refused.
+func (s *state) requirePrincipal(ctx context.Context) (context.Context, error) {
+	ref, ok := contracts.GrantFrom(ctx)
+	if !ok || ref.Kind == contracts.GrantAssistant {
+		return ctx, nil
+	}
+	if ref.Kind != contracts.GrantAgent {
+		return ctx, &Error{Code: CodeNoGrant, Message: "the call carries no assistant or agent grant"}
+	}
+	if cur, ok := ctx.Value(agentRunKey{}).(resolvedRun); ok && cur.grant == ref.ID {
+		return ctx, nil
+	}
+	if s.agents == nil {
+		return ctx, &Error{Code: CodeNoGrant, Message: "the dispatcher cannot resolve an agent grant"}
+	}
+	run, err := s.agents.Describe(ctx, ref.ID)
+	if errors.Is(err, contracts.ErrAgentGrantNotCurrent) {
+		return ctx, &Error{Code: CodeNoGrant, Message: "the agent grant is not current"}
+	}
+	if err != nil {
+		return ctx, fmt.Errorf("operations: resolve the agent grant: %w", err)
+	}
+	return context.WithValue(ctx, agentRunKey{}, resolvedRun{grant: ref.ID, run: run}), nil
+}
+
 // effective is the mode the principal ctx names may use e in now: its kind's
 // gate's answer, never wider than the contract's.
 func (d *Dispatcher) effective(ctx context.Context, e *entry) Mode {
@@ -155,6 +212,12 @@ func (d *Dispatcher) effective(ctx context.Context, e *entry) Mode {
 	gate, ok := d.gates[grantKind(ctx)]
 	d.gatesMu.RUnlock()
 	if !ok {
+		// No gate for a kind fails closed. The assistant's default narrows
+		// what names a sensitive permission; an agent has no default: its
+		// module installs its gate or it may call nothing.
+		if grantKind(ctx) == contracts.GrantAgent {
+			return ModeNever
+		}
 		gate = defaultGate
 	}
 	return narrower(e.Mode, gate(ctx, e.Info))
@@ -170,6 +233,10 @@ func (d *Dispatcher) Effective(ctx context.Context, id string) (Mode, bool) {
 	e, ok := st.byID[id]
 	if !ok {
 		return ModeNever, false
+	}
+	ctx, err = st.requirePrincipal(ctx)
+	if err != nil {
+		return ModeNever, true
 	}
 	return d.effective(ctx, e), true
 }
@@ -196,7 +263,7 @@ func (d *Dispatcher) Bind(contract []byte, catalog map[string]contracts.Permissi
 		origin = "http://localhost"
 	}
 
-	st := &state{byID: map[string]*entry{}, access: access, handler: handler, origin: origin}
+	st := &state{byID: map[string]*entry{}, access: access, handler: handler, origin: origin, agents: opts.AgentGrants}
 	if doc.Paths != nil {
 		for path, item := range doc.Paths.Map() {
 			for method, op := range item.Operations() {
@@ -352,6 +419,10 @@ func (d *Dispatcher) Info(id string) (Info, bool) {
 // the session's. The order is by path, then method.
 func (d *Dispatcher) List(ctx context.Context, userID uuid.UUID) ([]Info, error) {
 	st, err := d.bound()
+	if err != nil {
+		return nil, err
+	}
+	ctx, err = st.requirePrincipal(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -564,8 +635,12 @@ func (d *Dispatcher) Validate(ctx context.Context, req CallRequest) error {
 	if !ok {
 		return &Error{Code: CodeUnknownOperation, Message: fmt.Sprintf("there is no operation %q", req.OperationID)}
 	}
+	ctx, err = st.requirePrincipal(ctx)
+	if err != nil {
+		return err
+	}
 	if d.effective(ctx, e) == ModeNever {
-		return &Error{Code: CodeNever, Message: fmt.Sprintf("this principal may not call %s", e.ID)}
+		return e.never(ctx)
 	}
 	req, err = e.scoped(ctx, req)
 	if err != nil {
@@ -608,28 +683,32 @@ func (d *Dispatcher) Call(ctx context.Context, req CallRequest) (CallResult, err
 	if !ok {
 		return CallResult{}, &Error{Code: CodeUnknownOperation, Message: fmt.Sprintf("there is no operation %q", req.OperationID)}
 	}
-	// The gate first, and the confirmation after it: a narrowed operation is
+	// The grant first: an agent's run (and so its customer) is read from the
+	// grant, and a grant that is not current is refused before any gate runs.
+	ref, ok := contracts.GrantFrom(ctx)
+	if !ok {
+		return CallResult{}, &Error{Code: CodeNoGrant, Message: "the call carries no assistant or agent grant"}
+	}
+	ctx, err = st.requirePrincipal(ctx)
+	if err != nil {
+		return CallResult{}, err
+	}
+	// The gate next, and the confirmation after it: a narrowed operation is
 	// refused as never whether or not the person confirmed.
 	switch d.effective(ctx, e) {
 	case ModeNever:
-		return CallResult{}, &Error{Code: CodeNever, Message: fmt.Sprintf("this principal may not call %s", e.ID)}
+		return CallResult{}, e.never(ctx)
 	case ModeConfirm:
 		if !req.Confirmed {
 			return CallResult{}, &Error{Code: CodeConfirmationRequired, Message: fmt.Sprintf("%s changes something and needs the person's confirmation", e.ID)}
 		}
 	}
-	ref, ok := contracts.GrantFrom(ctx)
-	if !ok || (ref.Kind != contracts.GrantAssistant && ref.Kind != contracts.GrantAgent) {
-		return CallResult{}, &Error{Code: CodeNoGrant, Message: "the call carries no assistant or agent grant"}
-	}
-	userID, ok := contracts.UserID(ctx)
-	if !ok {
-		return CallResult{}, &Error{Code: CodeNoGrant, Message: "the call names no user (contracts.AsUser)"}
-	}
+	var userID uuid.UUID
 	if ref.Kind == contracts.GrantAgent {
-		if _, ok := contracts.AgentRunFrom(ctx); !ok {
-			return CallResult{}, &Error{Code: CodeNoGrant, Message: "the call names no agent run (contracts.WithAgentRun)"}
-		}
+		run, _ := AgentRunFrom(ctx)
+		userID = run.UserID
+	} else if userID, ok = contracts.UserID(ctx); !ok {
+		return CallResult{}, &Error{Code: CodeNoGrant, Message: "the call names no user (contracts.AsUser)"}
 	}
 
 	req, err = e.scoped(ctx, req)
@@ -833,4 +912,14 @@ func scalars(v any) ([]string, bool) {
 		return nil, false
 	}
 	return []string{s}, true
+}
+
+// never is the refusal of an operation whose effective mode is never, worded
+// for the principal: the assistant's keeps its own wording.
+func (e *entry) never(ctx context.Context) *Error {
+	who := "the assistant"
+	if grantKind(ctx) == contracts.GrantAgent {
+		who = "this agent"
+	}
+	return &Error{Code: CodeNever, Message: fmt.Sprintf("%s may not call %s", who, e.ID)}
 }

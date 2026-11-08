@@ -67,7 +67,7 @@ func (e *entry) scoped(ctx context.Context, req CallRequest) (CallRequest, error
 	if grantKind(ctx) != contracts.GrantAgent {
 		return req, nil
 	}
-	run, ok := contracts.AgentRunFrom(ctx)
+	run, ok := AgentRunFrom(ctx)
 	if !ok || run.CustomerID == nil {
 		return req, &Error{Code: CodeCustomerScope, Message: e.ID + " returns a customer's data and this run has no customer"}
 	}
@@ -131,7 +131,7 @@ func (e *entry) checkResource(ctx context.Context, res CallResult) error {
 	if grantKind(ctx) != contracts.GrantAgent {
 		return nil
 	}
-	run, ok := contracts.AgentRunFrom(ctx)
+	run, ok := AgentRunFrom(ctx)
 	if !ok || run.CustomerID == nil {
 		return &Error{Code: CodeCustomerScope, Message: e.ID + " returns a customer's data and this run has no customer"}
 	}

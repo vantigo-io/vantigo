@@ -105,7 +105,16 @@ type AgentGrants interface {
 	Revoke(ctx context.Context, grantID uuid.UUID) error
 	// RevokeForUser ends every grant of an agent's user at once.
 	RevokeForUser(ctx context.Context, userID uuid.UUID) error
+	// Describe answers the run a grant stands for, only while the grant is
+	// current (neither expired nor revoked) and its user is an active agent;
+	// otherwise ErrAgentGrantNotCurrent. The operations dispatcher is its
+	// caller: it is how the run's customer reaches it from the grant itself.
+	Describe(ctx context.Context, grantID uuid.UUID) (AgentRun, error)
 }
+
+// ErrAgentGrantNotCurrent is AgentGrants.Describe's refusal of a grant that is
+// unknown, expired or revoked, or whose user is not an active agent.
+var ErrAgentGrantNotCurrent = errors.New("agent grants: the grant is not current")
 
 // ErrAgentInactive is AgentGrants.Issue's refusal of an agent whose user is
 // disabled.

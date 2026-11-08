@@ -139,3 +139,27 @@ func (g agentGrants) RevokeForUser(ctx context.Context, userID uuid.UUID) error 
 	}
 	return nil
 }
+
+// Describe answers the run a current grant of an active agent stands for.
+func (g agentGrants) Describe(ctx context.Context, grantID uuid.UUID) (contracts.AgentRun, error) {
+	now := g.a.now()
+	grant, err := g.a.q.GetCurrentAgentGrant(ctx, store.GetCurrentAgentGrantParams{ID: grantID, Now: now})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return contracts.AgentRun{}, contracts.ErrAgentGrantNotCurrent
+	}
+	if err != nil {
+		return contracts.AgentRun{}, fmt.Errorf("identity: describe agent grant: %w", err)
+	}
+	u, err := g.a.q.GetAgentPrincipal(ctx, grant.UserID)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (u.Kind != contracts.UserKindAgent ||
+		!isActive(u.IsDisabled, u.LockoutEnd, now) || slices.Contains(u.RoleNames, RoleOwner) || slices.Contains(u.RoleNames, RoleSystemAdmin))) {
+		return contracts.AgentRun{}, contracts.ErrAgentGrantNotCurrent
+	}
+	if err != nil {
+		return contracts.AgentRun{}, fmt.Errorf("identity: describe agent grant: %w", err)
+	}
+	return contracts.AgentRun{
+		UserID: grant.UserID, AgentID: grant.AgentID, RunID: grant.RunID,
+		CustomerID: grant.CustomerID, ApprovedBy: grant.ApprovedByUserID,
+	}, nil
+}

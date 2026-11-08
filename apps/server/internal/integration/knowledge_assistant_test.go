@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/knowledge"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/openapi/contracttest"
@@ -115,6 +117,7 @@ func TestKnowledge_AnAgentNeverSeesHiddenArticlesAndCanBeAMember(t *testing.T) {
 
 	ctx, agent := h.AgentContext(t, nil, "knowledge:articles")
 	ops := h.Operations(t)
+	ops.SetGate(contracts.GrantAgent, func(_ context.Context, info operations.Info) operations.Mode { return info.Mode })
 	res, err := ops.Call(ctx, operations.CallRequest{OperationID: "searchKnowledge", Query: map[string]any{"q": "ferie"}})
 	if err != nil || res.Status != http.StatusOK {
 		t.Fatalf("the agent's search: %v %d %s", err, res.Status, res.Body)

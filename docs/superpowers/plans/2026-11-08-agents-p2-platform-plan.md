@@ -18,7 +18,7 @@ mechanism, V9a) and the `APIRunners` hook of V14. Stacked on P1 (`agents/p1-iden
 2. **V8, two principals on the dispatcher.**
    - `Dispatcher.SetGate(kind, gate)`; every method takes the gate from the context's grant kind
      (no grant: the assistant's). `Call` accepts either grant, `RemoteAddr` `agent-<user>`, and an
-     agent's call needs `contracts.WithAgentRun`. The Assistant installs kind `assistant`.
+     an agent's run is read from its grant (`AgentGrants.Describe`). The Assistant installs kind `assistant`.
    - `Compose` hands `Deps.Operations` to `assistant` and `agents`. depguard `operations` allows
      `internal/agents`.
    - Tests: `operations/scope_test.go`, `module/operations_test.go`.
@@ -47,10 +47,12 @@ mechanism, V9a) and the `APIRunners` hook of V14. Stacked on P1 (`agents/p1-iden
 
 ## Deviations
 
-- **The run's customer reaches the dispatcher on the context** (`contracts.WithAgentRun`), not from
-  the grant: the dispatcher has no way to read a grant's `Via` before a call, and identity stays the
-  authority of the grant. The agents module sets both from the same values. The agent call is
-  refused without it.
+- **The run's customer is read from the grant** (review): identity's `AgentGrants.Describe` returns the
+  run of a current grant of an active agent, `Options.AgentGrants` gives it to the dispatcher at
+  `Bind`, and every method resolves it first (a grant that is not current is `no_grant`). The gate
+  sees it through `operations.AgentRunFrom`. There is no second input.
+- **No gate for the agent kind means every operation is never** (review); the assistant keeps the
+  closed default.
 - **`ai.Client.resolve` is unchanged**: the `task#subject` name goes to the resolver whole and
   identity, which knows the tasks, splits it and refuses a subject on a task that is not
   `PerSubject`.
@@ -59,3 +61,14 @@ mechanism, V9a) and the `APIRunners` hook of V14. Stacked on P1 (`agents/p1-iden
   context.
 - **Shipments** (Orders) declare no scope: they name no customer, so they cannot be allowlisted for
   an agent until Orders adds one. The order (marked) carries the customer.
+
+## Notes for the next deliveries
+
+- A2: tool-capability of a model is not modelled (`SetModelFor` accepts any allowed model), so a run
+  must surface a clear error when its model cannot call tools.
+- A1 (m5): the agent gate allows only the role's allowlisted operations, and every allowlisted
+  customer-data operation must carry `x-vantigo-customer-scope`; add that check to the template tests.
+- Checked: the conversations list filters `customer_id` exactly (its other parameters only narrow),
+  and the customer's contacts answer carries only the contacts' own details for that customer, so
+  both stay in the marked set. A conversation's `candidateCustomerIds` and `suggestedCustomerId` are
+  ids only.

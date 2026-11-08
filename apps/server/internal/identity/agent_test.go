@@ -665,3 +665,41 @@ func TestAgent_IsNoOneWhoMayActOnAUsersBehalfOrSignInByPasskey(t *testing.T) {
 		t.Errorf("UserHolds for a person = %v, %v, want true", held, err)
 	}
 }
+
+func TestAgentGrant_DescribeAnswersTheRunOfACurrentGrantOnly(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	ctx := context.Background()
+	grants := agentGrants(h)
+	agent := newAgentWithRole(t, h, "Hanna")
+	customer, agentID, runID := int32(7), uuid.New(), uuid.New()
+	id, err := grants.Issue(ctx, contracts.IssueAgentGrant{AgentUserID: agent, AgentID: agentID, RunID: runID, CustomerID: &customer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := grants.Describe(ctx, id)
+	if err != nil || run.UserID != agent || run.AgentID != agentID || run.RunID != runID || run.CustomerID == nil || *run.CustomerID != 7 {
+		t.Fatalf("Describe = %+v, %v, want the run the grant was issued for", run, err)
+	}
+	if _, err := grants.Describe(ctx, uuid.New()); !errors.Is(err, contracts.ErrAgentGrantNotCurrent) {
+		t.Errorf("Describe(unknown) = %v, want ErrNotCurrent", err)
+	}
+
+	// Revoked, expired, and an agent that is disabled afterwards are not current.
+	if err := grants.Revoke(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := grants.Describe(ctx, id); !errors.Is(err, contracts.ErrAgentGrantNotCurrent) {
+		t.Errorf("Describe(revoked) = %v, want ErrNotCurrent", err)
+	}
+	id = issueAgent(t, h, agent)
+	h.advance(contracts.MaxAgentGrantTTL)
+	if _, err := grants.Describe(ctx, id); !errors.Is(err, contracts.ErrAgentGrantNotCurrent) {
+		t.Errorf("Describe(expired) = %v, want ErrNotCurrent", err)
+	}
+	id = issueAgent(t, h, agent)
+	h.exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, agent)
+	if _, err := grants.Describe(ctx, id); !errors.Is(err, contracts.ErrAgentGrantNotCurrent) {
+		t.Errorf("Describe(disabled agent) = %v, want ErrNotCurrent", err)
+	}
+}

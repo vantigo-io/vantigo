@@ -272,12 +272,12 @@ available to a module. `module.Compose` hands it, as `Deps.Operations`, to the m
   principal: `type Gate func(ctx, Info) Mode`, the kind being the grant's (`assistant` or `agent`,
   `contracts.GrantAssistant` and `GrantAgent`). Each of the two modules calls it for its own kind
   while it mounts, and every method takes the gate from the kind of grant on the context (a context
-  with no grant is the assistant's). A kind with no gate gets the closed default below; the
+  with no grant is the assistant's). A kind with no gate fails closed (below); the
   dispatcher keeps the **narrower** of the contract's mode and the gate's answer (`never` over
   `confirm` over `auto`), so a gate can never widen the contract, and it is called for every
   operation on every `List` and `Search`, so it must be cheap and cache. **Without a gate — and
   after `SetGate(kind, nil)` — the dispatcher fails closed**: an operation whose `Info.Sensitive` is true
-  is `never`. A gate that cannot decide answers `never`. The Assistant's gate applies the Owner's
+  is `never`; for an agent with no gate **every** operation is. A gate that cannot decide answers `never`. The Assistant's gate applies the Owner's
   permission levels ([the reference](/en/reference/assistant/#permission-levels-and-the-gate)).
 - **`Effective(ctx, id)`** is the **effective mode** — the contract's mode narrowed by the gate —
   for the context's workspace, and false for an unknown operation. `List`, `Search` and `Call` all
@@ -298,9 +298,9 @@ available to a module. `module.Compose` hands it, as `Deps.Operations`, to the m
   codes: `operation_unknown`, `operation_never`, `confirmation_required`, `no_grant`,
   `invalid_request`, `not_ready`, `call_failed`) before anything is dispatched when the
   operation is unknown, `never`, or `confirm` without `Confirmed`, when the context carries no
-  grant (`contracts.WithGrant`, of either kind; an agent's also needs its run,
-  `contracts.WithAgentRun`) or user (`contracts.AsUser`), or when the call does not fit the
-  operation. For an agent's run an operation that declares `x-vantigo-customer-scope` is tied to the
+  grant (`contracts.WithGrant`, of either kind) or, for the assistant, user (`contracts.AsUser`),
+  when an agent's grant is not current (the run is read from it with `AgentGrants.Describe`,
+  given to `Bind` as `Options.AgentGrants`), or when the call does not fit the operation. For an agent's run an operation that declares `x-vantigo-customer-scope` is tied to the
   run's customer (a `param` is filled in or must equal it, a `resource` field of the answer must
   equal it, a run with no customer reads none), and breaking it is a `customer_scope` error. Once dispatched, the router's answer is a `CallResult` — a status and
   a JSON body, truncated to nothing with `Truncated` above 1 MiB, and the response's headers

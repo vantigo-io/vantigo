@@ -53,7 +53,7 @@ func (h *Harness) Operations(t testing.TB) *operations.Dispatcher {
 		}
 	}
 	d := operations.New()
-	if err := d.Bind(contract, catalog, h.deps.Access, h.api, operations.Options{Origin: h.deps.Config.AppOrigin}); err != nil {
+	if err := d.Bind(contract, catalog, h.deps.Access, h.api, operations.Options{Origin: h.deps.Config.AppOrigin, AgentGrants: h.agentGrants}); err != nil {
 		t.Fatalf("modtest: bind the operations dispatcher: %v", err)
 	}
 	h.ops = d
@@ -83,13 +83,13 @@ func (h *Harness) AssistantContext(t testing.TB, c *Client, ttl time.Duration) c
 }
 
 // AgentContext is the context an agent's run has: a new agent user holding
-// permissions through a role of its own, an agent grant issued for a run of it
-// for customerID (nil for a run with no customer), and the run on the context
-// as the agents module puts it there (contracts.AsUser, WithGrant,
-// WithAgentRun). It answers the agent's user id too, for a test that names it.
-// The dispatcher calls with it as an agent: the harness installs no gate, so
-// the closed default applies (an operation naming a sensitive permission is
-// never) unless the test installs one with Operations(t).SetGate.
+// permissions through a role of its own, and an agent grant issued for a run of
+// it for customerID (nil for a run with no customer), put on the context as the
+// agents module does (contracts.WithGrant). The dispatcher reads the run, and
+// so the customer, from the grant itself. It answers the agent's user id too,
+// for a test that names it. An agent may call nothing until the test installs
+// its gate with Operations(t).SetGate(contracts.GrantAgent, ...): with no gate
+// for the kind every operation is never.
 func (h *Harness) AgentContext(t testing.TB, customerID *int32, permissions ...string) (context.Context, uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
@@ -100,16 +100,13 @@ func (h *Harness) AgentContext(t testing.TB, customerID *int32, permissions ...s
 	if len(permissions) > 0 {
 		h.Exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, userID, h.seedRole(t, permissions))
 	}
-	run := contracts.AgentRun{AgentID: uuid.New(), RunID: uuid.New(), CustomerID: customerID}
 	grantID, err := h.agentGrants.Issue(ctx, contracts.IssueAgentGrant{
-		AgentUserID: userID, AgentID: run.AgentID, RunID: run.RunID, CustomerID: customerID,
+		AgentUserID: userID, AgentID: uuid.New(), RunID: uuid.New(), CustomerID: customerID,
 	})
 	if err != nil {
 		t.Fatalf("modtest: issue an agent grant: %v", err)
 	}
-	ctx = contracts.AsUser(ctx, userID)
-	ctx = contracts.WithGrant(ctx, contracts.GrantRef{Kind: contracts.GrantAgent, ID: grantID})
-	return contracts.WithAgentRun(ctx, run), userID
+	return contracts.WithGrant(ctx, contracts.GrantRef{Kind: contracts.GrantAgent, ID: grantID}), userID
 }
 
 // userOf is the user a session token belongs to.
