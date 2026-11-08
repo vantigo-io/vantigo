@@ -9,6 +9,8 @@ sources:
   - apps/server/cmd/vantigo
   - apps/server/internal/db/migrations/00070_identity_managed_avatars.sql
   - apps/server/internal/db/migrations/00102_identity_assistant_grants.sql
+  - apps/server/internal/db/migrations/00141_identity_agent_users.sql
+  - apps/server/internal/db/migrations/00142_identity_agent_grants.sql
 ---
 Vantigo autentiserer nettleser-SPA-en og API-et på samme opprinnelse med en
 applikasjonsinformasjonskapsel utstedt av identitetsmodulen. API-et svarer med
@@ -877,6 +879,64 @@ besvart. En assistenttilgang er ikke legitimasjon, og det er ingenting å sette 
 
 En installasjon uten Assistenten har aldri en rad i `identity.assistant_grants`.
 
+## Agentbrukere og agenttilganger
+
+En **virtuell medarbeider** er en KI-agent som arbeider gjennom samme API som en person bruker.
+Kontoen i identitetsmodulen er en bruker av typen `agent` (`identity.users.kind`, `person` som
+standard, kontrollert i databasen); agentmodulen oppretter og endrer den gjennom identitetsmodulens
+`AgentAccounts`-spor, og ingenting annet gjør det. Det er ingenting å sette opp.
+
+- **Adressen.** `agent-<id>@agents.invalid`. Domenet `.invalid` er reservert av RFC 2606 og
+  rutes aldri. Adressen vises ikke, og en melding til en agent gjennom brukerkatalogen
+  forkastes uten feil.
+- **Hva en agent aldri gjør.** Den har ikke passord, ikke autentiseringsapp og ikke økt.
+  Identitetsmodulen nekter den det, og databasen nekter det en gang til: innlogging
+  (innloggingen svarer `invalid_credentials`, som for en ukjent adresse), tilbakestilling av
+  passord (ingen e-post sendes, og et tilbakestillingstegn for den er ugyldig), en invitasjon,
+  en kobling til en identitetsleverandør og en SCIM-kobling. SCIMs lister tar aldri med en
+  agent, og SCIM kan aldri endre en. En SCIM- eller OIDC-innlogging som kommer med en agents
+  adresse, finner adressen opptatt og kobler ingenting.
+- **Hva en agent aldri kan ha.** Rollene **Eier** og **SystemAdmin**, en delegering og
+  forvaltningen av en rolle. Eierrollen slipper gjennom enhver tillatelseskontroll, så en agent
+  som hadde den, ville gått forbi alle andre grenser. Alle andre roller gis under
+  [Roller og tilgang](/nb/user/workspace-administration/#administrer-roller-og-tilgang) som for en person.
+- **Ikke redigerbar som en person.** Eierens brukeroperasjoner (rediger, sett passord,
+  deaktiver, aktiver, slett, koble til enkel pålogging) svarer `404` for en agent. En agent
+  endres i agentmodulen, og å slette en agent deaktiverer brukeren: brukeren slettes aldri, så
+  hver revisjonsreferanse til den forblir sann.
+- **Oppført for seg.** `GET /api/v1/identity/owner/users` og `GET /api/v1/identity/access/users`
+  lister personene først og agentene etter dem, hver bruker med `kind`.
+  `GET /api/v1/identity/owner/user-counts` svarer `{people, agents}`, deaktiverte brukere
+  medregnet. Ingenting håndhever en grense: agenter telles, de faktureres ikke. Brukerkatalogen
+  andre moduler leser, tar ikke med agenter i `SearchUsers` og `PermissionHolders` med mindre
+  kalleren ber om det, så en kundes eier, et prosjekts medlemmer, et timeprissett eller en
+  Ansatte-velger tilbyr aldri en agent ved en feiltakelse. Bare Kommunikasjons tildelingsvelger
+  ber om dem.
+
+En agent handler under en **agenttilgang**, en post identitetsmodulen holder for én kjøring av
+én agent (`identity.agent_grants`). Som en assistenttilgang er den ikke legitimasjon:
+
+- **Hva den er.** Agentmodulen ber identitetsmodulen om en tilgang som navngir agenten,
+  kjøringen, kunden kjøringen er avgrenset til og, for en godkjenning fra en gjennomgåer,
+  gjennomgåeren. I motsetning til en assistenttilgang er den ikke bundet til en økt: en agent
+  har ingen. Id-en bæres bare på konteksten til forespørselen i prosessen, aldri i en header, en
+  informasjonskapsel eller en spørrestreng.
+- **Hvem den er.** Så lenge en tilgang gjelder, er den som kaller agentens egen bruker, med
+  rollene agenten har, uten økt og uten tofaktor. Hver tilgangsregel vurderes for den brukeren
+  som for en person, og forespørselen bærer at den kom gjennom en agent og hvilken agent,
+  kjøring, kunde og gjennomgåer (`Principal.Via`).
+- **Hva den aldri er.** Den nektes eiernivået (`Owner`, `OwnerManagement`,
+  `AuthorizationManagement`, `SystemAdmin`), SCIM og hver regel som krever tofaktor, som en
+  agent aldri har.
+- **Hvordan den tar slutt.** Ved det første av: ti minutter, som er det dobbelte av en
+  kjørings tak og aldri fornyes (en godkjenning fra en gjennomgåer får en ny tilgang),
+  tilbakekallingen, og at agenten deaktiveres. Agenten stopper ved sitt neste steg:
+  forespørselen svarer `401`, eller `403` for en deaktivert agent. Tilganger som tok slutt for
+  mer enn et døgn siden, slettes når agentens neste utstedes.
+
+En installasjon uten virtuelle medarbeidere har aldri en bruker av typen `agent` eller en rad i
+`identity.agent_grants`.
+
 ## Hastighetsbegrensninger
 
 Autentiseringsendepunktene er hastighetsbegrenset av en begrenser med faste vinduer,
@@ -1264,6 +1324,9 @@ overlapping på høyst 24 timer, som **Avslutt overlapp** avslutter tidlig; begg
 sammendragene sammenlignes, det forrige bare til utløpet. Hver prosess leser raden
 gjennom en mellomlagring på 20 sekunder. Prosedyrene står i
 [SSO- og SCIM-drift](/nb/admin/sso-scim/#scim).
+
+SCIM lister, kobler eller endrer aldri en bruker av typen `agent`: en opprettelse som navngir
+en agents adresse avvises som en dobbel e-postadresse, og databasen nekter en kobling til en.
 
 Ressursen User godtar **virksomhetsutvidelsen**,
 `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User` (RFC 7643 §4.3):

@@ -163,7 +163,16 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    identity — the model an Owner chose for each AI task, which the platform AI client asks
    and no module calls; [The AI platform](#the-ai-platform)), and `AssistantGrants`
    (`contracts.AssistantGrants`, identity — issues and ends the grants the assistant acts
-   under; rule 18; resolved by `Compose` after the AI slot, not by `Workers`).
+   under; rule 18; resolved by `Compose` after the AI slot, not by `Workers`),
+   `AgentAccounts` (`contracts.AgentAccounts`, identity — the one way a user of kind `agent`
+   is made, renamed, given a picture, disabled and enabled: `Create`, `Rename`, `SetAvatar`,
+   `Disable`, `Enable`; the `agents` module is its only caller, an agent's user is never
+   deleted, and identity refuses such a user every credential, session, link and the
+   Owner and SystemAdmin roles) and `AgentGrants` (`contracts.AgentGrants`, identity —
+   issues and ends the grants an agent acts under: `Issue`, `Revoke`, `RevokeForUser`;
+   unlike `AssistantGrants.Issue` it needs no session, and refuses a user that is not an
+   active agent; its grants live ten minutes; the `agents` module is its only caller);
+   `Compose` resolves both beside `AssistantGrants`, and `module.Workers` resolves neither.
    **A provider's read may carry commands.** A single-provider read contract may hold
    methods that write — **provider commands** — when each writes only the provider's
    own schema, on the provider's own transaction, and is named a command for it; the
@@ -960,6 +969,14 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       satisfies `scim` or a `policy:` rule naming `Owner`, `OwnerManagement`,
       `AuthorizationManagement` or `SystemAdmin`, and it ends with its time, its revocation, its
       session (a sign-out, an expiry) or its user (disabled, locked out).
+    - **The grant on the context is of a kind.** `contracts.WithGrant(ctx, GrantRef{Kind, ID})`
+      carries `assistant` or `agent`; `WithAssistantGrant` and `AssistantGrantFrom` are the
+      assistant's wrappers, and the latter answers false for an agent's grant. For an
+      `agent` grant `Access.Check` answers the agent user's own principal — its roles, no
+      session, no second factor — with `Via{Kind: "agent", AgentID, RunID, CustomerID,
+      ApprovedBy}` (identity's `AgentGrants`), refused the same policies and every rule
+      that needs a second factor. The dispatcher still accepts the assistant's grant only;
+      it learns the agent's with the `agents` module.
     - **Every operation has a contract mode** (`auto`, `confirm`, `never`), computed once by
       `Compose`: the operation's `x-vantigo-assistant` when it has one (the OpenAPI lint
       checks the values, and refuses `auto` or `confirm` behind a rule an assistant is never
@@ -1492,6 +1509,13 @@ it on its own wire, in a log, an event or an error, and a directory's or identit
 provider's placeholder address, which no mail reaches, is answered empty. That one
 address stays for Staff's one use; **no other method hands an address over**.
 
+`UserDirectory.SearchUsers` and `PermissionHolders` **leave out users of kind `agent`**
+unless the call passes `contracts.IncludeAgents()`, and each `UserEntry` and `Holder`
+carries its `Kind` (`contracts.UserKindPerson`, `UserKindAgent`) for the AI badge. The
+default is false for every caller: a customer's owner, calendar, projects, a rate card
+and Staff never meet an agent; Communications' assignee select asks for them. A fake of
+the interface in a test takes the trailing `...contracts.DirectoryOption`.
+
 `UserDirectory.Avatar(userID)` reads a user's **effective avatar** — the managed one
 while it stands, else the user's own, `nil` when there is none — with its type, its
 bytes, `ManagedBy` (`staff` or empty), `UpdatedAt` and a `Stamp`, `managed:<stamp>` or
@@ -1509,8 +1533,8 @@ the languages it has (`Notice.Texts`, keyed `en` and `nb`, each a `Subject` and 
 `Body`), and identity delivers it in the user's own language — their preferred one, then
 `en`, then any — at the address identity holds, from `SMTP_FROM` through the
 installation's mail driver. The address never leaves identity. A user who is not active
-in `PermissionHolders`' sense, an unknown one, one whose only address is a placeholder,
-and an installation with no mail driver are not mailed and are not errors; a send that
+in `PermissionHolders`' sense, an unknown one, an agent (whose address never routes),
+one whose only address is a placeholder, and an installation with no mail driver are not mailed and are not errors; a send that
 fails is an error naming the user's id and no address. Calendar is the first consumer: it
 tells the colleagues on an appointment, and its owner when an outside attendee answers
 ([what a colleague receives](/en/reference/calendar/#what-a-colleague-receives)). The
