@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { charsLeft, clampThreshold, raisesMode, replyModes, thresholdApplies } from "./modes";
+import { charsLeft, clampThreshold, raisesMode, replyModes, scheduleDays, thresholdApplies } from "./modes";
 
 describe("the reply modes", () => {
   it("offers review, auto above a score and auto, in that order", () => {
@@ -25,5 +25,14 @@ describe("the reply modes", () => {
   it("counts the characters left of a limit", () => {
     expect(charsLeft("abc", 10)).toBe(7);
     expect(charsLeft("abcd", 3)).toBe(-1);
+  });
+});
+
+describe("the days a schedule can name", () => {
+  it("are the seven weekdays for a weekly one and the first 28 days for a monthly one, which every month has", () => {
+    expect(scheduleDays("weekly")).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(scheduleDays("monthly")).toHaveLength(28);
+    expect(scheduleDays("monthly").at(-1)).toBe(28);
+    expect(scheduleDays("none")).toEqual([]);
   });
 });

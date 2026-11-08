@@ -42,6 +42,7 @@ export type PermissionLevel = AgentSetupItem["level"];
 export type NeededLevel = AgentSetupItem["needed"];
 export type ReplyMode = AgentRole["replyMode"];
 export type HandOffWarning = AgentRole["handOffWarning"];
+export type ScheduleKind = AgentRole["schedule"]["kind"];
 export type TemplateKey = AgentTemplate["key"];
 export type ReviewState = ReviewItem["state"];
 export type DiscardReason = ReviewDiscardRequest["reason"];

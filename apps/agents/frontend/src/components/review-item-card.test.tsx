@@ -87,6 +87,22 @@ describe("a review item", () => {
     expect(screen.getByTestId("countdown")).toHaveTextContent(/Lapses in 4 h/);
   });
 
+  it("shows a conversation the agent would start, to whom and on what subject, with the disclosure locked and no conversation to open", () => {
+    renderCard(
+      item({
+        kind: "start",
+        conversationId: "00000000-0000-0000-0000-000000000000",
+        start: { channelId: "ch1", to: "kari@example.test", subject: "Følger opp tilbudet" },
+        reply: { text: "Hei Kari!", disclosure: "«Hanna» is «Hansen Rør»'s virtual assistant (AI)." },
+      }),
+    );
+    expect(screen.getByText("New conversation")).toBeInTheDocument();
+    expect(within(screen.getByTestId("start")).getByText("To: kari@example.test")).toBeInTheDocument();
+    expect(screen.getByLabelText("Opening line")).toHaveAttribute("readonly");
+    expect(screen.queryByText("Open the conversation")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+  });
+
   it("counts down to a Messenger window's close", () => {
     renderCard(item({ windowClosesAt: new Date(Date.now() + 90 * 60_000).toISOString() }));
     expect(screen.getByTestId("countdown")).toHaveTextContent(/The Messenger window closes in 1 h 29 min/);

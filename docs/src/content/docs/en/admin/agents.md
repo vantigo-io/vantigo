@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/db/migrations/00146_agents_runs.sql
   - apps/server/internal/db/migrations/00147_agents_review.sql
   - apps/server/internal/db/migrations/00148_agents_memory.sql
+  - apps/server/internal/db/migrations/00149_agents_roles.sql
   - apps/server/internal/config
   - apps/agents/frontend/src
 ---
@@ -188,6 +189,27 @@ another channel of your installation, so two agents bound to two channels cannot
 module learns a channel's address the first time a run reads a conversation on it. Messenger replies
 follow the 24-hour window: when it has closed, a person writes the reply.
 
+### The other roles
+
+- **Sales follow-up.** Needs **Orders** (the quote reads) and a channel of its own, which no other role
+  answers: it writes first from that channel, and the customer's reply goes to the Inbox for a person.
+  Set **Days after a quote is sent** (the default is 7). The quote must be *sent* in Orders; accepting it
+  takes the follow-up away. The agent writes only to a contact address of the quote's customer; Orders'
+  quote reads are tied to that customer like the other customer reads.
+- **Reminder replies.** The front desk for the invoice mailbox: bind the channel, and give the role
+  Invoices' reads.
+- **Timesheet reminders.** Needs **Time**. From the Tuesday after a week, in the company's time zone,
+  Time announces each person who did not submit that week (a person with draft entries in it, or one who
+  submitted any of the eight weeks before it), once. The role reads nothing of the person's hours: the
+  notice says the week and the hours registered. It needs the installation's e-mail to be set up, since
+  it writes through Vantigo's notifications: where e-mail is not configured, nothing is sent.
+- **Project digest.** Needs **Projects**. Set a **schedule** and **Send the note to**; without a person
+  the role has no one to write to and hands off. The schedule is in the company's time zone (set under
+  the workspace), weekly or monthly, and an occurrence is sent at most 12 hours late.
+
+A hand-off of a role that has no conversation (the quote, the week, the schedule) mails the role's
+hand-off person a link to the run, not what the agent found, since the mail leaves Vantigo.
+
 ### Reply modes, in short
 
 Start every role on **Review**. Move a role to **Auto above X %** or **Auto** only when its replies have
@@ -289,3 +311,6 @@ Two things are kept beyond a run, and both go to the model.
 | An item is *withdrawn* and the conversation handed off | A colleague took the conversation, a newer message arrived, the Messenger window closed, or the agent's level was lowered since. | Nothing is wrong; a person answers it, or a new run answers the newer message. |
 | An approval says a rule holds it | The text now says its writer is a person, or customer data would go to someone who is not the customer's contact. | Edit the text, or discard it. |
 | A retention lower than you saved | Communications keeps its messages for a shorter time. | None: the retention follows it. |
+| A Sales follow-up did nothing | The quote was only saved (not *sent*), the wait has not passed, the agent is paused, the role has no channel of its own, or the customer has no contact with an e-mail address. | Check the run on the agent's Activity tab. When the role is in Review, the conversation it would have started is in the review queue. |
+| A schedule did not wake the role | The worker looks every 30 seconds. A schedule set after its time has passed waits for the next occurrence, an occurrence more than 12 hours late is skipped, and the company's time zone decides the weekday and the hour. | Wait for the next occurrence, or check the time zone under the workspace. |
+| A reminder or a digest did not arrive | E-mail for notifications is not configured, the person is not active, there is no person on the Project digest, or the message was stopped by the rule that it must not claim to be a person. | Set up e-mail, choose the person, and read the run. |
