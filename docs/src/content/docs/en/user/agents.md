@@ -1,6 +1,6 @@
 ---
 title: Virtual employees
-description: The Virtual employees app — what an agent is, the agent at work (when it answers, what it reads, what it may send by itself, the opening line, the hand-off and giving a conversation back), the review queue (why an item waits, approving, editing and sending, discarding, how long it waits), calibration, what an agent remembers, usage and activity, creating an agent, its Persona (name, style, languages, model, picture) and the disclosure line with its three wordings, pausing, resuming and deleting, its Roles (the Front desk template, instructions, channels, the hand-off person, Reply mode and caps, and the weekly suggestions for the instructions), its Permissions (everything Off until the Owner raises it) and where the AI badge appears.
+description: The Virtual employees app — what an agent is, the agent at work (when it answers, what it reads, what it may send by itself, the opening line, the hand-off and giving a conversation back), the review queue (why an item waits, approving, editing and sending, discarding, how long it waits), calibration, what an agent remembers, usage and activity, creating an agent, its Persona (name, style, languages, model, picture) and the disclosure line with its three wordings, pausing, resuming and deleting, its Roles (the five templates, instructions, channels, the hand-off person, Reply mode, the mode for starting a conversation and for safe changes, the wait after a quote, schedules, follow-ups, notices to colleagues, caps, and the weekly suggestions for the instructions), its Permissions (everything Off until the Owner raises it) and where the AI badge appears.
 sidebar:
   order: 75
 sources:
@@ -11,13 +11,15 @@ sources:
   - apps/server/internal/db/migrations/00146_agents_runs.sql
   - apps/server/internal/db/migrations/00147_agents_review.sql
   - apps/server/internal/db/migrations/00148_agents_memory.sql
+  - apps/server/internal/db/migrations/00149_agents_roles.sql
 ---
 
 A **virtual employee** is an AI user of Vantigo with a name of its own and a visible AI
 badge. It does part of a person's work: it reads what a person with its roles could
-read and writes where it has been allowed to. In this release it has one role, the
-**Front desk**, which answers the conversations that come in on the channels the Owner
-binds to it. The rules behind each screen are in the
+read and writes where it has been allowed to. It has one or more roles, each from a template:
+the **Front desk**, which answers the conversations that come in on the channels the Owner
+binds to it, **Reminder replies** for the invoice mailbox, **Sales follow-up**, **Timesheet
+reminders** and a **Project digest** ([Roles](#roles)). The rules behind each screen are in the
 [reference](/en/reference/agents/); how an administrator turns the module on is in
 [Virtual employees](/en/admin/agents/).
 
@@ -41,7 +43,8 @@ and on Messenger, as itself.
   the customer is, or hands off.
 - **What it writes.** A reply, to the person who wrote last and to nobody else: **never reply-all**, and a
   Cc is never copied. It can also add an internal note, tag the conversation and hand it off. A change to
-  a record, such as closing the conversation, is **always reviewed first**.
+  a record, such as closing the conversation, is **reviewed first**, unless the role's template marks it
+  as safe and the Owner chose an Auto mode for it ([Roles](#roles)).
 - **Its score and its sources.** Every reply carries a score from 0 to 100 and the sources the agent read
   for it. A reply with no source it actually read gets the score 0, and the conversation itself never
   counts as a source.
@@ -150,10 +153,19 @@ written by the model, so the instructions cannot remove it.
 
 ## Roles
 
-A role is a job the agent does. Open the **Roles** tab and press **Add role**. In this
-release the one template is **Front desk**, which starts from instructions that are
-polite, brief and concrete, and that hand over to a colleague when the agent does not
-know or may not decide.
+A role is a job the agent does. Open the **Roles** tab and press **Add role**, and choose the
+**template** the role starts from. The template decides what the role may read and do, what wakes it
+and which settings the role page shows; the instructions it starts from you can edit.
+
+| Template | What it does | Woken by |
+| --- | --- | --- |
+| **Front desk** | Answers the customers who write on its channels. Polite, brief and concrete; hands over to a colleague when it does not know or may not decide. | A message on one of its channels. |
+| **Reminder replies** | The front desk for the invoice mailbox (for example `faktura@`): reads the invoice the customer means before it answers, and never promises a payment plan, a postponed due date or a waived fee. | A message on one of its channels. |
+| **Sales follow-up** | Writes first to the contact of a quote that was sent and is still not accepted. | A quote sent, after the days you choose. |
+| **Timesheet reminders** | Sends a colleague a short reminder that their week was not submitted, by e-mail through Vantigo's notifications. | A week that ended without being submitted. |
+| **Project digest** | Sends one person a weekly note on how the projects stand, by e-mail through Vantigo's notifications. | Its schedule. |
+
+The role page shows only the settings its template uses.
 
 | Setting | What it does |
 | --- | --- |
@@ -162,10 +174,37 @@ know or may not decide.
 | **Channels** | The Communications channels the role answers. A channel belongs to at most one role, so two agents never answer the same one. Binding a channel is the Owner's. |
 | **Hand-off person** | Who a conversation is given to when the agent hands it over. Empty means it goes to the Inbox, unassigned. The same person is mailed when an item is left for review. |
 | **Complaint tags** | The Communications tags that mean a complaint (at most 20). A conversation with one of them is held for review in Review and Auto above X %. |
-| **Reply mode** | How the agent's replies are decided ([below](#reply-mode)). |
+| **Reply mode** | How the agent's replies are decided ([below](#reply-mode)). Front desk and Reminder replies. |
+| **How it starts a conversation** | The same three choices, for the conversations the Sales follow-up starts. Choosing a mode other than Review is the Owner's alone. |
+| **How it makes safe changes** | The same three choices, for the changes the template marks as safe to automate. The page lists them. Every other change is reviewed whatever this says. Loosening it is the Owner's alone. |
+| **Days after a quote is sent** | Sales follow-up: how long the role waits, from 1 to 60 days, before it looks at a quote. |
+| **Schedule** | Project digest: **every week** on a weekday, or **every month** on a day from 1 to 28, at a time, in the company's time zone. |
+| **Send the note to** | Project digest: the person who gets the note. The agent never chooses who it writes to. |
 | **Caps** | The most tool calls and turns one run may use, and the most replies the role sends in a day. |
 
 Changes to a role take effect at the agent's next step.
+
+### Starting a conversation, follow-ups and schedules
+
+- **Sales follow-up.** When a quote is sent, the role waits the number of days you chose and wakes. It
+  reads the quote and the customer's contacts, and if the quote is still waiting it **starts one
+  conversation** by e-mail to a contact of that customer, from a channel of the role's own. It never
+  writes to an address that is not one of the customer's contacts, and never from another role's channel.
+  A quote that is accepted before the wait is over is left alone. The customer's reply lands in the Inbox
+  for a colleague: the role does not answer it. A role needs a channel of its own, which no other role
+  uses.
+- **Follow-ups.** An agent can ask to be woken again about what it is working on: a conversation, or a
+  quote. It gives a time, at most 30 days ahead, and a reason it will read then. There is one pending
+  follow-up for each conversation or quote. A conversation that has been handed to the people is not
+  woken. A paused agent's follow-ups wait until it is active again, and one more than a week late is
+  dropped.
+- **Schedules.** A role with a schedule wakes once for each occurrence. A schedule you set does not wake
+  the role for a moment that has already passed, and an occurrence the system slept through for more than
+  half a day is skipped rather than sent late.
+- **Notices to colleagues.** The Timesheet reminders and the Project digest write by e-mail through
+  Vantigo's notifications, not through Communications. Each message has the opening line that says it is
+  an AI. The agent does not choose the recipient: a timesheet reminder goes to the person whose week it
+  is, a digest to the person named on the role. These notices are not left for review.
 
 If the hand-off person is disabled or may no longer see conversations, the hand-off
 goes to the Inbox, unassigned, and the role page shows a warning beside the person.
@@ -182,8 +221,9 @@ Choose someone else to make the warning go away.
 
 Choosing **Auto** or **Auto above X %**, and raising the mode or lowering the threshold later,
 is the Owner's alone. Going back to **Review** is anyone's with `agents:manage`.
-Whatever the mode, changes the agent makes in Vantigo are always reviewed first, and the
-rules in [What happens to a reply](#what-happens-to-a-reply) hold.
+Whatever the mode, changes the agent makes in Vantigo are reviewed first, except the few the template
+marks as safe to automate (the status change of the Front desk's conversation, for instance), which follow
+their own mode on the role. The rules in [What happens to a reply](#what-happens-to-a-reply) hold.
 
 ## Permissions
 
@@ -204,8 +244,12 @@ never **Owner** or **SystemAdmin**.
 
 ## The review queue
 
-Open **Virtual employees ▸ Review queue**. It lists, across all agents, every reply and every change an
-agent left for a person: the ones that lapse soonest first, then (choose **Decided**) the ones already
+Open **Virtual employees ▸ Review queue**. It lists, across all agents, every reply, every change and
+every **new conversation** (marked *New conversation*, with the address and the subject) an agent left
+for a person. A new conversation is approved, edited and sent or discarded like a reply; it has no
+conversation to open yet, and discarding it hands nothing off.
+
+The list holds what you may see: the ones that lapse soonest first, then (choose **Decided**) the ones already
 decided, withdrawn or expired. A number on the **Virtual employees** tile on the dashboard counts what
 waits. The internal note in a conversation (*Hanna has a reply waiting for review*) links to the item.
 

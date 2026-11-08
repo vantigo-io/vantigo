@@ -1,4 +1,4 @@
-import type { ReplyMode } from "../api/types";
+import type { ReplyMode, ScheduleKind } from "../api/types";
 
 /** The limits the contract states for what a person types. */
 export const NAME_MAX = 60;
@@ -26,3 +26,16 @@ export const clampThreshold = (value: number): number =>
 
 /** How many characters are left of a limit; negative when over it. */
 export const charsLeft = (text: string, max: number): number => max - text.length;
+
+/** The nil uuid: how an update clears the person a digest goes to. */
+export const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+
+/** The sales follow-up's wait after a quote is sent, in days (V30). */
+export const WAIT_DAYS_MIN = 1;
+export const WAIT_DAYS_MAX = 60;
+
+export const scheduleKinds: readonly ScheduleKind[] = ["none", "weekly", "monthly"];
+
+/** The days a schedule can name: weekdays 1 (Monday) to 7 (Sunday), or days 1 to 28 of a month, which every month has (V29). */
+export const scheduleDays = (kind: ScheduleKind): number[] =>
+  Array.from({ length: kind === "weekly" ? 7 : kind === "monthly" ? 28 : 0 }, (_, i) => i + 1);

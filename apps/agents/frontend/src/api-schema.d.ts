@@ -739,6 +739,11 @@ export interface components {
              * @description Model turns a run may take, 1 to 16.
              */
             capsTurns: number;
+            /**
+             * @description How the changes the template marks as safe to automate are decided (V29). Every other change is reviewed whatever this says.
+             * @enum {string}
+             */
+            changeMode: "review" | "auto_above" | "auto";
             channelIds: string[];
             /** @description The Communications tags that mark a complaint (S5): a conversation carrying one is held in Review and Auto above X %. */
             complaintTagIds?: string[];
@@ -765,12 +770,23 @@ export interface components {
             maxRepliesPerDay: number;
             name: string;
             /**
+             * Format: uuid
+             * @description The person a template that writes a note to one person sends it to (the project digest); null for none.
+             */
+            recipientUserId: string | null;
+            /**
              * @description How the role's replies are decided (V19). Stored in this delivery and acted on from the next.
              * @enum {string}
              */
             replyMode: "review" | "auto_above" | "auto";
+            schedule: components["schemas"]["AgentRoleSchedule"];
+            /**
+             * @description How a conversation the agent starts is decided (V29), by the same score and threshold as replies.
+             * @enum {string}
+             */
+            startMode: "review" | "auto_above" | "auto";
             /** @enum {string} */
-            template: "front_desk";
+            template: "front_desk" | "reminder_replies" | "sales_followup" | "timesheet_reminders" | "project_digest";
             /**
              * Format: int32
              * @description 50 to 100: the score from which auto_above sends a reply.
@@ -780,6 +796,23 @@ export interface components {
             updatedAt: string;
             /** Format: int32 */
             version: number;
+            /**
+             * Format: int32
+             * @description Days after a quote is sent before the sales follow-up looks at it, 1 to 60.
+             */
+            waitDays: number;
+        };
+        /** @description When a role wakes by itself (V29): every week on a day, or every month on a day of the month, at a time in the business time zone. kind none is no schedule. */
+        AgentRoleSchedule: {
+            /**
+             * Format: int32
+             * @description For weekly, the weekday, 1 (Monday) to 7 (Sunday); for monthly, the day of the month, 1 to 28. Null for none.
+             */
+            day: number | null;
+            /** @enum {string} */
+            kind: "none" | "weekly" | "monthly";
+            /** @description HH:MM, 24 hours, in the business time zone. Null for none. */
+            time: string | null;
         };
         /** @description Whether an agent handed a conversation to the people, and so does not answer it again until a person replies in it or assigns it, or it is given back. */
         ConversationHandOff: {
@@ -800,7 +833,7 @@ export interface components {
             /** @description 1 to 80 characters. */
             name: string;
             /** @enum {string} */
-            template: "front_desk";
+            template: "front_desk" | "reminder_replies" | "sales_followup" | "timesheet_reminders" | "project_digest";
         };
         AgentRoleUpdateRequest: {
             /**
@@ -813,6 +846,11 @@ export interface components {
              * @description 1 to 16.
              */
             capsTurns: number;
+            /**
+             * @description Loosening it is the Owner's alone. Absent keeps the role's.
+             * @enum {string}
+             */
+            changeMode?: "review" | "auto_above" | "auto";
             /** @description The Communications tags that mark a complaint (S5), at most 20. Absent keeps the role's. */
             complaintTagIds?: string[];
             /**
@@ -829,13 +867,29 @@ export interface components {
             maxRepliesPerDay: number;
             /** @description 1 to 80 characters. */
             name: string;
+            /**
+             * Format: uuid
+             * @description An active person; the project digest goes to them. Absent keeps the role's, the nil uuid clears it.
+             */
+            recipientUserId?: string;
             /** @enum {string} */
             replyMode: "review" | "auto_above" | "auto";
+            schedule?: components["schemas"]["AgentRoleSchedule"];
+            /**
+             * @description Loosening it is the Owner's alone. Absent keeps the role's.
+             * @enum {string}
+             */
+            startMode?: "review" | "auto_above" | "auto";
             /**
              * Format: int32
              * @description 50 to 100.
              */
             threshold: number;
+            /**
+             * Format: int32
+             * @description 1 to 60. Absent keeps the role's.
+             */
+            waitDays?: number;
         };
         /** @description What the agent's roles need and what is missing (V12's setup screen). */
         AgentSetup: {
@@ -865,10 +919,21 @@ export interface components {
             allowlist: string[];
             defaultInstructions: string;
             defaultName: string;
+            /** @description The role fields the template uses, so the role page shows only these. */
+            fields: ("channels" | "replyMode" | "startMode" | "changeMode" | "complaintTags" | "waitDays" | "schedule" | "recipient")[];
             hardRules: components["schemas"]["AgentTemplateRule"][];
             /** @enum {string} */
-            key: "front_desk";
+            key: "front_desk" | "reminder_replies" | "sales_followup" | "timesheet_reminders" | "project_digest";
             needs: components["schemas"]["AgentTemplateNeed"][];
+            /** @description The allowlisted operations the template marks as safe to automate (V29): only a change by one of these follows the role's change mode. */
+            safeOperations: string[];
+            /** @description The agent's own tools the template offers. */
+            tools: string[];
+            /**
+             * @description What wakes the template's roles.
+             * @enum {string}
+             */
+            trigger: "conversation" | "quote_sent" | "week_unsubmitted" | "schedule";
         };
         AgentTemplateList: {
             templates: components["schemas"]["AgentTemplate"][];
@@ -1226,7 +1291,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            kind: "reply" | "change";
+            kind: "reply" | "change" | "start";
             /**
              * Format: int32
              * @description The model's own score before the sources were checked.
@@ -1234,6 +1299,7 @@ export interface components {
             modelScore: number;
             outcome: string | null;
             reply?: components["schemas"]["ReviewReply"];
+            start?: components["schemas"]["ReviewStart"];
             /** Format: uuid */
             roleId: string;
             roleName: string | null;
@@ -1264,6 +1330,14 @@ export interface components {
             offset: number;
             /** Format: int64 */
             total: number;
+        };
+        /** @description A conversation the agent would start (V29), to a contact of the run's customer on one of the role's channels. The text and the disclosure are in the item's reply object; there is no conversation yet, so conversationId is the nil uuid. */
+        ReviewStart: {
+            /** Format: uuid */
+            channelId: string;
+            subject: string;
+            /** @description The contact's e-mail address. */
+            to: string;
         };
         /** @description A reply waiting to be sent. The disclosure goes above the text, locked, and is added whatever the reviewer edits. */
         ReviewReply: {

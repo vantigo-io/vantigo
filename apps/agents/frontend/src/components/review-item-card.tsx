@@ -116,8 +116,8 @@ export const ReviewItemCard = ({ item, canReview }: { item: ReviewItem; canRevie
             </div>
           </Group>
           <Group gap={6}>
-            <Badge variant="light" color={item.kind === "reply" ? "blue" : "grape"}>
-              {item.kind === "reply" ? t("kindReply") : t("kindChange")}
+            <Badge variant="light" color={item.kind === "reply" ? "blue" : item.kind === "start" ? "teal" : "grape"}>
+              {item.kind === "reply" ? t("kindReply") : item.kind === "start" ? t("kindStart") : t("kindChange")}
             </Badge>
             {!waiting && (
               <Badge variant="outline" color={item.state === "discarded" ? "red" : "gray"}>
@@ -186,6 +186,15 @@ export const ReviewItemCard = ({ item, canReview }: { item: ReviewItem; canRevie
           )}
         </Stack>
 
+        {item.start && (
+          <Stack gap={2} data-testid="start">
+            <Text size="sm">{t("startTo", { to: item.start.to })}</Text>
+            <Text size="sm" c="dimmed">
+              {t("startSubject", { subject: item.start.subject })}
+            </Text>
+          </Stack>
+        )}
+
         {reply && (
           <Stack gap={6}>
             <TextInput
@@ -241,7 +250,7 @@ export const ReviewItemCard = ({ item, canReview }: { item: ReviewItem; canRevie
           <Group justify="space-between">
             <Group gap="xs">
               <Button loading={send.isPending} disabled={editing && text.trim() === ""} onClick={() => send.mutate()}>
-                {editing ? t("sendEdited") : item.kind === "reply" ? t("send") : t("approve")}
+                {editing ? t("sendEdited") : item.kind !== "change" ? t("send") : t("approve")}
               </Button>
               {reply &&
                 (editing ? (
@@ -268,17 +277,19 @@ export const ReviewItemCard = ({ item, canReview }: { item: ReviewItem; canRevie
         {waiting && !canReview && <Alert color="gray">{t("noReviewPermission")}</Alert>}
 
         <Group gap="md">
-          <Anchor
-            size="xs"
-            renderRoot={(props) => (
-              <Link to="/communications/inbox" search={{ conversationId: item.conversationId }} {...props} />
-            )}
-          >
-            <Group gap={4} wrap="nowrap">
-              <IconMessageCircle size={12} aria-hidden />
-              {t("openConversation")}
-            </Group>
-          </Anchor>
+          {item.kind !== "start" && (
+            <Anchor
+              size="xs"
+              renderRoot={(props) => (
+                <Link to="/communications/inbox" search={{ conversationId: item.conversationId }} {...props} />
+              )}
+            >
+              <Group gap={4} wrap="nowrap">
+                <IconMessageCircle size={12} aria-hidden />
+                {t("openConversation")}
+              </Group>
+            </Anchor>
+          )}
           <Anchor size="xs" renderRoot={(props) => <Link {...runLinkOptions(item.runId)} {...props} />}>
             {t("openRun")}
           </Anchor>
