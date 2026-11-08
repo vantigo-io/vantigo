@@ -5,7 +5,12 @@
 export interface AgentsAccess {
   /** `agents:manage`: create, edit, pause and delete agents, and change the settings. */
   canManage: boolean;
+  /**
+   * The Owner: raising a level, choosing or loosening an Auto mode and binding a
+   * channel are the Owner's besides `agents:manage`, which the API decides too.
+   */
+  isOwner: boolean;
 }
 
 /** Nothing allowed: what a test or a host that has not answered yet hands in. */
-export const noAgentsAccess: AgentsAccess = { canManage: false };
+export const noAgentsAccess: AgentsAccess = { canManage: false, isOwner: false };

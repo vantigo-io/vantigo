@@ -140,7 +140,7 @@ export const AgentPage = ({ agentId, tab, onTabChange, access = noAgentsAccess }
         </Tabs.Panel>
         <Tabs.Panel value="permissions" pt="md">
           <PageSection>
-            <PermissionsTab agent={agent} />
+            <PermissionsTab agent={agent} isOwner={access.isOwner} />
           </PageSection>
         </Tabs.Panel>
         <Tabs.Panel value="usage" pt="md">

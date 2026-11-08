@@ -36,6 +36,7 @@ import {
   clampThreshold,
   INSTRUCTIONS_MAX,
   NAME_MAX,
+  raisesMode,
   replyModes,
   THRESHOLD_MAX,
   THRESHOLD_MIN,
@@ -54,7 +55,17 @@ const sameSet = (a: readonly string[], b: readonly string[]) =>
  * channels are two calls; the role goes first, so a refused mode (the Owner's)
  * leaves the channels as they were.
  */
-export const RoleForm = ({ agent, role, canManage }: { agent: Agent; role: AgentRole; canManage: boolean }) => {
+export const RoleForm = ({
+  agent,
+  role,
+  canManage,
+  isOwner,
+}: {
+  agent: Agent;
+  role: AgentRole;
+  canManage: boolean;
+  isOwner: boolean;
+}) => {
   const { t } = useI18n("agents");
   const errorText = useErrorText();
   const queryClient = useQueryClient();
@@ -180,8 +191,13 @@ export const RoleForm = ({ agent, role, canManage }: { agent: Agent; role: Agent
             value={channelIds}
             onChange={setChannelIds}
             searchable
-            disabled={!canManage || channels.isPending}
+            disabled={!canManage || !isOwner || channels.isPending}
           />
+          {canManage && !isOwner && (
+            <Text size="xs" c="dimmed">
+              {t("ownerRequired")}
+            </Text>
+          )}
           {channels.isError && (
             <Text size="xs" c="dimmed">
               {t("channelsForbidden")}
@@ -243,6 +259,7 @@ export const RoleForm = ({ agent, role, canManage }: { agent: Agent; role: Agent
             data={replyModes.map((value) => ({
               value,
               label: t(`replyMode.${value}`, { threshold: clampThreshold(threshold) }),
+              disabled: !isOwner && raisesMode(role.replyMode, value),
             }))}
             disabled={!canManage}
           />
@@ -261,7 +278,7 @@ export const RoleForm = ({ agent, role, canManage }: { agent: Agent; role: Agent
                 step={1}
                 value={threshold}
                 onChange={setThreshold}
-                disabled={!canManage}
+                disabled={!canManage || !isOwner}
               />
               <Text size="xs" c="dimmed">
                 {t("notEnoughScored")}
