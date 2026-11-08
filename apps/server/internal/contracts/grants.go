@@ -38,31 +38,17 @@ func GrantFrom(ctx context.Context) (GrantRef, bool) {
 	return ref, ok && ref.ID != uuid.Nil
 }
 
-// AgentRun is what the operations dispatcher needs to know about the run an
-// agent grant stands for: the agent and run the gate applies its levels for,
-// and the customer scope (virtual employees design V9b) the dispatcher enforces
-// on an operation that declares x-vantigo-customer-scope. It carries what the
-// grant's Via carries, because identity records the grant and the dispatcher
-// has no other way to read it before a call; the agents module sets both from
-// the same values.
+// AgentRun is what an agent grant stands for, read from the grant itself
+// (AgentGrants.Describe): the agent user, the agent and run, the run's customer
+// scope (virtual employees design V9b) and the reviewer whose approval it
+// carries. The operations dispatcher resolves it from the grant on the context,
+// so the grant is the one source of the run's customer.
 type AgentRun struct {
+	UserID  uuid.UUID
 	AgentID uuid.UUID
 	RunID   uuid.UUID
 	// CustomerID is the run's customer, nil for a run with none: a scoped
 	// operation is then refused.
 	CustomerID *int32
-}
-
-type agentRunContextKey struct{}
-
-// WithAgentRun attaches the run an agent grant stands for to ctx. Like
-// WithGrant it is a context value and never a header, so no request can set it.
-func WithAgentRun(ctx context.Context, run AgentRun) context.Context {
-	return context.WithValue(ctx, agentRunContextKey{}, run)
-}
-
-// AgentRunFrom retrieves the run WithAgentRun attached to ctx.
-func AgentRunFrom(ctx context.Context) (AgentRun, bool) {
-	run, ok := ctx.Value(agentRunContextKey{}).(AgentRun)
-	return run, ok
+	ApprovedBy *uuid.UUID
 }

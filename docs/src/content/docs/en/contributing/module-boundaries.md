@@ -980,9 +980,15 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       ApprovedBy}` (identity's `AgentGrants`), admitted by a permission rule alone: every
       `session`, `scim` and `policy:` rule is refused. `Dispatcher.Call` accepts either
       grant and refuses a call with none; the in-process request's `RemoteAddr` is
-      `assistant-<user>` or `agent-<user>`, so the router's rate limits are per principal. An
-      agent's context also carries its run (`contracts.WithAgentRun`: the agent, the run and
-      the run's customer, nil for a run with none), which the gate and the customer scope read.
+      `assistant-<user>` or `agent-<user>`, so the router's rate limits are per principal. The
+      dispatcher reads an agent's run from **the grant itself**: it asks identity's
+      `AgentGrants.Describe` (injected at `Bind`) for the agent, the run and the run's customer
+      (nil for a run with none), once per call, and refuses with `no_grant` a grant that is
+      expired, revoked or whose user is not an active agent. The result is on the context it
+      hands the gate (`operations.AgentRunFrom`), which only the dispatcher can set, so there is
+      one source of the customer. Every method (`List`, `Search`, `Effective`, `Validate`,
+      `Call`) resolves the principal first; a context with no grant is only the Assistant's own
+      confirm and bulk paths.
     - **Every operation has a contract mode** (`auto`, `confirm`, `never`), computed once by
       `Compose`: the operation's `x-vantigo-assistant` when it has one (the OpenAPI lint
       checks the values, and refuses `auto` or `confirm` behind a rule an assistant is never
@@ -1001,9 +1007,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       keeps the narrower of the contract's mode and the gate's, so a gate can never widen the
       contract. `Info` carries the contract's `Mode`,
       the `Permissions` the rule names and whether any is `Sensitive`; `List`, `Search`, `Effective`
-      and `Call` answer the effective mode. **Without a gate the dispatcher fails closed**: an
-      operation whose rule names a `Sensitive` permission is `never`, which is how the platform
-      behaved before the Assistant module existed, and a gate that cannot decide answers `never`
+      and `Call` answer the effective mode. **Without a gate the dispatcher fails closed**: for the
+      assistant, an operation whose rule names a `Sensitive` permission is `never`, which is how the
+      platform behaved before the Assistant module existed; for an agent, **every** operation is
+      `never` (an agent has no default gate). A gate that cannot decide answers `never`
       ([the reference](/en/reference/assistant/#permission-levels-and-the-gate)).
       `never` operations are not offered to the model and `Call` refuses them; `confirm`
       ones are refused unless the call says the person confirmed. A `POST` that only reads is
@@ -1015,7 +1022,7 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       parameter that carries the customer's id — or `{resource: <field>}` — a field of the JSON
       answer (a dotted path) that holds it. `Info.CustomerScope` carries it to a gate. For an
       *agent's* call the dispatcher enforces it **before and after** the call, from the run's
-      customer in `contracts.AgentRun`: it fills a `param` the agent left out, refuses a
+      customer in the grant: it fills a `param` the agent left out, refuses a
       different value, and refuses an answer whose `resource` field is not the run's customer
       (the body is dropped, so another customer's data never reaches the agent); a run with no
       customer is refused every scoped operation; and a malformed scope refuses always. All
@@ -1394,7 +1401,7 @@ The Assistant is the first caller ([The model loop](/en/reference/assistant/#the
   `assistant` and `agents` and proves which are handed the dispatcher (the last two, the same
   one), and another that runners start after the dispatcher is bound and stop on cancel; the
   dispatcher's own tests bind it to a small synthetic contract and prove each mode, one gate
-  per kind (a kind with none falls back to the closed default, and one kind's gate never
+  per kind (an assistant with no gate falls back to the closed default, an agent with none may call nothing, and one kind's gate never
   answers for the other), a call under an agent grant, the customer scope (a parameter filled
   or refused, an answer of another customer dropped, a run with no customer refused) and that a
   call carries no value of the caller's; and

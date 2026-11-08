@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -61,6 +62,39 @@ const scopeContract = `{
   }
 }`
 
+// fakeAgentGrants is contracts.AgentGrants answering Describe from a table: a
+// grant not in it, or ended, is not current.
+type fakeAgentGrants struct {
+	mu    sync.Mutex
+	runs  map[uuid.UUID]contracts.AgentRun
+	asked int
+}
+
+func newFakeAgentGrants() *fakeAgentGrants {
+	return &fakeAgentGrants{runs: map[uuid.UUID]contracts.AgentRun{}}
+}
+
+func (g *fakeAgentGrants) Issue(context.Context, contracts.IssueAgentGrant) (uuid.UUID, error) {
+	return uuid.Nil, errors.New("not used")
+}
+func (g *fakeAgentGrants) Revoke(_ context.Context, id uuid.UUID) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	delete(g.runs, id)
+	return nil
+}
+func (g *fakeAgentGrants) RevokeForUser(context.Context, uuid.UUID) error { return nil }
+func (g *fakeAgentGrants) Describe(_ context.Context, id uuid.UUID) (contracts.AgentRun, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.asked++
+	run, ok := g.runs[id]
+	if !ok {
+		return contracts.AgentRun{}, contracts.ErrAgentGrantNotCurrent
+	}
+	return run, nil
+}
+
 func newScopeFixture(t *testing.T) *fixture {
 	t.Helper()
 	user := uuid.New()
@@ -69,8 +103,9 @@ func newScopeFixture(t *testing.T) *fixture {
 		access:  &fakeAccess{holds: map[uuid.UUID]map[string]bool{user: {"things:view": true}}},
 		handler: &recordingHandler{},
 		user:    user,
+		agents:  newFakeAgentGrants(),
 	}
-	if err := f.d.Bind([]byte(scopeContract), thingsCatalog, f.access, f.handler, Options{}); err != nil {
+	if err := f.d.Bind([]byte(scopeContract), thingsCatalog, f.access, f.handler, Options{AgentGrants: f.agents}); err != nil {
 		t.Fatalf("Bind: %v", err)
 	}
 	return f
@@ -78,9 +113,11 @@ func newScopeFixture(t *testing.T) *fixture {
 
 // agentCtx is the context of an agent's run for the customer (nil for none).
 func (f *fixture) agentCtx(customer *int32) context.Context {
-	ctx := contracts.AsUser(context.Background(), f.user)
-	ctx = contracts.WithGrant(ctx, contracts.GrantRef{Kind: contracts.GrantAgent, ID: uuid.New()})
-	return contracts.WithAgentRun(ctx, contracts.AgentRun{AgentID: uuid.New(), RunID: uuid.New(), CustomerID: customer})
+	grant := uuid.New()
+	f.agents.mu.Lock()
+	f.agents.runs[grant] = contracts.AgentRun{UserID: f.user, AgentID: uuid.New(), RunID: uuid.New(), CustomerID: customer}
+	f.agents.mu.Unlock()
+	return contracts.WithGrant(context.Background(), contracts.GrantRef{Kind: contracts.GrantAgent, ID: grant})
 }
 
 func customer(id int32) *int32 { return &id }
@@ -118,8 +155,8 @@ func TestGate_OnePerKind(t *testing.T) {
 		t.Errorf("Call for the agent = %v, want ErrNever from its gate", err)
 	}
 	f.d.SetGate(contracts.GrantAgent, nil)
-	if mode, _ := f.d.Effective(agent, "getPlain"); mode != ModeAuto {
-		t.Errorf("an agent without a gate = %q, want the default gate (a read that is not sensitive stays auto)", mode)
+	if mode, _ := f.d.Effective(agent, "getPlain"); mode != ModeNever {
+		t.Errorf("an agent without a gate = %q, want never", mode)
 	}
 }
 
@@ -127,8 +164,19 @@ func TestGate_NoGateForAKindFailsClosed(t *testing.T) {
 	f := newFixture(t, "things:view", "things:sensitive")
 	f.d.SetGate(contracts.GrantAssistant, func(context.Context, Info) Mode { return ModeAuto })
 	agent := f.agentCtx(nil)
-	if mode, _ := f.d.Effective(agent, "getSecret"); mode != ModeNever {
-		t.Errorf("a sensitive operation for an agent with no gate = %q, want never", mode)
+	for _, id := range []string{"getSecret", "getThing", "listThings"} {
+		if mode, _ := f.d.Effective(agent, id); mode != ModeNever {
+			t.Errorf("%s for an agent with no gate = %q, want never: an agent has no default gate", id, mode)
+		}
+	}
+	if _, err := f.d.Call(agent, CallRequest{OperationID: "getThing", PathParams: map[string]any{"id": "1"}}); !errors.Is(err, ErrNever) {
+		t.Errorf("Call(getThing) for an agent with no gate = %v, want ErrNever", err)
+	}
+	if listed, _ := f.d.List(agent, f.user); len(listed) != 0 {
+		t.Errorf("List for an agent with no gate = %v, want nothing", ids(listed))
+	}
+	if mode, _ := f.d.Effective(f.ctxOnly(), "getThing"); mode != ModeAuto {
+		t.Errorf("the assistant's default gate = %q for a plain read, want auto", mode)
 	}
 	if mode, _ := f.d.Effective(f.ctxOnly(), "getSecret"); mode != ModeAuto {
 		t.Errorf("the assistant's own gate = %q, want auto: installing one kind's gate leaves the other's alone", mode)
@@ -152,10 +200,10 @@ func TestCall_AnAgentGrant(t *testing.T) {
 		t.Errorf("the request carried grant %+v, want %+v", grant, ref)
 	}
 
-	// An agent grant with no run is refused, and so is a kind nobody knows.
-	bare := contracts.WithGrant(contracts.AsUser(context.Background(), f.user), ref)
-	if _, err := f.d.Call(bare, CallRequest{OperationID: "getPlain", PathParams: map[string]any{"id": "1"}}); !errors.Is(err, ErrNoGrant) {
-		t.Errorf("an agent grant without its run = %v, want ErrNoGrant", err)
+	// A grant the slot does not know is refused, and so is a kind nobody knows.
+	unknown := contracts.WithGrant(context.Background(), contracts.GrantRef{Kind: contracts.GrantAgent, ID: uuid.New()})
+	if _, err := f.d.Call(unknown, CallRequest{OperationID: "getPlain", PathParams: map[string]any{"id": "1"}}); !errors.Is(err, ErrNoGrant) {
+		t.Errorf("an unknown agent grant = %v, want ErrNoGrant", err)
 	}
 	odd := contracts.WithGrant(contracts.AsUser(context.Background(), f.user), contracts.GrantRef{Kind: "robot", ID: uuid.New()})
 	if _, err := f.d.Call(odd, CallRequest{OperationID: "getPlain", PathParams: map[string]any{"id": "1"}}); !errors.Is(err, ErrNoGrant) {
@@ -300,5 +348,67 @@ func TestCustomerScope_TheAssistantIsNotScoped(t *testing.T) {
 	}
 	if info, _ := f.d.Info("getPlain"); info.CustomerScope != nil {
 		t.Errorf("an operation with no extension has scope %+v", info.CustomerScope)
+	}
+}
+
+// The run, and so the customer, is read from the grant: a grant that is no
+// longer current is refused by every method before anything is served or listed.
+func TestAgentGrant_AnEndedGrantIsRefusedByTheDispatcher(t *testing.T) {
+	f := newScopeFixture(t)
+	f.d.SetGate(contracts.GrantAgent, func(_ context.Context, info Info) Mode { return info.Mode })
+	agent := f.agentCtx(customer(7))
+	ref, _ := contracts.GrantFrom(agent)
+	req := CallRequest{OperationID: "getPlain", PathParams: map[string]any{"id": "1"}}
+	if _, err := f.d.Call(agent, req); err != nil {
+		t.Fatalf("Call with a current grant = %v", err)
+	}
+	if err := f.agents.Revoke(context.Background(), ref.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, before := f.handler.seen()
+	if _, err := f.d.Call(agent, req); !errors.Is(err, ErrNoGrant) {
+		t.Errorf("Call with an ended grant = %v, want ErrNoGrant", err)
+	}
+	if err := f.d.Validate(agent, req); !errors.Is(err, ErrNoGrant) {
+		t.Errorf("Validate with an ended grant = %v, want ErrNoGrant", err)
+	}
+	if _, err := f.d.List(agent, f.user); !errors.Is(err, ErrNoGrant) {
+		t.Errorf("List with an ended grant = %v, want ErrNoGrant", err)
+	}
+	if _, err := f.d.Search(agent, f.user, "thing", 5); !errors.Is(err, ErrNoGrant) {
+		t.Errorf("Search with an ended grant = %v, want ErrNoGrant", err)
+	}
+	if mode, _ := f.d.Effective(agent, "getPlain"); mode != ModeNever {
+		t.Errorf("Effective with an ended grant = %q, want never", mode)
+	}
+	if _, after := f.handler.seen(); after != before {
+		t.Error("the handler was reached with an ended grant")
+	}
+}
+
+// A grant for customer A reads A's, whatever the call names: the customer is
+// the grant's and the context carries no second one.
+func TestAgentGrant_TheGrantsCustomerIsTheOnlyOne(t *testing.T) {
+	f := newScopeFixture(t)
+	f.d.SetGate(contracts.GrantAgent, func(_ context.Context, info Info) Mode { return info.Mode })
+	a, b := f.agentCtx(customer(1)), f.agentCtx(customer(2))
+	for ctx, want := range map[context.Context]string{a: "customerId=1", b: "customerId=2"} {
+		if _, err := f.d.Call(ctx, CallRequest{OperationID: "listCustomerThings"}); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := f.handler.seen(); got.RawQuery != want {
+			t.Errorf("query = %q, want %q", got.RawQuery, want)
+		}
+	}
+	if _, err := f.d.Call(a, CallRequest{OperationID: "listCustomerThings", Query: map[string]any{"customerId": 2}}); !errors.Is(err, ErrCustomerScope) {
+		t.Errorf("a grant for customer 1 naming customer 2 = %v, want ErrCustomerScope", err)
+	}
+	// The run is resolved once per call.
+	before := f.agents.asked
+	if _, err := f.d.Call(a, CallRequest{OperationID: "listCustomerThings"}); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.agents.asked - before; n != 1 {
+		t.Errorf("Describe asked %d times for one call, want 1", n)
 	}
 }

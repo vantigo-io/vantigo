@@ -322,6 +322,7 @@ type fixture struct {
 	access  *fakeAccess
 	handler *recordingHandler
 	user    uuid.UUID
+	agents  *fakeAgentGrants
 }
 
 func newFixture(t *testing.T, held ...string) *fixture {
@@ -332,11 +333,12 @@ func newFixture(t *testing.T, held ...string) *fixture {
 		access:  &fakeAccess{holds: map[uuid.UUID]map[string]bool{user: {}}},
 		handler: &recordingHandler{},
 		user:    user,
+		agents:  newFakeAgentGrants(),
 	}
 	for _, k := range held {
 		f.access.holds[user][k] = true
 	}
-	if err := f.d.Bind(contractJSON(), thingsCatalog, f.access, f.handler, Options{Origin: "https://vantigo.example.com/"}); err != nil {
+	if err := f.d.Bind(contractJSON(), thingsCatalog, f.access, f.handler, Options{Origin: "https://vantigo.example.com/", AgentGrants: f.agents}); err != nil {
 		t.Fatalf("Bind: %v", err)
 	}
 	return f

@@ -648,7 +648,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		if deps.Config != nil { // only a test composes without one
 			origin = deps.Config.AppOrigin
 		}
-		if err := ops.Bind(body, catalog, deps.Access, api, operations.Options{Origin: origin}); err != nil {
+		if err := ops.Bind(body, catalog, deps.Access, api, operations.Options{Origin: origin, AgentGrants: deps.AgentGrants}); err != nil {
 			return nil, nil, fmt.Errorf("module: bind the operations dispatcher: %w", err)
 		}
 	}
