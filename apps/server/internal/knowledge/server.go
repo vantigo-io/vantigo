@@ -40,12 +40,14 @@ func callerID(ctx context.Context) uuid.UUID {
 	return p.UserID
 }
 
-// viaAssistant reports whether the caller is the Assistant acting for the
-// person (K16): search then leaves hidden articles out, and the text
-// operation answers 404 for one.
-func viaAssistant(ctx context.Context) bool {
+// viaAI reports whether the caller is acting through the Assistant for a
+// person, or as an agent (K16; virtual employees design V9a): search then
+// leaves hidden articles out, and the text operation answers 404 for one. Any
+// Via counts, so a kind of principal added later is covered without a change
+// here.
+func viaAI(ctx context.Context) bool {
 	p, ok := contracts.PrincipalFrom(ctx)
-	return ok && p.Via != nil && p.Via.Kind == contracts.ViaAssistant
+	return ok && p.Via != nil
 }
 
 // canManage reports whether the caller holds knowledge:manage (K2). It is a

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/knowledge/gen"
 )
 
@@ -15,7 +16,9 @@ const assignableLimit = 20
 // ListKnowledgeAssignableUsers answers active users for the access dialog's
 // member picker (K4), from contracts.UserDirectory: identity's only user
 // listing needs the authorisation-management permission, which a writer of
-// an article need not hold. SearchUsers answers active users only.
+// an article need not hold. SearchUsers answers active users only, agents
+// included: *Share with Hanna* is an ordinary membership (virtual employees
+// design V9a).
 func (s *server) ListKnowledgeAssignableUsers(ctx context.Context, req gen.ListKnowledgeAssignableUsersRequestObject) (gen.ListKnowledgeAssignableUsersResponseObject, error) {
 	limit := int32(assignableLimit)
 	var f fieldErrors
@@ -39,7 +42,7 @@ func (s *server) ListKnowledgeAssignableUsers(ctx context.Context, req gen.ListK
 			},
 		})
 	}
-	found, err := s.deps.Users.SearchUsers(ctx, query, int(limit))
+	found, err := s.deps.Users.SearchUsers(ctx, query, int(limit), contracts.IncludeAgents())
 	if err != nil {
 		return nil, fmt.Errorf("knowledge: search the users: %w", err)
 	}

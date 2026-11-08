@@ -743,11 +743,11 @@ func (s *server) MoveKnowledgeArticle(ctx context.Context, req gen.MoveKnowledge
 }
 
 // GetKnowledgeArticleText answers the article's plain text in pieces of
-// 12 000 characters from offset (K14). To the Assistant, an article hidden
-// from it is not there (K16).
+// 12 000 characters from offset (K14). To the Assistant or an agent, an article hidden
+// from AI is not there (K16).
 func (s *server) GetKnowledgeArticleText(ctx context.Context, req gen.GetKnowledgeArticleTextRequestObject) (gen.GetKnowledgeArticleTextResponseObject, error) {
 	user := callerID(ctx)
-	assistant := viaAssistant(ctx)
+	assistant := viaAI(ctx)
 	offset := 0
 	if req.Params.Offset != nil && *req.Params.Offset > 0 {
 		offset = int(*req.Params.Offset)
