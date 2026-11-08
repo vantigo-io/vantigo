@@ -275,6 +275,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    It is read by `Compose`, not by a consumer: `Compose` collects the enabled modules' topics,
    refuses a duplicate kind, a kind whose prefix is not the module's name and a topic
    without `Authorize`, and hands the result to the hub as `*live.Registry` in `Deps.Live`.
+   A topic may also set `Topic.Doc`, a `live.DocStore` the module implements over its own table,
+   which makes it a document topic that carries binary frames ([Binary frames and documents](/en/contributing/platform-packages/#binary-frames-and-documents));
+   `srv/live` then knows no table, and the module's store notifies through `live.NotifyDoc` on the
+   transaction that stores a row.
    A module needs neither the hub nor the registry to publish: `live.Notify` is a free
    function that takes the transaction, and a worker-only process, which builds no hub, calls
    it the same way. The `Authorize` of a topic runs under `contracts.AsUser`, so

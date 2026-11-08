@@ -1455,3 +1455,21 @@ An Opus critic checked revision 1 against the code. What changed:
   mailbox sync move to topics; host notifications are deferred.
 - **§7, §13:** migration `00140`; offline editing, Yjs in Go and titles in the document
   are listed as later.
+
+### Revision 6 — the K-C server review, 2026-11-08
+
+- **An epoch per article** (`articles.doc_epoch`), bumped by every log reset. `synced` and
+  `doc_reset` carry it, and `doc_sync` sends it back. Writes, seeds and compactions from
+  another epoch are refused (`stale`), and a write on an empty log is refused too
+  (`not_seeded`). This prevents an in-flight update from landing on a reset log, and a
+  reused seq from mixing two logs.
+- **A seed carries the article version it was built from.** A seed built from an older
+  version is refused.
+- **`mode: collab` saves need a live log** (`409 collab_inactive`).
+- **No silent gaps.** A queue clear that drops document frames sends `doc_stale`. The
+  client's `after` is its contiguous watermark, and a compaction covers only up to it.
+- **Write access is checked inside each write's transaction.**
+- **Compaction requests** are rate-limited per document across hubs, and `log_full`
+  requests one too.
+- **The cross-hub fan-out** never echoes and never duplicates.
+- **Rate limits** cover every writer frame. Transient errors are answered `unavailable`.

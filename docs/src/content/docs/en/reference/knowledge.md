@@ -1,6 +1,6 @@
 ---
 title: Knowledge module
-description: "The Knowledge module (nb Kunnskap): the articles tree with fractional positions and a depth of 10; the access model — the nearest member row, else the nearest default, bounded by knowledge:articles — materialised under one advisory lock, the Workspace, Shared and Private sections, and what knowledge:manage may and may not do; the document allowlist (callouts, toggles, tables, images, attachments, mentions, article and record links) and the plain text derived from it; files in articles; links, backlinks and mentions; Markdown export and import; autosave with expectedVersion, the lock, the history and its coalescing; the trash and its groups; favourites; search in Norwegian and English; the Assistant's two tools and Hidden from the Assistant; the live topics; the retention worker and the erasure sweep; the editor's and the server's licences; the endpoints and their refusals."
+description: "The Knowledge module (nb Kunnskap): the articles tree with fractional positions and a depth of 10; the access model — the nearest member row, else the nearest default, bounded by knowledge:articles — materialised under one advisory lock, the Workspace, Shared and Private sections, and what knowledge:manage may and may not do; the document allowlist (callouts, toggles, tables, images, attachments, mentions, article and record links) and the plain text derived from it; files in articles; links, backlinks and mentions; Markdown export and import; autosave with expectedVersion, the lock, the history and its coalescing; the trash and its groups; favourites; search in Norwegian and English; the Assistant's two tools and Hidden from the Assistant; the live topics; live co-editing — the update log, the binary frames, the seed, compaction, the reset endpoint and the collaborative save; the retention worker and the erasure sweep; the editor's and the server's licences; the endpoints and their refusals."
 sidebar:
   order: 125
 sources:
@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/openapi/specs/knowledge.yaml
   - apps/server/internal/db/migrations/00135_knowledge_baseline.sql
   - apps/server/internal/db/migrations/00136_knowledge_files_links.sql
+  - apps/server/internal/db/migrations/00140_knowledge_coediting.sql
   - apps/knowledge/frontend
 ---
 
@@ -30,7 +31,7 @@ article is looked at, whatever the access rows say.
 
 ## The schema
 
-Schema `knowledge`; migrations `00135_knowledge_baseline.sql` and `00136_knowledge_files_links.sql` (files, links and mention notices).
+Schema `knowledge`; migrations `00135_knowledge_baseline.sql`, `00136_knowledge_files_links.sql` (files, links and mention notices) and `00140_knowledge_coediting.sql` (the update log).
 
 | Table | Holds |
 | --- | --- |
@@ -38,6 +39,7 @@ Schema `knowledge`; migrations `00135_knowledge_baseline.sql` and `00136_knowled
 | `article_members` | The access a person is **given** on an article: `(article_id, user_id, permission)`, at most 500 per article. |
 | `article_access_default` | Per article, the **effective default** (`permission`) and the effective `ai_hidden` — materialised. |
 | `article_access` | Per article and person, the **effective** access through a member row — materialised. |
+| `article_updates` | The update log of [live co-editing](#live-co-editing): `(article_id, seq)` primary key, `data` (`bytea`, an opaque Yjs update), `created_by` (null for an erased user, indexed where set) and `created_at`. `seq` is per article, `max(seq) + 1` under the article's row lock; rows go with their article (`ON DELETE CASCADE`). The log's state is on the `articles` row: `doc_epoch` (from 1, raised by every reset), `update_rows` and `update_bytes` (the log's size, so a write never scans it) and `last_compaction_ask_at`. |
 | `article_versions` | `(article_id, version)` with the title, the document, who and when. |
 | `article_files` | A file uploaded into an article: `id`, `article_id`, `object_key` (a random name in the object store, never derived from the file name), `filename` (1–255 characters), `content_type`, `size`, `is_image`, `created_by` and `created_at`. Deleted with its article. |
 | `file_object_deletions` | The object keys whose file rows are gone, queued by a trigger on `article_files` and emptied by the [retention worker](#the-retention-worker). |
@@ -352,8 +354,11 @@ with no `.md`. The rules:
 
 ## Saving, the lock and the history
 
-`PUT /articles/{id}/content` (the autosave) takes `title`, `content` and `expectedVersion`. The
-caller needs write access. In order: a locked article answers `409 article_locked`; a stale
+`PUT /articles/{id}/content` (the autosave) takes `title`, `content`, `expectedVersion` and
+`mode`. The caller needs write access. `mode` is `single` (the default; the save described here)
+or `collab` (a save by a client in [live co-editing](#the-collaborative-save)). With `single`,
+`expectedVersion` is required (a missing one is `400`), and the save also
+[deletes the article's live log](#the-log-is-reset). In order: a locked article answers `409 article_locked`; a stale
 `expectedVersion` answers **`409 version_conflict`** with `currentVersion`, `updatedAt` and
 `updatedBy` (the person who saved), so a client can offer *reload* or *keep mine* — keeping
 mine is a save with `expectedVersion` set to `currentVersion`. A save adds a **version**, with
@@ -362,6 +367,8 @@ two refinements:
 - a save by the **same author within 10 minutes** of their previous save replaces that version
   instead of adding one (coalescing), and still raises the article's `version`;
 - a [version restore](#history) is never coalesced.
+
+A `collab` save skips the version comparison and keeps everything else of this section.
 
 `PATCH /articles/{id}` changes `title`, `icon` (up to 16 characters), `locked` and `aiHidden`,
 and needs write access; it ignores no-ops. A title change on a locked article is
@@ -435,15 +442,168 @@ read the article loses it, and the interface and the API serve it as before.
 
 ## Live
 
-The module declares two live topics. Events carry identifiers only; a
-client that hears one refetches.
+The module declares three live topics. Events carry identifiers only; a
+client that hears one refetches. The third, `knowledge.doc`, carries a document's bytes and
+is described under [Live co-editing](#live-co-editing).
 
 | Topic | Authorised by | Events |
 | --- | --- | --- |
 | `knowledge.article:<id>` | `knowledge:articles` and read access to the article, not trashed (an unknown article and an unreadable one are alike refused). Presence is allowed: *viewing* and *editing*. | `content.changed` (a save or a version restore), `meta.changed` (title, icon, lock, hidden flag, access, a move, a restore) and `trashed`, sent for **each article in a trashed group** (a group of more than 200 articles notifies only its root; `tree.changed` is sent either way). |
 | `knowledge.tree` (no id) | `knowledge:articles` | `tree.changed`, sent on create, a title or icon change, a lock or unlock, a move, an access change, trash, restore and an erasure. Never for a content save that keeps the title, and never with an id, which would reveal that a hidden article exists. |
 
+| `knowledge.doc:<id>` | The same as `knowledge.article:<id>`. No presence. | The document protocol of [Live co-editing](#live-co-editing): binary update frames and JSON control frames, not events. |
+
 Each is notified on the transaction that writes it, so it is delivered only if the write commits.
+
+## Live co-editing
+
+The browser's editor merges concurrent edits itself (Yjs). **The server is an opaque relay:**
+it stores and forwards update bytes and never decodes one, so there is no Yjs in Go. Search,
+history, links, mentions, the Assistant and export keep reading the article's JSON
+(`articles.content`), which a writer's client saves on a timer
+([the collaborative save](#the-collaborative-save)); the live text is the log. The log is never
+needed for safety: a seed always rebuilds from the JSON.
+
+The platform side (the frame codec, the hub, `live.DocStore`) is in
+[Platform packages](/en/contributing/platform-packages/#binary-frames-and-documents). This
+module supplies the store (`doc_store.go`) behind the topic `knowledge.doc:<articleId>`, which
+is authorised like `knowledge.article:<id>`.
+
+### Who may write
+
+A subscription is stored for when the person has **write access, the page is not locked and
+not trashed**. The hub asks when the person subscribes and at every 60-second re-check (a failed
+check counts as no), and the store asks **again inside every write**, under the article's row
+lock, so a person demoted, a page locked or trashed a moment ago is refused at once
+(`update_rejected read_only`).
+A reader receives the log, live updates and others' awareness, and sends nothing: their update,
+seed, compact and awareness frames are dropped and counted
+(`vantigo.live.doc_dropped{reason=read_only}`); the first update answers `update_rejected
+read_only`.
+
+### The log
+
+| Rule | Value |
+| --- | --- |
+| One update | at most 256 KiB |
+| A seed, or a compacted row | at most 2 MiB |
+| Awareness frame | at most 4 KiB |
+| Compaction is **demanded** | the log is over 4 MiB or 2000 rows |
+| Updates are **refused** (`log_full`) | the log would be over 8 MiB or 4000 rows, until a compaction lands; the refusal also asks for a compaction |
+| Update, seed and compact frames | **one** bucket per connection: 50 a second, burst 200 (`update_rejected rate`, `seed_rejected`, `compact_rejected`) |
+| Awareness frames | their own bucket: 30 a second, burst 60; over it they are dropped and counted |
+| Binary frames for topics not subscribed to | the tenth in a minute closes the socket with `1008` |
+
+The size of the log is read from the `articles` row (`update_rows`, `update_bytes`), maintained by every append, seed, compaction and reset. An append, a seed, a compaction and a reset each take the article's **row lock** (the one a
+content save takes) for their short transaction and never the tree's advisory lock, so they
+serialise with a content save of the same article and never with a move. An append notifies
+`knowledge.doc:<id>` (`update`, the `seq`, the origin hub) on its own transaction.
+
+### The frames
+
+Binary frames: `kind` (1 byte), the topic's length (2 bytes, big endian), the topic (UTF-8,
+at most 80 bytes), then the payload.
+
+| Kind | Direction | Payload |
+| --- | --- | --- |
+| `0x01` update | client to server | a Yjs update, at most 256 KiB |
+| `0x01` update | server to client | `seq` (8 bytes, big endian), then the update |
+| `0x02` seed | client to server | the article `version` the document was built from (8 bytes, big endian), then a whole document, at most 2 MiB |
+| `0x03` awareness | both | y-protocols' awareness update, at most 4 KiB; relayed as received |
+| `0x04` compact | client to server | `upTo` (8 bytes, big endian), then a whole document, at most 2 MiB |
+
+JSON control frames (text). The client sends `{"type":"doc_sync","topic","after","epoch"}` and
+`{"type":"doc_error","topic","message"}` (an update it could not apply, counted as
+`vantigo.live.doc_apply_errors`). `after` is the client's **contiguous watermark**: the newest
+`seq` such that it holds every row up to it. `epoch` is the epoch it last synced at, 0 for none
+(the first sync). The server sends:
+
+| Frame | Meaning |
+| --- | --- |
+| `synced {topic, seq, epoch}` | the log up to `seq` has been sent; the subscription is bound to `epoch` and may write |
+| `ack {topic, seq}` | the sender's update, seed or compaction is stored at `seq`; in the order sent |
+| `update_rejected {topic, reason}` | in place of an `ack`, in order. `read_only`, `too_large`, `rate`, `log_full`, `stale` (the log was reset since the connection synced), `not_seeded` (the log is empty: seed first), `unavailable` (the store failed or timed out: keep the update and retry with backoff) |
+| `seed_accepted {topic}`, `seed_rejected {topic}` | the answer to a seed (rejected: the log is not empty, the article moved on from the seed's `version`, a stale epoch, a rate or a store failure) |
+| `compact_requested {topic, upTo}` | the log is over the demand size, or full; sent to the writer that has just stored or been refused, spaced a minute apart per document across replicas |
+| `compact_rejected {topic}` | the compaction changed nothing |
+| `doc_reset {topic, epoch}` | the log was deleted and is now at `epoch`: discard the copy, reopen, `doc_sync` with `epoch` 0. Also the answer to a `doc_sync` whose `epoch` is not current (a `seq` is reused after a reset), and sent with a `stale` refusal |
+| `doc_stale {topic}` | rows may be missing (a row could not be read, or frames of the connection were discarded): `doc_sync` from the watermark. A replay during which frames were discarded sends no `synced` |
+
+A subscription holds **no epoch until a `synced`**: updates, seeds and compactions before it, or
+after a `doc_reset`, are refused `stale`. An append, a seed and a compaction compare the
+subscription's epoch with the log's under the article's row lock and refuse a mismatch (and
+push `doc_reset`), so a write racing a reset can never land in the new log. An append to an
+empty log is `not_seeded`.
+
+A malformed binary frame closes the socket with `1007`. A frame over its limit is answered
+(`update_rejected too_large`, `seed_rejected`, `compact_rejected`) and not stored. A store
+failure on a write is answered `unavailable` (`seed_rejected`, `compact_rejected`); only a
+failed **replay** closes the socket with `1011`, and the client reconnects.
+
+### Joining and relaying
+
+After `ok`, the client sends `doc_sync` with `after` 0, or the newest `seq` it has. The server
+streams the rows after `after` as update frames in `seq` order, then `synced`. The
+subscription is registered before the log is read and the read is one statement, so a row
+appended meanwhile is either in the replay or arrives as a later update; rows that arrive
+during a replay are held and sent after `synced`. Replay frames wait up to 10 seconds for room
+in the socket's queue; a socket that does not read its replay is closed with `1008`. A
+`doc_sync` whose `after` is past the log's newest `seq`, or whose `epoch` is not the log's, is answered `doc_reset` and sent no row. A replay stops between rows when its subscription is gone.
+
+An update is stored, acknowledged to its sender, and put at once on the queue of every other
+subscription **on this hub**; it is never echoed to the sender's connection. Other replicas read
+the row when the notification arrives (one by `(article, seq)`, a burst with one replay filtered
+to the announced seqs), off the listener's loop. The replica that appended skips its own
+notification and never reads its rows back, so an update is never echoed to its sender and a row
+is pushed once. A row that compaction removed first gives `doc_stale`. Yjs is idempotent and commutative, so a duplicate
+or a reordering is harmless.
+
+### Seed
+
+An article that was never co-edited has an empty log and a JSON document. The first writer to
+open it sends **one seed**. The server accepts it **only if the log is empty**
+(`insert … where not exists` under the row lock), so of many simultaneous seeds exactly one is
+stored; it answers `seed_accepted` and `ack` with `seq` 1 and fans the seed out as an update.
+The others get `seed_rejected` and must `doc_sync` instead. A seed also carries the article
+`version` it was built from, and is rejected when the article is at another version: someone
+saved the page since the client fetched it, and it must fetch again.
+
+### Compaction
+
+When the log is over 4 MiB or 2000 rows after a store, the writer gets `compact_requested
+{upTo: newest seq}`. Its client answers only if it has applied every row up to `upTo`, with a
+compact frame holding the whole document; it must cover **only up to its contiguous watermark**,
+never beyond a gap. The server, in one transaction under the row lock,
+deletes the rows with `seq` up to `upTo` and inserts one row at `upTo`, then acknowledges it. It
+refuses (`compact_rejected`, nothing changed) when `upTo` is not above the log's first `seq` (a
+late compaction: the log is contiguous from its first `seq`, and a compaction leaves its row at
+`upTo`) or is above its newest, the data is over 2 MiB, or the sender cannot write. A
+compaction is not fanned out: its state is the same as the rows it replaces.
+
+### The log is reset
+
+The JSON is the truth again, and the log is deleted, its counters zeroed and `doc_epoch` raised by one, in the same transaction, by:
+
+- a **`single` save** of the content (the K-A fallback);
+- a **version restore**;
+- `POST /articles/{id}/collab/reset` (`resetKnowledgeArticleLog`): a writer deletes the log by
+  hand, the way out of a log a client cannot apply. It answers `204`, works on a locked page and
+  is idempotent; `403 article_read_only` for a reader, `404` for an article the caller cannot read.
+
+Each notifies `doc_reset` with the new epoch on `knowledge.doc:<id>`; every subscriber discards
+its copy and reopens the article.
+
+### The collaborative save
+
+A writer's client saves the JSON with `PUT /articles/{id}/content` and `"mode": "collab"`. The
+server takes the article's row lock, checks write access, the lock (`409 article_locked`),
+that the article has a **live log** (`409 collab_inactive` while it is empty: nobody has opened the
+page live, and the save would race a single-editor one) and the document (`400 invalid_document`,
+`413 document_too_large`), compares **no version** (the
+version conflict is not shown in collaborative editing), saves, coalesces the version as any
+save does, and leaves the log. It cannot check that the JSON matches the log: whoever saves is
+recorded as the author, so a version may be attributed to the person whose browser saved last.
+Search, history, the Assistant and export therefore trail the live text.
 
 ## The retention worker
 
@@ -477,7 +637,8 @@ article id; the generated API reference (`/en/reference/api/knowledge/`) has the
 | `POST /articles` | Create (title, icon, content, `parentId`, `afterId`, and for a root `section`). A subpage needs write access to the parent. |
 | `GET /articles/{id}` | The article with its document, `section`, `permission`, `aiHidden` and `aiHiddenInherited`, `path` and stamps. |
 | `PATCH /articles/{id}` | Title, icon, `locked`, `aiHidden`. |
-| `PUT /articles/{id}/content` | The autosave, with `expectedVersion`. |
+| `PUT /articles/{id}/content` | The autosave, with `expectedVersion` (`mode: single`) or `mode: collab` without it. |
+| `POST /articles/{id}/collab/reset` | Delete the article's live log (`resetKnowledgeArticleLog`). |
 | `POST /articles/{id}/move` | Move. |
 | `GET`/`PUT /articles/{id}/access` | Read and replace the access. |
 | `GET /articles/{id}/text` | The plain text in pieces (also the Assistant's). |
@@ -495,7 +656,7 @@ article id; the generated API reference (`/en/reference/api/knowledge/`) has the
 | `POST /articles/{id}/files/copy` | Copy a file of another article into this one (`copyKnowledgeFile`). |
 | `POST /import` | Import a `.md` or a `.zip` (`importKnowledgeMarkdown`). |
 
-The seven operations above are all `x-vantigo-assistant: never`: the Assistant cannot use them.
+The seven operations above are all `x-vantigo-assistant: never`: the Assistant cannot use them. So is the reset of the live log.
 
 ### Refusals
 
@@ -515,8 +676,9 @@ words. Field errors of a 400 are in `errors`, keyed by the request's camelCase f
 | 403 | `article_read_only` | The caller can read the article but not write it. |
 | 403 | — | The permission is missing (`knowledge:articles`, or `knowledge:manage` for *empty*). |
 | 404 | — (empty body) | No article the caller can read — unknown, unreadable, private to someone else, trashed, or hidden from the Assistant. |
-| 409 | `version_conflict` | `expectedVersion` is not current; carries `currentVersion`, `updatedAt`, `updatedBy`. |
+| 409 | `version_conflict` | `expectedVersion` is not current (`mode: single`); carries `currentVersion`, `updatedAt`, `updatedBy`. |
 | 409 | `article_locked` | A content save, title change or version restore on a locked article. |
+| 409 | `collab_inactive` | A `mode: collab` save of an article whose live log is empty. |
 | 409 | `visibility_change` | The change moves the article between private and the workspace and `confirmVisibility` was not given. |
 | 409 | `not_trashed` | A restore of an article that is not in the trash. |
 | 400 | `invalid_document` | Also: an image or attachment naming a file that is not the article's own. |
@@ -538,6 +700,7 @@ words. Field errors of a 400 are in `errors`, keyed by the request's camelCase f
 | Search | the first 200 000 characters of the text are indexed; `q` 200 characters; `limit` 1–50, default 20 |
 | Text piece | 12 000 characters |
 | Version coalescing | the same author within 10 minutes |
+| Live log | an update 256 KiB; compaction demanded at 4 MiB or 2000 rows; refused at 8 MiB or 4000 rows; a seed or compacted row 2 MiB; awareness 4 KiB; 50 updates a second per connection, burst 200 |
 | Trash | 30 days |
 | Versions | 365 days, beyond the newest 20 |
 | Uploaded file | 25 MiB; unreferenced files are deleted after 7 days |
