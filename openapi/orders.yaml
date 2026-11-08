@@ -5671,6 +5671,8 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access
+            x-vantigo-customer-scope:
+                param: customerId
         post:
             description: "Creates a draft order through the one create command (O28), with the next order number. A repeated clientRequestId answers the first order with 200 (O27)."
             operationId: createSalesOrder
@@ -5807,6 +5809,8 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access
+            x-vantigo-customer-scope:
+                resource: customer.customerId
         put:
             description: "Replaces a draft order's header and lines; on a confirmed order takes what O26 allows, logs the change and bumps the version."
             operationId: updateSalesOrder

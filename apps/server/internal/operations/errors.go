@@ -11,11 +11,16 @@ const (
 	// CodeConfirmationRequired: the operation's mode is confirm and the call
 	// was not Confirmed.
 	CodeConfirmationRequired = "confirmation_required"
-	// CodeNoGrant: the call's context carries no assistant grant or no user.
+	// CodeNoGrant: the call's context carries no grant or no user.
 	CodeNoGrant = "no_grant"
 	// CodeInvalidRequest: the call does not fit the operation (a missing path
 	// parameter, a parameter it does not declare, a body that is not JSON).
 	CodeInvalidRequest = "invalid_request"
+	// CodeCustomerScope: the operation returns a customer's data (it declares
+	// x-vantigo-customer-scope) and the call is not for the customer of the
+	// agent's run: the run has none, the call names another, or the answer
+	// belongs to another.
+	CodeCustomerScope = "customer_scope"
 	// CodeCallFailed: the operation's handler panicked.
 	CodeCallFailed = "call_failed"
 )
@@ -46,4 +51,5 @@ var (
 	ErrNoGrant              = &Error{Code: CodeNoGrant}
 	ErrInvalidRequest       = &Error{Code: CodeInvalidRequest}
 	ErrCallFailed           = &Error{Code: CodeCallFailed}
+	ErrCustomerScope        = &Error{Code: CodeCustomerScope}
 )

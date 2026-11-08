@@ -114,6 +114,10 @@ type Harness struct {
 	// what Operations and AssistantContext are built over.
 	api    http.Handler
 	grants contracts.AssistantGrants
+	// agentAccounts and agentGrants are identity's slots for the agent
+	// principal, which AgentContext uses.
+	agentAccounts contracts.AgentAccounts
+	agentGrants   contracts.AgentGrants
 
 	opsMu sync.Mutex
 	ops   *operations.Dispatcher
@@ -876,12 +880,22 @@ func New(t *testing.T, opts ...Option) *Harness {
 	}
 	mods := append([]module.Module{identityModule}, s.modules...)
 	h.mods = mods
-	api, err := module.Compose(h.deps, mods...)
+	api, runners, err := module.ComposeAPI(h.deps, mods...)
 	if err != nil {
 		t.Fatalf("modtest: compose: %v", err)
 	}
 	h.api = api
+	// The modules' API runners start as the API process starts them, after the
+	// dispatcher is bound, and stop with the test.
+	runCtx, stopRunners := context.WithCancel(context.Background())
+	waitRunners := module.StartRunners(runCtx, logger, runners)
+	t.Cleanup(func() {
+		stopRunners()
+		waitRunners()
+	})
 	h.grants = identityModule.AssistantGrants(h.deps)
+	h.agentAccounts = identityModule.AgentAccounts(h.deps)
+	h.agentGrants = identityModule.AgentGrants(h.deps)
 
 	assets := fstest.MapFS{
 		"index.html":      {Data: []byte(indexHTML)},

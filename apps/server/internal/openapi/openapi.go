@@ -130,13 +130,14 @@ func Load(ctx context.Context, name string) (*openapi3.T, error) {
 type operation struct {
 	Path, Method, OperationID string
 	Op                        *openapi3.Operation
+	Item                      *openapi3.PathItem
 }
 
 func operations(doc *openapi3.T) []operation {
 	var out []operation
 	for p, item := range doc.Paths.Map() {
 		for method, op := range item.Operations() {
-			out = append(out, operation{Path: p, Method: method, OperationID: op.OperationID, Op: op})
+			out = append(out, operation{Path: p, Method: method, OperationID: op.OperationID, Op: op, Item: item})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {

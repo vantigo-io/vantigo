@@ -82,6 +82,36 @@ func (h *Harness) AssistantContext(t testing.TB, c *Client, ttl time.Duration) c
 	return contracts.WithAssistantGrant(contracts.AsUser(context.Background(), userID), grantID)
 }
 
+// AgentContext is the context an agent's run has: a new agent user holding
+// permissions through a role of its own, an agent grant issued for a run of it
+// for customerID (nil for a run with no customer), and the run on the context
+// as the agents module puts it there (contracts.AsUser, WithGrant,
+// WithAgentRun). It answers the agent's user id too, for a test that names it.
+// The dispatcher calls with it as an agent: the harness installs no gate, so
+// the closed default applies (an operation naming a sensitive permission is
+// never) unless the test installs one with Operations(t).SetGate.
+func (h *Harness) AgentContext(t testing.TB, customerID *int32, permissions ...string) (context.Context, uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	userID, err := h.agentAccounts.Create(ctx, "Modtest agent")
+	if err != nil {
+		t.Fatalf("modtest: create an agent: %v", err)
+	}
+	if len(permissions) > 0 {
+		h.Exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, userID, h.seedRole(t, permissions))
+	}
+	run := contracts.AgentRun{AgentID: uuid.New(), RunID: uuid.New(), CustomerID: customerID}
+	grantID, err := h.agentGrants.Issue(ctx, contracts.IssueAgentGrant{
+		AgentUserID: userID, AgentID: run.AgentID, RunID: run.RunID, CustomerID: customerID,
+	})
+	if err != nil {
+		t.Fatalf("modtest: issue an agent grant: %v", err)
+	}
+	ctx = contracts.AsUser(ctx, userID)
+	ctx = contracts.WithGrant(ctx, contracts.GrantRef{Kind: contracts.GrantAgent, ID: grantID})
+	return contracts.WithAgentRun(ctx, run), userID
+}
+
 // userOf is the user a session token belongs to.
 func (h *Harness) userOf(t testing.TB, token string) uuid.UUID {
 	t.Helper()

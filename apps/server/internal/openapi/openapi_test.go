@@ -490,6 +490,84 @@ paths:
 	}
 }
 
+func TestLintChecksTheCustomerScopeExtension(t *testing.T) {
+	doc, err := openapi3.NewLoader().LoadFromData([]byte(`
+openapi: 3.0.3
+info: {title: t, version: "1"}
+paths:
+  /c/{id}:
+    parameters: [{in: path, name: id, required: true, schema: {type: integer}}]
+    get:
+      operationId: pathParamOnThePath
+      summary: S
+      x-vantigo-access: session
+      x-vantigo-customer-scope: {param: id}
+      responses: {"204": {description: ok}}
+    put:
+      operationId: resourceField
+      summary: S
+      x-vantigo-access: session
+      x-vantigo-customer-scope: {resource: customer.customerId}
+      responses: {"204": {description: ok}}
+    post:
+      operationId: queryParam
+      summary: S
+      x-vantigo-access: session
+      x-vantigo-customer-scope: {param: customerId}
+      parameters: [{in: query, name: customerId, schema: {type: integer}}]
+      responses: {"204": {description: ok}}
+    patch:
+      operationId: bothKeys
+      summary: S
+      x-vantigo-access: session
+      x-vantigo-customer-scope: {param: id, resource: customerId}
+      responses: {"204": {description: ok}}
+    delete:
+      operationId: undeclaredParam
+      summary: S
+      x-vantigo-access: session
+      x-vantigo-customer-scope: {param: nope}
+      responses: {"204": {description: ok}}
+  /d:
+    get:
+      operationId: headerIsNotAScope
+      summary: S
+      x-vantigo-access: session
+      x-vantigo-customer-scope: {param: x}
+      parameters: [{in: header, name: x, schema: {type: string}}]
+      responses: {"204": {description: ok}}
+    post:
+      operationId: notAnObject
+      summary: S
+      x-vantigo-access: session
+      x-vantigo-customer-scope: customerId
+      responses: {"204": {description: ok}}
+    put:
+      operationId: blankResource
+      summary: S
+      x-vantigo-access: session
+      x-vantigo-customer-scope: {resource: " "}
+      responses: {"204": {description: ok}}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, p := range Lint(doc) {
+		got[p.OperationID] = p.Message
+	}
+	for _, id := range []string{"pathParamOnThePath", "resourceField", "queryParam"} {
+		if msg, bad := got[id]; bad {
+			t.Errorf("%s flagged: %v", id, msg)
+		}
+	}
+	for _, id := range []string{"bothKeys", "undeclaredParam", "headerIsNotAScope", "notAnObject", "blankResource"} {
+		if !strings.Contains(got[id], CustomerScopeExtension) {
+			t.Errorf("%s: %q, want it flagged for its customer scope", id, got[id])
+		}
+	}
+}
+
 func TestLintChecksTheAssistantExtension(t *testing.T) {
 	doc, err := openapi3.NewLoader().LoadFromData([]byte(`
 openapi: 3.0.3
