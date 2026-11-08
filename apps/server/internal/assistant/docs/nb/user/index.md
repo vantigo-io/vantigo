@@ -82,6 +82,7 @@ kortere enn din:
 | [Bemanning](/nb/user/planning/) | Plan (planen), prosjektplanen og tidslinjen, Behov, Inntak, Ubemannet, Ønsker, Min bemanning, Bemanningsinnstillinger |
 | [Fakturaer](/nb/user/invoices/) | Fakturaer, Hurtigfaktura, Fakturajournal, Forfalt, Innbetalinger, Fakturainnstillinger |
 | [Kommunikasjon](/nb/user/communications/) | Innboks, Kanaler, Blokkeringer |
+| [Virtuelle ansatte](/nb/user/agents/) | Agenter (Persona, Roller, Tillatelser, Bruk, Aktivitet), Innstillinger |
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |
 | [Lager](/nb/user/inventory/) | Oversikt, Bevegelser, Varemottak, Varetellinger, Importer inngående beholdning |
 | [Ordre](/nb/user/orders/) | Tilbud, Ordre, Leveranser, Abonnement, Tilbudsmaler, Salgsanalyse, Ordreinnstillinger |
