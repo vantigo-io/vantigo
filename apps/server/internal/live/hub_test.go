@@ -363,18 +363,39 @@ func TestHub_PresenceIsPushedLocally(t *testing.T) {
 	}
 	send(h, k1, map[string]any{"type": "presence", "topic": "alpha.item:1", "state": "viewing"})
 	send(h, k2, map[string]any{"type": "presence", "topic": "alpha.item:1", "state": "replying"})
-	members := lastPresence(t, o, 2)
+	// Two changes push concurrently, and a push older than the one a socket
+	// already has is skipped, so one or two frames arrive: read until the
+	// newest state is in.
+	members := presenceUntil(t, o, func(m []map[string]any) bool {
+		return len(m) == 1 && m[0]["state"] == "replying"
+	})
 	if len(members) != 1 || members[0]["userId"] != kari.String() || members[0]["state"] != "replying" || members[0]["name"] != "Kari" {
 		t.Errorf("members = %v, want Kari once, replying", members)
 	}
 
 	send(h, k2, map[string]any{"type": "presence", "topic": "alpha.item:1", "state": nil})
-	if members := lastPresence(t, o, 1); len(members) != 1 || members[0]["state"] != "viewing" {
+	if members := presenceUntil(t, o, func(m []map[string]any) bool {
+		return len(m) == 1 && m[0]["state"] == "viewing"
+	}); len(members) != 1 || members[0]["state"] != "viewing" {
 		t.Errorf("after one tab left: %v, want Kari viewing", members)
 	}
 	h.detach(k1)
-	if members := lastPresence(t, o, 1); len(members) != 0 {
+	if members := presenceUntil(t, o, func(m []map[string]any) bool { return len(m) == 0 }); len(members) != 0 {
 		t.Errorf("after Kari's sockets left: %v, want nobody", members)
+	}
+}
+
+// presenceUntil reads presence frames off c until one satisfies ok, and
+// returns its members. Pushes of one topic run concurrently and a push older
+// than the newest a socket has is skipped, so how many frames a burst of
+// changes yields is not fixed; the last state is.
+func presenceUntil(t testing.TB, c *client, ok func([]map[string]any) bool) []map[string]any {
+	t.Helper()
+	for {
+		members := lastPresence(t, c, 1)
+		if ok(members) {
+			return members
+		}
 	}
 }
 

@@ -272,14 +272,33 @@ func (s *docSub) run(after, epoch int64) {
 			s.epoch, s.floor = 0, max(s.floor, res.Epoch)
 			s.synced = 0
 			s.pending, s.pendingN, s.overflow = nil, 0, false
-			s.syncing, s.again = false, false
-			h.enqueue(s.c, frameDocReset(s.topic, s.floor))
+			floor := s.floor
 			s.mu.Unlock()
+			// Like the rows, the closing frame waits for room instead of
+			// draining the queue, and does so outside the lock (a leaf).
+			err := h.enqueueBlocking(s.c, frameDocReset(s.topic, floor))
+			s.mu.Lock()
+			s.syncing, s.again = false, false
+			s.pending, s.pendingN, s.overflow = nil, 0, false
+			s.mu.Unlock()
+			_ = err // a client that is gone or too slow has been closed
 			return
 		}
 		s.epoch, s.floor = res.Epoch, max(s.floor, res.Epoch)
 		s.synced = max(s.synced, res.Last)
-		h.enqueue(s.c, frameSynced(s.topic, res.Last, res.Epoch))
+		s.mu.Unlock()
+		// The last row of a long replay may have filled the queue: synced, which
+		// closes the replay, waits for room like the rows before it instead of
+		// overflowing the queue into a resync. Live rows arriving meanwhile are
+		// still held back (syncing stays set), so they follow it.
+		err = h.enqueueBlocking(s.c, frameSynced(s.topic, res.Last, res.Epoch))
+		s.mu.Lock()
+		if err != nil || s.stale.Load() || !s.current() {
+			s.syncing, s.again = false, false
+			s.pending, s.pendingN, s.overflow = nil, 0, false
+			s.mu.Unlock()
+			return
+		}
 		if !s.overflow {
 			for _, p := range s.pending {
 				if p.seq > s.synced {
