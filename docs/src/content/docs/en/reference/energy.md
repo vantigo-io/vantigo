@@ -544,6 +544,34 @@ conflict, so the two orders cannot deadlock. `module.Workers` hands the worker t
 In the default deployment the check, run and attach handlers also nudge the worker
 in-process; in a split deployment the poll is the bound.
 
+### Live updates
+
+The imports list and an import's page update by themselves through the platform's
+[live updates](/en/contributing/platform-packages/#live-updates). The module registers one
+topic through `Module.LiveTopics` (`internal/energy/live.go`). Events carry the import's id
+only; a screen that hears one refetches through the ordinary endpoints, which check the
+permission as they always do.
+
+| Topic | Authorised by | Events | Presence |
+| --- | --- | --- | --- |
+| `energy.imports` | `energy:import` and `energy:metering-points-view`, as `GET /energy/imports` | `import.changed`, with the import's id, or without one after the worker's sweep | not allowed |
+
+The topic has no key: any key is `forbidden`. Where the module notifies, each time on the
+transaction that writes, or, for a single write on the pool, right after it:
+
+- the API: the upload, a saved mapping, a check, a run or an attach asked for, a stop and a
+  delete;
+- the worker (`import_worker.go`), on its leased connection: the import started, its progress
+  (a check or run, and an attach), finished and failed, and the sweep (one event without an id).
+
+The progress notifies **at most once a second** per import, from the worker's own memory, and an event held back inside that second is sent when it ends; a
+state change always notifies. A row's outcome and an attach's row writes notify nothing, and
+neither do the spot-price and consumption importers, which are not imports of this screen. The
+scan test `TestLive_EveryWriteIsHeard` keeps the list honest.
+
+The pages refetch on an event and poll every 2 s **only while the topic is not live**, while
+an import is running.
+
 ## Importing consumption
 
 `POST /metering-points/{id}/consumption/import?dryRun=true|false` imports one point's

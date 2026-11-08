@@ -1775,6 +1775,37 @@ Out of scope and named (design D12): sending after a run ("send all"), a run on 
 schedule of its own, and running a failed item again by hand — a new run naming the
 customer does it.
 
+### Live updates
+
+The billing runs list and a run's page update by themselves through the platform's
+[live updates](/en/contributing/platform-packages/#live-updates). The module registers one
+topic through `Module.LiveTopics` (`internal/invoices/live.go`). Events carry the run's id
+only; a screen that hears one refetches through the ordinary endpoints, which check the
+permission as they always do.
+
+| Topic | Authorised by | Events | Presence |
+| --- | --- | --- | --- |
+| `invoices.billing-runs` | `invoices:access`, as both `GET`s of the runs | `run.changed`, with the run's id, or without one after the worker's sweeps | not allowed |
+
+The topic has no key: any key is `forbidden`. Where the module notifies:
+
+- the API, on the transaction that writes: a run made with its items, and a cancel with its
+  items;
+- the worker (`billing_worker.go`), on the pool: the run started, each item's outcome
+  (completed, failed, rescheduled or released), the run finished, and the two sweeps that end a
+  stranded run or cancel abandoned items (one event without an id).
+
+A state change always notifies: an item's completion or failure, and the run's end, which is
+told whether this call finished it or it was cancelled while the item was carried. The start, a
+retry and a release notify **at most once a second** per run, from the worker's own memory, and
+an event held back inside that second is sent when it ends; the memory of a run is dropped when
+it ends. Recording a document an item made
+(`AddBillingRunItemInvoice`) notifies nothing: the item's completion does. The scan test
+`TestLive_EveryWriteIsHeard` keeps the list honest.
+
+The pages refetch on an event for their run (the list on any) and poll every 5 s
+(`BILLING_RUN_POLL_MS`) **only while the topic is not live**, while a run is at work.
+
 ## Issuing
 
 `POST /invoices/{id}/issue` runs one READ COMMITTED transaction in a fixed order:
