@@ -673,6 +673,10 @@ func WithEnv(key, value string) Option {
 // keeps this file from having to mirror config.go's dependency rule as new
 // modules grow their own.
 //
+// "communications" is likewise included whenever "agents" is among mods:
+// config.go rejects "agents" without it (its only role answers conversations),
+// and agents' own tests stand in for Communications rather than compose it.
+//
 // "products" is likewise included whenever "inventory" is among mods:
 // config.go rejects "inventory" without "products", and inventory's own tests
 // stand in a fake catalog (WithProducts) rather than compose products.
@@ -711,6 +715,9 @@ func modulesEnv(mods []module.Module, stubbed ...string) string {
 		moduleSet["staff"] = true
 	}
 	if moduleSet["meta"] {
+		moduleSet["communications"] = true
+	}
+	if moduleSet["agents"] {
 		moduleSet["communications"] = true
 	}
 	if moduleSet["inventory"] {

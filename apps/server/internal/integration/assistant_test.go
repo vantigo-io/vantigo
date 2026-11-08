@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vantigo-io/vantigo/server/internal/agents"
 	"github.com/vantigo-io/vantigo/server/internal/assistant"
 	"github.com/vantigo-io/vantigo/server/internal/calendar"
 	"github.com/vantigo-io/vantigo/server/internal/communications"
@@ -46,7 +47,7 @@ func everyModule() []module.Module {
 	return []module.Module{
 		customers.Module(), products.Module(), energy.Module(), communications.Module(),
 		projects.Module(), timetracking.Module(), expenses.Module(), invoices.Module(),
-		staff.Module(), planning.Module(), inventory.Module(), orders.Module(), knowledge.Module(), calendar.Module(), entra.Module(), google.Module(), meta.Module(), assistant.Module(),
+		staff.Module(), planning.Module(), inventory.Module(), orders.Module(), knowledge.Module(), calendar.Module(), entra.Module(), google.Module(), meta.Module(), assistant.Module(), agents.Module(),
 	}
 }
 
@@ -135,6 +136,28 @@ var markedByHand = map[string]string{
 	"importKnowledgeMarkdown":        "never",
 	"resolveKnowledgeLinks":          "never",
 	"copyKnowledgeFile":              "never",
+
+	// Steering a virtual employee, raising its levels and binding its channels are
+	// the Owner's own decisions (virtual employees design V12), never made on a
+	// model's word: every operation of the agents API says never.
+	"listAgents":           "never",
+	"createAgent":          "never",
+	"deleteAgent":          "never",
+	"getAgent":             "never",
+	"updateAgent":          "never",
+	"getAgentAvatar":       "never",
+	"putAgentAvatar":       "never",
+	"pauseAgent":           "never",
+	"putAgentPermission":   "never",
+	"resumeAgent":          "never",
+	"createAgentRole":      "never",
+	"deleteAgentRole":      "never",
+	"updateAgentRole":      "never",
+	"setAgentRoleChannels": "never",
+	"getAgentSetup":        "never",
+	"getAgentsSettings":    "never",
+	"putAgentsSettings":    "never",
+	"listAgentTemplates":   "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {

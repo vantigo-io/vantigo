@@ -34,6 +34,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/vantigo-io/vantigo/server/internal/agents"
 	"github.com/vantigo-io/vantigo/server/internal/assistant"
 	"github.com/vantigo-io/vantigo/server/internal/buildinfo"
 	"github.com/vantigo-io/vantigo/server/internal/calendar"
@@ -338,6 +339,7 @@ func businessModules(access *identity.Access) []module.Module {
 		google.Module(),
 		meta.Module(),
 		assistant.Module(),
+		agents.Module(),
 	}
 }
 
