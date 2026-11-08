@@ -444,12 +444,20 @@ med **KI**-merket på avataren:
 - **Meldingene** begynner med en linje som sier hvem som skrev dem og at det er en KI, for eksempel
   *«Hanna» er «Hansen Rør» sin virtuelle assistent (KI).* E-posten har også topptekstfeltet
   `X-Vantigo-Agent`, så en e-postregel kan skille den fra en persons.
-- **Et internt notat** sier når agenten har et svar som **venter på gjennomgang**, med en lenke til det,
-  og når den har **levert samtalen videre til en kollega**, med det kunden vil.
+- **Et internt notat** sier når agenten har et svar som **venter på gjennomgang**, med en lenke
+  **Åpne i gjennomgangen**, og når den har **levert samtalen videre til en kollega**, med det kunden vil.
 - **En samtale tildelt deg er din.** Agenten svarer ikke på den, og hvis den skrev da du tok den, sendes
   ikke svaret. Tildel en samtale til agenten, eller til ingen, for å la den svare.
 - **Etter en overlevering** lar agenten samtalen være til en person svarer i den eller tildeler den, eller
   den gis tilbake til agenten.
+
+### Samtaler agenten har overlevert
+
+En samtale agenten har overlevert viser et gult felt over tråden: *En ansatt ga denne samtalen til
+menneskene*, med årsaken (agenten ba om en kollega, en gjennomgåer forkastet svaret, svaret ventet for
+lenge, det daglige budsjettet var nådd …). **Gi tilbake til den ansatte** fjerner overleveringen, så
+agenten svarer kundens neste melding; det krever `communications:conversations-manage`. Uten et klikk holder agenten seg
+unna til en person svarer i samtalen eller tildeler den.
 
 ## Legg til et internt notat
 

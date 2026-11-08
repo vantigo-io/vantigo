@@ -1,6 +1,6 @@
 ---
 title: Virtual employees
-description: Turning Virtual employees on — the modules and the AI provider it needs, its four permissions and which changes stay the Owner's, the company's name and the retention, creating the first agent, the model per agent, giving the agent Identity roles, the levels (Off by default, what the front desk needs, what is locked for every agent), the allowlist and the customer scope, what to keep out of Knowledge, the privacy notice, pausing and deleting an agent; how to verify it, and what can go wrong.
+description: Turning Virtual employees on — the modules and the AI provider it needs, its four permissions and which changes stay the Owner's, the company's name and the retention, creating the first agent, the model per agent, giving the agent Identity roles, the levels (Off by default, what the front desk needs, what is locked for every agent), the allowlist and the customer scope, what to keep out of Knowledge, the privacy notice, who reviews, retention and erasure, pausing and deleting an agent; how to verify it, and what can go wrong.
 sidebar:
   order: 52
 sources:
@@ -8,6 +8,7 @@ sources:
   - openapi/agents.yaml
   - apps/server/internal/db/migrations/00144_agents_baseline.sql
   - apps/server/internal/db/migrations/00146_agents_runs.sql
+  - apps/server/internal/db/migrations/00147_agents_review.sql
   - apps/server/internal/config
   - apps/agents/frontend/src
 ---
@@ -55,11 +56,13 @@ it is set.
 
 1. Open **Virtual employees** and its settings.
 2. Enter the **Company name** (1 to 120 characters) as customers know the business.
-3. Set the **Retention**: how many months a run is kept, from 1 to 60. The default is 6.
+3. Set the **Retention**: how many months a run is kept, from 1 to 60. The default is 6. It is never
+   longer than Communications keeps its messages (`COMMUNICATIONS_RETENTION_DAYS`, 365 days by default,
+   so 12 months): a longer value is lowered to that when you save, and again every night if the
+   installation later shortens Communications' own. The field shows the longest you may enter.
 4. Save.
 
-Runs are not recorded in this release, so the retention has nothing to remove yet; it
-starts to apply with the release that records them.
+What the retention removes is described under [Retention and erasure](#retention-and-erasure).
 
 ## Create the first agent
 
@@ -175,7 +178,7 @@ An agent can have a **daily token budget**, set on the agent (`dailyTokenBudget`
 value below 1,000 is refused). It counts the tokens the agent's model and its content check use on the
 business day. At the budget no new run starts, every request that waits is handed off with the note
 *Daily budget reached.*, and the next day the agent starts again, on new messages only. The budget is
-set through the API for now; the Usage tab, which shows the last 30 days, comes in the next release.
+a field on the agent's Persona tab (empty for none); the **Usage** tab shows the last 30 days against it.
 
 ### Which channels
 
@@ -190,12 +193,52 @@ Start every role on **Review**. Move a role to **Auto above X %** or **Auto** on
 been right for a while. The rules that protect a customer's data and the opening line that says the
 agent is an AI hold in **every** mode, Auto too ([the reference](/en/reference/agents/#the-pipeline)).
 
+## Who reviews
+
+A reply or a change an agent leaves for a person waits in the **Review queue** (the *Review virtual
+employees' work* permission, `agents:review`) for 24 hours; a Messenger reply for no longer than 15
+minutes before its window closes. Choose the **hand-off person** of each role carefully: when an item
+is left for review that person gets an e-mail (through the installation's mail driver; nothing is sent
+where none is configured) and a note appears in the conversation, and a role with no hand-off person
+notifies nobody, so someone has to look at the queue, whose count is on the dashboard's
+*Virtual employees* tile.
+
+Give `agents:review` to people you would trust with the agent's work. An approval is made **as the agent,
+on the reviewer's authority**: the reviewer has to be allowed to do what the item does (to send a reply,
+`communications:conversations-reply`; to approve a change, the permission of its operation, with
+Owner-tier policies checked as well), so a reviewer cannot give the agent's access to a person who
+lacks it. Reading an item or a run also needs `communications:conversations-view` and the read
+permissions the Front desk needs, because they show what the agent read: customers, contacts, orders,
+invoices, products and Knowledge. Give them to the reviewers; withholding one hides the queue from
+that reviewer, and nothing else.
+
+Reading an agent's runs and transcripts is a separate, sensitive permission
+(`agents:activity`), because a transcript holds the customers' messages.
+
+## Retention and erasure
+
+- **Runs.** A run, with its transcript, its action log, its review items and the hand-off markers of its
+  conversation, is deleted after the retention months, and never kept longer than Communications keeps
+  its messages, because a transcript copies message bodies. The worker `agents-retention` does it every
+  hour, in batches. The day's **usage** (counts only) is kept for 24 months.
+- **Items that wait** are never deleted by retention; they expire first (24 hours), and an expired item
+  hands the conversation off. The worker `agents-reviews` does this every minute.
+- **A customer's erasure.** When a private person's customer is anonymised in Customers, the module
+  deletes that customer's runs, transcripts and review items, by the customer and by **every conversation
+  of theirs it has seen linked to them**, so a conversation linked after its run began is covered; and it
+  blanks the customer's id in the action log. A deleted **contact** takes the conversations they took part
+  in with them. The export of a customer's personal data lists the runs and replies held for them. A
+  conversation that was linked to the customer only after the module last looked at it is not known to the
+  module: it is removed by retention instead.
+- **A person's erasure** (a reviewer or an Owner) keeps the id of their decisions as an opaque id, so the
+  history still says that a person decided; nothing about the person is kept with it.
+
 ## Pause and delete an agent
 
 - **Pause** stops new runs; roles, channels and levels stay. **Resume** starts them
   again.
-- **Delete** stops the roles, frees the channels for another role, ends the agent's
-  grants and disables its user. The user is kept so earlier history still reads true.
+- **Delete** withdraws what waits for review and hands those conversations off, stops the roles, frees
+  the channels for another role, ends the agent's grants and disables its user. The user is kept so earlier history still reads true.
   It cannot be undone.
 
 ## Verify
@@ -220,3 +263,8 @@ agent is an AI hold in **every** mode, Auto too ([the reference](/en/reference/a
 | An agent does not answer a conversation | The conversation is assigned to a person, the agent is paused, the conversation was handed off, the message was automatic, or the permissions the role needs are still Off. | Assign it to the agent, or give it back ([Virtual employees](/en/user/agents/#hand-off)); resume the agent; raise the Needs. |
 | Every run ends in a hand-off with *The AI model did not answer* | The provider is down, or the agent's model cannot call tools. | Check `AI_PROVIDER` and choose another model on the Persona tab. |
 | *Daily budget reached.* | The agent used its daily token budget. | Raise the budget, or wait for the next business day. |
+| The review queue says you may not see an item | Reading an item needs `agents:review` and also `communications:conversations-view` and the read permissions the Front desk needs. | Give the reviewer the missing permission. |
+| `reviewer_not_permitted` on Send or Approve | The reviewer may not do what the item does (for a reply, `communications:conversations-reply`). | Give the permission, or let a colleague decide. |
+| An item is *withdrawn* and the conversation handed off | A colleague took the conversation, a newer message arrived, the Messenger window closed, or the agent's level was lowered since. | Nothing is wrong; a person answers it, or a new run answers the newer message. |
+| An approval says a rule holds it | The text now says its writer is a person, or customer data would go to someone who is not the customer's contact. | Edit the text, or discard it. |
+| A retention lower than you saved | Communications keeps its messages for a shorter time. | None: the retention follows it. |

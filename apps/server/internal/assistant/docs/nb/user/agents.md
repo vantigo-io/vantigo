@@ -1,6 +1,6 @@
 ---
 title: Virtuelle ansatte
-description: Appen Virtuelle ansatte — hva en agent er, agenten i arbeid (når den svarer, hva den leser, hva den kan sende selv, åpningslinjen, overleveringen og å gi en samtale tilbake), å opprette en agent, Persona (navn, stil, språk, modell, bilde) og åpningslinjen med de tre formuleringene, å sette på pause, gjenoppta og slette, Roller (malen Skranke, instruksjoner, kanaler, den som overtar, Svarmodus og grenser), Tillatelser (alt er Av til Eieren hever det) og hvor KI-merket vises.
+description: Appen Virtuelle ansatte — hva en agent er, agenten i arbeid (når den svarer, hva den leser, hva den kan sende selv, åpningslinjen, overleveringen og å gi en samtale tilbake), gjennomgangskøen (hvorfor en sak venter, å godkjenne, redigere og sende, forkaste, hvor lenge den venter), kalibrering, bruk og aktivitet, å opprette en agent, Persona (navn, stil, språk, modell, bilde) og åpningslinjen med de tre formuleringene, å sette på pause, gjenoppta og slette, Roller (malen Skranke, instruksjoner, kanaler, den som overtar, Svarmodus og grenser), Tillatelser (alt er Av til Eieren hever det) og hvor KI-merket vises.
 sidebar:
   order: 75
 sources:
@@ -9,6 +9,7 @@ sources:
   - openapi/agents.yaml
   - apps/server/internal/db/migrations/00144_agents_baseline.sql
   - apps/server/internal/db/migrations/00146_agents_runs.sql
+  - apps/server/internal/db/migrations/00147_agents_review.sql
 ---
 
 En **virtuell ansatt** er en KI-bruker i Vantigo med eget navn og et tydelig KI-merke. Den
@@ -47,9 +48,8 @@ Messenger, som seg selv.
 
 **Svarmodusen** til rollen ([under](#svarmodus)) avgjør, når agenten har skrevet og reglene er sjekket:
 
-- I **Gjennomgang** venter hvert svar på en person. Et internt notat i samtalen sier at et svar venter
-  på gjennomgang. Køskjermene for å godkjenne, redigere og forkaste kommer i neste utgivelse; fram til
-  da sender ingenting et svar som venter.
+- I **Gjennomgang** venter hvert svar på en person i [gjennomgangskøen](#gjennomgangskøen). Et internt
+  notat i samtalen sier at et svar venter, med en lenke til det, og rollens overtaker får en e-post.
 - I **Auto over X %** sendes svaret når poengsummen er minst X og ingen regel holdt det igjen.
 - I **Auto** sendes det med mindre en av reglene som alltid gjelder stoppet det.
 
@@ -61,8 +61,8 @@ meldingen den svarer på er automatisk eller kommer fra en av dine egne kanaler,
 sendt **rollens antall svar i dag** i samtalen, eller etter seks kjøringer på en time. I Gjennomgang og
 Auto over X % holdes et svar også tilbake når det ikke har noen kilde, når det er første melding fra en
 ny avsender, når samtalen har en klagemerkelapp og når en andre kontroll finner et løfte instruksjonene
-ikke tillater. Merkelappene som betyr klage og det daglige tokenbudsjettet settes foreløpig gjennom
-API-et; skjermene for dem kommer i neste utgivelse.
+ikke tillater. Merkelappene som betyr klage settes på rollen ([Roller](#roller)); det daglige
+tokenbudsjettet på agentens [Persona](#persona).
 
 ### Overlevering
 
@@ -70,9 +70,9 @@ En agent som ikke vet, ikke kan avgjøre, blir bedt om en person, når grensene 
 KI-modellen **leverer samtalen videre**: den skriver et internt notat med det kunden vil, og tildeler
 samtalen til rollens overtaker, eller til ingen (Innboksen). Hvis den skrev et svar den ikke kunne
 sende, står det i notatet. Etter det **lar agenten samtalen være**, også når kunden skriver igjen, til en
-person **svarer** i den eller **tildeler** den, eller den **gis tilbake til agenten**. Å gi tilbake er
-foreløpig `DELETE /api/v1/agents/conversations/{id}/hand-off`; knappen **Gi tilbake til agenten** i
-tråden kommer i neste utgivelse.
+person **svarer** i den eller **tildeler** den, eller den **gis tilbake til agenten**. I
+[Kommunikasjon](/nb/user/communications/#samtaler-agenten-har-overlevert) sier et felt på samtalen at agenten
+overleverte den, og hvorfor, og **Gi tilbake til den ansatte** gir den tilbake.
 
 Tar en kollega samtalen mens agenten skriver, sendes ikke agentens svar: samtalen er kollegaens.
 
@@ -84,7 +84,10 @@ lar deg opprette, endre, sette på pause og slette agenter. Det er en sensitiv t
 som bare en Eier kan dele ut. Noe er fortsatt Eierens selv med `agents:manage`: å heve en
 tillatelse, å velge **Auto** eller heve den, og å knytte en kanal. Å lese en agents
 kjøringer krever **Lese virtuelle ansattes aktivitet** (`agents:activity`), og å godkjenne
-det en agent foreslår krever **Gjennomgå virtuelle ansattes arbeid** (`agents:review`).
+det en agent foreslår krever **Gjennomgå virtuelle ansattes arbeid** (`agents:review`). En som
+gjennomgår, men ikke kan se agentene, ser likevel **Gjennomgangskø** i sidemenyen. Å lese en kjøring eller
+en sak krever mer enn sin egen tillatelse, for den viser det agenten leste
+([Gjennomgangskøen](#gjennomgangskøen)).
 
 ## Opprett en agent
 
@@ -109,6 +112,7 @@ fullført oppsettet.
 | **Språk** | **Kundens** svarer på kundens språk og faller tilbake til bokmål; **Norsk bokmål** og **Engelsk** svarer alltid på det språket. |
 | **Modell** | KI-modellen som kjører agenten. Tom bruker arbeidsområdets valg for oppgaven *Agent i arbeid* ([Konfigurasjon](/nb/admin/configuration/)). |
 | **Bilde** | En PNG eller JPEG på høyst 5 MB, vist på agentens avatar. |
+| **Daglig tokenbudsjett** | Flest tokens (lest og skrevet) agenten kan bruke på en virkedag, minst 1 000; tomt for ingen. Ved budsjettet starter ingen ny kjøring, og det som venter gis til en kollega med notatet *Dagsbudsjettet er nådd*. Neste dag starter den på nytt, bare på nye meldinger. |
 
 Hvis du endrer navnet, får agentens bruker nytt navn overalt det vises.
 
@@ -147,7 +151,8 @@ kan avgjøre.
 | **Navn** | Opptil 80 tegn. |
 | **Instruksjoner** | Hva agenten skal og ikke skal gjøre, opptil 8 000 tegn. Står de tomme, brukes malens instruksjoner. |
 | **Kanaler** | Kanalene i Kommunikasjon rollen svarer på. En kanal hører til høyst én rolle, så to agenter svarer aldri på samme kanal. Å knytte en kanal er Eierens. |
-| **Overtas av** | Hvem en samtale gis til når agenten overleverer den. Tom betyr at den går til Innboksen, uten ansvarlig. |
+| **Overtas av** | Hvem en samtale gis til når agenten overleverer den. Tom betyr at den går til Innboksen, uten ansvarlig. Samme person får e-post når en sak legges igjen til gjennomgang. |
+| **Klagemerkelapper** | Merkelappene i Kommunikasjon som betyr en klage (høyst 20). En samtale med en av dem holdes igjen til gjennomgang i Gjennomgang og Auto over X %. |
 | **Svarmodus** | Hvordan agentens svar avgjøres ([under](#svarmodus)). |
 | **Grenser** | Flest verktøykall og runder én kjøring kan bruke, og flest svar rollen sender per dag. |
 
@@ -187,6 +192,100 @@ aldri gis til en agent ([Virtuelle ansatte](/nb/admin/agents/#nivåene)).
 
 Agenter har Identitet-roller som en person og får dem under **Roller og tilgang**, men
 aldri **Eier** eller **SystemAdmin**.
+
+## Gjennomgangskøen
+
+Åpne **Virtuelle ansatte ▸ Gjennomgangskø**. Den lister, på tvers av alle agenter, alle svar og endringer en
+agent har lagt igjen til en person: de som utløper først øverst, og (velg **Avgjort**) de som allerede er
+avgjort, trukket tilbake eller utløpt. Et tall på flisen **Virtuelle ansatte** på oversikten teller det som
+venter. Det interne notatet i en samtale (*Hanna har et svar som venter på gjennomgang*) lenker til saken.
+
+Hver sak viser:
+
+- **Hvorfor den venter.** Reglene som holdt den igjen, i ord: en manglende kilde, en første kontakt, en
+  klage, et løfte instruksjonene ikke tillater, en kundes data på vei til noen som ikke er kundens kontakt,
+  en tekst som sier at skribenten er et menneske, og så videre. En sak ingen regel holdt igjen venter fordi
+  rollen er i Gjennomgang, eller fordi poengsummen er under terskelen.
+- **Poengsummen**, og agentens egen når kildene den faktisk hadde lest senket den, og **hva den bygger på**:
+  kildene, for eksempel `getInvoicesById 2026-0931`.
+- **Hvor lenge den har.** En sak utløper etter 24 timer. Et Messenger-svar utløper 15 minutter før
+  Messenger-vinduet stenger, og saken teller ned til det.
+- **Svaret**, med åpningslinjen låst over, eller **endringen**: hva agenten ber om å få gjøre, i én setning,
+  og verdiene.
+
+Du kan **Sende** et svar (eller **Godkjenne** en endring), **Redigere og sende** et svar, eller **Forkaste**
+en sak.
+
+- **Send** sender svaret som agenten, med åpningslinjen, og meldingen lagres og merkes som agentens.
+  **Godkjenn** gjør endringen som agenten. Begge gjøres på din fullmakt, så **du må selv ha lov til å gjøre
+  det saken gjør**: for å sende et svar trenger du `communications:conversations-reply`, for å godkjenne en
+  endring tillatelsen til operasjonen den kaller (for å lukke en samtale
+  `communications:conversations-manage`). Ellers svarer køen at du ikke har lov.
+- **Rediger og send** åpner teksten så du kan endre den. Åpningslinjen står låst over; skriver du en selv,
+  legger systemet likevel til sin egen, så en melding går aldri ut uten den. En tekst som sier eller
+  antyder at skribenten er et menneske holdes igjen, også etter at du har redigert den, og saken blir i køen
+  med regelen nevnt.
+- **Forkast** ber om en årsak: *Feil fakta*, *Feil tone*, *Skulle ikke svart på dette* eller *Annet*, med en
+  valgfri tekst. Å forkaste et svar **gir samtalen til en kollega**: agenten lar den være, og overtakeren
+  (eller Innboksen) tar den.
+
+Før noe sendes ser køen etter igjen. Har en kollega tatt samtalen, har en nyere melding kommet, er
+Messenger-vinduet lukket (eller bare «menneskelig agent»-utvidelsen igjen), er agentens nivåer senket i
+mellomtiden, eller er rollen eller agenten borte, **sendes ingenting**: saken *trekkes tilbake* og samtalen
+leveres videre, eller, når en nyere melding kom, svarer en ny kjøring samtalen slik den nå er. En endring
+sjekkes på samme måte: en der agenten ikke lenger kan kalle operasjonen, trekkes tilbake og gjøres ikke.
+
+To som godkjenner samme svar samtidig, sender det én gang; den andre får beskjed om at det er avgjort. Et
+valg navngir versjonen det leste: en sak som endret seg under deg lastes på nytt og sier fra. En sak som
+venter mer enn et døgn *utløper*, det samme gjør en der Messenger-vinduet snart stenger; en utløpt sak
+leverer samtalen videre, som en tilbaketrukket.
+
+**Hva du får se.** Køen viser det agenten leste, så å se en sak krever mer enn *Gjennomgå virtuelle ansattes
+arbeid*: også `communications:conversations-view` og lesetillatelsene Skranken trenger (kunder, kontakter,
+ordrer, fakturaer og produkter, og Kunnskap). Uten dem svarer køen at du ikke har lov. Å lese en
+[kjøring](#aktivitet) krever det samme i tillegg til `agents:activity`.
+
+## Kalibrering
+
+Rollesiden viser, under **Hvordan den svarer**, hva rollens poengsummer er verdt. Hvert svar en person har
+avgjort er en merkelapp: sendt uendret er bra, redigert og sendt er bra med endringer, forkastet er dårlig.
+Over rollens siste 200 merkede svar, flytt glidebryteren til en terskel X fra 50 til 100, og panelet sier:
+
+- hvor mange svar, og hvor stor andel, som **ville gått ut av seg selv** (poengsum minst X og ingen regel som
+  holdt dem);
+- av dem, hvor mange en person **redigerte mer enn 20 % eller forkastet**;
+- hvor mange en regel holdt igjen **uansett poengsum**.
+
+To linjer og en markør ved X tegner det samme. Under 50 merkede svar sier panelet *Ikke nok historikk ennå* og
+hvor mange det er. Tallene kommer fra rollens egen historikk, så en rolle som har stått en stund i Gjennomgang
+er den hvis poengsummer kan stoles på når du velger *Auto over X %*.
+
+## Bruk
+
+Agentens fane **Bruk** viser de siste 30 dagene: kjøringer, tokens (lest og skrevet), og hvor mange svar som
+ble sendt, holdt igjen for en person og forkastet, dag for dag, med summer øverst og dagens tokens mot det
+daglige budsjettet når det finnes. Dagen er virkedagen. Kortene på siden **Virtuelle ansatte** viser dagens
+tall. Tallene beholdes i 24 måneder og inneholder ikke noe innhold.
+
+## Aktivitet
+
+Agentens fane **Aktivitet** lister kjøringene, de nyeste først, med tilstanden (ferdig, venter på
+gjennomgang, overlevert, feilet …), hva de endte i og tokenene de brukte, og endringene Eieren har gjort i
+innstillingene, med hvem som gjorde dem: en agent, en rolle, en modus, et nivå, en modell eller
+innstillingene. En kjøring åpnes på sin egen side:
+
+- **Tidslinje.** Hvert verktøykall, i rekkefølge, med status og hvor lang tid det tok. Ingen forespørsler
+  eller svar i sin helhet beholdes.
+- **Vurderingen og modusens avgjørelse.** Poengsummen (og agentens egen), kildene, rollens modus og terskel,
+  hvilke regler som holdt eller stoppet svaret, og om det ble sendt eller lagt igjen til en person.
+- **Hva revisjonssporet sier.** Hvert kall som *av Hanna (KI)*, og *godkjent av en gjennomgåer* når en
+  person godkjente det.
+- **Hva kjøringen la igjen til gjennomgang**, med køens knapper, og **utskriften**: hva modellen ble fortalt
+  og svarte, med kundens meldinger, skjult til du åpner den.
+
+En kjøring krever `agents:activity`, `communications:conversations-view` og lesetillatelsene over.
+Kjøringer og utskrifter slettes etter oppbevaringstiden administratoren satte, og slettes sammen med kunden
+de hører til ([Virtuelle ansatte](/nb/admin/agents/#oppbevaring-og-sletting)).
 
 ## Hvor du ser KI-merket
 
