@@ -2,6 +2,7 @@ package communications_test
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -519,7 +520,16 @@ func TestMessengerSync_BadRefsAreIgnored(t *testing.T) {
 
 	_, good := refOfLink(t, f, f.channel, 2001)
 	_, forOther := refOfLink(t, f, other, 2001)
-	tampered := good[:len(good)-1] + map[bool]string{true: "B", false: "A"}[good[len(good)-1] == 'A']
+	// The MAC is decoded, a byte of it flipped and encoded again: changing a
+	// character of the text is not enough, since the last one of 32 bytes in
+	// base64 carries two padding bits a decoder ignores.
+	cut := strings.LastIndex(good, ".") + 1
+	mac, err := base64.RawURLEncoding.DecodeString(good[cut:])
+	if err != nil {
+		t.Fatalf("the ref's MAC %q: %v", good[cut:], err)
+	}
+	mac[0] ^= 0xff
+	tampered := good[:cut] + base64.RawURLEncoding.EncodeToString(mac)
 	forged := strings.Replace(good, "v1.2001.", "v1.2002.", 1)
 	for name, ref := range map[string]string{
 		"a bad MAC": tampered, "another contact's number": forged, "another channel's": forOther,
