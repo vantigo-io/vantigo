@@ -168,7 +168,7 @@ func workers(d module.Deps) []worker.Worker {
 	if d.Config != nil && d.Config.InvoicesEhfEnabled {
 		ws = append(ws, NewEhfWorker(d), NewEhfEventsWorker(d))
 	}
-	ws = append(ws, NewReminderWorker(d), NewBillingWorker(d), NewAllocationReconcileWorker(d))
+	ws = append(ws, NewReminderWorker(d), NewBillingWorker(d), NewAllocationReconcileWorker(d), NewOverdueEventsWorker(d))
 	if d.Config != nil && d.Config.InvoicesVippsEnabled {
 		ws = append(ws, NewPaymentWorker(d))
 	}
