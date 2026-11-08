@@ -282,20 +282,6 @@ func (q *Queries) DeleteHandedOffOfConversations(ctx context.Context, conversati
 	return result.RowsAffected(), nil
 }
 
-const deleteItemsBefore = `-- name: DeleteItemsBefore :execrows
-DELETE FROM agents.review_items WHERE state <> 'waiting' AND created_at < $1::timestamptz
-`
-
-// Items whose run is kept but which were decided or lapsed long ago; the run
-// delete above cascades the rest.
-func (q *Queries) DeleteItemsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteItemsBefore, cutoff)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const deleteItemsOfConversations = `-- name: DeleteItemsOfConversations :execrows
 DELETE FROM agents.review_items WHERE conversation_id = ANY($1::uuid[]) OR customer_id = $2::integer
 `
