@@ -23,7 +23,8 @@ const (
 
 // workers are the module's workers (module.Module.Workers).
 func workers(d module.Deps) []worker.Worker {
-	return []worker.Worker{&runsWorker{s: newServer(d)}}
+	s := newServer(d)
+	return []worker.Worker{&runsWorker{s: s}, &reviewsWorker{s: s}, &retentionWorker{s: s}}
 }
 
 type runsWorker struct{ s *server }

@@ -244,6 +244,15 @@ func (s *server) DeleteAgentRole(ctx context.Context, req gen.DeleteAgentRoleReq
 		if err != nil {
 			return err
 		}
+		withdrawn, err := q.WithdrawWaitingItemsOfRole(ctx, store.WithdrawWaitingItemsOfRoleParams{RoleID: current.ID, Now: s.deps.Clock()})
+		if err != nil {
+			return fmt.Errorf("agents: withdraw what waited for the role: %w", err)
+		}
+		if err := handOffWithdrawn(ctx, q, refsOf(withdrawn, func(r store.WithdrawWaitingItemsOfRoleRow) convRef {
+			return convRef{r.AgentID, r.RoleID, r.ConversationID}
+		}), "The role was removed, so what waited for review was withdrawn.", s.deps.Clock()); err != nil {
+			return err
+		}
 		if err := q.DeleteRole(ctx, current.ID); err != nil {
 			return fmt.Errorf("agents: remove the role: %w", err)
 		}
@@ -299,6 +308,18 @@ func (s *server) SetAgentRoleChannels(ctx context.Context, req gen.SetAgentRoleC
 		}
 		if !owner && slices.ContainsFunc(want, func(c uuid.UUID) bool { return !slices.Contains(had, c) }) {
 			return errOwnerRequired
+		}
+		// What waits on a channel the role no longer answers is withdrawn (design §10).
+		if dropped := slices.DeleteFunc(slices.Clone(had), func(c uuid.UUID) bool { return slices.Contains(want, c) }); len(dropped) > 0 {
+			withdrawn, err := q.WithdrawWaitingItemsOfChannels(ctx, store.WithdrawWaitingItemsOfChannelsParams{RoleID: role.ID, ChannelIds: dropped, Now: s.deps.Clock()})
+			if err != nil {
+				return fmt.Errorf("agents: withdraw what waited on the unbound channels: %w", err)
+			}
+			if err := handOffWithdrawn(ctx, q, refsOf(withdrawn, func(r store.WithdrawWaitingItemsOfChannelsRow) convRef {
+				return convRef{r.AgentID, r.RoleID, r.ConversationID}
+			}), "The channel is no longer answered by the agent, so what waited for review was withdrawn.", s.deps.Clock()); err != nil {
+				return err
+			}
 		}
 		if err := q.DeleteRoleChannels(ctx, role.ID); err != nil {
 			return fmt.Errorf("agents: unbind the role's channels: %w", err)

@@ -128,6 +128,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agents/agents/{agentId}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List an agent's runs
+         * @description The agent's runs, newest first. Needs agents:activity, Communications' conversations-view and the read permissions of the role templates, because a run's summary quotes what the agent wrote.
+         */
+        get: operations["listAgentRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/agents/{agentId}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get an agent's usage
+         * @description Runs, tokens and the day's sent, held and discarded counts for the last days (30 by default, at most 90), on the business day, oldest first, with zeros for a day with nothing. It holds counts only.
+         */
+        get: operations["getAgentUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agents/agents/{agentId}/resume": {
         parameters: {
             query?: never;
@@ -265,6 +309,198 @@ export interface paths {
          * @description Gives the conversation back to the agent (Give back to the agent): the hand-off marker is cleared, so the agent answers the next message. Nothing happens when there is no marker. Needs Communications' conversations-manage.
          */
         delete: operations["giveBackConversation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the changes to the settings
+         * @description The Owner's changes to agents, roles, modes, levels, models and the settings (V25), newest first, with who made them and before and after.
+         */
+        get: operations["listAgentsAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the review queue
+         * @description The items agents leave for a person, the waiting ones first. state narrows to one state (waiting by default for the queue screen is the client's choice); agentId to one agent. Needs agents:review, Communications' conversations-view and the read permissions of the role's template, because the item holds what the agent read.
+         */
+        get: operations["listReviewItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/review/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count the items waiting for review
+         * @description How many items wait for a decision, for the badge on the agents tile. It holds no content, so it needs agents:review alone.
+         */
+        get: operations["getReviewCount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/review/{itemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a review item
+         * @description One item with the reply or the change, the rules that hold it, the score and the sources. Needs agents:review, Communications' conversations-view and the read permissions of the role's template, because the item holds what the agent read.
+         */
+        get: operations["getReviewItem"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/review/{itemId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a review item
+         * @description Sends the reply as the agent with the disclosure, or makes the change as the agent, on the reviewer's authority: the reviewer must satisfy the access rule of what the item does (reviewer_not_permitted). The pins, the hard rules S1, S2, S6 and C1, and whether the conversation was taken or has a newer message are checked again; a change is checked against the gate as it stands now, and withdrawn when its operation is now never. Guarded by If-Match; a second approval of the same reply sends once. Needs agents:review, Communications' conversations-view and the read permissions of the role's template, because the item holds what the agent read.
+         */
+        post: operations["approveReviewItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/review/{itemId}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Edit and send a reply
+         * @description Sends the reviewer's text instead of the agent's, with the disclosure above it, which cannot be removed. The rules S1, S2, S6 and C1 are checked on the edited text and hold it in the queue when they fail. Only a reply can be edited. Guarded by If-Match. Needs agents:review, Communications' conversations-view and the read permissions of the role's template, because the item holds what the agent read.
+         */
+        post: operations["sendEditedReviewItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/review/{itemId}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard a review item
+         * @description Discards the item with a reason. Discarding a reply hands the conversation off to the role's hand-off person, or to the Inbox. Guarded by If-Match. Needs agents:review, Communications' conversations-view and the read permissions of the role's template, because the item holds what the agent read.
+         */
+        post: operations["discardReviewItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/roles/{roleId}/calibration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roleId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a role's calibration
+         * @description For each threshold from 50 to 100, over the role's last 200 labelled replies (sent unchanged, edited and sent, discarded): the share that would have run by itself, and of those how many a person edited beyond 20 % or discarded; and the count a rule held whatever the score. With fewer than 50 labelled replies it answers notEnoughHistory and the count.
+         */
+        get: operations["getRoleCalibration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/runs/{runId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a run
+         * @description A run with the timeline of its tool calls, the verdict and the mode's decision, the items it left and its transcript, which holds the customer's messages. Needs agents:activity, Communications' conversations-view and the read permissions of the run's role template.
+         */
+        get: operations["getAgentRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -555,13 +791,15 @@ export interface components {
             /** @description Up to 1,500 characters. */
             style: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503). errors carries the field errors of a 400. */
+        /** @description An RFC 9457 problem with this module's refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503), and for the review queue reviewer_not_permitted (403), item_decided (409), held (422, rules names them), channel_refused (422) and send_unknown (502). errors carries the field errors of a 400. */
         AgentsProblem: {
             code?: string | null;
             detail?: string | null;
             errors?: {
                 [key: string]: string[];
             };
+            /** @description The rules that hold a reviewed item (held), such as S1 or C1. */
+            rules?: string[];
             /** Format: int32 */
             status?: number | null;
             title?: string | null;
@@ -575,7 +813,12 @@ export interface components {
             models: string[];
             /**
              * Format: int32
-             * @description How long a run is kept, 1 to 60.
+             * @description The longest retention Communications' own message retention allows (V26); a longer retentionMonths is lowered to it, when saved and every night.
+             */
+            retentionCapMonths: number;
+            /**
+             * Format: int32
+             * @description How long a run is kept, 1 to 60, and never longer than Communications keeps its messages.
              */
             retentionMonths: number;
             /** Format: date-time */
@@ -591,6 +834,333 @@ export interface components {
              * @description 1 to 60.
              */
             retentionMonths: number;
+        };
+        /** @description One change of the Owner's settings (V25), with before and after. */
+        AgentAuditEvent: {
+            /** @description What changed, such as agent.changed, role.changed, permission.changed, role.channels.changed or settings.changed. */
+            action: string;
+            /** Format: uuid */
+            actorUserId: string;
+            /** @description Null for what was deleted. */
+            after: {
+                [key: string]: unknown;
+            } | null;
+            /** Format: date-time */
+            at: string;
+            /** @description Null for what was created. */
+            before: {
+                [key: string]: unknown;
+            } | null;
+            /** Format: int64 */
+            id: number;
+            /** @description The agent, role or agent and permission key the change was about. */
+            target: string | null;
+        };
+        AgentAuditList: {
+            events: components["schemas"]["AgentAuditEvent"][];
+            /** Format: int32 */
+            limit: number;
+            /** Format: int32 */
+            offset: number;
+            /** Format: int64 */
+            total: number;
+        };
+        /** @description One run of an agent on a conversation (V14). */
+        AgentRun: {
+            /** Format: uuid */
+            agentId: string;
+            /** Format: int32 */
+            attempt: number;
+            /** Format: uuid */
+            conversationId: string;
+            /** Format: date-time */
+            endedAt: string | null;
+            errorCode: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            inputTokens: number;
+            /** Format: int32 */
+            modelTurns: number;
+            /** @description What the run ended in: sent, review, handed_off or no_reply. */
+            outcome: string | null;
+            /** Format: int64 */
+            outputTokens: number;
+            reason: string;
+            /** Format: uuid */
+            roleId: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** @enum {string} */
+            state: "queued" | "running" | "done" | "waiting_review" | "handed_off" | "failed" | "stopped";
+            /** @description The note a hand-off carries: what the agent found, or why it could not go on. */
+            summary: string | null;
+            /** Format: int32 */
+            toolCalls: number;
+        };
+        /** @description One tool call of a run (V25). It never holds a body. */
+        AgentRunAction: {
+            /**
+             * Format: uuid
+             * @description The reviewer whose approval the call was made on.
+             */
+            approvedByUserId: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int32 */
+            durationMs: number;
+            /** Format: int32 */
+            httpStatus: number | null;
+            /** Format: int64 */
+            id: number;
+            mode: string;
+            operationId: string;
+            /** @description The operation and the ids it named. */
+            ref: string;
+            /** @description The operation returns a customer's data. */
+            scoped: boolean;
+            status: string;
+        };
+        AgentRunDetail: {
+            actions: components["schemas"]["AgentRunAction"][];
+            /** @description The review items the run left (V20), with the verdict each carries. */
+            items: components["schemas"]["ReviewItem"][];
+            run: components["schemas"]["AgentRun"];
+            transcript: components["schemas"]["AgentRunMessage"][];
+            /** @description What the pipeline decided for the run's reply: the mode and threshold, the score before and after the sources were checked, the valid sources, the rules that held or stopped it, and whether it was sent. Absent for a run that proposed no reply. */
+            verdict?: {
+                [key: string]: unknown;
+            };
+        };
+        AgentRunList: {
+            /** Format: int32 */
+            limit: number;
+            /** Format: int32 */
+            offset: number;
+            runs: components["schemas"]["AgentRun"][];
+            /** Format: int64 */
+            total: number;
+        };
+        /** @description One message of a run's transcript (V14). It copies message bodies, so it is deleted with the run. */
+        AgentRunMessage: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            id: number;
+            role: string;
+            text: string;
+            toolCallId: string | null;
+            /** @description The tool calls an assistant message asked for. */
+            toolCalls: {
+                [key: string]: unknown;
+            }[] | null;
+        };
+        AgentUsage: {
+            /** Format: uuid */
+            agentId: string;
+            /**
+             * Format: int32
+             * @description Null for none.
+             */
+            dailyTokenBudget: number | null;
+            /** @description One entry for each of the last days, the oldest first, zeros for a day with nothing. */
+            days: components["schemas"]["AgentUsageDay"][];
+        };
+        AgentUsageDay: {
+            /** Format: date */
+            day: string;
+            /** Format: int32 */
+            discarded: number;
+            /** Format: int32 */
+            held: number;
+            /** Format: int64 */
+            inputTokens: number;
+            /** Format: int64 */
+            outputTokens: number;
+            /** Format: int32 */
+            runs: number;
+            /** Format: int32 */
+            sent: number;
+        };
+        /** @description What a threshold of x would have done over the role's labelled items. */
+        CalibrationPoint: {
+            /**
+             * Format: int32
+             * @description The items that would have run by itself, score at least x and no rule holding them.
+             */
+            autoCount: number;
+            /**
+             * Format: double
+             * @description autoCount of the labelled items, 0 to 1.
+             */
+            autoShare: number;
+            /**
+             * Format: int32
+             * @description Of those, the ones a person edited beyond 20 % or discarded.
+             */
+            badCount: number;
+            /**
+             * Format: double
+             * @description badCount of autoCount, 0 to 1; 0 when none would have run by itself.
+             */
+            badShare: number;
+            /** Format: int32 */
+            x: number;
+        };
+        /** @description A change the agent asks to make, with the preview the Assistant shows (V20). */
+        ReviewChange: {
+            body?: {
+                [key: string]: unknown;
+            };
+            /** @description One sentence from the agent saying what the change will do. */
+            explain: string;
+            operationId: string;
+            pathParams?: {
+                [key: string]: unknown;
+            };
+            query?: {
+                [key: string]: unknown;
+            };
+            summary: string;
+        };
+        ReviewCount: {
+            /**
+             * Format: int64
+             * @description The items waiting for a decision, for the badge on the agents tile.
+             */
+            waiting: number;
+        };
+        ReviewDiscardRequest: {
+            /** @enum {string} */
+            reason: "wrong_facts" | "wrong_tone" | "should_not_answer" | "other";
+            /** @description An optional explanation, up to 2,000 characters. */
+            text?: string;
+        };
+        /** @description What a run leaves for a person (V20): a reply or a change. */
+        ReviewItem: {
+            /** Format: uuid */
+            agentId: string;
+            agentName: string;
+            change?: components["schemas"]["ReviewChange"];
+            /** Format: uuid */
+            conversationId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            decidedAt: string | null;
+            /**
+             * Format: uuid
+             * @description The reviewer, kept as an opaque id.
+             */
+            decidedByUserId: string | null;
+            /** @enum {string|null} */
+            discardReason: "wrong_facts" | "wrong_tone" | "should_not_answer" | "other" | null;
+            discardText: string | null;
+            /**
+             * Format: double
+             * @description How much of the text a reviewer changed, 0 to 1, character by character.
+             */
+            editRatio: number | null;
+            /**
+             * Format: date-time
+             * @description When the item lapses, a day after it was made, or for a Messenger reply 15 minutes before the window closes.
+             */
+            expiresAt: string;
+            /** @description The rules that hold the item: S1 to S5, C1, C2, CHANGE and SEND. The interface words them. */
+            heldBy: string[];
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "reply" | "change";
+            /**
+             * Format: int32
+             * @description The model's own score before the sources were checked.
+             */
+            modelScore: number;
+            outcome: string | null;
+            reply?: components["schemas"]["ReviewReply"];
+            /** Format: uuid */
+            roleId: string;
+            roleName: string | null;
+            /** Format: uuid */
+            runId: string;
+            /**
+             * Format: int32
+             * @description The score after the sources were checked: 0 with no valid source.
+             */
+            score: number;
+            /** @description The sources the run read that support the item. */
+            sources: string[];
+            /** @enum {string} */
+            state: "waiting" | "sent" | "edited_sent" | "discarded" | "withdrawn" | "expired";
+            /** Format: int32 */
+            version: number;
+            /**
+             * Format: date-time
+             * @description The close of a Messenger reply window, for the countdown.
+             */
+            windowClosesAt: string | null;
+        };
+        ReviewItemList: {
+            items: components["schemas"]["ReviewItem"][];
+            /** Format: int32 */
+            limit: number;
+            /** Format: int32 */
+            offset: number;
+            /** Format: int64 */
+            total: number;
+        };
+        /** @description A reply waiting to be sent. The disclosure goes above the text, locked, and is added whatever the reviewer edits. */
+        ReviewReply: {
+            /** @description Answer options or cards, when the channel takes them. */
+            components?: {
+                [key: string]: unknown;
+            };
+            /** @description The opening line that names the agent and says it is an AI (V11). */
+            disclosure: string;
+            /**
+             * Format: uuid
+             * @description The message the reply answers.
+             */
+            inReplyToMessageId?: string;
+            /** @description What the agent wrote, without the disclosure. */
+            text: string;
+        };
+        ReviewSendRequest: {
+            /** @description Answer options or cards, replacing the agent's. Absent keeps them. */
+            components?: {
+                [key: string]: unknown;
+            };
+            /** @description The reviewer's text, without the disclosure, which is added. */
+            text: string;
+        };
+        /** @description How the role's score has agreed with its reviewers over its last labelled replies (V21). */
+        RoleCalibration: {
+            /**
+             * Format: int32
+             * @description The labelled replies a rule held, whatever their score.
+             */
+            heldCount: number;
+            /**
+             * Format: int32
+             * @description How many labelled replies the figures rest on, at most 200.
+             */
+            labelled: number;
+            /**
+             * Format: int32
+             * @description The labelled replies needed before the figures are shown.
+             */
+            minimum: number;
+            notEnoughHistory: boolean;
+            /** @description One point for each threshold from 50 to 100; empty when there is not enough history. */
+            points: components["schemas"]["CalibrationPoint"][];
+            /** Format: uuid */
+            roleId: string;
+            /**
+             * Format: int32
+             * @description The threshold the role has now.
+             */
+            threshold: number;
         };
         AuthErrorResponse: {
             error: {
@@ -1114,6 +1684,124 @@ export interface operations {
             };
         };
     };
+    listAgentRuns: {
+        parameters: {
+            query?: {
+                /** @description Only runs in this state. */
+                state?: "queued" | "running" | "done" | "waiting_review" | "handed_off" | "failed" | "stopped";
+                /** @description At most this many, 1 to 200; 50 by default. */
+                limit?: number;
+                /** @description Skip this many. */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRunList"];
+                };
+            };
+            /** @description Bad Request - a filter is not valid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden - reviewer_not_permitted, or the session's own refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Not Found - not_found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+        };
+    };
+    getAgentUsage: {
+        parameters: {
+            query?: {
+                /** @description How many days, 1 to 90; 30 by default. */
+                days?: number;
+            };
+            header?: never;
+            path: {
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentUsage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found - not_found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+        };
+    };
     resumeAgent: {
         parameters: {
             query?: never;
@@ -1545,6 +2233,550 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    listAgentsAudit: {
+        parameters: {
+            query?: {
+                /** @description At most this many, 1 to 200; 50 by default. */
+                limit?: number;
+                /** @description Skip this many. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAuditList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    listReviewItems: {
+        parameters: {
+            query?: {
+                /** @description Only this agent's items. */
+                agentId?: string;
+                /** @description Only items in this state. */
+                state?: "waiting" | "sent" | "edited_sent" | "discarded" | "withdrawn" | "expired";
+                /** @description At most this many, 1 to 200; 50 by default. */
+                limit?: number;
+                /** @description Skip this many. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewItemList"];
+                };
+            };
+            /** @description Bad Request - a filter is not valid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden - reviewer_not_permitted (the caller lacks a permission the item's content needs), or the session's own refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+        };
+    };
+    getReviewCount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewCount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getReviewItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewItem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden - reviewer_not_permitted, or the session's own refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Not Found - not_found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+        };
+    };
+    approveReviewItem: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The version the item was read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK - the item is now sent, or withdrawn when the conversation was taken, has a newer message, its window closed or the change is no longer allowed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewItem"];
+                };
+            };
+            /** @description Bad Request - an If-Match that is not a version */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden - reviewer_not_permitted (the caller may not do what the item would do), or the session's own refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Not Found - not_found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Conflict - version_conflict (another reviewer decided first), or item_decided (the item is no longer waiting). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Unprocessable Entity - held (a rule that holds in every mode holds the text now; the item stays and rules names them), or channel_refused (the channel refused the message; edit it). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Bad Gateway - send_unknown (it is not known whether the reply was sent; sending again is safe, the reply is idempotent). */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+        };
+    };
+    sendEditedReviewItem: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The version the item was read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewSendRequest"];
+            };
+        };
+        responses: {
+            /** @description OK - the item is now edited_sent, or withdrawn */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewItem"];
+                };
+            };
+            /** @description Bad Request - the text is not valid, or an If-Match that is not a version */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden - reviewer_not_permitted (the caller may not do what the item would do), or the session's own refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Not Found - not_found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Conflict - version_conflict (another reviewer decided first), or item_decided (the item is no longer waiting). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Unprocessable Entity - held (a rule that holds in every mode holds the text now; the item stays and rules names them), or channel_refused (the channel refused the message; edit it). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Bad Gateway - send_unknown (it is not known whether the reply was sent; sending again is safe, the reply is idempotent). */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+        };
+    };
+    discardReviewItem: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The version the item was read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewDiscardRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewItem"];
+                };
+            };
+            /** @description Bad Request - the reason is not valid, or an If-Match that is not a version */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden - reviewer_not_permitted, or the session's own refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Not Found - not_found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Conflict - version_conflict, or item_decided. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+        };
+    };
+    getRoleCalibration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleCalibration"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found - not_found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+        };
+    };
+    getAgentRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRunDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden - reviewer_not_permitted (the caller lacks a permission the transcript needs), or the session's own refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Not Found - not_found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
                 };
             };
         };

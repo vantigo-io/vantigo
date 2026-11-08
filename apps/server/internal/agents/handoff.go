@@ -13,6 +13,7 @@ package agents
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -58,6 +59,8 @@ const (
 	handCap         = "cap"
 	handAgent       = "hand_off"
 	handDiscarded   = "discarded"
+	handExpired     = "expired"
+	handWithdrawn   = "withdrawn"
 	handNoReply     = "no_reply"
 	handUnknownSend = "send_unknown"
 )
@@ -200,6 +203,11 @@ func (s *server) finishHandOff(ctx context.Context, q *store.Queries, run store.
 		return err
 	}
 	grant, err := s.deps.AgentGrants.Issue(ctx, contracts.IssueAgentGrant{AgentUserID: agent.UserID, AgentID: agent.ID, RunID: run.ID})
+	if errors.Is(err, contracts.ErrAgentInactive) || errors.Is(err, contracts.ErrNotAgent) {
+		// A deleted agent cannot write a note or give up the assignee; the marker keeps
+		// the trigger away, and that is all there is left to do.
+		return q.SetRunOutcome(ctx, store.SetRunOutcomeParams{ID: run.ID, Outcome: ptr(outcomeHandedOf)})
+	}
 	if err != nil {
 		return err
 	}
@@ -209,6 +217,7 @@ func (s *server) finishHandOff(ctx context.Context, q *store.Queries, run store.
 	if res, err := s.callAs(ctx, grant, operations.CallRequest{OperationID: opGetConversation, PathParams: map[string]any{"id": run.ConversationID.String()}}); err == nil && res.Status == 200 {
 		if c, err := parseConversation(res.Body); err == nil {
 			assigned = c.AssignedUserID
+			s.noteLinks(ctx, c)
 		}
 	}
 	summary := ""

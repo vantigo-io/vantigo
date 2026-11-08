@@ -157,8 +157,8 @@ SELECT * FROM agents.actions WHERE run_id = @run_id ORDER BY id;
 -- name: InsertReviewItem :exec
 -- state is waiting for an item a person decides, withdrawn for one the pipeline
 -- stopped (S6, S7, a conversation someone took).
-INSERT INTO agents.review_items (id, run_id, agent_id, role_id, conversation_id, customer_id, kind, item, score, sources, model_score, held_by, state, decided_at, expires_at, created_at)
-VALUES (@id, @run_id, @agent_id, @role_id, @conversation_id, sqlc.narg(customer_id)::integer, @kind, @item, @score, @sources, @model_score,
+INSERT INTO agents.review_items (id, run_id, agent_id, role_id, conversation_id, channel_id, customer_id, kind, item, score, sources, model_score, held_by, state, decided_at, expires_at, created_at)
+VALUES (@id, @run_id, @agent_id, @role_id, @conversation_id, sqlc.narg(channel_id)::uuid, sqlc.narg(customer_id)::integer, @kind, @item, @score, @sources, @model_score,
         @held_by::text[], @state, sqlc.narg(decided_at)::timestamptz, @expires_at::timestamptz, @now::timestamptz);
 
 -- name: ListReviewItemsOfRun :many
@@ -208,3 +208,8 @@ SELECT conversation_id FROM agents.seen_senders WHERE channel_id = @channel_id A
 -- name: WithdrawWaitingItemsOfConversation :execrows
 UPDATE agents.review_items SET state = 'withdrawn', decided_at = @now::timestamptz, version = version + 1
 WHERE conversation_id = @conversation_id AND state = 'waiting';
+
+-- name: WithdrawWaitingItemsOfRole :many
+UPDATE agents.review_items SET state = 'withdrawn', decided_at = @now::timestamptz, version = version + 1
+WHERE role_id = @role_id AND state = 'waiting'
+RETURNING id, agent_id, role_id, conversation_id;

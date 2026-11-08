@@ -389,6 +389,15 @@ func (s *server) DeleteAgent(ctx context.Context, req gen.DeleteAgentRequestObje
 		if _, err := q.SetAgentState(ctx, store.SetAgentStateParams{ID: current.ID, State: stateDeleted, Now: s.deps.Clock()}); err != nil {
 			return fmt.Errorf("agents: delete the agent: %w", err)
 		}
+		withdrawn, err := q.WithdrawWaitingItemsOfAgent(ctx, store.WithdrawWaitingItemsOfAgentParams{AgentID: current.ID, Now: s.deps.Clock()})
+		if err != nil {
+			return fmt.Errorf("agents: withdraw what waited for the agent: %w", err)
+		}
+		if err := handOffWithdrawn(ctx, q, refsOf(withdrawn, func(r store.WithdrawWaitingItemsOfAgentRow) convRef {
+			return convRef{r.AgentID, r.RoleID, r.ConversationID}
+		}), "The agent was deleted, so what waited for its review was withdrawn.", s.deps.Clock()); err != nil {
+			return err
+		}
 		if err := q.DeleteChannelsOfAgent(ctx, current.ID); err != nil {
 			return fmt.Errorf("agents: free the agent's channels: %w", err)
 		}

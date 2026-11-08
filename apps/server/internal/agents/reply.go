@@ -130,7 +130,17 @@ func (rs *runState) reply(ctx context.Context, raw json.RawMessage) agentloop.Re
 		Score: score, CarriesCustomerData: scoped, Facts: facts, Check: chk,
 	})
 
-	item, _ := json.Marshal(map[string]any{"text": body, "disclosure": line, "components": components, "attachments": []string{}})
+	stored := map[string]any{"text": body, "disclosure": line, "components": components, "attachments": []string{}}
+	if in != nil {
+		// The message the reply answers: an approval sends to it, and a newer
+		// message makes the reply stale (conversation_moved).
+		stored["inReplyToMessageId"] = in.ID
+	}
+	if rs.conv.Reply != nil && rs.conv.Reply.ClosesAt != nil {
+		stored["windowClosesAt"] = rs.conv.Reply.ClosesAt
+	}
+	item, _ := json.Marshal(stored)
+	rs.recordVerdict(ctx, ruleInput{Mode: rs.role.ReplyMode, Threshold: int(rs.role.Threshold)}, dec, score, *a.Score, valid)
 
 	if len(dec.Refused) > 0 {
 		// Not sent, not queued: withdrawn, and the conversation handed off.
@@ -152,8 +162,27 @@ func (rs *runState) reply(ctx context.Context, raw json.RawMessage) agentloop.Re
 	return rs.queue(ctx, item, score, valid, *a.Score, dec.Held)
 }
 
-// queue leaves the reply for a person.
+// recordVerdict keeps what the pipeline decided for the run's reply, for the
+// activity screen: also for a reply that goes out by itself and so leaves no
+// review item.
+func (rs *runState) recordVerdict(ctx context.Context, in ruleInput, dec decision, score, modelScore int, valid []string) {
+	verdict, _ := json.Marshal(map[string]any{
+		"mode": in.Mode, "threshold": in.Threshold, "score": score, "modelScore": modelScore, "sources": valid,
+		"held": dec.Held, "refused": dec.Refused, "sent": dec.Send,
+	})
+	if err := store.New(rs.s.deps.Pool).SetRunVerdict(context.WithoutCancel(ctx), store.SetRunVerdictParams{ID: rs.run.ID, Verdict: verdict}); err != nil {
+		rs.s.warn("agents: keep a run's verdict", "run", rs.run.ID, "err", err)
+	}
+}
+
+// queue leaves the reply for a person. A reply that still waits on the
+// conversation is superseded by this newer one.
 func (rs *runState) queue(ctx context.Context, item json.RawMessage, score int, valid []string, modelScore int, held []string) agentloop.Result {
+	if _, err := store.New(rs.s.deps.Pool).WithdrawWaitingRepliesOfConversation(context.WithoutCancel(ctx), store.WithdrawWaitingRepliesOfConversationParams{
+		ConversationID: rs.run.ConversationID, Now: rs.s.deps.Clock(),
+	}); err != nil {
+		rs.s.warn("agents: withdraw the replies this one supersedes", "run", rs.run.ID, "err", err)
+	}
 	id, err := rs.insertItem(ctx, "reply", item, score, valid, modelScore, held, "waiting", rs.expiry(true))
 	if err != nil {
 		return agentloop.Result{Content: agentloop.Wrap(map[string]string{"error": "call_failed", "message": "the reply could not be queued"}), Status: "error", Mode: "tool", Operation: "tool:" + toolReply}
@@ -169,10 +198,6 @@ func (rs *runState) queue(ctx context.Context, item json.RawMessage, score int, 
 // send sends the reply through Communications as the agent. The reply is
 // idempotent per agent, conversation and answered message, so a retry sends once.
 func (rs *runState) send(ctx context.Context, full string, components json.RawMessage, item json.RawMessage, score int, valid []string, modelScore int, held []string) agentloop.Result {
-	payload := map[string]any{"textBody": full}
-	if components != nil {
-		payload["components"] = components
-	}
 	// The agent may have been paused, or the run taken over, since the last turn.
 	if !rs.stillMine(ctx) {
 		return agentloop.Refused("run_stopped", "this run was stopped; nothing was sent")
@@ -181,14 +206,7 @@ func (rs *runState) send(ctx context.Context, full string, components json.RawMe
 	if answered == nil {
 		return agentloop.Refused("no_sender", "there is no message to answer")
 	}
-	payload["inReplyToMessageId"] = answered.ID
-	body, _ := json.Marshal(payload)
-	// One key per agent, conversation and answered message: a retry and the
-	// original can never both send.
-	key := "agents-" + rs.agent.ID.String() + "-" + rs.run.ConversationID.String() + "-" + answered.ID.String()
-	res, err := rs.call(ctx, operations.CallRequest{
-		OperationID: opReply, PathParams: rs.own(), Body: body, Headers: map[string]string{"Idempotency-Key": key},
-	})
+	res, err := rs.call(ctx, replyRequest(rs.agent.ID, rs.run.ConversationID, answered.ID, full, components))
 	if err != nil {
 		var oe *operations.Error
 		if asOpError(err, &oe) {
@@ -259,6 +277,22 @@ func (rs *runState) send(ctx context.Context, full string, components json.RawMe
 	}
 	rs.s.warn("agents: the reply was refused", "run", rs.run.ID, "status", res.Status, "code", code)
 	return rs.queueFailed(ctx, item, score, valid, modelScore, "SEND")
+}
+
+// replyRequest is the call that sends a reply through Communications as the
+// agent, to the message it answers. The reply is idempotent per agent,
+// conversation and answered message: one key, so a retry, a second approval and
+// the original can never all send (V20).
+func replyRequest(agentID, conversationID, answered uuid.UUID, full string, components json.RawMessage) operations.CallRequest {
+	payload := map[string]any{"textBody": full, "inReplyToMessageId": answered}
+	if components != nil {
+		payload["components"] = components
+	}
+	body, _ := json.Marshal(payload)
+	key := "agents-" + agentID.String() + "-" + conversationID.String() + "-" + answered.String()
+	return operations.CallRequest{
+		OperationID: opReply, PathParams: map[string]any{"id": conversationID.String()}, Body: body, Headers: map[string]string{"Idempotency-Key": key},
+	}
 }
 
 // queueFailed holds a reply whose send failed for a person to look at.
