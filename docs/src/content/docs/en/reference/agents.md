@@ -244,7 +244,7 @@ becomes a review item as before; one whose outcome is unknown is not retried or 
 off. The front desk and the reminder replies mark `patchCommunicationsConversationsById` (its body pinned to `status`).
 Raising `start_mode` or `change_mode`, or lowering the threshold while any mode is not Review, is the Owner's alone.
 
-### The front desk
+### The front desk template
 
 `front_desk` (default name *Front desk*). It answers
 the conversations that come in on the channels its role is bound to.
