@@ -160,6 +160,19 @@ var markedByHand = map[string]string{
 	"listAgentTemplates":     "never",
 	"giveBackConversation":   "never",
 	"getConversationHandOff": "never",
+	// The review queue and what it shows (V20): deciding what an agent proposes is a
+	// person's, and the queue, a run and the audit show what the agent read.
+	"listReviewItems":      "never",
+	"getReviewCount":       "never",
+	"getReviewItem":        "never",
+	"approveReviewItem":    "never",
+	"sendEditedReviewItem": "never",
+	"discardReviewItem":    "never",
+	"getRoleCalibration":   "never",
+	"getAgentUsage":        "never",
+	"listAgentRuns":        "never",
+	"getAgentRun":          "never",
+	"listAgentsAudit":      "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {
