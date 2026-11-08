@@ -36,12 +36,15 @@ under [Messenger-samtaler](#messenger-samtaler).
 antall øverst. Hver rad viser motparten (navnet, eller adressen når navnet er ukjent) ved siden av et
 lite ikon for kanalen — en konvolutt for e-post, Messenger-logoen for en chat —, når noe
 sist skjedde, emnet (en chat har ikke noe, og viser **Facebook Messenger** i stedet),
-en forhåndsvisning av den siste teksten, samtalens tagger og statusen dens. En ulest samtale vises i fet skrift.
+en forhåndsvisning av den siste teksten, samtalens tagger og statusen dens, og en liten avatar med initialene til den samtalen er tildelt,
+når noen har den (hold musen over for å se navnet). En ulest samtale vises i fet skrift.
 
 Verktøylinjen filtrerer listen:
 
 - **Alle / Åpne / Lukkede / Arkiverte** velger en status; Alle er standard.
 - **Uleste** beholder bare samtaler med noe du ikke har lest.
+- Velgeren for ansvarlig (plassholder **Alle**) beholder samtaler som er **Tildelt meg**, de som er
+  **Ikke tildelt**, eller de som er tildelt én bestemt person du finner ved å skrive navnet.
 - Taggvelgeren (plassholder **Alle tagger**) beholder samtaler med én bestemt tagg.
 
 Endrer du et filter, forsvinner den valgte samtalen, siden den kanskje ikke lenger er i
@@ -91,7 +94,7 @@ samtale som lest bare fordi du åpnet den (bruk **Marker som lest**). En e-post 
 forminsket så den passer. Et svar du har halvskrevet er der
 fortsatt når du går til en annen app og tilbake, eller lukker panelet og åpner det igjen. Hva du kan gjøre følger
 tilgangene dine, som i Innboksen: uten `communications:conversations-reply` er skrivefeltet skrivebeskyttet; uten
-`communications:conversations-manage` er statusvalget deaktivert, og kontrollene for tagger, arkivering og kunde vises ikke.
+`communications:conversations-manage` er statusvalget og valget av ansvarlig deaktivert, og kontrollene for tagger, arkivering og kunde vises ikke.
 
 **Det holder seg oppdatert.** Som Innboksen er panelet sanntid (se [Innboks oppdaterer seg selv](#innboks-oppdaterer-seg-selv)):
 mens det er foran, endrer listen og den åpne samtalen seg i løpet av et øyeblikk når det kommer en ny melding eller en
@@ -139,12 +142,17 @@ som venter på å bli sjekket, vises som **Skanner**, og et som ikke kan leveres
 Fra toppen kan du:
 
 - endre **Status** (`open`, `closed` eller `archived`);
+- velge **Ansvarlig**, kollegaen som har samtalen, ved siden av statusen: skriv et navn for å søke
+  blant de aktive brukerne, velg én, og samtalen tildeles vedkommende med avataren vist. Alle som
+  kan behandle samtaler, kan tildele en til enhver aktiv kollega, seg selv inkludert. Tøm velgeren
+  (**Fjern ansvarlig**) for å la samtalen stå uten ansvarlig. En kollega som siden er deaktivert,
+  tilbys ikke og kan ikke tildeles;
 - åpne **Handlinger** → **Marker som lest**, som fjerner ulest-markeringen, eller
   **Arkiver**;
 - legge til en tagg fra velgeren **Legg til tagg**, eller fjerne en med × på den. Bare
   tagger som allerede finnes, tilbys; Innboks oppretter ikke nye.
 
-Å lese krever `communications:conversations-view`; å endre status og tagger krever i
+Å lese krever `communications:conversations-view`; å endre status, ansvarlig og tagger krever i
 tillegg `communications:conversations-manage`.
 
 ### Se hvem andre som er i en samtale
@@ -716,7 +724,7 @@ annen e-post, og adressen må legges til her for hånd. Blokkeringer krever
 | --- | --- |
 | Åpne Innboks, lese samtaler, markere dem som lest, laste ned vedlegg og originaler | `communications:conversations-view` |
 | Svare, legge ved filer, skrive utkast med KI | `communications:conversations-reply`, sammen med view |
-| Endre status, tagger og kundekobling, legge til notater, be om et kundeforslag, knytte en Messenger-person til en kontakt og hente en kontakts Messenger-lenke | `communications:conversations-manage`, sammen med view |
+| Endre status, ansvarlig, tagger og kundekobling, legge til notater, be om et kundeforslag, knytte en Messenger-person til en kontakt og hente en kontakts Messenger-lenke | `communications:conversations-manage`, sammen med view |
 | Se og administrere Kanaler | `communications:channels-manage` |
 | Se og administrere Blokkeringer | `communications:suppressions-manage` |
 

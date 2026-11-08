@@ -35,12 +35,15 @@ count at the top. Each row shows the other party (their name, or their address w
 no name is known) beside a small icon for the channel — an envelope for email, the
 Messenger logo for a chat —, when something last happened, the subject (a chat has none,
 and shows **Facebook Messenger** in its place), a preview of the latest
-text, the conversation's tags and its status. An unread conversation is shown in bold.
+text, the conversation's tags and its status, and a small avatar with the initials of the person
+it is assigned to, when there is one (hover it for the name). An unread conversation is shown in bold.
 
 The toolbar filters the list:
 
 - **All / Open / Closed / Archived** picks a status; All is the default.
 - **Unread** keeps only conversations with something you have not read.
+- The assignee selector (placeholder **Anyone**) keeps the conversations **Assigned to me**, the
+  ones that are **Unassigned**, or those assigned to one person you find by typing their name.
 - The tag selector (placeholder **All tags**) keeps conversations carrying one tag.
 
 Changing a filter drops the selected conversation, since it may no longer be in the
@@ -91,7 +94,7 @@ how the badge clears; the Inbox page does not mark a conversation read just beca
 e-mail wider than the panel is shown scaled down to fit. A reply you have half written is still there when you go to another app and
 come back, or close the panel and open it again. What you may do follows your permissions, as in the
 Inbox: without `communications:conversations-reply` the composer is read-only; without
-`communications:conversations-manage` the status control is disabled and the tag, archive and customer controls are not shown.
+`communications:conversations-manage` the status and assignee controls are disabled and the tag, archive and customer controls are not shown.
 
 **It stays current.** Like the Inbox, the panel is live (see [The Inbox updates by itself](#the-inbox-updates-by-itself)):
 while it is in front, the list and the open conversation change within a moment of a new message or a
@@ -139,12 +142,17 @@ as **Attachment unavailable**.
 From the header you can:
 
 - change the **Status** (`open`, `closed` or `archived`);
+- choose the **Assignee**, the colleague who has the conversation, beside the status: type a name
+  to search the active users, pick one, and the conversation is assigned to them with their avatar
+  shown. Anyone who may manage conversations may assign one to any active colleague, themselves
+  included. Clear the selector (**Unassign**) to leave the conversation with no one. A colleague who
+  has since been disabled is not offered, and cannot be assigned;
 - open **Actions** → **Mark read**, which clears the unread marking, or **Archive**;
 - add a tag from the **Add tag** selector, or remove one with the × on it. Only tags
   that already exist are offered; the Inbox does not create new ones.
 
-Reading needs `communications:conversations-view`; changing the status and the tags
-needs `communications:conversations-manage` as well.
+Reading needs `communications:conversations-view`; changing the status, the assignee and the
+tags needs `communications:conversations-manage` as well.
 
 ### See who else is in a conversation
 
@@ -710,7 +718,7 @@ Suppressions need `communications:suppressions-manage`.
 | --- | --- |
 | Open the Inbox, read conversations, mark them read, download attachments and originals | `communications:conversations-view` |
 | Reply, attach files, draft with AI | `communications:conversations-reply`, with view |
-| Change status, tags and customer link, add notes, ask for a customer suggestion, link a Messenger person to a contact and get a contact's Messenger link | `communications:conversations-manage`, with view |
+| Change status, assignee, tags and customer link, add notes, ask for a customer suggestion, link a Messenger person to a contact and get a contact's Messenger link | `communications:conversations-manage`, with view |
 | See and manage Channels | `communications:channels-manage` |
 | See and manage Suppressions | `communications:suppressions-manage` |
 
