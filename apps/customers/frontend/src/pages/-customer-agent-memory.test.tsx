@@ -19,6 +19,7 @@ const memory = (patch: Partial<Memory> = {}): Memory => ({
     {
       agentId: "a1",
       agentName: "Hanna",
+      full: false,
       notes: [
         { id: "n1", text: "Prefers e-mail, never phone.", createdAt: "2026-11-08T10:00:00Z" },
         { id: "n2", text: "Has a dog called Pepper.", createdAt: "2026-11-01T10:00:00Z" },
@@ -89,5 +90,13 @@ describe("What an agent remembers on the customer page", () => {
     await userEvent.click(await screen.findByRole("button", { name: /What Hanna remembers/ }));
     expect(screen.getByText("Prefers e-mail, never phone.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Delete the note/, hidden: true })).not.toBeInTheDocument();
+  });
+
+  it("says when the agent's memory about the customer is full", async () => {
+    const all = memory();
+    renderSection(vi.fn().mockResolvedValue(json(200, { ...all, agents: [{ ...all.agents[0], full: true }] })));
+    await userEvent.click(await screen.findByRole("button", { name: /What Hanna remembers/ }));
+    expect(screen.getByText("full")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-memory-full")).toHaveTextContent("memory about this customer is full");
   });
 });

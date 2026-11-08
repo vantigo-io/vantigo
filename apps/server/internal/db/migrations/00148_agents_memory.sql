@@ -41,7 +41,9 @@ CREATE INDEX ix_suggestions_items ON agents.instruction_suggestions USING gin (i
 
 -- When the weekly check last looked at a role, so that it looks once a week
 -- whichever replica runs the worker.
+-- feedback_since is the end of the corrections the last real check read.
 ALTER TABLE agents.roles ADD COLUMN feedback_checked_at timestamptz;
+ALTER TABLE agents.roles ADD COLUMN feedback_since timestamptz;
 
 -- A person answered over an Auto-sent reply within 24 hours (V21): the run's
 -- reply is then a bad label for its score.
@@ -51,6 +53,7 @@ CREATE INDEX ix_runs_sent ON agents.runs (role_id, ended_at) WHERE outcome = 'se
 -- +goose Down
 DROP INDEX agents.ix_runs_sent;
 ALTER TABLE agents.runs DROP COLUMN answered_over_at;
+ALTER TABLE agents.roles DROP COLUMN feedback_since;
 ALTER TABLE agents.roles DROP COLUMN feedback_checked_at;
 DROP TABLE agents.instruction_suggestions;
 DROP TABLE agents.memory;

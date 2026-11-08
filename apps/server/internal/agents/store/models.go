@@ -145,6 +145,7 @@ type AgentsRole struct {
 	UpdatedAt         time.Time
 	ComplaintTagIds   []uuid.UUID
 	FeedbackCheckedAt *time.Time
+	FeedbackSince     *time.Time
 }
 
 type AgentsRoleChannel struct {

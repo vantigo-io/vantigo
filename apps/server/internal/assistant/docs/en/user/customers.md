@@ -278,7 +278,8 @@ When a virtual employee has kept notes about the customer, the customer page sho
 module is off. Open it to read each note with its date. Someone who also holds `agents:manage` has a
 **Delete the note** button beside each one; it asks first, and what is deleted is gone. A note is a short
 fact the agent wrote down from this customer's conversations and reads before it answers the next one, so
-delete one that is wrong. More in [Virtual employees](/en/user/agents/#what-an-agent-remembers).
+delete one that is wrong. An agent keeps at most 50 notes about a customer; when the section says
+**full**, the agent keeps no more until you delete one that is out of date. More in [Virtual employees](/en/user/agents/#what-an-agent-remembers).
 
 ## The timeline
 

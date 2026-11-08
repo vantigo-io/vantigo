@@ -346,7 +346,7 @@ directory accessor (`CustomerDirectory.PrimaryContact`) is one added method the
 day Invoices asks for it, and not before.
 
 **What the agents remember** (virtual employees design V27).
-`GET /customers/{id}/agent-memory` answers `{agents: [{agentId, agentName, notes: [{id, text, createdAt}]}], canDelete}`
+`GET /customers/{id}/agent-memory` answers `{agents: [{agentId, agentName, full, notes: [{id, text, createdAt}]}], canDelete}`
 from `contracts.AgentMemory` (`Deps.AgentMemory`, provided by the agents module, nil when it is off). The
 operation's access is `customers:view`; the contract performs no authorization, so the handler asks for
 `agents:view` itself and answers an empty list — never a 403 — for a caller without it, for a customer

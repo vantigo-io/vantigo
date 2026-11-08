@@ -110,36 +110,41 @@ func TestAgentMemory_ACustomersNotesAreReadOnlyByARunForThatCustomer(t *testing.
 	}
 }
 
-func TestAgentMemory_ARunWithNoCustomerKeepsNotesAboutItsConversation(t *testing.T) {
+// toolResults are what the run's tools answered the model, from the transcript.
+func (r *runRig) toolResults(t *testing.T, conv uuid.UUID) string {
+	t.Helper()
+	rows, err := r.h.Pool().Query(t.Context(), `SELECT m.text FROM agents.run_messages m JOIN agents.runs ru ON ru.id = m.run_id
+		WHERE ru.conversation_id = $1 AND m.role = 'tool' ORDER BY m.id`, conv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, s)
+	}
+	return strings.Join(out, "\n")
+}
+
+func TestAgentMemory_ARunWithNoCustomerKeepsNothingAndSaysWhy(t *testing.T) {
 	t.Parallel()
 	r := newRunRig(t, "review")
 	r.script.setTurns(
 		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{remember("Asked who we are; wants a quote.")}},
-		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{replyCall("Hello! Who are you?", []string{}, 50)}}, // held for review: the conversation is not handed off
+		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{replyCall("Hello! Who are you?", []string{}, 50)}},
 		modtest.ChatTurn{Text: "Noted."},
 	)
 	conv := r.mail(t, "Someone <someone@unknown.test>", "", "Quote", "Can I get a quote?", "")
 	r.await(t, conv)
-	notes := r.notesOf(t)
-	if len(notes) != 1 || notes[0].Type != "conversation" || notes[0].Subject != conv.String() {
-		t.Fatalf("notes = %+v, want one about the conversation", notes)
+	if notes := r.notesOf(t); len(notes) != 0 {
+		t.Fatalf("notes = %+v, want none: a run with no customer keeps no note", notes)
 	}
-	// Its own conversation reads it next time; another conversation does not.
-	r.script.setTurns(modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{replyCall("Soon.", []string{}, 50)}}, modtest.ChatTurn{Text: "Ok."})
-	r.h.Advance(time.Minute)
-	again := r.mail(t, "Someone <someone@unknown.test>", "", "Re: Quote", "Any news?", r.lastMsgID)
-	if again != conv {
-		t.Fatalf("the follow-up opened conversation %s, want it threaded onto %s", again, conv)
-	}
-	r.awaitRuns(t, conv, 2)
-	if !strings.Contains(r.lastSeed(t), "wants a quote") {
-		t.Errorf("the conversation's next run started with %s, want its note", r.lastSeed(t))
-	}
-	r.script.setTurns(modtest.ChatTurn{Text: "Ok."})
-	other := r.mail(t, "Other <other@unknown.test>", "", "Else", "A different matter.", "")
-	r.await(t, other)
-	if strings.Contains(r.lastSeed(t), "wants a quote") {
-		t.Errorf("another conversation started with %s, want no note of this one", r.lastSeed(t))
+	if got := r.toolResults(t, conv); !strings.Contains(got, "no_customer") {
+		t.Errorf("the tool answered %s, want a refusal that says no customer is known", got)
 	}
 }
 
@@ -147,14 +152,10 @@ func TestAgentMemory_TheCapsHold(t *testing.T) {
 	t.Parallel()
 	r := newRunRig(t, "review")
 	a := r.customer(t, "Acme AS", "kari@acme.test")
-	// Fifty notes about Acme exist; the oldest is "note 0".
-	for i := range 50 {
-		r.h.Exec(t, `INSERT INTO agents.memory (id, agent_id, subject_type, subject_id, text, created_at) VALUES ($1, $2, 'customer', $3, $4, $5)`,
-			uuid.New(), r.agentID, fmt.Sprint(a), fmt.Sprintf("note %d", i), r.h.Now().Add(-time.Duration(60-i)*time.Hour))
-	}
 	r.script.setTurns(
 		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{remember(strings.Repeat("x", 501))}}, // too long: refused
 		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{remember("fresh 1")}},
+		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{remember("fresh 1")}}, // already held
 		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{remember("fresh 2"), remember("fresh 3")}},
 		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{remember("fresh 4")}}, // the run's fourth: refused
 		modtest.ChatTurn{Text: "Done."},
@@ -162,24 +163,47 @@ func TestAgentMemory_TheCapsHold(t *testing.T) {
 	conv := r.mail(t, "Kari Nordmann <kari@acme.test>", "", "Hi", "Hello", "")
 	r.link(t, conv, a)
 	r.await(t, conv)
+	if n := len(r.notesOf(t)); n != 3 {
+		t.Fatalf("notes = %d, want 3: three a run, the duplicate and the long one not kept", n)
+	}
+	got := r.toolResults(t, conv)
+	for _, want := range []string{"note_too_long", "already_remembered", "too_many_notes"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("no tool answer %q in %s", want, got)
+		}
+	}
+}
+
+func TestAgentMemory_AFullMemoryRefusesAndNeverEvicts(t *testing.T) {
+	t.Parallel()
+	r := newRunRig(t, "review")
+	a := r.customer(t, "Acme AS", "kari@acme.test")
+	// Forty-nine notes about Acme exist; the oldest is "note 0".
+	for i := range 49 {
+		r.h.Exec(t, `INSERT INTO agents.memory (id, agent_id, subject_type, subject_id, text, created_at) VALUES ($1, $2, 'customer', $3, $4, $5)`,
+			uuid.New(), r.agentID, fmt.Sprint(a), fmt.Sprintf("note %d", i), r.h.Now().Add(-time.Duration(60-i)*time.Hour))
+	}
+	r.script.setTurns(
+		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{remember("fresh 1")}}, // the fiftieth
+		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{remember("fresh 2")}}, // refused: full
+		modtest.ChatTurn{Text: "Done."},
+	)
+	conv := r.mail(t, "Kari Nordmann <kari@acme.test>", "", "Hi", "Hello", "")
+	r.link(t, conv, a)
+	r.await(t, conv)
 	notes := r.notesOf(t)
 	if len(notes) != 50 {
-		t.Fatalf("notes = %d, want 50: the oldest dropped, never more", len(notes))
+		t.Fatalf("notes = %d, want 50", len(notes))
 	}
-	text := make([]string, len(notes))
-	for i, n := range notes {
-		text[i] = n.Text
+	joined := ""
+	for _, n := range notes {
+		joined += n.Text + "|"
 	}
-	joined := strings.Join(text, "|")
-	for _, dropped := range []string{"note 0|", "fresh 4", strings.Repeat("x", 501)} {
-		if strings.Contains(joined+"|", dropped) {
-			t.Errorf("notes still hold %.20q", dropped)
-		}
+	if !strings.Contains(joined, "note 0|") || !strings.Contains(joined, "fresh 1|") || strings.Contains(joined, "fresh 2") {
+		t.Errorf("notes = %s, want nothing evicted and the fifty-first refused", joined)
 	}
-	for _, kept := range []string{"fresh 1", "fresh 2", "fresh 3", "note 47"} {
-		if !strings.Contains(joined, kept) {
-			t.Errorf("notes lost %q", kept)
-		}
+	if got := r.toolResults(t, conv); !strings.Contains(got, "memory_full") || !strings.Contains(got, "a person must delete a note") {
+		t.Errorf("the tool answered %s, want memory_full", got)
 	}
 	// A run reads up to twenty, newest first.
 	r.script.setTurns(modtest.ChatTurn{Text: "Ok."})
@@ -191,7 +215,7 @@ func TestAgentMemory_TheCapsHold(t *testing.T) {
 	if n := strings.Count(seed, `"about":`); n != 20 {
 		t.Errorf("the run started with %d notes, want 20", n)
 	}
-	if strings.Index(seed, "fresh 3") > strings.Index(seed, "note 40") || strings.Contains(seed, `"note 20"`) {
+	if strings.Index(seed, "fresh 1") > strings.Index(seed, "note 40") || strings.Contains(seed, `"note 20"`) {
 		t.Errorf("the notes are not the newest twenty, newest first: %s", seed)
 	}
 }

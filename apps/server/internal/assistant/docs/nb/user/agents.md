@@ -277,7 +277,8 @@ Over rollens siste 200 merkede svar, flytt glidebryteren til en terskel X fra 50
 
 Et svar agenten sendte **av seg selv** (Auto) er også en merkelapp: når en person svarer i samme samtale
 innen 24 timer, regnes agentens svar som **dårlig**, siden en kollega mente de måtte svare over det; et som
-står ubesvart i 24 timer regnes som bra. Du trenger ikke gjøre noe for dette.
+står ubesvart i 24 timer regnes som bra, som er svakt belegg (kunden trengte kanskje bare ikke mer), så les
+*bra*-siden av tallene med det i tankene. Du trenger ikke gjøre noe for dette.
 
 To linjer og en markør ved X tegner det samme. Under 50 merkede svar sier panelet *Ikke nok historikk ennå* og
 hvor mange det er. Tallene kommer fra rollens egen historikk, så en rolle som har stått en stund i Gjennomgang
@@ -292,13 +293,17 @@ tall. Tallene beholdes i 24 måneder og inneholder ikke noe innhold.
 
 ## Hva en agent husker
 
-En agent kan ta vare på **korte notater** til senere: et varig faktum den lærte i en kundes samtale, som
-*foretrekker e-post, aldri telefon*, eller en avtale. Et notat er på høyst 500 tegn, en agent skriver høyst
-tre i en kjøring, og den beholder høyst 50 om én kunde eller samtale, de eldste faller bort.
+En agent kan ta vare på **korte notater** om en kunde til senere: et varig faktum den lærte i kundens samtale,
+som *foretrekker e-post, aldri telefon*, eller en avtale. Et notat er på høyst 500 tegn, og en agent skriver
+høyst tre i en kjøring.
 
-- **Hvem notatene gjelder.** Et notat gjelder kjøringens kunde. Er samtalen ikke knyttet til noen kunde,
-  gjelder det bare den samtalen. En agent leser en kundes notater bare i en samtale med den kunden, aldri i
-  en annens, og leser høyst de 20 nyeste når en kjøring begynner.
+- **Hvem notatene gjelder.** Et notat gjelder kjøringens kunde. Er samtalen ikke knyttet til noen kunde, tar
+  agenten vare på ingenting: den får beskjed om det, og skriver heller et internt notat til kollegene. En agent
+  leser en kundes notater bare i en samtale med den kunden, aldri i en annens, og leser høyst de 20 nyeste
+  når en kjøring begynner.
+- **Fullt minne.** En agent beholder høyst 50 notater om én kunde. Når det er fullt tar den vare på ingen
+  flere, og ingenting slettes bak ryggen din: kundesiden sier at minnet er fullt, og en person sletter et
+  utdatert notat for å gjøre plass.
 - **Leses som fakta, ikke ordre.** Notatene kommer til agenten som data, som kundens meldinger: agenten
   veier dem, men en instruks i et notat endrer ingenting, og et svar kan ikke vise til et som kilde.
 - **Hvor du ser dem.** På kundens side er **Hva Hanna husker** en sammenfoldet del under vedleggene, vist for

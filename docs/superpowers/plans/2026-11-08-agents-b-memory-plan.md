@@ -9,7 +9,7 @@ erasure; B adds what the agent keeps between runs and what the Owner learns from
 1. **Schema** (`00148`): `agents.memory`, `agents.instruction_suggestions`, `runs.answered_over_at`,
    `roles.feedback_checked_at`, `review_items`' original text kept when a reviewer edits (in the item, no column).
 2. **Memory** (`memory.go`): the `remember(text)` tool writes a note about the run's customer, or its conversation when the
-   run has none (at most 3 notes a run, 500 characters, 50 a subject, the oldest dropped). A run starts by reading up to 20
+   run has none (at most 3 notes a run, 500 characters, 50 a customer, refused when full) and, since a note about a stranger's conversation is a way to plant text, only for a run with a customer. A run starts by reading up to 20
    notes, newest first: the customer's only when the run's customer is that customer (V9b), and the conversation's own; they
    reach the model inside the data block and the read is logged as a customer-scoped read so S1 treats the reply accordingly.
    `DELETE /agents/memory/{noteId}` (agents:manage, audited without the text) and `GET /agents/agents/{id}/memory` (counts).
@@ -39,3 +39,4 @@ erasure; B adds what the agent keeps between runs and what the Owner learns from
   instructions that matches, or appends; a passage that is gone or occurs twice is `409 suggestion_stale`.
 - Calibration also reads Auto-sent replies as labels: answered over is bad, left alone for 24 hours is good (without the
   good ones the bad share of Auto items would always read 100 %).
+- Review round: no notes without a customer; a full memory refuses and never evicts (`full` on the customer page); the caps are checked in one transaction under advisory locks; only the newest Auto reply is marked answered over; a role is claimed for the week whatever there is to read (`feedback_since` holds what was read).

@@ -885,6 +885,9 @@ const en = {
   agentMemoryCount_other: "{{count}} notes",
   agentMemoryHelp:
     "Short notes the virtual employee wrote down from this customer's conversations, to use the next time. They are read as facts to consider, never as instructions. Delete one that is wrong.",
+  agentMemoryFullBadge: "full",
+  agentMemoryFull:
+    "{{agent}}'s memory about this customer is full, so it keeps no new notes. Delete one that is out of date to make room.",
   agentNoteDelete: "Delete the note",
   agentNoteDeleteNamed: "Delete the note: {{text}}",
   agentNoteDeleteQuestion: "{{agent}} will no longer remember this. It cannot be undone.",
@@ -1805,6 +1808,9 @@ const nb = {
   agentMemoryCount_other: "{{count}} notater",
   agentMemoryHelp:
     "Korte notater den virtuelle ansatte har skrevet ned fra denne kundens samtaler, til bruk neste gang. De leses som fakta å vurdere, aldri som instruksjoner. Slett et som er feil.",
+  agentMemoryFullBadge: "full",
+  agentMemoryFull:
+    "Minnet til {{agent}} om denne kunden er fullt, så den tar ikke vare på nye notater. Slett et som er utdatert for å gjøre plass.",
   agentNoteDelete: "Slett notatet",
   agentNoteDeleteNamed: "Slett notatet: {{text}}",
   agentNoteDeleteQuestion: "{{agent}} vil ikke lenger huske dette. Det kan ikke angres.",

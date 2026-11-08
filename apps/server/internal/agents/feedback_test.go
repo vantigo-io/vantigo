@@ -268,16 +268,24 @@ func TestFeedback_ANextWeekChecksOnlyWhatCameSinceAndNeedsThreeCorrections(t *te
 	if calls, _ := g.fm.seen(); calls != 0 {
 		t.Fatalf("two corrections made %d calls, want none: a pattern is not one or two mistakes", calls)
 	}
-	// The week is not spent on a check that was not made: the third correction lets it run.
+	// A role looked at is not counted again the same week, however often the worker passes.
 	e3 := g.correct(t, "edited_sent", "")
 	g.fm.set(answerOf(map[string]any{"oldText": nil, "newText": "Be exact.", "rationale": "r", "items": []string{e3.String(), g.correct(t, "edited_sent", "").String()}}))
 	if err := agents.FeedbackCycle(g.deps()); err != nil {
 		t.Fatal(err)
 	}
-	if calls, _ := g.fm.seen(); calls != 1 || len(g.suggestions(t)) != 1 {
-		t.Fatalf("calls = %d, suggestions = %d, want one of each once there are enough corrections", calls, len(g.suggestions(t)))
+	if calls, _ := g.fm.seen(); calls != 0 {
+		t.Fatalf("calls = %d in the same week, want none: the role was looked at", calls)
 	}
-	// Next week the same corrections are not read again.
+	// Next week the corrections left over are counted with the new ones, and the check is made.
+	g.h.Advance(8 * 24 * time.Hour)
+	if err := agents.FeedbackCycle(g.deps()); err != nil {
+		t.Fatal(err)
+	}
+	if calls, _ := g.fm.seen(); calls != 1 || g.rows(t, `SELECT count(*) FROM agents.instruction_suggestions`) != 1 {
+		t.Fatalf("calls = %d, want one call and one suggestion once there are enough corrections", calls)
+	}
+	// The week after, the same corrections are not read again.
 	g.h.Advance(8 * 24 * time.Hour)
 	if err := agents.FeedbackCycle(g.deps()); err != nil {
 		t.Fatal(err)
@@ -452,6 +460,18 @@ func TestAnsweredOver_APersonsReplyWithin24HoursLabelsTheAutoReply(t *testing.T)
 	}
 	if g.answeredOver(t, tooOld) {
 		t.Error("a reply 25 hours later labelled the Auto reply")
+	}
+}
+
+func TestAnsweredOver_OnlyTheNewestAutoReplyIsAnsweredOver(t *testing.T) {
+	t.Parallel()
+	g := newQueueRig(t)
+	conv := uuid.New()
+	older := g.autoRun(t, conv, 92, 5*time.Hour)
+	newest := g.autoRun(t, conv, 92, time.Hour)
+	g.publish(t, contracts.ConversationReplied{ConversationID: conv, MessageID: uuid.New(), ByUserID: uuid.New()})
+	if !g.answeredOver(t, newest) || g.answeredOver(t, older) {
+		t.Errorf("newest answered over = %v, older = %v, want only the newest", g.answeredOver(t, newest), g.answeredOver(t, older))
 	}
 }
 

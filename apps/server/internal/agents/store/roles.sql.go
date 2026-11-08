@@ -42,7 +42,7 @@ func (q *Queries) DeleteRoleChannels(ctx context.Context, roleID uuid.UUID) erro
 }
 
 const getRole = `-- name: GetRole :one
-SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at FROM agents.roles WHERE id = $1 AND agent_id = $2
+SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since FROM agents.roles WHERE id = $1 AND agent_id = $2
 `
 
 type GetRoleParams struct {
@@ -70,6 +70,7 @@ func (q *Queries) GetRole(ctx context.Context, arg GetRoleParams) (AgentsRole, e
 		&i.UpdatedAt,
 		&i.ComplaintTagIds,
 		&i.FeedbackCheckedAt,
+		&i.FeedbackSince,
 	)
 	return i, err
 }
@@ -77,7 +78,7 @@ func (q *Queries) GetRole(ctx context.Context, arg GetRoleParams) (AgentsRole, e
 const insertRole = `-- name: InsertRole :one
 INSERT INTO agents.roles (id, agent_id, template, name, instructions, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $6::timestamptz)
-RETURNING id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at
+RETURNING id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since
 `
 
 type InsertRoleParams struct {
@@ -116,6 +117,7 @@ func (q *Queries) InsertRole(ctx context.Context, arg InsertRoleParams) (AgentsR
 		&i.UpdatedAt,
 		&i.ComplaintTagIds,
 		&i.FeedbackCheckedAt,
+		&i.FeedbackSince,
 	)
 	return i, err
 }
@@ -159,7 +161,7 @@ func (q *Queries) ListChannelsOfRoles(ctx context.Context, roleIds []uuid.UUID) 
 }
 
 const listRolesOfAgent = `-- name: ListRolesOfAgent :many
-SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at FROM agents.roles WHERE agent_id = $1 ORDER BY created_at, id
+SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since FROM agents.roles WHERE agent_id = $1 ORDER BY created_at, id
 `
 
 func (q *Queries) ListRolesOfAgent(ctx context.Context, agentID uuid.UUID) ([]AgentsRole, error) {
@@ -188,6 +190,7 @@ func (q *Queries) ListRolesOfAgent(ctx context.Context, agentID uuid.UUID) ([]Ag
 			&i.UpdatedAt,
 			&i.ComplaintTagIds,
 			&i.FeedbackCheckedAt,
+			&i.FeedbackSince,
 		); err != nil {
 			return nil, err
 		}
@@ -200,7 +203,7 @@ func (q *Queries) ListRolesOfAgent(ctx context.Context, agentID uuid.UUID) ([]Ag
 }
 
 const listRolesOfAgents = `-- name: ListRolesOfAgents :many
-SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at FROM agents.roles WHERE agent_id = ANY($1::uuid[]) ORDER BY created_at, id
+SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since FROM agents.roles WHERE agent_id = ANY($1::uuid[]) ORDER BY created_at, id
 `
 
 func (q *Queries) ListRolesOfAgents(ctx context.Context, agentIds []uuid.UUID) ([]AgentsRole, error) {
@@ -229,6 +232,7 @@ func (q *Queries) ListRolesOfAgents(ctx context.Context, agentIds []uuid.UUID) (
 			&i.UpdatedAt,
 			&i.ComplaintTagIds,
 			&i.FeedbackCheckedAt,
+			&i.FeedbackSince,
 		); err != nil {
 			return nil, err
 		}
@@ -241,7 +245,7 @@ func (q *Queries) ListRolesOfAgents(ctx context.Context, agentIds []uuid.UUID) (
 }
 
 const lockRole = `-- name: LockRole :one
-SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at FROM agents.roles WHERE id = $1 AND agent_id = $2 FOR UPDATE
+SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since FROM agents.roles WHERE id = $1 AND agent_id = $2 FOR UPDATE
 `
 
 type LockRoleParams struct {
@@ -269,6 +273,7 @@ func (q *Queries) LockRole(ctx context.Context, arg LockRoleParams) (AgentsRole,
 		&i.UpdatedAt,
 		&i.ComplaintTagIds,
 		&i.FeedbackCheckedAt,
+		&i.FeedbackSince,
 	)
 	return i, err
 }
@@ -287,7 +292,7 @@ UPDATE agents.roles SET
     version = version + 1,
     updated_at = $10::timestamptz
 WHERE id = $11
-RETURNING id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at
+RETURNING id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since
 `
 
 type UpdateRoleParams struct {
@@ -336,6 +341,7 @@ func (q *Queries) UpdateRole(ctx context.Context, arg UpdateRoleParams) (AgentsR
 		&i.UpdatedAt,
 		&i.ComplaintTagIds,
 		&i.FeedbackCheckedAt,
+		&i.FeedbackSince,
 	)
 	return i, err
 }

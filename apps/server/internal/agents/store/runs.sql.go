@@ -302,7 +302,7 @@ func (q *Queries) GetHandedOff(ctx context.Context, conversationID uuid.UUID) (A
 }
 
 const getRoleByID = `-- name: GetRoleByID :one
-SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at FROM agents.roles WHERE id = $1
+SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since FROM agents.roles WHERE id = $1
 `
 
 func (q *Queries) GetRoleByID(ctx context.Context, id uuid.UUID) (AgentsRole, error) {
@@ -325,6 +325,7 @@ func (q *Queries) GetRoleByID(ctx context.Context, id uuid.UUID) (AgentsRole, er
 		&i.UpdatedAt,
 		&i.ComplaintTagIds,
 		&i.FeedbackCheckedAt,
+		&i.FeedbackSince,
 	)
 	return i, err
 }

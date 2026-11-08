@@ -34,6 +34,9 @@ type AgentMemoryEntry struct {
 	AgentID   uuid.UUID
 	AgentName string
 	Notes     []AgentMemoryNote
+	// Full says the agent holds the most notes it may about the customer and keeps no
+	// more until a person deletes one.
+	Full bool
 }
 
 // AgentMemoryNote is one note: its id in Agents, which deleting it names, the
