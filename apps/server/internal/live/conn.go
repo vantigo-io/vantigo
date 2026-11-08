@@ -9,8 +9,9 @@ import (
 	"github.com/coder/websocket"
 )
 
-// maxClientFrame is the largest frame a client may send (L4); a larger one
-// closes the socket with 1009.
+// maxClientFrame is the largest text frame a client may send (L4); a larger
+// one closes the socket with 1009. The socket's read limit is maxBinaryFrame
+// (K25), so the hub checks text frames itself.
 const maxClientFrame = 4096
 
 // writeTimeout bounds one frame's write.
@@ -24,7 +25,7 @@ const writeTimeout = 10 * time.Second
 // read would cut the socket without that close.
 func (h *Hub) serveSocket(ws *websocket.Conn, c *client) {
 	ctx, cancel := context.WithCancel(h.base)
-	ws.SetReadLimit(maxClientFrame)
+	ws.SetReadLimit(maxBinaryFrame)
 
 	var lastHeard atomic.Int64
 	heard := func() { lastHeard.Store(time.Now().UnixNano()) }
@@ -48,8 +49,12 @@ func (h *Hub) serveSocket(ws *websocket.Conn, c *client) {
 			break
 		}
 		heard()
-		if typ != websocket.MessageText {
-			c.close(closeUnsupported, "text frames only")
+		if typ == websocket.MessageBinary {
+			h.handleBinary(ctx, c, data)
+			continue
+		}
+		if len(data) > maxClientFrame {
+			c.close(closeTooBig, "frame too big")
 			break
 		}
 		h.handleFrame(ctx, c, data)
@@ -68,7 +73,11 @@ func (h *Hub) writeLoop(ctx context.Context, ws *websocket.Conn, c *client) {
 		select {
 		case frame := <-c.send:
 			wctx, cancel := context.WithTimeout(ctx, writeTimeout)
-			err := ws.Write(wctx, websocket.MessageText, frame)
+			typ := websocket.MessageText
+			if isBinaryFrame(frame) {
+				typ = websocket.MessageBinary
+			}
+			err := ws.Write(wctx, typ, frame)
 			cancel()
 			if err != nil {
 				c.close(closeDead, "")

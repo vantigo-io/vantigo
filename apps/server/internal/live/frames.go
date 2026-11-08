@@ -67,3 +67,41 @@ func framePresence(topic string, members []Member) []byte {
 	}
 	return mustJSON(presenceFrame{Type: "presence", Topic: topic, Members: members})
 }
+
+// The document frames (K25), JSON text.
+
+type docFrame struct {
+	Type   string `json:"type"`
+	Topic  string `json:"topic"`
+	Seq    *int64 `json:"seq,omitempty"`
+	UpTo   *int64 `json:"upTo,omitempty"`
+	Epoch  *int64 `json:"epoch,omitempty"`
+	Reason string `json:"reason,omitempty"`
+}
+
+func frameSynced(topic string, seq, epoch int64) []byte {
+	return mustJSON(docFrame{Type: "synced", Topic: topic, Seq: &seq, Epoch: &epoch})
+}
+
+// frameDocReset tells a subscriber the log was reset and is now at epoch.
+func frameDocReset(topic string, epoch int64) []byte {
+	return mustJSON(docFrame{Type: "doc_reset", Topic: topic, Epoch: &epoch})
+}
+
+func frameAck(topic string, seq int64) []byte {
+	return mustJSON(docFrame{Type: "ack", Topic: topic, Seq: &seq})
+}
+
+func frameUpdateRejected(topic, reason string) []byte {
+	return mustJSON(docFrame{Type: "update_rejected", Topic: topic, Reason: reason})
+}
+
+func frameCompactRequested(topic string, upTo int64) []byte {
+	return mustJSON(docFrame{Type: "compact_requested", Topic: topic, UpTo: &upTo})
+}
+
+// frameDocSignal is a document frame with a topic and nothing else:
+// seed_accepted, seed_rejected, compact_rejected, doc_stale.
+func frameDocSignal(typ, topic string) []byte {
+	return mustJSON(docFrame{Type: typ, Topic: topic})
+}
