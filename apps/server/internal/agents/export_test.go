@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"slices"
 	"time"
 
 	"context"
@@ -84,4 +85,29 @@ func FeedbackCycle(d module.Deps) error {
 // FeedbackWeekStart is when the check of the week that now falls in opens.
 func FeedbackWeekStart(now time.Time, zone *time.Location) time.Time {
 	return feedbackWeekStart(now, zone)
+}
+
+// LastOccurrence is the latest moment a schedule woke at or before now.
+func LastOccurrence(now time.Time, loc *time.Location, kind string, day int, hhmm string) (time.Time, bool) {
+	return lastOccurrence(now, loc, kind, day, hhmm)
+}
+
+// DecideChange is the mode of a change a template marks as safe to automate.
+func DecideChange(mode string, threshold, score int) (send bool, held []string) {
+	d := decideChange(mode, threshold, score)
+	return d.Send, d.Held
+}
+
+// TemplateKeys are the keys of the templates of this build.
+func TemplateKeys() []string { return slices.Clone(templateOrder) }
+
+// SafeOperations are the operations a template marks as safe to automate.
+func SafeOperations(key string) []string {
+	var out []string
+	for _, a := range templates[key].Allowlist {
+		if a.Safe {
+			out = append(out, a.ID)
+		}
+	}
+	return out
 }

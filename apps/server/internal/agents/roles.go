@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -48,6 +49,8 @@ func uniqueViolation(err error) bool {
 // roleSnapshot is what the audit records of a role.
 func roleSnapshot(r store.AgentsRole) map[string]any {
 	return map[string]any{
+		"startMode": r.StartMode, "changeMode": r.ChangeMode, "waitDays": r.WaitDays, "recipientUserId": r.RecipientUserID,
+		"scheduleKind": r.ScheduleKind, "scheduleDay": r.ScheduleDay, "scheduleTime": r.ScheduleTime,
 		"name": r.Name, "replyMode": r.ReplyMode, "threshold": r.Threshold, "capsToolCalls": r.CapsToolCalls,
 		"capsTurns": r.CapsTurns, "maxRepliesPerDay": r.MaxRepliesPerDay, "handOffUserId": r.HandOffUserID,
 		"complaintTagIds": r.ComplaintTagIds,
@@ -161,6 +164,28 @@ func (s *server) UpdateAgentRole(ctx context.Context, req gen.UpdateAgentRoleReq
 	if b.MaxRepliesPerDay < 1 || b.MaxRepliesPerDay > 50 {
 		errs["maxRepliesPerDay"] = []string{"maxRepliesPerDay must be from 1 to 50"}
 	}
+	if b.StartMode != nil && !oneOf(string(*b.StartMode), modeReview, modeAutoAbove, modeAuto) {
+		errs["startMode"] = []string{"startMode must be review, auto_above or auto"}
+	}
+	if b.ChangeMode != nil && !oneOf(string(*b.ChangeMode), modeReview, modeAutoAbove, modeAuto) {
+		errs["changeMode"] = []string{"changeMode must be review, auto_above or auto"}
+	}
+	if b.WaitDays != nil && (*b.WaitDays < 1 || *b.WaitDays > 60) {
+		errs["waitDays"] = []string{"waitDays must be from 1 to 60"}
+	}
+	schedule, scheduleErr := parseSchedule(b.Schedule)
+	if scheduleErr != "" {
+		errs["schedule"] = []string{scheduleErr}
+	}
+	if b.RecipientUserId != nil && *b.RecipientUserId != uuid.Nil {
+		u, err := s.deps.Users.User(ctx, *b.RecipientUserId)
+		if err != nil {
+			return nil, fmt.Errorf("agents: read the recipient: %w", err)
+		}
+		if u == nil || !u.Active || u.Kind == contracts.UserKindAgent {
+			errs["recipientUserId"] = []string{"recipientUserId must be an active person"}
+		}
+	}
 	if b.HandOffUserId != nil {
 		u, err := s.deps.Users.User(ctx, *b.HandOffUserId)
 		if err != nil {
@@ -195,14 +220,50 @@ func (s *server) UpdateAgentRole(ctx context.Context, req gen.UpdateAgentRoleReq
 			complaintTags = slices.Compact(slices.SortedFunc(slices.Values(*b.ComplaintTagIds), func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) }))
 		}
 		mode := string(b.ReplyMode)
-		raises := modeRank(mode) > modeRank(current.ReplyMode) || (mode != modeReview && int16(b.Threshold) < current.Threshold)
+		startMode, changeMode := current.StartMode, current.ChangeMode
+		if b.StartMode != nil {
+			startMode = string(*b.StartMode)
+		}
+		if b.ChangeMode != nil {
+			changeMode = string(*b.ChangeMode)
+		}
+		// Loosening a mode, or lowering the threshold they share while any is not
+		// Review, leaves more to the agent (V12, V29): the Owner's alone.
+		raises := modeRank(mode) > modeRank(current.ReplyMode) || modeRank(startMode) > modeRank(current.StartMode) ||
+			modeRank(changeMode) > modeRank(current.ChangeMode) ||
+			((mode != modeReview || startMode != modeReview || changeMode != modeReview) && int16(b.Threshold) < current.Threshold)
 		if raises && !owner {
 			return errOwnerRequired
+		}
+		waitDays, recipient := current.WaitDays, current.RecipientUserID
+		if b.WaitDays != nil {
+			waitDays = int16(*b.WaitDays)
+		}
+		if b.RecipientUserId != nil {
+			recipient = b.RecipientUserId
+			if *b.RecipientUserId == uuid.Nil {
+				recipient = nil
+			}
+		}
+		kind, day, at, fired := current.ScheduleKind, current.ScheduleDay, current.ScheduleTime, current.ScheduleFiredAt
+		if b.Schedule != nil {
+			if schedule.kind != "" && !templates[current.Template].uses(fieldSchedule) {
+				return errNoSchedule
+			}
+			changed := !equalSchedule(kind, day, at, schedule)
+			kind, day, at = schedule.kindPtr(), schedule.dayPtr(), schedule.timePtr()
+			if changed {
+				// A schedule that was just set does not wake the role for the occurrence it passed.
+				now := s.deps.Clock()
+				fired = &now
+			}
 		}
 		if saved, err = q.UpdateRole(ctx, store.UpdateRoleParams{
 			ID: current.ID, Name: name, Instructions: b.Instructions, ReplyMode: mode, Threshold: int16(b.Threshold),
 			CapsToolCalls: int16(b.CapsToolCalls), CapsTurns: int16(b.CapsTurns), MaxRepliesPerDay: int16(b.MaxRepliesPerDay),
 			HandOffUserID: b.HandOffUserId, ComplaintTagIds: complaintTags, Now: s.deps.Clock(),
+			StartMode: startMode, ChangeMode: changeMode, WaitDays: waitDays, RecipientUserID: recipient,
+			ScheduleKind: kind, ScheduleDay: day, ScheduleTime: at, ScheduleFiredAt: fired,
 		}); err != nil {
 			return fmt.Errorf("agents: change the role: %w", err)
 		}
@@ -219,6 +280,8 @@ func (s *server) UpdateAgentRole(ctx context.Context, req gen.UpdateAgentRoleReq
 		return versionConflict(), nil
 	case errors.Is(err, errOwnerRequired):
 		return ownerRequired(), nil
+	case errors.Is(err, errNoSchedule):
+		return invalid("The role is not valid", map[string][]string{"schedule": {"this template has no schedule"}}), nil
 	case err != nil:
 		return nil, err
 	}
@@ -227,6 +290,62 @@ func (s *server) UpdateAgentRole(ctx context.Context, req gen.UpdateAgentRoleReq
 		return nil, err
 	}
 	return gen.UpdateAgentRole200JSONResponse(view), nil
+}
+
+// errNoSchedule marks a schedule asked of a template that has none.
+var errNoSchedule = errors.New("agents: the template has no schedule")
+
+// roleSchedule is a schedule as the request names it; kind "" is none.
+type roleSchedule struct {
+	kind string
+	day  int
+	at   string
+}
+
+func (r roleSchedule) kindPtr() *string {
+	if r.kind == "" {
+		return nil
+	}
+	return &r.kind
+}
+
+func (r roleSchedule) dayPtr() *int16 {
+	if r.kind == "" {
+		return nil
+	}
+	d := int16(r.day)
+	return &d
+}
+
+func (r roleSchedule) timePtr() *string {
+	if r.kind == "" {
+		return nil
+	}
+	return &r.at
+}
+
+// equalSchedule says the role's stored schedule is the requested one.
+func equalSchedule(kind *string, day *int16, at *string, r roleSchedule) bool {
+	if kind == nil || day == nil || at == nil {
+		return r.kind == ""
+	}
+	return r.kind == *kind && r.day == int(*day) && r.at == *at
+}
+
+// parseSchedule reads a requested schedule and answers what is wrong with it: a
+// weekly one names a weekday (1 to 7), a monthly one a day of the month (1 to 28,
+// so that every month has it), both a time as HH:MM.
+func parseSchedule(s *gen.AgentRoleSchedule) (roleSchedule, string) {
+	if s == nil || s.Kind == "none" {
+		return roleSchedule{}, ""
+	}
+	if s.Day == nil || s.Time == nil {
+		return roleSchedule{}, "a schedule names a day and a time"
+	}
+	if _, ok := lastOccurrence(time.Now(), time.UTC, string(s.Kind), int(*s.Day), *s.Time); !ok {
+		return roleSchedule{}, "a schedule is weekly on a weekday from 1 to 7, or monthly on a day from 1 to 28, at a time as HH:MM"
+	}
+	return roleSchedule{kind: string(s.Kind), day: int(*s.Day), at: *s.Time}, ""
 }
 
 // errOwnerRequired marks a change that needs the Owner.

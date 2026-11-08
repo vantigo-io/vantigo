@@ -146,6 +146,14 @@ type AgentsRole struct {
 	ComplaintTagIds   []uuid.UUID
 	FeedbackCheckedAt *time.Time
 	FeedbackSince     *time.Time
+	StartMode         string
+	ChangeMode        string
+	WaitDays          int16
+	RecipientUserID   *uuid.UUID
+	ScheduleKind      *string
+	ScheduleDay       *int16
+	ScheduleTime      *string
+	ScheduleFiredAt   *time.Time
 }
 
 type AgentsRoleChannel struct {
@@ -176,6 +184,8 @@ type AgentsRun struct {
 	SentAt         *time.Time
 	Verdict        []byte
 	AnsweredOverAt *time.Time
+	SubjectType    string
+	SubjectID      string
 }
 
 type AgentsRunMessage struct {
@@ -199,6 +209,10 @@ type AgentsRunQueue struct {
 	CreatedAt      time.Time
 	TakenAt        *time.Time
 	RunID          *uuid.UUID
+	SubjectType    string
+	SubjectID      string
+	CustomerID     *int32
+	Note           string
 }
 
 type AgentsSeenSender struct {
@@ -226,4 +240,16 @@ type AgentsUsageDay struct {
 	Sent         int32
 	Held         int32
 	Discarded    int32
+}
+
+type AgentsWakeup struct {
+	ID          uuid.UUID
+	RoleID      uuid.UUID
+	SubjectType string
+	SubjectID   string
+	CustomerID  *int32
+	At          time.Time
+	Reason      string
+	CreatedAt   time.Time
+	TakenAt     *time.Time
 }

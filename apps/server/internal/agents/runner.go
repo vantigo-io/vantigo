@@ -129,8 +129,8 @@ func (s *server) claim(ctx context.Context, replica uuid.UUID) (store.AgentsRun,
 		}
 		id := uuid.New()
 		if err := q.InsertRun(ctx, store.InsertRunParams{
-			ID: id, AgentID: c.AgentID, RoleID: c.RoleID, ConversationID: c.ConversationID, Reason: c.Reason, Attempt: c.Attempt,
-			ClaimedBy: &replica, ClaimedUntil: now.Add(claimFor), Now: now,
+			ID: id, AgentID: c.AgentID, RoleID: c.RoleID, ConversationID: c.ConversationID, SubjectType: c.SubjectType, SubjectID: c.SubjectID,
+			CustomerID: c.CustomerID, Reason: c.Reason, Attempt: c.Attempt, ClaimedBy: &replica, ClaimedUntil: now.Add(claimFor), Now: now,
 		}); err != nil {
 			return fmt.Errorf("agents: start a run: %w", err)
 		}

@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/png"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -553,7 +554,7 @@ func TestAvatar_IsSetAndServedAndRefusedWhenItIsNotAPicture(t *testing.T) {
 	}
 }
 
-func TestTemplates_ListTheFrontDesk(t *testing.T) {
+func TestTemplates_ListTheFrontDeskAndTheFourOthers(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	v := h.SignIn(t, "agents:view")
@@ -576,7 +577,14 @@ func TestTemplates_ListTheFrontDesk(t *testing.T) {
 		} `json:"templates"`
 	}
 	r.JSON(&out)
-	if len(out.Templates) != 1 || out.Templates[0].Key != "front_desk" || len(out.Templates[0].Allowlist) < 10 || len(out.Templates[0].Needs) < 10 {
+	var keys []string
+	for _, tpl := range out.Templates {
+		keys = append(keys, tpl.Key)
+	}
+	if want := []string{"front_desk", "reminder_replies", "sales_followup", "timesheet_reminders", "project_digest"}; !slices.Equal(keys, want) {
+		t.Fatalf("templates = %v, want %v", keys, want)
+	}
+	if out.Templates[0].Key != "front_desk" || len(out.Templates[0].Allowlist) < 10 || len(out.Templates[0].Needs) < 10 {
 		t.Fatalf("templates = %s", r.Body)
 	}
 	locked := map[string]bool{}

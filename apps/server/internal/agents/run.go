@@ -73,6 +73,7 @@ type runState struct {
 	conv    conversation
 
 	customerID *int32
+	note       string               // what the wakeup or the event that made the run said (V29)
 	contacts   *contactSet          // the run's customer's contacts, read once
 	memory     []store.AgentsMemory // the notes the run starts with (V27)
 
@@ -182,16 +183,26 @@ func (s *server) executeRun(parent context.Context, run store.AgentsRun) {
 		rs.handOffAndEnd(persist, handBudget, "Daily budget reached.")
 		return
 	}
-	if n, err := q.CountRunsSince(persist, store.CountRunsSinceParams{ConversationID: run.ConversationID, Since: now.Add(-time.Hour), ExceptRun: run.ID}); err == nil && n >= maxRunsPerHour {
-		rs.handOffAndEnd(persist, handGuard, "The agent has already run six times in the last hour on this conversation.")
-		return
+	if !rs.isSubjectRun() {
+		if n, err := q.CountRunsSince(persist, store.CountRunsSinceParams{ConversationID: run.ConversationID, Since: now.Add(-time.Hour), ExceptRun: run.ID}); err == nil && n >= maxRunsPerHour {
+			rs.handOffAndEnd(persist, handGuard, "The agent has already run six times in the last hour on this conversation.")
+			return
+		}
 	}
 	if s.deps.AI == nil {
 		rs.failAndHandOff(persist, handAI, "AI is not available.")
 		return
 	}
 
-	end, err := rs.prepare(ctx, persist)
+	if req, err := q.GetRequestOfRun(persist, &run.ID); err == nil {
+		rs.note = req.Note
+	}
+	var end func()
+	if rs.isSubjectRun() {
+		end, err = rs.prepareSubject(ctx, persist)
+	} else {
+		end, err = rs.prepare(ctx, persist)
+	}
 	if err != nil {
 		if parent.Err() != nil {
 			return // the process is stopping: the claim lapses
@@ -204,7 +215,11 @@ func (s *server) executeRun(parent context.Context, run store.AgentsRun) {
 		return
 	}
 
-	outcome, loopErr := rs.loop().Run(rs.withGrant(ctx), agentloop.Input{System: rs.systemPrompt(), History: rs.seed()})
+	history := rs.seed
+	if rs.isSubjectRun() {
+		history = rs.subjectSeed
+	}
+	outcome, loopErr := rs.loop().Run(rs.withGrant(ctx), agentloop.Input{System: rs.systemPrompt(), History: history()})
 	if parent.Err() != nil || errors.Is(context.Cause(claimed), errClaimLost) {
 		return // the process is stopping, or the worker took the run over
 	}
@@ -367,6 +382,14 @@ func (rs *runState) conclude(persist context.Context, out agentloop.Outcome, loo
 		rs.s.finishRun(persist, rs.run, runDone, outcomeSent, "", "", rs.sentAt)
 	case replied || items > 0:
 		rs.s.finishRun(persist, rs.run, runWaitingReview, outcomeReview, "", "")
+	case rs.isSubjectRun():
+		// A run about a subject may end with nothing to do (the quote was accepted):
+		// that is its answer, not a conversation left unanswered.
+		summary := ""
+		if last != "" {
+			summary = "The agent ended without acting. It wrote: " + last
+		}
+		rs.s.finishRun(persist, rs.run, runDone, outcomeNoReply, "", summary)
 	default:
 		// No reply: whatever the model said last is the note (design §10).
 		summary := "The agent ended without a reply."
@@ -410,6 +433,10 @@ func (rs *runState) endHandedOff(ctx context.Context, code, summary string) {
 // note and the assignee. The effects are the dispatcher's; they never hold a
 // connection.
 func (rs *runState) doHandOff(ctx context.Context, code, summary string) {
+	if rs.isSubjectRun() {
+		rs.s.handOffSubject(ctx, rs.agent, rs.role, rs.run.ID)
+		return
+	}
 	q := store.New(rs.s.deps.Pool)
 	if err := writeMarker(ctx, q, rs.role.ID, rs.run.ConversationID, code, rs.s.deps.Clock()); err != nil {
 		rs.s.warn("agents: mark a hand-off", "run", rs.run.ID, "err", err)

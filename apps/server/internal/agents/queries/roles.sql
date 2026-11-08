@@ -26,6 +26,14 @@ UPDATE agents.roles SET
     max_replies_per_day = @max_replies_per_day,
     hand_off_user_id = sqlc.narg(hand_off_user_id)::uuid,
     complaint_tag_ids = @complaint_tag_ids::uuid[],
+    start_mode = @start_mode,
+    change_mode = @change_mode,
+    wait_days = @wait_days,
+    recipient_user_id = sqlc.narg(recipient_user_id)::uuid,
+    schedule_kind = sqlc.narg(schedule_kind)::text,
+    schedule_day = sqlc.narg(schedule_day)::smallint,
+    schedule_time = sqlc.narg(schedule_time)::text,
+    schedule_fired_at = sqlc.narg(schedule_fired_at)::timestamptz,
     version = version + 1,
     updated_at = @now::timestamptz
 WHERE id = @id
@@ -47,3 +55,19 @@ INSERT INTO agents.role_channels (role_id, channel_id) VALUES (@role_id, @channe
 -- DeleteChannelsOfAgent frees every channel the agent's roles answered, as
 -- deleting the agent does.
 DELETE FROM agents.role_channels WHERE role_id IN (SELECT id FROM agents.roles WHERE agent_id = @agent_id);
+
+-- name: ListScheduledRoles :many
+-- The roles of active agents that have a schedule (V29).
+SELECT r.* FROM agents.roles r JOIN agents.agents a ON a.id = r.agent_id
+WHERE r.schedule_kind IS NOT NULL AND a.state = 'active'
+ORDER BY r.id;
+
+-- name: MarkScheduleFired :exec
+UPDATE agents.roles SET schedule_fired_at = @fired_at::timestamptz WHERE id = @id;
+
+-- name: ListRolesOfTemplate :many
+-- The roles of agents that are not deleted that use a template: a paused agent's
+-- roles are woken too, and its wakeups wait until it is active again.
+SELECT r.* FROM agents.roles r JOIN agents.agents a ON a.id = r.agent_id
+WHERE r.template = @template AND a.state <> 'deleted'
+ORDER BY r.id;

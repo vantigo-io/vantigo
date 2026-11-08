@@ -24,7 +24,7 @@ const (
 // workers are the module's workers (module.Module.Workers).
 func workers(d module.Deps) []worker.Worker {
 	s := newServer(d)
-	return []worker.Worker{&runsWorker{s: s}, &reviewsWorker{s: s}, &retentionWorker{s: s}}
+	return []worker.Worker{&runsWorker{s: s}, &reviewsWorker{s: s}, &retentionWorker{s: s}, &wakeupsWorker{s: s}}
 }
 
 type runsWorker struct{ s *server }
@@ -61,7 +61,10 @@ func (w *runsWorker) cycle(ctx context.Context) error {
 				if err := q.StopRun(ctx, store.StopRunParams{ID: run.ID, State: runStopped, ErrorCode: &code, Now: now}); err != nil {
 					return err
 				}
-				if err := q.InsertRetryRequest(ctx, store.InsertRetryRequestParams{RoleID: run.RoleID, ConversationID: run.ConversationID, Attempt: run.Attempt + 1, Now: now}); err != nil {
+				if err := q.InsertRetryRequest(ctx, store.InsertRetryRequestParams{
+					RoleID: run.RoleID, ConversationID: run.ConversationID, SubjectType: run.SubjectType, SubjectID: run.SubjectID, CustomerID: run.CustomerID,
+					Attempt: run.Attempt + 1, Now: now,
+				}); err != nil {
 					return err
 				}
 				continue
@@ -81,6 +84,9 @@ func (w *runsWorker) cycle(ctx context.Context) error {
 		for _, r := range stale {
 			if err := q.DeleteRequest(ctx, r.ID); err != nil {
 				return err
+			}
+			if r.SubjectType != subjectConversation {
+				continue // a wakeup or an event: nothing to hand off, the moment passed
 			}
 			if err := markHandedOff(ctx, q, r.AgentID, r.RoleID, r.ConversationID, handStale, "The request waited more than a day without being answered.", now); err != nil {
 				return err

@@ -429,6 +429,8 @@ func (s *server) ApplyInstructionSuggestion(ctx context.Context, req gen.ApplyIn
 			ID: current.ID, Name: current.Name, Instructions: instructions, ReplyMode: current.ReplyMode, Threshold: current.Threshold,
 			CapsToolCalls: current.CapsToolCalls, CapsTurns: current.CapsTurns, MaxRepliesPerDay: current.MaxRepliesPerDay,
 			HandOffUserID: current.HandOffUserID, ComplaintTagIds: current.ComplaintTagIds, Now: s.deps.Clock(),
+			StartMode: current.StartMode, ChangeMode: current.ChangeMode, WaitDays: current.WaitDays, RecipientUserID: current.RecipientUserID,
+			ScheduleKind: current.ScheduleKind, ScheduleDay: current.ScheduleDay, ScheduleTime: current.ScheduleTime, ScheduleFiredAt: current.ScheduleFiredAt,
 		}); err != nil {
 			return fmt.Errorf("agents: change the role: %w", err)
 		}

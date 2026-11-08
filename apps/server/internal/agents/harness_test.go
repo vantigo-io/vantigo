@@ -78,20 +78,28 @@ func manager(t *testing.T, h *modtest.Harness) *modtest.Client {
 func ifMatch(v any) modtest.RequestOption { return modtest.Header("If-Match", fmt.Sprint(v)) }
 
 type role struct {
-	ID               string   `json:"id"`
-	AgentID          string   `json:"agentId"`
-	Template         string   `json:"template"`
-	Name             string   `json:"name"`
-	Instructions     string   `json:"instructions"`
-	ReplyMode        string   `json:"replyMode"`
-	Threshold        int      `json:"threshold"`
-	CapsToolCalls    int      `json:"capsToolCalls"`
-	CapsTurns        int      `json:"capsTurns"`
-	MaxRepliesPerDay int      `json:"maxRepliesPerDay"`
-	HandOffUserID    *string  `json:"handOffUserId"`
-	HandOffWarning   string   `json:"handOffWarning"`
-	ChannelIDs       []string `json:"channelIds"`
-	Version          int      `json:"version"`
+	ID               string  `json:"id"`
+	AgentID          string  `json:"agentId"`
+	Template         string  `json:"template"`
+	Name             string  `json:"name"`
+	Instructions     string  `json:"instructions"`
+	ReplyMode        string  `json:"replyMode"`
+	Threshold        int     `json:"threshold"`
+	CapsToolCalls    int     `json:"capsToolCalls"`
+	CapsTurns        int     `json:"capsTurns"`
+	MaxRepliesPerDay int     `json:"maxRepliesPerDay"`
+	HandOffUserID    *string `json:"handOffUserId"`
+	StartMode        string  `json:"startMode"`
+	ChangeMode       string  `json:"changeMode"`
+	WaitDays         int     `json:"waitDays"`
+	Schedule         struct {
+		Kind string  `json:"kind"`
+		Day  *int    `json:"day"`
+		Time *string `json:"time"`
+	} `json:"schedule"`
+	HandOffWarning string   `json:"handOffWarning"`
+	ChannelIDs     []string `json:"channelIds"`
+	Version        int      `json:"version"`
 }
 
 type agent struct {

@@ -16,6 +16,7 @@ FROM agents.review_items i
 JOIN agents.agents a ON a.id = i.agent_id
 LEFT JOIN agents.roles r ON r.id = i.role_id
 WHERE (sqlc.narg(agent_id)::uuid IS NULL OR i.agent_id = sqlc.narg(agent_id)::uuid)
+  AND COALESCE(r.template, 'front_desk') = ANY(@templates::text[])
   AND (sqlc.narg(state)::text IS NULL OR i.state = sqlc.narg(state)::text
        OR (sqlc.narg(state)::text = 'decided' AND i.state NOT IN ('waiting', 'deciding')))
 ORDER BY (i.state IN ('waiting', 'deciding')) DESC,
@@ -25,7 +26,9 @@ LIMIT @n OFFSET @off;
 
 -- name: CountReviewItems :one
 SELECT count(*) FROM agents.review_items i
+LEFT JOIN agents.roles r ON r.id = i.role_id
 WHERE (sqlc.narg(agent_id)::uuid IS NULL OR i.agent_id = sqlc.narg(agent_id)::uuid)
+  AND COALESCE(r.template, 'front_desk') = ANY(@templates::text[])
   AND (sqlc.narg(state)::text IS NULL OR i.state = sqlc.narg(state)::text
        OR (sqlc.narg(state)::text = 'decided' AND i.state NOT IN ('waiting', 'deciding')));
 
@@ -127,14 +130,18 @@ ON CONFLICT (conversation_id) DO UPDATE SET
     seen_at = EXCLUDED.seen_at;
 
 -- name: ListRunsOfAgent :many
-SELECT * FROM agents.runs
-WHERE agent_id = @agent_id AND (sqlc.narg(state)::text IS NULL OR state = sqlc.narg(state)::text)
-ORDER BY started_at DESC, id
+SELECT x.* FROM agents.runs x
+LEFT JOIN agents.roles r ON r.id = x.role_id
+WHERE x.agent_id = @agent_id AND (sqlc.narg(state)::text IS NULL OR x.state = sqlc.narg(state)::text)
+  AND COALESCE(r.template, 'front_desk') = ANY(@templates::text[])
+ORDER BY x.started_at DESC, x.id
 LIMIT @n OFFSET @off;
 
 -- name: CountRunsOfAgent :one
-SELECT count(*) FROM agents.runs
-WHERE agent_id = @agent_id AND (sqlc.narg(state)::text IS NULL OR state = sqlc.narg(state)::text);
+SELECT count(*) FROM agents.runs x
+LEFT JOIN agents.roles r ON r.id = x.role_id
+WHERE x.agent_id = @agent_id AND (sqlc.narg(state)::text IS NULL OR x.state = sqlc.narg(state)::text)
+  AND COALESCE(r.template, 'front_desk') = ANY(@templates::text[]);
 
 -- name: ListRunMessages :many
 SELECT * FROM agents.run_messages WHERE run_id = @run_id ORDER BY id;

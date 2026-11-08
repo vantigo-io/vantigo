@@ -127,6 +127,9 @@ func (w *retentionWorker) cycle(ctx context.Context) error {
 	if _, err := q.DeleteTakenRequestsBefore(ctx, cutoff); err != nil {
 		return fmt.Errorf("agents: delete old run requests: %w", err)
 	}
+	if _, err := q.DeleteTakenWakeupsBefore(ctx, cutoff); err != nil {
+		return fmt.Errorf("agents: delete old wakeups: %w", err)
+	}
 	if _, err := q.DeleteSeenSendersBefore(ctx, cutoff); err != nil {
 		return fmt.Errorf("agents: delete old senders: %w", err)
 	}

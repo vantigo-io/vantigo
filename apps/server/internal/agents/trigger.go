@@ -53,6 +53,9 @@ func eventHandlers(d module.Deps) []events.Handler {
 			{Name: contracts.ConversationMessageReceived{}.EventName(), Version: 1},
 			{Name: contracts.ConversationAssigned{}.EventName(), Version: 1},
 			{Name: contracts.ConversationReplied{}.EventName(), Version: 1},
+			{Name: contracts.QuoteSent{}.EventName(), Version: 1},
+			{Name: contracts.QuoteAccepted{}.EventName(), Version: 1},
+			{Name: contracts.WeekUnsubmitted{}.EventName(), Version: 1},
 		},
 		Handle: t.handle,
 	}}
@@ -82,6 +85,25 @@ func (t *trigger) handle(ctx context.Context, tx pgx.Tx, ev events.Delivered) er
 			return fmt.Errorf("agents: decode event %d: %w", ev.ID, err)
 		}
 		return t.assigned(ctx, q, e)
+	case contracts.QuoteSent{}.EventName():
+		var e contracts.QuoteSent
+		if err := json.Unmarshal(ev.Payload, &e); err != nil {
+			return fmt.Errorf("agents: decode event %d: %w", ev.ID, err)
+		}
+		return t.quoteSent(ctx, q, e)
+	case contracts.QuoteAccepted{}.EventName():
+		var e contracts.QuoteAccepted
+		if err := json.Unmarshal(ev.Payload, &e); err != nil {
+			return fmt.Errorf("agents: decode event %d: %w", ev.ID, err)
+		}
+		// What waited to look at the quote again is moot.
+		return q.DeleteWakeupsOfSubject(ctx, store.DeleteWakeupsOfSubjectParams{SubjectType: subjectQuote, SubjectID: fmt.Sprint(e.QuoteID)})
+	case contracts.WeekUnsubmitted{}.EventName():
+		var e contracts.WeekUnsubmitted
+		if err := json.Unmarshal(ev.Payload, &e); err != nil {
+			return fmt.Errorf("agents: decode event %d: %w", ev.ID, err)
+		}
+		return t.weekUnsubmitted(ctx, q, e)
 	case contracts.ConversationReplied{}.EventName():
 		var e contracts.ConversationReplied
 		if err := json.Unmarshal(ev.Payload, &e); err != nil {
@@ -116,6 +138,11 @@ func (t *trigger) answers(ctx context.Context, q *store.Queries, channelID uuid.
 		return role, false, fmt.Errorf("agents: find the role of a channel: %w", err)
 	}
 	if role.AgentState != stateActive {
+		return role, false, nil
+	}
+	// Only a template that answers conversations is woken by a message: a reply to
+	// a conversation the sales follow-up started waits in the Inbox for a person.
+	if tpl, ok := templates[role.Template]; !ok || !tpl.answersConversations() {
 		return role, false, nil
 	}
 	if assignedUserID != nil && *assignedUserID != role.AgentUserID {
@@ -170,4 +197,45 @@ func (t *trigger) assigned(ctx context.Context, q *store.Queries, e contracts.Co
 		RoleID: role.RoleID, ConversationID: e.ConversationID, Reason: reasonAssigned,
 		NotBefore: now, DueBy: now.Add(maxWait), Now: now,
 	})
+}
+
+// quoteSent wakes each sales follow-up role about a quote N days after it was sent
+// (V30): the wakeup is written now, for the role's wait, and the worker turns it
+// into a run when it comes due. A quote revised and sent again moves it. The
+// customer is the event's, which Orders published; no message names it.
+func (t *trigger) quoteSent(ctx context.Context, q *store.Queries, e contracts.QuoteSent) error {
+	roles, err := q.ListRolesOfTemplate(ctx, templateSalesFollowup)
+	if err != nil {
+		return fmt.Errorf("agents: find the sales follow-up roles: %w", err)
+	}
+	now := t.clock()
+	customer := e.CustomerID
+	for _, r := range roles {
+		if err := q.UpsertWakeup(ctx, store.UpsertWakeupParams{
+			ID: uuid.New(), RoleID: r.ID, SubjectType: subjectQuote, SubjectID: fmt.Sprint(e.QuoteID), CustomerID: &customer,
+			At: e.SentAt.Add(time.Duration(r.WaitDays) * 24 * time.Hour), Reason: "The quote was sent " + fmt.Sprint(r.WaitDays) + " days ago.", Now: now,
+		}); err != nil {
+			return fmt.Errorf("agents: wake the sales follow-up: %w", err)
+		}
+	}
+	return nil
+}
+
+// weekUnsubmitted makes a run request for each timesheet reminder role: one run
+// about one person's week. A paused agent's request waits, and lapses after a day.
+func (t *trigger) weekUnsubmitted(ctx context.Context, q *store.Queries, e contracts.WeekUnsubmitted) error {
+	roles, err := q.ListRolesOfTemplate(ctx, templateTimesheetReminders)
+	if err != nil {
+		return fmt.Errorf("agents: find the timesheet reminder roles: %w", err)
+	}
+	now := t.clock()
+	for _, r := range roles {
+		if err := q.InsertSubjectRequest(ctx, store.InsertSubjectRequestParams{
+			RoleID: r.ID, SubjectType: subjectPersonWeek, SubjectID: e.AggregateID(), Reason: reasonEvent,
+			Note: "Hours registered in the week: " + e.Hours + ".", Now: now,
+		}); err != nil {
+			return fmt.Errorf("agents: queue a timesheet reminder: %w", err)
+		}
+	}
+	return nil
 }

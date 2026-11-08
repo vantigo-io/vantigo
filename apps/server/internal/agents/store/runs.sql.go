@@ -78,14 +78,14 @@ func (q *Queries) AddUsage(ctx context.Context, arg AddUsageParams) error {
 }
 
 const claimDueRequest = `-- name: ClaimDueRequest :one
-SELECT q.id, q.role_id, q.conversation_id, q.reason, q.attempt, r.agent_id
+SELECT q.id, q.role_id, q.conversation_id, q.subject_type, q.subject_id, q.customer_id, q.reason, q.attempt, r.agent_id
 FROM agents.run_queue q
 JOIN agents.roles r ON r.id = q.role_id
 JOIN agents.agents a ON a.id = r.agent_id
 WHERE q.taken_at IS NULL AND q.not_before <= $1::timestamptz AND a.state = 'active'
   AND NOT EXISTS (
       SELECT 1 FROM agents.runs x
-      WHERE x.role_id = q.role_id AND x.conversation_id = q.conversation_id AND x.state IN ('queued', 'running'))
+      WHERE x.role_id = q.role_id AND x.conversation_id = q.conversation_id AND x.subject_id = q.subject_id AND x.state IN ('queued', 'running'))
 ORDER BY q.not_before, q.id
 LIMIT 1
 FOR UPDATE OF q SKIP LOCKED
@@ -95,6 +95,9 @@ type ClaimDueRequestRow struct {
 	ID             int64
 	RoleID         uuid.UUID
 	ConversationID uuid.UUID
+	SubjectType    string
+	SubjectID      string
+	CustomerID     *int32
 	Reason         string
 	Attempt        int16
 	AgentID        uuid.UUID
@@ -110,6 +113,9 @@ func (q *Queries) ClaimDueRequest(ctx context.Context, now time.Time) (ClaimDueR
 		&i.ID,
 		&i.RoleID,
 		&i.ConversationID,
+		&i.SubjectType,
+		&i.SubjectID,
+		&i.CustomerID,
 		&i.Reason,
 		&i.Attempt,
 		&i.AgentID,
@@ -154,6 +160,28 @@ func (q *Queries) CountRunsSince(ctx context.Context, arg CountRunsSinceParams) 
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const countStartsSince = `-- name: CountStartsSince :one
+SELECT (
+    (SELECT count(*) FROM agents.runs r WHERE r.role_id = $1 AND r.customer_id = $2::integer AND r.conversation_id = '00000000-0000-0000-0000-000000000000' AND r.sent_at >= $3::timestamptz) +
+    (SELECT count(*) FROM agents.review_items i WHERE i.role_id = $1 AND i.customer_id = $2::integer AND i.kind = 'start' AND i.state IN ('waiting', 'deciding', 'sent', 'edited_sent') AND i.created_at >= $3::timestamptz)
+)::bigint
+`
+
+type CountStartsSinceParams struct {
+	RoleID     uuid.UUID
+	CustomerID *int32
+	Since      time.Time
+}
+
+// Conversations a role started to a customer since a moment (S7 for V29): a run's
+// own start and a reviewer's approval, and the ones still waiting.
+func (q *Queries) CountStartsSince(ctx context.Context, arg CountStartsSinceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countStartsSince, arg.RoleID, arg.CustomerID, arg.Since)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const deleteHandedOff = `-- name: DeleteHandedOff :execrows
@@ -301,8 +329,35 @@ func (q *Queries) GetHandedOff(ctx context.Context, conversationID uuid.UUID) (A
 	return i, err
 }
 
+const getRequestOfRun = `-- name: GetRequestOfRun :one
+SELECT id, role_id, conversation_id, reason, attempt, not_before, due_by, created_at, taken_at, run_id, subject_type, subject_id, customer_id, note FROM agents.run_queue WHERE run_id = $1
+`
+
+// The request a run was made from: what a wakeup or an event said (V29).
+func (q *Queries) GetRequestOfRun(ctx context.Context, runID *uuid.UUID) (AgentsRunQueue, error) {
+	row := q.db.QueryRow(ctx, getRequestOfRun, runID)
+	var i AgentsRunQueue
+	err := row.Scan(
+		&i.ID,
+		&i.RoleID,
+		&i.ConversationID,
+		&i.Reason,
+		&i.Attempt,
+		&i.NotBefore,
+		&i.DueBy,
+		&i.CreatedAt,
+		&i.TakenAt,
+		&i.RunID,
+		&i.SubjectType,
+		&i.SubjectID,
+		&i.CustomerID,
+		&i.Note,
+	)
+	return i, err
+}
+
 const getRoleByID = `-- name: GetRoleByID :one
-SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since FROM agents.roles WHERE id = $1
+SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at, feedback_since, start_mode, change_mode, wait_days, recipient_user_id, schedule_kind, schedule_day, schedule_time, schedule_fired_at FROM agents.roles WHERE id = $1
 `
 
 func (q *Queries) GetRoleByID(ctx context.Context, id uuid.UUID) (AgentsRole, error) {
@@ -326,12 +381,20 @@ func (q *Queries) GetRoleByID(ctx context.Context, id uuid.UUID) (AgentsRole, er
 		&i.ComplaintTagIds,
 		&i.FeedbackCheckedAt,
 		&i.FeedbackSince,
+		&i.StartMode,
+		&i.ChangeMode,
+		&i.WaitDays,
+		&i.RecipientUserID,
+		&i.ScheduleKind,
+		&i.ScheduleDay,
+		&i.ScheduleTime,
+		&i.ScheduleFiredAt,
 	)
 	return i, err
 }
 
 const getRun = `-- name: GetRun :one
-SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict, answered_over_at FROM agents.runs WHERE id = $1
+SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict, answered_over_at, subject_type, subject_id FROM agents.runs WHERE id = $1
 `
 
 func (q *Queries) GetRun(ctx context.Context, id uuid.UUID) (AgentsRun, error) {
@@ -360,6 +423,8 @@ func (q *Queries) GetRun(ctx context.Context, id uuid.UUID) (AgentsRun, error) {
 		&i.SentAt,
 		&i.Verdict,
 		&i.AnsweredOverAt,
+		&i.SubjectType,
+		&i.SubjectID,
 	)
 	return i, err
 }
@@ -461,14 +526,17 @@ func (q *Queries) InsertHandedOffRun(ctx context.Context, arg InsertHandedOffRun
 }
 
 const insertRetryRequest = `-- name: InsertRetryRequest :exec
-INSERT INTO agents.run_queue (role_id, conversation_id, reason, attempt, not_before, due_by, created_at)
-VALUES ($1, $2, 'retry', $3, $4::timestamptz, $4::timestamptz, $4::timestamptz)
-ON CONFLICT (role_id, conversation_id) WHERE taken_at IS NULL DO NOTHING
+INSERT INTO agents.run_queue (role_id, conversation_id, subject_type, subject_id, customer_id, reason, attempt, not_before, due_by, created_at)
+VALUES ($1, $2, $3, $4, $5::integer, 'retry', $6, $7::timestamptz, $7::timestamptz, $7::timestamptz)
+ON CONFLICT (role_id, conversation_id, subject_id) WHERE taken_at IS NULL DO NOTHING
 `
 
 type InsertRetryRequestParams struct {
 	RoleID         uuid.UUID
 	ConversationID uuid.UUID
+	SubjectType    string
+	SubjectID      string
+	CustomerID     *int32
 	Attempt        int16
 	Now            time.Time
 }
@@ -477,6 +545,9 @@ func (q *Queries) InsertRetryRequest(ctx context.Context, arg InsertRetryRequest
 	_, err := q.db.Exec(ctx, insertRetryRequest,
 		arg.RoleID,
 		arg.ConversationID,
+		arg.SubjectType,
+		arg.SubjectID,
+		arg.CustomerID,
 		arg.Attempt,
 		arg.Now,
 	)
@@ -535,8 +606,8 @@ func (q *Queries) InsertReviewItem(ctx context.Context, arg InsertReviewItemPara
 }
 
 const insertRun = `-- name: InsertRun :exec
-INSERT INTO agents.runs (id, agent_id, role_id, conversation_id, reason, attempt, state, claimed_by, claimed_until, started_at)
-VALUES ($1, $2, $3, $4, $5, $6, 'running', $7, $8::timestamptz, $9::timestamptz)
+INSERT INTO agents.runs (id, agent_id, role_id, conversation_id, subject_type, subject_id, customer_id, reason, attempt, state, claimed_by, claimed_until, started_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7::integer, $8, $9, 'running', $10, $11::timestamptz, $12::timestamptz)
 `
 
 type InsertRunParams struct {
@@ -544,6 +615,9 @@ type InsertRunParams struct {
 	AgentID        uuid.UUID
 	RoleID         uuid.UUID
 	ConversationID uuid.UUID
+	SubjectType    string
+	SubjectID      string
+	CustomerID     *int32
 	Reason         string
 	Attempt        int16
 	ClaimedBy      *uuid.UUID
@@ -557,6 +631,9 @@ func (q *Queries) InsertRun(ctx context.Context, arg InsertRunParams) error {
 		arg.AgentID,
 		arg.RoleID,
 		arg.ConversationID,
+		arg.SubjectType,
+		arg.SubjectID,
+		arg.CustomerID,
 		arg.Reason,
 		arg.Attempt,
 		arg.ClaimedBy,
@@ -610,6 +687,37 @@ func (q *Queries) InsertSeenSender(ctx context.Context, arg InsertSeenSenderPara
 		arg.ChannelID,
 		arg.Address,
 		arg.ConversationID,
+		arg.Now,
+	)
+	return err
+}
+
+const insertSubjectRequest = `-- name: InsertSubjectRequest :exec
+INSERT INTO agents.run_queue (role_id, conversation_id, subject_type, subject_id, customer_id, reason, note, not_before, due_by, created_at)
+VALUES ($1, '00000000-0000-0000-0000-000000000000', $2, $3, $4::integer, $5, $6, $7::timestamptz, $7::timestamptz, $7::timestamptz)
+ON CONFLICT (role_id, conversation_id, subject_id) WHERE taken_at IS NULL DO NOTHING
+`
+
+type InsertSubjectRequestParams struct {
+	RoleID      uuid.UUID
+	SubjectType string
+	SubjectID   string
+	CustomerID  *int32
+	Reason      string
+	Note        string
+	Now         time.Time
+}
+
+// A request to run a role about a subject that is not a conversation (V29): a
+// wakeup that came due, or an event. One untaken request per role and subject.
+func (q *Queries) InsertSubjectRequest(ctx context.Context, arg InsertSubjectRequestParams) error {
+	_, err := q.db.Exec(ctx, insertSubjectRequest,
+		arg.RoleID,
+		arg.SubjectType,
+		arg.SubjectID,
+		arg.CustomerID,
+		arg.Reason,
+		arg.Note,
 		arg.Now,
 	)
 	return err
@@ -743,7 +851,7 @@ func (q *Queries) ListReviewItemsOfRun(ctx context.Context, runID uuid.UUID) ([]
 }
 
 const listRunsToHandOff = `-- name: ListRunsToHandOff :many
-SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict, answered_over_at FROM agents.runs WHERE state = 'handed_off' AND outcome IS NULL ORDER BY ended_at LIMIT $1
+SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict, answered_over_at, subject_type, subject_id FROM agents.runs WHERE state = 'handed_off' AND outcome IS NULL ORDER BY ended_at LIMIT $1
 `
 
 // Runs handed off whose note and assignee are still to do.
@@ -779,6 +887,8 @@ func (q *Queries) ListRunsToHandOff(ctx context.Context, n int32) ([]AgentsRun, 
 			&i.SentAt,
 			&i.Verdict,
 			&i.AnsweredOverAt,
+			&i.SubjectType,
+			&i.SubjectID,
 		); err != nil {
 			return nil, err
 		}
@@ -791,7 +901,7 @@ func (q *Queries) ListRunsToHandOff(ctx context.Context, n int32) ([]AgentsRun, 
 }
 
 const listStaleRequests = `-- name: ListStaleRequests :many
-SELECT q.id, q.role_id, q.conversation_id, q.reason, r.agent_id
+SELECT q.id, q.role_id, q.conversation_id, q.subject_type, q.reason, r.agent_id
 FROM agents.run_queue q
 JOIN agents.roles r ON r.id = q.role_id
 WHERE q.taken_at IS NULL AND q.created_at < $1::timestamptz
@@ -809,6 +919,7 @@ type ListStaleRequestsRow struct {
 	ID             int64
 	RoleID         uuid.UUID
 	ConversationID uuid.UUID
+	SubjectType    string
 	Reason         string
 	AgentID        uuid.UUID
 }
@@ -826,6 +937,7 @@ func (q *Queries) ListStaleRequests(ctx context.Context, arg ListStaleRequestsPa
 			&i.ID,
 			&i.RoleID,
 			&i.ConversationID,
+			&i.SubjectType,
 			&i.Reason,
 			&i.AgentID,
 		); err != nil {
@@ -840,7 +952,7 @@ func (q *Queries) ListStaleRequests(ctx context.Context, arg ListStaleRequestsPa
 }
 
 const listUntakenRequestsOfAgent = `-- name: ListUntakenRequestsOfAgent :many
-SELECT q.id, q.role_id, q.conversation_id, q.reason
+SELECT q.id, q.role_id, q.conversation_id, q.subject_type, q.reason
 FROM agents.run_queue q
 JOIN agents.roles r ON r.id = q.role_id
 WHERE q.taken_at IS NULL AND r.agent_id = $1
@@ -852,6 +964,7 @@ type ListUntakenRequestsOfAgentRow struct {
 	ID             int64
 	RoleID         uuid.UUID
 	ConversationID uuid.UUID
+	SubjectType    string
 	Reason         string
 }
 
@@ -868,6 +981,7 @@ func (q *Queries) ListUntakenRequestsOfAgent(ctx context.Context, agentID uuid.U
 			&i.ID,
 			&i.RoleID,
 			&i.ConversationID,
+			&i.SubjectType,
 			&i.Reason,
 		); err != nil {
 			return nil, err
@@ -881,7 +995,7 @@ func (q *Queries) ListUntakenRequestsOfAgent(ctx context.Context, agentID uuid.U
 }
 
 const lockLapsedRuns = `-- name: LockLapsedRuns :many
-SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict, answered_over_at FROM agents.runs
+SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict, answered_over_at, subject_type, subject_id FROM agents.runs
 WHERE state = 'running' AND claimed_until < $1::timestamptz
 ORDER BY claimed_until
 LIMIT $2
@@ -925,6 +1039,8 @@ func (q *Queries) LockLapsedRuns(ctx context.Context, arg LockLapsedRunsParams) 
 			&i.SentAt,
 			&i.Verdict,
 			&i.AnsweredOverAt,
+			&i.SubjectType,
+			&i.SubjectID,
 		); err != nil {
 			return nil, err
 		}
@@ -971,7 +1087,7 @@ func (q *Queries) RenewClaim(ctx context.Context, arg RenewClaimParams) (int64, 
 }
 
 const roleOfChannel = `-- name: RoleOfChannel :one
-SELECT r.id AS role_id, r.agent_id, a.user_id AS agent_user_id, a.state AS agent_state
+SELECT r.id AS role_id, r.agent_id, r.template, a.user_id AS agent_user_id, a.state AS agent_state
 FROM agents.role_channels rc
 JOIN agents.roles r ON r.id = rc.role_id
 JOIN agents.agents a ON a.id = r.agent_id
@@ -981,6 +1097,7 @@ WHERE rc.channel_id = $1
 type RoleOfChannelRow struct {
 	RoleID      uuid.UUID
 	AgentID     uuid.UUID
+	Template    string
 	AgentUserID uuid.UUID
 	AgentState  string
 }
@@ -992,6 +1109,7 @@ func (q *Queries) RoleOfChannel(ctx context.Context, channelID uuid.UUID) (RoleO
 	err := row.Scan(
 		&i.RoleID,
 		&i.AgentID,
+		&i.Template,
 		&i.AgentUserID,
 		&i.AgentState,
 	)
@@ -1090,16 +1208,18 @@ func (q *Queries) UpsertHandedOff(ctx context.Context, arg UpsertHandedOffParams
 }
 
 const upsertRunRequest = `-- name: UpsertRunRequest :exec
-INSERT INTO agents.run_queue (role_id, conversation_id, reason, not_before, due_by, created_at)
-VALUES ($1, $2, $3, $4::timestamptz, $5::timestamptz, $6::timestamptz)
-ON CONFLICT (role_id, conversation_id) WHERE taken_at IS NULL
-DO UPDATE SET not_before = LEAST(EXCLUDED.not_before, agents.run_queue.due_by)
+INSERT INTO agents.run_queue (role_id, conversation_id, reason, note, not_before, due_by, created_at)
+VALUES ($1, $2, $3, $4, $5::timestamptz, $6::timestamptz, $7::timestamptz)
+ON CONFLICT (role_id, conversation_id, subject_id) WHERE taken_at IS NULL
+DO UPDATE SET not_before = LEAST(EXCLUDED.not_before, agents.run_queue.due_by),
+              note = CASE WHEN EXCLUDED.note <> '' THEN EXCLUDED.note ELSE agents.run_queue.note END
 `
 
 type UpsertRunRequestParams struct {
 	RoleID         uuid.UUID
 	ConversationID uuid.UUID
 	Reason         string
+	Note           string
 	NotBefore      time.Time
 	DueBy          time.Time
 	Now            time.Time
@@ -1112,6 +1232,7 @@ func (q *Queries) UpsertRunRequest(ctx context.Context, arg UpsertRunRequestPara
 		arg.RoleID,
 		arg.ConversationID,
 		arg.Reason,
+		arg.Note,
 		arg.NotBefore,
 		arg.DueBy,
 		arg.Now,

@@ -86,15 +86,16 @@ func (s *server) ListAgentRuns(ctx context.Context, req gen.ListAgentRunsRequest
 	} else if err != nil {
 		return nil, fmt.Errorf("agents: read the agent: %w", err)
 	}
-	if !s.maySee(ctx, allTemplateKeys()...) {
+	visible := s.visibleTemplates(ctx)
+	if len(visible) == 0 {
 		return notPermitted(), nil
 	}
 	limit, offset := page(req.Params.Limit, req.Params.Offset)
-	rows, err := q.ListRunsOfAgent(ctx, store.ListRunsOfAgentParams{AgentID: req.AgentId, State: state, N: limit, Off: offset})
+	rows, err := q.ListRunsOfAgent(ctx, store.ListRunsOfAgentParams{AgentID: req.AgentId, State: state, Templates: visible, N: limit, Off: offset})
 	if err != nil {
 		return nil, fmt.Errorf("agents: list the runs: %w", err)
 	}
-	total, err := q.CountRunsOfAgent(ctx, store.CountRunsOfAgentParams{AgentID: req.AgentId, State: state})
+	total, err := q.CountRunsOfAgent(ctx, store.CountRunsOfAgentParams{AgentID: req.AgentId, State: state, Templates: visible})
 	if err != nil {
 		return nil, fmt.Errorf("agents: count the runs: %w", err)
 	}

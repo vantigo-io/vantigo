@@ -39,12 +39,17 @@ const (
 // reservedOperations are the writes the module's own tools make: the model asks
 // for them through the tools, which run the pipeline, and never through
 // call_operation, which would send a reply the rules never saw.
-var reservedOperations = []string{opReply, opNote, opTagPut, opTagDelete}
+var reservedOperations = []string{opReply, opNote, opTagPut, opTagDelete, opStart}
 
 func (rs *runState) loop() *agentloop.Loop {
 	rs.dispatch = &agentloop.Dispatch{Ops: rs.s.deps.Operations, User: rs.agent.UserID, Confirm: rs.confirm}
 	base := rs.dispatch.Tools()
-	tools := []agentloop.Tool{base[0], base[1], rs.callOperationTool(base[2]), rs.replyTool(), rs.noteTool(), rs.tagTool(), rs.rememberTool(), rs.handOffTool()}
+	tools := []agentloop.Tool{base[0], base[1], rs.callOperationTool(base[2])}
+	for _, name := range rs.tpl.Tools {
+		if t, ok := rs.ownTool(name); ok {
+			tools = append(tools, t)
+		}
+	}
 	return &agentloop.Loop{
 		AI:    rs.s.deps.AI,
 		Task:  aiTaskFor(rs.agent.ID),
@@ -55,6 +60,29 @@ func (rs *runState) loop() *agentloop.Loop {
 		},
 		Store: runStore{rs},
 	}
+}
+
+// ownTool is the module's own tool of a name, for a template that offers it.
+func (rs *runState) ownTool(name string) (agentloop.Tool, bool) {
+	switch name {
+	case toolReply:
+		return rs.replyTool(), true
+	case toolNote:
+		return rs.noteTool(), true
+	case toolTag:
+		return rs.tagTool(), true
+	case toolRemember:
+		return rs.rememberTool(), true
+	case toolHandOff:
+		return rs.handOffTool(), true
+	case toolFollowUp:
+		return rs.followUpTool(), true
+	case toolStartConversation:
+		return rs.startTool(), true
+	case toolNotify:
+		return rs.notifyTool(), true
+	}
+	return agentloop.Tool{}, false
 }
 
 // aiTaskFor names the agent's model: agents.run for this agent (V7).
@@ -198,11 +226,23 @@ func (rs *runState) confirm(ctx context.Context, info operations.Info, req opera
 		sources, modelScore = ev.Sources, ev.Score
 	}
 	valid, _ := validSources(sources, rs.actionLog(ctx))
+	heldBy := []string{ruleChange}
+	// A change the template marks as safe follows the role's change mode (V29); every
+	// other change, and a safe one the mode holds, waits for a person.
+	if op, ok := rs.allowed(info.ID); ok && op.Safe && rs.role.ChangeMode != modeReview {
+		dec := decideChange(rs.role.ChangeMode, int(rs.role.Threshold), scoreOf(modelScore, valid))
+		if dec.Send {
+			if res, made := rs.makeChange(ctx, info, req); made {
+				return res
+			}
+		}
+		heldBy = append(heldBy, dec.Held...)
+	}
 	item, _ := json.Marshal(map[string]any{
 		"operationId": info.ID, "summary": info.Summary, "explain": explain,
 		"pathParams": req.PathParams, "query": req.Query, "body": req.Body,
 	})
-	id, err := rs.insertItem(ctx, "change", item, scoreOf(modelScore, valid), valid, modelScore, []string{ruleChange}, "waiting", rs.expiry(false))
+	id, err := rs.insertItem(ctx, "change", item, scoreOf(modelScore, valid), valid, modelScore, heldBy, "waiting", rs.expiry(false))
 	if err != nil {
 		r := agentloop.Result{Content: agentloop.Wrap(map[string]string{"error": "call_failed", "message": "the change could not be queued"}), Status: "error"}
 		r.Operation, r.Mode = info.ID, string(operations.ModeConfirm)
@@ -221,6 +261,38 @@ func (rs *runState) confirm(ctx context.Context, info operations.Info, req opera
 	}
 }
 
+// makeChange makes a change the template marked safe, as the agent, on the role's
+// change mode (V29). made is false when the change was not made and nothing about
+// it is known to have happened, so it is left for a person to review.
+func (rs *runState) makeChange(ctx context.Context, info operations.Info, req operations.CallRequest) (agentloop.Result, bool) {
+	if !rs.stillMine(ctx) {
+		return agentloop.Result{}, false
+	}
+	res, err := rs.call(ctx, req)
+	out := agentloop.Result{Mode: "auto", Operation: info.ID, Detail: info.Summary}
+	if err != nil {
+		var oe *operations.Error
+		if asOpError(err, &oe) {
+			return agentloop.Result{}, false
+		}
+		// A change is not idempotent: the outcome is not known, so nothing is retried or queued.
+		rs.s.warn("agents: the outcome of an automatic change is unknown", "run", rs.run.ID, "operation", info.ID, "err", err)
+		rs.mu.Lock()
+		rs.handOff = &handOffRequest{code: handUnknownSend, summary: "A change may or may not have been made: the call did not answer. Check the record: " + info.Summary}
+		rs.mu.Unlock()
+		out.Content, out.Status = agentloop.Wrap(map[string]string{"error": "call_failed", "message": "it is not known whether the change was made; a colleague is told"}), "error"
+		return out, true
+	}
+	status := int32(res.Status)
+	out.HTTPStatus = &status
+	if res.Status >= 200 && res.Status < 300 {
+		out.Content, out.Status = agentloop.Wrap(map[string]string{"status": "done", "message": "the change was made"}), "ok"
+		return out, true
+	}
+	out.Content, out.Status = agentloop.Wrap(map[string]any{"error": "refused", "status": res.Status}), "error"
+	return out, true
+}
+
 // expiry is when a review item lapses: a day, and for a reply on a channel with a
 // window, 15 minutes before the window closes (V20).
 func (rs *runState) expiry(reply bool) time.Time {
@@ -237,6 +309,9 @@ func (rs *runState) expiry(reply bool) time.Time {
 func (rs *runState) insertItem(ctx context.Context, kind string, item json.RawMessage, score int, sources []string, modelScore int, heldBy []string, state string, expires time.Time) (uuid.UUID, error) {
 	if sources == nil {
 		sources = []string{}
+	}
+	if heldBy == nil {
+		heldBy = []string{}
 	}
 	src, _ := json.Marshal(sources)
 	id := uuid.New()
@@ -267,6 +342,10 @@ func (rs *runState) insertItem(ctx context.Context, kind string, item json.RawMe
 // (V20). It imports nothing of Communications: it is a note, with a link. The
 // role's hand-off person is mailed besides.
 func (rs *runState) reviewNote(ctx context.Context, itemID uuid.UUID, what string) {
+	if rs.isSubjectRun() {
+		rs.s.notifyHeldItem(ctx, rs.role, rs.agent.Name, itemID, what) // there is no conversation to write the note on
+		return
+	}
 	body, _ := json.Marshal(map[string]string{"textBody": fmt.Sprintf("%s has %s waiting for review: /agents/review/%s", rs.agent.Name, what, itemID)})
 	if res, err := rs.call(ctx, operations.CallRequest{OperationID: opNote, PathParams: rs.own(), Body: body}); err != nil || res.Status >= 300 {
 		rs.s.warn("agents: the review note was not written", "run", rs.run.ID, "status", res.Status, "err", err)
