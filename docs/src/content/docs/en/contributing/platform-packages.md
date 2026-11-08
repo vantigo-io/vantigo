@@ -811,7 +811,7 @@ What the hub does for a document topic:
   seed and compaction answers come back in the order sent. An update is never echoed to the
   connection that sent it.
 - **Replay.** `doc_sync` streams the rows after `after`, then `synced`. Replay frames go
-  through a blocking enqueue (10 s) instead of the drop-and-resync of the ordinary queue; it
+  through a blocking enqueue (10 s), `synced` and `doc_reset` included, instead of the drop-and-resync of the ordinary queue; it
   stops between rows once its subscription is revoked or replaced; live rows that arrive
   meanwhile are held and sent after `synced`, and rows at or below the replay's newest `seq` are
   dropped as duplicates. **Never a silent gap:** when the ordinary queue is cleared (a slow
