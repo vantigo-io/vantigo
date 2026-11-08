@@ -37,7 +37,7 @@ func ownerUser(t *testing.T, h *harness) (*modtest.Client, uuid.UUID) {
 // the directory down for the one read the holders' rules make.
 type failingHolders struct{ contracts.UserDirectory }
 
-func (failingHolders) PermissionHolders(context.Context, string) ([]contracts.Holder, error) {
+func (failingHolders) PermissionHolders(context.Context, string, ...contracts.DirectoryOption) ([]contracts.Holder, error) {
 	return nil, errors.New("the directory is down")
 }
 

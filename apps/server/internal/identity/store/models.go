@@ -35,6 +35,18 @@ type IdentityAccessGroupRoleMapping struct {
 	Source  string
 }
 
+type IdentityAgentGrant struct {
+	ID               uuid.UUID
+	UserID           uuid.UUID
+	AgentID          uuid.UUID
+	RunID            uuid.UUID
+	CustomerID       *int32
+	ApprovedByUserID *uuid.UUID
+	CreatedAt        time.Time
+	ExpiresAt        time.Time
+	RevokedAt        *time.Time
+}
+
 type IdentityAiTaskModel struct {
 	TaskKey   string
 	Model     string
@@ -312,6 +324,7 @@ type IdentityUser struct {
 	DisabledBy          *string
 	TimeZone            *string
 	ProvisioningRolesAt *time.Time
+	Kind                string
 }
 
 type IdentityUserRole struct {

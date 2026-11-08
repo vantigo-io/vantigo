@@ -57,7 +57,7 @@ func (d *userDirectory) User(ctx context.Context, id uuid.UUID) (*contracts.User
 	if err != nil {
 		return nil, fmt.Errorf("identity: user directory user: %w", err)
 	}
-	entry := userEntry(row.ID, row.DisplayName, row.IsDisabled, row.PreferredLanguage)
+	entry := userEntry(row.ID, row.DisplayName, row.IsDisabled, row.PreferredLanguage, row.Kind)
 	return &entry, nil
 }
 
@@ -75,7 +75,7 @@ func (d *userDirectory) Users(ctx context.Context, ids []uuid.UUID) ([]contracts
 	}
 	entries := make([]contracts.UserEntry, 0, len(rows))
 	for _, row := range rows {
-		entries = append(entries, userEntry(row.ID, row.DisplayName, row.IsDisabled, row.PreferredLanguage))
+		entries = append(entries, userEntry(row.ID, row.DisplayName, row.IsDisabled, row.PreferredLanguage, row.Kind))
 	}
 	return entries, nil
 }
@@ -83,19 +83,21 @@ func (d *userDirectory) Users(ctx context.Context, ids []uuid.UUID) ([]contracts
 // SearchUsers finds active users whose display name contains query,
 // case-insensitively, ordered by display name and capped at limit (clamped
 // to between 1 and 50). A literal %, _ or \ in query is escaped first, so it
-// matches only that literal character rather than as an ILIKE wildcard.
-func (d *userDirectory) SearchUsers(ctx context.Context, query string, limit int) ([]contracts.UserEntry, error) {
+// matches only that literal character rather than as an ILIKE wildcard. Users
+// of kind agent are left out unless opts carries contracts.IncludeAgents.
+func (d *userDirectory) SearchUsers(ctx context.Context, query string, limit int, opts ...contracts.DirectoryOption) ([]contracts.UserEntry, error) {
 	limit = clampSearchLimit(limit)
 	rows, err := d.q.DirectorySearchUsers(ctx, store.DirectorySearchUsersParams{
-		Pattern: escapeLike(query),
-		MaxRows: int32(limit),
+		Pattern:       escapeLike(query),
+		MaxRows:       int32(limit),
+		IncludeAgents: contracts.ResolveDirectoryOptions(opts).IncludeAgents,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("identity: user directory search users: %w", err)
 	}
 	entries := make([]contracts.UserEntry, 0, len(rows))
 	for _, row := range rows {
-		entries = append(entries, userEntry(row.ID, row.DisplayName, row.IsDisabled, row.PreferredLanguage))
+		entries = append(entries, userEntry(row.ID, row.DisplayName, row.IsDisabled, row.PreferredLanguage, row.Kind))
 	}
 	return entries, nil
 }
@@ -103,8 +105,9 @@ func (d *userDirectory) SearchUsers(ctx context.Context, query string, limit int
 // PermissionHolders lists the active users holding key, ordered by display
 // name, in one query (DirectoryPermissionHolders says who counts). A
 // placeholder address — a directory's or an identity provider's, which no
-// mail reaches (publicEmail) — is answered empty; the holder is kept.
-func (d *userDirectory) PermissionHolders(ctx context.Context, key string) ([]contracts.Holder, error) {
+// mail reaches (publicEmail) — is answered empty; the holder is kept. Users of
+// kind agent are left out unless opts carries contracts.IncludeAgents.
+func (d *userDirectory) PermissionHolders(ctx context.Context, key string, opts ...contracts.DirectoryOption) ([]contracts.Holder, error) {
 	scimEnabled, err := d.sso.scimEnabled(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("identity: user directory permission holders: %w", err)
@@ -112,13 +115,14 @@ func (d *userDirectory) PermissionHolders(ctx context.Context, key string) ([]co
 	rows, err := d.q.DirectoryPermissionHolders(ctx, store.DirectoryPermissionHoldersParams{
 		ScimEnabled:   scimEnabled,
 		PermissionKey: key,
+		IncludeAgents: contracts.ResolveDirectoryOptions(opts).IncludeAgents,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("identity: user directory permission holders: %w", err)
 	}
 	holders := make([]contracts.Holder, 0, len(rows))
 	for _, row := range rows {
-		holder := contracts.Holder{ID: row.ID, DisplayName: row.DisplayName, PreferredLanguage: row.PreferredLanguage}
+		holder := contracts.Holder{ID: row.ID, DisplayName: row.DisplayName, PreferredLanguage: row.PreferredLanguage, Kind: row.Kind}
 		if email := publicEmail(row.Email); email != nil {
 			holder.Email = *email
 		}
@@ -130,7 +134,7 @@ func (d *userDirectory) PermissionHolders(ctx context.Context, key string) ([]co
 // Notify mails the user one of n's texts (noticeText says which), at
 // identity's address for them, as a plain text mail from SMTP_FROM — the way
 // deliverInvitation sends. A user who is not active (DirectoryUserForNotice),
-// is unknown, or whose only address is a placeholder no mail reaches
+// is unknown, is an agent, or whose only address is a placeholder no mail reaches
 // (publicEmail), and a notice with no text, are not mailed and not an error;
 // nor is an installation composed without a mail sender. The log driver
 // counts as a sender: it records that a mail went. A failed send is an error
@@ -180,10 +184,10 @@ func noticeText(n contracts.Notice, language string) contracts.NoticeText {
 	return n.Texts[keys[0]]
 }
 
-// userEntry builds a contracts.UserEntry from the four columns User, Users
+// userEntry builds a contracts.UserEntry from the five columns User, Users
 // and SearchUsers ever expose: they never see email, roles, or MFA state.
-func userEntry(id uuid.UUID, displayName string, isDisabled bool, preferredLanguage string) contracts.UserEntry {
-	return contracts.UserEntry{ID: id, DisplayName: displayName, Active: !isDisabled, PreferredLanguage: preferredLanguage}
+func userEntry(id uuid.UUID, displayName string, isDisabled bool, preferredLanguage, kind string) contracts.UserEntry {
+	return contracts.UserEntry{ID: id, DisplayName: displayName, Active: !isDisabled, PreferredLanguage: preferredLanguage, Kind: kind}
 }
 
 // clampSearchLimit keeps limit within [minSearchLimit, maxSearchLimit],

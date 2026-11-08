@@ -835,11 +835,11 @@ func (*fakeUserDirectory) Users(context.Context, []uuid.UUID) ([]contracts.UserE
 	return nil, nil
 }
 
-func (*fakeUserDirectory) SearchUsers(context.Context, string, int) ([]contracts.UserEntry, error) {
+func (*fakeUserDirectory) SearchUsers(context.Context, string, int, ...contracts.DirectoryOption) ([]contracts.UserEntry, error) {
 	return nil, nil
 }
 
-func (*fakeUserDirectory) PermissionHolders(context.Context, string) ([]contracts.Holder, error) {
+func (*fakeUserDirectory) PermissionHolders(context.Context, string, ...contracts.DirectoryOption) ([]contracts.Holder, error) {
 	return nil, nil
 }
 

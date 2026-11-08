@@ -43,6 +43,7 @@ WHERE s.id = $1
   AND s.revoked_at IS NULL
   AND NOT u.is_disabled
   AND u.pending_since IS NULL
+  AND u.kind = 'person'
   AND (NOT $2::boolean OR m.upstream_active IS NOT FALSE OR r.is_owner)
   -- sqlc.arg, not @: PostgreSQL parses @ as a prefix operator that binds
   -- looser than -, which would swallow the whole subtraction.
@@ -137,6 +138,7 @@ WHERE s.token_hash = $1
   AND s.revoked_at IS NULL
   AND NOT u.is_disabled
   AND u.pending_since IS NULL
+  AND u.kind = 'person'
   AND (NOT $2::boolean OR m.upstream_active IS NOT FALSE OR r.is_owner)
   -- sqlc.arg, not @: PostgreSQL parses @ as a prefix operator that binds
   -- looser than -, which would swallow the whole subtraction.

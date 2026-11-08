@@ -78,11 +78,11 @@ func (silentUsers) Users(context.Context, []uuid.UUID) ([]contracts.UserEntry, e
 	return nil, nil
 }
 
-func (silentUsers) SearchUsers(context.Context, string, int) ([]contracts.UserEntry, error) {
+func (silentUsers) SearchUsers(context.Context, string, int, ...contracts.DirectoryOption) ([]contracts.UserEntry, error) {
 	return nil, nil
 }
 
-func (silentUsers) PermissionHolders(context.Context, string) ([]contracts.Holder, error) {
+func (silentUsers) PermissionHolders(context.Context, string, ...contracts.DirectoryOption) ([]contracts.Holder, error) {
 	return nil, nil
 }
 

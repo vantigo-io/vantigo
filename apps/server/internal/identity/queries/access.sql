@@ -143,11 +143,11 @@ ORDER BY k.permission_key COLLATE "C";
 
 -- name: ListAccessUsers :many
 -- ListAccessUsers is the authorization user directory
--- (EA/AuthorizationManagementEndpoints.cs:475-487): every user, by display
--- name (ordinal), then id.
-SELECT id, display_name, email, is_disabled, lockout_end, version
+-- (EA/AuthorizationManagementEndpoints.cs:475-487): every user, the people
+-- first and the agents after them (kind), by display name (ordinal), then id.
+SELECT id, display_name, email, kind, is_disabled, lockout_end, version
 FROM identity.users
-ORDER BY display_name COLLATE "C", id;
+ORDER BY (kind = 'agent'), display_name COLLATE "C", id;
 
 -- name: ListAllUserRoleAssignments :many
 -- ListAllUserRoleAssignments is every direct role assignment, each user's

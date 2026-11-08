@@ -12,7 +12,7 @@ import (
 )
 
 const directoryPermissionHolders = `-- name: DirectoryPermissionHolders :many
-SELECT u.id, u.display_name, u.email, coalesce(u.preferred_language, '')::text AS preferred_language
+SELECT u.id, u.display_name, u.email, coalesce(u.preferred_language, '')::text AS preferred_language, u.kind
 FROM identity.users u
 CROSS JOIN LATERAL (
     SELECT EXISTS (
@@ -24,12 +24,13 @@ CROSS JOIN LATERAL (
 ) o
 LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id
 WHERE NOT u.is_disabled
+  AND ($1::boolean OR u.kind = 'person')
   AND u.pending_since IS NULL
-  AND (NOT $1::boolean OR m.upstream_active IS NOT FALSE OR o.is_owner)
+  AND (NOT $2::boolean OR m.upstream_active IS NOT FALSE OR o.is_owner)
   AND (o.is_owner OR EXISTS (
       SELECT 1
       FROM identity.role_permissions rp
-      WHERE rp.permission_key = $2
+      WHERE rp.permission_key = $3
         AND rp.role_id IN (
             SELECT ur.role_id
             FROM identity.user_roles ur
@@ -48,6 +49,7 @@ ORDER BY u.display_name, u.id
 `
 
 type DirectoryPermissionHoldersParams struct {
+	IncludeAgents bool
 	ScimEnabled   bool
 	PermissionKey string
 }
@@ -57,6 +59,7 @@ type DirectoryPermissionHoldersRow struct {
 	DisplayName       string
 	Email             string
 	PreferredLanguage string
+	Kind              string
 }
 
 // DirectoryPermissionHolders is contracts.UserDirectory.PermissionHolders:
@@ -67,9 +70,9 @@ type DirectoryPermissionHoldersRow struct {
 // access.go's permitted), or through a role among their direct roles and the
 // roles mapped to every active access group they are effectively a member of
 // — exactly EffectivePermissionForUser's rule (roles.sql). A delegation
-// grants no key.
+// grants no key. A user of kind agent is left out unless include_agents.
 func (q *Queries) DirectoryPermissionHolders(ctx context.Context, arg DirectoryPermissionHoldersParams) ([]DirectoryPermissionHoldersRow, error) {
-	rows, err := q.db.Query(ctx, directoryPermissionHolders, arg.ScimEnabled, arg.PermissionKey)
+	rows, err := q.db.Query(ctx, directoryPermissionHolders, arg.IncludeAgents, arg.ScimEnabled, arg.PermissionKey)
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +85,7 @@ func (q *Queries) DirectoryPermissionHolders(ctx context.Context, arg DirectoryP
 			&i.DisplayName,
 			&i.Email,
 			&i.PreferredLanguage,
+			&i.Kind,
 		); err != nil {
 			return nil, err
 		}
@@ -94,16 +98,17 @@ func (q *Queries) DirectoryPermissionHolders(ctx context.Context, arg DirectoryP
 }
 
 const directorySearchUsers = `-- name: DirectorySearchUsers :many
-SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language
+SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language, kind
 FROM identity.users
-WHERE NOT is_disabled AND display_name ILIKE '%' || $1::text || '%' ESCAPE '\'
+WHERE NOT is_disabled AND ($1::boolean OR kind = 'person') AND display_name ILIKE '%' || $2::text || '%' ESCAPE '\'
 ORDER BY display_name, id
-LIMIT $2
+LIMIT $3
 `
 
 type DirectorySearchUsersParams struct {
-	Pattern string
-	MaxRows int32
+	IncludeAgents bool
+	Pattern       string
+	MaxRows       int32
 }
 
 type DirectorySearchUsersRow struct {
@@ -111,10 +116,12 @@ type DirectorySearchUsersRow struct {
 	DisplayName       string
 	IsDisabled        bool
 	PreferredLanguage string
+	Kind              string
 }
 
+// DirectorySearchUsers leaves out users of kind agent unless include_agents.
 func (q *Queries) DirectorySearchUsers(ctx context.Context, arg DirectorySearchUsersParams) ([]DirectorySearchUsersRow, error) {
-	rows, err := q.db.Query(ctx, directorySearchUsers, arg.Pattern, arg.MaxRows)
+	rows, err := q.db.Query(ctx, directorySearchUsers, arg.IncludeAgents, arg.Pattern, arg.MaxRows)
 	if err != nil {
 		return nil, err
 	}
@@ -127,6 +134,7 @@ func (q *Queries) DirectorySearchUsers(ctx context.Context, arg DirectorySearchU
 			&i.DisplayName,
 			&i.IsDisabled,
 			&i.PreferredLanguage,
+			&i.Kind,
 		); err != nil {
 			return nil, err
 		}
@@ -139,7 +147,7 @@ func (q *Queries) DirectorySearchUsers(ctx context.Context, arg DirectorySearchU
 }
 
 const directoryUser = `-- name: DirectoryUser :one
-SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language
+SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language, kind
 FROM identity.users WHERE id = $1
 `
 
@@ -148,6 +156,7 @@ type DirectoryUserRow struct {
 	DisplayName       string
 	IsDisabled        bool
 	PreferredLanguage string
+	Kind              string
 }
 
 func (q *Queries) DirectoryUser(ctx context.Context, id uuid.UUID) (DirectoryUserRow, error) {
@@ -158,6 +167,7 @@ func (q *Queries) DirectoryUser(ctx context.Context, id uuid.UUID) (DirectoryUse
 		&i.DisplayName,
 		&i.IsDisabled,
 		&i.PreferredLanguage,
+		&i.Kind,
 	)
 	return i, err
 }
@@ -168,6 +178,7 @@ FROM identity.users u
 LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id
 WHERE u.id = $1
   AND NOT u.is_disabled
+  AND u.kind = 'person'
   AND u.pending_since IS NULL
   AND (NOT $2::boolean OR m.upstream_active IS NOT FALSE OR EXISTS (
       SELECT 1
@@ -190,7 +201,8 @@ type DirectoryUserForNoticeRow struct {
 // DirectoryUserForNotice is contracts.UserDirectory.Notify's one read: the
 // address and language of the user, when active as DirectoryPermissionHolders
 // means it — not disabled, not pending, and, while SCIM is configured, not
-// deactivated by the directory unless an Owner. No row for a user who is not.
+// deactivated by the directory unless an Owner. No row for a user who is not,
+// nor for a user of kind agent, whose address never routes.
 func (q *Queries) DirectoryUserForNotice(ctx context.Context, arg DirectoryUserForNoticeParams) (DirectoryUserForNoticeRow, error) {
 	row := q.db.QueryRow(ctx, directoryUserForNotice, arg.ID, arg.ScimEnabled)
 	var i DirectoryUserForNoticeRow
@@ -199,7 +211,7 @@ func (q *Queries) DirectoryUserForNotice(ctx context.Context, arg DirectoryUserF
 }
 
 const directoryUsers = `-- name: DirectoryUsers :many
-SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language
+SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language, kind
 FROM identity.users WHERE id = ANY($1::uuid[])
 `
 
@@ -208,6 +220,7 @@ type DirectoryUsersRow struct {
 	DisplayName       string
 	IsDisabled        bool
 	PreferredLanguage string
+	Kind              string
 }
 
 func (q *Queries) DirectoryUsers(ctx context.Context, dollar_1 []uuid.UUID) ([]DirectoryUsersRow, error) {
@@ -224,6 +237,7 @@ func (q *Queries) DirectoryUsers(ctx context.Context, dollar_1 []uuid.UUID) ([]D
 			&i.DisplayName,
 			&i.IsDisabled,
 			&i.PreferredLanguage,
+			&i.Kind,
 		); err != nil {
 			return nil, err
 		}

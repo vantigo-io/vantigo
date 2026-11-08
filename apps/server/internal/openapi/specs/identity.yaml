@@ -124,6 +124,13 @@ components:
                     type: string
                 isDisabled:
                     type: boolean
+                kind:
+                    default: person
+                    description: person for a user who signs in, agent for an AI agent (virtual employees design V5). An agent has no credential and is listed apart from the people.
+                    enum:
+                        - person
+                        - agent
+                    type: string
                 roles:
                     items:
                         $ref: '#/components/schemas/AccessRoleSummary'
@@ -975,6 +982,19 @@ components:
             required:
                 - password
             type: object
+        OwnerUserCountsResponse:
+            description: How many people and how many agents the workspace has, disabled ones included. Nothing enforces a limit.
+            properties:
+                agents:
+                    format: int32
+                    type: integer
+                people:
+                    format: int32
+                    type: integer
+            required:
+                - people
+                - agents
+            type: object
         OwnerUserResponse:
             properties:
                 active:
@@ -1000,6 +1020,13 @@ components:
                     type: string
                 id:
                     format: uuid
+                    type: string
+                kind:
+                    default: person
+                    description: person for a user who signs in, agent for an AI agent (virtual employees design V5). An agent has no credential and is listed apart from the people.
+                    enum:
+                        - person
+                        - agent
                     type: string
                 lockedOut:
                     type: boolean
@@ -5913,6 +5940,42 @@ paths:
             tags:
                 - Authentication
             x-vantigo-access: policy:Owner
+    /api/v1/identity/owner/user-counts:
+        get:
+            operationId: getIdentityOwnerUserCounts
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OwnerUserCountsResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Count the people and the agents
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
     /api/v1/identity/owner/users:
         get:
             operationId: getIdentityOwnerUsers

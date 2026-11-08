@@ -37,3 +37,26 @@ func withAssistantGrants(deps Deps, enabled []Module) (Deps, error) {
 	}
 	return deps, nil
 }
+
+// withAgentSlots resolves contracts.AgentAccounts and contracts.AgentGrants
+// from the enabled modules — at most one may declare each — keeping a preset
+// value when none does. Compose calls it beside withAssistantGrants; Workers
+// does not: an agent's user and grant are made while a request or a run's
+// claim is being served.
+func withAgentSlots(deps Deps, enabled []Module) (Deps, error) {
+	accounts, err := soleProvider(enabled, "agent accounts", func(m Module) bool { return m.AgentAccounts != nil })
+	if err != nil {
+		return deps, err
+	}
+	if accounts != nil {
+		deps.AgentAccounts = accounts.AgentAccounts(deps)
+	}
+	grants, err := soleProvider(enabled, "agent grants", func(m Module) bool { return m.AgentGrants != nil })
+	if err != nil {
+		return deps, err
+	}
+	if grants != nil {
+		deps.AgentGrants = grants.AgentGrants(deps)
+	}
+	return deps, nil
+}

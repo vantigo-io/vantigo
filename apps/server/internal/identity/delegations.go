@@ -199,10 +199,15 @@ func (s *server) validateDelegation(ctx context.Context, q *store.Queries, body 
 	if d.grantee == actor || (d.expiresAt != nil && !d.expiresAt.After(now)) {
 		return delegationRequest{}, invalidDelegation
 	}
-	if _, err := q.GetUserByID(ctx, d.grantee); errors.Is(err, pgx.ErrNoRows) {
+	grantee, err := q.GetUserByID(ctx, d.grantee)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return delegationRequest{}, notFound
 	} else if err != nil {
 		return delegationRequest{}, err
+	}
+	// An agent never manages authorization (virtual employees design V5).
+	if isAgent(grantee) {
+		return delegationRequest{}, invalidDelegationTarget
 	}
 	owner, err := q.IsOwner(ctx, d.grantee)
 	if err != nil || owner {

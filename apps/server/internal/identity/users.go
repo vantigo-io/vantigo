@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
@@ -88,8 +89,17 @@ func managedTarget(ctx context.Context, q *store.Queries, id uuid.UUID) (store.I
 	if errors.Is(err, pgx.ErrNoRows) {
 		return u, notFound
 	}
+	if err == nil && isAgent(u) {
+		// An agent is made and changed through contracts.AgentAccounts only
+		// (virtual employees design V5): no owner operation reaches it, whether
+		// to edit it, give it a role, set a password or link it.
+		return u, notFound
+	}
 	return u, err
 }
+
+// isAgent reports whether u is a user of kind agent.
+func isAgent(u store.IdentityUser) bool { return u.Kind == contracts.UserKindAgent }
 
 // emailTaken returns the account that has email, compared normalized, and
 // whether there is one.
@@ -106,7 +116,8 @@ func lockOwners(ctx context.Context, q *store.Queries) error {
 	return q.AcquireOwnerMutationLock(ctx, ownerMutationLock)
 }
 
-// GetIdentityOwnerUsers lists every user for an Owner, the Owners first,
+// GetIdentityOwnerUsers lists every user for an Owner, the people before the
+// agents, the Owners first,
 // then by display name and id (EA/AuthAccountEndpoints.cs:401-457).
 func (s *server) GetIdentityOwnerUsers(ctx context.Context, _ gen.GetIdentityOwnerUsersRequestObject) (gen.GetIdentityOwnerUsersResponseObject, error) {
 	issuer, err := s.oidcIssuer(ctx)
@@ -123,6 +134,16 @@ func (s *server) GetIdentityOwnerUsers(ctx context.Context, _ gen.GetIdentityOwn
 		users[i] = s.ownerUser(u, now, issuer)
 	}
 	return users, nil
+}
+
+// GetIdentityOwnerUserCounts counts the people and the agents, disabled ones
+// included (virtual employees design V5). Nothing enforces a limit.
+func (s *server) GetIdentityOwnerUserCounts(ctx context.Context, _ gen.GetIdentityOwnerUserCountsRequestObject) (gen.GetIdentityOwnerUserCountsResponseObject, error) {
+	c, err := s.q.CountUsersByKind(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("identity: count users: %w", err)
+	}
+	return gen.GetIdentityOwnerUserCounts200JSONResponse{People: int32(c.People), Agents: int32(c.Agents)}, nil
 }
 
 // ownerUser is a user as owner user management shows one
@@ -152,6 +173,7 @@ func (s *server) ownerUser(u store.ListManagedUsersRow, now time.Time, issuer *s
 		Id:               u.ID,
 		DisplayName:      u.DisplayName,
 		Email:            &email,
+		Kind:             (*gen.OwnerUserResponseKind)(&u.Kind),
 		Role:             role,
 		Active:           !disabled && !locked,
 		Disabled:         disabled,

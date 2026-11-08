@@ -1105,6 +1105,7 @@ func (s *server) GetIdentityAccessUsers(ctx context.Context, _ gen.GetIdentityAc
 			Id:          u.ID,
 			DisplayName: u.DisplayName,
 			Email:       &u.Email,
+			Kind:        (*gen.AccessUserResponseKind)(&u.Kind),
 			IsDisabled:  u.IsDisabled,
 			Active:      isActive(u.IsDisabled, u.LockoutEnd, now),
 			Version:     &version,
