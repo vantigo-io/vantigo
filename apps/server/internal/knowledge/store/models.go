@@ -34,6 +34,7 @@ type KnowledgeArticle struct {
 	UpdateRows          int32
 	UpdateBytes         int64
 	LastCompactionAskAt *time.Time
+	LastAppendAt        *time.Time
 }
 
 type KnowledgeArticleAccess struct {

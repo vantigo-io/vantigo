@@ -1473,3 +1473,15 @@ An Opus critic checked revision 1 against the code. What changed:
   requests one too.
 - **The cross-hub fan-out** never echoes and never duplicates.
 - **Rate limits** cover every writer frame. Transient errors are answered `unavailable`.
+
+### Revision 7 — collab_active, 2026-11-08
+
+- **A `single` save and a version restore answer `409 collab_active`** while the article's
+  update log is non-empty and took a row within the last 2 minutes
+  (`articles.last_append_at`, kept by Append, Seed and Compact under the row lock and cleared
+  by a reset). A single-editor write would delete the log of people editing live. A log with
+  no row for 2 minutes is stale, and a single save or restore resets it as before. The reset
+  endpoint is unchanged and works on an active log. Migration `00140` was edited in place
+  (unreleased).
+- **A replay's closing frame** (`synced`, `doc_reset`) waits for queue room like the rows
+  before it, instead of draining the queue into a `slow_consumer` resync.

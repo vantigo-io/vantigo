@@ -132,6 +132,9 @@ func (s *server) RestoreKnowledgeArticleVersion(ctx context.Context, req gen.Res
 		if m.Locked {
 			return locked()
 		}
+		if err := refuseActiveLog(ctx, q, req.Id, now); err != nil {
+			return err
+		}
 		if m.Version != req.Body.ExpectedVersion {
 			return versionConflict(m.Version, m.UpdatedAt, m.UpdatedBy)
 		}

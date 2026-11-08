@@ -664,7 +664,7 @@ export interface components {
              */
             expectedVersion?: number;
             /**
-             * @description Absent means single. single: today's save over expectedVersion, which also deletes the article's live log (K32). collab: a save by a client in live co-editing, which compares no version, keeps the lock and the document checks, leaves the log, and is refused (409 collab_inactive) while the log is empty.
+             * @description Absent means single. single: today's save over expectedVersion, which also deletes the article's live log (K32); refused (409 collab_active) while the log is not empty and took a row within the last 2 minutes. collab: a save by a client in live co-editing, which compares no version, keeps the lock and the document checks, leaves the log, and is refused (409 collab_inactive) while the log is empty.
              * @enum {string}
              */
             mode?: "single" | "collab";
@@ -1409,7 +1409,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict (mode single only), article_locked, collab_inactive (mode collab, and the article's live log is empty). */
+            /** @description Conflict — version_conflict (mode single only), article_locked, collab_inactive (mode collab, and the article's live log is empty), collab_active (mode single, and the article's live log is not empty and took a row within the last 2 minutes). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2045,7 +2045,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, article_locked. */
+            /** @description Conflict — version_conflict, article_locked, collab_active (the article's live log is not empty and took a row within the last 2 minutes). */
             409: {
                 headers: {
                     [name: string]: unknown;

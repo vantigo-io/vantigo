@@ -23,21 +23,24 @@ FROM knowledge.article_updates WHERE article_id = @article_id::uuid;
 -- name: DocState :one
 -- DocState is the log's state on the article row (K27, K32); the caller holds
 -- the row lock.
-SELECT doc_epoch::bigint AS epoch, version, update_rows::bigint AS update_rows, update_bytes, last_compaction_ask_at
+SELECT doc_epoch::bigint AS epoch, version, update_rows::bigint AS update_rows, update_bytes, last_compaction_ask_at, last_append_at
 FROM knowledge.articles WHERE id = @id::uuid;
 
 -- name: AddDocCounters :exec
-UPDATE knowledge.articles SET update_rows = update_rows + @rows::int, update_bytes = update_bytes + @bytes::bigint WHERE id = @id::uuid;
+-- AddDocCounters counts an appended row and notes when it was (last_append_at).
+UPDATE knowledge.articles SET update_rows = update_rows + @rows::int, update_bytes = update_bytes + @bytes::bigint, last_append_at = @now::timestamptz WHERE id = @id::uuid;
 
 -- name: SetDocCounters :exec
-UPDATE knowledge.articles SET update_rows = @rows::int, update_bytes = @bytes::bigint WHERE id = @id::uuid;
+-- SetDocCounters sets the log's size after a seed or a compaction, which note
+-- when they were (last_append_at) like an append.
+UPDATE knowledge.articles SET update_rows = @rows::int, update_bytes = @bytes::bigint, last_append_at = @now::timestamptz WHERE id = @id::uuid;
 
 -- name: MarkCompactionAsked :exec
 UPDATE knowledge.articles SET last_compaction_ask_at = @now::timestamptz WHERE id = @id::uuid;
 
 -- name: ResetDocLog :one
 -- ResetDocLog starts a new epoch with an empty log and answers it (K32).
-UPDATE knowledge.articles SET doc_epoch = doc_epoch + 1, update_rows = 0, update_bytes = 0
+UPDATE knowledge.articles SET doc_epoch = doc_epoch + 1, update_rows = 0, update_bytes = 0, last_append_at = NULL
 WHERE id = @id::uuid RETURNING doc_epoch::bigint AS epoch;
 
 -- name: AppendUpdate :one

@@ -297,14 +297,14 @@ type KnowledgeContentUpdate struct {
 	// ExpectedVersion The version the editor last read. Required with mode single (a missing one is 400, a stale one 409 version_conflict); ignored with mode collab.
 	ExpectedVersion *int32 `json:"expectedVersion,omitempty"`
 
-	// Mode Absent means single. single: today's save over expectedVersion, which also deletes the article's live log (K32). collab: a save by a client in live co-editing, which compares no version, keeps the lock and the document checks, leaves the log, and is refused (409 collab_inactive) while the log is empty.
+	// Mode Absent means single. single: today's save over expectedVersion, which also deletes the article's live log (K32); refused (409 collab_active) while the log is not empty and took a row within the last 2 minutes. collab: a save by a client in live co-editing, which compares no version, keeps the lock and the document checks, leaves the log, and is refused (409 collab_inactive) while the log is empty.
 	Mode *KnowledgeContentUpdateMode `json:"mode,omitempty"`
 
 	// Title The article's title; empty is shown as Untitled.
 	Title string `json:"title"`
 }
 
-// KnowledgeContentUpdateMode Absent means single. single: today's save over expectedVersion, which also deletes the article's live log (K32). collab: a save by a client in live co-editing, which compares no version, keeps the lock and the document checks, leaves the log, and is refused (409 collab_inactive) while the log is empty.
+// KnowledgeContentUpdateMode Absent means single. single: today's save over expectedVersion, which also deletes the article's live log (K32); refused (409 collab_active) while the log is not empty and took a row within the last 2 minutes. collab: a save by a client in live co-editing, which compares no version, keeps the lock and the document checks, leaves the log, and is refused (409 collab_inactive) while the log is empty.
 type KnowledgeContentUpdateMode string
 
 // KnowledgeDocument A ProseMirror document as the editor stores it (K8): {type: doc, content: [...]}. Only the allowlisted nodes, marks and attributes are accepted (invalid_document names the JSON path of the first one refused), and a document over 2 MiB is refused with 413 document_too_large. HTML is never stored.

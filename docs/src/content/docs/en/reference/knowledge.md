@@ -593,6 +593,12 @@ The JSON is the truth again, and the log is deleted, its counters zeroed and `do
 Each notifies `doc_reset` with the new epoch on `knowledge.doc:<id>`; every subscriber discards
 its copy and reopens the article.
 
+A `single` save and a restore are refused with `409 collab_active` while the log is **active**:
+not empty and with a row stored (an append, a seed or a compaction, kept as `last_append_at` on the
+article row) within the last **2 minutes**. Someone is co-editing, and the write would delete their
+log. A log with no row for 2 minutes is stale and these two reset it as before; the endpoint above
+is unchanged and resets an active log too.
+
 ### The collaborative save
 
 A writer's client saves the JSON with `PUT /articles/{id}/content` and `"mode": "collab"`. The
@@ -679,6 +685,7 @@ words. Field errors of a 400 are in `errors`, keyed by the request's camelCase f
 | 409 | `version_conflict` | `expectedVersion` is not current (`mode: single`); carries `currentVersion`, `updatedAt`, `updatedBy`. |
 | 409 | `article_locked` | A content save, title change or version restore on a locked article. |
 | 409 | `collab_inactive` | A `mode: collab` save of an article whose live log is empty. |
+| 409 | `collab_active` | A `mode: single` save or a version restore of an article whose live log is not empty and took a row within the last 2 minutes. |
 | 409 | `visibility_change` | The change moves the article between private and the workspace and `confirmVisibility` was not given. |
 | 409 | `not_trashed` | A restore of an article that is not in the trash. |
 | 400 | `invalid_document` | Also: an image or attachment naming a file that is not the article's own. |

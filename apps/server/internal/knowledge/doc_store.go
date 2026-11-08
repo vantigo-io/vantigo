@@ -75,6 +75,24 @@ func (s *docStore) CanWrite(ctx context.Context, key string) bool {
 // replicas: the time of the last is on the article row (K31).
 const compactionCooldown = time.Minute
 
+// collabActiveWindow is how recently a non-empty log must have taken a row
+// for a single-editor save or a restore to be refused (collab_active): past it
+// the log is stale, and the write resets it as it always did.
+const collabActiveWindow = 2 * time.Minute
+
+// refuseActiveLog is the 409 collab_active when the article's log is non-empty
+// and took a row within collabActiveWindow. The caller holds the row lock.
+func refuseActiveLog(ctx context.Context, q *store.Queries, id uuid.UUID, now time.Time) error {
+	st, err := q.DocState(ctx, id)
+	if err != nil {
+		return fmt.Errorf("knowledge: read the log's state of %s: %w", id, err)
+	}
+	if st.UpdateRows > 0 && st.LastAppendAt != nil && now.Sub(*st.LastAppendAt) < collabActiveWindow {
+		return collabActive()
+	}
+	return nil
+}
+
 // guard runs under the article's row lock, in the transaction of a write: the
 // person must still be able to write (write access, not locked, not trashed;
 // ErrDocReadOnly), and the write's epoch must be the log's (a *live.StaleError
@@ -179,7 +197,7 @@ func (s *docStore) Append(ctx context.Context, key string, in live.DocWrite) (li
 		if err != nil {
 			return fmt.Errorf("knowledge: append to the log of %s: %w", id, err)
 		}
-		if err := q.AddDocCounters(ctx, store.AddDocCountersParams{ID: id, Rows: 1, Bytes: int64(len(in.Data))}); err != nil {
+		if err := q.AddDocCounters(ctx, store.AddDocCountersParams{ID: id, Rows: 1, Bytes: int64(len(in.Data)), Now: now}); err != nil {
 			return fmt.Errorf("knowledge: count the log of %s: %w", id, err)
 		}
 		res.Seq = seq
@@ -215,7 +233,7 @@ func (s *docStore) Seed(ctx context.Context, key string, in live.DocWrite) (acce
 		if n == 0 {
 			return nil
 		}
-		if err := q.SetDocCounters(ctx, store.SetDocCountersParams{ID: id, Rows: 1, Bytes: int64(len(in.Data))}); err != nil {
+		if err := q.SetDocCounters(ctx, store.SetDocCountersParams{ID: id, Rows: 1, Bytes: int64(len(in.Data)), Now: s.deps.Clock()}); err != nil {
 			return fmt.Errorf("knowledge: count the log of %s: %w", id, err)
 		}
 		accepted, seq = true, 1
@@ -259,7 +277,7 @@ func (s *docStore) Compact(ctx context.Context, key string, upTo int64, in live.
 			return fmt.Errorf("knowledge: store the compacted row of %s: %w", id, err)
 		}
 		err = q.SetDocCounters(ctx, store.SetDocCountersParams{
-			ID: id, Rows: int32(st.UpdateRows - gone.Rows + 1), Bytes: st.UpdateBytes - gone.Bytes + int64(len(in.Data)),
+			ID: id, Rows: int32(st.UpdateRows - gone.Rows + 1), Bytes: st.UpdateBytes - gone.Bytes + int64(len(in.Data)), Now: s.deps.Clock(),
 		})
 		if err != nil {
 			return fmt.Errorf("knowledge: count the log of %s: %w", id, err)
