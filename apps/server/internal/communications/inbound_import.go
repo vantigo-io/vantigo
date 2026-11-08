@@ -361,7 +361,7 @@ func (w *MailboxSyncWorker) importMessage(ctx context.Context, c *syncCycle, ite
 		}
 		// Published under the conversation's lock, which the thread's
 		// FOR UPDATE or the insert holds (virtual employees design V3).
-		if err := events.Publish(ctx, tx, moduleName, contracts.MessageReceived{
+		if err := events.Publish(ctx, tx, moduleName, contracts.ConversationMessageReceived{
 			ConversationID: conversationID, MessageID: messageID, ChannelID: c.channelID, ChannelType: channelTypeEmail,
 			AutoReply: in.AutoSubmitted, Unreadable: unreadable, AssignedUserID: assignedUserID,
 		}, now); err != nil {

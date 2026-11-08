@@ -624,14 +624,16 @@ Communications publishes two events onto the
 [domain-events outbox](/en/contributing/platform-packages/#the-domain-events-outbox), each on the
 transaction that makes the change and while it holds the conversation's row (rule 23 of the
 [module boundaries](/en/contributing/module-boundaries/)). A payload carries ids and states, never
-personal data: no names, addresses or message text. The aggregate of both is the conversation.
+personal data: no names, addresses or message text. The aggregate of both is the conversation, and
+both are named `communications.conversation.*`, so they share one outbox lane: a handler receives a
+conversation's messages and assignments in the order they were published, per conversation.
 
 | Event (v1) | When | Payload |
 | --- | --- | --- |
-| `communications.message.received` | The mailbox import or the Messenger sync inserts an **inbound** message | `conversationId`, `messageId`, `channelId`, `channelType` (`email` or `messenger`), `autoReply`, `unreadable`, `assignedUserId` |
+| `communications.conversation.message_received` | The mailbox import or the Messenger sync inserts an **inbound** message | `conversationId`, `messageId`, `channelId`, `channelType` (`email` or `messenger`), `autoReply`, `unreadable`, `assignedUserId` |
 | `communications.conversation.assigned` | `PATCH` changes the assignee | `conversationId`, `assignedUserId` (null when cleared), `previousAssignedUserId` (null when there was none), `byUserId` |
 
-- `communications.message.received` is published for every imported inbound message, in a new
+- `communications.conversation.message_received` is published for every imported inbound message, in a new
   conversation and in an existing one. `autoReply` is the [auto-reply](#auto-replies) flag;
   `unreadable` is true when the import stored the placeholder text *Vantigo could not read this
   message.*; `assignedUserId` is the conversation's assignee after the insert, so a new conversation

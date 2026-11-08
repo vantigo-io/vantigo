@@ -408,6 +408,14 @@ describe("inbox", () => {
     });
   });
 
+  it("names a person in the assignee filter from the directory, not by their id", async () => {
+    mocks.search = { assignedUserId: "user-ola" };
+    mocks.fetchConversations.mockResolvedValue(page([]));
+    renderPage();
+    await screen.findByText("No conversations match these filters.");
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Filter by assignee" })).toHaveValue("Ola Hansen"));
+  });
+
   it("shows the assignee on the row and assigns from the thread", async () => {
     const assigned = {
       ...conversation("c-1", "First question"),

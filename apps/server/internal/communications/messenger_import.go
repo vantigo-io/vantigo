@@ -225,7 +225,7 @@ func (w *MessengerSyncWorker) importMessage(ctx context.Context, c *messengerCyc
 		}
 		// An echo is the Page's own message coming back: no one is to answer it.
 		if !event.Echo {
-			if err := events.Publish(ctx, tx, moduleName, contracts.MessageReceived{
+			if err := events.Publish(ctx, tx, moduleName, contracts.ConversationMessageReceived{
 				ConversationID: conversationID, MessageID: messageID, ChannelID: c.channelID, ChannelType: channelTypeMessenger,
 				AssignedUserID: assignedUserID,
 			}, now); err != nil {

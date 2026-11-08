@@ -111,13 +111,17 @@ func (s *server) PatchCommunicationsConversationsById(ctx context.Context, req g
 				return gen.PatchCommunicationsConversationsById400JSONResponse(validationErrorBody(
 					map[string][]string{"assignedUserId": {"Must be a user id or null."}})), nil
 			}
-			user, derr := s.deps.Users.User(ctx, parsed)
-			if derr != nil {
-				return nil, fmt.Errorf("communications: look up assignee: %w", derr)
-			}
-			if user == nil || !user.Active {
-				return gen.PatchCommunicationsConversationsById422JSONResponse(flatErrorBody(
-					"assignee_unknown", "The selected user does not exist or is disabled.")), nil
+			// Sending the assignee the conversation already has changes nothing,
+			// so the directory is not asked about it.
+			if conv.AssignedUserID == nil || *conv.AssignedUserID != parsed {
+				user, derr := s.deps.Users.User(ctx, parsed)
+				if derr != nil {
+					return nil, fmt.Errorf("communications: look up assignee: %w", derr)
+				}
+				if user == nil || !user.Active {
+					return gen.PatchCommunicationsConversationsById422JSONResponse(flatErrorBody(
+						"assignee_unknown", "The selected user does not exist or is disabled.")), nil
+				}
 			}
 			requestedAssignee = &parsed
 		}
