@@ -44,6 +44,9 @@ type script struct {
 	check string
 	// checked are the drafts the check was asked about.
 	checked []string
+	// asked counts the agent's model requests; one in flight means the run has
+	// read its conversation.
+	asked int
 }
 
 func (s *script) model() *modtest.FakeChatModel {
@@ -58,6 +61,7 @@ func (s *script) model() *modtest.FakeChatModel {
 			}
 			return modtest.ChatTurn{Text: s.check}
 		}
+		s.asked++
 		if s.next >= len(s.turns) {
 			return modtest.ChatTurn{Text: "Done."}
 		}
@@ -801,18 +805,23 @@ func TestAgentRun_AMessengerWindowThatHasClosedWithdrawsTheReplyAndHandsOff(t *t
 	}
 }
 
-// waitRunning waits for the run on conv to be under way.
+// waitRunning waits until the run on conv has read its conversation and asked
+// the model its first question: the state "running" alone is set at the claim,
+// before the read, and a message imported in between would be read, not missed.
 func (r *runRig) waitRunning(t *testing.T, conv uuid.UUID) {
 	t.Helper()
 	r.h.Advance(30 * time.Second)
 	deadline := time.Now().Add(40 * time.Second)
 	for time.Now().Before(deadline) {
-		if r.h.Count(t, `SELECT count(*) FROM agents.runs WHERE conversation_id = $1 AND state = 'running'`, conv) == 1 {
+		r.script.mu.Lock()
+		asked := r.script.asked
+		r.script.mu.Unlock()
+		if asked > 0 && r.h.Count(t, `SELECT count(*) FROM agents.runs WHERE conversation_id = $1 AND state = 'running'`, conv) == 1 {
 			return
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatal("no run started")
+	t.Fatal("no run asked the model")
 }
 
 // TestAgentRun_ANewMessageFromAnotherSenderMidRunIsNeverAnsweredByTheOldRun: the
