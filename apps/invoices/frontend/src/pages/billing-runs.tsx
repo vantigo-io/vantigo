@@ -3,12 +3,12 @@ import { IconAlertCircle, IconPlus } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { type BillingRun, billingRunsQueryOptions, runIsLive } from "../api/billing-runs";
+import { type BillingRun, billingRunsQueryOptions, useBillingRunsLive } from "../api/billing-runs";
 import { invoicesMetaQueryOptions } from "../api/meta";
 import { BillingRunCountBadges } from "../components/billing-run-counts";
 import { RouteLink } from "../components/document-link";
 import "../i18n";
-import { BILLING_RUN_POLL_MS, runStatusColour, runStatusWords } from "../lib/billing-runs";
+import { runStatusColour, runStatusWords } from "../lib/billing-runs";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { billingRunHref, billingRunLinkOptions } from "../lib/routes";
@@ -23,18 +23,18 @@ export interface BillingRunsPageProps {
  * Billing runs (energy consumption billing design D10, D11; plan reading 11):
  * the runs, newest first, a page at a time — through, issue or draft only,
  * status, the items counted by status, created — and **New billing run** for a
- * caller who may create (meta's `canCreate`). The list is read again every
- * few seconds while a run on it is still at work.
+ * caller who may create (meta's `canCreate`). The list updates by itself; with
+ * the live channel unavailable it is read again every few seconds while a run
+ * on it is still at work.
  */
 export const BillingRunsPage = ({ ordersEnabled = false }: BillingRunsPageProps = {}) => {
   const { t, date, dateTime } = useInvoiceFormat();
   const meta = useQuery(invoicesMetaQueryOptions());
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
-  const runs = useQuery({
-    ...billingRunsQueryOptions(page),
-    refetchInterval: (query) => (query.state.data?.data.some(runIsLive) ? BILLING_RUN_POLL_MS : false),
-  });
+  // Live, the list is refetched on an event; the poll is only the fallback (live design K37, K40).
+  const live = useBillingRunsLive();
+  const runs = useQuery(billingRunsQueryOptions(page, live));
   const canCreate = meta.data?.capabilities.canCreate ?? false;
 
   return (

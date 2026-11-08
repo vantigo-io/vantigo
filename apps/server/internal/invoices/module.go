@@ -134,6 +134,7 @@ func Module() module.Module {
 		Permissions:          permissions,
 		Mount:                mount,
 		Workers:              workers,
+		LiveTopics:           liveTopics,
 		Receivables:          newCustomerReceivables,
 		SalesTax:             newSalesTax,
 		CustomerReferences:   newCustomerReferenceHolder,
