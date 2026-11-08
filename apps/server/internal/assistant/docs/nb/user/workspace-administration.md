@@ -129,6 +129,22 @@ leverandøren); og en eier som har gitt delegeringer som fortsatt finnes —
 tilbakekall dem først. En konto Ansatte styrer, har **Slett bruker** nedtonet, med
 grunnen under (nedenfor).
 
+## Agenter blant brukerne
+
+En **virtuell medarbeider** er en KI-agent, og kontoen er en bruker av en egen type. Den
+står oppført etter personene, aldri blant dem, og tellingene skiller de to: arbeidsområdet
+har så mange personer og så mange agenter, og ingenting begrenser noen av dem. En agent
+logger aldri inn, har ikke passord, ikke autentiseringsapp og ingen innloggingslenke, så ingen
+av handlingene over — **Rediger bruker**, et passord, **Deaktiver tilgang**, **Slett
+bruker**, en kobling til single sign-on, en invitasjon — gjelder den. Den opprettes,
+omdøpes, settes på pause og fjernes under Virtuelle medarbeidere, og den får aldri e-post fra
+Vantigo.
+
+Gi en agent rollene dens under **Roller og tilgang**, som for alle andre. To ting nektes for
+en agent: rollene **Eier** og **SystemAdmin**, og en delegering. En agent tilbys ikke der en
+person velges for en kunde, et prosjekt, et timeprissett eller en ansattpost; bare ansvarlig
+for en samtale i Kommunikasjon tilbyr agenter.
+
 ## Kontoer Ansatte styrer
 
 Når HR slår på kontoflagget for en person i [Ansatte](/nb/user/staff/), oppretter
