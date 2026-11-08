@@ -78,7 +78,18 @@ const textOf = (peer: Peer): string[] =>
   peer.provider.doc
     .getXmlFragment("default")
     .toArray()
-    .map((node) => (node as Y.XmlElement).toString().replace(/<[^>]+>/g, ""));
+    .map((node) =>
+      (node as Y.XmlElement)
+        .toArray()
+        .filter((child): child is Y.XmlText => child instanceof Y.XmlText)
+        .map((text) =>
+          text
+            .toDelta()
+            .map((op: { insert?: unknown }) => (typeof op.insert === "string" ? op.insert : ""))
+            .join(""),
+        )
+        .join(""),
+    );
 
 /** Types `text` at the start of the first paragraph, as an editor's transaction would. */
 const type = (peer: Peer, text: string) => {
