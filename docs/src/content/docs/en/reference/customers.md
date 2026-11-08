@@ -3761,6 +3761,22 @@ bun run --cwd apps/customers/frontend test
 cd apps/server && go test ./internal/customers/...
 ```
 
+## Agents and the customer scope
+
+An agent (a virtual employee, a user of kind `agent`) reads this module through the same API, and the
+operations dispatcher ties each of its calls to the customer of its run
+([module boundaries rule 18](/en/contributing/module-boundaries/)). Two operations declare it with
+`x-vantigo-customer-scope`, both as `param: id`:
+
+| Operation | Scope |
+| --- | --- |
+| `GET /{id}` (the customer) | the path `id` is the run's customer: left out it is filled in, another value is refused |
+| `GET /{id}/contacts` (the customer's contacts) | the same |
+
+The refusal is a `customer_scope` error from the dispatcher, before the request is made, and a run with
+no customer reads neither. Nothing else in the module declares a scope, so nothing else here can be
+allowed to an agent's role.
+
 ## Assistant tour targets
 
 The Assistant can point at these controls in a guided tour ([the registry](/en/reference/assistant/#guided-tours)). The package registers them in `apps/customers/frontend/src/assist-targets.json`, exports them as `assistTargets` (`@vantigo/customers-ui/assist-targets`) and marks each control with `data-assist="<key>"`; a test of the package fails when a key has no marker or a marker has no key. A route with `{…}` is a record's screen.

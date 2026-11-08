@@ -47,7 +47,7 @@ not planned.
 - **One AI task, `assistant.chat`** (**Assistant chat**), declared in `Module.AITasks`. An Owner
   chooses the model for it under **AI models** like any task, and it needs a model that supports tool
   calls ([Configuration](/en/admin/configuration/#the-assistants-model)).
-- **Slots.** `Deps.Operations` — the dispatcher, given to the module named `assistant` alone;
+- **Slots.** `Deps.Operations` — the dispatcher, given to the modules named `assistant` and `agents` alone;
   `Deps.AI` — the platform client; `Deps.AssistantGrants` — identity's, which issues and ends the
   grants a run acts under; `Deps.Users` — `contracts.UserDirectory`, for the person's language and
   [erasure](#erasure); and `Deps.Catalog`, the permission catalog of the enabled modules.
@@ -563,7 +563,7 @@ that waits when the Owner lowers the level.
   `Search` still ask `Access.UserHolds`, and the router still checks every call (rules 2 and 3 of the
   design): the gate adds a lock, never a key.
 - **The dispatcher fails closed.** The module installs the gate in `mount` with
-  `Deps.Operations.SetGate`. **Without a gate** — and in every harness that does not install one —
+  `Deps.Operations.SetGate(contracts.GrantAssistant, …)` (the dispatcher keeps one gate per kind of principal). **Without a gate** — and in every harness that does not install one —
   the dispatcher's default is delivery 0's: an operation whose access rule names a Sensitive
   permission is `never`. A gate that cannot decide answers `never`: this one does so for a
   permission missing from the catalog and for a level table it cannot read.
