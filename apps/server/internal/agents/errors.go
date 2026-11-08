@@ -25,6 +25,8 @@ const (
 	codeChangeRefused   = "change_refused"
 	codeSendUnknown     = "send_unknown"
 	codeKeyReused       = "reply_key_reused"
+	codeSuggestionDone  = "suggestion_decided"
+	codeSuggestionStale = "suggestion_stale"
 	statusOwnerRequired = http.StatusForbidden
 )
 
@@ -125,3 +127,13 @@ func (r refusal) VisitGetRoleCalibrationResponse(w http.ResponseWriter) error   
 func (r refusal) VisitGetAgentRunResponse(w http.ResponseWriter) error          { return r.write(w) }
 func (r refusal) VisitListAgentRunsResponse(w http.ResponseWriter) error        { return r.write(w) }
 func (r refusal) VisitGetAgentUsageResponse(w http.ResponseWriter) error        { return r.write(w) }
+
+func (r refusal) VisitGetAgentMemoryResponse(w http.ResponseWriter) error      { return r.write(w) }
+func (r refusal) VisitDeleteAgentMemoryResponse(w http.ResponseWriter) error   { return r.write(w) }
+func (r refusal) VisitListRoleSuggestionsResponse(w http.ResponseWriter) error { return r.write(w) }
+func (r refusal) VisitApplyInstructionSuggestionResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
+func (r refusal) VisitDismissInstructionSuggestionResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}

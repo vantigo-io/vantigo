@@ -97,10 +97,22 @@ WHERE role_id = @role_id AND channel_id = ANY(@channel_ids::uuid[]) AND state = 
 RETURNING id, agent_id, role_id, conversation_id;
 
 -- name: ListLabelledItems :many
--- The role's last labelled replies (V21): the ones a person decided.
-SELECT score, held_by, state, edit_ratio FROM agents.review_items
-WHERE role_id = @role_id AND kind = 'reply' AND state IN ('sent', 'edited_sent', 'discarded')
-ORDER BY decided_at DESC, id
+-- The role's last labelled replies (V21): the ones a person decided, and the
+-- Auto replies, which a person answered over within 24 hours (bad) or that were
+-- left alone for 24 hours (good).
+SELECT score, held_by, state, edit_ratio FROM (
+    SELECT i.score, i.held_by, i.state::text AS state, i.edit_ratio, i.decided_at AS at, i.id::text AS key
+    FROM agents.review_items i
+    WHERE i.role_id = @role_id AND i.kind = 'reply' AND i.state IN ('sent', 'edited_sent', 'discarded')
+    UNION ALL
+    SELECT (r.verdict->>'score')::smallint, '{}'::text[],
+           CASE WHEN r.answered_over_at IS NOT NULL THEN 'answered_over' ELSE 'sent_auto' END,
+           NULL::real, coalesce(r.answered_over_at, r.sent_at), r.id::text
+    FROM agents.runs r
+    WHERE r.role_id = @role_id AND r.outcome = 'sent' AND r.verdict->>'score' IS NOT NULL
+      AND (r.answered_over_at IS NOT NULL OR r.sent_at < @matured::timestamptz)
+) labelled
+ORDER BY at DESC, key
 LIMIT @n;
 
 -- name: SetRunVerdict :exec

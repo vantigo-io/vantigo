@@ -5,7 +5,9 @@ package agents
 // than Communications keeps its messages, because a transcript copies message
 // bodies and must not outlive them. A retention longer than Communications' is
 // lowered when it is saved and every pass of the agents-retention worker. The
-// day's usage holds counts only and is kept for 24 months.
+// notes an agent remembers (V27) and the suggestions the weekly check made (V28)
+// expire with the runs they came from. The day's usage holds counts only and is
+// kept for 24 months.
 
 import (
 	"context"
@@ -130,6 +132,12 @@ func (w *retentionWorker) cycle(ctx context.Context) error {
 	}
 	if _, err := q.DeleteConversationLinksBefore(ctx, cutoff); err != nil {
 		return fmt.Errorf("agents: delete old conversation links: %w", err)
+	}
+	if _, err := q.DeleteMemoryBefore(ctx, cutoff); err != nil {
+		return fmt.Errorf("agents: delete old notes: %w", err)
+	}
+	if _, err := q.DeleteSuggestionsBefore(ctx, cutoff); err != nil {
+		return fmt.Errorf("agents: delete old suggestions: %w", err)
 	}
 	if _, err := q.DeleteUsageBefore(ctx, s.day(now).AddDate(0, -usageMonths, 0)); err != nil {
 		return fmt.Errorf("agents: delete old usage: %w", err)

@@ -331,6 +331,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/agent-memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the agents remember about a customer
+         * @description What the virtual employees remember about this customer (virtual employees design V27): one entry per agent, with its notes newest first - the short facts an agent wrote from the customer's conversations, such as "prefers e-mail". canDelete says the caller may delete a note (agents:manage); a note is deleted with DELETE /api/v1/agents/memory/{noteId}. Needs customers:view and agents:view. An empty agents list when nothing is remembered and when the agents module is off. 404 when the customer does not exist.
+         */
+        get: operations["getCustomersByIdAgentMemory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/personal-data": {
         parameters: {
             query?: never;
@@ -1062,6 +1082,24 @@ export interface components {
             type: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        CustomerAgentMemory: {
+            agents: components["schemas"]["CustomerAgentMemoryEntry"][];
+            /** @description Whether the caller may delete a note (agents:manage). */
+            canDelete: boolean;
+        };
+        CustomerAgentMemoryEntry: {
+            /** Format: uuid */
+            agentId: string;
+            agentName: string;
+            notes: components["schemas"]["CustomerAgentMemoryNote"][];
+        };
+        CustomerAgentMemoryNote: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            id: string;
+            text: string;
         };
         /** @description One of a customer's attachments (customer attachments design D1-D3): a contract, an NDA, the correspondence behind a timeline entry. The bytes are never in a JSON body: they are read from GET .../attachments/{attachmentId}. timelineEntry is present when the attachment belongs to a manual timeline entry and absent for a document of the relationship itself; the object key is never on the wire. */
         CustomerAttachment: {
@@ -3933,6 +3971,53 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
+            };
+        };
+    };
+    getCustomersByIdAgentMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerAgentMemory"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

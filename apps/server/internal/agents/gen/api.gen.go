@@ -408,6 +408,27 @@ func (e AgentUpdateRequestLanguages) Valid() bool {
 	}
 }
 
+// Defines values for InstructionSuggestionState.
+const (
+	InstructionSuggestionStateApplied   InstructionSuggestionState = "applied"
+	InstructionSuggestionStateDismissed InstructionSuggestionState = "dismissed"
+	InstructionSuggestionStateProposed  InstructionSuggestionState = "proposed"
+)
+
+// Valid indicates whether the value is a known member of the InstructionSuggestionState enum.
+func (e InstructionSuggestionState) Valid() bool {
+	switch e {
+	case InstructionSuggestionStateApplied:
+		return true
+	case InstructionSuggestionStateDismissed:
+		return true
+	case InstructionSuggestionStateProposed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ReviewDiscardRequestReason.
 const (
 	ReviewDiscardRequestReasonOther           ReviewDiscardRequestReason = "other"
@@ -570,6 +591,27 @@ func (e ListReviewItemsParamsState) Valid() bool {
 	}
 }
 
+// Defines values for ListRoleSuggestionsParamsState.
+const (
+	ListRoleSuggestionsParamsStateApplied   ListRoleSuggestionsParamsState = "applied"
+	ListRoleSuggestionsParamsStateDismissed ListRoleSuggestionsParamsState = "dismissed"
+	ListRoleSuggestionsParamsStateProposed  ListRoleSuggestionsParamsState = "proposed"
+)
+
+// Valid indicates whether the value is a known member of the ListRoleSuggestionsParamsState enum.
+func (e ListRoleSuggestionsParamsState) Valid() bool {
+	switch e {
+	case ListRoleSuggestionsParamsStateApplied:
+		return true
+	case ListRoleSuggestionsParamsStateDismissed:
+		return true
+	case ListRoleSuggestionsParamsStateProposed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Agent defines model for Agent.
 type Agent struct {
 	CreatedAt time.Time `json:"createdAt"`
@@ -655,6 +697,18 @@ type AgentCreateRequestLanguages string
 // AgentList defines model for AgentList.
 type AgentList struct {
 	Agents []Agent `json:"agents"`
+}
+
+// AgentMemoryCounts defines model for AgentMemoryCounts.
+type AgentMemoryCounts struct {
+	// ConversationNotes Notes about conversations with no customer.
+	ConversationNotes int32 `json:"conversationNotes"`
+
+	// CustomerNotes Notes about customers.
+	CustomerNotes int32 `json:"customerNotes"`
+
+	// Customers How many customers the notes are about.
+	Customers int32 `json:"customers"`
 }
 
 // AgentPermission defines model for AgentPermission.
@@ -970,7 +1024,7 @@ type AgentUsageDay struct {
 	Sent         int32              `json:"sent"`
 }
 
-// AgentsProblem An RFC 9457 problem with this module's refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503), and for the review queue reviewer_not_permitted (403), item_decided (409), reply_key_reused (409), held (422, rules names them), channel_refused (422) and send_unknown (502). errors carries the field errors of a 400.
+// AgentsProblem An RFC 9457 problem with this module's refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503), suggestion_decided (409), suggestion_stale (409), and for the review queue reviewer_not_permitted (403), item_decided (409), reply_key_reused (409), held (422, rules names them), channel_refused (422) and send_unknown (502). errors carries the field errors of a 400.
 type AgentsProblem struct {
 	Code   *string              `json:"code,omitempty"`
 	Detail *string              `json:"detail,omitempty"`
@@ -1034,6 +1088,38 @@ type ConversationHandOff struct {
 	// Reason Why the agent handed off, such as hand_off, discarded, expired, budget, guard or lapsed.
 	Reason *string             `json:"reason"`
 	RoleId *openapi_types.UUID `json:"roleId"`
+}
+
+// InstructionSuggestion defines model for InstructionSuggestion.
+type InstructionSuggestion struct {
+	CreatedAt time.Time  `json:"createdAt"`
+	DecidedAt *time.Time `json:"decidedAt,omitempty"`
+
+	// DecidedBy The person who applied or dismissed it.
+	DecidedBy *openapi_types.UUID `json:"decidedBy,omitempty"`
+	Id        openapi_types.UUID  `json:"id"`
+
+	// ItemIds The review items the suggestion rests on, ids only.
+	ItemIds []openapi_types.UUID `json:"itemIds"`
+
+	// NewText The wording to put in.
+	NewText string `json:"newText"`
+
+	// OldText The passage of the instructions to replace; null to append newText as a paragraph.
+	OldText *string `json:"oldText,omitempty"`
+
+	// Rationale Why, in a sentence or two. It quotes no customer.
+	Rationale string                     `json:"rationale"`
+	RoleId    openapi_types.UUID         `json:"roleId"`
+	State     InstructionSuggestionState `json:"state"`
+}
+
+// InstructionSuggestionState defines model for InstructionSuggestion.State.
+type InstructionSuggestionState string
+
+// InstructionSuggestionList defines model for InstructionSuggestionList.
+type InstructionSuggestionList struct {
+	Items []InstructionSuggestion `json:"items"`
 }
 
 // ReviewChange A change the agent asks to make, with the preview the Assistant shows (V20).
@@ -1258,9 +1344,23 @@ type SendEditedReviewItemParams struct {
 	IfMatch string `json:"If-Match"`
 }
 
+// ListRoleSuggestionsParams defines parameters for ListRoleSuggestions.
+type ListRoleSuggestionsParams struct {
+	State *ListRoleSuggestionsParamsState `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// ListRoleSuggestionsParamsState defines parameters for ListRoleSuggestions.
+type ListRoleSuggestionsParamsState string
+
 // PutAgentsSettingsParams defines parameters for PutAgentsSettings.
 type PutAgentsSettingsParams struct {
 	// IfMatch The version the resource was read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
+// ApplyInstructionSuggestionParams defines parameters for ApplyInstructionSuggestion.
+type ApplyInstructionSuggestionParams struct {
+	// IfMatch The role's version the instructions were read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict.
 	IfMatch string `json:"If-Match"`
 }
 
@@ -1317,6 +1417,9 @@ type ServerInterface interface {
 	// PutAgentAvatar Set an agent's avatar
 	// (PUT /api/v1/agents/agents/{agentId}/avatar)
 	PutAgentAvatar(w http.ResponseWriter, r *http.Request, agentId openapi_types.UUID)
+	// GetAgentMemory Count what an agent remembers
+	// (GET /api/v1/agents/agents/{agentId}/memory)
+	GetAgentMemory(w http.ResponseWriter, r *http.Request, agentId openapi_types.UUID)
 	// PauseAgent Pause an agent
 	// (POST /api/v1/agents/agents/{agentId}/pause)
 	PauseAgent(w http.ResponseWriter, r *http.Request, agentId openapi_types.UUID)
@@ -1356,6 +1459,9 @@ type ServerInterface interface {
 	// GetConversationHandOff Read a conversation's hand-off
 	// (GET /api/v1/agents/conversations/{conversationId}/hand-off)
 	GetConversationHandOff(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
+	// DeleteAgentMemory Delete a note an agent remembers
+	// (DELETE /api/v1/agents/memory/{noteId})
+	DeleteAgentMemory(w http.ResponseWriter, r *http.Request, noteId openapi_types.UUID)
 	// ListReviewItems List the review queue
 	// (GET /api/v1/agents/review)
 	ListReviewItems(w http.ResponseWriter, r *http.Request, params ListReviewItemsParams)
@@ -1377,6 +1483,9 @@ type ServerInterface interface {
 	// GetRoleCalibration Get a role's calibration
 	// (GET /api/v1/agents/roles/{roleId}/calibration)
 	GetRoleCalibration(w http.ResponseWriter, r *http.Request, roleId openapi_types.UUID)
+	// ListRoleSuggestions List a role's instruction suggestions
+	// (GET /api/v1/agents/roles/{roleId}/suggestions)
+	ListRoleSuggestions(w http.ResponseWriter, r *http.Request, roleId openapi_types.UUID, params ListRoleSuggestionsParams)
 	// GetAgentRun Get a run
 	// (GET /api/v1/agents/runs/{runId})
 	GetAgentRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID)
@@ -1386,6 +1495,12 @@ type ServerInterface interface {
 	// PutAgentsSettings Change the agents settings
 	// (PUT /api/v1/agents/settings)
 	PutAgentsSettings(w http.ResponseWriter, r *http.Request, params PutAgentsSettingsParams)
+	// ApplyInstructionSuggestion Apply an instruction suggestion
+	// (POST /api/v1/agents/suggestions/{suggestionId}/apply)
+	ApplyInstructionSuggestion(w http.ResponseWriter, r *http.Request, suggestionId openapi_types.UUID, params ApplyInstructionSuggestionParams)
+	// DismissInstructionSuggestion Dismiss an instruction suggestion
+	// (POST /api/v1/agents/suggestions/{suggestionId}/dismiss)
+	DismissInstructionSuggestion(w http.ResponseWriter, r *http.Request, suggestionId openapi_types.UUID)
 	// ListAgentTemplates List the role templates
 	// (GET /api/v1/agents/templates)
 	ListAgentTemplates(w http.ResponseWriter, r *http.Request)
@@ -1577,6 +1692,32 @@ func (siw *ServerInterfaceWrapper) PutAgentAvatar(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutAgentAvatar(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAgentMemory operation middleware
+func (siw *ServerInterfaceWrapper) GetAgentMemory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAgentMemory(w, r, agentId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2066,6 +2207,32 @@ func (siw *ServerInterfaceWrapper) GetConversationHandOff(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteAgentMemory operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAgentMemory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "noteId" -------------
+	var noteId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "noteId", r.PathValue("noteId"), &noteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "noteId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAgentMemory(w, r, noteId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListReviewItems operation middleware
 func (siw *ServerInterfaceWrapper) ListReviewItems(w http.ResponseWriter, r *http.Request) {
 
@@ -2366,6 +2533,48 @@ func (siw *ServerInterfaceWrapper) GetRoleCalibration(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// ListRoleSuggestions operation middleware
+func (siw *ServerInterfaceWrapper) ListRoleSuggestions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roleId" -------------
+	var roleId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roleId", r.PathValue("roleId"), &roleId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roleId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRoleSuggestionsParams
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRoleSuggestions(w, r, roleId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetAgentRun operation middleware
 func (siw *ServerInterfaceWrapper) GetAgentRun(w http.ResponseWriter, r *http.Request) {
 
@@ -2442,6 +2651,86 @@ func (siw *ServerInterfaceWrapper) PutAgentsSettings(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutAgentsSettings(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyInstructionSuggestion operation middleware
+func (siw *ServerInterfaceWrapper) ApplyInstructionSuggestion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "suggestionId" -------------
+	var suggestionId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "suggestionId", r.PathValue("suggestionId"), &suggestionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "suggestionId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ApplyInstructionSuggestionParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyInstructionSuggestion(w, r, suggestionId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DismissInstructionSuggestion operation middleware
+func (siw *ServerInterfaceWrapper) DismissInstructionSuggestion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "suggestionId" -------------
+	var suggestionId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "suggestionId", r.PathValue("suggestionId"), &suggestionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "suggestionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DismissInstructionSuggestion(w, r, suggestionId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2613,6 +2902,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/agents/review/{itemId}/discard", wrapper.DiscardReviewItem)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/roles/{roleId}/calibration", wrapper.GetRoleCalibration)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/runs/{runId}", wrapper.GetAgentRun)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/agents/{agentId}/memory", wrapper.GetAgentMemory)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/agents/memory/{noteId}", wrapper.DeleteAgentMemory)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/roles/{roleId}/suggestions", wrapper.ListRoleSuggestions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/agents/suggestions/{suggestionId}/apply", wrapper.ApplyInstructionSuggestion)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/agents/suggestions/{suggestionId}/dismiss", wrapper.DismissInstructionSuggestion)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/settings", wrapper.GetAgentsSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/agents/settings", wrapper.PutAgentsSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/templates", wrapper.ListAgentTemplates)
@@ -3115,6 +3409,70 @@ func (response PutAgentAvatar403JSONResponse) VisitPutAgentAvatarResponse(w http
 type PutAgentAvatar404ApplicationProblemPlusJSONResponse AgentsProblem
 
 func (response PutAgentAvatar404ApplicationProblemPlusJSONResponse) VisitPutAgentAvatarResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentMemoryRequestObject struct {
+	AgentId openapi_types.UUID `json:"agentId"`
+}
+
+type GetAgentMemoryResponseObject interface {
+	VisitGetAgentMemoryResponse(w http.ResponseWriter) error
+}
+
+type GetAgentMemory200JSONResponse AgentMemoryCounts
+
+func (response GetAgentMemory200JSONResponse) VisitGetAgentMemoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentMemory401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAgentMemory401JSONResponse) VisitGetAgentMemoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentMemory403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAgentMemory403JSONResponse) VisitGetAgentMemoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentMemory404ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response GetAgentMemory404ApplicationProblemPlusJSONResponse) VisitGetAgentMemoryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4083,6 +4441,64 @@ func (response GetConversationHandOff403JSONResponse) VisitGetConversationHandOf
 	return err
 }
 
+type DeleteAgentMemoryRequestObject struct {
+	NoteId openapi_types.UUID `json:"noteId"`
+}
+
+type DeleteAgentMemoryResponseObject interface {
+	VisitDeleteAgentMemoryResponse(w http.ResponseWriter) error
+}
+
+type DeleteAgentMemory204Response struct {
+}
+
+func (response DeleteAgentMemory204Response) VisitDeleteAgentMemoryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteAgentMemory401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteAgentMemory401JSONResponse) VisitDeleteAgentMemoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAgentMemory403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteAgentMemory403JSONResponse) VisitDeleteAgentMemoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAgentMemory404ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response DeleteAgentMemory404ApplicationProblemPlusJSONResponse) VisitDeleteAgentMemoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListReviewItemsRequestObject struct {
 	Params ListReviewItemsParams
 }
@@ -4731,6 +5147,71 @@ func (response GetRoleCalibration404ApplicationProblemPlusJSONResponse) VisitGet
 	return err
 }
 
+type ListRoleSuggestionsRequestObject struct {
+	RoleId openapi_types.UUID `json:"roleId"`
+	Params ListRoleSuggestionsParams
+}
+
+type ListRoleSuggestionsResponseObject interface {
+	VisitListRoleSuggestionsResponse(w http.ResponseWriter) error
+}
+
+type ListRoleSuggestions200JSONResponse InstructionSuggestionList
+
+func (response ListRoleSuggestions200JSONResponse) VisitListRoleSuggestionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRoleSuggestions401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListRoleSuggestions401JSONResponse) VisitListRoleSuggestionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRoleSuggestions403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListRoleSuggestions403JSONResponse) VisitListRoleSuggestionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRoleSuggestions404ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response ListRoleSuggestions404ApplicationProblemPlusJSONResponse) VisitListRoleSuggestionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetAgentRunRequestObject struct {
 	RunId openapi_types.UUID `json:"runId"`
 }
@@ -4937,6 +5418,177 @@ func (response PutAgentsSettings409ApplicationProblemPlusJSONResponse) VisitPutA
 	return err
 }
 
+type ApplyInstructionSuggestionRequestObject struct {
+	SuggestionId openapi_types.UUID `json:"suggestionId"`
+	Params       ApplyInstructionSuggestionParams
+}
+
+type ApplyInstructionSuggestionResponseObject interface {
+	VisitApplyInstructionSuggestionResponse(w http.ResponseWriter) error
+}
+
+type ApplyInstructionSuggestion200JSONResponse AgentRole
+
+func (response ApplyInstructionSuggestion200JSONResponse) VisitApplyInstructionSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstructionSuggestion400ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response ApplyInstructionSuggestion400ApplicationProblemPlusJSONResponse) VisitApplyInstructionSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstructionSuggestion401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ApplyInstructionSuggestion401JSONResponse) VisitApplyInstructionSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstructionSuggestion403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ApplyInstructionSuggestion403JSONResponse) VisitApplyInstructionSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstructionSuggestion404ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response ApplyInstructionSuggestion404ApplicationProblemPlusJSONResponse) VisitApplyInstructionSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstructionSuggestion409ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response ApplyInstructionSuggestion409ApplicationProblemPlusJSONResponse) VisitApplyInstructionSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissInstructionSuggestionRequestObject struct {
+	SuggestionId openapi_types.UUID `json:"suggestionId"`
+}
+
+type DismissInstructionSuggestionResponseObject interface {
+	VisitDismissInstructionSuggestionResponse(w http.ResponseWriter) error
+}
+
+type DismissInstructionSuggestion200JSONResponse InstructionSuggestion
+
+func (response DismissInstructionSuggestion200JSONResponse) VisitDismissInstructionSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissInstructionSuggestion401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DismissInstructionSuggestion401JSONResponse) VisitDismissInstructionSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissInstructionSuggestion403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DismissInstructionSuggestion403JSONResponse) VisitDismissInstructionSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissInstructionSuggestion404ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response DismissInstructionSuggestion404ApplicationProblemPlusJSONResponse) VisitDismissInstructionSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissInstructionSuggestion409ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response DismissInstructionSuggestion409ApplicationProblemPlusJSONResponse) VisitDismissInstructionSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListAgentTemplatesRequestObject struct {
 }
 
@@ -5009,6 +5661,9 @@ type StrictServerInterface interface {
 	// PutAgentAvatar Set an agent's avatar
 	// (PUT /api/v1/agents/agents/{agentId}/avatar)
 	PutAgentAvatar(ctx context.Context, request PutAgentAvatarRequestObject) (PutAgentAvatarResponseObject, error)
+	// GetAgentMemory Count what an agent remembers
+	// (GET /api/v1/agents/agents/{agentId}/memory)
+	GetAgentMemory(ctx context.Context, request GetAgentMemoryRequestObject) (GetAgentMemoryResponseObject, error)
 	// PauseAgent Pause an agent
 	// (POST /api/v1/agents/agents/{agentId}/pause)
 	PauseAgent(ctx context.Context, request PauseAgentRequestObject) (PauseAgentResponseObject, error)
@@ -5048,6 +5703,9 @@ type StrictServerInterface interface {
 	// GetConversationHandOff Read a conversation's hand-off
 	// (GET /api/v1/agents/conversations/{conversationId}/hand-off)
 	GetConversationHandOff(ctx context.Context, request GetConversationHandOffRequestObject) (GetConversationHandOffResponseObject, error)
+	// DeleteAgentMemory Delete a note an agent remembers
+	// (DELETE /api/v1/agents/memory/{noteId})
+	DeleteAgentMemory(ctx context.Context, request DeleteAgentMemoryRequestObject) (DeleteAgentMemoryResponseObject, error)
 	// ListReviewItems List the review queue
 	// (GET /api/v1/agents/review)
 	ListReviewItems(ctx context.Context, request ListReviewItemsRequestObject) (ListReviewItemsResponseObject, error)
@@ -5069,6 +5727,9 @@ type StrictServerInterface interface {
 	// GetRoleCalibration Get a role's calibration
 	// (GET /api/v1/agents/roles/{roleId}/calibration)
 	GetRoleCalibration(ctx context.Context, request GetRoleCalibrationRequestObject) (GetRoleCalibrationResponseObject, error)
+	// ListRoleSuggestions List a role's instruction suggestions
+	// (GET /api/v1/agents/roles/{roleId}/suggestions)
+	ListRoleSuggestions(ctx context.Context, request ListRoleSuggestionsRequestObject) (ListRoleSuggestionsResponseObject, error)
 	// GetAgentRun Get a run
 	// (GET /api/v1/agents/runs/{runId})
 	GetAgentRun(ctx context.Context, request GetAgentRunRequestObject) (GetAgentRunResponseObject, error)
@@ -5078,6 +5739,12 @@ type StrictServerInterface interface {
 	// PutAgentsSettings Change the agents settings
 	// (PUT /api/v1/agents/settings)
 	PutAgentsSettings(ctx context.Context, request PutAgentsSettingsRequestObject) (PutAgentsSettingsResponseObject, error)
+	// ApplyInstructionSuggestion Apply an instruction suggestion
+	// (POST /api/v1/agents/suggestions/{suggestionId}/apply)
+	ApplyInstructionSuggestion(ctx context.Context, request ApplyInstructionSuggestionRequestObject) (ApplyInstructionSuggestionResponseObject, error)
+	// DismissInstructionSuggestion Dismiss an instruction suggestion
+	// (POST /api/v1/agents/suggestions/{suggestionId}/dismiss)
+	DismissInstructionSuggestion(ctx context.Context, request DismissInstructionSuggestionRequestObject) (DismissInstructionSuggestionResponseObject, error)
 	// ListAgentTemplates List the role templates
 	// (GET /api/v1/agents/templates)
 	ListAgentTemplates(ctx context.Context, request ListAgentTemplatesRequestObject) (ListAgentTemplatesResponseObject, error)
@@ -5315,6 +5982,32 @@ func (sh *strictHandler) PutAgentAvatar(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutAgentAvatarResponseObject); ok {
 		if err := validResponse.VisitPutAgentAvatarResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAgentMemory operation middleware
+func (sh *strictHandler) GetAgentMemory(w http.ResponseWriter, r *http.Request, agentId openapi_types.UUID) {
+	var request GetAgentMemoryRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAgentMemory(ctx, request.(GetAgentMemoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAgentMemory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAgentMemoryResponseObject); ok {
+		if err := validResponse.VisitGetAgentMemoryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -5695,6 +6388,32 @@ func (sh *strictHandler) GetConversationHandOff(w http.ResponseWriter, r *http.R
 	}
 }
 
+// DeleteAgentMemory operation middleware
+func (sh *strictHandler) DeleteAgentMemory(w http.ResponseWriter, r *http.Request, noteId openapi_types.UUID) {
+	var request DeleteAgentMemoryRequestObject
+
+	request.NoteId = noteId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAgentMemory(ctx, request.(DeleteAgentMemoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAgentMemory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAgentMemoryResponseObject); ok {
+		if err := validResponse.VisitDeleteAgentMemoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListReviewItems operation middleware
 func (sh *strictHandler) ListReviewItems(w http.ResponseWriter, r *http.Request, params ListReviewItemsParams) {
 	var request ListReviewItemsRequestObject
@@ -5892,6 +6611,33 @@ func (sh *strictHandler) GetRoleCalibration(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// ListRoleSuggestions operation middleware
+func (sh *strictHandler) ListRoleSuggestions(w http.ResponseWriter, r *http.Request, roleId openapi_types.UUID, params ListRoleSuggestionsParams) {
+	var request ListRoleSuggestionsRequestObject
+
+	request.RoleId = roleId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRoleSuggestions(ctx, request.(ListRoleSuggestionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRoleSuggestions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRoleSuggestionsResponseObject); ok {
+		if err := validResponse.VisitListRoleSuggestionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetAgentRun operation middleware
 func (sh *strictHandler) GetAgentRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID) {
 	var request GetAgentRunRequestObject
@@ -5968,6 +6714,59 @@ func (sh *strictHandler) PutAgentsSettings(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutAgentsSettingsResponseObject); ok {
 		if err := validResponse.VisitPutAgentsSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApplyInstructionSuggestion operation middleware
+func (sh *strictHandler) ApplyInstructionSuggestion(w http.ResponseWriter, r *http.Request, suggestionId openapi_types.UUID, params ApplyInstructionSuggestionParams) {
+	var request ApplyInstructionSuggestionRequestObject
+
+	request.SuggestionId = suggestionId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApplyInstructionSuggestion(ctx, request.(ApplyInstructionSuggestionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApplyInstructionSuggestion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApplyInstructionSuggestionResponseObject); ok {
+		if err := validResponse.VisitApplyInstructionSuggestionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DismissInstructionSuggestion operation middleware
+func (sh *strictHandler) DismissInstructionSuggestion(w http.ResponseWriter, r *http.Request, suggestionId openapi_types.UUID) {
+	var request DismissInstructionSuggestionRequestObject
+
+	request.SuggestionId = suggestionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DismissInstructionSuggestion(ctx, request.(DismissInstructionSuggestionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DismissInstructionSuggestion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DismissInstructionSuggestionResponseObject); ok {
+		if err := validResponse.VisitDismissInstructionSuggestionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

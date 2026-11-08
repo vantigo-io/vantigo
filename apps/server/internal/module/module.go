@@ -337,6 +337,14 @@ type Deps struct {
 	// (the seam modtest.WithContactChannels fills). Consumer-gated, and never
 	// called inside a transaction. nil when Communications is disabled.
 	ContactChannels contracts.ContactChannels
+	// AgentMemory is what the virtual employees remember about a customer, for
+	// the customer page (see contracts.AgentMemory, virtual employees design
+	// V27). Compose sets it, on every module's Deps copy, from whichever
+	// enabled module declares Module.AgentMemory; Workers does not — no worker
+	// reads it. A preset value is kept when no enabled module provides one (the
+	// seam modtest.WithAgentMemory fills). Consumer-gated, and never called
+	// inside a transaction. nil when Agents is disabled.
+	AgentMemory contracts.AgentMemory
 	// AITasks are the AI tasks the enabled modules declare
 	// (Module.AITasks, contracts.AITask), by key — composed the way Catalog is
 	// composed from Permissions: a disabled module's are absent, and a key two
@@ -737,4 +745,10 @@ type Module struct {
 	// calls it after the channel messengers it reads, and puts the result on
 	// every module's Deps. Workers never calls it.
 	ContactChannels func(Deps) contracts.ContactChannels
+	// AgentMemory builds this module's contracts.AgentMemory, if it answers
+	// what the agents remember about a customer to other modules (virtual
+	// employees design V27: Agents). At most one enabled module may set it;
+	// Compose calls it after ContactChannels and puts the result on every
+	// module's Deps. Workers never calls it.
+	AgentMemory func(Deps) contracts.AgentMemory
 }

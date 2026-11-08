@@ -193,6 +193,53 @@ components:
                 - createdAt
                 - updatedAt
             type: object
+        CustomerAgentMemory:
+            additionalProperties: false
+            properties:
+                agents:
+                    items:
+                        $ref: '#/components/schemas/CustomerAgentMemoryEntry'
+                    type: array
+                canDelete:
+                    description: Whether the caller may delete a note (agents:manage).
+                    type: boolean
+            required:
+                - agents
+                - canDelete
+            type: object
+        CustomerAgentMemoryEntry:
+            additionalProperties: false
+            properties:
+                agentId:
+                    format: uuid
+                    type: string
+                agentName:
+                    type: string
+                notes:
+                    items:
+                        $ref: '#/components/schemas/CustomerAgentMemoryNote'
+                    type: array
+            required:
+                - agentId
+                - agentName
+                - notes
+            type: object
+        CustomerAgentMemoryNote:
+            additionalProperties: false
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                text:
+                    type: string
+            required:
+                - id
+                - text
+                - createdAt
+            type: object
         CustomerAttachment:
             description: "One of a customer's attachments (customer attachments design D1-D3): a contract, an NDA, the correspondence behind a timeline entry. The bytes are never in a JSON body: they are read from GET .../attachments/{attachmentId}. timelineEntry is present when the attachment belongs to a manual timeline entry and absent for a document of the relationship itself; the object key is never on the wire."
             properties:
@@ -3732,6 +3779,43 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:billing-manage+customers:view
+    /api/v1/customers/{id}/agent-memory:
+        get:
+            description: "What the virtual employees remember about this customer (virtual employees design V27): one entry per agent, with its notes newest first - the short facts an agent wrote from the customer's conversations, such as \"prefers e-mail\". canDelete says the caller may delete a note (agents:manage); a note is deleted with DELETE /api/v1/agents/memory/{noteId}. Needs customers:view; the notes are shown only to a caller who also holds agents:view - another caller, a customer nothing is remembered about and a deployment without the agents module all answer an empty agents list, as the page was before, never a 403. 404 when the customer does not exist."
+            operationId: getCustomersByIdAgentMemory
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerAgentMemory'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: What the agents remember about a customer
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:view
+            x-vantigo-assistant: never
     /api/v1/customers/{id}/personal-data:
         get:
             description: "Everything this installation holds about a private person, in one file (customers GDPR design D3): the customer — number, name, type, status, legal identity, contact info, addresses, the billing profile's own values, owner, group, tags, mergedInto and anonymisation — every contact linked to it as the contact is stored, with the association's title, phone, email and roles, every timeline entry (deleted ones included, revisions left out) with its payload, actor and follow-up, and each other module's section under modules, keyed by the module's name. Served as an attachment named customer-<customerNumber>-personal-data.json, and never cached. Shaped by nothing but customers:personal-data: the key means may hand this person their data, so the legal identity and the contacts are in the file without customers:legal-identity-view or customers:contacts-view. An anonymised customer's file is what is left. 404 when the customer does not exist; 409 personal_data_not_a_person for a business, which is not a data subject."

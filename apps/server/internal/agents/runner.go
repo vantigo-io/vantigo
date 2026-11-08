@@ -31,14 +31,16 @@ const (
 // apiRunners builds the module's runner (module.Module.APIRunners). It exists
 // only where the dispatcher and the grants do.
 func apiRunners(d module.Deps) []module.Runner {
+	// The weekly check (V28) needs the AI client alone.
+	out := []module.Runner{&feedbackRunner{s: newServer(d)}}
 	if d.Operations == nil || d.AgentGrants == nil || d.AgentAccounts == nil {
-		return nil
+		return out
 	}
 	concurrency := 4
 	if d.Config != nil && d.Config.AgentsConcurrency > 0 {
 		concurrency = d.Config.AgentsConcurrency
 	}
-	return []module.Runner{&runner{s: newServer(d), replica: uuid.New(), sem: make(chan struct{}, concurrency)}}
+	return append(out, &runner{s: newServer(d), replica: uuid.New(), sem: make(chan struct{}, concurrency)})
 }
 
 type runner struct {

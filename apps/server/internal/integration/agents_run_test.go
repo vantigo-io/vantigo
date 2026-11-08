@@ -47,6 +47,8 @@ type script struct {
 	// asked counts the agent's model requests; one in flight means the run has
 	// read its conversation.
 	asked int
+	// seeds are the first message of each run: the conversation and what the agent starts with.
+	seeds []string
 }
 
 func (s *script) model() *modtest.FakeChatModel {
@@ -62,6 +64,15 @@ func (s *script) model() *modtest.FakeChatModel {
 			return modtest.ChatTurn{Text: s.check}
 		}
 		s.asked++
+		var turns []modtest.ChatMessage
+		for _, m := range req.Messages {
+			if m.Role != "system" {
+				turns = append(turns, m)
+			}
+		}
+		if len(turns) == 1 && turns[0].Role == "user" {
+			s.seeds = append(s.seeds, turns[0].Content)
+		}
 		if s.next >= len(s.turns) {
 			return modtest.ChatTurn{Text: "Done."}
 		}
@@ -69,6 +80,19 @@ func (s *script) model() *modtest.FakeChatModel {
 		s.next++
 		return turn
 	})
+}
+
+// startedWith are the first messages of the runs so far, and next restarts the turns.
+func (s *script) startedWith() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.seeds...)
+}
+
+func (s *script) setTurns(turns ...modtest.ChatTurn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.turns, s.next = turns, 0
 }
 
 func (s *script) drafts() []string {

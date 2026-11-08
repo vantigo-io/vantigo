@@ -70,6 +70,29 @@ type AgentsHandedOff struct {
 	Reason         string
 }
 
+type AgentsInstructionSuggestion struct {
+	ID        uuid.UUID
+	RoleID    uuid.UUID
+	OldText   *string
+	NewText   string
+	Rationale string
+	ItemIds   []uuid.UUID
+	State     string
+	CreatedAt time.Time
+	DecidedBy *uuid.UUID
+	DecidedAt *time.Time
+}
+
+type AgentsMemory struct {
+	ID          uuid.UUID
+	AgentID     uuid.UUID
+	SubjectType string
+	SubjectID   string
+	Text        string
+	CreatedAt   time.Time
+	RunID       *uuid.UUID
+}
+
 type AgentsPermissionLevel struct {
 	AgentID       uuid.UUID
 	PermissionKey string
@@ -106,21 +129,22 @@ type AgentsReviewItem struct {
 }
 
 type AgentsRole struct {
-	ID               uuid.UUID
-	AgentID          uuid.UUID
-	Template         string
-	Name             string
-	Instructions     string
-	ReplyMode        string
-	Threshold        int16
-	CapsToolCalls    int16
-	CapsTurns        int16
-	MaxRepliesPerDay int16
-	HandOffUserID    *uuid.UUID
-	Version          int32
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	ComplaintTagIds  []uuid.UUID
+	ID                uuid.UUID
+	AgentID           uuid.UUID
+	Template          string
+	Name              string
+	Instructions      string
+	ReplyMode         string
+	Threshold         int16
+	CapsToolCalls     int16
+	CapsTurns         int16
+	MaxRepliesPerDay  int16
+	HandOffUserID     *uuid.UUID
+	Version           int32
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	ComplaintTagIds   []uuid.UUID
+	FeedbackCheckedAt *time.Time
 }
 
 type AgentsRoleChannel struct {
@@ -150,6 +174,7 @@ type AgentsRun struct {
 	EndedAt        *time.Time
 	SentAt         *time.Time
 	Verdict        []byte
+	AnsweredOverAt *time.Time
 }
 
 type AgentsRunMessage struct {

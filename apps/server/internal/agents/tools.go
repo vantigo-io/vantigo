@@ -2,8 +2,8 @@ package agents
 
 // The agent's tools (virtual employees design V15) and the loop's seams. The
 // model gets the three tools that reach the contract's operations, limited to
-// the role's allowlist by the gate, and four of the module's own: reply, note,
-// tag and hand_off. Every operation that names a conversation is pinned to the
+// the role's allowlist by the gate, and five of the module's own: reply, note,
+// tag, remember and hand_off. Every operation that names a conversation is pinned to the
 // run's own, and the one that changes a conversation's fields is pinned to its
 // status; the module's tools are the only way to write a message, a note, a tag
 // or an assignee, and all of them go through the run's conversation alone.
@@ -44,7 +44,7 @@ var reservedOperations = []string{opReply, opNote, opTagPut, opTagDelete}
 func (rs *runState) loop() *agentloop.Loop {
 	rs.dispatch = &agentloop.Dispatch{Ops: rs.s.deps.Operations, User: rs.agent.UserID, Confirm: rs.confirm}
 	base := rs.dispatch.Tools()
-	tools := []agentloop.Tool{base[0], base[1], rs.callOperationTool(base[2]), rs.replyTool(), rs.noteTool(), rs.tagTool(), rs.handOffTool()}
+	tools := []agentloop.Tool{base[0], base[1], rs.callOperationTool(base[2]), rs.replyTool(), rs.noteTool(), rs.tagTool(), rs.rememberTool(), rs.handOffTool()}
 	return &agentloop.Loop{
 		AI:    rs.s.deps.AI,
 		Task:  aiTaskFor(rs.agent.ID),
@@ -474,7 +474,7 @@ func (st runStore) AppendResult(ctx context.Context, call ai.ToolCall, res agent
 			}
 		}
 	}
-	if call.Name == toolReply || call.Name == toolHandOff || call.Name == toolNote || call.Name == toolTag {
+	if call.Name == toolReply || call.Name == toolHandOff || call.Name == toolNote || call.Name == toolTag || call.Name == toolRemember {
 		ref = operation
 	}
 	p := store.InsertActionParams{

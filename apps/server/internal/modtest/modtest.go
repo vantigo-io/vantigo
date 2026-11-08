@@ -165,6 +165,7 @@ type setup struct {
 	outboundMail      contracts.OutboundMail
 	calendarBusy      contracts.CalendarBusy
 	contactChannels   contracts.ContactChannels
+	agentMemory       contracts.AgentMemory
 	hours             contracts.BillableHours
 	billExpenses      contracts.BillableExpenses
 	milestones        contracts.BillableMilestones
@@ -503,6 +504,15 @@ func WithContactChannels(c contracts.ContactChannels) Option {
 	return func(s *setup) { s.contactChannels = c }
 }
 
+// WithAgentMemory sets Deps.AgentMemory, for Customers' agent-memory section to
+// be tested against a fake (a test's own contracts.AgentMemory) without composing
+// the agents module beside it: depguard keeps it out of their tests.
+// module.Compose keeps a value set here when no enabled module provides the slot
+// (virtual employees design V27); a composed Agents' own replaces it.
+func WithAgentMemory(m contracts.AgentMemory) Option {
+	return func(s *setup) { s.agentMemory = m }
+}
+
 // WithBillableHours sets Deps.BillableHours directly to p, for a module under
 // test that reads time's billable entries (contracts.BillableHours) without
 // composing time beside it, for WithActuals' reason. module.Compose only ever
@@ -832,6 +842,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		OutboundMail:             s.outboundMail,
 		CalendarBusy:             s.calendarBusy,
 		ContactChannels:          s.contactChannels,
+		AgentMemory:              s.agentMemory,
 		BillableHours:            s.hours,
 		BillableExpenses:         s.billExpenses,
 		BillableMilestones:       s.milestones,

@@ -31,6 +31,8 @@ const (
 	erasedTranscripts = "agents.runMessages"
 	erasedItems       = "agents.reviewItems"
 	erasedActions     = "agents.actions"
+	erasedMemory      = "agents.memory"
+	erasedSuggestions = "agents.instructionSuggestions"
 )
 
 // personalData is this module's contracts.CustomerPersonalData and
@@ -66,9 +68,17 @@ type exportedItem struct {
 	CreatedAt      string    `json:"createdAt"`
 }
 
+type exportedNote struct {
+	ID        uuid.UUID `json:"id"`
+	Agent     string    `json:"agent"`
+	Text      string    `json:"text"`
+	CreatedAt string    `json:"createdAt"`
+}
+
 type exportSection struct {
 	Runs        []exportedRun  `json:"runs"`
 	ReviewItems []exportedItem `json:"reviewItems"`
+	Memory      []exportedNote `json:"memory"`
 }
 
 // conversationsOfCustomer are the conversations the module knows to be the
@@ -100,10 +110,17 @@ func (p personalData) ExportCustomerData(ctx context.Context, customerID int32) 
 	if err != nil {
 		return nil, fmt.Errorf("agents: read customer %d's review items: %w", customerID, err)
 	}
-	if len(runs) == 0 && len(items) == 0 {
+	notes, err := q.ExportMemoryOfCustomer(ctx, fmt.Sprint(customerID))
+	if err != nil {
+		return nil, fmt.Errorf("agents: read the notes about customer %d: %w", customerID, err)
+	}
+	if len(runs) == 0 && len(items) == 0 && len(notes) == 0 {
 		return nil, nil
 	}
-	out := exportSection{Runs: make([]exportedRun, 0, len(runs)), ReviewItems: make([]exportedItem, 0, len(items))}
+	out := exportSection{Runs: make([]exportedRun, 0, len(runs)), ReviewItems: make([]exportedItem, 0, len(items)), Memory: make([]exportedNote, 0, len(notes))}
+	for _, n := range notes {
+		out.Memory = append(out.Memory, exportedNote{ID: n.ID, Agent: n.AgentName, Text: n.Text, CreatedAt: n.CreatedAt.UTC().Format("2006-01-02T15:04:05Z")})
+	}
 	for _, r := range runs {
 		out.Runs = append(out.Runs, exportedRun{ID: r.ID, ConversationID: r.ConversationID, State: r.State, Outcome: r.Outcome, Summary: r.Summary, StartedAt: r.StartedAt.UTC().Format("2006-01-02T15:04:05Z")})
 	}
@@ -156,7 +173,7 @@ func (p personalData) EraseContactData(ctx context.Context, tx pgx.Tx, contactID
 }
 
 func zeroErased() []contracts.ErasedData {
-	return []contracts.ErasedData{{Kind: erasedRuns}, {Kind: erasedTranscripts}, {Kind: erasedItems}}
+	return []contracts.ErasedData{{Kind: erasedRuns}, {Kind: erasedTranscripts}, {Kind: erasedItems}, {Kind: erasedMemory}, {Kind: erasedSuggestions}}
 }
 
 // erase deletes everything the module holds for the conversations, and for the
@@ -166,7 +183,26 @@ func erase(ctx context.Context, q *store.Queries, convs []uuid.UUID, customerID 
 	if err != nil {
 		return nil, fmt.Errorf("agents: count what to erase: %w", err)
 	}
-	// Items first, then the runs, whose transcripts and action logs go with them.
+	// The notes and the suggestions first: they find their runs and items by them.
+	texts := make([]string, len(convs))
+	for i, c := range convs {
+		texts[i] = c.String()
+	}
+	notes, err := q.CountMemoryToErase(ctx, store.CountMemoryToEraseParams{ConversationIds: convs, ConversationTexts: texts, CustomerID: customerID})
+	if err != nil {
+		return nil, fmt.Errorf("agents: count the notes to erase: %w", err)
+	}
+	if _, err := q.DeleteMemoryToErase(ctx, store.DeleteMemoryToEraseParams{ConversationIds: convs, ConversationTexts: texts, CustomerID: customerID}); err != nil {
+		return nil, fmt.Errorf("agents: erase notes: %w", err)
+	}
+	suggestions, err := q.CountSuggestionsToErase(ctx, store.CountSuggestionsToEraseParams{ConversationIds: convs, CustomerID: customerID})
+	if err != nil {
+		return nil, fmt.Errorf("agents: count the suggestions to erase: %w", err)
+	}
+	if _, err := q.DeleteSuggestionsToErase(ctx, store.DeleteSuggestionsToEraseParams{ConversationIds: convs, CustomerID: customerID}); err != nil {
+		return nil, fmt.Errorf("agents: erase suggestions: %w", err)
+	}
+	// Items next, then the runs, whose transcripts and action logs go with them.
 	if _, err := q.DeleteItemsOfConversations(ctx, store.DeleteItemsOfConversationsParams{ConversationIds: convs, CustomerID: customerID}); err != nil {
 		return nil, fmt.Errorf("agents: erase review items: %w", err)
 	}
@@ -189,5 +225,7 @@ func erase(ctx context.Context, q *store.Queries, convs []uuid.UUID, customerID 
 		{Kind: erasedRuns, Count: counts.Runs},
 		{Kind: erasedTranscripts, Count: counts.Messages},
 		{Kind: erasedItems, Count: counts.Items},
+		{Kind: erasedMemory, Count: notes},
+		{Kind: erasedSuggestions, Count: suggestions},
 	}, nil
 }

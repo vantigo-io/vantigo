@@ -302,7 +302,7 @@ func (q *Queries) GetHandedOff(ctx context.Context, conversationID uuid.UUID) (A
 }
 
 const getRoleByID = `-- name: GetRoleByID :one
-SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids FROM agents.roles WHERE id = $1
+SELECT id, agent_id, template, name, instructions, reply_mode, threshold, caps_tool_calls, caps_turns, max_replies_per_day, hand_off_user_id, version, created_at, updated_at, complaint_tag_ids, feedback_checked_at FROM agents.roles WHERE id = $1
 `
 
 func (q *Queries) GetRoleByID(ctx context.Context, id uuid.UUID) (AgentsRole, error) {
@@ -324,12 +324,13 @@ func (q *Queries) GetRoleByID(ctx context.Context, id uuid.UUID) (AgentsRole, er
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ComplaintTagIds,
+		&i.FeedbackCheckedAt,
 	)
 	return i, err
 }
 
 const getRun = `-- name: GetRun :one
-SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict FROM agents.runs WHERE id = $1
+SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict, answered_over_at FROM agents.runs WHERE id = $1
 `
 
 func (q *Queries) GetRun(ctx context.Context, id uuid.UUID) (AgentsRun, error) {
@@ -357,6 +358,7 @@ func (q *Queries) GetRun(ctx context.Context, id uuid.UUID) (AgentsRun, error) {
 		&i.EndedAt,
 		&i.SentAt,
 		&i.Verdict,
+		&i.AnsweredOverAt,
 	)
 	return i, err
 }
@@ -740,7 +742,7 @@ func (q *Queries) ListReviewItemsOfRun(ctx context.Context, runID uuid.UUID) ([]
 }
 
 const listRunsToHandOff = `-- name: ListRunsToHandOff :many
-SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict FROM agents.runs WHERE state = 'handed_off' AND outcome IS NULL ORDER BY ended_at LIMIT $1
+SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict, answered_over_at FROM agents.runs WHERE state = 'handed_off' AND outcome IS NULL ORDER BY ended_at LIMIT $1
 `
 
 // Runs handed off whose note and assignee are still to do.
@@ -775,6 +777,7 @@ func (q *Queries) ListRunsToHandOff(ctx context.Context, n int32) ([]AgentsRun, 
 			&i.EndedAt,
 			&i.SentAt,
 			&i.Verdict,
+			&i.AnsweredOverAt,
 		); err != nil {
 			return nil, err
 		}
@@ -877,7 +880,7 @@ func (q *Queries) ListUntakenRequestsOfAgent(ctx context.Context, agentID uuid.U
 }
 
 const lockLapsedRuns = `-- name: LockLapsedRuns :many
-SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict FROM agents.runs
+SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict, answered_over_at FROM agents.runs
 WHERE state = 'running' AND claimed_until < $1::timestamptz
 ORDER BY claimed_until
 LIMIT $2
@@ -920,6 +923,7 @@ func (q *Queries) LockLapsedRuns(ctx context.Context, arg LockLapsedRunsParams) 
 			&i.EndedAt,
 			&i.SentAt,
 			&i.Verdict,
+			&i.AnsweredOverAt,
 		); err != nil {
 			return nil, err
 		}

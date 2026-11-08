@@ -123,7 +123,10 @@ func objectOf(raw json.RawMessage) *map[string]any {
 
 // storedReply is the item of a reply as the run stored it.
 type storedReply struct {
-	Text           string          `json:"text"`
+	Text string `json:"text"`
+	// AgentText is what the agent wrote, kept when a reviewer edited the reply, so that the
+	// weekly check (V28) can read what was changed.
+	AgentText      string          `json:"agentText,omitempty"`
 	Disclosure     string          `json:"disclosure"`
 	Components     json.RawMessage `json:"components"`
 	InReplyTo      uuid.UUID       `json:"inReplyToMessageId"`

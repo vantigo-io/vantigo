@@ -506,6 +506,116 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agents/agents/{agentId}/memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Count what an agent remembers
+         * @description How many notes the agent holds (virtual employees design V27) - about customers, about conversations with no customer, and how many customers the notes are about. The notes themselves are read on the customer's page, under the customer's permissions.
+         */
+        get: operations["getAgentMemory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/memory/{noteId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                noteId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a note an agent remembers
+         * @description Deletes one note an agent keeps about a customer or a conversation. The record of the change names the note and the subject, never the text.
+         */
+        delete: operations["deleteAgentMemory"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/roles/{roleId}/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roleId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List a role's instruction suggestions
+         * @description What the weekly check proposes for the role's instructions (virtual employees design V28), newest first, at most 20. state narrows them to proposed, applied or dismissed. A suggestion rests on review items the people corrected, named by id; it quotes none of them.
+         */
+        get: operations["listRoleSuggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/suggestions/{suggestionId}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                suggestionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply an instruction suggestion
+         * @description Applies the suggestion to the role's instructions as an ordinary role edit - versioned, guarded by If-Match on the ROLE's version, and recorded in the audit - and marks it applied. The passage it replaces must still be in the instructions exactly once (409 suggestion_stale); a suggestion without a passage is appended as a paragraph. The result must fit the instructions' limit (400 invalid).
+         */
+        post: operations["applyInstructionSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/suggestions/{suggestionId}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                suggestionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss an instruction suggestion
+         * @description Dismisses the suggestion. The instructions stay as they are.
+         */
+        post: operations["dismissInstructionSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agents/settings": {
         parameters: {
             query?: never;
@@ -791,7 +901,7 @@ export interface components {
             /** @description Up to 1,500 characters. */
             style: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503), and for the review queue reviewer_not_permitted (403), item_decided (409), reply_key_reused (409), held (422, rules names them), channel_refused (422) and send_unknown (502). errors carries the field errors of a 400. */
+        /** @description An RFC 9457 problem with this module's refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503), suggestion_decided (409), suggestion_stale (409), and for the review queue reviewer_not_permitted (403), item_decided (409), reply_key_reused (409), held (422, rules names them), channel_refused (422) and send_unknown (502). errors carries the field errors of a 400. */
         AgentsProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1006,6 +1116,51 @@ export interface components {
             badShare: number;
             /** Format: int32 */
             x: number;
+        };
+        AgentMemoryCounts: {
+            /**
+             * Format: int32
+             * @description Notes about conversations with no customer.
+             */
+            conversationNotes: number;
+            /**
+             * Format: int32
+             * @description Notes about customers.
+             */
+            customerNotes: number;
+            /**
+             * Format: int32
+             * @description How many customers the notes are about.
+             */
+            customers: number;
+        };
+        InstructionSuggestion: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            decidedAt?: string | null;
+            /**
+             * Format: uuid
+             * @description The person who applied or dismissed it.
+             */
+            decidedBy?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description The review items the suggestion rests on, ids only. */
+            itemIds: string[];
+            /** @description The wording to put in. */
+            newText: string;
+            /** @description The passage of the instructions to replace; null to append newText as a paragraph. */
+            oldText?: string | null;
+            /** @description Why, in a sentence or two. It quotes no customer. */
+            rationale: string;
+            /** Format: uuid */
+            roleId: string;
+            /** @enum {string} */
+            state: "proposed" | "applied" | "dismissed";
+        };
+        InstructionSuggestionList: {
+            items: components["schemas"]["InstructionSuggestion"][];
         };
         /** @description A change the agent asks to make, with the preview the Assistant shows (V20). */
         ReviewChange: {
@@ -2772,6 +2927,281 @@ export interface operations {
             };
             /** @description Not Found - not_found. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+        };
+    };
+    getAgentMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMemoryCounts"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found - not_found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+        };
+    };
+    deleteAgentMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                noteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found - not_found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+        };
+    };
+    listRoleSuggestions: {
+        parameters: {
+            query?: {
+                state?: "proposed" | "applied" | "dismissed";
+            };
+            header?: never;
+            path: {
+                roleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstructionSuggestionList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found - not_found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+        };
+    };
+    applyInstructionSuggestion: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The role's version the instructions were read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                suggestionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK - the role as it now is. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRole"];
+                };
+            };
+            /** @description Bad Request - the instructions would be too long, or If-Match is not a version. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found - not_found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Conflict - version_conflict, suggestion_decided (applied or dismissed already) or suggestion_stale (the passage is gone or occurs twice). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+        };
+    };
+    dismissInstructionSuggestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                suggestionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstructionSuggestion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found - not_found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+            /** @description Conflict - suggestion_decided. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

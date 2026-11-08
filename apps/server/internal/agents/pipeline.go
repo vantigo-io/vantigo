@@ -33,8 +33,9 @@ const (
 const maxRunsPerHour = 6
 
 // The words an action log gives an operation that reads the conversation itself:
-// what the sender wrote is never evidence for a reply (V17).
-var ownConversationOperations = []string{"getCommunicationsConversationsById", "getCommunicationsConversations"}
+// what the sender wrote is never evidence for a reply (V17), and no more is a note
+// an earlier run kept about the customer (V27).
+var ownConversationOperations = []string{"getCommunicationsConversationsById", "getCommunicationsConversations", memoryOperation}
 
 // action is one row of the run's action log, as the pipeline reads it.
 type action struct {
