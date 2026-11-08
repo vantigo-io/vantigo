@@ -56,7 +56,13 @@ export const RolePage = ({ agentId, roleId, access = noAgentsAccess }: RolePageP
       {role ? (
         <PageSection>
           {/* Keyed by the version, so a newer one (a stale save's reload) replaces what was typed. */}
-          <RoleForm key={role.version} agent={agent} role={role} canManage={access.canManage} />
+          <RoleForm
+            key={role.version}
+            agent={agent}
+            role={role}
+            canManage={access.canManage}
+            isOwner={access.isOwner}
+          />
         </PageSection>
       ) : (
         <EmptyState title={t("roleNotFound")} />
