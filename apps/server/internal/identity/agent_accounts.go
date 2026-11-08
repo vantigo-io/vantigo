@@ -49,8 +49,8 @@ func cleanAgentName(displayName string) (string, bool) {
 	return name, n >= 1 && n <= maxAgentNameRunes
 }
 
-// Create makes the agent's user. It never sets pending_since, which every
-// predicate that lets a user act refuses.
+// Create makes the agent's user. It never sets pending_since: a user with it
+// set may not act, and an agent must.
 func (g *agentAccounts) Create(ctx context.Context, displayName string) (uuid.UUID, error) {
 	name, ok := cleanAgentName(displayName)
 	if !ok {

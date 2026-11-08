@@ -22,23 +22,21 @@ import (
 // expired or revoked, or its user is not an agent, is disabled or holds the
 // Owner or SystemAdmin role (which 00141 stops it being given; this is the
 // same line drawn where the rule is evaluated); and, before anything is read,
-// when the rule is a scim rule or a policy naming grantRefusedPolicies. The
-// policies that need a second factor are among those, and an agent never has
-// one.
+// when the rule is a scim rule, a session rule or a policy rule of any name
+// (the Owner tier among them): only a permission rule, or an anonymous one,
+// is answered.
 //
 // A grant that does not hold is ErrUnauthenticated, as a session that does not
 // is, except that an agent that may no longer act is ErrForbidden. Under an
 // anonymous rule a grant that does not hold is a caller with none.
 func (a *Access) checkAgentGrant(ctx context.Context, grantID uuid.UUID, rule contracts.Rule) (contracts.Principal, error) {
+	// An agent is admitted by a permission its roles hold and by nothing less:
+	// a session rule or a policy alone (ActiveAccount, Business) would let it
+	// reach the self-service endpoints of a person's account, and the Owner
+	// tier and SCIM are never its.
 	switch rule.Kind {
-	case contracts.RuleSCIM:
+	case contracts.RuleSCIM, contracts.RuleSession, contracts.RulePolicy:
 		return contracts.Principal{}, contracts.ErrForbidden
-	case contracts.RulePolicy:
-		for _, name := range rule.Names {
-			if slices.Contains(grantRefusedPolicies, name) {
-				return contracts.Principal{}, contracts.ErrForbidden
-			}
-		}
 	}
 	refuse := func(err error) (contracts.Principal, error) {
 		if rule.Kind == contracts.RuleAnonymous {

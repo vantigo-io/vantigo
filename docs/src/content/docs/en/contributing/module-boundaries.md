@@ -974,8 +974,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       assistant's wrappers, and the latter answers false for an agent's grant. For an
       `agent` grant `Access.Check` answers the agent user's own principal — its roles, no
       session, no second factor — with `Via{Kind: "agent", AgentID, RunID, CustomerID,
-      ApprovedBy}` (identity's `AgentGrants`), refused the same policies and every rule
-      that needs a second factor. The dispatcher still accepts the assistant's grant only;
+      ApprovedBy}` (identity's `AgentGrants`), admitted by a permission rule alone: every
+      `session`, `scim` and `policy:` rule is refused. The dispatcher still accepts the assistant's grant only;
       it learns the agent's with the `agents` module.
     - **Every operation has a contract mode** (`auto`, `confirm`, `never`), computed once by
       `Compose`: the operation's `x-vantigo-assistant` when it has one (the OpenAPI lint

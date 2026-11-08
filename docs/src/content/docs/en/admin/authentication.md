@@ -889,14 +889,17 @@ An agent acts under an **agent grant**, a record identity keeps for one run of o
   the agent holds, no session and no second factor. Every access rule is evaluated for that
   user as for a person, and the request carries that it came through an agent and which
   agent, run, customer and reviewer (`Principal.Via`).
-- **What it is never.** It is refused the Owner tier (`Owner`, `OwnerManagement`,
-  `AuthorizationManagement`, `SystemAdmin`), SCIM, and every rule that needs a second factor,
-  which an agent never has.
+- **What it is never.** It is admitted by a permission its roles hold and by nothing less. It
+  is refused (`403`) every Owner-tier policy (`Owner`, `OwnerManagement`,
+  `AuthorizationManagement`, `SystemAdmin`), SCIM, every `session` rule and every rule that
+  is a policy alone (`ActiveAccount`, `Business`), which are a person's self-service
+  endpoints: profile, email, avatar, passkeys and authenticator. An agent that somehow held
+  Owner or SystemAdmin is refused too.
 - **How it ends.** At the first of: ten minutes, which is twice a run's ceiling and is never
   renewed (a reviewer's approval gets a new grant), its revocation, and the agent being
   disabled. The agent stops at its next step: the request answers `401`, or `403` for a
   disabled agent. Grants that ended more than a day ago are deleted when the agent's next is
-  issued.
+  issued. Ending a grant that is unknown or has ended already is not an error.
 
 An installation without virtual employees never has a user of kind `agent` or a row in
 `identity.agent_grants`.
