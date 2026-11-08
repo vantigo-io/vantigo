@@ -279,11 +279,13 @@ const rowStyle = (active: boolean, over: DropPlace | null): React.CSSProperties 
 
 const RowTitle = ({ node }: { node: KnowledgeTreeNode }) => {
   const { t } = useI18n("knowledge");
+  const title = node.title || t("untitled");
   return (
     <Link
       to={ARTICLE_ROUTE_PATH}
       params={{ articleId: node.id }}
       draggable={false}
+      title={title}
       style={{
         display: "flex",
         alignItems: "center",
@@ -296,8 +298,10 @@ const RowTitle = ({ node }: { node: KnowledgeTreeNode }) => {
       }}
     >
       <ArticleIcon icon={node.icon} size={14} />
-      <Text size="sm" truncate>
-        {node.title || t("untitled")}
+      {/* minWidth 0: a flex item never shrinks below its text otherwise, and the
+          ellipsis would never show. The full title is the link's title. */}
+      <Text size="sm" truncate style={{ minWidth: 0, flex: 1 }}>
+        {title}
       </Text>
     </Link>
   );
@@ -315,6 +319,7 @@ const FavouriteStar = ({ node }: { node: KnowledgeTreeNode }) => {
       color={on ? "yellow" : "gray"}
       aria-label={label}
       title={label}
+      style={{ flexShrink: 0 }}
       onClick={() => onToggleFavourite(node)}
     >
       {on ? <IconStarFilled size={12} /> : <IconStar size={12} />}
@@ -379,12 +384,13 @@ const TreeRow = ({
             color="gray"
             aria-label={toggleLabel}
             aria-expanded={open}
+            style={{ flexShrink: 0 }}
             onClick={() => setExpanded(node.id, !open)}
           >
             {open ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
           </ActionIcon>
         ) : (
-          <Box w={22} />
+          <Box w={22} style={{ flexShrink: 0 }} />
         )}
         <RowTitle node={node} />
         <FavouriteStar node={node} />
@@ -394,6 +400,7 @@ const TreeRow = ({
             variant="subtle"
             color="gray"
             aria-label={t("newChild", { title: node.title || t("untitled") })}
+            style={{ flexShrink: 0 }}
             onClick={() => onCreateChild(node)}
           >
             <IconPlus size={12} />

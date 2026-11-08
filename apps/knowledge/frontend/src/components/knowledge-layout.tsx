@@ -27,7 +27,16 @@ export const KnowledgeLayout = ({ activeId, children }: { activeId?: string; chi
         style={{ flex: "none", position: "sticky", top: "var(--mantine-spacing-md)" }}
       >
         <SidebarSearchBox value={query} onChange={setQuery} />
-        <ScrollArea.Autosize mah="calc(100vh - 220px)" mt="sm" type="auto">
+        {/* Vertical only, and the content a block rather than Mantine's table:
+            a table grows to its widest row, so one long title would widen the
+            tree and scroll the star and + out of sight. */}
+        <ScrollArea.Autosize
+          mah="calc(100vh - 220px)"
+          mt="sm"
+          type="auto"
+          scrollbars="y"
+          styles={{ content: { display: "block", minWidth: 0 } }}
+        >
           {query.trim() ? (
             <SearchResults query={debounced} onOpen={() => setQuery("")} />
           ) : (
