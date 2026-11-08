@@ -25,6 +25,10 @@ type agentTable struct {
 	acts    bool
 	levels  map[string]string
 	allowed map[string]bool
+	// byRole is each role's own allowlist, its template's: a run is narrowed to
+	// its role's (V9b), and allowed, their union, serves a grant whose run is
+	// not known.
+	byRole map[uuid.UUID]map[string]bool
 }
 
 // gateEntry is one agent's table with its own lock, so a read of the database
@@ -89,7 +93,7 @@ func (s *server) table(ctx context.Context, agentID uuid.UUID) (*agentTable, err
 		e.checkedAt = time.Now()
 		return e.table, nil
 	}
-	table := &agentTable{version: row.Version, acts: acts, levels: map[string]string{}, allowed: map[string]bool{}}
+	table := &agentTable{version: row.Version, acts: acts, levels: map[string]string{}, allowed: map[string]bool{}, byRole: map[uuid.UUID]map[string]bool{}}
 	if acts {
 		levels, err := q.ListAgentLevels(ctx, agentID)
 		if err != nil {
@@ -102,8 +106,10 @@ func (s *server) table(ctx context.Context, agentID uuid.UUID) (*agentTable, err
 		}
 		for _, r := range roles {
 			if tpl, ok := templates[r.Template]; ok {
+				table.byRole[r.ID] = map[string]bool{}
 				for _, a := range tpl.Allowlist {
 					table.allowed[a.ID] = true
+					table.byRole[r.ID][a.ID] = true
 				}
 			}
 		}
@@ -112,12 +118,38 @@ func (s *server) table(ctx context.Context, agentID uuid.UUID) (*agentTable, err
 	return table, nil
 }
 
+// allowedFor is the operations the run may call: its role's template's, when the
+// run is one the module made (V9b). A grant whose run is not known gets the union
+// of the agent's roles'.
+func (s *server) allowedFor(ctx context.Context, table *agentTable, runID uuid.UUID) map[string]bool {
+	if roleID, ok := s.runRole(ctx, runID); ok {
+		if allowed, ok := table.byRole[roleID]; ok {
+			return allowed
+		}
+		return nil // the run's role is gone
+	}
+	return table.allowed
+}
+
+// runRole is the role of a run, cached for good: a run never changes its role.
+func (s *server) runRole(ctx context.Context, runID uuid.UUID) (uuid.UUID, bool) {
+	if v, ok := s.runRoles.Load(runID); ok {
+		return v.(uuid.UUID), true
+	}
+	run, err := store.New(s.deps.Pool).GetRun(ctx, runID)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	s.runRoles.Store(runID, run.RoleID)
+	return run.RoleID, true
+}
+
 // gate is the dispatcher's gate for an agent's run (V9). It starts from the
 // contract's mode and narrows it by three locks, and it fails closed:
 //
-//   - the operation must be on the allowlist of a template one of the agent's
-//     roles has (V9b). The grant names the agent and the run, not the role, so
-//     until runs record theirs the allowlist is the union of the agent's roles';
+//   - the operation must be on the allowlist of the template of the run's role
+//     (V9b); for a grant whose run the module did not make, the union of the
+//     templates of the agent's roles;
 //   - none of the permissions it names may be in agentNever, whatever the level;
 //   - each permission it names narrows the mode by the agent's level for it,
 //     which is off until the Owner raises it: off makes it never, read turns
@@ -139,7 +171,7 @@ func (s *server) gate(ctx context.Context, info operations.Info) operations.Mode
 		}
 		return operations.ModeNever
 	}
-	if !table.acts || !table.allowed[info.ID] {
+	if !table.acts || !s.allowedFor(ctx, table, run.RunID)[info.ID] {
 		return operations.ModeNever
 	}
 	mode := info.Mode

@@ -20,6 +20,7 @@ UPDATE agents.agents SET
     style = @style,
     languages = @languages,
     disclosure_wording = @disclosure_wording,
+    daily_token_budget = sqlc.narg(daily_token_budget)::integer,
     version = version + 1,
     updated_at = @now::timestamptz
 WHERE id = @id

@@ -244,6 +244,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agents/conversations/{conversationId}/hand-off": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a conversation's hand-off
+         * @description Whether the conversation is handed off, and why. Needs Communications' conversations-view.
+         */
+        get: operations["getConversationHandOff"];
+        put?: never;
+        post?: never;
+        /**
+         * Give a conversation back to the agent
+         * @description Gives the conversation back to the agent (Give back to the agent): the hand-off marker is cleared, so the agent answers the next message. Nothing happens when there is no marker. Needs Communications' conversations-manage.
+         */
+        delete: operations["giveBackConversation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agents/settings": {
         parameters: {
             query?: never;
@@ -368,6 +394,8 @@ export interface components {
              */
             capsTurns: number;
             channelIds: string[];
+            /** @description The Communications tags that mark a complaint (S5): a conversation carrying one is held in Review and Auto above X %. */
+            complaintTagIds?: string[];
             /** Format: date-time */
             createdAt: string;
             /**
@@ -407,6 +435,16 @@ export interface components {
             /** Format: int32 */
             version: number;
         };
+        /** @description Whether an agent handed a conversation to the people, and so does not answer it again until a person replies in it or assigns it, or it is given back. */
+        ConversationHandOff: {
+            /** Format: date-time */
+            at: string | null;
+            handedOff: boolean;
+            /** @description Why the agent handed off, such as hand_off, discarded, expired, budget, guard or lapsed. */
+            reason: string | null;
+            /** Format: uuid */
+            roleId: string | null;
+        };
         AgentRoleChannelsRequest: {
             channelIds: string[];
         };
@@ -429,6 +467,8 @@ export interface components {
              * @description 1 to 16.
              */
             capsTurns: number;
+            /** @description The Communications tags that mark a complaint (S5), at most 20. Absent keeps the role's. */
+            complaintTagIds?: string[];
             /**
              * Format: uuid
              * @description A person who is active and holds communications:conversations-view; null for the Inbox, unassigned.
@@ -499,6 +539,11 @@ export interface components {
             locked: boolean;
         };
         AgentUpdateRequest: {
+            /**
+             * Format: int32
+             * @description The tokens (input and output) the agent may use in a business day, at least 1000; 0 removes the budget. Absent keeps it. At the budget no new run starts and the requests that wait are handed off with the note Daily budget reached.
+             */
+            dailyTokenBudget?: number;
             /** @enum {string} */
             disclosureWording: "assistant" | "talking" | "compact";
             /** @enum {string} */
@@ -1422,6 +1467,84 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["AgentsProblem"];
+                };
+            };
+        };
+    };
+    getConversationHandOff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationHandOff"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    giveBackConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };

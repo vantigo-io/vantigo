@@ -414,7 +414,10 @@ func (d *Dispatcher) Info(id string) (Info, bool) {
 // List is the operations userID may call, as the assistant sees them: those
 // whose effective mode (the contract's, narrowed by the gate) is not never
 // and whose access rule the user meets; each carries that effective mode. A permission
-// rule is asked of Access.UserHolds (once per key per call); policy:ActiveAccount
+// rule is asked of Access.UserHolds (once per key per call), except for an agent's
+// grant: UserHolds is false for a user of kind agent by design (an agent acts on no
+// one's behalf), so an agent's list is the gate's and the router judges its
+// permissions on the call (virtual employees design V6). policy:ActiveAccount
 // and policy:Business are listed, and the call decides, Business's MFA being
 // the session's. The order is by path, then method.
 func (d *Dispatcher) List(ctx context.Context, userID uuid.UUID) ([]Info, error) {
@@ -427,15 +430,19 @@ func (d *Dispatcher) List(ctx context.Context, userID uuid.UUID) ([]Info, error)
 		return nil, err
 	}
 	held := map[string]bool{}
+	agent := grantKind(ctx) == contracts.GrantAgent
 	var out []Info
 	for _, e := range st.entries {
 		mode := d.effective(ctx, e)
 		if mode == ModeNever {
 			continue
 		}
-		ok, err := st.meets(ctx, userID, e, held)
-		if err != nil {
-			return nil, err
+		ok := e.ruleOK
+		if !agent {
+			var err error
+			if ok, err = st.meets(ctx, userID, e, held); err != nil {
+				return nil, err
+			}
 		}
 		if ok {
 			info := e.Info

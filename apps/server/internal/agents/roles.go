@@ -50,6 +50,7 @@ func roleSnapshot(r store.AgentsRole) map[string]any {
 	return map[string]any{
 		"name": r.Name, "replyMode": r.ReplyMode, "threshold": r.Threshold, "capsToolCalls": r.CapsToolCalls,
 		"capsTurns": r.CapsTurns, "maxRepliesPerDay": r.MaxRepliesPerDay, "handOffUserId": r.HandOffUserID,
+		"complaintTagIds": r.ComplaintTagIds,
 	}
 }
 
@@ -176,6 +177,7 @@ func (s *server) UpdateAgentRole(ctx context.Context, req gen.UpdateAgentRoleReq
 	actor := callerID(ctx)
 	owner := s.isOwner(ctx)
 	var saved store.AgentsRole
+	var complaintTags []uuid.UUID // nil keeps the role's
 	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		if _, err := q.LockAgent(ctx, req.AgentId); err != nil {
@@ -188,6 +190,10 @@ func (s *server) UpdateAgentRole(ctx context.Context, req gen.UpdateAgentRoleReq
 		if current.Version != version {
 			return errVersion
 		}
+		complaintTags = current.ComplaintTagIds
+		if b.ComplaintTagIds != nil {
+			complaintTags = slices.Compact(slices.SortedFunc(slices.Values(*b.ComplaintTagIds), func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) }))
+		}
 		mode := string(b.ReplyMode)
 		raises := modeRank(mode) > modeRank(current.ReplyMode) || (mode != modeReview && int16(b.Threshold) < current.Threshold)
 		if raises && !owner {
@@ -196,7 +202,7 @@ func (s *server) UpdateAgentRole(ctx context.Context, req gen.UpdateAgentRoleReq
 		if saved, err = q.UpdateRole(ctx, store.UpdateRoleParams{
 			ID: current.ID, Name: name, Instructions: b.Instructions, ReplyMode: mode, Threshold: int16(b.Threshold),
 			CapsToolCalls: int16(b.CapsToolCalls), CapsTurns: int16(b.CapsTurns), MaxRepliesPerDay: int16(b.MaxRepliesPerDay),
-			HandOffUserID: b.HandOffUserId, Now: s.deps.Clock(),
+			HandOffUserID: b.HandOffUserId, ComplaintTagIds: complaintTags, Now: s.deps.Clock(),
 		}); err != nil {
 			return fmt.Errorf("agents: change the role: %w", err)
 		}

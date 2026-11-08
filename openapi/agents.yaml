@@ -166,6 +166,12 @@ components:
                         format: uuid
                         type: string
                     type: array
+                complaintTagIds:
+                    description: 'The Communications tags that mark a complaint (S5): a conversation carrying one is held in Review and Auto above X %.'
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
                 createdAt:
                     format: date-time
                     type: string
@@ -233,6 +239,30 @@ components:
                 - createdAt
                 - updatedAt
             type: object
+        ConversationHandOff:
+            additionalProperties: false
+            description: Whether an agent handed a conversation to the people, and so does not answer it again until a person replies in it or assigns it, or it is given back.
+            properties:
+                at:
+                    format: date-time
+                    nullable: true
+                    type: string
+                handedOff:
+                    type: boolean
+                reason:
+                    description: Why the agent handed off, such as hand_off, discarded, expired, budget, guard or lapsed.
+                    nullable: true
+                    type: string
+                roleId:
+                    format: uuid
+                    nullable: true
+                    type: string
+            required:
+                - handedOff
+                - at
+                - reason
+                - roleId
+            type: object
         AgentRoleChannelsRequest:
             additionalProperties: false
             properties:
@@ -279,6 +309,13 @@ components:
                     maximum: 16
                     minimum: 1
                     type: integer
+                complaintTagIds:
+                    description: The Communications tags that mark a complaint (S5), at most 20. Absent keeps the role's.
+                    items:
+                        format: uuid
+                        type: string
+                    maxItems: 20
+                    type: array
                 handOffUserId:
                     description: A person who is active and holds communications:conversations-view; null for the Inbox, unassigned.
                     format: uuid
@@ -448,6 +485,11 @@ components:
         AgentUpdateRequest:
             additionalProperties: false
             properties:
+                dailyTokenBudget:
+                    description: The tokens (input and output) the agent may use in a business day, at least 1000; 0 removes the budget. Absent keeps it. At the budget no new run starts and the requests that wait are handed off with the note Daily budget reached.
+                    format: int32
+                    minimum: 0
+                    type: integer
                 disclosureWording:
                     enum:
                         - assistant
@@ -1270,6 +1312,64 @@ paths:
               schema:
                 format: uuid
                 type: string
+    /api/v1/agents/conversations/{conversationId}/hand-off:
+        parameters:
+            - in: path
+              name: conversationId
+              required: true
+              schema:
+                format: uuid
+                type: string
+        delete:
+            description: 'Gives the conversation back to the agent (Give back to the agent): the hand-off marker is cleared, so the agent answers the next message. Nothing happens when there is no marker. Needs Communications'' conversations-manage.'
+            operationId: giveBackConversation
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Give a conversation back to the agent
+            tags:
+                - Agents
+            x-vantigo-access: permission:communications:conversations-manage
+            x-vantigo-assistant: never
+        get:
+            description: Whether the conversation is handed off, and why. Needs Communications' conversations-view.
+            operationId: getConversationHandOff
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ConversationHandOff'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Read a conversation's hand-off
+            tags:
+                - Agents
+            x-vantigo-access: permission:communications:conversations-view
+            x-vantigo-assistant: never
     /api/v1/agents/settings:
         get:
             description: The company name the disclosure names, the retention and whether the installation has an AI provider.

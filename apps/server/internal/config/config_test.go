@@ -2197,3 +2197,19 @@ func TestConfig_ShippingCarriers(t *testing.T) {
 		t.Errorf("error = %q", msg)
 	}
 }
+
+// TestLoad_AgentsConcurrency pins AGENTS_CONCURRENCY (virtual employees design
+// V14): 4 by default, from 1 to 32.
+func TestLoad_AgentsConcurrency(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.AgentsConcurrency != 4 {
+		t.Errorf("AgentsConcurrency = %d, want 4", cfg.AgentsConcurrency)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "AGENTS_CONCURRENCY", "16")); cfg.AgentsConcurrency != 16 {
+		t.Errorf("AgentsConcurrency = %d, want 16", cfg.AgentsConcurrency)
+	}
+	for _, bad := range []string{"0", "33", "many"} {
+		if msg := loadError(t, with(validEnv(), "AGENTS_CONCURRENCY", bad)); !strings.Contains(msg, "AGENTS_CONCURRENCY: must be an integer from 1 to 32") {
+			t.Errorf("AGENTS_CONCURRENCY=%s: %q", bad, msg)
+		}
+	}
+}

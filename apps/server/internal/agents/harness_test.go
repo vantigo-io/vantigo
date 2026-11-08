@@ -27,6 +27,7 @@ func newHarness(t *testing.T, opts ...modtest.Option) *modtest.Harness {
 		modtest.WithRecorder(recorder),
 		modtest.WithModule(agents.Module()),
 		modtest.WithModule(stubKnowledge()),
+		modtest.WithModule(stubCommunications()),
 		modtest.WithEnv("AI_PROVIDER", "openai-compatible"),
 		modtest.WithEnv("AI_BASE_URL", "http://ollama:11434/v1"),
 		modtest.WithEnv("AI_MODELS", "test-model,other-model"),
@@ -45,6 +46,19 @@ func stubKnowledge() module.Module {
 		Permissions: []contracts.Permission{
 			{Key: "knowledge:articles", Display: "Use Knowledge", Description: "Read articles.", Category: "Knowledge"},
 			{Key: "knowledge:manage", Display: "Administer Knowledge", Description: "Administer articles.", Category: "Knowledge"},
+		},
+		Mount: func(module.Deps) (http.Handler, error) { return http.NotFoundHandler(), nil },
+	}
+}
+
+// stubCommunications stands in for Communications likewise: it declares the two
+// permissions the hand-off operations of this module are checked against.
+func stubCommunications() module.Module {
+	return module.Module{
+		Name: "communications",
+		Permissions: []contracts.Permission{
+			{Key: "communications:conversations-view", Display: "View conversations", Description: "See conversations.", Category: "Communications"},
+			{Key: "communications:conversations-manage", Display: "Manage conversations", Description: "Change conversations.", Category: "Communications"},
 		},
 		Mount: func(module.Deps) (http.Handler, error) { return http.NotFoundHandler(), nil },
 	}

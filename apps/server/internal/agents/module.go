@@ -109,6 +109,12 @@ func Module() module.Module {
 		Permissions: permissions,
 		AITasks:     aiTasks,
 		Mount:       mount,
+		// The trigger runs whatever MODULES says and checks the setting itself
+		// (module boundaries rule 23); the runner needs the dispatcher, which only
+		// the API process has; the worker needs only the database.
+		EventHandlers: eventHandlers,
+		APIRunners:    apiRunners,
+		Workers:       workers,
 	}
 }
 

@@ -565,6 +565,9 @@ type Config struct {
 	// past it is summarised, which must not happen a few turns in. It is an
 	// estimate, four characters to a token.
 	AIContextTokens int
+	// AgentsConcurrency is how many agent runs one API replica carries at once
+	// (AGENTS_CONCURRENCY, from 1 to 32; default 4; virtual employees design V14).
+	AgentsConcurrency int
 	// AIEffort is how hard a thinking model thinks (AI_EFFORT: low, medium,
 	// high, xhigh or max; default medium). Anthropic uses it as
 	// output_config.effort; the OpenAI-compatible providers ignore it.
@@ -699,6 +702,7 @@ func Load(env map[string]string) (*Config, error) {
 	communicationsRetention(&p, env, c)
 	aiConfig(&p, env, c)
 	c.AIContextTokens = integer(&p, env, "AI_CONTEXT_TOKENS", defaultAIContextTokens(c.AIProvider), 2000, 1000000)
+	c.AgentsConcurrency = integer(&p, env, "AGENTS_CONCURRENCY", 4, 1, 32)
 	aiThinking(&p, env, c)
 
 	if len(p) > 0 {

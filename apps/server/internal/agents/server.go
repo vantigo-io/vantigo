@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -22,6 +23,8 @@ import (
 type server struct {
 	deps  module.Deps
 	gates gateCache // what the gate knows of each agent, by the agent's version
+	// runRoles caches each run's role for the gate (uuid.UUID -> uuid.UUID).
+	runRoles sync.Map
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
