@@ -33,6 +33,10 @@ func HandOffOverBudget(d module.Deps) error {
 // ReplicaClaimFor is how long a claim lives.
 const ReplicaClaimFor = claimFor
 
+// FinishHandOffs is the runner's step that writes the notes and gives up the assignees of
+// the hand-offs the workers and the decisions recorded.
+func FinishHandOffs(d module.Deps) error { return newServer(d).finishHandOffs(context.Background()) }
+
 // ReviewsCycle is one pass of the agents-reviews worker.
 func ReviewsCycle(d module.Deps) error {
 	return (&reviewsWorker{s: newServer(d)}).cycle(context.Background())

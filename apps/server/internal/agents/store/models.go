@@ -102,6 +102,7 @@ type AgentsReviewItem struct {
 	ExpiresAt       time.Time
 	CreatedAt       time.Time
 	ChannelID       *uuid.UUID
+	ClaimedAt       *time.Time
 }
 
 type AgentsRole struct {

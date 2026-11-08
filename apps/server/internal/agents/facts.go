@@ -40,13 +40,14 @@ type conversation struct {
 
 // message is one message of the conversation.
 type message struct {
-	ID            uuid.UUID `json:"id"`
-	Direction     string    `json:"direction"`
-	OccurredAt    time.Time `json:"occurredAt"`
-	Subject       *string   `json:"subject"`
-	TextBody      *string   `json:"textBody"`
-	AutoSubmitted *bool     `json:"autoSubmitted"`
-	Unreadable    *bool     `json:"unreadable"`
+	ID            uuid.UUID  `json:"id"`
+	Direction     string     `json:"direction"`
+	OccurredAt    time.Time  `json:"occurredAt"`
+	Subject       *string    `json:"subject"`
+	AuthorUserID  *uuid.UUID `json:"authorUserId"`
+	TextBody      *string    `json:"textBody"`
+	AutoSubmitted *bool      `json:"autoSubmitted"`
+	Unreadable    *bool      `json:"unreadable"`
 	Participant   *struct {
 		Address     string  `json:"address"`
 		ContactID   *int32  `json:"contactId"`
@@ -87,6 +88,17 @@ func (c conversation) latestInbound() *message {
 		}
 	}
 	return latest
+}
+
+// agentRepliedSince says the agent's user wrote an outbound message after at: its reply
+// to the message at is already in the conversation.
+func (c conversation) agentRepliedSince(user uuid.UUID, at time.Time) bool {
+	for _, m := range c.Messages {
+		if m.Direction == "outbound" && m.AuthorUserID != nil && *m.AuthorUserID == user && m.OccurredAt.After(at) {
+			return true
+		}
+	}
+	return false
 }
 
 // contactIDs are the contacts the conversation's senders are linked to, each once.

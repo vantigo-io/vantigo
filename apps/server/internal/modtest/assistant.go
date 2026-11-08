@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/operations"
 )
 
@@ -58,6 +59,18 @@ func (h *Harness) Operations(t testing.TB) *operations.Dispatcher {
 		t.Fatalf("modtest: bind the operations dispatcher: %v", err)
 	}
 	h.ops = d
+	return d
+}
+
+// AgentDeps is the harness's Deps with the dispatcher Operations binds and identity's agent
+// slots, for a test of the agents module that runs what only the API process runs (the
+// runner's hand-offs). The caller installs the module's gate on the dispatcher.
+func (h *Harness) AgentDeps(t testing.TB) module.Deps {
+	t.Helper()
+	d := h.deps
+	d.Operations = h.Operations(t)
+	d.AgentGrants = h.agentGrants
+	d.AgentAccounts = h.agentAccounts
 	return d
 }
 

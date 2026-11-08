@@ -9,7 +9,6 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -23,6 +22,8 @@ const (
 	reviewLifetime        = 24 * time.Hour
 	// expiryBatch is how many items one pass expires.
 	expiryBatch = 100
+	// claimLease is how long a reviewer's claim is trusted to be under way.
+	claimLease = 10 * time.Minute
 )
 
 type reviewsWorker struct{ s *server }
@@ -49,6 +50,11 @@ func (w *reviewsWorker) Run(ctx context.Context) error {
 func (w *reviewsWorker) cycle(ctx context.Context) error {
 	return withTx(ctx, w.s.deps.Pool, func(q *store.Queries) error {
 		now := w.s.deps.Clock()
+		// A claim never finished (the process stopped mid-decision) goes back to waiting. An item
+		// being decided is never expired: a send that succeeded must be recorded as one.
+		if _, err := q.ResetStaleClaims(ctx, now.Add(-claimLease)); err != nil {
+			return fmt.Errorf("agents: give back stale claims: %w", err)
+		}
 		lapsed, err := q.ListExpiredItems(ctx, store.ListExpiredItemsParams{Now: now, N: expiryBatch})
 		if err != nil {
 			return fmt.Errorf("agents: find the items that lapsed: %w", err)
@@ -57,7 +63,7 @@ func (w *reviewsWorker) cycle(ctx context.Context) error {
 			if err := q.SetItemState(ctx, store.SetItemStateParams{ID: it.ID, State: itemExpired, Now: now}); err != nil {
 				return fmt.Errorf("agents: expire an item: %w", err)
 			}
-			if err := markHandedOff(ctx, q, it.AgentID, it.RoleID, it.ConversationID, handExpired, expirySummary(it), now); err != nil {
+			if err := markHandedOff(ctx, q, it.AgentID, it.RoleID, it.ConversationID, handExpired, expirySummary(it)+" "+reviewLink(it.ID), now); err != nil {
 				return err
 			}
 		}
@@ -69,18 +75,13 @@ func (w *reviewsWorker) cycle(ctx context.Context) error {
 // for a reply that was running out of its Messenger window, that.
 func expirySummary(it store.AgentsReviewItem) string {
 	what := "a change"
-	var wrote string
 	if it.Kind == kindReply {
 		what = "a reply"
-		var in storedReply
-		if json.Unmarshal(it.Item, &in) == nil && in.Text != "" {
-			wrote = " The agent wrote: " + in.Text
-		}
 	}
 	if it.ExpiresAt.Before(it.CreatedAt.Add(reviewLifetime)) {
-		return "The reply window was about to close, so " + what + " that waited for review expired." + wrote
+		return "The reply window was about to close, so " + what + " that waited for review expired."
 	}
-	return "Nobody reviewed " + what + " in a day, so it expired." + wrote
+	return "Nobody reviewed " + what + " in a day, so it expired."
 }
 
 var _ worker.Worker = (*reviewsWorker)(nil)

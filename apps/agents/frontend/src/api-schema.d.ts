@@ -791,7 +791,7 @@ export interface components {
             /** @description Up to 1,500 characters. */
             style: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503), and for the review queue reviewer_not_permitted (403), item_decided (409), held (422, rules names them), channel_refused (422) and send_unknown (502). errors carries the field errors of a 400. */
+        /** @description An RFC 9457 problem with this module's refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503), and for the review queue reviewer_not_permitted (403), item_decided (409), reply_key_reused (409), held (422, rules names them), channel_refused (422) and send_unknown (502). errors carries the field errors of a 400. */
         AgentsProblem: {
             code?: string | null;
             detail?: string | null;
@@ -2285,8 +2285,8 @@ export interface operations {
             query?: {
                 /** @description Only this agent's items. */
                 agentId?: string;
-                /** @description Only items in this state. */
-                state?: "waiting" | "sent" | "edited_sent" | "discarded" | "withdrawn" | "expired";
+                /** @description Only items in this state; decided is every state but waiting. */
+                state?: "waiting" | "decided" | "sent" | "edited_sent" | "discarded" | "withdrawn" | "expired";
                 /** @description At most this many, 1 to 200; 50 by default. */
                 limit?: number;
                 /** @description Skip this many. */
@@ -2485,7 +2485,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["AgentsProblem"];
                 };
             };
-            /** @description Conflict - version_conflict (another reviewer decided first), or item_decided (the item is no longer waiting). */
+            /** @description Conflict - version_conflict (another reviewer decided first), or item_decided (the item is no longer waiting, or another reviewer is acting on it), or reply_key_reused (a different reply to this message was queued before and is not in the conversation). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2578,7 +2578,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["AgentsProblem"];
                 };
             };
-            /** @description Conflict - version_conflict (another reviewer decided first), or item_decided (the item is no longer waiting). */
+            /** @description Conflict - version_conflict (another reviewer decided first), or item_decided (the item is no longer waiting, or another reviewer is acting on it), or reply_key_reused (a different reply to this message was queued before and is not in the conversation). */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -522,7 +522,7 @@ components:
                 - model
             type: object
         AgentsProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503), and for the review queue reviewer_not_permitted (403), item_decided (409), held (422, rules names them), channel_refused (422) and send_unknown (502). errors carries the field errors of a 400.'
+            description: 'An RFC 9457 problem with this module''s refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503), and for the review queue reviewer_not_permitted (403), item_decided (409), reply_key_reused (409), held (422, rules names them), channel_refused (422) and send_unknown (502). errors carries the field errors of a 400.'
             properties:
                 code:
                     nullable: true
@@ -2194,13 +2194,14 @@ paths:
                   schema:
                     type: string
                     format: uuid
-                - description: Only items in this state.
+                - description: Only items in this state; decided is every state but waiting.
                   in: query
                   name: state
                   schema:
                     type: string
                     enum:
                         - waiting
+                        - decided
                         - sent
                         - edited_sent
                         - discarded
@@ -2383,7 +2384,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/AgentsProblem'
-                    description: Conflict - version_conflict (another reviewer decided first), or item_decided (the item is no longer waiting).
+                    description: Conflict - version_conflict (another reviewer decided first), or item_decided (the item is no longer waiting, or another reviewer is acting on it), or reply_key_reused (a different reply to this message was queued before and is not in the conversation).
                 "422":
                     content:
                         application/problem+json:
@@ -2464,7 +2465,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/AgentsProblem'
-                    description: Conflict - version_conflict (another reviewer decided first), or item_decided (the item is no longer waiting).
+                    description: Conflict - version_conflict (another reviewer decided first), or item_decided (the item is no longer waiting, or another reviewer is acting on it), or reply_key_reused (a different reply to this message was queued before and is not in the conversation).
                 "422":
                     content:
                         application/problem+json:

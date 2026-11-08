@@ -29,6 +29,8 @@ import (
 // The states of a review item and its kinds (V20).
 const (
 	itemWaiting    = "waiting"
+	itemDeciding   = "deciding" // claimed by a reviewer who is acting on it; shown as waiting
+	filterDecided  = "decided"  // a filter, not a state: every state but waiting
 	itemSent       = "sent"
 	itemEditedSent = "edited_sent"
 	itemDiscarded  = "discarded"
@@ -60,9 +62,13 @@ func itemView(r itemRow) gen.ReviewItem {
 	if heldBy == nil {
 		heldBy = []string{}
 	}
+	state := r.State
+	if state == itemDeciding {
+		state = itemWaiting
+	}
 	v := gen.ReviewItem{
 		Id: r.ID, RunId: r.RunID, AgentId: r.AgentID, AgentName: r.AgentName, RoleId: r.RoleID, RoleName: r.RoleName,
-		ConversationId: r.ConversationID, Kind: gen.ReviewItemKind(r.Kind), State: gen.ReviewItemState(r.State),
+		ConversationId: r.ConversationID, Kind: gen.ReviewItemKind(r.Kind), State: gen.ReviewItemState(state),
 		Score: int32(r.Score), ModelScore: int32(r.ModelScore), Sources: sources, HeldBy: heldBy,
 		ExpiresAt: r.ExpiresAt, CreatedAt: r.CreatedAt, DecidedAt: r.DecidedAt, DecidedByUserId: r.DecidedByUserID,
 		DiscardText: r.DiscardText, Outcome: r.Outcome, Version: r.Version,
@@ -188,7 +194,7 @@ func page(limit, offset *int32) (n, off int32) {
 	return n, off
 }
 
-var itemStates = []string{itemWaiting, itemSent, itemEditedSent, itemDiscarded, itemWithdrawn, itemExpired}
+var itemStates = []string{itemWaiting, filterDecided, itemSent, itemEditedSent, itemDiscarded, itemWithdrawn, itemExpired}
 
 // ListReviewItems (GET /api/v1/agents/review)
 func (s *server) ListReviewItems(ctx context.Context, req gen.ListReviewItemsRequestObject) (gen.ListReviewItemsResponseObject, error) {
@@ -296,14 +302,18 @@ type reviewOutcome struct {
 // decision someone else made first is answered as theirs when it is the same
 // kind of send (a second approval of one reply is one send), and as a conflict
 // otherwise.
-func (s *server) finish(ctx context.Context, row itemRow, reviewer uuid.UUID, out reviewOutcome) (gen.ReviewItem, *refusal, error) {
+func (s *server) finish(ctx context.Context, row itemRow, reviewer uuid.UUID, out reviewOutcome, claimed bool) (gen.ReviewItem, *refusal, error) {
 	now := s.deps.Clock()
 	var saved store.AgentsReviewItem
 	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		var err error
+		from := itemWaiting
+		if claimed {
+			from = itemDeciding
+		}
 		saved, err = q.DecideReviewItem(ctx, store.DecideReviewItemParams{
-			ID: row.ID, Version: row.Version, State: out.state, DecidedBy: &reviewer, Now: now, DiscardReason: out.reason, DiscardText: out.text,
+			ID: row.ID, Version: row.Version, FromState: from, CheckVersion: !claimed, State: out.state, DecidedBy: &reviewer, Now: now, DiscardReason: out.reason, DiscardText: out.text,
 			EditRatio: out.editRatio, Outcome: &out.outcome, Item: out.item,
 		})
 		if err != nil {
@@ -324,7 +334,9 @@ func (s *server) finish(ctx context.Context, row itemRow, reviewer uuid.UUID, ou
 			}
 		}
 		if out.handOff != nil {
-			if err := markHandedOff(ctx, q, row.AgentID, row.RoleID, row.ConversationID, out.handOff.code, out.handOff.summary, now); err != nil {
+			// The note never holds the draft: it links the review item, which is gated.
+			summary := out.handOff.summary + " " + reviewLink(row.ID)
+			if err := markHandedOff(ctx, q, row.AgentID, row.RoleID, row.ConversationID, out.handOff.code, summary, now); err != nil {
 				return err
 			}
 		}
@@ -431,6 +443,23 @@ func (s *server) approve(ctx context.Context, row itemRow, reviewer uuid.UUID, e
 		rf  *refusal
 		err error
 	)
+	// Claim the item before any call or send, so two reviewers never both act: the one that
+	// loses the claim is told the item was decided (or moved on).
+	won, err := store.New(s.deps.Pool).ClaimReviewItem(ctx, store.ClaimReviewItemParams{ID: row.ID, Version: row.Version, Now: s.deps.Clock()})
+	if err != nil {
+		return gen.ReviewItem{}, nil, fmt.Errorf("agents: claim the review item: %w", err)
+	}
+	if won == 0 {
+		current, rerr := store.New(s.deps.Pool).GetReviewItem(ctx, row.ID)
+		if rerr != nil {
+			return gen.ReviewItem{}, nil, fmt.Errorf("agents: read the review item: %w", rerr)
+		}
+		rf := versionConflict()
+		if current.State != itemWaiting || current.Version == row.Version {
+			rf = itemDecided()
+		}
+		return gen.ReviewItem{}, &rf, nil
+	}
 	switch row.Kind {
 	case kindReply:
 		out, rf, err = s.approveReply(ctx, row, reviewer, edit)
@@ -438,9 +467,18 @@ func (s *server) approve(ctx context.Context, row itemRow, reviewer uuid.UUID, e
 		out, rf, err = s.approveChange(ctx, row, reviewer)
 	}
 	if err != nil || rf != nil {
+		// Nothing was done: the claim is given back.
+		s.release(ctx, row.ID)
 		return gen.ReviewItem{}, rf, err
 	}
-	return s.finish(ctx, row, reviewer, out)
+	return s.finish(ctx, row, reviewer, out, true)
+}
+
+// release gives a claim back.
+func (s *server) release(ctx context.Context, id uuid.UUID) {
+	if err := store.New(s.deps.Pool).ReleaseReviewItem(context.WithoutCancel(ctx), id); err != nil {
+		s.warn("agents: give a claim back", "item", id, "err", err)
+	}
 }
 
 // discardReasons are the reasons a reviewer may give (V20).
@@ -481,11 +519,9 @@ func (s *server) DiscardReviewItem(ctx context.Context, req gen.DiscardReviewIte
 	}
 	out := reviewOutcome{state: itemDiscarded, outcome: "discarded", reason: &reason, text: text}
 	if row.Kind == kindReply {
-		var in storedReply
-		_ = json.Unmarshal(row.Item, &in)
-		out.handOff = &handOffRequest{code: handDiscarded, summary: "A colleague discarded the agent's reply (" + discardWords[reason] + "). The agent wrote: " + in.Text}
+		out.handOff = &handOffRequest{code: handDiscarded, summary: "A colleague discarded the agent's reply (" + discardWords[reason] + "))."}
 	}
-	item, rf, err := s.finish(ctx, row, callerID(ctx), out)
+	item, rf, err := s.finish(ctx, row, callerID(ctx), out, false)
 	if err != nil {
 		return nil, err
 	}
@@ -494,6 +530,9 @@ func (s *server) DiscardReviewItem(ctx context.Context, req gen.DiscardReviewIte
 	}
 	return gen.DiscardReviewItem200JSONResponse(item), nil
 }
+
+// reviewLink is where a review item is read; a hand-off note points at it instead of quoting the draft.
+func reviewLink(id uuid.UUID) string { return "/agents/review/" + id.String() }
 
 // convRef names a conversation an agent's role answers.
 type convRef struct{ agent, role, conversation uuid.UUID }

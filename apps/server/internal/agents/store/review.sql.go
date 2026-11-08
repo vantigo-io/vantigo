@@ -24,6 +24,27 @@ func (q *Queries) BlankActionsOfCustomer(ctx context.Context, customerID *int32)
 	return result.RowsAffected(), nil
 }
 
+const claimReviewItem = `-- name: ClaimReviewItem :execrows
+UPDATE agents.review_items SET state = 'deciding', claimed_at = $1::timestamptz
+WHERE id = $2 AND version = $3 AND state = 'waiting'
+`
+
+type ClaimReviewItemParams struct {
+	Now     time.Time
+	ID      uuid.UUID
+	Version int32
+}
+
+// A reviewer claims a waiting item at the version they read, before acting on it. Only
+// one claim wins; the version does not move.
+func (q *Queries) ClaimReviewItem(ctx context.Context, arg ClaimReviewItemParams) (int64, error) {
+	result, err := q.db.Exec(ctx, claimReviewItem, arg.Now, arg.ID, arg.Version)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const conversationsOfContacts = `-- name: ConversationsOfContacts :many
 SELECT conversation_id FROM agents.conversation_links WHERE contact_ids && $1::integer[]
 `
@@ -119,7 +140,8 @@ func (q *Queries) CountPersonalRows(ctx context.Context, arg CountPersonalRowsPa
 const countReviewItems = `-- name: CountReviewItems :one
 SELECT count(*) FROM agents.review_items i
 WHERE ($1::uuid IS NULL OR i.agent_id = $1::uuid)
-  AND ($2::text IS NULL OR i.state = $2::text)
+  AND ($2::text IS NULL OR i.state = $2::text
+       OR ($2::text = 'decided' AND i.state NOT IN ('waiting', 'deciding')))
 `
 
 type CountReviewItemsParams struct {
@@ -173,8 +195,8 @@ UPDATE agents.review_items SET
     outcome = $7::text,
     item = COALESCE($8::jsonb, item),
     version = version + 1
-WHERE id = $9 AND version = $10 AND state = 'waiting'
-RETURNING id, run_id, agent_id, role_id, conversation_id, customer_id, kind, item, score, sources, model_score, held_by, state, version, decided_by_user_id, decided_at, discard_reason, discard_text, edit_ratio, outcome, expires_at, created_at, channel_id
+WHERE id = $9 AND state = $10 AND (NOT $11::boolean OR version = $12)
+RETURNING id, run_id, agent_id, role_id, conversation_id, customer_id, kind, item, score, sources, model_score, held_by, state, version, decided_by_user_id, decided_at, discard_reason, discard_text, edit_ratio, outcome, expires_at, created_at, channel_id, claimed_at
 `
 
 type DecideReviewItemParams struct {
@@ -187,10 +209,13 @@ type DecideReviewItemParams struct {
 	Outcome       *string
 	Item          []byte
 	ID            uuid.UUID
+	FromState     string
+	CheckVersion  bool
 	Version       int32
 }
 
-// Decides a waiting item at the version the reviewer read. item replaces the
+// Decides an item: a discard of a waiting one at the version the reviewer read, or the
+// end of a claim (from_state deciding, the version no longer matters). item replaces the
 // stored item when given (an edited reply keeps the disclosure and the rest).
 func (q *Queries) DecideReviewItem(ctx context.Context, arg DecideReviewItemParams) (AgentsReviewItem, error) {
 	row := q.db.QueryRow(ctx, decideReviewItem,
@@ -203,6 +228,8 @@ func (q *Queries) DecideReviewItem(ctx context.Context, arg DecideReviewItemPara
 		arg.Outcome,
 		arg.Item,
 		arg.ID,
+		arg.FromState,
+		arg.CheckVersion,
 		arg.Version,
 	)
 	var i AgentsReviewItem
@@ -230,6 +257,7 @@ func (q *Queries) DecideReviewItem(ctx context.Context, arg DecideReviewItemPara
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.ChannelID,
+		&i.ClaimedAt,
 	)
 	return i, err
 }
@@ -313,7 +341,9 @@ func (q *Queries) DeleteRequestsOfConversations(ctx context.Context, conversatio
 
 const deleteRunsBefore = `-- name: DeleteRunsBefore :execrows
 DELETE FROM agents.runs WHERE id IN (
-    SELECT id FROM agents.runs WHERE started_at < $1::timestamptz AND state NOT IN ('queued', 'running') ORDER BY started_at LIMIT $2
+    SELECT r.id FROM agents.runs r WHERE r.started_at < $1::timestamptz AND r.state NOT IN ('queued', 'running')
+      AND NOT EXISTS (SELECT 1 FROM agents.review_items i WHERE i.run_id = r.id AND i.state IN ('waiting', 'deciding'))
+    ORDER BY r.started_at LIMIT $2
 )
 `
 
@@ -501,7 +531,7 @@ func (q *Queries) ExportRunsOfConversations(ctx context.Context, arg ExportRunsO
 
 const getReviewItem = `-- name: GetReviewItem :one
 
-SELECT i.id, i.run_id, i.agent_id, i.role_id, i.conversation_id, i.customer_id, i.kind, i.item, i.score, i.sources, i.model_score, i.held_by, i.state, i.version, i.decided_by_user_id, i.decided_at, i.discard_reason, i.discard_text, i.edit_ratio, i.outcome, i.expires_at, i.created_at, i.channel_id, a.name AS agent_name, r.name AS role_name, COALESCE(r.template, 'front_desk')::text AS role_template
+SELECT i.id, i.run_id, i.agent_id, i.role_id, i.conversation_id, i.customer_id, i.kind, i.item, i.score, i.sources, i.model_score, i.held_by, i.state, i.version, i.decided_by_user_id, i.decided_at, i.discard_reason, i.discard_text, i.edit_ratio, i.outcome, i.expires_at, i.created_at, i.channel_id, i.claimed_at, a.name AS agent_name, r.name AS role_name, COALESCE(r.template, 'front_desk')::text AS role_template
 FROM agents.review_items i
 JOIN agents.agents a ON a.id = i.agent_id
 LEFT JOIN agents.roles r ON r.id = i.role_id
@@ -532,6 +562,7 @@ type GetReviewItemRow struct {
 	ExpiresAt       time.Time
 	CreatedAt       time.Time
 	ChannelID       *uuid.UUID
+	ClaimedAt       *time.Time
 	AgentName       string
 	RoleName        *string
 	RoleTemplate    string
@@ -566,6 +597,7 @@ func (q *Queries) GetReviewItem(ctx context.Context, id uuid.UUID) (GetReviewIte
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.ChannelID,
+		&i.ClaimedAt,
 		&i.AgentName,
 		&i.RoleName,
 		&i.RoleTemplate,
@@ -575,7 +607,7 @@ func (q *Queries) GetReviewItem(ctx context.Context, id uuid.UUID) (GetReviewIte
 
 const holdReviewItem = `-- name: HoldReviewItem :exec
 UPDATE agents.review_items SET held_by = $1::text[], version = version + 1
-WHERE id = $2 AND state = 'waiting'
+WHERE id = $2 AND state IN ('waiting', 'deciding')
 `
 
 type HoldReviewItemParams struct {
@@ -627,7 +659,7 @@ func (q *Queries) ListEvents(ctx context.Context, arg ListEventsParams) ([]Agent
 }
 
 const listExpiredItems = `-- name: ListExpiredItems :many
-SELECT id, run_id, agent_id, role_id, conversation_id, customer_id, kind, item, score, sources, model_score, held_by, state, version, decided_by_user_id, decided_at, discard_reason, discard_text, edit_ratio, outcome, expires_at, created_at, channel_id FROM agents.review_items
+SELECT id, run_id, agent_id, role_id, conversation_id, customer_id, kind, item, score, sources, model_score, held_by, state, version, decided_by_user_id, decided_at, discard_reason, discard_text, edit_ratio, outcome, expires_at, created_at, channel_id, claimed_at FROM agents.review_items
 WHERE state = 'waiting' AND expires_at <= $1::timestamptz
 ORDER BY expires_at
 LIMIT $2
@@ -672,6 +704,7 @@ func (q *Queries) ListExpiredItems(ctx context.Context, arg ListExpiredItemsPara
 			&i.ExpiresAt,
 			&i.CreatedAt,
 			&i.ChannelID,
+			&i.ClaimedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -729,13 +762,14 @@ func (q *Queries) ListLabelledItems(ctx context.Context, arg ListLabelledItemsPa
 }
 
 const listReviewItems = `-- name: ListReviewItems :many
-SELECT i.id, i.run_id, i.agent_id, i.role_id, i.conversation_id, i.customer_id, i.kind, i.item, i.score, i.sources, i.model_score, i.held_by, i.state, i.version, i.decided_by_user_id, i.decided_at, i.discard_reason, i.discard_text, i.edit_ratio, i.outcome, i.expires_at, i.created_at, i.channel_id, a.name AS agent_name, r.name AS role_name, COALESCE(r.template, 'front_desk')::text AS role_template
+SELECT i.id, i.run_id, i.agent_id, i.role_id, i.conversation_id, i.customer_id, i.kind, i.item, i.score, i.sources, i.model_score, i.held_by, i.state, i.version, i.decided_by_user_id, i.decided_at, i.discard_reason, i.discard_text, i.edit_ratio, i.outcome, i.expires_at, i.created_at, i.channel_id, i.claimed_at, a.name AS agent_name, r.name AS role_name, COALESCE(r.template, 'front_desk')::text AS role_template
 FROM agents.review_items i
 JOIN agents.agents a ON a.id = i.agent_id
 LEFT JOIN agents.roles r ON r.id = i.role_id
 WHERE ($1::uuid IS NULL OR i.agent_id = $1::uuid)
-  AND ($2::text IS NULL OR i.state = $2::text)
-ORDER BY (i.state = 'waiting') DESC,
+  AND ($2::text IS NULL OR i.state = $2::text
+       OR ($2::text = 'decided' AND i.state NOT IN ('waiting', 'deciding')))
+ORDER BY (i.state IN ('waiting', 'deciding')) DESC,
          CASE WHEN i.state = 'waiting' THEN i.expires_at END ASC,
          i.created_at DESC
 LIMIT $4 OFFSET $3
@@ -772,6 +806,7 @@ type ListReviewItemsRow struct {
 	ExpiresAt       time.Time
 	CreatedAt       time.Time
 	ChannelID       *uuid.UUID
+	ClaimedAt       *time.Time
 	AgentName       string
 	RoleName        *string
 	RoleTemplate    string
@@ -817,6 +852,7 @@ func (q *Queries) ListReviewItems(ctx context.Context, arg ListReviewItemsParams
 			&i.ExpiresAt,
 			&i.CreatedAt,
 			&i.ChannelID,
+			&i.ClaimedAt,
 			&i.AgentName,
 			&i.RoleName,
 			&i.RoleTemplate,
@@ -990,6 +1026,31 @@ func (q *Queries) LowerRetention(ctx context.Context, arg LowerRetentionParams) 
 		&i.UpdatedByUserID,
 	)
 	return i, err
+}
+
+const releaseReviewItem = `-- name: ReleaseReviewItem :exec
+UPDATE agents.review_items SET state = 'waiting', claimed_at = NULL
+WHERE id = $1 AND state = 'deciding'
+`
+
+// Gives a claim back when nothing was done (a refusal, a hold).
+func (q *Queries) ReleaseReviewItem(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, releaseReviewItem, id)
+	return err
+}
+
+const resetStaleClaims = `-- name: ResetStaleClaims :execrows
+UPDATE agents.review_items SET state = 'waiting', claimed_at = NULL, version = version + 1
+WHERE state = 'deciding' AND claimed_at < $1::timestamptz
+`
+
+// A claim never finished (the process stopped) goes back to waiting.
+func (q *Queries) ResetStaleClaims(ctx context.Context, before time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, resetStaleClaims, before)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setItemState = `-- name: SetItemState :exec
