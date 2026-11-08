@@ -100,13 +100,24 @@ func (h *Harness) AgentContext(t testing.TB, customerID *int32, permissions ...s
 	if len(permissions) > 0 {
 		h.Exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, userID, h.seedRole(t, permissions))
 	}
+	return h.AgentGrantContext(t, userID, uuid.New(), customerID), userID
+}
+
+// AgentGrantContext is the context of a run of an agent that exists already: an
+// agent grant for the agent's user, for the agents module's agentID and for
+// customerID (nil for a run with no customer), put on the context as the agents
+// module does. A test of the agents module uses it for the agent it made
+// through the API.
+func (h *Harness) AgentGrantContext(t testing.TB, userID, agentID uuid.UUID, customerID *int32) context.Context {
+	t.Helper()
+	ctx := context.Background()
 	grantID, err := h.agentGrants.Issue(ctx, contracts.IssueAgentGrant{
-		AgentUserID: userID, AgentID: uuid.New(), RunID: uuid.New(), CustomerID: customerID,
+		AgentUserID: userID, AgentID: agentID, RunID: uuid.New(), CustomerID: customerID,
 	})
 	if err != nil {
 		t.Fatalf("modtest: issue an agent grant: %v", err)
 	}
-	return contracts.WithGrant(ctx, contracts.GrantRef{Kind: contracts.GrantAgent, ID: grantID}), userID
+	return contracts.WithGrant(ctx, contracts.GrantRef{Kind: contracts.GrantAgent, ID: grantID})
 }
 
 // userOf is the user a session token belongs to.
