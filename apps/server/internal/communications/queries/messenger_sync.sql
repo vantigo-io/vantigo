@@ -136,7 +136,7 @@ UPDATE communications.participants SET display_name = @display_name WHERE id = @
 -- name: FindOpenMessengerConversation :one
 -- Threading by participant (N3a): the newest open conversation of the channel
 -- the participant is in. A closed or archived conversation is never joined.
-SELECT c.id, c.customer_id
+SELECT c.id, c.customer_id, c.assigned_user_id
 FROM communications.conversations c
 JOIN communications.conversation_participants cp ON cp.conversation_id = c.id
 WHERE c.channel_id = @channel_id AND cp.participant_id = @participant_id AND c.status = 'open'

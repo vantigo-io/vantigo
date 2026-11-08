@@ -45,6 +45,12 @@ type AiDraftResponse struct {
 	Text            string             `json:"text"`
 }
 
+// AssignableUser defines model for AssignableUser.
+type AssignableUser struct {
+	DisplayName string             `json:"displayName"`
+	UserId      openapi_types.UUID `json:"userId"`
+}
+
 // AttachmentUploadResponse defines model for AttachmentUploadResponse.
 type AttachmentUploadResponse struct {
 	ContentType string             `json:"contentType"`
@@ -200,8 +206,11 @@ type ContactLinkResponse struct {
 
 // ConversationDetailResponse defines model for ConversationDetailResponse.
 type ConversationDetailResponse struct {
-	AssignedUserId       *openapi_types.UUID `json:"assignedUserId"`
-	CandidateCustomerIds []int32             `json:"candidateCustomerIds"`
+	AssignedUserId *openapi_types.UUID `json:"assignedUserId"`
+
+	// AssignedUserName The assignee's display name, null when unassigned or when the user is no longer known.
+	AssignedUserName     *string `json:"assignedUserName,omitempty"`
+	CandidateCustomerIds []int32 `json:"candidateCustomerIds"`
 
 	// ChannelAddress The email address of the conversation's channel. Always answered; optional in the schema only because the recorded exchanges predate it.
 	ChannelAddress *string `json:"channelAddress"`
@@ -342,9 +351,12 @@ type ConversationDetailResponse struct {
 
 // ConversationListItem defines model for ConversationListItem.
 type ConversationListItem struct {
-	AssignedUserId       *openapi_types.UUID `json:"assignedUserId"`
-	CandidateCustomerIds []int32             `json:"candidateCustomerIds"`
-	ChannelId            openapi_types.UUID  `json:"channelId"`
+	AssignedUserId *openapi_types.UUID `json:"assignedUserId"`
+
+	// AssignedUserName The assignee's display name, null when unassigned or when the user is no longer known.
+	AssignedUserName     *string            `json:"assignedUserName,omitempty"`
+	CandidateCustomerIds []int32            `json:"candidateCustomerIds"`
+	ChannelId            openapi_types.UUID `json:"channelId"`
 
 	// ChannelType The type of the conversation's channel, email or messenger; the inbox shows its icon. Always answered; optional in the schema only because the recorded exchanges predate it.
 	ChannelType               *string            `json:"channelType"`
@@ -696,6 +708,15 @@ type UpdateConversationRequest struct {
 	Status         *string                   `json:"status,omitempty"`
 }
 
+// GetCommunicationsAssignableUsersParams defines parameters for GetCommunicationsAssignableUsers.
+type GetCommunicationsAssignableUsersParams struct {
+	// Query Narrows the search by display name. Absent or blank lists the first page of active users.
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
+	// Limit How many users to answer, 1-20. Defaults to 20.
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // PostCommunicationsChannelsJSONBody defines parameters for PostCommunicationsChannels.
 type PostCommunicationsChannelsJSONBody = CreateChannelRequest
 
@@ -707,10 +728,12 @@ type PostCommunicationsChannelsByIdContactLinksJSONBody = ContactLinkRequest
 
 // GetCommunicationsConversationsParams defines parameters for GetCommunicationsConversations.
 type GetCommunicationsConversationsParams struct {
-	Page           *int32              `form:"page,omitempty" json:"page,omitempty"`
-	PageSize       *int32              `form:"pageSize,omitempty" json:"pageSize,omitempty"`
-	Status         *string             `form:"status,omitempty" json:"status,omitempty"`
-	AssignedUserId *openapi_types.UUID `form:"assignedUserId,omitempty" json:"assignedUserId,omitempty"`
+	Page     *int32  `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	Status   *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// AssignedUserId Only the conversations assigned to this user: a user id, "me" for the caller, or "none" for the unassigned ones.
+	AssignedUserId *string             `form:"assignedUserId,omitempty" json:"assignedUserId,omitempty"`
 	TagId          *openapi_types.UUID `form:"tagId,omitempty" json:"tagId,omitempty"`
 	CustomerId     *int32              `form:"customerId,omitempty" json:"customerId,omitempty"`
 	UnreadOnly     *bool               `form:"unreadOnly,omitempty" json:"unreadOnly,omitempty"`
@@ -819,6 +842,9 @@ type PostCommunicationsTagsJSONRequestBody = PostCommunicationsTagsJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetCommunicationsAssignableUsers Search users to assign a conversation to
+	// (GET /api/v1/communications/assignable-users)
+	GetCommunicationsAssignableUsers(w http.ResponseWriter, r *http.Request, params GetCommunicationsAssignableUsersParams)
 	// GetCommunicationsAttachmentsByIdDownload Download a message attachment
 	// (GET /api/v1/communications/attachments/{id}/download)
 	GetCommunicationsAttachmentsByIdDownload(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -946,6 +972,52 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetCommunicationsAssignableUsers operation middleware
+func (siw *ServerInterfaceWrapper) GetCommunicationsAssignableUsers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCommunicationsAssignableUsersParams
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCommunicationsAssignableUsers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetCommunicationsAttachmentsByIdDownload operation middleware
 func (siw *ServerInterfaceWrapper) GetCommunicationsAttachmentsByIdDownload(w http.ResponseWriter, r *http.Request) {
@@ -1195,7 +1267,7 @@ func (siw *ServerInterfaceWrapper) GetCommunicationsConversations(w http.Respons
 
 	// ------------- Optional query parameter "assignedUserId" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "assignedUserId", r.URL.Query(), &params.AssignedUserId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "assignedUserId", r.URL.Query(), &params.AssignedUserId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
@@ -2210,6 +2282,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/assignable-users", wrapper.GetCommunicationsAssignableUsers)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/attachments/{id}/download", wrapper.GetCommunicationsAttachmentsByIdDownload)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/channel-providers", wrapper.GetCommunicationsChannelProviders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/channels", wrapper.GetCommunicationsChannels)
@@ -2251,6 +2324,70 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/tags", wrapper.PostCommunicationsTags)
 
 	return m
+}
+
+type GetCommunicationsAssignableUsersRequestObject struct {
+	Params GetCommunicationsAssignableUsersParams
+}
+
+type GetCommunicationsAssignableUsersResponseObject interface {
+	VisitGetCommunicationsAssignableUsersResponse(w http.ResponseWriter) error
+}
+
+type GetCommunicationsAssignableUsers200JSONResponse []AssignableUser
+
+func (response GetCommunicationsAssignableUsers200JSONResponse) VisitGetCommunicationsAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommunicationsAssignableUsers400JSONResponse CommunicationErrorResponse
+
+func (response GetCommunicationsAssignableUsers400JSONResponse) VisitGetCommunicationsAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommunicationsAssignableUsers401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCommunicationsAssignableUsers401JSONResponse) VisitGetCommunicationsAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommunicationsAssignableUsers403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCommunicationsAssignableUsers403JSONResponse) VisitGetCommunicationsAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetCommunicationsAttachmentsByIdDownloadRequestObject struct {
@@ -3039,6 +3176,20 @@ func (response GetCommunicationsConversations200JSONResponse) VisitGetCommunicat
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommunicationsConversations400JSONResponse CommunicationErrorResponse
+
+func (response GetCommunicationsConversations400JSONResponse) VisitGetCommunicationsConversationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -5147,6 +5298,9 @@ func (response PostCommunicationsTags409JSONResponse) VisitPostCommunicationsTag
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// GetCommunicationsAssignableUsers Search users to assign a conversation to
+	// (GET /api/v1/communications/assignable-users)
+	GetCommunicationsAssignableUsers(ctx context.Context, request GetCommunicationsAssignableUsersRequestObject) (GetCommunicationsAssignableUsersResponseObject, error)
 	// GetCommunicationsAttachmentsByIdDownload Download a message attachment
 	// (GET /api/v1/communications/attachments/{id}/download)
 	GetCommunicationsAttachmentsByIdDownload(ctx context.Context, request GetCommunicationsAttachmentsByIdDownloadRequestObject) (GetCommunicationsAttachmentsByIdDownloadResponseObject, error)
@@ -5303,6 +5457,32 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetCommunicationsAssignableUsers operation middleware
+func (sh *strictHandler) GetCommunicationsAssignableUsers(w http.ResponseWriter, r *http.Request, params GetCommunicationsAssignableUsersParams) {
+	var request GetCommunicationsAssignableUsersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCommunicationsAssignableUsers(ctx, request.(GetCommunicationsAssignableUsersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCommunicationsAssignableUsers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCommunicationsAssignableUsersResponseObject); ok {
+		if err := validResponse.VisitGetCommunicationsAssignableUsersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetCommunicationsAttachmentsByIdDownload operation middleware

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -217,10 +218,29 @@ func (s *server) GetCommunicationsConversations(ctx context.Context, req gen.Get
 	if req.Params.UnreadOnly != nil && *req.Params.UnreadOnly {
 		unreadUserID = &caller
 	}
+	// assignedUserId is a user id, "me" (the caller) or "none" (unassigned).
+	var assignedUserID *uuid.UUID
+	unassignedOnly := false
+	if req.Params.AssignedUserId != nil {
+		switch v := strings.TrimSpace(*req.Params.AssignedUserId); v {
+		case "":
+		case "none":
+			unassignedOnly = true
+		case "me":
+			assignedUserID = &caller
+		default:
+			parsed, perr := uuid.Parse(v)
+			if perr != nil {
+				return gen.GetCommunicationsConversations400JSONResponse(validationErrorBody(
+					map[string][]string{"assignedUserId": {"Must be a user id, \"me\" or \"none\"."}})), nil
+			}
+			assignedUserID = &parsed
+		}
+	}
 
 	q := store.New(s.deps.Pool)
 	rows, err := q.ListConversations(ctx, store.ListConversationsParams{
-		Status: status, AssignedUserID: req.Params.AssignedUserId, CustomerID: req.Params.CustomerId,
+		Status: status, AssignedUserID: assignedUserID, UnassignedOnly: unassignedOnly, CustomerID: req.Params.CustomerId,
 		TagID: req.Params.TagId, UnreadUserID: unreadUserID,
 		PageOffset: (page - 1) * pageSize, PageLimit: pageSize,
 	})
@@ -249,6 +269,17 @@ func (s *server) GetCommunicationsConversations(ctx context.Context, req gen.Get
 		lastRead[r.ConversationID] = r.LastReadAt
 	}
 
+	assignees := make([]uuid.UUID, 0, len(rows))
+	for _, r := range rows {
+		if r.AssignedUserID != nil {
+			assignees = append(assignees, *r.AssignedUserID)
+		}
+	}
+	names, err := s.userNames(ctx, assignees)
+	if err != nil {
+		return nil, err
+	}
+
 	data := make([]gen.ConversationListItem, 0, len(rows))
 	for _, r := range rows {
 		unread := true
@@ -257,7 +288,7 @@ func (s *server) GetCommunicationsConversations(ctx context.Context, req gen.Get
 		}
 		data = append(data, gen.ConversationListItem{
 			Id: r.ID, ChannelId: r.ChannelID, ChannelType: apicommon.Ptr(r.ChannelType), Subject: r.Subject, Status: r.Status,
-			AssignedUserId: r.AssignedUserID, CustomerId: r.CustomerID,
+			AssignedUserId: r.AssignedUserID, AssignedUserName: nameOf(names, r.AssignedUserID), CustomerId: r.CustomerID,
 			CustomerAssociationSource: r.CustomerAssociationSource, SuggestedCustomerId: r.SuggestedCustomerID,
 			CandidateCustomerIds: batches.candidates[r.ID], LastActivityAt: r.LastActivityAt, PreviewText: r.PreviewText,
 			Participants: batches.participants[r.ID], Unread: unread, Tags: batches.tags[r.ID],
@@ -267,6 +298,75 @@ func (s *server) GetCommunicationsConversations(ctx context.Context, req gen.Get
 		Data:       data,
 		Pagination: apicommon.Pagination(page, pageSize, int32(total)),
 	}, nil
+}
+
+// userNames reads the display names of ids through the user directory; a user
+// the directory no longer knows is simply absent.
+func (s *server) userNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	names := map[uuid.UUID]string{}
+	if len(ids) == 0 {
+		return names, nil
+	}
+	found, err := s.deps.Users.Users(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("communications: look up assignees: %w", err)
+	}
+	for _, u := range found {
+		names[u.ID] = u.DisplayName
+	}
+	return names, nil
+}
+
+// nameOf is the name userNames read for id, nil when id is nil or unknown.
+func nameOf(names map[uuid.UUID]string, id *uuid.UUID) *string {
+	if id == nil {
+		return nil
+	}
+	if name, ok := names[*id]; ok {
+		return &name
+	}
+	return nil
+}
+
+// GetCommunicationsAssignableUsers Search users to assign a conversation to
+// (GET /api/v1/communications/assignable-users)
+//
+// Active users from the user directory, for the assignee select and the
+// inbox's person filter (virtual employees design V2): identity's own user
+// listing needs the authorisation-management permission, which a person who
+// answers mail need not hold. SearchUsers answers active users only.
+func (s *server) GetCommunicationsAssignableUsers(ctx context.Context, req gen.GetCommunicationsAssignableUsersRequestObject) (gen.GetCommunicationsAssignableUsersResponseObject, error) {
+	const maxLimit = 20
+	limit := int32(maxLimit)
+	fields := map[string][]string{}
+	if req.Params.Limit != nil {
+		if *req.Params.Limit < 1 || *req.Params.Limit > maxLimit {
+			fields["limit"] = []string{fmt.Sprintf("Must be between 1 and %d.", maxLimit)}
+		}
+		limit = *req.Params.Limit
+	}
+	query := ""
+	if req.Params.Query != nil {
+		query = strings.TrimSpace(*req.Params.Query)
+		if utf8.RuneCountInString(query) > 200 {
+			fields["query"] = []string{"At most 200 characters."}
+		}
+	}
+	if len(fields) > 0 {
+		return gen.GetCommunicationsAssignableUsers400JSONResponse(validationErrorBody(fields)), nil
+	}
+	found, err := s.deps.Users.SearchUsers(ctx, query, int(limit))
+	if err != nil {
+		return nil, fmt.Errorf("communications: search the users: %w", err)
+	}
+	out := make(gen.GetCommunicationsAssignableUsers200JSONResponse, 0, len(found))
+	for _, u := range found {
+		if len(out) == int(limit) {
+			break
+		}
+		out = append(out, gen.AssignableUser{UserId: u.ID, DisplayName: u.DisplayName})
+	}
+	return out, nil
 }
 
 // replyRecipientsOf is ReplyRecipients (EP/ConversationEndpoints.cs:446-455):
@@ -425,9 +525,18 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 		return nil, err
 	}
 
+	var assignee []uuid.UUID
+	if conv.AssignedUserID != nil {
+		assignee = []uuid.UUID{*conv.AssignedUserID}
+	}
+	names, err := s.userNames(ctx, assignee)
+	if err != nil {
+		return nil, err
+	}
+
 	resp := gen.ConversationDetailResponse{
 		Id: conv.ID, ChannelId: conv.ChannelID, Subject: conv.Subject, Status: conv.Status,
-		AssignedUserId: conv.AssignedUserID, CustomerId: conv.CustomerID,
+		AssignedUserId: conv.AssignedUserID, AssignedUserName: nameOf(names, conv.AssignedUserID), CustomerId: conv.CustomerID,
 		CustomerAssociationSource: conv.CustomerAssociationSource, SuggestedCustomerId: conv.SuggestedCustomerID,
 		SuggestedCustomerConfidence: conv.SuggestedCustomerConfidence, SuggestedCustomerReasoning: conv.SuggestedCustomerReasoning,
 		CandidateCustomerIds: batches.candidates[req.Id], LastActivityAt: conv.LastActivityAt, PreviewText: conv.PreviewText,

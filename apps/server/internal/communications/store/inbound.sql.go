@@ -302,16 +302,17 @@ func (q *Queries) InsertInboundReceipt(ctx context.Context, arg InsertInboundRec
 }
 
 const lockConversationForInbound = `-- name: LockConversationForInbound :one
-SELECT id, status, customer_id
+SELECT id, status, customer_id, assigned_user_id
 FROM communications.conversations
 WHERE id = $1
 FOR UPDATE
 `
 
 type LockConversationForInboundRow struct {
-	ID         uuid.UUID
-	Status     string
-	CustomerID *int32
+	ID             uuid.UUID
+	Status         string
+	CustomerID     *int32
+	AssignedUserID *uuid.UUID
 }
 
 // The matched conversation re-read inside the import's transaction, locked
@@ -319,7 +320,12 @@ type LockConversationForInboundRow struct {
 func (q *Queries) LockConversationForInbound(ctx context.Context, id uuid.UUID) (LockConversationForInboundRow, error) {
 	row := q.db.QueryRow(ctx, lockConversationForInbound, id)
 	var i LockConversationForInboundRow
-	err := row.Scan(&i.ID, &i.Status, &i.CustomerID)
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.CustomerID,
+		&i.AssignedUserID,
+	)
 	return i, err
 }
 

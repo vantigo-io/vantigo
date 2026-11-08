@@ -60,6 +60,17 @@ components:
                 - notice
             type: object
             x-vantigo-source: Vantigo.Communications
+        AssignableUser:
+            properties:
+                displayName:
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+            type: object
         AttachmentUploadResponse:
             properties:
                 contentType:
@@ -401,6 +412,10 @@ components:
             properties:
                 assignedUserId:
                     format: uuid
+                    nullable: true
+                    type: string
+                assignedUserName:
+                    description: The assignee's display name, null when unassigned or when the user is no longer known.
                     nullable: true
                     type: string
                 candidateCustomerIds:
@@ -800,6 +815,10 @@ components:
             properties:
                 assignedUserId:
                     format: uuid
+                    nullable: true
+                    type: string
+                assignedUserName:
+                    description: The assignee's display name, null when unassigned or when the user is no longer known.
                     nullable: true
                     type: string
                 candidateCustomerIds:
@@ -1526,6 +1545,57 @@ info:
     version: "1"
 openapi: 3.0.3
 paths:
+    /api/v1/communications/assignable-users:
+        get:
+            description: Active users from the user directory, for the assignee select and the inbox's person filter. Only display names are answered; a disabled user is never listed.
+            operationId: getCommunicationsAssignableUsers
+            parameters:
+                - description: Narrows the search by display name. Absent or blank lists the first page of active users.
+                  in: query
+                  name: query
+                  schema:
+                    maxLength: 200
+                    type: string
+                - description: How many users to answer, 1-20. Defaults to 20.
+                  in: query
+                  name: limit
+                  schema:
+                    default: 20
+                    format: int32
+                    maximum: 20
+                    minimum: 1
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/AssignableUser'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CommunicationErrorResponse'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Search users to assign a conversation to
+            tags:
+                - ConversationEndpoints
+            x-vantigo-access: permission:communications:conversations-view
     /api/v1/communications/attachments/{id}/download:
         get:
             description: A message's attachment. A clean one (the composer's) is answered as its declared media type; an unscanned one (received with an inbound message) as an attachment to save — Content-Disposition attachment with its file name — and as its media type only when that is passive (an image other than SVG, PDF, plain text, an Office document, zip), application/octet-stream otherwise.
@@ -1981,10 +2051,10 @@ paths:
                   name: status
                   schema:
                     type: string
-                - in: query
+                - description: 'Only the conversations assigned to this user: a user id, "me" for the caller, or "none" for the unassigned ones.'
+                  in: query
                   name: assignedUserId
                   schema:
-                    format: uuid
                     type: string
                 - in: query
                   name: tagId
@@ -2007,6 +2077,12 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/PaginatedResponseOfConversationListItem'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CommunicationErrorResponse'
+                    description: Bad Request — assignedUserId is neither a user id, "me" nor "none".
                 "401":
                     content:
                         application/json:
@@ -2214,7 +2290,7 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
-                    description: Unprocessable Entity
+                    description: Unprocessable Entity — customer_invalid, or assignee_unknown when the assignee is a user the directory does not know or that is disabled.
             summary: Update a conversation (status, assignee, customer)
             tags:
                 - ConversationEndpoints

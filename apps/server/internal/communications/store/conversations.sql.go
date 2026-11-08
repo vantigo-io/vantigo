@@ -1061,21 +1061,23 @@ FROM communications.conversations c
 JOIN communications.channels ch ON ch.id = c.channel_id
 WHERE ($1::text IS NULL OR c.status = $1::text)
   AND ($2::uuid IS NULL OR c.assigned_user_id = $2::uuid)
-  AND ($3::int IS NULL OR c.customer_id = $3::int)
-  AND ($4::uuid IS NULL OR EXISTS (
+  AND (NOT $3::bool OR c.assigned_user_id IS NULL)
+  AND ($4::int IS NULL OR c.customer_id = $4::int)
+  AND ($5::uuid IS NULL OR EXISTS (
         SELECT 1 FROM communications.conversation_tags ct
-        WHERE ct.conversation_id = c.id AND ct.tag_id = $4::uuid))
-  AND ($5::uuid IS NULL OR NOT EXISTS (
+        WHERE ct.conversation_id = c.id AND ct.tag_id = $5::uuid))
+  AND ($6::uuid IS NULL OR NOT EXISTS (
         SELECT 1 FROM communications.conversation_read_states rs
-        WHERE rs.conversation_id = c.id AND rs.user_id = $5::uuid
+        WHERE rs.conversation_id = c.id AND rs.user_id = $6::uuid
           AND rs.last_read_at >= c.last_activity_at))
 ORDER BY c.last_activity_at DESC
-LIMIT $7 OFFSET $6
+LIMIT $8 OFFSET $7
 `
 
 type ListConversationsParams struct {
 	Status         *string
 	AssignedUserID *uuid.UUID
+	UnassignedOnly bool
 	CustomerID     *int32
 	TagID          *uuid.UUID
 	UnreadUserID   *uuid.UUID
@@ -1116,6 +1118,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 	rows, err := q.db.Query(ctx, listConversations,
 		arg.Status,
 		arg.AssignedUserID,
+		arg.UnassignedOnly,
 		arg.CustomerID,
 		arg.TagID,
 		arg.UnreadUserID,
@@ -1336,6 +1339,19 @@ func (q *Queries) ListSuppressedAddresses(ctx context.Context, addresses []strin
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockConversationAssignee = `-- name: LockConversationAssignee :one
+SELECT assigned_user_id FROM communications.conversations WHERE id = $1 FOR UPDATE
+`
+
+// PATCH's assignee, read under the conversation's row lock inside its
+// transaction, so the change it publishes is compared with what is committed.
+func (q *Queries) LockConversationAssignee(ctx context.Context, id uuid.UUID) (*uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockConversationAssignee, id)
+	var assigned_user_id *uuid.UUID
+	err := row.Scan(&assigned_user_id)
+	return assigned_user_id, err
 }
 
 const resetFailedMessageDeliveries = `-- name: ResetFailedMessageDeliveries :many

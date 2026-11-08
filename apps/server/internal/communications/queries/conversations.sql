@@ -21,6 +21,7 @@ FROM communications.conversations c
 JOIN communications.channels ch ON ch.id = c.channel_id
 WHERE (sqlc.narg(status)::text IS NULL OR c.status = sqlc.narg(status)::text)
   AND (sqlc.narg(assigned_user_id)::uuid IS NULL OR c.assigned_user_id = sqlc.narg(assigned_user_id)::uuid)
+  AND (NOT sqlc.arg(unassigned_only)::bool OR c.assigned_user_id IS NULL)
   AND (sqlc.narg(customer_id)::int IS NULL OR c.customer_id = sqlc.narg(customer_id)::int)
   AND (sqlc.narg(tag_id)::uuid IS NULL OR EXISTS (
         SELECT 1 FROM communications.conversation_tags ct
@@ -194,6 +195,11 @@ SET status = @status,
     suggested_customer_reasoning = @suggested_customer_reasoning
 WHERE id = @id
 RETURNING id, status, assigned_user_id, customer_id, customer_association_source, suggested_customer_id;
+
+-- name: LockConversationAssignee :one
+-- PATCH's assignee, read under the conversation's row lock inside its
+-- transaction, so the change it publishes is compared with what is committed.
+SELECT assigned_user_id FROM communications.conversations WHERE id = @id FOR UPDATE;
 
 -- name: DeleteConversationCustomerCandidates :exec
 -- UpdateConversation's `conversation.CustomerCandidates.Clear()`, run only

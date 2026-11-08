@@ -42,6 +42,7 @@ type conversationListItemJSON struct {
 	Subject                   *string               `json:"subject"`
 	Status                    string                `json:"status"`
 	AssignedUserId            *string               `json:"assignedUserId"`
+	AssignedUserName          *string               `json:"assignedUserName"`
 	CustomerId                *int32                `json:"customerId"`
 	CustomerAssociationSource *string               `json:"customerAssociationSource"`
 	SuggestedCustomerId       *int32                `json:"suggestedCustomerId"`
@@ -71,6 +72,7 @@ type conversationDetailJSON struct {
 	Subject                   *string               `json:"subject"`
 	Status                    string                `json:"status"`
 	AssignedUserId            *string               `json:"assignedUserId"`
+	AssignedUserName          *string               `json:"assignedUserName"`
 	CustomerId                *int32                `json:"customerId"`
 	CustomerAssociationSource *string               `json:"customerAssociationSource"`
 	SuggestedCustomerId       *int32                `json:"suggestedCustomerId"`
@@ -1130,7 +1132,8 @@ func TestPatchConversation_AssignedUserIdNullClearsIt(t *testing.T) {
 	m := createConversation(t, reply, newConversationBody("x@example.test"))
 	c := h.SignIn(t, "communications:conversations-manage", "communications:conversations-view")
 
-	assigned := uuid.NewString()
+	_, assignee := h.SignInUser(t)
+	assigned := assignee.String()
 	set := c.Do(http.MethodPatch, "/api/v1/communications/conversations/"+m.ConversationId, map[string]any{"assignedUserId": assigned})
 	if set.Status != http.StatusOK {
 		t.Fatalf("set: status %d body %s, want 200", set.Status, set.Body)
@@ -1152,13 +1155,10 @@ func TestPatchConversation_AssignedUserIdNullClearsIt(t *testing.T) {
 	}
 }
 
-// TestPatchConversation_AssignedUserIdIsUnvalidatedJSON pins task 5
-// dispatch point 7: assignedUserId runs through no type check at all — a
-// wrong-typed value (here, a JSON number) is read exactly as unsafely as a
-// malformed GUID string, and both surface as a 500 that never echoes the
-// underlying error, never a 400. This is deliberate fidelity to .NET's
-// `assigned.GetGuid()`, not a gap to hardened away.
-func TestPatchConversation_AssignedUserIdIsUnvalidatedJSON(t *testing.T) {
+// TestPatchConversation_AssignedUserIdMustBeAUserId: a value that is not a
+// JSON string holding a UUID is a 400 under assignedUserId, not the 500 the
+// ported .NET handler gave (virtual employees design V2).
+func TestPatchConversation_AssignedUserIdMustBeAUserId(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	setupChannel(t, h)
@@ -1172,17 +1172,20 @@ func TestPatchConversation_AssignedUserIdIsUnvalidatedJSON(t *testing.T) {
 	}{
 		{"malformed guid string", map[string]any{"assignedUserId": "not-a-guid"}},
 		{"wrong json type", map[string]any{"assignedUserId": 12345}},
+		{"an object", map[string]any{"assignedUserId": map[string]any{"id": uuid.NewString()}}},
+		{"an array", map[string]any{"assignedUserId": []string{uuid.NewString()}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			r := c.Do(http.MethodPatch, "/api/v1/communications/conversations/"+m.ConversationId, tc.body,
-				modtest.SkipContract("deliberately unvalidated per .NET's assigned.GetGuid(); the 500 is expected, not documented as a contract response"))
-			if r.Status != http.StatusInternalServerError {
-				t.Fatalf("status %d body %s, want 500", r.Status, r.Body)
+			r := c.Do(http.MethodPatch, "/api/v1/communications/conversations/"+m.ConversationId, tc.body)
+			if r.Status != http.StatusBadRequest {
+				t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
 			}
-			if strings.Contains(string(r.Body), "not-a-guid") || strings.Contains(string(r.Body), "12345") {
-				t.Errorf("body echoes the input: %s", r.Body)
+			var e commErrorJSON
+			r.JSON(&e)
+			if e.Error.Code != "invalid_request" || len(e.Error.Fields["assignedUserId"]) == 0 {
+				t.Errorf("error = %+v, want invalid_request with a field error under assignedUserId", e.Error)
 			}
 		})
 	}
