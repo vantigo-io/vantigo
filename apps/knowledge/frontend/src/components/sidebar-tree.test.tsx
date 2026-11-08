@@ -107,6 +107,25 @@ describe("the sidebar tree", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe(`/knowledge/articles/${ids.notes}`));
   });
 
+  it("keeps a long title to one truncated line, with the full title on hover and the row's buttons beside it", async () => {
+    const title = "5. Opptreden mot partnere, leverandører og andre selskaper vi samarbeider med";
+    const long = node({ id: ids.routines, title, hasChildren: true });
+    fakeServer(({ method, url }) =>
+      method === "GET" && url === "/api/v1/knowledge/tree" ? jsonResponse(200, { items: [long] }) : undefined,
+    );
+    renderRoute("/knowledge");
+
+    const row = await screen.findByTestId(`tree-row-${ids.routines}`);
+    const link = within(row).getByRole("link");
+    expect(link).toHaveAttribute("title", title);
+    // jsdom does no layout: what keeps the buttons in sight is that the title
+    // may shrink and they may not.
+    expect(within(link).getByText(title)).toHaveStyle({ minWidth: "0px" });
+    for (const name of ["Add to favourites", `New page in ${title}`]) {
+      expect(within(row).getByRole("button", { name })).toHaveStyle({ flexShrink: "0" });
+    }
+  });
+
   it("stars a page into the favourites", async () => {
     const server = fakeServer(({ method, url }) => {
       if (method === "GET" && url === "/api/v1/knowledge/tree") return jsonResponse(200, { items: [routines] });
