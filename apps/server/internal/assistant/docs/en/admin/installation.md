@@ -566,6 +566,10 @@ made.
 - The proxy's read timeout for that path must be at least **75 seconds**. The server sends
   a ping every 25 seconds and drops a connection that is silent for 60, so a proxy that cuts
   idle connections at 60 seconds is also fine, but one that cuts at 30 is not.
+- The proxy must pass **binary** WebSocket messages as it passes text ones, and allow messages
+  of at least **4 MiB**: Knowledge's co-editing sends whole documents in one message. A proxy
+  that limits the message size (nginx has no such limit by default) must be raised for this
+  path.
 - The proxy must forward `Origin` unchanged, and `APP_URL` must be the address people open
   in the browser: the server accepts the handshake only from that origin.
 - `LISTEN` must work on the database connection ([Poolers](#poolers-and-live_database_url)).
