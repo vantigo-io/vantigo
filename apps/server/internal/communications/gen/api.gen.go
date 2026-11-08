@@ -228,6 +228,36 @@ type ContactLinkResponse struct {
 	Url string `json:"url"`
 }
 
+// ConversationCapabilities What a message on a conversation's channel may carry, answered the same way for every channel type. A new type that answers its capabilities needs nothing else from a caller.
+type ConversationCapabilities struct {
+	// Cc Whether a message may copy other people (e-mail).
+	Cc bool `json:"cc"`
+
+	// Components Whether a message may carry answer options or cards (see componentLimits).
+	Components bool `json:"components"`
+
+	// Html Whether a message may carry an HTML body.
+	Html bool `json:"html"`
+
+	// MaxAttachmentBytes The largest file one message carries, null when the channel names none.
+	MaxAttachmentBytes *int64 `json:"maxAttachmentBytes"`
+
+	// MaxText The most characters a message's text holds, null when the channel names none.
+	MaxText *int32 `json:"maxText"`
+
+	// ReplyAll Whether a reply may answer everyone the latest message was sent to.
+	ReplyAll bool `json:"replyAll"`
+
+	// ShareEmail Whether the channel can ask the person for an e-mail address.
+	ShareEmail bool `json:"shareEmail"`
+
+	// Subject Whether a message has a subject.
+	Subject bool `json:"subject"`
+
+	// Window The reply window, null when the channel has none (e-mail).
+	Window *ReplyWindow `json:"window"`
+}
+
 // ConversationDetailResponse defines model for ConversationDetailResponse.
 type ConversationDetailResponse struct {
 	AssignedUserId *openapi_types.UUID `json:"assignedUserId"`
@@ -235,6 +265,9 @@ type ConversationDetailResponse struct {
 	// AssignedUserName The assignee's display name, null when unassigned or when the user is no longer known.
 	AssignedUserName     *string `json:"assignedUserName,omitempty"`
 	CandidateCustomerIds []int32 `json:"candidateCustomerIds"`
+
+	// Capabilities What a message on the conversation's channel may carry, whatever the channel's type, so a caller (an agent) never branches on it. Always answered; optional in the schema only because the recorded exchanges predate it.
+	Capabilities *ConversationCapabilities `json:"capabilities"`
 
 	// ChannelAddress The email address of the conversation's channel. Always answered; optional in the schema only because the recorded exchanges predate it.
 	ChannelAddress *string `json:"channelAddress"`

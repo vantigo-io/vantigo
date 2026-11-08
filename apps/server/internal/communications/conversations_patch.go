@@ -218,7 +218,7 @@ func (s *server) PatchCommunicationsConversationsById(ctx context.Context, req g
 
 		if assigneeTouched && !sameUser(previous, assignedUserID) {
 			if err := events.Publish(ctx, tx, moduleName, contracts.ConversationAssigned{
-				ConversationID: req.Id, AssignedUserID: assignedUserID, PreviousAssignedUserID: previous, ByUserID: caller,
+				ConversationID: req.Id, ChannelID: conv.ChannelID, AssignedUserID: assignedUserID, PreviousAssignedUserID: previous, ByUserID: caller,
 			}, s.deps.Clock()); err != nil {
 				return err
 			}

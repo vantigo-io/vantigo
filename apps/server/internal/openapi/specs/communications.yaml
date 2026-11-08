@@ -415,6 +415,54 @@ components:
                 - url
                 - expiresAt
             type: object
+        ConversationCapabilities:
+            description: What a message on a conversation's channel may carry, answered the same way for every channel type. A new type that answers its capabilities needs nothing else from a caller.
+            properties:
+                cc:
+                    description: Whether a message may copy other people (e-mail).
+                    type: boolean
+                components:
+                    description: Whether a message may carry answer options or cards (see componentLimits).
+                    type: boolean
+                html:
+                    description: Whether a message may carry an HTML body.
+                    type: boolean
+                maxAttachmentBytes:
+                    description: The largest file one message carries, null when the channel names none.
+                    format: int64
+                    nullable: true
+                    type: integer
+                maxText:
+                    description: The most characters a message's text holds, null when the channel names none.
+                    format: int32
+                    nullable: true
+                    type: integer
+                replyAll:
+                    description: Whether a reply may answer everyone the latest message was sent to.
+                    type: boolean
+                shareEmail:
+                    description: Whether the channel can ask the person for an e-mail address.
+                    type: boolean
+                subject:
+                    description: Whether a message has a subject.
+                    type: boolean
+                window:
+                    allOf:
+                        - $ref: '#/components/schemas/ReplyWindow'
+                    description: The reply window, null when the channel has none (e-mail).
+                    nullable: true
+                    x-omitempty: false
+            required:
+                - subject
+                - html
+                - cc
+                - replyAll
+                - components
+                - shareEmail
+                - maxText
+                - maxAttachmentBytes
+                - window
+            type: object
         ConversationDetailResponse:
             properties:
                 assignedUserId:
@@ -430,6 +478,11 @@ components:
                         format: int32
                         type: integer
                     type: array
+                capabilities:
+                    allOf:
+                        - $ref: '#/components/schemas/ConversationCapabilities'
+                    description: What a message on the conversation's channel may carry, whatever the channel's type, so a caller (an agent) never branches on it. Always answered; optional in the schema only because the recorded exchanges predate it.
+                    x-omitempty: false
                 channelAddress:
                     description: The email address of the conversation's channel. Always answered; optional in the schema only because the recorded exchanges predate it.
                     type: string
@@ -2251,8 +2304,6 @@ paths:
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-view
-            x-vantigo-customer-scope:
-                resource: customerId
         patch:
             operationId: patchCommunicationsConversationsById
             parameters:
@@ -2714,13 +2765,13 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
-                    description: Conflict
+                    description: Conflict — idempotency_key_reused, attachments_not_ready, and for a reply made through an agent grant conversation_taken (the conversation is assigned to someone other than that agent).
                 "422":
                     content:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
-                    description: Unprocessable Entity — channel_inactive, recipients_missing, recipient_suppressed, too_large, and on a messenger conversation components_unsupported (the channel takes none), components_invalid (a limit broken, with fields), reply_window_closed, not_supported_on_channel (sendFromPersonal or replyMode all), text_too_long (more than 2000 characters), too_large (a staged attachment above the provider's limit), and for cards product_image_unavailable (a productImageId is gone, or is no longer marked for Communications) and public_url_missing (the instance has no public host for Meta to fetch the images from).
+                    description: Unprocessable Entity — channel_inactive, recipients_missing, recipient_suppressed, too_large, reply_all_not_allowed (a reply through an agent grant never answers everyone), and on a messenger conversation components_unsupported (the channel takes none), components_invalid (a limit broken, with fields), reply_window_closed (also, through an agent grant, once only the human_agent window is left), not_supported_on_channel (sendFromPersonal or replyMode all), text_too_long (more than 2000 characters), too_large (a staged attachment above the provider's limit), and for cards product_image_unavailable (a productImageId is gone, or is no longer marked for Communications) and public_url_missing (the instance has no public host for Meta to fetch the images from).
             summary: Send a reply in a conversation
             tags:
                 - ConversationEndpoints

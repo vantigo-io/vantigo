@@ -21,6 +21,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/events"
 )
 
 // This file is the composer's Reply operation — Reply -> QueueOutboundAsync
@@ -305,12 +306,31 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 
 	q := store.New(s.deps.Pool)
 
+	// A reply made through an agent grant (virtual employees design V11, V15,
+	// V22): never reply-all, and marked as the agent's. agentID is set from the
+	// principal alone.
+	var agentID *uuid.UUID
+	if p, ok := contracts.PrincipalFrom(ctx); ok && p.Via != nil && p.Via.Kind == contracts.ViaAgent {
+		id := p.Via.AgentID
+		agentID = &id
+		if normalizedReplyMode(body.ReplyMode) == "reply_all" {
+			return gen.PostCommunicationsConversationsByIdReply422JSONResponse(flatErrorBody(
+				"reply_all_not_allowed", "An agent never answers everyone the message was sent to.")), nil
+		}
+	}
+
 	// Step 4: conversation (+ channel) lookup -> 404 bare.
 	conv, err := q.GetConversationForReply(ctx, req.Id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return gen.PostCommunicationsConversationsByIdReply404Response{}, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("communications: get conversation for reply: %w", err)
+	}
+	// Someone took the conversation while the agent was working (design §10):
+	// the agent's reply is refused, and the agent withdraws it.
+	if agentID != nil && conv.AssignedUserID != nil && *conv.AssignedUserID != caller {
+		return gen.PostCommunicationsConversationsByIdReply409JSONResponse(flatErrorBody(
+			"conversation_taken", "The conversation is assigned to someone else.")), nil
 	}
 
 	// Step 5: channel inactive -> 422, *ahead of* the idempotency replay
@@ -366,7 +386,9 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 
 	// A Messenger conversation's window: the person must have written within it
 	// (N6).
-	if messenger && state.window.state == windowClosed {
+	// An agent's message is never sent tagged as a human agent's (V22): the
+	// window must be open.
+	if messenger && (state.window.state == windowClosed || (agentID != nil && state.window.state != windowOpen)) {
 		return gen.PostCommunicationsConversationsByIdReply422JSONResponse(flatErrorBody(
 			"reply_window_closed", "The customer must write again before you can answer here.")), nil
 	}
@@ -426,10 +448,6 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 				id := images.copies[i].id
 				stored.Cards[i].AttachmentID = &id
 			}
-			if metadata, err = json.Marshal(messengerMetadata{ProductID: &images.productID}); err != nil {
-				s.forgetCardImages(ctx, images.copies, now)
-				return nil, fmt.Errorf("communications: encode the reply's metadata: %w", err)
-			}
 		}
 		if !stored.empty() {
 			if components, err = json.Marshal(stored); err != nil {
@@ -437,12 +455,27 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 				return nil, fmt.Errorf("communications: encode the reply's components: %w", err)
 			}
 		}
+		// The metadata names the product the cards showed (N16) and, for an
+		// agent's reply, the agent (V11) - from the principal, never the body.
+		if images != nil || agentID != nil {
+			meta := messengerMetadata{}
+			if images != nil {
+				meta.ProductID = &images.productID
+			}
+			if agentID != nil {
+				meta.Agent = agentID.String()
+			}
+			if metadata, err = json.Marshal(meta); err != nil {
+				s.forgetCardImages(ctx, imageCopies(images), now)
+				return nil, fmt.Errorf("communications: encode the reply's metadata: %w", err)
+			}
+		}
 	}
 	resp, err := s.queueReply(ctx, replyQueueParams{
 		conversationID: req.Id, channelType: conv.ChannelType, channelProvider: conv.ChannelProvider, caller: caller, key: key,
 		fingerprint: fingerprint, body: body, messageSubject: messageSubject,
 		primaryAddress: source.senderAddress, ccAddresses: ccAddresses, metadata: metadata, components: components,
-		cards: images, attachmentMax: state.caps.MaxAttachmentBytes, now: now,
+		cards: images, attachmentMax: state.caps.MaxAttachmentBytes, now: now, agentID: agentID,
 	})
 	if _, queued := resp.(gen.PostCommunicationsConversationsByIdReply201JSONResponse); !queued && images != nil {
 		// Nothing of this reply was committed: the copies are no one's.
@@ -559,6 +592,9 @@ type replyQueueParams struct {
 	// attachmentMax is a Messenger provider's largest file in bytes, 0 for none.
 	attachmentMax int64
 	now           time.Time
+	// agentID is the agent the reply is sent as, from the principal of an agent
+	// grant; nil for a person's.
+	agentID *uuid.UUID
 }
 
 // queueReply is QueueOutboundAsync's steps 8-10 (`:291-336`): the
@@ -713,7 +749,7 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 			Subject: p.messageSubject, TextBody: p.body.TextBody, HtmlBody: p.body.HtmlBody,
 			ChannelMetadataJson: p.metadata, OccurredAt: p.now, CreatedAt: p.now, RfcMessageID: &rfcMessageID,
 			SendAs: sendAs, FromAddress: fromAddress, FromDisplayName: fromDisplayName, SendProvider: sendProvider,
-			Components: p.components,
+			Components: p.components, AgentID: p.agentID,
 		}); err != nil {
 			return err
 		}
@@ -820,6 +856,13 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 			return err
 		}
 		if err := notifyMessage(ctx, tx, p.conversationID, eventMessageAdded, messageID); err != nil {
+			return err
+		}
+		// Published under the conversation's lock, which the activity update
+		// above holds (virtual employees design V13).
+		if err := events.Publish(ctx, tx, moduleName, contracts.ConversationReplied{
+			ConversationID: p.conversationID, MessageID: messageID, ByUserID: p.caller, ByAgent: p.agentID != nil,
+		}, p.now); err != nil {
 			return err
 		}
 

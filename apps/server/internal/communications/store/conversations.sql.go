@@ -203,7 +203,7 @@ func (q *Queries) GetConversationChannelDetail(ctx context.Context, id uuid.UUID
 
 const getConversationForReply = `-- name: GetConversationForReply :one
 
-SELECT c.id, c.subject, c.channel_id, ch.is_active AS channel_is_active, ch.type AS channel_type,
+SELECT c.id, c.subject, c.channel_id, c.assigned_user_id, ch.is_active AS channel_is_active, ch.type AS channel_type,
        ch.provider AS channel_provider
 FROM communications.conversations c
 JOIN communications.channels ch ON ch.id = c.channel_id
@@ -214,6 +214,7 @@ type GetConversationForReplyRow struct {
 	ID              uuid.UUID
 	Subject         *string
 	ChannelID       uuid.UUID
+	AssignedUserID  *uuid.UUID
 	ChannelIsActive bool
 	ChannelType     string
 	ChannelProvider string
@@ -238,6 +239,7 @@ func (q *Queries) GetConversationForReply(ctx context.Context, id uuid.UUID) (Ge
 		&i.ID,
 		&i.Subject,
 		&i.ChannelID,
+		&i.AssignedUserID,
 		&i.ChannelIsActive,
 		&i.ChannelType,
 		&i.ChannelProvider,
@@ -595,11 +597,11 @@ const insertConversationMessage = `-- name: InsertConversationMessage :one
 INSERT INTO communications.conversation_messages
  (id, conversation_id, direction, participant_id, author_user_id, subject, text_body, html_body,
   channel_metadata_json, occurred_at, created_at, rfc_message_id, send_as, from_address, from_display_name,
-  send_provider, components)
+  send_provider, components, agent_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
   $9, $10, $11, $12,
   COALESCE(NULLIF($13::text, ''), 'channel'), $14, $15,
-  $16::text, $17::jsonb)
+  $16::text, $17::jsonb, $18::uuid)
 RETURNING id
 `
 
@@ -621,6 +623,7 @@ type InsertConversationMessageParams struct {
 	FromDisplayName     *string
 	SendProvider        *string
 	Components          []byte
+	AgentID             *uuid.UUID
 }
 
 // Shared by AddNote (direction=internal_note), CreateConversation and Reply
@@ -644,6 +647,7 @@ func (q *Queries) InsertConversationMessage(ctx context.Context, arg InsertConve
 		arg.FromDisplayName,
 		arg.SendProvider,
 		arg.Components,
+		arg.AgentID,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)

@@ -141,6 +141,7 @@ type CommunicationsConversationMessage struct {
 	SendProvider         *string
 	SentMessageID        *string
 	Components           []byte
+	AgentID              *uuid.UUID
 }
 
 type CommunicationsConversationParticipant struct {

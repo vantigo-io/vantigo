@@ -122,8 +122,8 @@ func TestPatchConversation_PublishesAssigned(t *testing.T) {
 			e["previousAssignedUserId"] != w.previous || e["byUserId"] != caller.String() || aggregates[i] != m.ConversationId {
 			t.Errorf("event %d = %v (aggregate %s), want assigned %v, previous %v, by %s", i, e, aggregates[i], w.assigned, w.previous, caller)
 		}
-		if len(e) != 4 {
-			t.Errorf("event %d has %d fields, want the four of the contract: %v", i, len(e), e)
+		if len(e) != 5 || e["channelId"] == nil {
+			t.Errorf("event %d has %d fields, want the five of the contract, the channel among them: %v", i, len(e), e)
 		}
 	}
 }

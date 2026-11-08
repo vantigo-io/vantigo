@@ -13,6 +13,7 @@ sql:
       - ../db/migrations/00130_communications_messaging.sql
       - ../db/migrations/00138_communications_inbox_counts.sql
       - ../db/migrations/00139_communications_contact_hints.sql
+      - ../db/migrations/00145_communications_agent_messages.sql
     queries: queries
     gen:
       go:

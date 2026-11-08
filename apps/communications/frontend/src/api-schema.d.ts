@@ -745,12 +745,41 @@ export interface components {
             /** @description The Messenger link to send to the contact, and only to that contact. */
             url: string;
         };
+        /** @description What a message on a conversation's channel may carry, answered the same way for every channel type. A new type that answers its capabilities needs nothing else from a caller. */
+        ConversationCapabilities: {
+            /** @description Whether a message may copy other people (e-mail). */
+            cc: boolean;
+            /** @description Whether a message may carry answer options or cards (see componentLimits). */
+            components: boolean;
+            /** @description Whether a message may carry an HTML body. */
+            html: boolean;
+            /**
+             * Format: int64
+             * @description The largest file one message carries, null when the channel names none.
+             */
+            maxAttachmentBytes: number | null;
+            /**
+             * Format: int32
+             * @description The most characters a message's text holds, null when the channel names none.
+             */
+            maxText: number | null;
+            /** @description Whether a reply may answer everyone the latest message was sent to. */
+            replyAll: boolean;
+            /** @description Whether the channel can ask the person for an e-mail address. */
+            shareEmail: boolean;
+            /** @description Whether a message has a subject. */
+            subject: boolean;
+            /** @description The reply window, null when the channel has none (e-mail). */
+            window: components["schemas"]["ReplyWindow"] | null;
+        };
         ConversationDetailResponse: {
             /** Format: uuid */
             assignedUserId: string | null;
             /** @description The assignee's display name, null when unassigned or when the user is no longer known. */
             assignedUserName?: string | null;
             candidateCustomerIds: number[];
+            /** @description What a message on the conversation's channel may carry, whatever the channel's type, so a caller (an agent) never branches on it. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            capabilities?: components["schemas"]["ConversationCapabilities"];
             /** @description The email address of the conversation's channel. Always answered; optional in the schema only because the recorded exchanges predate it. */
             channelAddress?: string;
             /** @description The display name of the conversation's channel, or null when unset. Always answered; optional in the schema only because the recorded exchanges predate it. */
@@ -2722,7 +2751,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict */
+            /** @description Conflict — idempotency_key_reused, attachments_not_ready, and for a reply made through an agent grant conversation_taken (the conversation is assigned to someone other than that agent). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2731,7 +2760,7 @@ export interface operations {
                     "application/json": components["schemas"]["CommunicationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity — channel_inactive, recipients_missing, recipient_suppressed, too_large, and on a messenger conversation components_unsupported (the channel takes none), components_invalid (a limit broken, with fields), reply_window_closed, not_supported_on_channel (sendFromPersonal or replyMode all), text_too_long (more than 2000 characters), too_large (a staged attachment above the provider's limit), and for cards product_image_unavailable (a productImageId is gone, or is no longer marked for Communications) and public_url_missing (the instance has no public host for Meta to fetch the images from). */
+            /** @description Unprocessable Entity — channel_inactive, recipients_missing, recipient_suppressed, too_large, reply_all_not_allowed (a reply through an agent grant never answers everyone), and on a messenger conversation components_unsupported (the channel takes none), components_invalid (a limit broken, with fields), reply_window_closed (also, through an agent grant, once only the human_agent window is left), not_supported_on_channel (sendFromPersonal or replyMode all), text_too_long (more than 2000 characters), too_large (a staged attachment above the provider's limit), and for cards product_image_unavailable (a productImageId is gone, or is no longer marked for Communications) and public_url_missing (the instance has no public host for Meta to fetch the images from). */
             422: {
                 headers: {
                     [name: string]: unknown;

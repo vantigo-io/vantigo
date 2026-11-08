@@ -79,7 +79,7 @@ WHERE id = @id;
 -- send_provider names the PersonalMailbox a personal message goes through; on a
 -- Messenger channel the conversation (its reply window) and the components.
 SELECT m.id, m.conversation_id, ch.id AS channel_id, m.author_user_id, m.send_as, m.send_provider, m.from_address, m.from_display_name,
-       m.subject, m.text_body, m.html_body, m.channel_metadata_json, m.components,
+       m.subject, m.text_body, m.html_body, m.channel_metadata_json, m.components, m.agent_id,
        c.subject AS conversation_subject,
        ch.type AS channel_type, ch.address AS channel_address,
        ch.display_name AS channel_display_name,

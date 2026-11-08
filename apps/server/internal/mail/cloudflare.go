@@ -189,6 +189,12 @@ func (s *cloudflareSender) request(out Outbound) (cloudflareRequest, error) {
 			req.Headers["References"] = strings.Join(refs, " ")
 		}
 	}
+	for name, value := range out.Headers {
+		if req.Headers == nil {
+			req.Headers = map[string]string{}
+		}
+		req.Headers[name] = value
+	}
 	for _, a := range out.Attachments {
 		if a.Inline || a.ContentID != "" {
 			return cloudflareRequest{}, fmt.Errorf("mail: the cloudflare driver cannot carry an inline attachment")
