@@ -14,5 +14,6 @@ export {
   useLiveClient,
   useLiveStatus,
   useLiveTopic,
+  useLiveUserId,
   usePresence,
 } from "./provider";

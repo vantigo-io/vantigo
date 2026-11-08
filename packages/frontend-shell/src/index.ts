@@ -81,6 +81,7 @@ export {
   useLiveClient,
   useLiveStatus,
   useLiveTopic,
+  useLiveUserId,
   usePresence,
 } from "./live";
 export { vantigoLogo } from "./logo";
