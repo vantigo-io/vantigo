@@ -442,12 +442,20 @@ colleague, with the **AI** badge on its avatar:
 - **Its messages** carry a line at the top that says who wrote them and that it is an AI, such as
   *«Hanna» er «Hansen Rør» sin virtuelle assistent (KI).* The mail also carries the header
   `X-Vantigo-Agent`, so a mail rule can tell it from a person's.
-- **An internal note** says when the agent has a reply **waiting for review**, with a link to it, and when
-  it has **handed the conversation to a colleague**, with what the customer wants.
+- **An internal note** says when the agent has a reply **waiting for review**, with an **Open in review**
+  link to it, and when it has **handed the conversation to a colleague**, with what the customer wants.
 - **A conversation assigned to you is yours.** The agent does not answer it, and if it was writing when you
   took it, its reply is not sent. Assign a conversation to the agent, or to nobody, to let it answer.
 - **After a hand-off** the agent leaves the conversation alone until a person replies in it or assigns it,
   or it is given back to the agent.
+
+### Handed-off conversations
+
+A conversation the agent handed off shows a yellow banner above the thread: *An agent handed this
+conversation to the people*, with the reason (the agent asked for a colleague, a reviewer discarded its
+reply, its reply waited too long, the daily budget was reached …). **Give back to the agent** removes the
+hand-off, so the agent answers the customer's next message; it needs `communications:conversations-manage`. Without a
+click the agent stays away until a person replies in the conversation or assigns it.
 
 ## Add an internal note
 

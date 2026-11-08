@@ -901,6 +901,16 @@ An agent acts under an **agent grant**, a record identity keeps for one run of o
   disabled agent. Grants that ended more than a day ago are deleted when the agent's next is
   issued. Ending a grant that is unknown or has ended already is not an error.
 
+- **A reviewer's approval.** When a reviewer approves what an agent proposed, the agents module issues
+  a grant that names the reviewer, and first asks identity whether the reviewer meets the access rule
+  of the operation the item would call, through `UserSatisfies`: a permission rule is `UserHolds`; a
+  policy rule is decided for the reviewer's roles as they stand, with no second factor assumed
+  (`ActiveAccount` and `Business` are met by anyone who may act; `Owner`, `OwnerManagement` and
+  `SystemAdmin` need their role; `AuthorizationManagement` the Owner role or a delegation). A reviewer
+  therefore cannot get the agent to do what the reviewer may not. A user who may not act (disabled,
+  locked out, pending, or deactivated by the directory) satisfies nothing, and a SCIM rule is no
+  person's.
+
 An installation without virtual employees never has a user of kind `agent` or a row in
 `identity.agent_grants`.
 
