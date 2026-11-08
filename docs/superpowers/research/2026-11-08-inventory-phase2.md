@@ -663,7 +663,19 @@ Each is put with a recommendation. The spec starts from the answers.
     pasting SKU and quantity)? Recommended: **later** — *Create transfer* from the
     low-stock list covers restocking.
 
-### 9.2 Two deliveries
+### 9.2 The owner's answers, 2026-11-08
+
+| Reading | Answer |
+| --- | --- |
+| 1 | **Inventory owns transfers.** |
+| 2 | **Offer *Send and receive*** — "if that is the industry standard"; it is (§2.1). |
+| 3 | **Close the difference as missing**, with a reason. |
+| 4 | **A draft reserves nothing.** |
+| 5 | **Warn**, do not refuse, when a send eats into stock reserved for orders. |
+| 13 | **Round the suggestion up to whole packagings — and say so on the screen**: the low-stock list and the drafted transfer explain that the quantity was rounded up from what is needed to the packaging (*21 needed, rounded up to 2 boxes of 15 = 30*). |
+| 6–12, 14, 15 | Not answered one by one; the owner agreed with the note as a whole ("makes sense"), so the recommendations stand: one `transfers-manage` key; placements under `stock-adjust`; *Create transfer* and *Export CSV* only; the placements import in phase 2; the dashboard only; no domain events yet; the stale-label notice dropped; *følgeseddel*; spreadsheet lines later. |
+
+### 9.3 Two deliveries
 
 | Delivery | What | Migrations |
 | --- | --- | --- |
