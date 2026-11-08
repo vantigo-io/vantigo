@@ -170,6 +170,16 @@ reconnects. The shell takes no TanStack Query dependency: a module's callback ca
   as the socket is down. The Communications list and the open conversation each poll every
   60 s while not live. A staged attachment's scan status has no event, so it keeps its own
   2 s poll regardless.
+- **`useLiveUserId()`** is the signed-in person's id the provider was mounted with, or `null`
+  outside one: what a per-person topic is keyed by (`calendar.mailbox-sync:<id>`).
+- **The other live screens.** The customers and energy imports, the invoices billing runs and
+  the Outlook sync card are live the same way: a hook beside the query options
+  (`useImportsLive`, `useBillingRunsLive`, `useMailboxSyncLive`) invalidates on an event and
+  returns the boolean, and the query options take it (`importQueryOptions(id, live)`) and
+  return no `refetchInterval` while it is `true`. A page for one import or run ignores an
+  event whose id is another's; an event without an id and a `resync` refetch whatever is
+  shown. Their fallback intervals are the ones they had: 2 s for an import, 5 s for a run, 15 s
+  for the sync card.
 - **`usePresence(topic, state)`** announces `viewing`, `editing` or `replying` (or none) on
   a topic whose server side allows presence, repeats it every 20 s, and returns the other
   members. It collapses a person's tabs to one member with the strongest state (editing,

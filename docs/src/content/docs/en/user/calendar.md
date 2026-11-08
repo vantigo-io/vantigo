@@ -501,7 +501,8 @@ to this page ([Connections](/en/user/connections/)).
 
 You can turn the sync on before you connect: it waits for you. Until you connect, the card
 says **Connect Outlook above to start the sync.** Once you have, Vantigo syncs within a
-minute or two, or at once with **Sync now**; the card notices by itself, with no reload.
+minute or two, or at once with **Sync now**; the card notices by itself, with no reload (if the live connection is
+unavailable it refreshes every few seconds while it waits).
 
 **Reconnect.** Microsoft sometimes asks you to sign in again — your password changed,
 your organisation's sign-in rules asked for it, or a long time passed. The card then says

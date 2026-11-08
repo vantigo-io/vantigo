@@ -590,7 +590,9 @@ og `invoices:issue` for å utstede fakturaene. Bare én kjøring går om gangen.
    skal faktureres til og med dagen, eller skriv ID-ene til kundene for å fakturere bare
    dem.
 5. Klikk **Start kjøringen**. Den åpnes på sin egen side og går gjennom kundene i bakgrunnen;
-   siden følger den underveis.
+   siden følger den underveis, og det gjør listen over **Fakturakjøringer** også, av seg
+   selv og uten at du laster siden på nytt. Er den levende forbindelsen ikke tilgjengelig,
+   oppdateres de i stedet hvert par sekund.
 
 Kjøringen avvises, og ingenting lages, når Energi-modulen er slått av, når en annen
 kjøring ikke er ferdig, når ingenting skal faktureres til og med dagen, eller når mer

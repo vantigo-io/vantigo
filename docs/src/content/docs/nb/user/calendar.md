@@ -508,7 +508,8 @@ tilbake til denne siden ([Tilkoblinger](/nb/user/connections/)).
 Du kan slå på synkroniseringen før du kobler til: den venter på deg. Til du har koblet
 til, sier kortet **Koble til Outlook ovenfor for å starte synkroniseringen.** Når du har
 gjort det, synkroniserer Vantigo innen et par minutter, eller med en gang med
-**Synkroniser nå**; kortet merker det selv, uten at du laster siden på nytt.
+**Synkroniser nå**; kortet merker det selv, uten at du laster siden på nytt (er den levende
+forbindelsen ikke tilgjengelig, oppdateres det hvert par sekund mens det venter).
 
 **Koble til på nytt.** Microsoft ber deg av og til logge på igjen — passordet ditt er
 endret, organisasjonens påloggingsregler krevde det, eller det har gått lang tid. Kortet

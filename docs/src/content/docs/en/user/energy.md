@@ -98,7 +98,9 @@ and **Price area**. To link a point to its customer, the file needs the customer
    the column names in the first row; at most 50 MB and 100 000 rows. **Recent
    imports** below lists the earlier imports with their state: open one to continue
    where it stood, or delete one that is not running. Deleting an import does not
-   remove the metering points it wrote.
+   remove the metering points it wrote. The list and an import's page update by
+   themselves as the import works, with no reload; if the live connection is
+   unavailable they refresh every few seconds, as before.
 2. **Map columns.** Under **What to do with the rows**, choose **Create new metering
    points** (a GSRN that already exists is refused), **Update existing metering
    points** (a GSRN nobody has is refused) or **Create and update**. Then, for each

@@ -1647,6 +1647,35 @@ column as "Column 7"), each row's cells exactly as they were, semicolon-separate
 UTF-8 with a byte order mark, named `customers-import-<id>-failed-rows.csv`.
 `GET /customers/imports?page&pageSize` lists the imports, newest change first.
 
+### Live updates
+
+The imports list and an import's page update by themselves through the platform's
+[live updates](/en/contributing/platform-packages/#live-updates). The module registers one
+topic through `Module.LiveTopics` (`internal/customers/live.go`). Events carry the import's
+id only; a screen that hears one refetches through the ordinary endpoints, which check the
+permission as they always do.
+
+| Topic | Authorised by | Events | Presence |
+| --- | --- | --- | --- |
+| `customers.imports` | `customers:import` and `customers:view`, as `GET /customers/imports` | `import.changed`, with the import's id, or without one after the worker's sweep | not allowed |
+
+The topic has no key: any key is `forbidden`. Where the module notifies, each time on the
+transaction that writes, or, for a single write on the pool, right after it:
+
+- the API: the upload (`POST /customers/imports`), a saved mapping, a check or a run asked for,
+  a stop (an unstarted import reverted, or an under-way one flagged) and a delete;
+- the worker (`import_worker.go`), on its leased connection: the import started, its progress,
+  finished and failed, and the sweep of imports past retention (one event without an id).
+
+The progress is written after every chunk of 500 rows, and notifies **at most once a second**
+per import, from the worker's own memory, and an event held back inside that second is sent when it ends, so the last progress is never left unheard; a state change always notifies. A row's outcome
+(`WriteImportRowOutcome`) notifies nothing: the progress write that follows each chunk does.
+`TestLive_EveryWriteIsHeard` scans the module and fails for a function that writes
+`customers.imports` or `customers.import_rows` and neither it nor all its callers notify.
+
+The pages refetch on an event and poll every 2 s (`IMPORT_POLL_MS`) **only while the topic is
+not live**, while an import is running.
+
 ## Revision and concurrency
 
 `customers.customers` carries `revision integer NOT NULL DEFAULT 1`. **Every write to

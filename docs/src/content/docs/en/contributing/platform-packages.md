@@ -669,6 +669,24 @@ live.Topic{Kind string, Presence bool, Authorize func(ctx context.Context, key s
 - `Doc`, when set, makes the topic a document's: see
   [Binary frames and documents](#binary-frames-and-documents).
 
+### The topics in use
+
+| Topic | Module | Keyed by | Authorised by |
+| --- | --- | --- | --- |
+| `communications.inbox` | Communications | none | `communications:conversations-view` |
+| `communications.conversation:<id>` | Communications | a conversation | `communications:conversations-view`, and the conversation exists (presence) |
+| `knowledge.tree` | Knowledge | none | `knowledge:articles` |
+| `knowledge.article:<id>` | Knowledge | an article | `knowledge:articles` and read access to the article (presence) |
+| `customers.imports` | Customers | none | `customers:import` and `customers:view` |
+| `energy.imports` | Energy | none | `energy:import` and `energy:metering-points-view` |
+| `invoices.billing-runs` | Invoices | none | `invoices:access` |
+| `calendar.mailbox-sync:<userId>` | Calendar | **a person**: the key must equal the caller's own id | `calendar:access` |
+
+The Calendar topic is the first keyed by a person rather than by a thing, and so the
+precedent for a per-user topic. The host's notifications (the bell) will need one, once a
+notifications design says what a notification is, who may see it and how it is read and
+cleared; they are not live yet.
+
 ### The endpoint
 
 `GET /api/v1/live?v=1` is mounted by `server.New` outside `Compose`, because the composed

@@ -2572,6 +2572,34 @@ Turning the switch back on does not resume anyone at once: every connection was 
 with the switch, so each person whose toggle is on is parked `not_connected` at their
 next sync until they connect again, then resumes from a reconcile.
 
+### Live updates
+
+The Outlook sync card updates by itself through the platform's
+[live updates](/en/contributing/platform-packages/#live-updates). The module registers one
+topic through `Module.LiveTopics` (`internal/calendar/live.go`) and is the first to key a
+topic by the **person** rather than by a thing.
+
+| Topic | Authorised by | Events | Presence |
+| --- | --- | --- | --- |
+| `calendar.mailbox-sync:<userId>` | `calendar:access`, and the key equals the caller's own id, spelled as the canonical lowercase UUID | `sync.changed`, with the user's id | not allowed |
+
+Any other key (somebody else's id, an id nobody has, a malformed one, none) is `forbidden`:
+the card is the caller's own, as `GET /calendar/mailbox-sync` answers nobody else's. Where the
+module notifies:
+
+- the API: saving the setting (`PUT`, on the transaction that writes) and **Sync now**;
+- the worker (`mailbox_worker.go`, `mailbox_busy.go`, `mailbox_writeback.go`): a sync's result,
+  the mailbox and calendar it learns, the delta read that moves the busy time's last read, the
+  change put back, and the clean-up that forgets them.
+
+Not notified: an appointment's write making many people's syncs due, a change notice or a
+connection change making them due, and the claim and release of a row. None of them changes
+what the card shows (it shows no due time), and the sync that follows notifies with its result.
+The scan test `TestLive_EveryWriteIsHeard` lists them with their reasons.
+
+The card refetches on an event and polls every 15 s (`WAITING_REFETCH_MS`) **only while the
+topic is not live**, while it waits for the connection or its first cycle.
+
 ## The busy time contract
 
 The module provides one single-provider contract, `contracts.CalendarBusy`

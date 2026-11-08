@@ -98,7 +98,9 @@ trenger i tillegg **Målernummer**, **Gateadresse**, **Postnummer**, **Poststed*
    kolonnenavnene i første rad; høyst 50 MB og 100 000 rader. **Siste importer**
    nedenfor lister tidligere importer med status: åpne en for å fortsette der den sto,
    eller slett en som ikke kjører. Å slette en import fjerner ikke målepunktene den
-   skrev.
+   skrev. Listen og en importside oppdateres av seg selv mens importen arbeider, uten at
+   du laster siden på nytt; er den levende forbindelsen ikke tilgjengelig, oppdateres de
+   hvert par sekund, som før.
 2. **Velg kolonner.** Under **Hva som skal gjøres med radene** velger du **Opprett nye
    målepunkter** (en GSRN som finnes fra før, avvises), **Oppdater eksisterende
    målepunkter** (en GSRN ingen har, avvises) eller **Opprett og oppdater**. Velg så,
