@@ -329,6 +329,9 @@ not written by the model.
 
 What a `reply` goes through, in code, after the model has written.
 
+0. **What the run read.** S1 judges what a reply may carry from the run's action log (any successful read of a
+   customer's data), not from the sources the model cites. The model's context holds no colleague's internal note,
+   and a run with no customer is not shown the conversation's customer link, suggestion or candidates.
 1. **The verdict (V17).** Each cited source must be an entry of the run's action log that succeeded
    (an operation and its ids, as `getInvoicesById 2026-0931`, or an id alone), and never a read of
    the conversation itself. The valid ones are kept; **with none the score is 0**. The score, the valid
@@ -340,7 +343,7 @@ What a `reply` goes through, in code, after the model has written.
    | S1 | The reply goes to the latest inbound sender alone. When a valid source is a read of a customer's data (a scoped operation) or an attachment is carried, the sender must be a contact of the run's customer; otherwise it is held. No recipient also holds. |
    | S2 | An attachment must belong to the run's customer; a run with none attaches nothing. |
    | S3 | The score is 0. |
-   | S4 | The conversation's first inbound message, from a sender the module has not met in an earlier conversation. |
+   | S4 | The conversation's first inbound message, from a sender whose **first conversation** this is. It is judged per first conversation: the same sender's second conversation is not a first contact, whoever starts it. |
    | S5 | The conversation carries one of the role's `complaint_tag_ids`. |
    | S6 | The reply window is `closed`, or only `human_agent` is left: **refused**, never sent tagged as a human agent's. |
    | S7 | The latest message is an auto-reply, the sender is a channel of this installation, `max_replies_per_day` agent messages were sent in the last 24 hours (a run's own send and an approval), or six other runs started on the conversation in the last hour: **refused**. |
@@ -358,8 +361,14 @@ What a `reply` goes through, in code, after the model has written.
    that follows the customer, the language the reply was written in), is put at the top of the text. The
    review item stores the line and the text apart. The text with the line must fit the channel's limit
    (`text_too_long` is the model's to shorten).
-6. **The send.** `POST …/reply` as the agent, with the idempotency key `agents-<run id>`. A `201` ends
-   the run `done`. `409 conversation_taken` withdraws the item and ends the run without a hand-off.
+6. **The send.** Just before it, the run checks that its agent is still active and that this replica still
+   holds the claim; a paused agent or a claim taken over by the worker stops the run, and the model's
+   next turn is not taken. `POST …/reply` as the agent names `inReplyToMessageId`, the message the run
+   answered, with the idempotency key `agents-<agent>-<conversation>-<message>`, so a retry and the original can
+   never both send. A `201` ends the run `done`. `409 conversation_taken` withdraws the item and ends the run
+   (`no_reply`) without a hand-off. `409 conversation_moved` withdraws it, ends the run `no_reply` and queues a new
+   run. A dispatcher failure or a `5xx` after the message may have been queued is **unknown**: no review item is made
+   (it could send twice); the conversation is handed off with a note that says so (`send_unknown`).
    `422 reply_window_closed` is S6. A refusal that is the model's to fix (`components_invalid`,
    `text_too_long`, `too_large`, `400`) is answered to the model, which may reply again. Anything else holds the
    reply for a person (`SEND`).

@@ -96,8 +96,13 @@ func (rs *runState) reply(ctx context.Context, raw json.RawMessage) agentloop.Re
 	}
 
 	// V17: only what this run read counts, and never the conversation itself.
-	valid, scoped := validSources(a.Sources, rs.actionLog(ctx))
+	log := rs.actionLog(ctx)
+	valid, _ := validSources(a.Sources, log)
 	score := scoreOf(*a.Score, valid)
+	// S1 judges what the reply may carry by what the run READ, not by what the
+	// model cites: a reply built on a customer's record must not reach a stranger
+	// because its sources were left out.
+	scoped := runHasScopedRead(log)
 
 	q := store.New(rs.s.deps.Pool)
 	repliesToday, _ := q.CountRepliesSince(ctx, store.CountRepliesSinceParams{ConversationID: rs.run.ConversationID, Since: now.Add(-24 * time.Hour)})
@@ -162,20 +167,44 @@ func (rs *runState) queue(ctx context.Context, item json.RawMessage, score int, 
 }
 
 // send sends the reply through Communications as the agent. The reply is
-// idempotent per run, so a retried tool call sends once.
+// idempotent per agent, conversation and answered message, so a retry sends once.
 func (rs *runState) send(ctx context.Context, full string, components json.RawMessage, item json.RawMessage, score int, valid []string, modelScore int, held []string) agentloop.Result {
 	payload := map[string]any{"textBody": full}
 	if components != nil {
 		payload["components"] = components
 	}
+	// The agent may have been paused, or the run taken over, since the last turn.
+	if !rs.stillMine(ctx) {
+		return agentloop.Refused("run_stopped", "this run was stopped; nothing was sent")
+	}
+	answered := rs.conv.latestInbound()
+	if answered == nil {
+		return agentloop.Refused("no_sender", "there is no message to answer")
+	}
+	payload["inReplyToMessageId"] = answered.ID
 	body, _ := json.Marshal(payload)
+	// One key per agent, conversation and answered message: a retry and the
+	// original can never both send.
+	key := "agents-" + rs.agent.ID.String() + "-" + rs.run.ConversationID.String() + "-" + answered.ID.String()
 	res, err := rs.call(ctx, operations.CallRequest{
-		OperationID: opReply, PathParams: rs.own(), Body: body,
-		Headers: map[string]string{"Idempotency-Key": "agents-" + rs.run.ID.String()},
+		OperationID: opReply, PathParams: rs.own(), Body: body, Headers: map[string]string{"Idempotency-Key": key},
 	})
 	if err != nil {
-		rs.s.warn("agents: the reply could not be sent", "run", rs.run.ID, "err", err)
-		return rs.queueFailed(ctx, item, score, valid, modelScore, "SEND")
+		var oe *operations.Error
+		if asOpError(err, &oe) {
+			// Refused before any dispatch: nothing was queued.
+			rs.s.warn("agents: the reply was refused before it was sent", "run", rs.run.ID, "err", err)
+			return rs.queueFailed(ctx, item, score, valid, modelScore, "SEND")
+		}
+		// A timeout or a dispatch that failed half way may have queued the message.
+		// A review item could then send it twice, so a person is told instead.
+		rs.s.warn("agents: the outcome of a reply is unknown", "run", rs.run.ID, "err", err)
+		summary := "The reply may or may not have been sent: the call did not answer. Check the conversation before answering. The agent wrote: " + extractText(item)
+		rs.mu.Lock()
+		rs.handOff = &handOffRequest{code: handUnknownSend, summary: summary}
+		rs.mu.Unlock()
+		rs.doHandOff(ctx, handUnknownSend, summary)
+		return replyResult("refused", map[string]any{"status": "unknown", "message": "it is not known whether the reply was sent; the conversation is handed to a colleague"})
 	}
 	code := errorCodeOf(res.Body)
 	switch {
@@ -190,9 +219,23 @@ func (rs *runState) send(ctx context.Context, full string, components json.RawMe
 		// A person took the conversation while the agent worked (design §10).
 		_, _ = rs.insertItem(ctx, "reply", item, score, valid, modelScore, []string{"TAKEN"}, "withdrawn", rs.s.deps.Clock())
 		rs.mu.Lock()
-		rs.replied = true
+		rs.replied, rs.noReply = true, true
 		rs.mu.Unlock()
 		return replyResult("refused", map[string]any{"status": "withdrawn", "message": "a colleague has taken this conversation, so the reply was not sent"})
+	case res.Status == 409 && code == "conversation_moved":
+		// A newer message arrived while the agent worked: it may be from someone
+		// else. Nothing is sent, and a new run answers the conversation as it is.
+		_, _ = rs.insertItem(ctx, "reply", item, score, valid, modelScore, []string{"MOVED"}, "withdrawn", rs.s.deps.Clock())
+		now := rs.s.deps.Clock()
+		if err := store.New(rs.s.deps.Pool).UpsertRunRequest(context.WithoutCancel(ctx), store.UpsertRunRequestParams{
+			RoleID: rs.role.ID, ConversationID: rs.run.ConversationID, Reason: reasonMessage, NotBefore: now, DueBy: now.Add(maxWait), Now: now,
+		}); err != nil {
+			rs.s.warn("agents: queue a new run", "run", rs.run.ID, "err", err)
+		}
+		rs.mu.Lock()
+		rs.replied, rs.noReply = true, true
+		rs.mu.Unlock()
+		return replyResult("refused", map[string]any{"status": "withdrawn", "message": "a newer message arrived, so the reply was not sent; a new run will answer"})
 	case res.Status == 422 && code == "reply_window_closed":
 		_, _ = rs.insertItem(ctx, "reply", item, score, valid, modelScore, []string{ruleS6}, "withdrawn", rs.s.deps.Clock())
 		summary := "The reply window closed before the reply was sent. The agent wrote: " + extractText(item)
@@ -204,6 +247,15 @@ func (rs *runState) send(ctx context.Context, full string, components json.RawMe
 	case res.Status == 400 || (res.Status == 422 && (code == "components_invalid" || code == "components_unsupported" || code == "text_too_long" || code == "too_large")):
 		// The model's to fix, inside the run.
 		return agentloop.Refused(code, "the channel refused the message ("+code+"); change it and reply again")
+	}
+	if res.Status >= 500 {
+		// The router failed after it may have queued the message: unknown.
+		summary := "The reply may or may not have been sent: the server failed. Check the conversation before answering. The agent wrote: " + extractText(item)
+		rs.mu.Lock()
+		rs.handOff = &handOffRequest{code: handUnknownSend, summary: summary}
+		rs.mu.Unlock()
+		rs.doHandOff(ctx, handUnknownSend, summary)
+		return replyResult("refused", map[string]any{"status": "unknown", "message": "it is not known whether the reply was sent; the conversation is handed to a colleague"})
 	}
 	rs.s.warn("agents: the reply was refused", "run", rs.run.ID, "status", res.Status, "code", code)
 	return rs.queueFailed(ctx, item, score, valid, modelScore, "SEND")

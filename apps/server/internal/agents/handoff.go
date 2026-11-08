@@ -49,16 +49,17 @@ const (
 
 // The reasons a conversation is handed off, as the marker and the note name them.
 const (
-	handUnreadable = "unreadable"
-	handBudget     = "budget"
-	handGuard      = "guard"
-	handLapsed     = "lapsed"
-	handStale      = "stale"
-	handAI         = "ai_unavailable"
-	handCap        = "cap"
-	handAgent      = "hand_off"
-	handDiscarded  = "discarded"
-	handNoReply    = "no_reply"
+	handUnreadable  = "unreadable"
+	handBudget      = "budget"
+	handGuard       = "guard"
+	handLapsed      = "lapsed"
+	handStale       = "stale"
+	handAI          = "ai_unavailable"
+	handCap         = "cap"
+	handAgent       = "hand_off"
+	handDiscarded   = "discarded"
+	handNoReply     = "no_reply"
+	handUnknownSend = "send_unknown"
 )
 
 // markHandedOff records a hand-off that has no run in progress: a run that never
