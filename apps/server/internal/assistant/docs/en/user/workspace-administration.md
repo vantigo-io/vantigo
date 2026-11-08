@@ -129,12 +129,13 @@ has **Delete user** greyed out, with the reason beneath it (below).
 ## Agents among the users
 
 A **virtual employee** is an AI agent, and its account is a user of a separate kind. It
-is listed after the people, never among them, and the counts treat the two apart: the
-workspace has so many people and so many agents, and nothing limits either. An agent
+is listed in a section of its own after the people, never among them, marked with the **AI**
+badge on its avatar, and the counts treat the two apart: the workspace has so many
+people and so many agents, and nothing limits either. An agent
 never signs in, has no password, no authenticator and no sign-in link, so none of the
 actions above — **Edit user**, a password, **Disable access**, **Delete user**, a link to
 single sign-on, an invitation — applies to it. It is made, renamed, paused and removed
-under Virtual employees, and it never receives mail from Vantigo.
+under [Virtual employees](/en/user/agents/), and it never receives mail from Vantigo.
 
 Give an agent its roles under **Roles & access**, as for anyone. Two things are refused
 for an agent: the **Owner** and **SystemAdmin** roles, and a delegation. An agent is not
