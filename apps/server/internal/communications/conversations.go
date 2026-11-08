@@ -334,7 +334,8 @@ func nameOf(names map[uuid.UUID]string, id *uuid.UUID) *string {
 // Active users from the user directory, for the assignee select and the
 // inbox's person filter (virtual employees design V2): identity's own user
 // listing needs the authorisation-management permission, which a person who
-// answers mail need not hold. SearchUsers answers active users only.
+// answers mail need not hold. SearchUsers answers active users only, and here
+// the agents too (design V5), each marked by its kind.
 func (s *server) GetCommunicationsAssignableUsers(ctx context.Context, req gen.GetCommunicationsAssignableUsersRequestObject) (gen.GetCommunicationsAssignableUsersResponseObject, error) {
 	const maxLimit = 20
 	limit := int32(maxLimit)
@@ -355,7 +356,7 @@ func (s *server) GetCommunicationsAssignableUsers(ctx context.Context, req gen.G
 	if len(fields) > 0 {
 		return gen.GetCommunicationsAssignableUsers400JSONResponse(validationErrorBody(fields)), nil
 	}
-	found, err := s.deps.Users.SearchUsers(ctx, query, int(limit))
+	found, err := s.deps.Users.SearchUsers(ctx, query, int(limit), contracts.IncludeAgents())
 	if err != nil {
 		return nil, fmt.Errorf("communications: search the users: %w", err)
 	}
@@ -364,7 +365,7 @@ func (s *server) GetCommunicationsAssignableUsers(ctx context.Context, req gen.G
 		if len(out) == int(limit) {
 			break
 		}
-		out = append(out, gen.AssignableUser{UserId: u.ID, DisplayName: u.DisplayName})
+		out = append(out, gen.AssignableUser{UserId: u.ID, DisplayName: u.DisplayName, Kind: gen.AssignableUserKind(u.Kind)})
 	}
 	return out, nil
 }

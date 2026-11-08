@@ -205,8 +205,8 @@ func TestAssignableUsers(t *testing.T) {
 	}
 	r.JSON(&users)
 	for _, u := range raw {
-		if len(u) != 2 {
-			t.Errorf("a user carries %v, want only userId and displayName", u)
+		if len(u) != 3 || u["kind"] != "person" {
+			t.Errorf("a user carries %v, want only userId, displayName and the kind person", u)
 		}
 	}
 	var sawMe bool
@@ -228,6 +228,19 @@ func TestAssignableUsers(t *testing.T) {
 	q.JSON(&found)
 	if q.Status != http.StatusOK || len(found) != 1 || found[0].UserId != named.String() {
 		t.Errorf("query zebulon = %d %s, want only %s", q.Status, q.Body, named)
+	}
+	// An agent is offered, marked by its kind (virtual employees design V5).
+	agentID := uuid.New()
+	h.Exec(t, `INSERT INTO identity.users (id, email, normalized_email, display_name, kind, version, created_at, updated_at)
+		VALUES ($1, $2, upper($2), 'Hanna Agentova', 'agent', $3, now(), now())`, agentID, "agent-"+agentID.String()+"@agents.invalid", uuid.New())
+	var agents []struct {
+		UserId string `json:"userId"`
+		Kind   string `json:"kind"`
+	}
+	a := c.Do(http.MethodGet, "/api/v1/communications/assignable-users?query=agentova", nil)
+	a.JSON(&agents)
+	if a.Status != http.StatusOK || len(agents) != 1 || agents[0].UserId != agentID.String() || agents[0].Kind != "agent" {
+		t.Errorf("query agentova = %d %s, want only the agent, kind agent", a.Status, a.Body)
 	}
 	if r := c.Do(http.MethodGet, "/api/v1/communications/assignable-users?query="+strings.Repeat("a", 201), nil); r.Status != http.StatusBadRequest {
 		t.Errorf("a 201-character query: status %d, want 400", r.Status)
