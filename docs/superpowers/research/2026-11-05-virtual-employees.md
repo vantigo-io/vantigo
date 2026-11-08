@@ -14,7 +14,15 @@ codebase as it stands and from comparable products:
 
 A design spec starts from §9 and does not reopen it.
 
-Code references are against `main` at `1633ac87`. Abbreviations:
+Code references are against `main` at `1633ac87`.
+
+> **Correction, 2026-11-08.** §3.1, §5.5 and §9 say Communications has no assignee. It has
+> one in the data and the API (`conversations.assigned_user_id`, `assignedUserId` on
+> `PATCH` and on the list, the panel's *Assigned to me*), but no screen sets it and nothing
+> checks it. The design
+> ([`2026-11-08-virtual-employees-design.md`](../specs/2026-11-08-virtual-employees-design.md)
+> V2) sizes delivery 0 from that. The Knowledge module (2026-11-07) also exists now, and
+> agents read it in the first version (design V16). Abbreviations:
 - `srv/` is `apps/server/internal/`;
 - "AR" is `docs/src/content/docs/en/reference/assistant.md`;
 - "CR" is `docs/src/content/docs/en/reference/communications.md`;
