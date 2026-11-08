@@ -2073,7 +2073,7 @@ export interface operations {
                     "application/json": components["schemas"]["CommunicationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity — channel_invalid, customer_invalid, and for a messenger channel channel_cannot_start (without a participantId only the person writing first starts a conversation), participant_invalid (the participant is not of the channel), reply_window_closed (the person has not written within the reply window) and the replies' own 422s. */
+            /** @description Unprocessable Entity — channel_invalid, customer_invalid, agent_start_not_allowed (an agent starts from a channel with no Cc and not from a personal mailbox), and for a messenger channel channel_cannot_start (without a participantId only the person writing first starts a conversation), participant_invalid (the participant is not of the channel), reply_window_closed (the person has not written within the reply window) and the replies' own 422s. */
             422: {
                 headers: {
                     [name: string]: unknown;

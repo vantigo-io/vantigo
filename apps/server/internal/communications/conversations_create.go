@@ -223,6 +223,24 @@ func (s *server) PostCommunicationsConversations(ctx context.Context, req gen.Po
 			"idempotency_key_required", "A valid Idempotency-Key header is required.")), nil
 	}
 
+	// A conversation started through an agent grant (virtual employees design V29)
+	// is marked as the agent's, from the principal alone, and goes from the channel
+	// to the addresses in to: no Cc, and never from a person's own mailbox.
+	var agentID *uuid.UUID
+	if p, ok := contracts.PrincipalFrom(ctx); ok && p.Via != nil && p.Via.Kind == contracts.ViaAgent {
+		id := p.Via.AgentID
+		agentID = &id
+		if (body.Cc != nil && len(*body.Cc) > 0) || (body.SendFromPersonal != nil && *body.SendFromPersonal) {
+			return gen.PostCommunicationsConversations422JSONResponse(flatErrorBody(
+				"agent_start_not_allowed", "An agent starts a conversation from a channel, to the addresses in to, with no Cc.")), nil
+		}
+		if body.ChannelId == nil {
+			return gen.PostCommunicationsConversations400JSONResponse(validationErrorBody(map[string][]string{
+				"channelId": {"An agent names the channel it starts the conversation on."},
+			})), nil
+		}
+	}
+
 	fingerprint, err := fingerprintOf(body)
 	if err != nil {
 		return nil, err
@@ -347,6 +365,7 @@ func (s *server) PostCommunicationsConversations(ctx context.Context, req gen.Po
 			ID: messageID, ConversationID: conversationID, Direction: "outbound", AuthorUserID: &caller,
 			Subject: body.Subject, TextBody: body.TextBody, HtmlBody: body.HtmlBody, OccurredAt: now, CreatedAt: now,
 			RfcMessageID: &rfcMessageID, SendAs: sendAs, FromAddress: fromAddress, FromDisplayName: fromDisplayName, SendProvider: sendProvider,
+			AgentID: agentID,
 		}); err != nil {
 			return err
 		}
