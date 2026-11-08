@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/agentloop"
 	"github.com/vantigo-io/vantigo/server/internal/assistant/gen"
 	"github.com/vantigo-io/vantigo/server/internal/assistant/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -237,7 +238,7 @@ type before struct {
 // best effort and never a write.
 func (t *toolbox) readBefore(info operations.Info, req operations.CallRequest) (*before, []loggedCall) {
 	var getter *operations.Info
-	for _, candidate := range t.callable {
+	for _, candidate := range t.ops.Callable() {
 		if candidate.Method == "GET" && candidate.Path == info.Path && candidate.Mode == operations.ModeAuto {
 			c := candidate
 			getter = &c
@@ -310,7 +311,7 @@ func (t *toolbox) propose(info operations.Info, req operations.CallRequest, expl
 			o.operation, o.mode, o.detail = out.operation, out.mode, out.detail
 			return o
 		}
-		return outcome{content: wrap(map[string]string{"error": "call_failed", "message": "the request could not be checked"}), status: "error", operation: out.operation, mode: out.mode, detail: out.detail}
+		return outcome{content: agentloop.Wrap(map[string]string{"error": "call_failed", "message": "the request could not be checked"}), status: "error", operation: out.operation, mode: out.mode, detail: out.detail}
 	}
 
 	body, _ := decodeObject(req.Body)
@@ -355,7 +356,7 @@ func (t *toolbox) propose(info operations.Info, req operations.CallRequest, expl
 	// operation takes an If-Match and the model gave none.
 	headers := req.Headers
 	if prior != nil && prior.etag != "" {
-		for name, where := range t.locationsFor(req.OperationID) {
+		for name, where := range t.ops.Locations(req.OperationID) {
 			if where == "header" && strings.EqualFold(name, "If-Match") {
 				if headers == nil {
 					headers = map[string]string{}
@@ -375,7 +376,7 @@ func (t *toolbox) propose(info operations.Info, req operations.CallRequest, expl
 		},
 		preview: doc,
 	}
-	out.content = wrap(map[string]any{
+	out.content = agentloop.Wrap(map[string]any{
 		"status":  stateAwaiting,
 		"summary": info.Summary,
 		"note":    "Nothing has been changed. The change is shown to the person on a card and runs only if they confirm it. Say in one sentence what you proposed and that it waits for their confirmation, then stop. Do not call another operation that changes data, and never say the change is done.",
@@ -411,22 +412,6 @@ func cardFields(names []string, body, current map[string]any) []gen.AssistantPen
 		fields = append(fields, field)
 	}
 	return fields
-}
-
-// locationsFor is where each parameter of an operation goes, read once.
-func (t *toolbox) locationsFor(id string) map[string]string {
-	if loc, ok := t.params[id]; ok {
-		return loc
-	}
-	var loc map[string]string
-	if doc, err := t.s.deps.Operations.Describe(id); err == nil {
-		var m map[string]any
-		if json.Unmarshal(doc, &m) == nil {
-			loc = paramLocations(m)
-		}
-	}
-	t.params[id] = loc
-	return loc
 }
 
 // createPending stores the draft and its card, tied to the tool result that
@@ -499,7 +484,7 @@ func (r *runner) perform(action store.AssistantPendingAction) settled {
 		var oe *operations.Error
 		if errors.As(err, &oe) {
 			s := failedSettlement("refused", oe.Message)
-			s.content = wrap(map[string]any{"changed": false, "error": oe.Code, "message": oe.Message})
+			s.content = agentloop.Wrap(map[string]any{"changed": false, "error": oe.Code, "message": oe.Message})
 			return s
 		}
 		return failedSettlement("failed", "the change failed unexpectedly")
@@ -515,7 +500,7 @@ func (r *runner) perform(action store.AssistantPendingAction) settled {
 		body["changed"] = true
 		if res.Truncated {
 			body["truncated"] = true
-		} else if b := compactBody(res.Body); b != nil {
+		} else if b := agentloop.CompactBody(res.Body); b != nil {
 			body["body"] = b
 		}
 		if created, ok := decodeObject(res.Body); ok {
@@ -552,11 +537,11 @@ func (r *runner) perform(action store.AssistantPendingAction) settled {
 			s.outcome.Message = &msg
 		}
 		body["changed"] = false
-		if b := compactBody(res.Body); b != nil {
+		if b := agentloop.CompactBody(res.Body); b != nil {
 			body["body"] = b
 		}
 	}
-	s.content = wrap(body)
+	s.content = agentloop.Wrap(body)
 	return s
 }
 
@@ -576,14 +561,14 @@ func failedSettlement(reason, message string) settled {
 	s := settled{state: "error", status: "failed"}
 	s.outcome.Reason = &reason
 	s.outcome.Message = &message
-	s.content = wrap(map[string]any{"changed": false, "error": reason, "message": message})
+	s.content = agentloop.Wrap(map[string]any{"changed": false, "error": reason, "message": message})
 	return s
 }
 
 func cancelledSettlement() settled {
 	reason := "cancelled"
 	return settled{
-		content: wrap(map[string]any{"changed": false, "cancelled": true, "note": "the person cancelled the change; nothing was written. Answer in one short line."}),
+		content: agentloop.Wrap(map[string]any{"changed": false, "cancelled": true, "note": "the person cancelled the change; nothing was written. Answer in one short line."}),
 		state:   "ok", status: "cancelled", outcome: gen.AssistantPendingOutcome{Reason: &reason},
 	}
 }
@@ -774,7 +759,7 @@ func (s *server) resumeDecided(ctx context.Context, conv store.GetConversationRo
 
 	r := &runner{
 		s: s, ctx: runCtx, runID: claimed.RunID, convID: conv.ID, userID: user, grantID: grantID, queue: queue, lang: lang, name: name,
-		tools:  &toolbox{s: s, ctx: runCtx, userID: user, lang: lang, params: map[string]map[string]string{}},
+		tools:  s.newToolbox(runCtx, user, lang),
 		resume: &decision{action: claimed, confirm: confirm},
 	}
 	go func() {

@@ -10,6 +10,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/vantigo-io/vantigo/server/internal/agentloop"
 	"github.com/vantigo-io/vantigo/server/internal/ai"
 	"github.com/vantigo-io/vantigo/server/internal/assistant/gen"
 )
@@ -139,7 +140,7 @@ func (t *toolbox) showTour(raw json.RawMessage) outcome {
 			Body   string `json:"body"`
 		} `json:"steps"`
 	}
-	if err := toolArgs(raw, &args); err != nil || len(args.Steps) == 0 {
+	if err := agentloop.ToolArgs(raw, &args); err != nil || len(args.Steps) == 0 {
 		return refused("invalid_arguments", "steps is required: a list of {target, title, body}")
 	}
 	if len(args.Steps) > maxTourSteps {
@@ -160,7 +161,7 @@ func (t *toolbox) showTour(raw json.RawMessage) outcome {
 		steps = append(steps, gen.AssistantTourStep{Target: s.Target, Title: strings.TrimSpace(s.Title), Body: strings.TrimSpace(s.Body)})
 	}
 	return outcome{
-		content:   wrap(map[string]any{"shown": fmt.Sprintf("a \"Show me\" button for a tour of %d steps; the person starts it with a click", len(steps))}),
+		content:   agentloop.Wrap(map[string]any{"shown": fmt.Sprintf("a \"Show me\" button for a tour of %d steps; the person starts it with a click", len(steps))}),
 		status:    "ok",
 		mode:      "tool",
 		operation: "tool:" + toolShowTour,

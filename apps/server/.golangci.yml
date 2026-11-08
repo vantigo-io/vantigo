@@ -1487,7 +1487,8 @@ linters:
         operations:
           # The Assistant's dispatcher calls any operation of the merged
           # contract in-process, through the router, as the person (module
-          # boundaries rule 18). Only the assistant module holds it. Compose
+          # boundaries rule 18). Only the assistant module holds it, and the
+          # model loop it runs on (internal/agentloop). Compose
           # (internal/module) builds and binds it, internal/server composes the
           # API, and the internal/modtest harness builds one over a harness's API
           # for the tests; internal/integration is the test-only package that
@@ -1497,6 +1498,7 @@ linters:
           files:
             - "$all"
             - "!**/internal/assistant/**"
+            - "!**/internal/agentloop/**"
             - "!**/internal/module/**"
             - "!**/internal/server/**"
             - "!**/internal/modtest/**"
@@ -1504,9 +1506,9 @@ linters:
             - "!**/internal/operations/**"
           deny:
             - pkg: github.com/vantigo-io/vantigo/server/internal/operations$
-              desc: "only internal/assistant, internal/module, internal/server and the test harnesses (internal/modtest, internal/integration) may import internal/operations"
+              desc: "only internal/assistant, internal/agentloop, internal/module, internal/server and the test harnesses (internal/modtest, internal/integration) may import internal/operations"
             - pkg: github.com/vantigo-io/vantigo/server/internal/operations/
-              desc: "only internal/assistant, internal/module, internal/server and the test harnesses (internal/modtest, internal/integration) may import internal/operations"
+              desc: "only internal/assistant, internal/agentloop, internal/module, internal/server and the test harnesses (internal/modtest, internal/integration) may import internal/operations"
         platform:
           # Every platform package, not only the two the modules mount
           # through: nothing below cmd/vantigo may know a business module
@@ -1520,6 +1522,7 @@ linters:
           # makes impossible anywhere else. See its doc.go — if anything
           # non-test is ever added there, it needs a rule of its own.
           files:
+            - "**/internal/agentloop/**"
             - "**/internal/ai/**"
             - "**/internal/module/**"
             - "**/internal/contracts/**"

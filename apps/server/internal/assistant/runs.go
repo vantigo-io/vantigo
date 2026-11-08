@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/vantigo-io/vantigo/server/internal/agentloop"
 	"github.com/vantigo-io/vantigo/server/internal/ai"
 	"github.com/vantigo-io/vantigo/server/internal/assistant/gen"
 	"github.com/vantigo-io/vantigo/server/internal/assistant/store"
@@ -224,7 +225,7 @@ func (s *server) SendAssistantMessage(ctx context.Context, req gen.SendAssistant
 	r := &runner{
 		s: s, ctx: runCtx, runID: runID, convID: conv.ID, userID: user, grantID: grantID, queue: queue,
 		lang: lang, name: name,
-		tools: &toolbox{s: s, ctx: runCtx, userID: user, lang: lang, params: map[string]map[string]string{}},
+		tools: s.newToolbox(runCtx, user, lang),
 	}
 	started = true
 	go func() {
@@ -284,7 +285,7 @@ type runner struct {
 	tools   *toolbox
 	resume  *decision
 
-	toolCalls, turns int
+	turns int
 	// final has the run answer once without tools: the resumed run after a bulk
 	// job ends tells the person how it went.
 	final bool
@@ -381,88 +382,20 @@ func (r *runner) execute() {
 	}
 	history := modelMessages(afterSummary(rows, cstate), actions, loc)
 	if cstate.Summary != nil {
-		history = append([]ai.Message{{Role: ai.RoleUser, Text: summaryMessage(*cstate.Summary)}}, history...)
+		history = append([]ai.Message{{Role: ai.RoleUser, Text: agentloop.SummaryMessage(*cstate.Summary)}}, history...)
 	}
 
-	for {
-		if cause := r.stopped(); cause != "" {
-			state, code = cause, ""
-			if cause == "failed" {
-				code = "timeout"
-			}
-			return
-		}
-		// The Owner's daily token budget (S14), judged before every model turn.
-		if over, err := r.s.overBudget(r.persist(), r.userID); err == nil && over {
-			state, code = "failed", codeBudgetExhausted
-			return
-		}
-		r.turns++
-		final := r.turns >= maxTurns || r.toolCalls >= maxToolCalls
-		req := ai.ChatRequest{System: system, Messages: history, Tools: toolDefs, ToolsDisabled: final, MaxTokens: answerTokens}
-		if final {
-			// The last turn is answered without tools. A provider that does not
-			// preserve thinking is simply sent none; Anthropic keeps the tool set
-			// the conversation began with and is told not to use it.
-			if !preserving {
-				req.Tools = nil
-			}
-		}
-		if !preserving {
-			// S7: older tool results are shortened in place, for the providers
-			// whose history carries no signed thinking.
-			req.Messages = fitContext(system, req.Tools, history, budget)
-		}
-		resp, err := r.s.deps.AI.Chat(r.ctx, aiTaskChat, req, func(text string) { r.queue.emit(eventDelta, map[string]string{"text": text}) })
-		if err != nil {
-			if cause := r.stopped(); cause != "" {
-				state = cause
-				if cause == "failed" {
-					code = "timeout"
-				}
-				return
-			}
-			state, code = "failed", "ai_failed"
-			if _, refused := ai.RefusalCategory(err); refused {
-				code = codeAIRefused
-			}
-			r.s.deps.Logger.Warn("assistant: the model call failed", "run", r.runID, "error_type", fmt.Sprintf("%T", err))
-			return
-		}
-		r.s.countTokens(r.persist(), r.userID, resp.InputTokens, resp.OutputTokens)
-		_ = store.New(r.s.deps.Pool).CountRunProgress(r.persist(), store.CountRunProgressParams{ID: r.runID, ToolCalls: int32(r.toolCalls), ModelTurns: int32(r.turns)})
-
-		calls := resp.Message.ToolCalls
-		if final {
-			calls = nil // no tools were offered; whatever a stubborn model asks is ignored
-		}
-		assistantMsg, err := r.saveAssistant(resp, calls)
-		if err != nil {
-			state, code = "failed", "internal"
-			r.s.deps.Logger.Error("assistant: save the answer", "run", r.runID, "error", err)
-			return
-		}
-		history = append(history, ai.Message{Role: ai.RoleAssistant, Text: resp.Message.Text, ToolCalls: calls, Provider: providerBlocks(resp, calls)})
-		if len(calls) == 0 {
-			return
-		}
-
-		var parts []gen.AssistantPart
-		for _, call := range calls {
-			result, part := r.runTool(call)
-			history = append(history, ai.Message{Role: ai.RoleTool, ToolCallID: call.ID, Text: result})
-			if part != nil {
-				parts = append(parts, *part)
-			}
-		}
-		if len(parts) > 0 {
-			r.addLinks(assistantMsg, parts)
-		}
-		if r.proposed != nil {
-			// A change waits for the person: the turn, the stream and the grant end.
-			state = stateAwaiting
-			return
-		}
+	out, err := r.loop(budget).Run(r.ctx, agentloop.Input{System: system, History: history, Turns: r.turns})
+	state, code = out.State, out.Code
+	if state == agentloop.StatePaused {
+		state = stateAwaiting
+	}
+	switch {
+	case err == nil:
+	case code == agentloop.CodeAIFailed || code == agentloop.CodeAIRefused:
+		r.s.deps.Logger.Warn("assistant: the model call failed", "run", r.runID, "error_type", fmt.Sprintf("%T", errors.Unwrap(err)))
+	default:
+		r.s.deps.Logger.Error("assistant: the run failed", "run", r.runID, "error", err)
 	}
 }
 
@@ -502,7 +435,7 @@ func (r *runner) saveAssistant(resp ai.ChatResponse, calls []ai.ToolCall) (store
 	msg, err := store.New(r.s.deps.Pool).InsertMessage(r.persist(), store.InsertMessageParams{
 		ID: uuid.New(), ConversationID: r.convID, RunID: &r.runID, Role: "assistant", Content: marshalParts(parts),
 		SearchText: resp.Message.Text, Model: model, InputTokens: resp.InputTokens, OutputTokens: resp.OutputTokens,
-		Provider: providerBlocks(resp, calls), CacheReadTokens: resp.CacheReadTokens, CacheWriteTokens: resp.CacheWriteTokens,
+		Provider: agentloop.ProviderBlocks(resp, calls), CacheReadTokens: resp.CacheReadTokens, CacheWriteTokens: resp.CacheWriteTokens,
 		Now: r.s.deps.Clock(),
 	})
 	if err != nil {
@@ -527,92 +460,6 @@ func (r *runner) addLinks(msg store.AssistantMessage, links []gen.AssistantPart)
 	}
 	msg.Content = content
 	r.queue.emit(eventMessage, messageView(msg))
-}
-
-// runTool executes one tool call: it announces it, runs it, writes the action
-// and the tool message, and answers the content the model sees and the part a
-// navigate produced (a link) or a proposed change (its card).
-func (r *runner) runTool(call ai.ToolCall) (string, *gen.AssistantPart) {
-	r.toolCalls++
-	label := toolLabel(r.lang, call.Name, "")
-	r.queue.emit(eventTool, map[string]any{"callId": call.ID, "name": call.Name, "label": label, "state": "started"})
-
-	var out outcome
-	start := time.Now()
-	if r.toolCalls > maxToolCalls {
-		out = refused("tool_limit", "the limit of tool calls for this answer is reached; answer with what you have")
-	} else {
-		out = r.tools.run(call)
-	}
-	elapsed := time.Since(start)
-	if out.detail != "" {
-		label = toolLabel(r.lang, call.Name, out.detail)
-	}
-	if out.operation == "" {
-		out.operation = "tool:" + call.Name
-	}
-	if out.mode == "" {
-		out.mode = "tool"
-	}
-
-	// A proposed change is stored before its tool result is, with the result's
-	// id, so the decision can replace the waiting result with the real one.
-	toolMessageID := uuid.New()
-	var proposed *store.AssistantPendingAction
-	if out.pending != nil {
-		row, err := r.createPending(out.pending, call.ID, toolMessageID)
-		if err != nil {
-			r.s.deps.Logger.Error("assistant: store a pending action", "run", r.runID, "error", err)
-			out = outcome{content: wrap(map[string]string{"error": "call_failed", "message": "the change could not be prepared"}), status: "error", operation: out.operation, mode: out.mode, detail: out.detail}
-		} else {
-			proposed = &row
-			r.proposed = &row
-		}
-	}
-
-	q := store.New(r.s.deps.Pool)
-	for _, extra := range out.extra {
-		st := extra.status
-		if err := q.InsertAction(r.persist(), store.InsertActionParams{
-			ID: uuid.New(), RunID: r.runID, OperationID: extra.operation, Mode: extra.mode, HttpStatus: &st,
-			DurationMs: int32(extra.elapsed.Milliseconds()), Now: r.s.deps.Clock(),
-		}); err != nil {
-			r.s.deps.Logger.Error("assistant: log an action", "run", r.runID, "error", err)
-		}
-	}
-	if err := q.InsertAction(r.persist(), store.InsertActionParams{
-		ID: uuid.New(), RunID: r.runID, OperationID: out.operation, Mode: out.mode, HttpStatus: out.httpStatus,
-		DurationMs: int32(elapsed.Milliseconds()), Now: r.s.deps.Clock(),
-	}); err != nil {
-		r.s.deps.Logger.Error("assistant: log an action", "run", r.runID, "error", err)
-	}
-
-	callID, name, status, content := call.ID, call.Name, gen.AssistantPartStatus(out.status), out.content
-	part := gen.AssistantPart{Type: gen.AssistantPartType("tool_result"), CallId: &callID, Name: &name, Status: &status, Content: &content}
-	msg, err := q.InsertMessage(r.persist(), store.InsertMessageParams{
-		ID: toolMessageID, ConversationID: r.convID, RunID: &r.runID, Role: "tool", Content: marshalParts([]gen.AssistantPart{part}), Now: r.s.deps.Clock(),
-	})
-	if err != nil {
-		r.s.deps.Logger.Error("assistant: save a tool result", "run", r.runID, "error", err)
-	} else {
-		r.queue.emit(eventMessage, messageView(msg))
-	}
-	r.queue.emit(eventTool, map[string]any{"callId": call.ID, "name": call.Name, "label": label, "state": "done"})
-
-	var link *gen.AssistantPart
-	switch {
-	case proposed != nil:
-		id := proposed.ID
-		link = &gen.AssistantPart{Type: gen.AssistantPartType("confirmation"), ActionId: &id}
-		r.queue.emit(eventConfirmation, r.s.cardOf(r.persist(), *proposed))
-	case out.link != nil:
-		route, linkLabel := out.link.route, out.link.label
-		link = &gen.AssistantPart{Type: gen.AssistantPartType("link"), Route: &route, Label: &linkLabel}
-	case len(out.tour) > 0:
-		steps := out.tour
-		link = &gen.AssistantPart{Type: gen.AssistantPartType("tour"), Steps: &steps}
-	}
-	return out.content, link
 }
 
 // modelMessages rebuilds the model's transcript from the stored messages: the
@@ -664,7 +511,7 @@ func modelMessages(rows []store.AssistantMessage, actions []store.AssistantPendi
 						content = *p.Content
 					}
 					if why, ok := undone[row.ID]; ok {
-						content = wrap(map[string]any{"changed": false, "status": why, "note": "the change was not made"})
+						content = agentloop.Wrap(map[string]any{"changed": false, "status": why, "note": "the change was not made"})
 					}
 					out = append(out, ai.Message{Role: ai.RoleTool, ToolCallID: *p.CallId, Text: content})
 				}
@@ -684,16 +531,6 @@ func rowContext(row store.AssistantMessage) *gen.AssistantMessageContext {
 		return nil
 	}
 	return &c
-}
-
-// providerBlocks is the provider's own record of an answer, kept with the turn
-// to be replayed unchanged. A turn whose tool calls were not all kept (a final
-// turn that was offered none) has none: it would not match its results.
-func providerBlocks(resp ai.ChatResponse, calls []ai.ToolCall) json.RawMessage {
-	if len(calls) != len(resp.Message.ToolCalls) {
-		return nil
-	}
-	return resp.Message.Provider
 }
 
 func joinText(parts []gen.AssistantPart) string {
