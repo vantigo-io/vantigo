@@ -27,4 +27,6 @@ export const isVersionConflict = (error: unknown) => errorCode(error) === "versi
 /** Raising a level, choosing an Auto mode or binding a channel is the Owner's alone (V12). */
 export const isOwnerRequired = (error: unknown) => errorCode(error) === "owner_required";
 export const isCompanyNameRequired = (error: unknown) => errorCode(error) === "company_name_required";
+export const isSuggestionStale = (error: unknown) => errorCode(error) === "suggestion_stale";
+export const isSuggestionDecided = (error: unknown) => errorCode(error) === "suggestion_decided";
 export const isChannelBound = (error: unknown) => errorCode(error) === "channel_bound";

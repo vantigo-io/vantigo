@@ -31,6 +31,9 @@ export type AgentRunAction = Schemas["AgentRunAction"];
 export type AgentRunMessage = Schemas["AgentRunMessage"];
 export type AgentAuditList = Schemas["AgentAuditList"];
 export type AgentAuditEvent = Schemas["AgentAuditEvent"];
+export type AgentMemoryCounts = Schemas["AgentMemoryCounts"];
+export type InstructionSuggestion = Schemas["InstructionSuggestion"];
+export type InstructionSuggestionList = Schemas["InstructionSuggestionList"];
 
 export type DisclosureWording = Agent["disclosureWording"];
 export type AgentLanguages = Agent["languages"];
