@@ -11,25 +11,29 @@ import (
 )
 
 type KnowledgeArticle struct {
-	ID                 uuid.UUID
-	ParentID           *uuid.UUID
-	Position           string
-	Title              string
-	Icon               *string
-	Content            []byte
-	ContentText        string
-	InternalPermission *string
-	Version            int32
-	Locked             bool
-	AiHidden           bool
-	CreatedBy          *uuid.UUID
-	CreatedAt          time.Time
-	UpdatedBy          *uuid.UUID
-	UpdatedAt          time.Time
-	TrashedAt          *time.Time
-	TrashedBy          *uuid.UUID
-	TrashRoot          *uuid.UUID
-	Search             interface{}
+	ID                  uuid.UUID
+	ParentID            *uuid.UUID
+	Position            string
+	Title               string
+	Icon                *string
+	Content             []byte
+	ContentText         string
+	InternalPermission  *string
+	Version             int32
+	Locked              bool
+	AiHidden            bool
+	CreatedBy           *uuid.UUID
+	CreatedAt           time.Time
+	UpdatedBy           *uuid.UUID
+	UpdatedAt           time.Time
+	TrashedAt           *time.Time
+	TrashedBy           *uuid.UUID
+	TrashRoot           *uuid.UUID
+	Search              interface{}
+	DocEpoch            int32
+	UpdateRows          int32
+	UpdateBytes         int64
+	LastCompactionAskAt *time.Time
 }
 
 type KnowledgeArticleAccess struct {
@@ -65,6 +69,14 @@ type KnowledgeArticleMember struct {
 	ArticleID  uuid.UUID
 	UserID     uuid.UUID
 	Permission string
+}
+
+type KnowledgeArticleUpdate struct {
+	ArticleID uuid.UUID
+	Seq       int64
+	Data      []byte
+	CreatedBy *uuid.UUID
+	CreatedAt time.Time
 }
 
 type KnowledgeArticleVersion struct {

@@ -42,6 +42,24 @@ func (e KnowledgeAccessLevel) Valid() bool {
 	}
 }
 
+// Defines values for KnowledgeContentUpdateMode.
+const (
+	Collab KnowledgeContentUpdateMode = "collab"
+	Single KnowledgeContentUpdateMode = "single"
+)
+
+// Valid indicates whether the value is a known member of the KnowledgeContentUpdateMode enum.
+func (e KnowledgeContentUpdateMode) Valid() bool {
+	switch e {
+	case Collab:
+		return true
+	case Single:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for KnowledgePermission.
 const (
 	KnowledgePermissionRead  KnowledgePermission = "read"
@@ -271,15 +289,23 @@ type KnowledgeBacklink struct {
 // KnowledgeBacklinkList defines model for KnowledgeBacklinkList.
 type KnowledgeBacklinkList = []KnowledgeBacklink
 
-// KnowledgeContentUpdate An autosave (K9): the title and the document, with the version the editor last read.
+// KnowledgeContentUpdate An autosave (K9): the title and the document. A single-editor save (the default) carries the version the editor last read; a collaborative save (K32) does not.
 type KnowledgeContentUpdate struct {
 	// Content A ProseMirror document as the editor stores it (K8): {type: doc, content: [...]}. Only the allowlisted nodes, marks and attributes are accepted (invalid_document names the JSON path of the first one refused), and a document over 2 MiB is refused with 413 document_too_large. HTML is never stored.
-	Content         KnowledgeDocument `json:"content"`
-	ExpectedVersion int32             `json:"expectedVersion"`
+	Content KnowledgeDocument `json:"content"`
+
+	// ExpectedVersion The version the editor last read. Required with mode single (a missing one is 400, a stale one 409 version_conflict); ignored with mode collab.
+	ExpectedVersion *int32 `json:"expectedVersion,omitempty"`
+
+	// Mode Absent means single. single: today's save over expectedVersion, which also deletes the article's live log (K32). collab: a save by a client in live co-editing, which compares no version, keeps the lock and the document checks, leaves the log, and is refused (409 collab_inactive) while the log is empty.
+	Mode *KnowledgeContentUpdateMode `json:"mode,omitempty"`
 
 	// Title The article's title; empty is shown as Untitled.
 	Title string `json:"title"`
 }
+
+// KnowledgeContentUpdateMode Absent means single. single: today's save over expectedVersion, which also deletes the article's live log (K32). collab: a save by a client in live co-editing, which compares no version, keeps the lock and the document checks, leaves the log, and is refused (409 collab_inactive) while the log is empty.
+type KnowledgeContentUpdateMode string
 
 // KnowledgeDocument A ProseMirror document as the editor stores it (K8): {type: doc, content: [...]}. Only the allowlisted nodes, marks and attributes are accepted (invalid_document names the JSON path of the first one refused), and a document over 2 MiB is refused with 413 document_too_large. HTML is never stored.
 type KnowledgeDocument map[string]interface{}
@@ -643,6 +669,9 @@ type ServerInterface interface {
 	// ListKnowledgeBacklinks List an article's backlinks
 	// (GET /api/v1/knowledge/articles/{id}/backlinks)
 	ListKnowledgeBacklinks(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// ResetKnowledgeArticleLog Reset an article's live log
+	// (POST /api/v1/knowledge/articles/{id}/collab/reset)
+	ResetKnowledgeArticleLog(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// UpdateKnowledgeArticleContent Save an article's title and content
 	// (PUT /api/v1/knowledge/articles/{id}/content)
 	UpdateKnowledgeArticleContent(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -858,6 +887,32 @@ func (siw *ServerInterfaceWrapper) ListKnowledgeBacklinks(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListKnowledgeBacklinks(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResetKnowledgeArticleLog operation middleware
+func (siw *ServerInterfaceWrapper) ResetKnowledgeArticleLog(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResetKnowledgeArticleLog(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1628,6 +1683,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/access", wrapper.GetKnowledgeArticleAccess)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/access", wrapper.UpdateKnowledgeArticleAccess)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/backlinks", wrapper.ListKnowledgeBacklinks)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/collab/reset", wrapper.ResetKnowledgeArticleLog)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/content", wrapper.UpdateKnowledgeArticleContent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/export", wrapper.ExportKnowledgeArticle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/knowledge/articles/{id}/files", wrapper.UploadKnowledgeFile)
@@ -2119,6 +2175,72 @@ type ListKnowledgeBacklinks404Response struct {
 }
 
 func (response ListKnowledgeBacklinks404Response) VisitListKnowledgeBacklinksResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ResetKnowledgeArticleLogRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type ResetKnowledgeArticleLogResponseObject interface {
+	VisitResetKnowledgeArticleLogResponse(w http.ResponseWriter) error
+}
+
+type ResetKnowledgeArticleLog204Response struct {
+}
+
+func (response ResetKnowledgeArticleLog204Response) VisitResetKnowledgeArticleLogResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ResetKnowledgeArticleLog401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ResetKnowledgeArticleLog401JSONResponse) VisitResetKnowledgeArticleLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetKnowledgeArticleLog403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ResetKnowledgeArticleLog403JSONResponse) VisitResetKnowledgeArticleLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetKnowledgeArticleLog403ApplicationProblemPlusJSONResponse KnowledgeProblem
+
+func (response ResetKnowledgeArticleLog403ApplicationProblemPlusJSONResponse) VisitResetKnowledgeArticleLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetKnowledgeArticleLog404Response struct {
+}
+
+func (response ResetKnowledgeArticleLog404Response) VisitResetKnowledgeArticleLogResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
 }
@@ -3889,6 +4011,9 @@ type StrictServerInterface interface {
 	// ListKnowledgeBacklinks List an article's backlinks
 	// (GET /api/v1/knowledge/articles/{id}/backlinks)
 	ListKnowledgeBacklinks(ctx context.Context, request ListKnowledgeBacklinksRequestObject) (ListKnowledgeBacklinksResponseObject, error)
+	// ResetKnowledgeArticleLog Reset an article's live log
+	// (POST /api/v1/knowledge/articles/{id}/collab/reset)
+	ResetKnowledgeArticleLog(ctx context.Context, request ResetKnowledgeArticleLogRequestObject) (ResetKnowledgeArticleLogResponseObject, error)
 	// UpdateKnowledgeArticleContent Save an article's title and content
 	// (PUT /api/v1/knowledge/articles/{id}/content)
 	UpdateKnowledgeArticleContent(ctx context.Context, request UpdateKnowledgeArticleContentRequestObject) (UpdateKnowledgeArticleContentResponseObject, error)
@@ -4167,6 +4292,32 @@ func (sh *strictHandler) ListKnowledgeBacklinks(w http.ResponseWriter, r *http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListKnowledgeBacklinksResponseObject); ok {
 		if err := validResponse.VisitListKnowledgeBacklinksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResetKnowledgeArticleLog operation middleware
+func (sh *strictHandler) ResetKnowledgeArticleLog(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request ResetKnowledgeArticleLogRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResetKnowledgeArticleLog(ctx, request.(ResetKnowledgeArticleLogRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResetKnowledgeArticleLog")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResetKnowledgeArticleLogResponseObject); ok {
+		if err := validResponse.VisitResetKnowledgeArticleLogResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

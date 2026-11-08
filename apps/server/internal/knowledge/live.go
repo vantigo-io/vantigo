@@ -25,14 +25,36 @@ const (
 	// that a hidden article exists. It is sent only when something the
 	// sidebar shows changes — never for a content save that keeps the title.
 	liveTree = "knowledge.tree"
+	// liveDoc is one article's live document (K26), keyed by its id, for
+	// co-editing: binary update frames and the document protocol, stored in
+	// article_updates. It has no presence; the article topic keeps K13's.
+	liveDoc = "knowledge.doc"
 )
 
 // liveTopics is the module's LiveTopics. The tree is authorised by
-// knowledge:articles; an article by the rule its GET applies — the
-// permission, and read access to an article that is not trashed (K4–K6). An
-// article that does not exist and one the person may not read are both
-// ErrForbidden, so a subscription is no existence oracle.
+// knowledge:articles; an article, and its document, by the rule the article's
+// GET applies — the permission, and read access to an article that is not
+// trashed (K4–K6). An article that does not exist and one the person may not
+// read are both ErrForbidden, so a subscription is no existence oracle.
 func liveTopics(d module.Deps) []live.Topic {
+	authorizeArticle := func(ctx context.Context, key string) error {
+		id, err := uuid.Parse(key)
+		if err != nil || !live.HasPermission(ctx, permArticles) {
+			return live.ErrForbidden
+		}
+		userID, ok := contracts.AsUserFrom(ctx)
+		if !ok {
+			return live.ErrForbidden
+		}
+		readable, err := store.New(d.Pool).CanReadArticle(ctx, store.CanReadArticleParams{UserID: userID, ArticleID: id})
+		if err != nil {
+			return fmt.Errorf("knowledge: authorise an article's topic: %w", err)
+		}
+		if !readable {
+			return live.ErrForbidden
+		}
+		return nil
+	}
 	return []live.Topic{
 		{Kind: liveTree, Authorize: func(ctx context.Context, key string) error {
 			if key != "" || !live.HasPermission(ctx, permArticles) {
@@ -40,24 +62,8 @@ func liveTopics(d module.Deps) []live.Topic {
 			}
 			return nil
 		}},
-		{Kind: liveArticle, Presence: true, Authorize: func(ctx context.Context, key string) error {
-			id, err := uuid.Parse(key)
-			if err != nil || !live.HasPermission(ctx, permArticles) {
-				return live.ErrForbidden
-			}
-			userID, ok := contracts.AsUserFrom(ctx)
-			if !ok {
-				return live.ErrForbidden
-			}
-			readable, err := store.New(d.Pool).CanReadArticle(ctx, store.CanReadArticleParams{UserID: userID, ArticleID: id})
-			if err != nil {
-				return fmt.Errorf("knowledge: authorise an article's topic: %w", err)
-			}
-			if !readable {
-				return live.ErrForbidden
-			}
-			return nil
-		}},
+		{Kind: liveArticle, Presence: true, Authorize: authorizeArticle},
+		{Kind: liveDoc, Authorize: authorizeArticle, Doc: newDocStore(d)},
 	}
 }
 

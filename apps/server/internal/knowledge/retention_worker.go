@@ -262,6 +262,9 @@ func eraseUsers(ctx context.Context, d module.Deps, gone []uuid.UUID) error {
 		if err := q.ForgetErasedFileAuthors(ctx, gone); err != nil {
 			return fmt.Errorf("knowledge: forget the erased users' uploads: %w", err)
 		}
+		if err := q.NullUpdateAuthors(ctx, gone); err != nil {
+			return fmt.Errorf("knowledge: forget the erased users' updates: %w", err)
+		}
 		if err := q.DeleteErasedMentionNotices(ctx, gone); err != nil {
 			return fmt.Errorf("knowledge: delete the erased users' mention notices: %w", err)
 		}

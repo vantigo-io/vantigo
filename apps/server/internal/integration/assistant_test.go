@@ -112,6 +112,7 @@ var markedByHand = map[string]string{
 	"getKnowledgeArticle":            "never",
 	"updateKnowledgeArticle":         "never",
 	"updateKnowledgeArticleContent":  "never",
+	"resetKnowledgeArticleLog":       "never",
 	"moveKnowledgeArticle":           "never",
 	"getKnowledgeArticleAccess":      "never",
 	"updateKnowledgeArticleAccess":   "never",
