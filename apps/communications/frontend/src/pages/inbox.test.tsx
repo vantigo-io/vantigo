@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   fetchConversations: vi.fn(),
   fetchConversation: vi.fn(),
   fetchPersonalSender: vi.fn(),
+  fetchAssignableUsers: vi.fn(),
+  updateConversation: vi.fn(),
   createConversation: vi.fn(),
   retryMessage: vi.fn(),
   replyToConversation: vi.fn(),
@@ -103,6 +105,10 @@ vi.mock("../api/conversations", async (importOriginal) => {
       queryFn: () => mocks.fetchConversation(id),
       enabled: Boolean(id),
     }),
+    assignableUsersQueryOptions: (query = "") => ({
+      queryKey: ["communications-assignable-users", query],
+      queryFn: () => mocks.fetchAssignableUsers(query),
+    }),
     personalSenderQueryOptions: () => ({
       queryKey: ["communications-personal-sender"],
       queryFn: () => mocks.fetchPersonalSender(),
@@ -115,7 +121,7 @@ vi.mock("../api/conversations", async (importOriginal) => {
     }),
     replyToConversation: mocks.replyToConversation,
     markConversationRead: vi.fn().mockResolvedValue(undefined),
-    updateConversation: vi.fn().mockResolvedValue(undefined),
+    updateConversation: mocks.updateConversation,
     addConversationNote: vi.fn().mockResolvedValue(undefined),
     addTag: vi.fn().mockResolvedValue(undefined),
     removeTag: vi.fn().mockResolvedValue(undefined),
@@ -193,6 +199,11 @@ beforeEach(() => {
   mocks.createConversation
     .mockReset()
     .mockResolvedValue({ conversationId: "c-new", messageId: "m-new", status: "sent" });
+  mocks.fetchAssignableUsers.mockReset().mockResolvedValue([
+    { userId: "user-kari", displayName: "Kari Nordmann" },
+    { userId: "user-ola", displayName: "Ola Hansen" },
+  ]);
+  mocks.updateConversation.mockReset().mockResolvedValue(undefined);
   mocks.retryMessage.mockReset().mockResolvedValue(undefined);
   mocks.replyToConversation.mockReset().mockResolvedValue({ conversationId: "c-1", messageId: "m-2", status: "sent" });
   mocks.stageConversationAttachment.mockReset();
@@ -371,6 +382,66 @@ describe("inbox", () => {
     await waitFor(() =>
       expect(mocks.fetchConversations).toHaveBeenCalledWith(expect.objectContaining({ tagId: "tag-1" })),
     );
+  });
+
+  it("filters by Unassigned and by a person from the assignee filter", async () => {
+    mocks.fetchConversations.mockResolvedValue(page([]));
+    renderPage();
+    await screen.findByText("No conversations match these filters.");
+
+    mocks.navigate.mockImplementation((options: { search: Record<string, unknown> }) => {
+      mocks.search = options.search;
+    });
+    fireEvent.click(screen.getByRole("combobox", { name: "Filter by assignee" }));
+    expect(await screen.findByRole("option", { name: "Assigned to me" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("option", { name: "Unassigned" }));
+    expect(mocks.navigate).toHaveBeenCalledWith({ search: { assignedUserId: "none", conversationId: undefined } });
+    renderPage();
+    await waitFor(() =>
+      expect(mocks.fetchConversations).toHaveBeenCalledWith(expect.objectContaining({ assignedUserId: "none" })),
+    );
+
+    fireEvent.click(screen.getAllByRole("combobox", { name: "Filter by assignee" }).at(-1) as HTMLElement);
+    fireEvent.click(await screen.findByRole("option", { name: "Ola Hansen" }));
+    expect(mocks.navigate).toHaveBeenLastCalledWith({
+      search: { assignedUserId: "user-ola", conversationId: undefined },
+    });
+  });
+
+  it("shows the assignee on the row and assigns from the thread", async () => {
+    const assigned = {
+      ...conversation("c-1", "First question"),
+      assignedUserId: "user-kari",
+      assignedUserName: "Kari Nordmann",
+    };
+    mocks.fetchConversations.mockResolvedValue(page([assigned]));
+    mocks.fetchConversation.mockResolvedValue(
+      detail("c-1", "First question", { assignedUserId: "user-kari", assignedUserName: "Kari Nordmann" }),
+    );
+    renderPage();
+
+    expect(await screen.findByLabelText("Assigned to Kari Nordmann")).toBeTruthy();
+    const select = await screen.findByRole("combobox", { name: "Assignee" });
+    expect(select).toHaveValue("Kari Nordmann");
+    fireEvent.click(select);
+    fireEvent.click(await screen.findByRole("option", { name: "Ola Hansen" }));
+    await waitFor(() => expect(mocks.updateConversation).toHaveBeenCalledWith("c-1", { assignedUserId: "user-ola" }));
+  });
+
+  it("leaves a conversation unassigned from the thread's assignee select", async () => {
+    const assigned = {
+      ...conversation("c-1", "First question"),
+      assignedUserId: "user-kari",
+      assignedUserName: "Kari Nordmann",
+    };
+    mocks.fetchConversations.mockResolvedValue(page([assigned]));
+    mocks.fetchConversation.mockResolvedValue(
+      detail("c-1", "First question", { assignedUserId: "user-kari", assignedUserName: "Kari Nordmann" }),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Assignee" })).toHaveValue("Kari Nordmann"));
+    fireEvent.click(screen.getByLabelText("Unassign"));
+    await waitFor(() => expect(mocks.updateConversation).toHaveBeenCalledWith("c-1", { assignedUserId: null }));
   });
 
   it("submits a reply through the composer API", async () => {

@@ -46,6 +46,7 @@ export function InboxPage({ connectionButton, productMessaging = noProductMessag
     customerId: search.customerId,
     unreadOnly: search.unreadOnly,
     tagId: search.tagId,
+    assignedUserId: search.assignedUserId,
   };
   const client = useQueryClient();
   // The screens are live; their polls are only the fallback while their topic is not (design L13, L19).
@@ -70,6 +71,9 @@ export function InboxPage({ connectionButton, productMessaging = noProductMessag
   const { invalidate, markRead, workflow, tagMutation, suggest } = useConversationActions(selectedId);
   const select = (id: string) => void navigate({ search: { ...search, conversationId: id } });
   const active = detail.data;
+  const assigneeNames: Record<string, string> = {};
+  for (const item of list.data?.data ?? [])
+    if (item.assignedUserId && item.assignedUserName) assigneeNames[item.assignedUserId] = item.assignedUserName;
   const create = useMutation({
     mutationFn: () =>
       createConversation(
@@ -108,6 +112,7 @@ export function InboxPage({ connectionButton, productMessaging = noProductMessag
             <InboxFilters
               search={search}
               tags={tags.data || []}
+              assigneeNames={assigneeNames}
               onSearchChange={(nextSearch) => void navigate({ search: nextSearch })}
             />
             <Group gap="xs">

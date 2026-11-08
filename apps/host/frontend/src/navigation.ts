@@ -156,6 +156,7 @@ export const navSearchFor = (strategy: NavItem["searchStrategy"]) => {
         status: undefined,
         customerId: undefined,
         tagId: undefined,
+        assignedUserId: undefined,
         unreadOnly: undefined,
       };
     case "products-list":

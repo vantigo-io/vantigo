@@ -13,6 +13,7 @@ export const Route = createFileRoute("/communications/inbox")({
     status: s.status === "open" || s.status === "closed" || s.status === "archived" ? s.status : undefined,
     customerId: Number.isInteger(Number(s.customerId)) && Number(s.customerId) > 0 ? Number(s.customerId) : undefined,
     tagId: typeof s.tagId === "string" ? s.tagId : undefined,
+    assignedUserId: typeof s.assignedUserId === "string" && s.assignedUserId !== "" ? s.assignedUserId : undefined,
     unreadOnly: s.unreadOnly === true || s.unreadOnly === "true" || undefined,
   }),
   component: CommunicationsInboxRoute,
