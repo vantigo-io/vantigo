@@ -4,6 +4,7 @@ description: "Implementation ownership and the conventions every module follows.
 sources:
   - apps/server/internal/module
   - apps/server/internal/contracts
+  - apps/server/internal/agentloop
   - apps/server/internal/modtest
   - apps/server/.golangci.yml
   - apps/server/generate.go
@@ -943,7 +944,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       router and the merged contract exist, to the contract, the composed catalog,
       `Deps.Access` and the composed handler. It is for use while serving, never while
       mounting. depguard forbids every other import of `internal/operations` — only
-      `internal/assistant`, `internal/module`, `internal/server` and the test harnesses
+      `internal/assistant`, `internal/agentloop` (the model loop it runs on, which reaches
+      the dispatcher through an interface), `internal/module`, `internal/server` and the test harnesses
       `internal/modtest` and `internal/integration` may — and a test composes a module
       called `alpha` and one called `assistant` and proves which of them is handed it.
     - **A call is the person's own.** The assistant module asks identity for a *grant*
@@ -1200,6 +1202,26 @@ none is a numbered rule above because no module reaches into another.
   `WithAccounts` replaces its accounts.
 
 `internal/ai` and `internal/operations` are on depguard's `platform` list, so they can import no business module.
+
+## The model loop
+
+`internal/agentloop` is the model loop a module runs a conversation with, extracted from the
+Assistant so that a second caller does not copy it. It is a platform package: it is on
+depguard's `platform` list, imports no business module and knows no table. It holds the turns and
+the tool calls with their caps (`Caps`: tool calls, turns, ceiling), the final turn without
+tools, the Anthropic branch that keeps the history append-only, the compaction of what the
+model is sent (`CompactBody`, `FitContext` and the summary request), `Wrap`, which hands every tool
+result to the model as data and not as instructions, and the three dispatcher-backed tools
+`search_operations`, `describe_operation` and `call_operation` (`Dispatch`), which reach the
+contract's operations through an interface that `*operations.Dispatcher` satisfies.
+
+What differs from one module to another is behind four seams the caller fills, and stays in
+the module: its tables (`Store` appends and reads the transcript and the run's progress), its
+stream (`Emit` hears the deltas and the tool events; a module without one passes nil), its own
+tools (`Tool`, whose `Call` runs them), and what a change becomes (`Dispatch.Confirm`: the
+Assistant turns a `confirm` operation into a pending action for the person, and a call without
+a `Confirm` is refused). The grants, the triggers and the budget stay with the module as well.
+The Assistant is the first caller ([The model loop](/en/reference/assistant/#the-model-loop)).
 
 ## How they are enforced
 

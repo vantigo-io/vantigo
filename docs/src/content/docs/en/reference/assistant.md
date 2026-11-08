@@ -4,6 +4,7 @@ description: "Every person's assistant (nb Assistent): the schema; availability 
 sources:
   - apps/server/internal/assistant
   - apps/server/internal/operations
+  - apps/server/internal/agentloop
   - apps/assistant/frontend
   - apps/host/frontend/src/lib/assist-targets.ts
   - packages/frontend-shell/src/assist-targets.ts
@@ -253,6 +254,19 @@ the conversation on another device does what the panel does: it `GET`s the conve
 an `activeRun` polls it every two seconds**, replacing its messages with the server's, until the run
 is no longer active; `lastRun` then says whether it finished, failed or was stopped. The client uses
 `fetch` with a body reader rather than `EventSource`, because the request is a `POST`.
+
+## The model loop
+
+The loop that asks the model, runs its tools and asks again is not the Assistant's own: it is
+the platform package `apps/server/internal/agentloop` ([module boundaries](/en/contributing/module-boundaries/#the-model-loop)),
+which holds the turns and the [caps](#runs), the final turn without tools, the Anthropic branch, the
+[compaction](#context-compaction), the wrapping of [tool results](#tool-results) as data, and `search_operations`,
+`describe_operation` and `call_operation` over the dispatcher. What stays in the module is its side of the
+loop's four seams: `runStore` writes the run's messages, actions and token counts to the
+tables above and stops a run, `runEmit` is the [stream](#the-stream), the tools of `search_docs`, `navigate`,
+`show_tour` and `propose_bulk` are its own, and `call_operation` on a `confirm` operation is handed to the
+module, which makes it a [pending action](#changes-with-confirmation). Nothing a person or an integrator can notice
+depends on where the loop lives.
 
 ## Context compaction
 
