@@ -286,9 +286,10 @@ UPDATE agents.agents SET
     style = $2,
     languages = $3,
     disclosure_wording = $4,
+    daily_token_budget = $5::integer,
     version = version + 1,
-    updated_at = $5::timestamptz
-WHERE id = $6
+    updated_at = $6::timestamptz
+WHERE id = $7
 RETURNING id, user_id, name, style, languages, disclosure_wording, state, daily_token_budget, version, created_at, updated_at, created_by_user_id
 `
 
@@ -297,6 +298,7 @@ type UpdateAgentParams struct {
 	Style             string
 	Languages         string
 	DisclosureWording string
+	DailyTokenBudget  *int32
 	Now               time.Time
 	ID                uuid.UUID
 }
@@ -307,6 +309,7 @@ func (q *Queries) UpdateAgent(ctx context.Context, arg UpdateAgentParams) (Agent
 		arg.Style,
 		arg.Languages,
 		arg.DisclosureWording,
+		arg.DailyTokenBudget,
 		arg.Now,
 		arg.ID,
 	)

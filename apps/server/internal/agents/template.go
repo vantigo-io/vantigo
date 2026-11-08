@@ -63,8 +63,11 @@ type template struct {
 // Orders' shipments name no customer, so they cannot be tied to one.
 //
 // patchCommunicationsConversationsById carries customerId and assignedUserId
-// besides the status, so a run's tools must set only the status and the
-// hand-off; the dispatcher's scope cannot tell a write to another customer.
+// besides the status, so a run's tools set only the status (call_operation) and,
+// through hand_off, the assignee; the dispatcher's scope cannot tell a write to
+// another customer. The conversation's own detail carries no customer scope: a
+// run with no customer (V9b) must still read the conversation it answers, and
+// the run's tools pin it to that conversation alone.
 var frontDesk = template{
 	Key:         templateFrontDesk,
 	DefaultName: "Front desk",
@@ -75,7 +78,7 @@ Answer from what you have read in this conversation's customer record, the produ
 Never promise a date, a discount, a refund or a price you have not read. Answer truthfully if you are asked whether you are a person.`,
 	Allowlist: []allowedOperation{
 		{ID: "getCommunicationsConversations", CustomerData: true},
-		{ID: "getCommunicationsConversationsById", CustomerData: true, OwnConversation: true},
+		{ID: "getCommunicationsConversationsById", OwnConversation: true},
 		{ID: "postCommunicationsConversationsByIdReply", OwnConversation: true},
 		{ID: "postCommunicationsConversationsByIdNotes", OwnConversation: true},
 		{ID: "patchCommunicationsConversationsById", OwnConversation: true},

@@ -30,6 +30,10 @@ const (
 	stateDeleted = "deleted"
 
 	maxAvatarImageBytes = 5 * 1024 * 1024
+
+	// minTokenBudget is the smallest daily token budget: below it a single run
+	// would reach it.
+	minTokenBudget = 1000
 )
 
 // persona is the part of an agent a request names (V10).
@@ -83,7 +87,7 @@ func (s *server) agentView(ctx context.Context, row store.AgentsAgent) (gen.Agen
 
 // agentSnapshot is what the audit records of an agent.
 func agentSnapshot(a store.AgentsAgent, model string) map[string]any {
-	return map[string]any{"name": a.Name, "style": a.Style, "languages": a.Languages, "disclosureWording": a.DisclosureWording, "state": a.State, "model": model}
+	return map[string]any{"name": a.Name, "style": a.Style, "languages": a.Languages, "disclosureWording": a.DisclosureWording, "state": a.State, "model": model, "dailyTokenBudget": a.DailyTokenBudget}
 }
 
 // ListAgents (GET /api/v1/agents/agents)
@@ -203,7 +207,14 @@ func (s *server) UpdateAgent(ctx context.Context, req gen.UpdateAgentRequestObje
 	}
 	b := *req.Body
 	p := persona{Name: strings.TrimSpace(b.Name), Style: b.Style, Languages: string(b.Languages), DisclosureWording: string(b.DisclosureWording), Model: b.Model}
-	if errs := s.validatePersona(p); len(errs) > 0 {
+	errs := s.validatePersona(p)
+	if b.DailyTokenBudget != nil && *b.DailyTokenBudget != 0 && *b.DailyTokenBudget < minTokenBudget {
+		if errs == nil {
+			errs = map[string][]string{}
+		}
+		errs["dailyTokenBudget"] = []string{fmt.Sprintf("dailyTokenBudget must be 0 or at least %d", minTokenBudget)}
+	}
+	if len(errs) > 0 {
 		return invalid("The agent is not valid", errs), nil
 	}
 	actor := callerID(ctx)
@@ -225,8 +236,16 @@ func (s *server) UpdateAgent(ctx context.Context, req gen.UpdateAgentRequestObje
 		if beforeModel, err = s.modelFor(ctx, current.ID); err != nil {
 			return err
 		}
+		budget := current.DailyTokenBudget // absent keeps it; 0 removes it
+		if b.DailyTokenBudget != nil {
+			budget = nil
+			if *b.DailyTokenBudget > 0 {
+				budget = b.DailyTokenBudget
+			}
+		}
 		if saved, err = q.UpdateAgent(ctx, store.UpdateAgentParams{
-			ID: current.ID, Name: p.Name, Style: p.Style, Languages: p.Languages, DisclosureWording: p.DisclosureWording, Now: s.deps.Clock(),
+			ID: current.ID, Name: p.Name, Style: p.Style, Languages: p.Languages, DisclosureWording: p.DisclosureWording,
+			DailyTokenBudget: budget, Now: s.deps.Clock(),
 		}); err != nil {
 			return fmt.Errorf("agents: change the agent: %w", err)
 		}

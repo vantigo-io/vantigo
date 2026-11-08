@@ -10,6 +10,22 @@ import (
 	"github.com/google/uuid"
 )
 
+type AgentsAction struct {
+	ID          int64
+	RunID       uuid.UUID
+	AgentID     uuid.UUID
+	CustomerID  *int32
+	OperationID string
+	Ref         string
+	Scoped      bool
+	Mode        string
+	Status      string
+	HttpStatus  *int32
+	DurationMs  int32
+	ApprovedBy  *uuid.UUID
+	CreatedAt   time.Time
+}
+
 type AgentsAgent struct {
 	ID                uuid.UUID
 	UserID            uuid.UUID
@@ -25,6 +41,11 @@ type AgentsAgent struct {
 	CreatedByUserID   *uuid.UUID
 }
 
+type AgentsChannelAddress struct {
+	ChannelID uuid.UUID
+	Address   string
+}
+
 type AgentsEvent struct {
 	ID          int64
 	At          time.Time
@@ -35,12 +56,44 @@ type AgentsEvent struct {
 	After       []byte
 }
 
+type AgentsHandedOff struct {
+	ConversationID uuid.UUID
+	RoleID         uuid.UUID
+	At             time.Time
+	Reason         string
+}
+
 type AgentsPermissionLevel struct {
 	AgentID       uuid.UUID
 	PermissionKey string
 	Level         string
 	UpdatedAt     time.Time
 	UpdatedBy     *uuid.UUID
+}
+
+type AgentsReviewItem struct {
+	ID              uuid.UUID
+	RunID           uuid.UUID
+	AgentID         uuid.UUID
+	RoleID          uuid.UUID
+	ConversationID  uuid.UUID
+	CustomerID      *int32
+	Kind            string
+	Item            []byte
+	Score           int16
+	Sources         []byte
+	ModelScore      int16
+	HeldBy          []string
+	State           string
+	Version         int32
+	DecidedByUserID *uuid.UUID
+	DecidedAt       *time.Time
+	DiscardReason   *string
+	DiscardText     *string
+	EditRatio       *float32
+	Outcome         *string
+	ExpiresAt       time.Time
+	CreatedAt       time.Time
 }
 
 type AgentsRole struct {
@@ -58,11 +111,65 @@ type AgentsRole struct {
 	Version          int32
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	ComplaintTagIds  []uuid.UUID
 }
 
 type AgentsRoleChannel struct {
 	RoleID    uuid.UUID
 	ChannelID uuid.UUID
+}
+
+type AgentsRun struct {
+	ID             uuid.UUID
+	AgentID        uuid.UUID
+	RoleID         uuid.UUID
+	ConversationID uuid.UUID
+	CustomerID     *int32
+	Reason         string
+	Attempt        int16
+	State          string
+	Outcome        *string
+	ErrorCode      *string
+	Summary        *string
+	ClaimedBy      *uuid.UUID
+	ClaimedUntil   *time.Time
+	ToolCalls      int32
+	ModelTurns     int32
+	InputTokens    int64
+	OutputTokens   int64
+	StartedAt      time.Time
+	EndedAt        *time.Time
+	SentAt         *time.Time
+}
+
+type AgentsRunMessage struct {
+	ID         int64
+	RunID      uuid.UUID
+	Role       string
+	Text       string
+	ToolCalls  []byte
+	ToolCallID *string
+	CreatedAt  time.Time
+}
+
+type AgentsRunQueue struct {
+	ID             int64
+	RoleID         uuid.UUID
+	ConversationID uuid.UUID
+	Reason         string
+	Attempt        int16
+	NotBefore      time.Time
+	DueBy          time.Time
+	CreatedAt      time.Time
+	TakenAt        *time.Time
+	RunID          *uuid.UUID
+}
+
+type AgentsSeenSender struct {
+	ChannelID      uuid.UUID
+	Address        string
+	ConversationID uuid.UUID
+	FirstSeenAt    time.Time
 }
 
 type AgentsSetting struct {
@@ -72,4 +179,15 @@ type AgentsSetting struct {
 	Version         int32
 	UpdatedAt       time.Time
 	UpdatedByUserID *uuid.UUID
+}
+
+type AgentsUsageDay struct {
+	AgentID      uuid.UUID
+	Day          time.Time
+	Runs         int32
+	InputTokens  int64
+	OutputTokens int64
+	Sent         int32
+	Held         int32
+	Discarded    int32
 }

@@ -8,6 +8,8 @@ sources:
   - openapi/agents.yaml
   - apps/server/internal/openapi/specs/agents.yaml
   - apps/server/internal/db/migrations/00144_agents_baseline.sql
+  - apps/server/internal/db/migrations/00146_agents_runs.sql
+  - apps/server/internal/config
   - apps/agents/frontend/src
 ---
 
@@ -16,10 +18,12 @@ The screens are in the [user guide](/en/user/agents/) and the setup in the
 [administration guide](/en/admin/agents/). This page describes the module as the code
 implements it. Its API reference is generated from `openapi/agents.yaml`.
 
-This delivery holds the agents with their persona, their roles bound to channels, the
-levels the Owner gave their permissions and the gate that applies them. The trigger, the
-runs and the review queue come after; the tables and endpoints of this page are all that
-exist today.
+The module holds the agents with their persona, their roles bound to channels, the levels
+the Owner gave their permissions and the gate that applies them, and the agent **at work**:
+the trigger that wakes it, its runs, its tools, the pipeline every reply goes through and the
+hand-off. The review queue's screens and decisions, the calibration, the Usage and Activity
+screens and the retention sweep come in the next delivery; the review items a run leaves are
+written now.
 
 ## The module
 
@@ -63,7 +67,7 @@ cannot call this module.
 | `GET /agents` | `agents:view` | 200 | The agents, not deleted, each with its roles. |
 | `POST /agents` | `agents:manage` | 201, 400, 409 | Creates an agent and its user. 409 `company_name_required` while the company's name is empty. |
 | `GET /agents/{agentId}` | `agents:view` | 200, 404 | One agent. |
-| `PUT /agents/{agentId}` | `agents:manage` | 200, 400, 404, 409 | Replaces the persona. `If-Match` carries the version; 409 `version_conflict`. The user is renamed and the model follows. |
+| `PUT /agents/{agentId}` | `agents:manage` | 200, 400, 404, 409 | Replaces the persona. `If-Match` carries the version; 409 `version_conflict`. The user is renamed and the model follows. `dailyTokenBudget` (0 or at least 1,000; 0 removes it; absent keeps it) is the day's tokens ([budget](#the-budget)). |
 | `DELETE /agents/{agentId}` | `agents:manage` | 204, 404 | Marks the agent deleted, frees its channels, ends its grants, disables its user and forgets its model. |
 | `GET /agents/{agentId}/avatar` | `agents:view` | 200, 404 | The picture (PNG or JPEG), private and not sniffable. |
 | `PUT /agents/{agentId}/avatar` | `agents:manage` | 200, 400, 404 | Sets the picture, multipart field `avatar`, at most 5 MiB. |
@@ -78,6 +82,8 @@ cannot call this module.
 | `GET /settings` | `agents:view` | 200 | The company's name, the retention, the version, `configured` and the models the installation allows. |
 | `PUT /settings` | `agents:manage` | 200, 400, 409 | Changes the company's name (1 to 120 characters) and the retention (1 to 60 months). `If-Match`. |
 | `GET /templates` | `agents:view` | 200 | The role templates: default name and instructions, allowlist, needs and hard rules. |
+| `GET /conversations/{conversationId}/hand-off` | `communications:conversations-view` | 200 | Whether the conversation is handed off (`handedOff`, `at`, `reason`, `roleId`). |
+| `DELETE /conversations/{conversationId}/hand-off` | `communications:conversations-manage` | 204 | Gives the conversation back to the agent: the marker is cleared. Nothing happens when there is none. |
 
 ### Refusals
 
@@ -100,7 +106,7 @@ The fields: an agent's `name` 1 to 60 characters; `style` at most 1,500; `langua
 empty or one the installation allows. A role's `name` 1 to 80; `instructions` at most
 8,000; `replyMode` `review`, `auto_above` or `auto`; `threshold` 50 to 100;
 `capsToolCalls` 1 to 60; `capsTurns` 1 to 16; `maxRepliesPerDay` 1 to 50;
-`handOffUserId` an active person. A role's `handOffWarning` answers `none`, `disabled`,
+`handOffUserId` an active person; `complaintTagIds` at most 20 Communications tag ids (absent keeps them). A role's `handOffWarning` answers `none`, `disabled`,
 `not_a_person` or `no_permission`; for anything but `none` a hand-off goes to the Inbox,
 unassigned.
 
@@ -113,9 +119,17 @@ The `agents` schema. A user, a channel and a hand-off person are opaque ids.
 | `settings` | One row (unique index on `(true)`). `company_name` varchar(120), empty until set; `retention_months` 1 to 60, default 6; `version`, `updated_at`, `updated_by_user_id`. |
 | `agents` | `id`, `user_id` (unique), `name` 1 to 60, `style` at most 1,500, `languages` (`customer`, `nb`, `en`), `disclosure_wording` (`assistant`, `talking`, `compact`), `state` (`active`, `paused`, `deleted`), `daily_token_budget` (null for none, else above 0), `version`, timestamps and `created_by_user_id`. A deleted row stays so the audit's references stay true. |
 | `permission_levels` | `(agent_id, permission_key)` key, `level` (`off`, `read`, `change`). Only what was given is stored; **off deletes the row**. Cascades with the agent. |
-| `roles` | `template` (`front_desk`), `name` 1 to 80, `instructions` at most 8,000, `reply_mode` (default `review`), `threshold` 50 to 100 (default 85), `caps_tool_calls` (default 30), `caps_turns` (default 8), `max_replies_per_day` (default 5), `hand_off_user_id`, `version`. Cascades with the agent. |
+| `roles` | `template` (`front_desk`), `name` 1 to 80, `instructions` at most 8,000, `reply_mode` (default `review`), `threshold` 50 to 100 (default 85), `caps_tool_calls` (default 30), `caps_turns` (default 8), `max_replies_per_day` (default 5), `hand_off_user_id`, `complaint_tag_ids` (the tags that mark a complaint, S5), `version`. Cascades with the agent. |
 | `role_channels` | `(role_id, channel_id)` key with `channel_id` unique: a channel belongs to at most one role. |
 | `events` | The Owner's changes: `at`, `actor_user_id`, `action`, `target`, `before` and `after` as jsonb. |
+| `run_queue` | A request for a run: `role_id`, `conversation_id`, `reason` (`message`, `assigned`, `retry`), `attempt`, `not_before`, `due_by`, `taken_at`, `run_id`. A partial unique index on `(role_id, conversation_id)` where `taken_at` is null holds one request that waits. |
+| `handed_off` | `conversation_id` (key), `role_id`, `at`, `reason`: the marker that keeps the trigger away. |
+| `runs` | One run: `agent_id`, `role_id`, `conversation_id`, `customer_id` (the run's scope), `reason`, `attempt`, `state` (`queued`, `running`, `done`, `waiting_review`, `handed_off`, `failed`, `stopped`), `outcome` (`sent`, `review`, `handed_off`, `no_reply`), `error_code`, `summary`, `claimed_by`, `claimed_until`, the counts of tool calls, turns and tokens, `started_at`, `ended_at`, `sent_at`. A partial unique index on `(role_id, conversation_id)` for `queued` and `running` keeps one run at a time. |
+| `run_messages` | The transcript: `run_id`, `role`, `text`, `tool_calls`, `tool_call_id`. Copies of message bodies, so retention deletes them with the run. |
+| `actions` | The action log, one row per tool call: `operation_id`, `ref` (the operation and the ids it named), `scoped` (it returned a customer's data), `mode`, `status`, `http_status`, `duration_ms`, `approved_by`. Never a body. |
+| `review_items` | What a run leaves for a person: `kind` (`reply` or `change`), `item` (jsonb), `score`, `sources`, `model_score`, `held_by` (rule codes), `state` (`waiting`, `sent`, `edited_sent`, `discarded`, `withdrawn`, `expired`), `version`, the decision's columns, `expires_at` (24 hours, or a Messenger window's close less 15 minutes). Written now; decided in the next delivery. |
+| `usage_days` | `(agent_id, day)`: runs, input and output tokens, sent, held and discarded. |
+| `channel_addresses`, `seen_senders` | The addresses of the channels the module has read (V23), and the senders it has met (S4). |
 
 The agent's `version` moves on with a change of the persona, a level or a role, so the gate
 can cache by it. The model of an agent is not a column: it is the per-subject choice for
@@ -233,8 +247,143 @@ unlocked ones hold in Review and Auto above X %.
 | C1 Claims to be a person | yes | A draft that says it is a person is held. |
 | C2 A promise the instructions do not allow | no | A date, discount, refund or price not read from Products is held. |
 
-The rules are listed on the template now and applied by the pipeline that comes with the
-runs.
+The rules are applied by [the pipeline](#the-pipeline).
+
+## The trigger
+
+`agents.trigger` is a handler of the [domain-events outbox](/en/contributing/platform-packages/#the-domain-events-outbox)
+(module boundaries rule 23). It runs whatever `MODULES` says and does nothing when `agents` is not
+enabled; it writes only this module's schema, on the delivery's own transaction, and reads no
+contract. It takes three events of [Communications](/en/reference/communications/#events).
+
+| Event | What it does |
+| --- | --- |
+| `message_received` | Writes a **run request** when the channel is bound to a role of an **active** agent, the conversation is unassigned or assigned to that agent, it is not handed off, and the message is not an auto-reply. An unreadable message is handed off at once, with a note. |
+| `assigned` | An assignment made by an agent (its own hand-off) is ignored. A person's assignment clears the hand-off marker; an assignment **to the agent** also writes a request. |
+| `replied` | A person's reply (`byAgent` false) clears the hand-off marker. |
+
+A request is keyed by `(role, conversation)`: a second message while one waits moves `not_before` to
+now plus **20 seconds**, and never past `due_by`, the first message plus **2 minutes**, so three short
+messages make one run and a chatty customer cannot postpone it for ever. A paused agent gets no request;
+the ones already queued stay.
+
+## Runs
+
+The **runner** (`Module.APIRunners`, in the API process only: it needs the dispatcher) polls every
+**5 seconds**, hands off the requests of an agent over its budget, completes the hand-offs that wait
+for their note, and claims due requests with `FOR UPDATE SKIP LOCKED` in a transaction that **commits
+before the run starts**. It carries at most `AGENTS_CONCURRENCY` runs (default 4) on a replica, each
+a goroutine with a **5-minute ceiling**. No transaction, advisory lock or connection is held across
+a dispatcher call or a model call; a test on a pool of one proves it.
+
+- **The claim.** `claimed_by` is the replica's id and `claimed_until` two minutes ahead, renewed every
+  30 seconds, each renewal its own statement. A request is claimed only when its agent is active and
+  its conversation has no run in progress.
+- **The `agents-runs` worker** (every 30 seconds, needing no dispatcher) takes a run whose claim lapsed:
+  the first time it is stopped (`lapsed`) and re-queued once; the second time it is handed off. It also
+  hands off a request that waited more than a day (`stale`).
+- **The grants.** A run is given an agent grant at the claim and it is revoked at the end. The run's
+  **customer** is the conversation's when a person linked it, or when the customer linker did and the
+  sender is one of that customer's contacts (an e-mail address, or the Messenger participant linked to a
+  contact); otherwise none. The conversation is read first under a grant with no customer, and the
+  contacts under one for the candidate; both are revoked. The grant's run names the run's **role**, and
+  the gate narrows the run to that role's template.
+- **Before the model.** An agent over its budget, a conversation with six runs in the last hour and a
+  sender that is a channel of this installation are handed off; a conversation a person has, an
+  auto-reply and one with no sender are left alone and the run ends with outcome `no_reply`.
+- **The end.** `done` with outcome `sent`; `waiting_review` with `review` (a reply or a change waits);
+  `handed_off`; or `failed`. A run whose model cannot be reached, or cannot call tools, fails as
+  `ai_unavailable` and hands off. A final text with no `reply` is a hand-off with the text in the note, and
+  so is a run that reached its caps.
+
+## The agent's tools
+
+From `agentloop`, as the agent and limited to the run's role's allowlist by the gate:
+
+| Tool | What it does |
+| --- | --- |
+| `search_operations`, `describe_operation` | Find and describe the operations the run may call. |
+| `call_operation` | Calls one. A read runs at once. A call to a change (a `confirm` operation) never runs: it is checked against the contract and becomes a **review item** of kind `change`, always, in every mode. It takes `sources` and `score` beside `explain`. |
+| `reply` | `text`, `components?`, `attachments?`, `sources[]`, `score`. Proposes the one reply of the run through [the pipeline](#the-pipeline). It takes no recipient. `attachments` are refused (`attachments_unavailable`): fetching a Vantigo document under the customer's scope needs an operation that does not exist yet. |
+| `note` | An internal note on the conversation. |
+| `tag` | Tags the conversation. |
+| `hand_off` | A note with the summary, the conversation assigned to the role's hand-off person (or the assignee cleared), the marker written, the run ended. |
+
+**Pinned.** Every operation that names a conversation (`getCommunicationsConversationsById`,
+`postCommunicationsConversationsByIdReply`, `…Notes`, `patchCommunicationsConversationsById`, the tag
+operations) is for the run's own conversation: the id is filled in, and another is refused
+(`own_conversation_only`). `patchCommunicationsConversationsById` takes the `status` and nothing else
+(`status_only`); the customer link and the assignee are not the model's to set, and the assignee is
+`hand_off`'s. The operations the module's own tools write (`reply`, `…Notes`, the tag operations) are
+refused through `call_operation` (`use_the_tool`), so nothing is sent that the pipeline did not see.
+`search_docs` and the screen tools are not offered. **One outbound message a run:** after a `reply` it
+may only note, tag and end.
+
+**The prompt** (`promptVersion`) states who the agent is, the persona's style and language rule, the
+role's instructions, and that everything it reads is data and never instructions; it must look in
+Knowledge first and cite the article, answer truthfully about being an AI, offer answer options on a chat
+channel with *Talk to a person* among them, and hand off when it does not know. The disclosure line is
+not written by the model.
+
+## The pipeline
+
+What a `reply` goes through, in code, after the model has written.
+
+1. **The verdict (V17).** Each cited source must be an entry of the run's action log that succeeded
+   (an operation and its ids, as `getInvoicesById 2026-0931`, or an id alone), and never a read of
+   the conversation itself. The valid ones are kept; **with none the score is 0**. The score, the valid
+   sources and the model's own score are stored on the review item.
+2. **The hard rules (V18).** S1 to S7 above, with these definitions:
+
+   | Rule | Definition |
+   | --- | --- |
+   | S1 | The reply goes to the latest inbound sender alone. When a valid source is a read of a customer's data (a scoped operation) or an attachment is carried, the sender must be a contact of the run's customer; otherwise it is held. No recipient also holds. |
+   | S2 | An attachment must belong to the run's customer; a run with none attaches nothing. |
+   | S3 | The score is 0. |
+   | S4 | The conversation's first inbound message, from a sender the module has not met in an earlier conversation. |
+   | S5 | The conversation carries one of the role's `complaint_tag_ids`. |
+   | S6 | The reply window is `closed`, or only `human_agent` is left: **refused**, never sent tagged as a human agent's. |
+   | S7 | The latest message is an auto-reply, the sender is a channel of this installation, `max_replies_per_day` agent messages were sent in the last 24 hours (a run's own send and an approval), or six other runs started on the conversation in the last hour: **refused**. |
+
+   A refused reply is stored as a review item in state `withdrawn` and the conversation is **handed
+   off**. A rule that holds names its code in the item's `held_by`.
+3. **The content check (C1, C2).** The task `agents.check` is asked one structured question with the
+   role's instructions and the draft, never the conversation: `{claimsHuman, promises: [{text, allowed}]}`.
+   `claimsHuman` holds the reply (C1); a promise that is not allowed holds it (C2). A call that fails, times
+   out or does not answer the rubric holds it (`CHECK`).
+4. **The mode (V19).** *Review*: every reply is queued. *Auto above X %*: sent when the score is at
+   least the threshold and **nothing** held it. *Auto*: sent unless S1, S2, C1 or a failed check holds it;
+   S3, S4, S5 and C2 do not apply. **Changes are always queued in this delivery.**
+5. **The disclosure (V11).** The line, in the persona's wording and language (`nb` or `en`; for a persona
+   that follows the customer, the language the reply was written in), is put at the top of the text. The
+   review item stores the line and the text apart. The text with the line must fit the channel's limit
+   (`text_too_long` is the model's to shorten).
+6. **The send.** `POST …/reply` as the agent, with the idempotency key `agents-<run id>`. A `201` ends
+   the run `done`. `409 conversation_taken` withdraws the item and ends the run without a hand-off.
+   `422 reply_window_closed` is S6. A refusal that is the model's to fix (`components_invalid`,
+   `text_too_long`, `too_large`, `400`) is answered to the model, which may reply again. Anything else holds the
+   reply for a person (`SEND`).
+
+A held reply is a `waiting` review item and an internal note, *«name» has a reply waiting for review*,
+with a link.
+
+## The hand-off
+
+A hand-off writes the marker in `handed_off`, drops the waiting requests, writes an internal note
+with the summary and assigns the conversation to the role's hand-off person, or clears the assignee when
+it is the agent's. It is done by the tool, a refused reply, a cap, a discarded or expired item (next
+delivery), the budget, a guard, an unreadable message, a lapsed run or a model that cannot be reached.
+The marker is cleared when a person replies in the conversation (the `replied` event) or assigns it,
+or by `DELETE …/hand-off`. A hand-off made by the trigger, the budget or the worker has no dispatcher
+to write its note: the run is recorded as `handed_off` with no outcome, and the runner completes it
+within five seconds.
+
+## The budget
+
+`daily_token_budget` counts the input and output tokens of the agent's model turns and of its content
+checks, on the business day, in `usage_days`. A run is judged before every model turn: at the budget it
+ends handed off with the note *Daily budget reached.* The runner also hands off every request that
+waits for an agent at its budget. The next day the agent starts again, and only on new messages.
 
 ## The customer scope
 
@@ -267,7 +416,8 @@ schema.
 
 ## Not yet
 
-The trigger on a conversation, the runs and their transcripts, the review queue, the token
-budget (`daily_token_budget` exists and is unused), the Usage and Activity tabs'
-contents and the retention sweep come in later deliveries. `agents:review` and
-`agents:activity` are declared now so roles can be built ahead of them.
+The review queue's screens and decisions (approve, edit and send, discard), the calibration,
+the Usage and Activity screens, the retention and erasure sweeps and the *Give back to the agent*
+button in the thread come in the next delivery. The review items, the usage counts, the transcripts
+and the action log that they use are written now. `agents:review` and `agents:activity` are declared
+so roles can be built ahead of them. Sending a Vantigo document as an attachment is not built.

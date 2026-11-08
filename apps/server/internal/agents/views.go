@@ -97,11 +97,15 @@ func (s *server) roleViews(ctx context.Context, q *store.Queries, roles []store.
 		return nil, err
 	}
 	for _, r := range roles {
+		complaintTags := r.ComplaintTagIds
+		if complaintTags == nil {
+			complaintTags = []uuid.UUID{}
+		}
 		v := gen.AgentRole{
 			Id: r.ID, AgentId: r.AgentID, Template: gen.AgentRoleTemplate(r.Template), Name: r.Name,
 			Instructions: r.Instructions, ReplyMode: gen.AgentRoleReplyMode(r.ReplyMode), Threshold: int32(r.Threshold),
 			CapsToolCalls: int32(r.CapsToolCalls), CapsTurns: int32(r.CapsTurns), MaxRepliesPerDay: int32(r.MaxRepliesPerDay),
-			HandOffUserId: r.HandOffUserID, HandOffWarning: "none", ChannelIds: channels[r.ID],
+			HandOffUserId: r.HandOffUserID, HandOffWarning: "none", ChannelIds: channels[r.ID], ComplaintTagIds: &complaintTags,
 			Version: r.Version, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		}
 		if v.ChannelIds == nil {

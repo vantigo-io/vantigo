@@ -25,6 +25,7 @@ UPDATE agents.roles SET
     caps_turns = @caps_turns,
     max_replies_per_day = @max_replies_per_day,
     hand_off_user_id = sqlc.narg(hand_off_user_id)::uuid,
+    complaint_tag_ids = @complaint_tag_ids::uuid[],
     version = version + 1,
     updated_at = @now::timestamptz
 WHERE id = @id

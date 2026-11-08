@@ -465,7 +465,10 @@ type AgentRole struct {
 	// CapsTurns Model turns a run may take, 1 to 16.
 	CapsTurns  int32                `json:"capsTurns"`
 	ChannelIds []openapi_types.UUID `json:"channelIds"`
-	CreatedAt  time.Time            `json:"createdAt"`
+
+	// ComplaintTagIds The Communications tags that mark a complaint (S5): a conversation carrying one is held in Review and Auto above X %.
+	ComplaintTagIds *[]openapi_types.UUID `json:"complaintTagIds,omitempty"`
+	CreatedAt       time.Time             `json:"createdAt"`
 
 	// HandOffUserId The person a hand-off goes to; null for the Inbox, unassigned.
 	HandOffUserId *openapi_types.UUID `json:"handOffUserId"`
@@ -525,6 +528,9 @@ type AgentRoleUpdateRequest struct {
 
 	// CapsTurns 1 to 16.
 	CapsTurns int32 `json:"capsTurns"`
+
+	// ComplaintTagIds The Communications tags that mark a complaint (S5), at most 20. Absent keeps the role's.
+	ComplaintTagIds *[]openapi_types.UUID `json:"complaintTagIds,omitempty"`
 
 	// HandOffUserId A person who is active and holds communications:conversations-view; null for the Inbox, unassigned.
 	HandOffUserId *openapi_types.UUID `json:"handOffUserId"`
@@ -618,6 +624,8 @@ type AgentTemplateRule struct {
 
 // AgentUpdateRequest defines model for AgentUpdateRequest.
 type AgentUpdateRequest struct {
+	// DailyTokenBudget The tokens (input and output) the agent may use in a business day, at least 1000; 0 removes the budget. Absent keeps it. At the budget no new run starts and the requests that wait are handed off with the note Daily budget reached.
+	DailyTokenBudget  *int32                              `json:"dailyTokenBudget,omitempty"`
 	DisclosureWording AgentUpdateRequestDisclosureWording `json:"disclosureWording"`
 	Languages         AgentUpdateRequestLanguages         `json:"languages"`
 
@@ -669,6 +677,16 @@ type AgentsSettingsRequest struct {
 
 	// RetentionMonths 1 to 60.
 	RetentionMonths int32 `json:"retentionMonths"`
+}
+
+// ConversationHandOff Whether an agent handed a conversation to the people, and so does not answer it again until a person replies in it or assigns it, or it is given back.
+type ConversationHandOff struct {
+	At        *time.Time `json:"at"`
+	HandedOff bool       `json:"handedOff"`
+
+	// Reason Why the agent handed off, such as hand_off, discarded, expired, budget, guard or lapsed.
+	Reason *string             `json:"reason"`
+	RoleId *openapi_types.UUID `json:"roleId"`
 }
 
 // UpdateAgentParams defines parameters for UpdateAgent.
@@ -765,6 +783,12 @@ type ServerInterface interface {
 	// GetAgentSetup Get what an agent still needs
 	// (GET /api/v1/agents/agents/{agentId}/setup)
 	GetAgentSetup(w http.ResponseWriter, r *http.Request, agentId openapi_types.UUID)
+	// GiveBackConversation Give a conversation back to the agent
+	// (DELETE /api/v1/agents/conversations/{conversationId}/hand-off)
+	GiveBackConversation(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
+	// GetConversationHandOff Read a conversation's hand-off
+	// (GET /api/v1/agents/conversations/{conversationId}/hand-off)
+	GetConversationHandOff(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
 	// GetAgentsSettings Get the agents settings
 	// (GET /api/v1/agents/settings)
 	GetAgentsSettings(w http.ResponseWriter, r *http.Request)
@@ -1243,6 +1267,58 @@ func (siw *ServerInterfaceWrapper) GetAgentSetup(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GiveBackConversation operation middleware
+func (siw *ServerInterfaceWrapper) GiveBackConversation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "conversationId" -------------
+	var conversationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "conversationId", r.PathValue("conversationId"), &conversationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GiveBackConversation(w, r, conversationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetConversationHandOff operation middleware
+func (siw *ServerInterfaceWrapper) GetConversationHandOff(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "conversationId" -------------
+	var conversationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "conversationId", r.PathValue("conversationId"), &conversationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetConversationHandOff(w, r, conversationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetAgentsSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetAgentsSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -1451,6 +1527,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/agents/agents/{agentId}/roles/{roleId}", wrapper.UpdateAgentRole)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/agents/agents/{agentId}/roles/{roleId}/channels", wrapper.SetAgentRoleChannels)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/agents/{agentId}/setup", wrapper.GetAgentSetup)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/agents/conversations/{conversationId}/hand-off", wrapper.GiveBackConversation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/conversations/{conversationId}/hand-off", wrapper.GetConversationHandOff)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/settings", wrapper.GetAgentsSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/agents/settings", wrapper.PutAgentsSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/templates", wrapper.ListAgentTemplates)
@@ -2619,6 +2697,100 @@ func (response GetAgentSetup404ApplicationProblemPlusJSONResponse) VisitGetAgent
 	return err
 }
 
+type GiveBackConversationRequestObject struct {
+	ConversationId openapi_types.UUID `json:"conversationId"`
+}
+
+type GiveBackConversationResponseObject interface {
+	VisitGiveBackConversationResponse(w http.ResponseWriter) error
+}
+
+type GiveBackConversation204Response struct {
+}
+
+func (response GiveBackConversation204Response) VisitGiveBackConversationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GiveBackConversation401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GiveBackConversation401JSONResponse) VisitGiveBackConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GiveBackConversation403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GiveBackConversation403JSONResponse) VisitGiveBackConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetConversationHandOffRequestObject struct {
+	ConversationId openapi_types.UUID `json:"conversationId"`
+}
+
+type GetConversationHandOffResponseObject interface {
+	VisitGetConversationHandOffResponse(w http.ResponseWriter) error
+}
+
+type GetConversationHandOff200JSONResponse ConversationHandOff
+
+func (response GetConversationHandOff200JSONResponse) VisitGetConversationHandOffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetConversationHandOff401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetConversationHandOff401JSONResponse) VisitGetConversationHandOffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetConversationHandOff403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetConversationHandOff403JSONResponse) VisitGetConversationHandOffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetAgentsSettingsRequestObject struct {
 }
 
@@ -2843,6 +3015,12 @@ type StrictServerInterface interface {
 	// GetAgentSetup Get what an agent still needs
 	// (GET /api/v1/agents/agents/{agentId}/setup)
 	GetAgentSetup(ctx context.Context, request GetAgentSetupRequestObject) (GetAgentSetupResponseObject, error)
+	// GiveBackConversation Give a conversation back to the agent
+	// (DELETE /api/v1/agents/conversations/{conversationId}/hand-off)
+	GiveBackConversation(ctx context.Context, request GiveBackConversationRequestObject) (GiveBackConversationResponseObject, error)
+	// GetConversationHandOff Read a conversation's hand-off
+	// (GET /api/v1/agents/conversations/{conversationId}/hand-off)
+	GetConversationHandOff(ctx context.Context, request GetConversationHandOffRequestObject) (GetConversationHandOffResponseObject, error)
 	// GetAgentsSettings Get the agents settings
 	// (GET /api/v1/agents/settings)
 	GetAgentsSettings(ctx context.Context, request GetAgentsSettingsRequestObject) (GetAgentsSettingsResponseObject, error)
@@ -3327,6 +3505,58 @@ func (sh *strictHandler) GetAgentSetup(w http.ResponseWriter, r *http.Request, a
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAgentSetupResponseObject); ok {
 		if err := validResponse.VisitGetAgentSetupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GiveBackConversation operation middleware
+func (sh *strictHandler) GiveBackConversation(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+	var request GiveBackConversationRequestObject
+
+	request.ConversationId = conversationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GiveBackConversation(ctx, request.(GiveBackConversationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GiveBackConversation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GiveBackConversationResponseObject); ok {
+		if err := validResponse.VisitGiveBackConversationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetConversationHandOff operation middleware
+func (sh *strictHandler) GetConversationHandOff(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+	var request GetConversationHandOffRequestObject
+
+	request.ConversationId = conversationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetConversationHandOff(ctx, request.(GetConversationHandOffRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetConversationHandOff")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetConversationHandOffResponseObject); ok {
+		if err := validResponse.VisitGetConversationHandOffResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
