@@ -46,6 +46,13 @@ type AgentsChannelAddress struct {
 	Address   string
 }
 
+type AgentsConversationLink struct {
+	ConversationID uuid.UUID
+	CustomerID     *int32
+	ContactIds     []int32
+	SeenAt         time.Time
+}
+
 type AgentsEvent struct {
 	ID          int64
 	At          time.Time
@@ -94,6 +101,7 @@ type AgentsReviewItem struct {
 	Outcome         *string
 	ExpiresAt       time.Time
 	CreatedAt       time.Time
+	ChannelID       *uuid.UUID
 }
 
 type AgentsRole struct {
@@ -140,6 +148,7 @@ type AgentsRun struct {
 	StartedAt      time.Time
 	EndedAt        *time.Time
 	SentAt         *time.Time
+	Verdict        []byte
 }
 
 type AgentsRunMessage struct {

@@ -34,12 +34,13 @@ func (s *server) settings(ctx context.Context) (store.AgentsSetting, error) {
 // contract answers it.
 func (s *server) settingsResponse(row store.AgentsSetting) gen.AgentsSettings {
 	out := gen.AgentsSettings{
-		CompanyName:     row.CompanyName,
-		RetentionMonths: int32(row.RetentionMonths),
-		Version:         row.Version,
-		UpdatedAt:       row.UpdatedAt,
-		Configured:      s.deps.AI != nil,
-		Models:          []string{},
+		CompanyName:        row.CompanyName,
+		RetentionMonths:    int32(row.RetentionMonths),
+		RetentionCapMonths: int32(s.retentionCapMonths()),
+		Version:            row.Version,
+		UpdatedAt:          row.UpdatedAt,
+		Configured:         s.deps.AI != nil,
+		Models:             []string{},
 	}
 	if s.deps.AI != nil {
 		out.Models = s.deps.AI.Models()
@@ -63,7 +64,9 @@ func (s *server) GetAgentsSettings(ctx context.Context, _ gen.GetAgentsSettingsR
 
 // PutAgentsSettings (PUT /api/v1/agents/settings)
 //
-// The version is judged under the row's lock, so two changes at once queue and
+// The retention is lowered to what Communications keeps its messages for when it
+// asks for longer (V26): a transcript copies message bodies and must not outlive
+// them. The answer says what was saved. The version is judged under the row's lock, so two changes at once queue and
 // the second is told the first won.
 func (s *server) PutAgentsSettings(ctx context.Context, req gen.PutAgentsSettingsRequestObject) (gen.PutAgentsSettingsResponseObject, error) {
 	version, ok := parseVersion(req.Params.IfMatch)
@@ -98,7 +101,7 @@ func (s *server) PutAgentsSettings(ctx context.Context, req gen.PutAgentsSetting
 			return errVersion
 		}
 		if saved, err = q.UpdateSettings(ctx, store.UpdateSettingsParams{
-			CompanyName: company, RetentionMonths: int16(body.RetentionMonths), Now: s.deps.Clock(), UpdatedBy: actor,
+			CompanyName: company, RetentionMonths: int16(min(int(body.RetentionMonths), s.retentionCapMonths())), Now: s.deps.Clock(), UpdatedBy: actor,
 		}); err != nil {
 			return fmt.Errorf("agents: change the settings: %w", err)
 		}

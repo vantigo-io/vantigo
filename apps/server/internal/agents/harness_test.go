@@ -23,17 +23,27 @@ const ownerRoleID = "00000000-0000-4000-8000-000000000002"
 // two models, a local one so the data notice is not needed.
 func newHarness(t *testing.T, opts ...modtest.Option) *modtest.Harness {
 	t.Helper()
+	h, _, _ := newHarnessWith(t, opts...)
+	return h
+}
+
+// newHarnessWith is newHarness, and answers the stand-in for Communications and
+// the content check's answer, for a test of the review queue.
+func newHarnessWith(t *testing.T, opts ...modtest.Option) (*modtest.Harness, *fakeComms, *checker) {
+	t.Helper()
+	comms, check := newFakeComms(), &checker{answer: checkClean}
 	base := []modtest.Option{
 		modtest.WithRecorder(recorder),
 		modtest.WithModule(agents.Module()),
 		modtest.WithModule(stubKnowledge()),
-		modtest.WithModule(stubCommunications()),
+		modtest.WithModule(stubCommunications(comms)),
+		modtest.WithTransport(check.model()),
 		modtest.WithEnv("AI_PROVIDER", "openai-compatible"),
 		modtest.WithEnv("AI_BASE_URL", "http://ollama:11434/v1"),
 		modtest.WithEnv("AI_MODELS", "test-model,other-model"),
 		modtest.WithEnv("OWNERS_REQUIRE_MFA", "0"),
 	}
-	return modtest.New(t, append(base, opts...)...)
+	return modtest.New(t, append(base, opts...)...), comms, check
 }
 
 // stubKnowledge stands in for Knowledge, which a test of this package may not
@@ -46,19 +56,6 @@ func stubKnowledge() module.Module {
 		Permissions: []contracts.Permission{
 			{Key: "knowledge:articles", Display: "Use Knowledge", Description: "Read articles.", Category: "Knowledge"},
 			{Key: "knowledge:manage", Display: "Administer Knowledge", Description: "Administer articles.", Category: "Knowledge"},
-		},
-		Mount: func(module.Deps) (http.Handler, error) { return http.NotFoundHandler(), nil },
-	}
-}
-
-// stubCommunications stands in for Communications likewise: it declares the two
-// permissions the hand-off operations of this module are checked against.
-func stubCommunications() module.Module {
-	return module.Module{
-		Name: "communications",
-		Permissions: []contracts.Permission{
-			{Key: "communications:conversations-view", Display: "View conversations", Description: "See conversations.", Category: "Communications"},
-			{Key: "communications:conversations-manage", Display: "Manage conversations", Description: "Change conversations.", Category: "Communications"},
 		},
 		Mount: func(module.Deps) (http.Handler, error) { return http.NotFoundHandler(), nil },
 	}

@@ -231,6 +231,7 @@ func (rs *runState) prepare(ctx, persist context.Context) (end func(), err error
 	if rs.conv, err = parseConversation(res.Body); err != nil {
 		return nil, err
 	}
+	rs.s.noteLinks(persist, rs.conv)
 	c := rs.conv
 	in := c.latestInbound()
 	switch {
@@ -282,6 +283,17 @@ func (rs *runState) prepare(ctx, persist context.Context) (end func(), err error
 		return nil, fmt.Errorf("issue the run's grant: %w", err)
 	}
 	return nil, nil
+}
+
+// noteLinks keeps the customer and the contacts the conversation is linked to as
+// the module saw it, so that the erasure of a customer or a contact reaches the
+// conversation (V26) without asking Communications, which it may not.
+func (s *server) noteLinks(ctx context.Context, c conversation) {
+	if err := store.New(s.deps.Pool).UpsertConversationLink(ctx, store.UpsertConversationLinkParams{
+		ConversationID: c.ID, CustomerID: c.CustomerID, ContactIds: c.contactIDs(), Now: s.deps.Clock(),
+	}); err != nil {
+		s.warn("agents: keep what a conversation is linked to", "conversation", c.ID, "err", err)
+	}
 }
 
 // recipientIsContact is S1's second half: the latest inbound sender is a contact

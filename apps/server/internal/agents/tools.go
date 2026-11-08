@@ -241,8 +241,12 @@ func (rs *runState) insertItem(ctx context.Context, kind string, item json.RawMe
 	src, _ := json.Marshal(sources)
 	id := uuid.New()
 	now := rs.s.deps.Clock()
+	var channelID *uuid.UUID
+	if rs.conv.ChannelID != uuid.Nil {
+		channelID = &rs.conv.ChannelID
+	}
 	p := store.InsertReviewItemParams{
-		ID: id, RunID: rs.run.ID, AgentID: rs.agent.ID, RoleID: rs.role.ID, ConversationID: rs.run.ConversationID, CustomerID: rs.customerID,
+		ID: id, RunID: rs.run.ID, AgentID: rs.agent.ID, RoleID: rs.role.ID, ConversationID: rs.run.ConversationID, ChannelID: channelID, CustomerID: rs.customerID,
 		Kind: kind, Item: item, Score: int16(score), Sources: src, ModelScore: int16(min(max(modelScore, 0), 100)),
 		HeldBy: heldBy, State: state, ExpiresAt: expires, Now: now,
 	}
@@ -260,12 +264,14 @@ func (rs *runState) insertItem(ctx context.Context, kind string, item json.RawMe
 }
 
 // reviewNote tells the people on the conversation that something waits for them
-// (V20). It imports nothing of Communications: it is a note, with a link.
+// (V20). It imports nothing of Communications: it is a note, with a link. The
+// role's hand-off person is mailed besides.
 func (rs *runState) reviewNote(ctx context.Context, itemID uuid.UUID, what string) {
 	body, _ := json.Marshal(map[string]string{"textBody": fmt.Sprintf("%s has %s waiting for review: /agents/review/%s", rs.agent.Name, what, itemID)})
 	if res, err := rs.call(ctx, operations.CallRequest{OperationID: opNote, PathParams: rs.own(), Body: body}); err != nil || res.Status >= 300 {
 		rs.s.warn("agents: the review note was not written", "run", rs.run.ID, "status", res.Status, "err", err)
 	}
+	rs.s.notifyHeldItem(ctx, rs.role, rs.agent.Name, itemID, what)
 }
 
 // noteTool writes an internal note on the run's conversation.

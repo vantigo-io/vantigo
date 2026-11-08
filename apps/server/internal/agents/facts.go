@@ -89,6 +89,17 @@ func (c conversation) latestInbound() *message {
 	return latest
 }
 
+// contactIDs are the contacts the conversation's senders are linked to, each once.
+func (c conversation) contactIDs() []int32 {
+	ids := []int32{}
+	for _, m := range c.Messages {
+		if m.Participant != nil && m.Participant.ContactID != nil && !slices.Contains(ids, *m.Participant.ContactID) {
+			ids = append(ids, *m.Participant.ContactID)
+		}
+	}
+	return ids
+}
+
 // inboundCount is how many inbound messages the conversation holds.
 func (c conversation) inboundCount() int {
 	n := 0

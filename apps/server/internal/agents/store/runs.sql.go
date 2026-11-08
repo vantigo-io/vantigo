@@ -329,7 +329,7 @@ func (q *Queries) GetRoleByID(ctx context.Context, id uuid.UUID) (AgentsRole, er
 }
 
 const getRun = `-- name: GetRun :one
-SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at FROM agents.runs WHERE id = $1
+SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict FROM agents.runs WHERE id = $1
 `
 
 func (q *Queries) GetRun(ctx context.Context, id uuid.UUID) (AgentsRun, error) {
@@ -356,6 +356,7 @@ func (q *Queries) GetRun(ctx context.Context, id uuid.UUID) (AgentsRun, error) {
 		&i.StartedAt,
 		&i.EndedAt,
 		&i.SentAt,
+		&i.Verdict,
 	)
 	return i, err
 }
@@ -480,9 +481,9 @@ func (q *Queries) InsertRetryRequest(ctx context.Context, arg InsertRetryRequest
 }
 
 const insertReviewItem = `-- name: InsertReviewItem :exec
-INSERT INTO agents.review_items (id, run_id, agent_id, role_id, conversation_id, customer_id, kind, item, score, sources, model_score, held_by, state, decided_at, expires_at, created_at)
-VALUES ($1, $2, $3, $4, $5, $6::integer, $7, $8, $9, $10, $11,
-        $12::text[], $13, $14::timestamptz, $15::timestamptz, $16::timestamptz)
+INSERT INTO agents.review_items (id, run_id, agent_id, role_id, conversation_id, channel_id, customer_id, kind, item, score, sources, model_score, held_by, state, decided_at, expires_at, created_at)
+VALUES ($1, $2, $3, $4, $5, $6::uuid, $7::integer, $8, $9, $10, $11, $12,
+        $13::text[], $14, $15::timestamptz, $16::timestamptz, $17::timestamptz)
 `
 
 type InsertReviewItemParams struct {
@@ -491,6 +492,7 @@ type InsertReviewItemParams struct {
 	AgentID        uuid.UUID
 	RoleID         uuid.UUID
 	ConversationID uuid.UUID
+	ChannelID      *uuid.UUID
 	CustomerID     *int32
 	Kind           string
 	Item           []byte
@@ -513,6 +515,7 @@ func (q *Queries) InsertReviewItem(ctx context.Context, arg InsertReviewItemPara
 		arg.AgentID,
 		arg.RoleID,
 		arg.ConversationID,
+		arg.ChannelID,
 		arg.CustomerID,
 		arg.Kind,
 		arg.Item,
@@ -688,7 +691,7 @@ func (q *Queries) ListAgentsWithBudget(ctx context.Context) ([]ListAgentsWithBud
 }
 
 const listReviewItemsOfRun = `-- name: ListReviewItemsOfRun :many
-SELECT id, run_id, agent_id, role_id, conversation_id, customer_id, kind, item, score, sources, model_score, held_by, state, version, decided_by_user_id, decided_at, discard_reason, discard_text, edit_ratio, outcome, expires_at, created_at FROM agents.review_items WHERE run_id = $1 ORDER BY created_at
+SELECT id, run_id, agent_id, role_id, conversation_id, customer_id, kind, item, score, sources, model_score, held_by, state, version, decided_by_user_id, decided_at, discard_reason, discard_text, edit_ratio, outcome, expires_at, created_at, channel_id FROM agents.review_items WHERE run_id = $1 ORDER BY created_at
 `
 
 func (q *Queries) ListReviewItemsOfRun(ctx context.Context, runID uuid.UUID) ([]AgentsReviewItem, error) {
@@ -723,6 +726,7 @@ func (q *Queries) ListReviewItemsOfRun(ctx context.Context, runID uuid.UUID) ([]
 			&i.Outcome,
 			&i.ExpiresAt,
 			&i.CreatedAt,
+			&i.ChannelID,
 		); err != nil {
 			return nil, err
 		}
@@ -735,7 +739,7 @@ func (q *Queries) ListReviewItemsOfRun(ctx context.Context, runID uuid.UUID) ([]
 }
 
 const listRunsToHandOff = `-- name: ListRunsToHandOff :many
-SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at FROM agents.runs WHERE state = 'handed_off' AND outcome IS NULL ORDER BY ended_at LIMIT $1
+SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict FROM agents.runs WHERE state = 'handed_off' AND outcome IS NULL ORDER BY ended_at LIMIT $1
 `
 
 // Runs handed off whose note and assignee are still to do.
@@ -769,6 +773,7 @@ func (q *Queries) ListRunsToHandOff(ctx context.Context, n int32) ([]AgentsRun, 
 			&i.StartedAt,
 			&i.EndedAt,
 			&i.SentAt,
+			&i.Verdict,
 		); err != nil {
 			return nil, err
 		}
@@ -871,7 +876,7 @@ func (q *Queries) ListUntakenRequestsOfAgent(ctx context.Context, agentID uuid.U
 }
 
 const lockLapsedRuns = `-- name: LockLapsedRuns :many
-SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at FROM agents.runs
+SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict FROM agents.runs
 WHERE state = 'running' AND claimed_until < $1::timestamptz
 ORDER BY claimed_until
 LIMIT $2
@@ -913,6 +918,7 @@ func (q *Queries) LockLapsedRuns(ctx context.Context, arg LockLapsedRunsParams) 
 			&i.StartedAt,
 			&i.EndedAt,
 			&i.SentAt,
+			&i.Verdict,
 		); err != nil {
 			return nil, err
 		}
@@ -1123,4 +1129,47 @@ func (q *Queries) WithdrawWaitingItemsOfConversation(ctx context.Context, arg Wi
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const withdrawWaitingItemsOfRole = `-- name: WithdrawWaitingItemsOfRole :many
+UPDATE agents.review_items SET state = 'withdrawn', decided_at = $1::timestamptz, version = version + 1
+WHERE role_id = $2 AND state = 'waiting'
+RETURNING id, agent_id, role_id, conversation_id
+`
+
+type WithdrawWaitingItemsOfRoleParams struct {
+	Now    time.Time
+	RoleID uuid.UUID
+}
+
+type WithdrawWaitingItemsOfRoleRow struct {
+	ID             uuid.UUID
+	AgentID        uuid.UUID
+	RoleID         uuid.UUID
+	ConversationID uuid.UUID
+}
+
+func (q *Queries) WithdrawWaitingItemsOfRole(ctx context.Context, arg WithdrawWaitingItemsOfRoleParams) ([]WithdrawWaitingItemsOfRoleRow, error) {
+	rows, err := q.db.Query(ctx, withdrawWaitingItemsOfRole, arg.Now, arg.RoleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WithdrawWaitingItemsOfRoleRow
+	for rows.Next() {
+		var i WithdrawWaitingItemsOfRoleRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentID,
+			&i.RoleID,
+			&i.ConversationID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

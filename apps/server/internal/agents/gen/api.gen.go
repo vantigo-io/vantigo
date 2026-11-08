@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -260,6 +261,39 @@ func (e AgentRoleUpdateRequestReplyMode) Valid() bool {
 	}
 }
 
+// Defines values for AgentRunState.
+const (
+	AgentRunStateDone          AgentRunState = "done"
+	AgentRunStateFailed        AgentRunState = "failed"
+	AgentRunStateHandedOff     AgentRunState = "handed_off"
+	AgentRunStateQueued        AgentRunState = "queued"
+	AgentRunStateRunning       AgentRunState = "running"
+	AgentRunStateStopped       AgentRunState = "stopped"
+	AgentRunStateWaitingReview AgentRunState = "waiting_review"
+)
+
+// Valid indicates whether the value is a known member of the AgentRunState enum.
+func (e AgentRunState) Valid() bool {
+	switch e {
+	case AgentRunStateDone:
+		return true
+	case AgentRunStateFailed:
+		return true
+	case AgentRunStateHandedOff:
+		return true
+	case AgentRunStateQueued:
+		return true
+	case AgentRunStateRunning:
+		return true
+	case AgentRunStateStopped:
+		return true
+	case AgentRunStateWaitingReview:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentSetupItemLevel.
 const (
 	AgentSetupItemLevelChange AgentSetupItemLevel = "change"
@@ -374,6 +408,165 @@ func (e AgentUpdateRequestLanguages) Valid() bool {
 	}
 }
 
+// Defines values for ReviewDiscardRequestReason.
+const (
+	ReviewDiscardRequestReasonOther           ReviewDiscardRequestReason = "other"
+	ReviewDiscardRequestReasonShouldNotAnswer ReviewDiscardRequestReason = "should_not_answer"
+	ReviewDiscardRequestReasonWrongFacts      ReviewDiscardRequestReason = "wrong_facts"
+	ReviewDiscardRequestReasonWrongTone       ReviewDiscardRequestReason = "wrong_tone"
+)
+
+// Valid indicates whether the value is a known member of the ReviewDiscardRequestReason enum.
+func (e ReviewDiscardRequestReason) Valid() bool {
+	switch e {
+	case ReviewDiscardRequestReasonOther:
+		return true
+	case ReviewDiscardRequestReasonShouldNotAnswer:
+		return true
+	case ReviewDiscardRequestReasonWrongFacts:
+		return true
+	case ReviewDiscardRequestReasonWrongTone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReviewItemDiscardReason.
+const (
+	ReviewItemDiscardReasonOther           ReviewItemDiscardReason = "other"
+	ReviewItemDiscardReasonShouldNotAnswer ReviewItemDiscardReason = "should_not_answer"
+	ReviewItemDiscardReasonWrongFacts      ReviewItemDiscardReason = "wrong_facts"
+	ReviewItemDiscardReasonWrongTone       ReviewItemDiscardReason = "wrong_tone"
+)
+
+// Valid indicates whether the value is a known member of the ReviewItemDiscardReason enum.
+func (e ReviewItemDiscardReason) Valid() bool {
+	switch e {
+	case ReviewItemDiscardReasonOther:
+		return true
+	case ReviewItemDiscardReasonShouldNotAnswer:
+		return true
+	case ReviewItemDiscardReasonWrongFacts:
+		return true
+	case ReviewItemDiscardReasonWrongTone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReviewItemKind.
+const (
+	ReviewItemKindChange ReviewItemKind = "change"
+	ReviewItemKindReply  ReviewItemKind = "reply"
+)
+
+// Valid indicates whether the value is a known member of the ReviewItemKind enum.
+func (e ReviewItemKind) Valid() bool {
+	switch e {
+	case ReviewItemKindChange:
+		return true
+	case ReviewItemKindReply:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReviewItemState.
+const (
+	ReviewItemStateDiscarded  ReviewItemState = "discarded"
+	ReviewItemStateEditedSent ReviewItemState = "edited_sent"
+	ReviewItemStateExpired    ReviewItemState = "expired"
+	ReviewItemStateSent       ReviewItemState = "sent"
+	ReviewItemStateWaiting    ReviewItemState = "waiting"
+	ReviewItemStateWithdrawn  ReviewItemState = "withdrawn"
+)
+
+// Valid indicates whether the value is a known member of the ReviewItemState enum.
+func (e ReviewItemState) Valid() bool {
+	switch e {
+	case ReviewItemStateDiscarded:
+		return true
+	case ReviewItemStateEditedSent:
+		return true
+	case ReviewItemStateExpired:
+		return true
+	case ReviewItemStateSent:
+		return true
+	case ReviewItemStateWaiting:
+		return true
+	case ReviewItemStateWithdrawn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListAgentRunsParamsState.
+const (
+	ListAgentRunsParamsStateDone          ListAgentRunsParamsState = "done"
+	ListAgentRunsParamsStateFailed        ListAgentRunsParamsState = "failed"
+	ListAgentRunsParamsStateHandedOff     ListAgentRunsParamsState = "handed_off"
+	ListAgentRunsParamsStateQueued        ListAgentRunsParamsState = "queued"
+	ListAgentRunsParamsStateRunning       ListAgentRunsParamsState = "running"
+	ListAgentRunsParamsStateStopped       ListAgentRunsParamsState = "stopped"
+	ListAgentRunsParamsStateWaitingReview ListAgentRunsParamsState = "waiting_review"
+)
+
+// Valid indicates whether the value is a known member of the ListAgentRunsParamsState enum.
+func (e ListAgentRunsParamsState) Valid() bool {
+	switch e {
+	case ListAgentRunsParamsStateDone:
+		return true
+	case ListAgentRunsParamsStateFailed:
+		return true
+	case ListAgentRunsParamsStateHandedOff:
+		return true
+	case ListAgentRunsParamsStateQueued:
+		return true
+	case ListAgentRunsParamsStateRunning:
+		return true
+	case ListAgentRunsParamsStateStopped:
+		return true
+	case ListAgentRunsParamsStateWaitingReview:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListReviewItemsParamsState.
+const (
+	ListReviewItemsParamsStateDiscarded  ListReviewItemsParamsState = "discarded"
+	ListReviewItemsParamsStateEditedSent ListReviewItemsParamsState = "edited_sent"
+	ListReviewItemsParamsStateExpired    ListReviewItemsParamsState = "expired"
+	ListReviewItemsParamsStateSent       ListReviewItemsParamsState = "sent"
+	ListReviewItemsParamsStateWaiting    ListReviewItemsParamsState = "waiting"
+	ListReviewItemsParamsStateWithdrawn  ListReviewItemsParamsState = "withdrawn"
+)
+
+// Valid indicates whether the value is a known member of the ListReviewItemsParamsState enum.
+func (e ListReviewItemsParamsState) Valid() bool {
+	switch e {
+	case ListReviewItemsParamsStateDiscarded:
+		return true
+	case ListReviewItemsParamsStateEditedSent:
+		return true
+	case ListReviewItemsParamsStateExpired:
+		return true
+	case ListReviewItemsParamsStateSent:
+		return true
+	case ListReviewItemsParamsStateWaiting:
+		return true
+	case ListReviewItemsParamsStateWithdrawn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Agent defines model for Agent.
 type Agent struct {
 	CreatedAt time.Time `json:"createdAt"`
@@ -408,6 +601,32 @@ type AgentLanguages string
 
 // AgentState defines model for Agent.State.
 type AgentState string
+
+// AgentAuditEvent One change of the Owner's settings (V25), with before and after.
+type AgentAuditEvent struct {
+	// Action What changed, such as agent.changed, role.changed, permission.changed, role.channels.changed or settings.changed.
+	Action      string             `json:"action"`
+	ActorUserId openapi_types.UUID `json:"actorUserId"`
+
+	// After Null for what was deleted.
+	After *map[string]interface{} `json:"after"`
+	At    time.Time               `json:"at"`
+
+	// Before Null for what was created.
+	Before *map[string]interface{} `json:"before"`
+	Id     int64                   `json:"id"`
+
+	// Target The agent, role or agent and permission key the change was about.
+	Target *string `json:"target"`
+}
+
+// AgentAuditList defines model for AgentAuditList.
+type AgentAuditList struct {
+	Events []AgentAuditEvent `json:"events"`
+	Limit  int32             `json:"limit"`
+	Offset int32             `json:"offset"`
+	Total  int64             `json:"total"`
+}
 
 // AgentCreateRequest defines model for AgentCreateRequest.
 type AgentCreateRequest struct {
@@ -552,6 +771,87 @@ type AgentRoleUpdateRequest struct {
 // AgentRoleUpdateRequestReplyMode defines model for AgentRoleUpdateRequest.ReplyMode.
 type AgentRoleUpdateRequestReplyMode string
 
+// AgentRun One run of an agent on a conversation (V14).
+type AgentRun struct {
+	AgentId        openapi_types.UUID `json:"agentId"`
+	Attempt        int32              `json:"attempt"`
+	ConversationId openapi_types.UUID `json:"conversationId"`
+	EndedAt        *time.Time         `json:"endedAt"`
+	ErrorCode      *string            `json:"errorCode"`
+	Id             openapi_types.UUID `json:"id"`
+	InputTokens    int64              `json:"inputTokens"`
+	ModelTurns     int32              `json:"modelTurns"`
+
+	// Outcome What the run ended in: sent, review, handed_off or no_reply.
+	Outcome      *string            `json:"outcome"`
+	OutputTokens int64              `json:"outputTokens"`
+	Reason       string             `json:"reason"`
+	RoleId       openapi_types.UUID `json:"roleId"`
+	StartedAt    time.Time          `json:"startedAt"`
+	State        AgentRunState      `json:"state"`
+
+	// Summary The note a hand-off carries: what the agent found, or why it could not go on.
+	Summary   *string `json:"summary"`
+	ToolCalls int32   `json:"toolCalls"`
+}
+
+// AgentRunState defines model for AgentRun.State.
+type AgentRunState string
+
+// AgentRunAction One tool call of a run (V25). It never holds a body.
+type AgentRunAction struct {
+	// ApprovedByUserId The reviewer whose approval the call was made on.
+	ApprovedByUserId *openapi_types.UUID `json:"approvedByUserId"`
+	CreatedAt        time.Time           `json:"createdAt"`
+	DurationMs       int32               `json:"durationMs"`
+	HttpStatus       *int32              `json:"httpStatus"`
+	Id               int64               `json:"id"`
+	Mode             string              `json:"mode"`
+	OperationId      string              `json:"operationId"`
+
+	// Ref The operation and the ids it named.
+	Ref string `json:"ref"`
+
+	// Scoped The operation returns a customer's data.
+	Scoped bool   `json:"scoped"`
+	Status string `json:"status"`
+}
+
+// AgentRunDetail defines model for AgentRunDetail.
+type AgentRunDetail struct {
+	Actions []AgentRunAction `json:"actions"`
+
+	// Items The review items the run left (V20), with the verdict each carries.
+	Items []ReviewItem `json:"items"`
+
+	// Run One run of an agent on a conversation (V14).
+	Run        AgentRun          `json:"run"`
+	Transcript []AgentRunMessage `json:"transcript"`
+
+	// Verdict What the pipeline decided for the run's reply: the mode and threshold, the score before and after the sources were checked, the valid sources, the rules that held or stopped it, and whether it was sent. Absent for a run that proposed no reply.
+	Verdict *map[string]interface{} `json:"verdict,omitempty"`
+}
+
+// AgentRunList defines model for AgentRunList.
+type AgentRunList struct {
+	Limit  int32      `json:"limit"`
+	Offset int32      `json:"offset"`
+	Runs   []AgentRun `json:"runs"`
+	Total  int64      `json:"total"`
+}
+
+// AgentRunMessage One message of a run's transcript (V14). It copies message bodies, so it is deleted with the run.
+type AgentRunMessage struct {
+	CreatedAt  time.Time `json:"createdAt"`
+	Id         int64     `json:"id"`
+	Role       string    `json:"role"`
+	Text       string    `json:"text"`
+	ToolCallId *string   `json:"toolCallId"`
+
+	// ToolCalls The tool calls an assistant message asked for.
+	ToolCalls *[]map[string]interface{} `json:"toolCalls"`
+}
+
 // AgentSetup What the agent's roles need and what is missing (V12's setup screen).
 type AgentSetup struct {
 	HasRoles bool             `json:"hasRoles"`
@@ -645,14 +945,39 @@ type AgentUpdateRequestDisclosureWording string
 // AgentUpdateRequestLanguages defines model for AgentUpdateRequest.Languages.
 type AgentUpdateRequestLanguages string
 
-// AgentsProblem An RFC 9457 problem with this module's refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503). errors carries the field errors of a 400.
+// AgentUsage defines model for AgentUsage.
+type AgentUsage struct {
+	AgentId openapi_types.UUID `json:"agentId"`
+
+	// DailyTokenBudget Null for none.
+	DailyTokenBudget *int32 `json:"dailyTokenBudget"`
+
+	// Days One entry for each of the last days, the oldest first, zeros for a day with nothing.
+	Days []AgentUsageDay `json:"days"`
+}
+
+// AgentUsageDay defines model for AgentUsageDay.
+type AgentUsageDay struct {
+	Day          openapi_types.Date `json:"day"`
+	Discarded    int32              `json:"discarded"`
+	Held         int32              `json:"held"`
+	InputTokens  int64              `json:"inputTokens"`
+	OutputTokens int64              `json:"outputTokens"`
+	Runs         int32              `json:"runs"`
+	Sent         int32              `json:"sent"`
+}
+
+// AgentsProblem An RFC 9457 problem with this module's refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503), and for the review queue reviewer_not_permitted (403), item_decided (409), held (422, rules names them), channel_refused (422) and send_unknown (502). errors carries the field errors of a 400.
 type AgentsProblem struct {
 	Code   *string              `json:"code,omitempty"`
 	Detail *string              `json:"detail,omitempty"`
 	Errors *map[string][]string `json:"errors,omitempty"`
-	Status *int32               `json:"status,omitempty"`
-	Title  *string              `json:"title,omitempty"`
-	Type   *string              `json:"type,omitempty"`
+
+	// Rules The rules that hold a reviewed item (held), such as S1 or C1.
+	Rules  *[]string `json:"rules,omitempty"`
+	Status *int32    `json:"status,omitempty"`
+	Title  *string   `json:"title,omitempty"`
+	Type   *string   `json:"type,omitempty"`
 }
 
 // AgentsSettings defines model for AgentsSettings.
@@ -664,7 +989,10 @@ type AgentsSettings struct {
 	Configured bool     `json:"configured"`
 	Models     []string `json:"models"`
 
-	// RetentionMonths How long a run is kept, 1 to 60.
+	// RetentionCapMonths The longest retention Communications' own message retention allows (V26); a longer retentionMonths is lowered to it, when saved and every night.
+	RetentionCapMonths int32 `json:"retentionCapMonths"`
+
+	// RetentionMonths How long a run is kept, 1 to 60, and never longer than Communications keeps its messages.
 	RetentionMonths int32     `json:"retentionMonths"`
 	UpdatedAt       time.Time `json:"updatedAt"`
 	Version         int32     `json:"version"`
@@ -679,6 +1007,22 @@ type AgentsSettingsRequest struct {
 	RetentionMonths int32 `json:"retentionMonths"`
 }
 
+// CalibrationPoint What a threshold of x would have done over the role's labelled items.
+type CalibrationPoint struct {
+	// AutoCount The items that would have run by itself, score at least x and no rule holding them.
+	AutoCount int32 `json:"autoCount"`
+
+	// AutoShare autoCount of the labelled items, 0 to 1.
+	AutoShare float64 `json:"autoShare"`
+
+	// BadCount Of those, the ones a person edited beyond 20 % or discarded.
+	BadCount int32 `json:"badCount"`
+
+	// BadShare badCount of autoCount, 0 to 1; 0 when none would have run by itself.
+	BadShare float64 `json:"badShare"`
+	X        int32   `json:"x"`
+}
+
 // ConversationHandOff Whether an agent handed a conversation to the people, and so does not answer it again until a person replies in it or assigns it, or it is given back.
 type ConversationHandOff struct {
 	At        *time.Time `json:"at"`
@@ -687,6 +1031,145 @@ type ConversationHandOff struct {
 	// Reason Why the agent handed off, such as hand_off, discarded, expired, budget, guard or lapsed.
 	Reason *string             `json:"reason"`
 	RoleId *openapi_types.UUID `json:"roleId"`
+}
+
+// ReviewChange A change the agent asks to make, with the preview the Assistant shows (V20).
+type ReviewChange struct {
+	Body *map[string]interface{} `json:"body,omitempty"`
+
+	// Explain One sentence from the agent saying what the change will do.
+	Explain     string                  `json:"explain"`
+	OperationId string                  `json:"operationId"`
+	PathParams  *map[string]interface{} `json:"pathParams,omitempty"`
+	Query       *map[string]interface{} `json:"query,omitempty"`
+	Summary     string                  `json:"summary"`
+}
+
+// ReviewCount defines model for ReviewCount.
+type ReviewCount struct {
+	// Waiting The items waiting for a decision, for the badge on the agents tile.
+	Waiting int64 `json:"waiting"`
+}
+
+// ReviewDiscardRequest defines model for ReviewDiscardRequest.
+type ReviewDiscardRequest struct {
+	Reason ReviewDiscardRequestReason `json:"reason"`
+
+	// Text An optional explanation, up to 2,000 characters.
+	Text *string `json:"text,omitempty"`
+}
+
+// ReviewDiscardRequestReason defines model for ReviewDiscardRequest.Reason.
+type ReviewDiscardRequestReason string
+
+// ReviewItem What a run leaves for a person (V20): a reply or a change.
+type ReviewItem struct {
+	AgentId   openapi_types.UUID `json:"agentId"`
+	AgentName string             `json:"agentName"`
+
+	// Change A change the agent asks to make, with the preview the Assistant shows (V20).
+	Change         *ReviewChange      `json:"change,omitempty"`
+	ConversationId openapi_types.UUID `json:"conversationId"`
+	CreatedAt      time.Time          `json:"createdAt"`
+	DecidedAt      *time.Time         `json:"decidedAt"`
+
+	// DecidedByUserId The reviewer, kept as an opaque id.
+	DecidedByUserId *openapi_types.UUID      `json:"decidedByUserId"`
+	DiscardReason   *ReviewItemDiscardReason `json:"discardReason"`
+	DiscardText     *string                  `json:"discardText"`
+
+	// EditRatio How much of the text a reviewer changed, 0 to 1, character by character.
+	EditRatio *float64 `json:"editRatio"`
+
+	// ExpiresAt When the item lapses, a day after it was made, or for a Messenger reply 15 minutes before the window closes.
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// HeldBy The rules that hold the item: S1 to S5, C1, C2, CHANGE and SEND. The interface words them.
+	HeldBy []string           `json:"heldBy"`
+	Id     openapi_types.UUID `json:"id"`
+	Kind   ReviewItemKind     `json:"kind"`
+
+	// ModelScore The model's own score before the sources were checked.
+	ModelScore int32   `json:"modelScore"`
+	Outcome    *string `json:"outcome"`
+
+	// Reply A reply waiting to be sent. The disclosure goes above the text, locked, and is added whatever the reviewer edits.
+	Reply    *ReviewReply       `json:"reply,omitempty"`
+	RoleId   openapi_types.UUID `json:"roleId"`
+	RoleName *string            `json:"roleName"`
+	RunId    openapi_types.UUID `json:"runId"`
+
+	// Score The score after the sources were checked: 0 with no valid source.
+	Score int32 `json:"score"`
+
+	// Sources The sources the run read that support the item.
+	Sources []string        `json:"sources"`
+	State   ReviewItemState `json:"state"`
+	Version int32           `json:"version"`
+
+	// WindowClosesAt The close of a Messenger reply window, for the countdown.
+	WindowClosesAt *time.Time `json:"windowClosesAt"`
+}
+
+// ReviewItemDiscardReason defines model for ReviewItem.DiscardReason.
+type ReviewItemDiscardReason string
+
+// ReviewItemKind defines model for ReviewItem.Kind.
+type ReviewItemKind string
+
+// ReviewItemState defines model for ReviewItem.State.
+type ReviewItemState string
+
+// ReviewItemList defines model for ReviewItemList.
+type ReviewItemList struct {
+	Items  []ReviewItem `json:"items"`
+	Limit  int32        `json:"limit"`
+	Offset int32        `json:"offset"`
+	Total  int64        `json:"total"`
+}
+
+// ReviewReply A reply waiting to be sent. The disclosure goes above the text, locked, and is added whatever the reviewer edits.
+type ReviewReply struct {
+	// Components Answer options or cards, when the channel takes them.
+	Components *map[string]interface{} `json:"components,omitempty"`
+
+	// Disclosure The opening line that names the agent and says it is an AI (V11).
+	Disclosure string `json:"disclosure"`
+
+	// InReplyToMessageId The message the reply answers.
+	InReplyToMessageId *openapi_types.UUID `json:"inReplyToMessageId,omitempty"`
+
+	// Text What the agent wrote, without the disclosure.
+	Text string `json:"text"`
+}
+
+// ReviewSendRequest defines model for ReviewSendRequest.
+type ReviewSendRequest struct {
+	// Components Answer options or cards, replacing the agent's. Absent keeps them.
+	Components *map[string]interface{} `json:"components,omitempty"`
+
+	// Text The reviewer's text, without the disclosure, which is added.
+	Text string `json:"text"`
+}
+
+// RoleCalibration How the role's score has agreed with its reviewers over its last labelled replies (V21).
+type RoleCalibration struct {
+	// HeldCount The labelled replies a rule held, whatever their score.
+	HeldCount int32 `json:"heldCount"`
+
+	// Labelled How many labelled replies the figures rest on, at most 200.
+	Labelled int32 `json:"labelled"`
+
+	// Minimum The labelled replies needed before the figures are shown.
+	Minimum          int32 `json:"minimum"`
+	NotEnoughHistory bool  `json:"notEnoughHistory"`
+
+	// Points One point for each threshold from 50 to 100; empty when there is not enough history.
+	Points []CalibrationPoint `json:"points"`
+	RoleId openapi_types.UUID `json:"roleId"`
+
+	// Threshold The threshold the role has now.
+	Threshold int32 `json:"threshold"`
 }
 
 // UpdateAgentParams defines parameters for UpdateAgent.
@@ -703,6 +1186,72 @@ type PutAgentAvatarMultipartBody struct {
 // UpdateAgentRoleParams defines parameters for UpdateAgentRole.
 type UpdateAgentRoleParams struct {
 	// IfMatch The version the resource was read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
+// ListAgentRunsParams defines parameters for ListAgentRuns.
+type ListAgentRunsParams struct {
+	// State Only runs in this state.
+	State *ListAgentRunsParamsState `form:"state,omitempty" json:"state,omitempty"`
+
+	// Limit At most this many, 1 to 200; 50 by default.
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Skip this many.
+	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListAgentRunsParamsState defines parameters for ListAgentRuns.
+type ListAgentRunsParamsState string
+
+// GetAgentUsageParams defines parameters for GetAgentUsage.
+type GetAgentUsageParams struct {
+	// Days How many days, 1 to 90; 30 by default.
+	Days *int32 `form:"days,omitempty" json:"days,omitempty"`
+}
+
+// ListAgentsAuditParams defines parameters for ListAgentsAudit.
+type ListAgentsAuditParams struct {
+	// Limit At most this many, 1 to 200; 50 by default.
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Skip this many.
+	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListReviewItemsParams defines parameters for ListReviewItems.
+type ListReviewItemsParams struct {
+	// AgentId Only this agent's items.
+	AgentId *openapi_types.UUID `form:"agentId,omitempty" json:"agentId,omitempty"`
+
+	// State Only items in this state.
+	State *ListReviewItemsParamsState `form:"state,omitempty" json:"state,omitempty"`
+
+	// Limit At most this many, 1 to 200; 50 by default.
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Skip this many.
+	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListReviewItemsParamsState defines parameters for ListReviewItems.
+type ListReviewItemsParamsState string
+
+// ApproveReviewItemParams defines parameters for ApproveReviewItem.
+type ApproveReviewItemParams struct {
+	// IfMatch The version the item was read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
+// DiscardReviewItemParams defines parameters for DiscardReviewItem.
+type DiscardReviewItemParams struct {
+	// IfMatch The version the item was read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
+// SendEditedReviewItemParams defines parameters for SendEditedReviewItem.
+type SendEditedReviewItemParams struct {
+	// IfMatch The version the item was read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict.
 	IfMatch string `json:"If-Match"`
 }
 
@@ -732,6 +1281,12 @@ type UpdateAgentRoleJSONRequestBody = AgentRoleUpdateRequest
 
 // SetAgentRoleChannelsJSONRequestBody defines body for SetAgentRoleChannels for application/json ContentType.
 type SetAgentRoleChannelsJSONRequestBody = AgentRoleChannelsRequest
+
+// DiscardReviewItemJSONRequestBody defines body for DiscardReviewItem for application/json ContentType.
+type DiscardReviewItemJSONRequestBody = ReviewDiscardRequest
+
+// SendEditedReviewItemJSONRequestBody defines body for SendEditedReviewItem for application/json ContentType.
+type SendEditedReviewItemJSONRequestBody = ReviewSendRequest
 
 // PutAgentsSettingsJSONRequestBody defines body for PutAgentsSettings for application/json ContentType.
 type PutAgentsSettingsJSONRequestBody = AgentsSettingsRequest
@@ -780,15 +1335,48 @@ type ServerInterface interface {
 	// SetAgentRoleChannels Bind a role to channels
 	// (PUT /api/v1/agents/agents/{agentId}/roles/{roleId}/channels)
 	SetAgentRoleChannels(w http.ResponseWriter, r *http.Request, agentId openapi_types.UUID, roleId openapi_types.UUID)
+	// ListAgentRuns List an agent's runs
+	// (GET /api/v1/agents/agents/{agentId}/runs)
+	ListAgentRuns(w http.ResponseWriter, r *http.Request, agentId openapi_types.UUID, params ListAgentRunsParams)
 	// GetAgentSetup Get what an agent still needs
 	// (GET /api/v1/agents/agents/{agentId}/setup)
 	GetAgentSetup(w http.ResponseWriter, r *http.Request, agentId openapi_types.UUID)
+	// GetAgentUsage Get an agent's usage
+	// (GET /api/v1/agents/agents/{agentId}/usage)
+	GetAgentUsage(w http.ResponseWriter, r *http.Request, agentId openapi_types.UUID, params GetAgentUsageParams)
+	// ListAgentsAudit List the changes to the settings
+	// (GET /api/v1/agents/audit)
+	ListAgentsAudit(w http.ResponseWriter, r *http.Request, params ListAgentsAuditParams)
 	// GiveBackConversation Give a conversation back to the agent
 	// (DELETE /api/v1/agents/conversations/{conversationId}/hand-off)
 	GiveBackConversation(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
 	// GetConversationHandOff Read a conversation's hand-off
 	// (GET /api/v1/agents/conversations/{conversationId}/hand-off)
 	GetConversationHandOff(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
+	// ListReviewItems List the review queue
+	// (GET /api/v1/agents/review)
+	ListReviewItems(w http.ResponseWriter, r *http.Request, params ListReviewItemsParams)
+	// GetReviewCount Count the items waiting for review
+	// (GET /api/v1/agents/review/count)
+	GetReviewCount(w http.ResponseWriter, r *http.Request)
+	// GetReviewItem Get a review item
+	// (GET /api/v1/agents/review/{itemId})
+	GetReviewItem(w http.ResponseWriter, r *http.Request, itemId openapi_types.UUID)
+	// ApproveReviewItem Approve a review item
+	// (POST /api/v1/agents/review/{itemId}/approve)
+	ApproveReviewItem(w http.ResponseWriter, r *http.Request, itemId openapi_types.UUID, params ApproveReviewItemParams)
+	// DiscardReviewItem Discard a review item
+	// (POST /api/v1/agents/review/{itemId}/discard)
+	DiscardReviewItem(w http.ResponseWriter, r *http.Request, itemId openapi_types.UUID, params DiscardReviewItemParams)
+	// SendEditedReviewItem Edit and send a reply
+	// (POST /api/v1/agents/review/{itemId}/send)
+	SendEditedReviewItem(w http.ResponseWriter, r *http.Request, itemId openapi_types.UUID, params SendEditedReviewItemParams)
+	// GetRoleCalibration Get a role's calibration
+	// (GET /api/v1/agents/roles/{roleId}/calibration)
+	GetRoleCalibration(w http.ResponseWriter, r *http.Request, roleId openapi_types.UUID)
+	// GetAgentRun Get a run
+	// (GET /api/v1/agents/runs/{runId})
+	GetAgentRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID)
 	// GetAgentsSettings Get the agents settings
 	// (GET /api/v1/agents/settings)
 	GetAgentsSettings(w http.ResponseWriter, r *http.Request)
@@ -1241,6 +1829,74 @@ func (siw *ServerInterfaceWrapper) SetAgentRoleChannels(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// ListAgentRuns operation middleware
+func (siw *ServerInterfaceWrapper) ListAgentRuns(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAgentRunsParams
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAgentRuns(w, r, agentId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetAgentSetup operation middleware
 func (siw *ServerInterfaceWrapper) GetAgentSetup(w http.ResponseWriter, r *http.Request) {
 
@@ -1258,6 +1914,94 @@ func (siw *ServerInterfaceWrapper) GetAgentSetup(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAgentSetup(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAgentUsage operation middleware
+func (siw *ServerInterfaceWrapper) GetAgentUsage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAgentUsageParams
+
+	// ------------- Optional query parameter "days" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "days", r.URL.Query(), &params.Days, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "days"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "days", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAgentUsage(w, r, agentId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAgentsAudit operation middleware
+func (siw *ServerInterfaceWrapper) ListAgentsAudit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAgentsAuditParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAgentsAudit(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1310,6 +2054,332 @@ func (siw *ServerInterfaceWrapper) GetConversationHandOff(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetConversationHandOff(w, r, conversationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListReviewItems operation middleware
+func (siw *ServerInterfaceWrapper) ListReviewItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListReviewItemsParams
+
+	// ------------- Optional query parameter "agentId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "agentId", r.URL.Query(), &params.AgentId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "agentId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListReviewItems(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetReviewCount operation middleware
+func (siw *ServerInterfaceWrapper) GetReviewCount(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetReviewCount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetReviewItem operation middleware
+func (siw *ServerInterfaceWrapper) GetReviewItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetReviewItem(w, r, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApproveReviewItem operation middleware
+func (siw *ServerInterfaceWrapper) ApproveReviewItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ApproveReviewItemParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApproveReviewItem(w, r, itemId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DiscardReviewItem operation middleware
+func (siw *ServerInterfaceWrapper) DiscardReviewItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DiscardReviewItemParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DiscardReviewItem(w, r, itemId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendEditedReviewItem operation middleware
+func (siw *ServerInterfaceWrapper) SendEditedReviewItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SendEditedReviewItemParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendEditedReviewItem(w, r, itemId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRoleCalibration operation middleware
+func (siw *ServerInterfaceWrapper) GetRoleCalibration(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roleId" -------------
+	var roleId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roleId", r.PathValue("roleId"), &roleId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roleId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRoleCalibration(w, r, roleId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAgentRun operation middleware
+func (siw *ServerInterfaceWrapper) GetAgentRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runId" -------------
+	var runId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runId", r.PathValue("runId"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAgentRun(w, r, runId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1521,6 +2591,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/agents/agents/{agentId}/avatar", wrapper.PutAgentAvatar)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/agents/agents/{agentId}/pause", wrapper.PauseAgent)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/agents/agents/{agentId}/permissions/{key}", wrapper.PutAgentPermission)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/agents/{agentId}/runs", wrapper.ListAgentRuns)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/agents/{agentId}/usage", wrapper.GetAgentUsage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/agents/agents/{agentId}/resume", wrapper.ResumeAgent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/agents/agents/{agentId}/roles", wrapper.CreateAgentRole)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/agents/agents/{agentId}/roles/{roleId}", wrapper.DeleteAgentRole)
@@ -1529,6 +2601,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/agents/{agentId}/setup", wrapper.GetAgentSetup)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/agents/conversations/{conversationId}/hand-off", wrapper.GiveBackConversation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/conversations/{conversationId}/hand-off", wrapper.GetConversationHandOff)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/audit", wrapper.ListAgentsAudit)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/review", wrapper.ListReviewItems)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/review/count", wrapper.GetReviewCount)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/review/{itemId}", wrapper.GetReviewItem)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/agents/review/{itemId}/approve", wrapper.ApproveReviewItem)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/agents/review/{itemId}/send", wrapper.SendEditedReviewItem)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/agents/review/{itemId}/discard", wrapper.DiscardReviewItem)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/roles/{roleId}/calibration", wrapper.GetRoleCalibration)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/runs/{runId}", wrapper.GetAgentRun)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/settings", wrapper.GetAgentsSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/agents/settings", wrapper.PutAgentsSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/templates", wrapper.ListAgentTemplates)
@@ -2633,6 +3714,99 @@ func (response SetAgentRoleChannels409ApplicationProblemPlusJSONResponse) VisitS
 	return err
 }
 
+type ListAgentRunsRequestObject struct {
+	AgentId openapi_types.UUID `json:"agentId"`
+	Params  ListAgentRunsParams
+}
+
+type ListAgentRunsResponseObject interface {
+	VisitListAgentRunsResponse(w http.ResponseWriter) error
+}
+
+type ListAgentRuns200JSONResponse AgentRunList
+
+func (response ListAgentRuns200JSONResponse) VisitListAgentRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentRuns400ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response ListAgentRuns400ApplicationProblemPlusJSONResponse) VisitListAgentRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentRuns401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAgentRuns401JSONResponse) VisitListAgentRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentRuns403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAgentRuns403JSONResponse) VisitListAgentRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentRuns403ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response ListAgentRuns403ApplicationProblemPlusJSONResponse) VisitListAgentRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentRuns404ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response ListAgentRuns404ApplicationProblemPlusJSONResponse) VisitListAgentRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetAgentSetupRequestObject struct {
 	AgentId openapi_types.UUID `json:"agentId"`
 }
@@ -2693,6 +3867,121 @@ func (response GetAgentSetup404ApplicationProblemPlusJSONResponse) VisitGetAgent
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentUsageRequestObject struct {
+	AgentId openapi_types.UUID `json:"agentId"`
+	Params  GetAgentUsageParams
+}
+
+type GetAgentUsageResponseObject interface {
+	VisitGetAgentUsageResponse(w http.ResponseWriter) error
+}
+
+type GetAgentUsage200JSONResponse AgentUsage
+
+func (response GetAgentUsage200JSONResponse) VisitGetAgentUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentUsage401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAgentUsage401JSONResponse) VisitGetAgentUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentUsage403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAgentUsage403JSONResponse) VisitGetAgentUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentUsage404ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response GetAgentUsage404ApplicationProblemPlusJSONResponse) VisitGetAgentUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentsAuditRequestObject struct {
+	Params ListAgentsAuditParams
+}
+
+type ListAgentsAuditResponseObject interface {
+	VisitListAgentsAuditResponse(w http.ResponseWriter) error
+}
+
+type ListAgentsAudit200JSONResponse AgentAuditList
+
+func (response ListAgentsAudit200JSONResponse) VisitListAgentsAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentsAudit401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAgentsAudit401JSONResponse) VisitListAgentsAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentsAudit403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAgentsAudit403JSONResponse) VisitListAgentsAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2787,6 +4076,732 @@ func (response GetConversationHandOff403JSONResponse) VisitGetConversationHandOf
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListReviewItemsRequestObject struct {
+	Params ListReviewItemsParams
+}
+
+type ListReviewItemsResponseObject interface {
+	VisitListReviewItemsResponse(w http.ResponseWriter) error
+}
+
+type ListReviewItems200JSONResponse ReviewItemList
+
+func (response ListReviewItems200JSONResponse) VisitListReviewItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListReviewItems400ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response ListReviewItems400ApplicationProblemPlusJSONResponse) VisitListReviewItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListReviewItems401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListReviewItems401JSONResponse) VisitListReviewItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListReviewItems403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListReviewItems403JSONResponse) VisitListReviewItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListReviewItems403ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response ListReviewItems403ApplicationProblemPlusJSONResponse) VisitListReviewItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReviewCountRequestObject struct {
+}
+
+type GetReviewCountResponseObject interface {
+	VisitGetReviewCountResponse(w http.ResponseWriter) error
+}
+
+type GetReviewCount200JSONResponse ReviewCount
+
+func (response GetReviewCount200JSONResponse) VisitGetReviewCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReviewCount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetReviewCount401JSONResponse) VisitGetReviewCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReviewCount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetReviewCount403JSONResponse) VisitGetReviewCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReviewItemRequestObject struct {
+	ItemId openapi_types.UUID `json:"itemId"`
+}
+
+type GetReviewItemResponseObject interface {
+	VisitGetReviewItemResponse(w http.ResponseWriter) error
+}
+
+type GetReviewItem200JSONResponse ReviewItem
+
+func (response GetReviewItem200JSONResponse) VisitGetReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReviewItem401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetReviewItem401JSONResponse) VisitGetReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReviewItem403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetReviewItem403JSONResponse) VisitGetReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReviewItem403ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response GetReviewItem403ApplicationProblemPlusJSONResponse) VisitGetReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReviewItem404ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response GetReviewItem404ApplicationProblemPlusJSONResponse) VisitGetReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveReviewItemRequestObject struct {
+	ItemId openapi_types.UUID `json:"itemId"`
+	Params ApproveReviewItemParams
+}
+
+type ApproveReviewItemResponseObject interface {
+	VisitApproveReviewItemResponse(w http.ResponseWriter) error
+}
+
+type ApproveReviewItem200JSONResponse ReviewItem
+
+func (response ApproveReviewItem200JSONResponse) VisitApproveReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveReviewItem400ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response ApproveReviewItem400ApplicationProblemPlusJSONResponse) VisitApproveReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveReviewItem401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ApproveReviewItem401JSONResponse) VisitApproveReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveReviewItem403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ApproveReviewItem403JSONResponse) VisitApproveReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveReviewItem403ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response ApproveReviewItem403ApplicationProblemPlusJSONResponse) VisitApproveReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveReviewItem404ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response ApproveReviewItem404ApplicationProblemPlusJSONResponse) VisitApproveReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveReviewItem409ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response ApproveReviewItem409ApplicationProblemPlusJSONResponse) VisitApproveReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveReviewItem422ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response ApproveReviewItem422ApplicationProblemPlusJSONResponse) VisitApproveReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveReviewItem502ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response ApproveReviewItem502ApplicationProblemPlusJSONResponse) VisitApproveReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscardReviewItemRequestObject struct {
+	ItemId openapi_types.UUID `json:"itemId"`
+	Params DiscardReviewItemParams
+	Body   *DiscardReviewItemJSONRequestBody
+}
+
+type DiscardReviewItemResponseObject interface {
+	VisitDiscardReviewItemResponse(w http.ResponseWriter) error
+}
+
+type DiscardReviewItem200JSONResponse ReviewItem
+
+func (response DiscardReviewItem200JSONResponse) VisitDiscardReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscardReviewItem400ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response DiscardReviewItem400ApplicationProblemPlusJSONResponse) VisitDiscardReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscardReviewItem401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DiscardReviewItem401JSONResponse) VisitDiscardReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscardReviewItem403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DiscardReviewItem403JSONResponse) VisitDiscardReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscardReviewItem403ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response DiscardReviewItem403ApplicationProblemPlusJSONResponse) VisitDiscardReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscardReviewItem404ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response DiscardReviewItem404ApplicationProblemPlusJSONResponse) VisitDiscardReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscardReviewItem409ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response DiscardReviewItem409ApplicationProblemPlusJSONResponse) VisitDiscardReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendEditedReviewItemRequestObject struct {
+	ItemId openapi_types.UUID `json:"itemId"`
+	Params SendEditedReviewItemParams
+	Body   *SendEditedReviewItemJSONRequestBody
+}
+
+type SendEditedReviewItemResponseObject interface {
+	VisitSendEditedReviewItemResponse(w http.ResponseWriter) error
+}
+
+type SendEditedReviewItem200JSONResponse ReviewItem
+
+func (response SendEditedReviewItem200JSONResponse) VisitSendEditedReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendEditedReviewItem400ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response SendEditedReviewItem400ApplicationProblemPlusJSONResponse) VisitSendEditedReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendEditedReviewItem401JSONResponse externalRef0.AuthErrorResponse
+
+func (response SendEditedReviewItem401JSONResponse) VisitSendEditedReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendEditedReviewItem403JSONResponse externalRef0.AuthErrorResponse
+
+func (response SendEditedReviewItem403JSONResponse) VisitSendEditedReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendEditedReviewItem403ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response SendEditedReviewItem403ApplicationProblemPlusJSONResponse) VisitSendEditedReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendEditedReviewItem404ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response SendEditedReviewItem404ApplicationProblemPlusJSONResponse) VisitSendEditedReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendEditedReviewItem409ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response SendEditedReviewItem409ApplicationProblemPlusJSONResponse) VisitSendEditedReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendEditedReviewItem422ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response SendEditedReviewItem422ApplicationProblemPlusJSONResponse) VisitSendEditedReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendEditedReviewItem502ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response SendEditedReviewItem502ApplicationProblemPlusJSONResponse) VisitSendEditedReviewItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoleCalibrationRequestObject struct {
+	RoleId openapi_types.UUID `json:"roleId"`
+}
+
+type GetRoleCalibrationResponseObject interface {
+	VisitGetRoleCalibrationResponse(w http.ResponseWriter) error
+}
+
+type GetRoleCalibration200JSONResponse RoleCalibration
+
+func (response GetRoleCalibration200JSONResponse) VisitGetRoleCalibrationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoleCalibration401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetRoleCalibration401JSONResponse) VisitGetRoleCalibrationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoleCalibration403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetRoleCalibration403JSONResponse) VisitGetRoleCalibrationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoleCalibration404ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response GetRoleCalibration404ApplicationProblemPlusJSONResponse) VisitGetRoleCalibrationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentRunRequestObject struct {
+	RunId openapi_types.UUID `json:"runId"`
+}
+
+type GetAgentRunResponseObject interface {
+	VisitGetAgentRunResponse(w http.ResponseWriter) error
+}
+
+type GetAgentRun200JSONResponse AgentRunDetail
+
+func (response GetAgentRun200JSONResponse) VisitGetAgentRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentRun401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAgentRun401JSONResponse) VisitGetAgentRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentRun403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAgentRun403JSONResponse) VisitGetAgentRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentRun403ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response GetAgentRun403ApplicationProblemPlusJSONResponse) VisitGetAgentRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentRun404ApplicationProblemPlusJSONResponse AgentsProblem
+
+func (response GetAgentRun404ApplicationProblemPlusJSONResponse) VisitGetAgentRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -3012,15 +5027,48 @@ type StrictServerInterface interface {
 	// SetAgentRoleChannels Bind a role to channels
 	// (PUT /api/v1/agents/agents/{agentId}/roles/{roleId}/channels)
 	SetAgentRoleChannels(ctx context.Context, request SetAgentRoleChannelsRequestObject) (SetAgentRoleChannelsResponseObject, error)
+	// ListAgentRuns List an agent's runs
+	// (GET /api/v1/agents/agents/{agentId}/runs)
+	ListAgentRuns(ctx context.Context, request ListAgentRunsRequestObject) (ListAgentRunsResponseObject, error)
 	// GetAgentSetup Get what an agent still needs
 	// (GET /api/v1/agents/agents/{agentId}/setup)
 	GetAgentSetup(ctx context.Context, request GetAgentSetupRequestObject) (GetAgentSetupResponseObject, error)
+	// GetAgentUsage Get an agent's usage
+	// (GET /api/v1/agents/agents/{agentId}/usage)
+	GetAgentUsage(ctx context.Context, request GetAgentUsageRequestObject) (GetAgentUsageResponseObject, error)
+	// ListAgentsAudit List the changes to the settings
+	// (GET /api/v1/agents/audit)
+	ListAgentsAudit(ctx context.Context, request ListAgentsAuditRequestObject) (ListAgentsAuditResponseObject, error)
 	// GiveBackConversation Give a conversation back to the agent
 	// (DELETE /api/v1/agents/conversations/{conversationId}/hand-off)
 	GiveBackConversation(ctx context.Context, request GiveBackConversationRequestObject) (GiveBackConversationResponseObject, error)
 	// GetConversationHandOff Read a conversation's hand-off
 	// (GET /api/v1/agents/conversations/{conversationId}/hand-off)
 	GetConversationHandOff(ctx context.Context, request GetConversationHandOffRequestObject) (GetConversationHandOffResponseObject, error)
+	// ListReviewItems List the review queue
+	// (GET /api/v1/agents/review)
+	ListReviewItems(ctx context.Context, request ListReviewItemsRequestObject) (ListReviewItemsResponseObject, error)
+	// GetReviewCount Count the items waiting for review
+	// (GET /api/v1/agents/review/count)
+	GetReviewCount(ctx context.Context, request GetReviewCountRequestObject) (GetReviewCountResponseObject, error)
+	// GetReviewItem Get a review item
+	// (GET /api/v1/agents/review/{itemId})
+	GetReviewItem(ctx context.Context, request GetReviewItemRequestObject) (GetReviewItemResponseObject, error)
+	// ApproveReviewItem Approve a review item
+	// (POST /api/v1/agents/review/{itemId}/approve)
+	ApproveReviewItem(ctx context.Context, request ApproveReviewItemRequestObject) (ApproveReviewItemResponseObject, error)
+	// DiscardReviewItem Discard a review item
+	// (POST /api/v1/agents/review/{itemId}/discard)
+	DiscardReviewItem(ctx context.Context, request DiscardReviewItemRequestObject) (DiscardReviewItemResponseObject, error)
+	// SendEditedReviewItem Edit and send a reply
+	// (POST /api/v1/agents/review/{itemId}/send)
+	SendEditedReviewItem(ctx context.Context, request SendEditedReviewItemRequestObject) (SendEditedReviewItemResponseObject, error)
+	// GetRoleCalibration Get a role's calibration
+	// (GET /api/v1/agents/roles/{roleId}/calibration)
+	GetRoleCalibration(ctx context.Context, request GetRoleCalibrationRequestObject) (GetRoleCalibrationResponseObject, error)
+	// GetAgentRun Get a run
+	// (GET /api/v1/agents/runs/{runId})
+	GetAgentRun(ctx context.Context, request GetAgentRunRequestObject) (GetAgentRunResponseObject, error)
 	// GetAgentsSettings Get the agents settings
 	// (GET /api/v1/agents/settings)
 	GetAgentsSettings(ctx context.Context, request GetAgentsSettingsRequestObject) (GetAgentsSettingsResponseObject, error)
@@ -3486,6 +5534,33 @@ func (sh *strictHandler) SetAgentRoleChannels(w http.ResponseWriter, r *http.Req
 	}
 }
 
+// ListAgentRuns operation middleware
+func (sh *strictHandler) ListAgentRuns(w http.ResponseWriter, r *http.Request, agentId openapi_types.UUID, params ListAgentRunsParams) {
+	var request ListAgentRunsRequestObject
+
+	request.AgentId = agentId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAgentRuns(ctx, request.(ListAgentRunsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAgentRuns")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAgentRunsResponseObject); ok {
+		if err := validResponse.VisitListAgentRunsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetAgentSetup operation middleware
 func (sh *strictHandler) GetAgentSetup(w http.ResponseWriter, r *http.Request, agentId openapi_types.UUID) {
 	var request GetAgentSetupRequestObject
@@ -3505,6 +5580,59 @@ func (sh *strictHandler) GetAgentSetup(w http.ResponseWriter, r *http.Request, a
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAgentSetupResponseObject); ok {
 		if err := validResponse.VisitGetAgentSetupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAgentUsage operation middleware
+func (sh *strictHandler) GetAgentUsage(w http.ResponseWriter, r *http.Request, agentId openapi_types.UUID, params GetAgentUsageParams) {
+	var request GetAgentUsageRequestObject
+
+	request.AgentId = agentId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAgentUsage(ctx, request.(GetAgentUsageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAgentUsage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAgentUsageResponseObject); ok {
+		if err := validResponse.VisitGetAgentUsageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAgentsAudit operation middleware
+func (sh *strictHandler) ListAgentsAudit(w http.ResponseWriter, r *http.Request, params ListAgentsAuditParams) {
+	var request ListAgentsAuditRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAgentsAudit(ctx, request.(ListAgentsAuditRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAgentsAudit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAgentsAuditResponseObject); ok {
+		if err := validResponse.VisitListAgentsAuditResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -3557,6 +5685,229 @@ func (sh *strictHandler) GetConversationHandOff(w http.ResponseWriter, r *http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetConversationHandOffResponseObject); ok {
 		if err := validResponse.VisitGetConversationHandOffResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListReviewItems operation middleware
+func (sh *strictHandler) ListReviewItems(w http.ResponseWriter, r *http.Request, params ListReviewItemsParams) {
+	var request ListReviewItemsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListReviewItems(ctx, request.(ListReviewItemsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListReviewItems")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListReviewItemsResponseObject); ok {
+		if err := validResponse.VisitListReviewItemsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetReviewCount operation middleware
+func (sh *strictHandler) GetReviewCount(w http.ResponseWriter, r *http.Request) {
+	var request GetReviewCountRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetReviewCount(ctx, request.(GetReviewCountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetReviewCount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetReviewCountResponseObject); ok {
+		if err := validResponse.VisitGetReviewCountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetReviewItem operation middleware
+func (sh *strictHandler) GetReviewItem(w http.ResponseWriter, r *http.Request, itemId openapi_types.UUID) {
+	var request GetReviewItemRequestObject
+
+	request.ItemId = itemId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetReviewItem(ctx, request.(GetReviewItemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetReviewItem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetReviewItemResponseObject); ok {
+		if err := validResponse.VisitGetReviewItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApproveReviewItem operation middleware
+func (sh *strictHandler) ApproveReviewItem(w http.ResponseWriter, r *http.Request, itemId openapi_types.UUID, params ApproveReviewItemParams) {
+	var request ApproveReviewItemRequestObject
+
+	request.ItemId = itemId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApproveReviewItem(ctx, request.(ApproveReviewItemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApproveReviewItem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApproveReviewItemResponseObject); ok {
+		if err := validResponse.VisitApproveReviewItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DiscardReviewItem operation middleware
+func (sh *strictHandler) DiscardReviewItem(w http.ResponseWriter, r *http.Request, itemId openapi_types.UUID, params DiscardReviewItemParams) {
+	var request DiscardReviewItemRequestObject
+
+	request.ItemId = itemId
+	request.Params = params
+
+	var body DiscardReviewItemJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DiscardReviewItem(ctx, request.(DiscardReviewItemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DiscardReviewItem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DiscardReviewItemResponseObject); ok {
+		if err := validResponse.VisitDiscardReviewItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SendEditedReviewItem operation middleware
+func (sh *strictHandler) SendEditedReviewItem(w http.ResponseWriter, r *http.Request, itemId openapi_types.UUID, params SendEditedReviewItemParams) {
+	var request SendEditedReviewItemRequestObject
+
+	request.ItemId = itemId
+	request.Params = params
+
+	var body SendEditedReviewItemJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendEditedReviewItem(ctx, request.(SendEditedReviewItemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendEditedReviewItem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendEditedReviewItemResponseObject); ok {
+		if err := validResponse.VisitSendEditedReviewItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRoleCalibration operation middleware
+func (sh *strictHandler) GetRoleCalibration(w http.ResponseWriter, r *http.Request, roleId openapi_types.UUID) {
+	var request GetRoleCalibrationRequestObject
+
+	request.RoleId = roleId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRoleCalibration(ctx, request.(GetRoleCalibrationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRoleCalibration")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRoleCalibrationResponseObject); ok {
+		if err := validResponse.VisitGetRoleCalibrationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAgentRun operation middleware
+func (sh *strictHandler) GetAgentRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID) {
+	var request GetAgentRunRequestObject
+
+	request.RunId = runId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAgentRun(ctx, request.(GetAgentRunRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAgentRun")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAgentRunResponseObject); ok {
+		if err := validResponse.VisitGetAgentRunResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

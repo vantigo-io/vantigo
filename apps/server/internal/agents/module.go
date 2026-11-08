@@ -115,6 +115,9 @@ func Module() module.Module {
 		EventHandlers: eventHandlers,
 		APIRunners:    apiRunners,
 		Workers:       workers,
+		// What the module holds about a customer or a contact as a person (V26),
+		// handed over and erased with Customers' anonymisation, module enabled or not.
+		CustomerPersonalData: newCustomerPersonalData,
 	}
 }
 

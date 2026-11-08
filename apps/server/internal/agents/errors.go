@@ -18,6 +18,12 @@ const (
 	codeOwnerRequired   = "owner_required"
 	codeLevelLocked     = "level_locked"
 	codeAIUnavailable   = "ai_unavailable"
+	codeNotPermitted    = "reviewer_not_permitted"
+	codeItemDecided     = "item_decided"
+	codeHeld            = "held"
+	codeChannelRefused  = "channel_refused"
+	codeChangeRefused   = "change_refused"
+	codeSendUnknown     = "send_unknown"
 	statusOwnerRequired = http.StatusForbidden
 )
 
@@ -29,6 +35,7 @@ type refusal struct {
 	code   string
 	title  string
 	errors map[string][]string
+	rules  []string
 }
 
 // refuse builds a refusal.
@@ -51,6 +58,20 @@ func ownerRequired() refusal {
 	return refuse(statusOwnerRequired, codeOwnerRequired, "Only the Owner may do this")
 }
 
+// notPermitted is a 403 for a reviewer who may not see or do what the item holds.
+func notPermitted() refusal {
+	return refuse(http.StatusForbidden, codeNotPermitted, "You may not see or do what this holds")
+}
+
+func itemDecided() refusal {
+	return refuse(http.StatusConflict, codeItemDecided, "It was decided already")
+}
+
+// held is a 422: a rule that holds in every mode holds the item now.
+func held(rules []string) refusal {
+	return refusal{status: http.StatusUnprocessableEntity, code: codeHeld, title: "A rule holds it", rules: rules}
+}
+
 func badIfMatch() refusal {
 	return invalid("If-Match is not a version", map[string][]string{"If-Match": {"If-Match must carry the version the row was read at, such as \"3\""}})
 }
@@ -62,6 +83,9 @@ func (r refusal) write(w http.ResponseWriter) error {
 	problem := gen.AgentsProblem{Status: &status, Code: &code, Title: &title}
 	if len(r.errors) > 0 {
 		problem.Errors = &r.errors
+	}
+	if len(r.rules) > 0 {
+		problem.Rules = &r.rules
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(r.status)
@@ -88,3 +112,15 @@ func (r refusal) VisitGetAgentSetupResponse(w http.ResponseWriter) error      { 
 func (r refusal) VisitGetAgentsSettingsResponse(w http.ResponseWriter) error  { return r.write(w) }
 func (r refusal) VisitPutAgentsSettingsResponse(w http.ResponseWriter) error  { return r.write(w) }
 func (r refusal) VisitListAgentTemplatesResponse(w http.ResponseWriter) error { return r.write(w) }
+
+func (r refusal) VisitListAgentsAuditResponse(w http.ResponseWriter) error      { return r.write(w) }
+func (r refusal) VisitListReviewItemsResponse(w http.ResponseWriter) error      { return r.write(w) }
+func (r refusal) VisitGetReviewCountResponse(w http.ResponseWriter) error       { return r.write(w) }
+func (r refusal) VisitGetReviewItemResponse(w http.ResponseWriter) error        { return r.write(w) }
+func (r refusal) VisitApproveReviewItemResponse(w http.ResponseWriter) error    { return r.write(w) }
+func (r refusal) VisitSendEditedReviewItemResponse(w http.ResponseWriter) error { return r.write(w) }
+func (r refusal) VisitDiscardReviewItemResponse(w http.ResponseWriter) error    { return r.write(w) }
+func (r refusal) VisitGetRoleCalibrationResponse(w http.ResponseWriter) error   { return r.write(w) }
+func (r refusal) VisitGetAgentRunResponse(w http.ResponseWriter) error          { return r.write(w) }
+func (r refusal) VisitListAgentRunsResponse(w http.ResponseWriter) error        { return r.write(w) }
+func (r refusal) VisitGetAgentUsageResponse(w http.ResponseWriter) error        { return r.write(w) }
