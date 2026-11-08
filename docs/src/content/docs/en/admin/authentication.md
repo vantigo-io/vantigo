@@ -9,6 +9,8 @@ sources:
   - apps/server/cmd/vantigo
   - apps/server/internal/db/migrations/00070_identity_managed_avatars.sql
   - apps/server/internal/db/migrations/00102_identity_assistant_grants.sql
+  - apps/server/internal/db/migrations/00141_identity_agent_users.sql
+  - apps/server/internal/db/migrations/00142_identity_agent_grants.sql
 ---
 Vantigo authenticates the browser SPA and the same-origin API with an application
 cookie issued by the identity module. The API answers JSON `401`/`403` problems
@@ -844,6 +846,61 @@ answered. A grant is not a credential and there is nothing to configure.
 
 An installation without the Assistant never has a row in `identity.assistant_grants`.
 
+## Agent users and agent grants
+
+A **virtual employee** is an AI agent that works through the same API a person uses. Its
+account in identity is a user of kind `agent` (`identity.users.kind`, `person` by default,
+checked in the database); the agents module makes and changes it through identity's
+`AgentAccounts` slot and nothing else does. There is nothing to configure.
+
+- **Its address.** `agent-<id>@agents.invalid`. The `.invalid` domain is reserved by RFC 2606
+  and never routes. The address is not shown, and a notice sent to an agent through the user
+  directory is dropped without an error.
+- **What an agent never does.** It has no password, no authenticator and no session. Identity
+  refuses it, and the database refuses it again: sign-in (the sign-in answers
+  `invalid_credentials`, as for an unknown address), a password reset (no mail is sent, and a
+  reset token for it is invalid), an invitation, a link to an identity provider and a SCIM
+  mapping. SCIM's lists never include an agent, and SCIM can never change one. A SCIM or OIDC
+  sign-in that arrives with an agent's address finds the address taken and links nothing.
+- **What an agent may never hold.** The **Owner** and **SystemAdmin** roles, a delegation, and
+  the stewardship of a role. The Owner role passes every permission check, so an agent holding
+  it would walk past every other limit. Any other role is given in
+  [Roles & access](/en/user/workspace-administration/#manage-roles-and-access) as for a person.
+- **Not editable as a person.** The Owner's user operations (edit, set a password, disable,
+  enable, delete, link to single sign-on) answer `404` for an agent. An agent is changed in
+  the agents module, and deleting an agent disables its user: the user is never deleted, so
+  every audit reference to it stays true.
+- **Listed apart.** `GET /api/v1/identity/owner/users` and `GET /api/v1/identity/access/users`
+  list the people first and the agents after them, each user with `kind`.
+  `GET /api/v1/identity/owner/user-counts` answers `{people, agents}`, disabled users
+  included. Nothing enforces a limit: agents are counted, not charged. The user directory other
+  modules read leaves agents out of `SearchUsers` and `PermissionHolders` unless the caller
+  asks for them, so a customer's owner, a project's members, a rate card or a staff picker never
+  offers an agent by accident. Only Communications' assignee select asks.
+
+An agent acts under an **agent grant**, a record identity keeps for one run of one agent
+(`identity.agent_grants`). Like an assistant grant it is not a credential:
+
+- **What it is.** The agents module asks identity for a grant naming the agent, the run, the
+  customer the run is scoped to and, for a reviewer's approval, the reviewer. Unlike an
+  assistant grant it is bound to no session: an agent has none. Its id is carried only on the
+  context of the in-process request, never in a header, a cookie or a query string.
+- **Whose it is.** While a grant is current, the caller is the agent's own user, with the roles
+  the agent holds, no session and no second factor. Every access rule is evaluated for that
+  user as for a person, and the request carries that it came through an agent and which
+  agent, run, customer and reviewer (`Principal.Via`).
+- **What it is never.** It is refused the Owner tier (`Owner`, `OwnerManagement`,
+  `AuthorizationManagement`, `SystemAdmin`), SCIM, and every rule that needs a second factor,
+  which an agent never has.
+- **How it ends.** At the first of: ten minutes, which is twice a run's ceiling and is never
+  renewed (a reviewer's approval gets a new grant), its revocation, and the agent being
+  disabled. The agent stops at its next step: the request answers `401`, or `403` for a
+  disabled agent. Grants that ended more than a day ago are deleted when the agent's next is
+  issued.
+
+An installation without virtual employees never has a user of kind `agent` or a row in
+`identity.agent_grants`.
+
 ## Rate limits
 
 Authentication endpoints are rate limited by a fixed-window limiter whose counters
@@ -1228,6 +1285,9 @@ most 24 hours, which **End overlap** ends early; both digests are compared, the
 previous one only until its expiry. Every process reads the row through a 20-second
 cache. The procedures are in
 [SSO and SCIM operations](/en/admin/sso-scim/#scim).
+
+SCIM never lists, maps or changes a user of kind `agent`: a create naming an agent's address
+is refused as a duplicate email, and the database refuses a mapping to one.
 
 The User resource accepts the **enterprise extension**,
 `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User` (RFC 7643 §4.3):

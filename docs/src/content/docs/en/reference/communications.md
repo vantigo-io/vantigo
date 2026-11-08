@@ -613,10 +613,12 @@ display name from the directory; it is null when unassigned or when the director
 user.
 
 **The users to pick from.** `GET /api/v1/communications/assignable-users?query=&limit=` answers
-`[{ userId, displayName }]`: active users from the directory's search, ordered by name, `limit` 1 to
-20 (default 20), `query` at most 200 characters. It needs `communications:conversations-view`, because
-identity's own user listing needs a permission a person answering mail need not hold. Only display
-names are answered.
+`[{ userId, displayName, kind }]`: active users from the directory's search, ordered by name, `limit` 1
+to 20 (default 20), `query` at most 200 characters. It needs `communications:conversations-view`,
+because identity's own user listing needs a permission a person answering mail need not hold. Only
+display names and the kind are answered. `kind` is `person` or `agent`: this is the one search that
+asks the directory to include the AI agents of the virtual employees (`IncludeAgents`), and an agent is
+shown with the AI badge.
 
 ## Events
 
