@@ -1,12 +1,24 @@
 import { act, render, renderHook } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LiveEvent, LiveSocket, PresenceMember } from "./client";
-import { LiveProvider, useLiveStatus, useLiveTopic, usePresence } from "./index";
+import type { DocControlFrame, LiveEvent, LiveSocket, PresenceMember } from "./client";
+import {
+  decodeFrame,
+  encodeFrame,
+  KIND_AWARENESS,
+  KIND_UPDATE,
+  LiveProvider,
+  useLiveClient,
+  useLiveStatus,
+  useLiveTopic,
+  usePresence,
+} from "./index";
 
 class FakeSocket implements LiveSocket {
   static all: FakeSocket[] = [];
   sent: Record<string, unknown>[] = [];
+  binary: Uint8Array[] = [];
+  binaryType?: string;
   closed = false;
   onopen: (() => void) | null = null;
   onclose: ((event: { code: number }) => void) | null = null;
@@ -16,8 +28,9 @@ class FakeSocket implements LiveSocket {
     this.url = url;
     FakeSocket.all.push(this);
   }
-  send(data: string) {
-    this.sent.push(JSON.parse(data));
+  send(data: string | Uint8Array) {
+    if (typeof data === "string") this.sent.push(JSON.parse(data));
+    else this.binary.push(data);
   }
   close() {
     this.closed = true;
@@ -27,6 +40,9 @@ class FakeSocket implements LiveSocket {
   }
   receive(frame: Record<string, unknown>) {
     act(() => this.onmessage?.({ data: JSON.stringify(frame) }));
+  }
+  receiveBinary(data: unknown) {
+    act(() => this.onmessage?.({ data }));
   }
   drop(code = 1006) {
     act(() => this.onclose?.({ code }));
@@ -417,5 +433,108 @@ describe("topic liveness and robustness", () => {
     view.rerender(tree(false));
     const kinds = last().sent.map((frame) => `${frame.type}:${"state" in frame ? String(frame.state) : ""}`);
     expect(kinds).toEqual(["sub:", "presence:viewing", "presence:null", "unsub:"]);
+  });
+});
+
+describe("live socket, documents", () => {
+  const topic = "knowledge.doc:a1";
+  type Heard = { subscribed: number; unsubscribed: number; binary: [number, number[]][]; control: DocControlFrame[] };
+  const mount = (alsoListen = false) => {
+    const heard: Heard = { subscribed: 0, unsubscribed: 0, binary: [], control: [] };
+    const out: { client: ReturnType<typeof useLiveClient> } = { client: null };
+    function Probe() {
+      const client = useLiveClient();
+      out.client = client;
+      useLiveTopic(topic, () => {}, { enabled: alsoListen });
+      useEffect(
+        () =>
+          client?.listenDoc(topic, {
+            onSubscribed: () => {
+              heard.subscribed += 1;
+            },
+            onUnsubscribed: () => {
+              heard.unsubscribed += 1;
+            },
+            onBinary: (kind, payload) => heard.binary.push([kind, [...payload]]),
+            onControl: (frame) => heard.control.push(frame),
+          }),
+        [client],
+      );
+      return null;
+    }
+    render(
+      <LiveProvider userId="me" url="ws://test/api/v1/live?v=1" createSocket={createSocket}>
+        <Probe />
+      </LiveProvider>,
+    );
+    return { heard, out };
+  };
+
+  it("codes a frame as kind, topic length, topic and payload", () => {
+    const bytes = encodeFrame(KIND_UPDATE, "knowledge.doc:a1", new Uint8Array([9, 8]));
+    expect([...bytes.slice(0, 3)]).toEqual([1, 0, 16]);
+    expect(decodeFrame(bytes.buffer)).toEqual({ kind: 1, topic: "knowledge.doc:a1", payload: new Uint8Array([9, 8]) });
+    expect(decodeFrame(new Uint8Array([1, 0, 9, 65]))).toBeNull();
+    expect(decodeFrame("text")).toBeNull();
+  });
+
+  it("subscribes like any topic, asks for arraybuffers and tells the listener when the server said ok", () => {
+    const { heard } = mount();
+    last().open();
+    expect(last().binaryType).toBe("arraybuffer");
+    expect(last().frames("sub")).toEqual([{ type: "sub", topic }]);
+    expect(heard.subscribed).toBe(0);
+    last().receive({ type: "ok", topic });
+    expect(heard.subscribed).toBe(1);
+  });
+
+  it("sends binary frames only on an open socket", () => {
+    const { out } = mount();
+    expect(out.client?.sendBinary(topic, KIND_UPDATE, new Uint8Array([1]))).toBe(false);
+    last().open();
+    expect(out.client?.sendBinary(topic, KIND_UPDATE, new Uint8Array([1, 2]))).toBe(true);
+    expect(decodeFrame(last().binary[0])).toEqual({ kind: 1, topic, payload: new Uint8Array([1, 2]) });
+    expect(out.client?.sendJson({ type: "doc_sync", topic, after: 0, epoch: 0 })).toBe(true);
+    expect(last().frames("doc_sync")).toEqual([{ type: "doc_sync", topic, after: 0, epoch: 0 }]);
+  });
+
+  it("hands binary and control frames to the topic's listener and ignores the rest", () => {
+    const { heard } = mount();
+    last().open();
+    last().receive({ type: "ok", topic });
+    last().receiveBinary(encodeFrame(KIND_UPDATE, topic, new Uint8Array([0, 0, 0, 0, 0, 0, 0, 7, 5])).buffer);
+    last().receiveBinary(encodeFrame(KIND_AWARENESS, topic, new Uint8Array([4])).buffer);
+    last().receiveBinary(encodeFrame(KIND_UPDATE, "knowledge.doc:other", new Uint8Array([1])).buffer);
+    last().receiveBinary(encodeFrame(0x09, topic, new Uint8Array([1])).buffer);
+    last().receiveBinary(new Uint8Array([1]).buffer);
+    last().receive({ type: "synced", topic, seq: 7, epoch: 1 });
+    last().receive({ type: "synced", topic: "knowledge.doc:other", seq: 1, epoch: 1 });
+    expect(heard.binary).toEqual([
+      [1, [0, 0, 0, 0, 0, 0, 0, 7, 5]],
+      [3, [4]],
+    ]);
+    expect(heard.control).toEqual([{ type: "synced", topic, seq: 7, epoch: 1 }]);
+  });
+
+  it("shares the subscription with listen", () => {
+    const { heard } = mount(true);
+    last().open();
+    expect(last().frames("sub")).toHaveLength(1);
+    last().receive({ type: "ok", topic });
+    expect(heard.subscribed).toBe(1);
+  });
+
+  it("tells the listener when the connection drops, and on every ok and resync after", () => {
+    const { heard } = mount();
+    last().open();
+    last().receive({ type: "ok", topic });
+    last().receive({ type: "resync" });
+    expect(heard.subscribed).toBe(2);
+    last().drop();
+    expect(heard.unsubscribed).toBe(1);
+    tick(1_200);
+    last().open();
+    last().receive({ type: "ok", topic });
+    expect(heard.subscribed).toBe(3);
   });
 });
