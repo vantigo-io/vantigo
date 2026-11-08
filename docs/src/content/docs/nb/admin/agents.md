@@ -1,6 +1,6 @@
 ---
 title: Virtuelle ansatte
-description: Å slå på Virtuelle ansatte — modulene og KI-leverandøren den trenger, de fire tillatelsene og hvilke endringer som er Eierens, firmanavnet og oppbevaringen, å opprette den første agenten, modellen per agent, å gi agenten Identitet-roller, nivåene (Av som standard, hva skranken trenger, hva som er låst for alle agenter), tillatelseslisten og kundeavgrensningen, hva som bør holdes utenfor Kunnskap, personvernerklæringen, å sette en agent på pause og slette den; hvordan du kontrollerer det, og hva som kan gå galt.
+description: Å slå på Virtuelle ansatte — modulene og KI-leverandøren den trenger, de fire tillatelsene og hvilke endringer som er Eierens, firmanavnet og oppbevaringen, å opprette den første agenten, modellen per agent, å gi agenten Identitet-roller, nivåene (Av som standard, hva skranken trenger, hva som er låst for alle agenter), tillatelseslisten og kundeavgrensningen, hva som bør holdes utenfor Kunnskap, personvernerklæringen, hvem som gjennomgår, oppbevaring og sletting, å sette en agent på pause og slette den; hvordan du kontrollerer det, og hva som kan gå galt.
 sidebar:
   order: 52
 sources:
@@ -8,6 +8,7 @@ sources:
   - openapi/agents.yaml
   - apps/server/internal/db/migrations/00144_agents_baseline.sql
   - apps/server/internal/db/migrations/00146_agents_runs.sql
+  - apps/server/internal/db/migrations/00147_agents_review.sql
   - apps/server/internal/config
   - apps/agents/frontend/src
 ---
@@ -54,11 +55,13 @@ Agenten presenterer seg med firmanavnet, så ingen agent kan opprettes før det 
 
 1. Åpne **Virtuelle ansatte** og innstillingene.
 2. Skriv inn **Firmanavn** (1 til 120 tegn) slik kundene kjenner virksomheten.
-3. Sett **Oppbevaring**: hvor mange måneder en kjøring beholdes, fra 1 til 60. Standard er 6.
+3. Sett **Oppbevaring**: hvor mange måneder en kjøring beholdes, fra 1 til 60. Standard er 6. Den er aldri
+   lenger enn Kommunikasjon beholder meldingene sine (`COMMUNICATIONS_RETENTION_DAYS`, 365 dager som
+   standard, altså 12 måneder): en lengre verdi senkes til det når du lagrer, og igjen hver natt hvis
+   installasjonen senere forkorter Kommunikasjons egen. Feltet viser det lengste du kan skrive inn.
 4. Lagre.
 
-Kjøringer registreres ikke i denne utgivelsen, så oppbevaringen har ingenting å fjerne ennå;
-den begynner å gjelde med utgivelsen som registrerer dem.
+Hva oppbevaringen fjerner står under [Oppbevaring og sletting](#oppbevaring-og-sletting).
 
 ## Opprett den første agenten
 
@@ -173,8 +176,8 @@ følgende.
 En agent kan ha et **daglig tokenbudsjett**, satt på agenten (`dailyTokenBudget`; 0 fjerner det, og en
 verdi under 1 000 avvises). Det teller tokenene agentens modell og innholdskontrollen bruker i
 forretningsdøgnet. Ved budsjettet starter ingen ny kjøring, hver forespørsel som venter leveres videre med
-notatet *Daglig budsjett er nådd.*, og neste dag starter agenten igjen, bare på nye meldinger. Budsjettet
-settes foreløpig gjennom API-et; fanen Bruk, som viser de siste 30 dagene, kommer i neste utgivelse.
+notatet *Daglig budsjett er nådd.*, og neste dag starter agenten igjen, bare på nye meldinger. Budsjettet er
+et felt på agentens Persona-fane (tomt for ingen); fanen **Bruk** viser de siste 30 dagene mot det.
 
 ### Hvilke kanaler
 
@@ -190,12 +193,49 @@ svarene har vært riktige en stund. Reglene som beskytter en kundes data og åpn
 agenten er en KI gjelder i **alle** moduser, også Auto
 ([referansen](/en/reference/agents/#the-pipeline)).
 
+## Hvem som gjennomgår
+
+Et svar eller en endring en agent legger igjen til en person venter i **Gjennomgangskøen** (tillatelsen
+*Gjennomgå virtuelle ansattes arbeid*, `agents:review`) i 24 timer; et Messenger-svar ikke lenger enn til 15
+minutter før vinduet stenger. Velg rollenes **overtaker** med omhu: når en sak legges igjen til gjennomgang,
+får den personen en e-post (gjennom installasjonens e-postdriver; ingenting sendes der ingen er satt opp) og
+et notat dukker opp i samtalen, og en rolle uten overtaker varsler ingen, så noen må se på køen, hvis antall
+står på oversiktens flis *Virtuelle ansatte*.
+
+Gi `agents:review` til folk du stoler på med agentens arbeid. En godkjenning gjøres **som agenten, på
+gjennomgåerens fullmakt**: gjennomgåeren må selv ha lov til å gjøre det saken gjør (for å sende et svar
+`communications:conversations-reply`; for å godkjenne en endring tillatelsen til operasjonen, med
+Eier-nivåets policyer sjekket også), så en gjennomgåer kan ikke gi agentens tilgang til en person som mangler
+den. Å lese en sak eller en kjøring krever også `communications:conversations-view` og lesetillatelsene
+Skranken trenger, for de viser det agenten leste: kunder, kontakter, ordrer, fakturaer, produkter og Kunnskap.
+Gi dem til gjennomgåerne; holder du en tilbake, skjules køen for den gjennomgåeren, og ingenting annet.
+
+Å lese en agents kjøringer og utskrifter er en egen, sensitiv tillatelse (`agents:activity`), fordi en
+utskrift inneholder kundenes meldinger.
+
+## Oppbevaring og sletting
+
+- **Kjøringer.** En kjøring, med utskrift, handlingslogg, saker til gjennomgang og overleveringsmarkørene til
+  samtalen, slettes etter oppbevaringsmånedene, og beholdes aldri lenger enn Kommunikasjon beholder
+  meldingene sine, fordi en utskrift kopierer meldingstekster. Arbeideren `agents-retention` gjør det hver
+  time, i porsjoner. Dagens **bruk** (bare tall) beholdes i 24 måneder.
+- **Saker som venter** slettes aldri av oppbevaringen; de utløper først (24 timer), og en utløpt sak leverer
+  samtalen videre. Arbeideren `agents-reviews` gjør det hvert minutt.
+- **Sletting av en kunde.** Når en privatkunde anonymiseres i Kunder, sletter modulen kundens kjøringer,
+  utskrifter og saker til gjennomgang, etter kunden og etter **hver samtale av dem den har sett knyttet til
+  dem**, så en samtale som ble knyttet etter at kjøringen begynte, er dekket; og den visker kundens id i
+  handlingsloggen. En slettet **kontakt** tar med seg samtalene de deltok i. Eksporten av en kundes
+  personopplysninger lister kjøringene og svarene som er lagret for dem. En samtale som ble knyttet til kunden
+  først etter at modulen sist så på den, er ikke kjent for modulen: den fjernes av oppbevaringen i stedet.
+- **Sletting av en person** (en gjennomgåer eller en Eier) beholder id-en til avgjørelsene som en
+  ugjennomsiktig id, så historikken fortsatt sier at en person avgjorde; ingenting om personen beholdes med den.
+
 ## Sett en agent på pause og slett den
 
 - **Pause** stopper nye kjøringer; roller, kanaler og nivåer blir stående. **Gjenoppta**
   starter dem igjen.
-- **Slett** stopper rollene, frigjør kanalene for en annen rolle, avslutter agentens tilganger
-  og deaktiverer brukeren. Brukeren beholdes så tidligere historikk fortsatt stemmer. Det kan
+- **Slett** trekker tilbake det som venter på gjennomgang og leverer de samtalene videre, stopper rollene,
+  frigjør kanalene for en annen rolle, avslutter agentens tilganger og deaktiverer brukeren. Brukeren beholdes så tidligere historikk fortsatt stemmer. Det kan
   ikke angres.
 
 ## Kontroller
@@ -219,3 +259,8 @@ agenten er en KI gjelder i **alle** moduser, også Auto
 | En agent svarer ikke på en samtale | Samtalen er tildelt en person, agenten er på pause, samtalen ble levert videre, meldingen var automatisk, eller tillatelsene rollen trenger er fortsatt Av. | Tildel den til agenten, eller gi den tilbake ([Virtuelle ansatte](/nb/user/agents/#overlevering)); gjenoppta agenten; hev Trenger. |
 | Hver kjøring ender i en overlevering med *KI-modellen svarte ikke* | Leverandøren er nede, eller agentens modell kan ikke kalle verktøy. | Sjekk `AI_PROVIDER` og velg en annen modell på fanen Persona. |
 | *Daglig budsjett er nådd.* | Agenten brukte det daglige tokenbudsjettet sitt. | Hev budsjettet, eller vent til neste forretningsdøgn. |
+| Køen sier at du ikke kan se en sak | Å lese en sak krever `agents:review` og også `communications:conversations-view` og lesetillatelsene Skranken trenger. | Gi gjennomgåeren den manglende tillatelsen. |
+| `reviewer_not_permitted` ved Send eller Godkjenn | Saksbehandleren har ikke lov til å gjøre det saken gjør (for et svar `communications:conversations-reply`). | Gi tillatelsen, eller la en kollega avgjøre. |
+| En sak er *trukket tilbake* og samtalen overlevert | En kollega tok samtalen, en nyere melding kom, Messenger-vinduet lukket seg, eller agentens nivå ble senket siden. | Ingenting er galt; en person svarer, eller en ny kjøring svarer den nyere meldingen. |
+| En godkjenning sier at en regel holder den igjen | Teksten sier nå at skribenten er et menneske, eller kundens data ville gått til noen som ikke er kundens kontakt. | Rediger teksten, eller forkast den. |
+| En lavere oppbevaring enn du lagret | Kommunikasjon beholder meldingene sine kortere. | Ingenting: oppbevaringen følger den. |

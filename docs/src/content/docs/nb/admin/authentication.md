@@ -937,6 +937,16 @@ En agent handler under en **agenttilgang**, en post identitetsmodulen holder for
   forespørselen svarer `401`, eller `403` for en deaktivert agent. Tilganger som tok slutt for
   mer enn et døgn siden, slettes når agentens neste utstedes. Å avslutte en tilgang som er ukjent eller allerede har tatt slutt, er ikke en feil.
 
+- **En gjennomgåers godkjenning.** Når en gjennomgåer godkjenner det en agent foreslo, utsteder
+  agentmodulen en tilgang som navngir gjennomgåeren, og spør først identitetsmodulen om gjennomgåeren
+  oppfyller tilgangsregelen til operasjonen saken ville kalt, gjennom `UserSatisfies`: en
+  tillatelsesregel er `UserHolds`; en policyregel avgjøres for gjennomgåerens roller slik de er, uten at
+  tofaktor antas (`ActiveAccount` og `Business` oppfylles av alle som kan handle; `Owner`,
+  `OwnerManagement` og `SystemAdmin` trenger sin rolle; `AuthorizationManagement` Eierrollen eller en
+  delegering). En gjennomgåer kan derfor ikke få agenten til å gjøre det gjennomgåeren selv ikke kan.
+  En bruker som ikke kan handle (deaktivert, utestengt, ventende eller deaktivert av katalogen)
+  oppfyller ingenting, og en SCIM-regel er ingen persons.
+
 En installasjon uten virtuelle medarbeidere har aldri en bruker av typen `agent` eller en rad i
 `identity.agent_grants`.
 
