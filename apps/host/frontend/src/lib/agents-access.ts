@@ -6,13 +6,16 @@ import { hasAllPermissions } from "../navigation";
 
 /**
  * What the Agents pages may offer, judged from the caller's permissions:
- * `agents:manage` creates, edits, pauses and deletes. Raising a level, an Auto
+ * `agents:review` decides the review queue's items and `agents:activity` reads
+ * the runs (the API checks what the agent read besides). `agents:manage` creates, edits, pauses and deletes. Raising a level, an Auto
  * mode and binding a channel are the Owner's besides (`isOwner`, which the
  * pages use to disable those controls); the API decides too.
  */
 export const agentsAccessOf = (permissions: string[] | undefined, isOwner = false): AgentsAccess => ({
   canManage: hasAllPermissions(permissions, ["agents:manage"]),
   isOwner,
+  canReview: hasAllPermissions(permissions, ["agents:review"]),
+  canSeeActivity: hasAllPermissions(permissions, ["agents:activity"]),
 });
 
 /** The Agents pages' access from the root layout's session and authorization, and whether it has answered. */

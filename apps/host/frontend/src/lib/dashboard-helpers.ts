@@ -148,8 +148,9 @@ export const moduleCards = [
     path: "/agents",
     icon: IconRobot,
     module: "agents" as ModuleKey,
-    // Every Agents call asks for agents:view or a key above it.
-    requiredPermissions: ["agents:view"],
+    // Every Agents call asks for agents:view or a key above it; a reviewer
+    // needs only agents:review for the queue.
+    requiredPermissions: ["agents:view", "agents:review"],
   },
 ] as const;
 

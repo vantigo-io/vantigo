@@ -35,7 +35,9 @@ import { type ConnectionButtonProps, ConversationComposer } from "./Conversation
 import { isChat } from "./chat";
 import { participantName, relative, returnHere } from "./conversationHelpers";
 import { FittedHtml } from "./FittedHtml";
+import { HandOffBanner } from "./HandOffBanner";
 import { MessengerContactLink } from "./MessengerContactLink";
+import { NoteText } from "./NoteText";
 
 export type ConversationThreadProps = {
   conversation: ConversationDetail;
@@ -191,6 +193,7 @@ export function ConversationThread({
           </Menu>
         </Group>
       </header>
+      <HandOffBanner conversationId={conversation.id} canManage={canManage} />
       <div className="thread-tags">
         {conversation.tags.map((tag) => (
           <Badge
@@ -402,11 +405,14 @@ function MessageCard({
       ) : html && !asText ? (
         <FittedHtml title={t("messageHtml")} srcDoc={safeHtmlSrcDoc(withImages.data ?? html)} />
       ) : (
-        message.textBody && (
+        message.textBody &&
+        (message.direction === "internal_note" ? (
+          <NoteText text={message.textBody} />
+        ) : (
           <Text mt="xs" style={{ whiteSpace: "pre-wrap" }}>
             {message.textBody}
           </Text>
-        )
+        ))
       )}
       <AttachmentLinks attachments={message.attachments} />
       {hasConnectionNeeded && (

@@ -3,18 +3,30 @@ import { appUrl } from "@vantigo/frontend-shell";
 import { AGENTS_QUERY_KEY, ifMatch, json, request } from "./request";
 import type {
   Agent,
+  AgentAuditList,
   AgentCreateRequest,
   AgentRole,
   AgentRoleCreateRequest,
   AgentRoleUpdateRequest,
+  AgentRunDetail,
+  AgentRunList,
   AgentSetup,
   AgentsSettings,
   AgentsSettingsRequest,
   AgentTemplate,
   AgentUpdateRequest,
+  AgentUsage,
   AssignableUser,
   ChannelOption,
+  DiscardReason,
   PermissionLevel,
+  ReviewCount,
+  ReviewItem,
+  ReviewItemList,
+  ReviewState,
+  RoleCalibration,
+  RunState,
+  TagOption,
 } from "./types";
 
 const base = "/api/v1/agents";
@@ -116,4 +128,102 @@ export const assignableUsersQueryOptions = () =>
     queryKey: [AGENTS_QUERY_KEY, "communications-assignable-users"],
     queryFn: ({ signal }) => request<AssignableUser[]>("/api/v1/communications/assignable-users", { signal }),
     retry: false,
+  });
+
+/** The tags that can mark a complaint; Communications lists them for anyone who may view conversations. */
+export const tagsQueryOptions = () =>
+  queryOptions({
+    queryKey: [AGENTS_QUERY_KEY, "communications-tags"],
+    queryFn: ({ signal }) => request<TagOption[]>("/api/v1/communications/tags", { signal }),
+    retry: false,
+  });
+
+// -- The review queue (V20) --------------------------------------------------------------------------
+
+export const reviewQueryKey = [AGENTS_QUERY_KEY, "review"] as const;
+export const reviewCountQueryKey = [AGENTS_QUERY_KEY, "review-count"] as const;
+export const reviewItemQueryKey = (id: string) => [AGENTS_QUERY_KEY, "review-item", id] as const;
+
+export interface ReviewFilter {
+  agentId?: string;
+  /** One state, or none for every state (the waiting ones first). */
+  state?: ReviewState;
+}
+
+export const reviewQueryOptions = (filter: ReviewFilter) =>
+  queryOptions({
+    queryKey: [...reviewQueryKey, filter],
+    queryFn: ({ signal }) => {
+      const query = new URLSearchParams({ limit: "100" });
+      if (filter.state) query.set("state", filter.state);
+      if (filter.agentId) query.set("agentId", filter.agentId);
+      return request<ReviewItemList>(`${base}/review?${query}`, { signal });
+    },
+    // The queue changes under the reviewer's eyes: an expiry, a colleague's decision.
+    refetchInterval: 30_000,
+  });
+
+/** How many items wait; the badge on the agents tile and the queue's tab. It holds no content. */
+export const reviewCountQueryOptions = () =>
+  queryOptions({
+    queryKey: reviewCountQueryKey,
+    queryFn: ({ signal }) => request<ReviewCount>(`${base}/review/count`, { signal }),
+    refetchInterval: 60_000,
+    retry: false,
+  });
+
+export const reviewItemQueryOptions = (id: string) =>
+  queryOptions({
+    queryKey: reviewItemQueryKey(id),
+    queryFn: ({ signal }) => request<ReviewItem>(`${base}/review/${id}`, { signal }),
+  });
+
+export const approveItem = (item: Pick<ReviewItem, "id" | "version">) =>
+  request<ReviewItem>(`${base}/review/${item.id}/approve`, { method: "POST", headers: ifMatch(item.version) });
+
+export const sendEditedItem = (item: Pick<ReviewItem, "id" | "version">, text: string) =>
+  request<ReviewItem>(`${base}/review/${item.id}/send`, json("POST", { text }, ifMatch(item.version)));
+
+export const discardItem = (item: Pick<ReviewItem, "id" | "version">, reason: DiscardReason, text: string) =>
+  request<ReviewItem>(
+    `${base}/review/${item.id}/discard`,
+    json("POST", text.trim() === "" ? { reason } : { reason, text: text.trim() }, ifMatch(item.version)),
+  );
+
+// -- Calibration, usage and activity -------------------------------------------------------------------
+
+export const calibrationQueryOptions = (roleId: string) =>
+  queryOptions({
+    queryKey: [AGENTS_QUERY_KEY, "calibration", roleId],
+    queryFn: ({ signal }) => request<RoleCalibration>(`${base}/roles/${roleId}/calibration`, { signal }),
+  });
+
+export const usageQueryOptions = (agentId: string, days = 30) =>
+  queryOptions({
+    queryKey: [AGENTS_QUERY_KEY, "usage", agentId, days],
+    queryFn: ({ signal }) => request<AgentUsage>(`${base}/agents/${agentId}/usage?days=${days}`, { signal }),
+  });
+
+export const runsQueryOptions = (agentId: string, state?: RunState) =>
+  queryOptions({
+    queryKey: [AGENTS_QUERY_KEY, "runs", agentId, state ?? "all"],
+    queryFn: ({ signal }) => {
+      const query = new URLSearchParams({ limit: "50" });
+      if (state) query.set("state", state);
+      return request<AgentRunList>(`${base}/agents/${agentId}/runs?${query}`, { signal });
+    },
+    retry: false,
+  });
+
+export const runQueryOptions = (runId: string) =>
+  queryOptions({
+    queryKey: [AGENTS_QUERY_KEY, "run", runId],
+    queryFn: ({ signal }) => request<AgentRunDetail>(`${base}/runs/${runId}`, { signal }),
+    retry: false,
+  });
+
+export const auditQueryOptions = () =>
+  queryOptions({
+    queryKey: [AGENTS_QUERY_KEY, "audit"],
+    queryFn: ({ signal }) => request<AgentAuditList>(`${base}/audit?limit=20`, { signal }),
   });

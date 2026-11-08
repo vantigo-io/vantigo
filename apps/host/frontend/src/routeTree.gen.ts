@@ -120,6 +120,9 @@ import { Route as WorkspaceRolesRouteImport } from './routes/workspace/roles'
 import { Route as WorkspaceShippingRouteImport } from './routes/workspace/shipping'
 import { Route as WorkspaceUsersRouteImport } from './routes/workspace/users'
 import { Route as AgentsAgentIdIndexRouteImport } from './routes/agents/$agentId.index'
+import { Route as AgentsReviewIndexRouteImport } from './routes/agents/review.index'
+import { Route as AgentsReviewItemIdRouteImport } from './routes/agents/review.$itemId'
+import { Route as AgentsRunsRunIdRouteImport } from './routes/agents/runs.$runId'
 import { Route as CustomersCustomerIdIndexRouteImport } from './routes/customers/$customerId.index'
 import { Route as CustomersCustomerIdEnergyRouteImport } from './routes/customers/$customerId.energy'
 import { Route as CustomersCustomerIdInvoicesRouteImport } from './routes/customers/$customerId.invoices'
@@ -745,6 +748,21 @@ const AgentsAgentIdIndexRoute = AgentsAgentIdIndexRouteImport.update({
   path: '/$agentId/',
   getParentRoute: () => AgentsRoute,
 } as any)
+const AgentsReviewIndexRoute = AgentsReviewIndexRouteImport.update({
+  id: '/review/',
+  path: '/review/',
+  getParentRoute: () => AgentsRoute,
+} as any)
+const AgentsReviewItemIdRoute = AgentsReviewItemIdRouteImport.update({
+  id: '/review/$itemId',
+  path: '/review/$itemId',
+  getParentRoute: () => AgentsRoute,
+} as any)
+const AgentsRunsRunIdRoute = AgentsRunsRunIdRouteImport.update({
+  id: '/runs/$runId',
+  path: '/runs/$runId',
+  getParentRoute: () => AgentsRoute,
+} as any)
 const CustomersCustomerIdIndexRoute =
   CustomersCustomerIdIndexRouteImport.update({
     id: '/',
@@ -1231,6 +1249,8 @@ export interface FileRoutesByFullPath {
   '/staff/': typeof StaffIndexRoute
   '/time/': typeof TimeIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
+  '/agents/review/$itemId': typeof AgentsReviewItemIdRoute
+  '/agents/runs/$runId': typeof AgentsRunsRunIdRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
   '/customers/$customerId/invoices': typeof CustomersCustomerIdInvoicesRoute
   '/customers/$customerId/orders': typeof CustomersCustomerIdOrdersRoute
@@ -1276,6 +1296,7 @@ export interface FileRoutesByFullPath {
   '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
   '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
   '/agents/$agentId/': typeof AgentsAgentIdIndexRoute
+  '/agents/review/': typeof AgentsReviewIndexRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/customers/import/': typeof CustomersImportIndexRoute
@@ -1388,6 +1409,8 @@ export interface FileRoutesByTo {
   '/staff': typeof StaffIndexRoute
   '/time': typeof TimeIndexRoute
   '/workspace': typeof WorkspaceIndexRoute
+  '/agents/review/$itemId': typeof AgentsReviewItemIdRoute
+  '/agents/runs/$runId': typeof AgentsRunsRunIdRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
   '/customers/$customerId/invoices': typeof CustomersCustomerIdInvoicesRoute
   '/customers/$customerId/orders': typeof CustomersCustomerIdOrdersRoute
@@ -1433,6 +1456,7 @@ export interface FileRoutesByTo {
   '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
   '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
   '/agents/$agentId': typeof AgentsAgentIdIndexRoute
+  '/agents/review': typeof AgentsReviewIndexRoute
   '/customers/$customerId': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts': typeof CustomersContactsIndexRoute
   '/customers/import': typeof CustomersImportIndexRoute
@@ -1570,6 +1594,8 @@ export interface FileRoutesById {
   '/staff/': typeof StaffIndexRoute
   '/time/': typeof TimeIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
+  '/agents/review/$itemId': typeof AgentsReviewItemIdRoute
+  '/agents/runs/$runId': typeof AgentsRunsRunIdRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
   '/customers/$customerId/invoices': typeof CustomersCustomerIdInvoicesRoute
   '/customers/$customerId/orders': typeof CustomersCustomerIdOrdersRoute
@@ -1615,6 +1641,7 @@ export interface FileRoutesById {
   '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
   '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
   '/agents/$agentId/': typeof AgentsAgentIdIndexRoute
+  '/agents/review/': typeof AgentsReviewIndexRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/customers/import/': typeof CustomersImportIndexRoute
@@ -1753,6 +1780,8 @@ export interface FileRouteTypes {
     | '/staff/'
     | '/time/'
     | '/workspace/'
+    | '/agents/review/$itemId'
+    | '/agents/runs/$runId'
     | '/customers/$customerId/energy'
     | '/customers/$customerId/invoices'
     | '/customers/$customerId/orders'
@@ -1798,6 +1827,7 @@ export interface FileRouteTypes {
     | '/workspace/google/calendar-gmail'
     | '/workspace/google/connection'
     | '/agents/$agentId/'
+    | '/agents/review/'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/customers/import/'
@@ -1910,6 +1940,8 @@ export interface FileRouteTypes {
     | '/staff'
     | '/time'
     | '/workspace'
+    | '/agents/review/$itemId'
+    | '/agents/runs/$runId'
     | '/customers/$customerId/energy'
     | '/customers/$customerId/invoices'
     | '/customers/$customerId/orders'
@@ -1955,6 +1987,7 @@ export interface FileRouteTypes {
     | '/workspace/google/calendar-gmail'
     | '/workspace/google/connection'
     | '/agents/$agentId'
+    | '/agents/review'
     | '/customers/$customerId'
     | '/customers/contacts'
     | '/customers/import'
@@ -2091,6 +2124,8 @@ export interface FileRouteTypes {
     | '/staff/'
     | '/time/'
     | '/workspace/'
+    | '/agents/review/$itemId'
+    | '/agents/runs/$runId'
     | '/customers/$customerId/energy'
     | '/customers/$customerId/invoices'
     | '/customers/$customerId/orders'
@@ -2136,6 +2171,7 @@ export interface FileRouteTypes {
     | '/workspace/google/calendar-gmail'
     | '/workspace/google/connection'
     | '/agents/$agentId/'
+    | '/agents/review/'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/customers/import/'
@@ -2976,6 +3012,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsAgentIdIndexRouteImport
       parentRoute: typeof AgentsRoute
     }
+    '/agents/review/': {
+      id: '/agents/review/'
+      path: '/review'
+      fullPath: '/agents/review/'
+      preLoaderRoute: typeof AgentsReviewIndexRouteImport
+      parentRoute: typeof AgentsRoute
+    }
+    '/agents/review/$itemId': {
+      id: '/agents/review/$itemId'
+      path: '/review/$itemId'
+      fullPath: '/agents/review/$itemId'
+      preLoaderRoute: typeof AgentsReviewItemIdRouteImport
+      parentRoute: typeof AgentsRoute
+    }
+    '/agents/runs/$runId': {
+      id: '/agents/runs/$runId'
+      path: '/runs/$runId'
+      fullPath: '/agents/runs/$runId'
+      preLoaderRoute: typeof AgentsRunsRunIdRouteImport
+      parentRoute: typeof AgentsRoute
+    }
     '/customers/$customerId/': {
       id: '/customers/$customerId/'
       path: '/'
@@ -3468,14 +3525,20 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 interface AgentsRouteChildren {
   AgentsSettingsRoute: typeof AgentsSettingsRoute
   AgentsIndexRoute: typeof AgentsIndexRoute
+  AgentsReviewItemIdRoute: typeof AgentsReviewItemIdRoute
+  AgentsRunsRunIdRoute: typeof AgentsRunsRunIdRoute
   AgentsAgentIdIndexRoute: typeof AgentsAgentIdIndexRoute
+  AgentsReviewIndexRoute: typeof AgentsReviewIndexRoute
   AgentsAgentIdRolesRoleIdRoute: typeof AgentsAgentIdRolesRoleIdRoute
 }
 
 const AgentsRouteChildren: AgentsRouteChildren = {
   AgentsSettingsRoute: AgentsSettingsRoute,
   AgentsIndexRoute: AgentsIndexRoute,
+  AgentsReviewItemIdRoute: AgentsReviewItemIdRoute,
+  AgentsRunsRunIdRoute: AgentsRunsRunIdRoute,
   AgentsAgentIdIndexRoute: AgentsAgentIdIndexRoute,
+  AgentsReviewIndexRoute: AgentsReviewIndexRoute,
   AgentsAgentIdRolesRoleIdRoute: AgentsAgentIdRolesRoleIdRoute,
 }
 

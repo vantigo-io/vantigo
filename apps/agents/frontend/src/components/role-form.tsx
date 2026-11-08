@@ -26,6 +26,7 @@ import {
   channelsQueryOptions,
   deleteRole,
   putRoleChannels,
+  tagsQueryOptions,
   templatesQueryOptions,
   updateRole,
 } from "../api/agents";
@@ -43,6 +44,7 @@ import {
   thresholdApplies,
 } from "../lib/modes";
 import { agentLinkOptions } from "../lib/routes";
+import { CalibrationPanel } from "./calibration-panel";
 import { ConfirmDialog } from "./confirm-dialog";
 import { useErrorText } from "./use-error-text";
 
@@ -73,6 +75,7 @@ export const RoleForm = ({
   const templates = useQuery(templatesQueryOptions());
   const channels = useQuery(channelsQueryOptions());
   const people = useQuery(assignableUsersQueryOptions());
+  const tags = useQuery(tagsQueryOptions());
   const [deleting, { open, close }] = useDisclosure(false);
 
   const [name, setName] = useState(role.name);
@@ -84,6 +87,7 @@ export const RoleForm = ({
   const [turns, setTurns] = useState<number | string>(role.capsTurns);
   const [perDay, setPerDay] = useState<number | string>(role.maxRepliesPerDay);
   const [channelIds, setChannelIds] = useState<string[]>(role.channelIds);
+  const [complaintTagIds, setComplaintTagIds] = useState<string[]>(role.complaintTagIds ?? []);
 
   const template = templates.data?.find((candidate) => candidate.key === role.template);
   const trimmed = name.trim();
@@ -100,6 +104,16 @@ export const RoleForm = ({
         label: channel.displayName ? `${channel.displayName} (${channel.address})` : channel.address,
       }))
     : channelIds.map((id) => ({ value: id, label: id }));
+
+  // The tags that mark a complaint (S5); one the list does not hold (still loading, or refused) is kept by its id.
+  const tagData = tags.isSuccess
+    ? [
+        ...tags.data.map((tag) => ({ value: tag.id, label: tag.name })),
+        ...complaintTagIds
+          .filter((id) => !tags.data.some((tag) => tag.id === id))
+          .map((id) => ({ value: id, label: id })),
+      ]
+    : complaintTagIds.map((id) => ({ value: id, label: id }));
 
   // The hand-off is a person (V10); a user the list does not hold (still loading, or the list refused) is kept by its id.
   const persons = (people.data ?? []).filter((user) => user.kind === "person");
@@ -123,6 +137,7 @@ export const RoleForm = ({
           capsToolCalls: Number(toolCalls),
           capsTurns: Number(turns),
           maxRepliesPerDay: Number(perDay),
+          complaintTagIds,
         },
         role.version,
       );
@@ -280,9 +295,6 @@ export const RoleForm = ({
                 onChange={setThreshold}
                 disabled={!canManage || !isOwner}
               />
-              <Text size="xs" c="dimmed">
-                {t("notEnoughScored")}
-              </Text>
             </Stack>
           )}
           <Group gap={6} wrap="nowrap" align="flex-start">
@@ -291,7 +303,20 @@ export const RoleForm = ({
               {t("changesAlwaysReviewed")}
             </Text>
           </Group>
+          <CalibrationPanel roleId={role.id} threshold={threshold} />
         </Stack>
+
+        <MultiSelect
+          label={t("complaintTags")}
+          description={t("complaintTagsHelp")}
+          placeholder={t("complaintTagsPlaceholder")}
+          data={tagData}
+          value={complaintTagIds}
+          onChange={setComplaintTagIds}
+          maxValues={20}
+          searchable
+          disabled={!canManage}
+        />
 
         <Stack gap="xs">
           <Group grow align="flex-start">

@@ -10,7 +10,16 @@ export interface AgentsAccess {
    * channel are the Owner's besides `agents:manage`, which the API decides too.
    */
   isOwner: boolean;
+  /** `agents:review`: the review queue, and approving, editing and discarding what an agent proposes. */
+  canReview: boolean;
+  /** `agents:activity`: an agent's runs and their transcripts. */
+  canSeeActivity: boolean;
 }
 
 /** Nothing allowed: what a test or a host that has not answered yet hands in. */
-export const noAgentsAccess: AgentsAccess = { canManage: false, isOwner: false };
+export const noAgentsAccess: AgentsAccess = {
+  canManage: false,
+  isOwner: false,
+  canReview: false,
+  canSeeActivity: false,
+};

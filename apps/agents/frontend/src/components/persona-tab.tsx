@@ -1,4 +1,4 @@
-import { Button, FileButton, Group, NativeSelect, Stack, Text, Textarea, TextInput } from "@mantine/core";
+import { Button, FileButton, Group, NativeSelect, NumberInput, Stack, Text, Textarea, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
@@ -6,7 +6,7 @@ import { useState } from "react";
 import { agentQueryKey, agentsQueryKey, putAvatar, settingsQueryOptions, updateAgent } from "../api/agents";
 import { isVersionConflict } from "../api/request";
 import type { Agent, AgentLanguages, DisclosureWording } from "../api/types";
-import { charsLeft, NAME_MAX, STYLE_MAX } from "../lib/modes";
+import { BUDGET_MIN, charsLeft, NAME_MAX, STYLE_MAX } from "../lib/modes";
 import { AgentAvatar } from "./agent-avatar";
 import { DisclosurePreview } from "./disclosure-preview";
 import { useErrorText } from "./use-error-text";
@@ -32,16 +32,31 @@ export const PersonaTab = ({ agent, canManage }: { agent: Agent; canManage: bool
   const [languages, setLanguages] = useState<AgentLanguages>(agent.languages);
   const [model, setModel] = useState(agent.model);
   const [wording, setWording] = useState<DisclosureWording>(agent.disclosureWording);
+  // The daily token budget (V24): empty for none, else at least 1,000 tokens.
+  const [budget, setBudget] = useState<number | string>(agent.dailyTokenBudget ?? "");
 
   const models = settings.data?.models ?? [];
   // The agent's own model is offered even when the allow-list has since moved on.
   const modelChoices = model !== "" && !models.includes(model) ? [...models, model] : models;
   const trimmed = name.trim();
-  const valid = trimmed !== "" && trimmed.length <= NAME_MAX && style.length <= STYLE_MAX;
+  const budgetValid = budget === "" || (typeof budget === "number" && Number.isInteger(budget) && budget >= BUDGET_MIN);
+  const valid = trimmed !== "" && trimmed.length <= NAME_MAX && style.length <= STYLE_MAX && budgetValid;
 
   const save = useMutation({
     mutationFn: () =>
-      updateAgent(agent.id, { name: trimmed, style, languages, model, disclosureWording: wording }, agent.version),
+      updateAgent(
+        agent.id,
+        {
+          name: trimmed,
+          style,
+          languages,
+          model,
+          disclosureWording: wording,
+          // 0 removes the budget; the field is empty for none.
+          dailyTokenBudget: typeof budget === "number" ? budget : 0,
+        },
+        agent.version,
+      ),
     onSuccess: (saved) => {
       queryClient.setQueryData(agentQueryKey(agent.id), saved);
       void queryClient.invalidateQueries({ queryKey: agentsQueryKey });
@@ -138,6 +153,20 @@ export const PersonaTab = ({ agent, canManage }: { agent: Agent; canManage: bool
           onChange={(event) => setWording(event.currentTarget.value as DisclosureWording)}
           data={wordingOptions.map((value) => ({ value, label: t(wordingKey[value]) }))}
           disabled={!canManage}
+        />
+        <NumberInput
+          label={t("dailyTokenBudget")}
+          description={t("dailyTokenBudgetHelp", { min: BUDGET_MIN })}
+          placeholder={t("dailyTokenBudgetNone")}
+          value={budget}
+          onChange={setBudget}
+          min={BUDGET_MIN}
+          step={1000}
+          allowDecimal={false}
+          allowNegative={false}
+          thousandSeparator=" "
+          disabled={!canManage}
+          error={budgetValid ? undefined : t("dailyTokenBudgetInvalid", { min: BUDGET_MIN })}
         />
         <DisclosurePreview
           wording={wording}

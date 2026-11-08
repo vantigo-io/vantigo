@@ -14,6 +14,7 @@ import { type NewOrderTarget, useProductMessaging } from "../lib/product-messagi
 import { AttachmentLinks } from "./AttachmentLinks";
 import { CardImage, ChatCarousel } from "./ChatCarousel";
 import { participantName, relative } from "./conversationHelpers";
+import { NoteText } from "./NoteText";
 import { isBuyChoice } from "./productDraft";
 
 const isImage = (file: Attachment) =>
@@ -154,11 +155,14 @@ export function ChatMessage({ message, messages, customerId = null }: ChatMessag
             {answer.title}
           </Badge>
         ) : (
-          message.textBody && (
+          message.textBody &&
+          (note ? (
+            <NoteText text={message.textBody} />
+          ) : (
             <Text mt={4} style={{ whiteSpace: "pre-wrap" }}>
               {message.textBody}
             </Text>
-          )
+          ))
         )}
         {sharedEmail && (
           <Text size="xs" c="dimmed">

@@ -45,13 +45,16 @@ describe("the agents catalog", () => {
     expect([...missing]).toEqual([]);
   });
 
-  it("words every state, level, mode, hand-off warning, template and hard rule of the contract", () => {
+  it("words every state, level, mode, hand-off warning, template, hard rule, review state and run state of the contract", () => {
     const families: Record<string, readonly string[]> = {
       level: ["off", "read", "change"],
       replyMode: ["review", "auto_above", "auto"],
       handOffWarning: ["disabled", "no_permission", "not_a_person"],
       template: ["front_desk"],
       rule: ["S1", "S2", "S3", "S4", "S5", "S6", "S7", "C1", "C2"],
+      state: ["waiting", "sent", "edited_sent", "discarded", "withdrawn", "expired"],
+      runState: ["queued", "running", "done", "waiting_review", "handed_off", "failed", "stopped"],
+      runOutcomes: ["sent", "review", "handed_off", "no_reply"],
     };
     for (const [family, values] of Object.entries(families))
       for (const value of values) expect(agentsCatalog.en, `${family}.${value}`).toHaveProperty([`${family}.${value}`]);

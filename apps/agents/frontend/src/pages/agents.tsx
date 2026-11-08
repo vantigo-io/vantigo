@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
-import { agentsQueryOptions, settingsQueryOptions } from "../api/agents";
+import { agentsQueryOptions, settingsQueryOptions, usageQueryOptions } from "../api/agents";
 import type { Agent } from "../api/types";
 import { AgentAvatar } from "../components/agent-avatar";
 import { NewAgentModal } from "../components/new-agent-modal";
@@ -17,6 +17,8 @@ import "../i18n";
 const AgentCard = ({ agent }: { agent: Agent }) => {
   const { t } = useI18n("agents");
   const modes = [...new Set(agent.roles.map((role) => role.replyMode))];
+  const usage = useQuery({ ...usageQueryOptions(agent.id, 1), retry: false });
+  const today = usage.data?.days.at(-1);
   return (
     <Card withBorder padding="md" radius="md" data-testid="agent-card">
       <Group wrap="nowrap" align="flex-start">
@@ -57,8 +59,18 @@ const AgentCard = ({ agent }: { agent: Agent }) => {
           <Text size="sm" c="dimmed">
             {agent.model || t("modelDefault")}
           </Text>
-          <Text size="sm" c="dimmed" title={t("todayCountsHint")}>
-            {t("todayCounts")}: —
+          <Text size="sm" c="dimmed" data-testid="today-counts">
+            {today
+              ? t("todayCountsLine", {
+                  runs: today.runs,
+                  sent: today.sent,
+                  held: today.held,
+                  discarded: today.discarded,
+                })
+              : `${t("todayCounts")}: —`}
+            {agent.dailyTokenBudget && today
+              ? ` · ${t("todayBudget", { used: today.inputTokens + today.outputTokens, budget: agent.dailyTokenBudget })}`
+              : ""}
           </Text>
         </Stack>
       </Group>
