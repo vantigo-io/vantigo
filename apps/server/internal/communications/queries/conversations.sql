@@ -174,11 +174,11 @@ RETURNING id;
 INSERT INTO communications.conversation_messages
  (id, conversation_id, direction, participant_id, author_user_id, subject, text_body, html_body,
   channel_metadata_json, occurred_at, created_at, rfc_message_id, send_as, from_address, from_display_name,
-  send_provider, components)
+  send_provider, components, agent_id)
 VALUES (@id, @conversation_id, @direction, @participant_id, @author_user_id, @subject, @text_body, @html_body,
   @channel_metadata_json, @occurred_at, @created_at, @rfc_message_id,
   COALESCE(NULLIF(@send_as::text, ''), 'channel'), @from_address, @from_display_name,
-  sqlc.narg('send_provider')::text, sqlc.narg('components')::jsonb)
+  sqlc.narg('send_provider')::text, sqlc.narg('components')::jsonb, sqlc.narg('agent_id')::uuid)
 RETURNING id;
 
 -- name: UpdateConversationFields :one
@@ -330,7 +330,7 @@ ON CONFLICT DO NOTHING;
 -- second round trip) and type (step 9's `conversation.Channel.Type == "email"`
 -- suppression gate), and its provider (the size budget of a Microsoft 365
 -- channel, M13).
-SELECT c.id, c.subject, c.channel_id, ch.is_active AS channel_is_active, ch.type AS channel_type,
+SELECT c.id, c.subject, c.channel_id, c.assigned_user_id, ch.is_active AS channel_is_active, ch.type AS channel_type,
        ch.provider AS channel_provider
 FROM communications.conversations c
 JOIN communications.channels ch ON ch.id = c.channel_id

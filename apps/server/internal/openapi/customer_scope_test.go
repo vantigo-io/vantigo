@@ -17,14 +17,17 @@ import (
 // customer and whose request carries none, such as an order's shipments or a
 // delivery (Orders keeps the customer on the order, which is marked).
 var customerDataOperations = map[string]string{
-	"getCommunicationsConversations":     "param:customerId",
-	"getCommunicationsConversationsById": "resource:customerId",
-	"getCustomer":                        "param:id",
-	"getCustomersByIdContacts":           "param:id",
-	"listSalesOrders":                    "param:customerId",
-	"getSalesOrder":                      "resource:customer.customerId",
-	"getInvoices":                        "param:customerId",
-	"getInvoicesById":                    "resource:customerId",
+	"getCommunicationsConversations": "param:customerId",
+	// getCommunicationsConversationsById is not here: an agent's run with no
+	// customer, or on a conversation not linked yet, must read the conversation it
+	// answers. The agents module pins that operation to the run's own conversation
+	// instead (virtual employees design V9b; agents A2).
+	"getCustomer":              "param:id",
+	"getCustomersByIdContacts": "param:id",
+	"listSalesOrders":          "param:customerId",
+	"getSalesOrder":            "resource:customer.customerId",
+	"getInvoices":              "param:customerId",
+	"getInvoicesById":          "resource:customerId",
 }
 
 func TestCustomerDataOperationsDeclareTheirCustomerScope(t *testing.T) {

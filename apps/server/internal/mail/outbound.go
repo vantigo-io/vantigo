@@ -77,6 +77,9 @@ type Outbound struct {
 	InReplyTo   string
 	References  []string
 	Attachments []Attachment
+	// Headers are extra headers the message carries, such as
+	// X-Vantigo-Agent; a name the message sets itself is not overridden.
+	Headers map[string]string
 	// Calendar is the invitation or cancellation the message carries, nil
 	// for none (see CalendarPart).
 	Calendar *CalendarPart
@@ -228,6 +231,9 @@ func (o Outbound) message(from string) (*gomail.Msg, error) {
 	}
 	if o.InReplyTo != "" {
 		msg.SetGenHeader(gomail.HeaderInReplyTo, o.InReplyTo)
+	}
+	for name, value := range o.Headers {
+		msg.SetGenHeader(gomail.Header(name), value)
 	}
 	if len(o.References) > 0 {
 		// RFC 5322 separates References with whitespace, not commas, so the

@@ -38,8 +38,10 @@ func (e ConversationMessageReceived) AggregateID() string { return e.Conversatio
 // ConversationAssigned is communications.conversation.assigned v1: a
 // conversation's assignee changed. AssignedUserID is null when it was cleared,
 // PreviousAssignedUserID null when it had none, and ByUserID is who changed it.
+// ChannelID is the conversation's channel, so a handler can find what answers it.
 type ConversationAssigned struct {
 	ConversationID         uuid.UUID  `json:"conversationId"`
+	ChannelID              uuid.UUID  `json:"channelId"`
 	AssignedUserID         *uuid.UUID `json:"assignedUserId"`
 	PreviousAssignedUserID *uuid.UUID `json:"previousAssignedUserId"`
 	ByUserID               uuid.UUID  `json:"byUserId"`
@@ -48,3 +50,19 @@ type ConversationAssigned struct {
 func (ConversationAssigned) EventName() string     { return "communications.conversation.assigned" }
 func (ConversationAssigned) EventVersion() int     { return 1 }
 func (e ConversationAssigned) AggregateID() string { return e.ConversationID.String() }
+
+// ConversationReplied is communications.conversation.replied v1: a reply was
+// queued in a conversation (the composer's, or an agent's). ByAgent is true
+// when it was sent through an agent grant, which is not a person answering: the
+// agents module clears a conversation's hand-off marker when a person replies
+// (V13) and when ByAgent is false only.
+type ConversationReplied struct {
+	ConversationID uuid.UUID `json:"conversationId"`
+	MessageID      uuid.UUID `json:"messageId"`
+	ByUserID       uuid.UUID `json:"byUserId"`
+	ByAgent        bool      `json:"byAgent"`
+}
+
+func (ConversationReplied) EventName() string     { return "communications.conversation.replied" }
+func (ConversationReplied) EventVersion() int     { return 1 }
+func (e ConversationReplied) AggregateID() string { return e.ConversationID.String() }

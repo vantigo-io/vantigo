@@ -38,6 +38,9 @@ type messengerMetadata struct {
 	// ProductID is the product a reply with cards showed (N16), which a Buy
 	// answer is resolved to (N17).
 	ProductID *int32 `json:"productId,omitempty"`
+	// Agent is the agent a reply was sent as (virtual employees design V11),
+	// set by Communications from the principal; empty for a person's message.
+	Agent string `json:"agent,omitempty"`
 }
 
 // receiptKeyOf is the id an event's receipt is written under: the platform's

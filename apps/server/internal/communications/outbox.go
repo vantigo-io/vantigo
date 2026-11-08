@@ -905,6 +905,10 @@ type outboxChannelMetadata struct {
 	References []string `json:"references"`
 }
 
+// agentHeader marks a message an agent wrote (virtual employees design V11): its
+// value is the agent's id and "ai-generated".
+const agentHeader = "X-Vantigo-Agent"
+
 // envelope is EmailEnvelopeFactory.Create (`:300-313`): the From from the
 // channel, the subject falling back from the message to the conversation, the
 // recipients partitioned on recipient_type, the deterministic Message-Id, and
@@ -939,6 +943,11 @@ func (w *OutboxWorker) envelope(ctx context.Context, message store.GetOutboundMe
 	}
 	if message.HtmlBody != nil {
 		out.HTMLBody = *message.HtmlBody
+	}
+	if message.AgentID != nil {
+		// A message an agent wrote says so in a header (virtual employees design
+		// V11), written from the stored column, never from a field a caller sent.
+		out.Headers = map[string]string{agentHeader: message.AgentID.String() + "; ai-generated"}
 	}
 	for _, d := range sendable {
 		switch strings.ToLower(d.RecipientType) {

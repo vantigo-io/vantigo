@@ -494,12 +494,23 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 	var componentLimits *gen.MessageComponentLimits
 	var window *gen.ReplyWindow
 	var messengerLink *gen.MessengerLink
+	// Capabilities say the same for every type (V13): an e-mail channel takes a
+	// subject, HTML and Cc and has no window; a chat channel what its provider says.
+	capabilities := &gen.ConversationCapabilities{Subject: true, Html: true, Cc: true, ReplyAll: true}
 	if channelDetail.Type == channelTypeMessenger {
 		state, err := s.messengerStateOf(ctx, q, req.Id, channelDetail.Provider, s.deps.Clock())
 		if err != nil {
 			return nil, err
 		}
 		componentLimits, window = componentLimitsOf(state.caps), replyWindowResponse(state.window)
+		maxText := int32(state.caps.MaxText)
+		if maxText <= 0 {
+			maxText = messengerMaxText
+		}
+		capabilities = &gen.ConversationCapabilities{
+			Components: state.caps.Components(), ShareEmail: state.caps.ShareEmail, MaxText: &maxText,
+			MaxAttachmentBytes: attachmentLimit(state.caps.MaxAttachmentBytes), Window: window,
+		}
 		if messengerLink, err = s.messengerLinkOf(ctx, q, req.Id); err != nil {
 			return nil, err
 		}
@@ -514,6 +525,9 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 	var allowance *int64
 	if budget != nil {
 		allowance = apicommon.Ptr(attachmentAllowance(*budget))
+	}
+	if capabilities.MaxAttachmentBytes == nil {
+		capabilities.MaxAttachmentBytes = allowance
 	}
 
 	replyRecipients, err := s.replyRecipientsOf(ctx, q, req.Id, channelDetail.Type)
@@ -545,7 +559,7 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 		Tags: batches.tags[req.Id], LastReadAt: lastReadAt, ReplyRecipients: replyRecipients,
 		MaxMessageBytes: budget, MaxAttachmentBytes: allowance,
 		ChannelAddress: apicommon.Ptr(channelDetail.Address), ChannelDisplayName: channelDetail.DisplayName,
-		ChannelType: apicommon.Ptr(channelDetail.Type), ComponentLimits: componentLimits, ReplyWindow: window,
+		ChannelType: apicommon.Ptr(channelDetail.Type), ComponentLimits: componentLimits, ReplyWindow: window, Capabilities: capabilities,
 		MessengerLink: messengerLink, PersonalSender: personalSender,
 	}
 	return gen.GetCommunicationsConversationsById200JSONResponse(resp), nil

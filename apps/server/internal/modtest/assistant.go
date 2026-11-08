@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -110,9 +111,16 @@ func (h *Harness) AgentContext(t testing.TB, customerID *int32, permissions ...s
 // through the API.
 func (h *Harness) AgentGrantContext(t testing.TB, userID, agentID uuid.UUID, customerID *int32) context.Context {
 	t.Helper()
+	return h.AgentRunContext(t, userID, agentID, uuid.New(), customerID)
+}
+
+// AgentRunContext is AgentGrantContext for the run runID, which the agents
+// module made: a test of the gate's narrowing to the run's role names it.
+func (h *Harness) AgentRunContext(t testing.TB, userID, agentID, runID uuid.UUID, customerID *int32) context.Context {
+	t.Helper()
 	ctx := context.Background()
 	grantID, err := h.agentGrants.Issue(ctx, contracts.IssueAgentGrant{
-		AgentUserID: userID, AgentID: agentID, RunID: uuid.New(), CustomerID: customerID,
+		AgentUserID: userID, AgentID: agentID, RunID: runID, CustomerID: customerID,
 	})
 	if err != nil {
 		t.Fatalf("modtest: issue an agent grant: %v", err)
@@ -129,4 +137,26 @@ func (h *Harness) userOf(t testing.TB, token string) uuid.UUID {
 	}
 	hash := sha256.Sum256(raw)
 	return One[uuid.UUID](t, h, `SELECT user_id FROM identity.sessions WHERE token_hash = $1`, hash[:])
+}
+
+// AgentCall calls operationID as the agent ctx stands for (AgentContext,
+// AgentGrantContext), confirmed, under a gate that lets every operation through:
+// the gate is the agents module's own, tested there, and a test of another
+// module's treatment of an agent's call wants the call alone. It answers what the
+// router answered (status and body) or, with an error, why the dispatcher
+// refused before any dispatch.
+func (h *Harness) AgentCall(t testing.TB, ctx context.Context, operationID string, pathParams map[string]any, headers map[string]string, body any) (status int, response []byte, err error) {
+	t.Helper()
+	ops := h.Operations(t)
+	ops.SetGate(contracts.GrantAgent, func(_ context.Context, info operations.Info) operations.Mode { return info.Mode })
+	req := operations.CallRequest{OperationID: operationID, PathParams: pathParams, Headers: headers, Confirmed: true}
+	if body != nil {
+		raw, merr := json.Marshal(body)
+		if merr != nil {
+			t.Fatalf("modtest: AgentCall body: %v", merr)
+		}
+		req.Body = raw
+	}
+	res, err := ops.Call(ctx, req)
+	return res.Status, res.Body, err
 }

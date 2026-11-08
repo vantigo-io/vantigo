@@ -14,6 +14,7 @@ sources:
   - apps/server/internal/db/migrations/00130_communications_messaging.sql
   - apps/server/internal/db/migrations/00138_communications_inbox_counts.sql
   - apps/server/internal/db/migrations/00139_communications_contact_hints.sql
+  - apps/server/internal/db/migrations/00145_communications_agent_messages.sql
   - apps/server/internal/contracts/contact_channels.go
   - apps/server/internal/contracts/events_communications.go
   - apps/server/internal/contracts/outbound_mail.go
@@ -620,9 +621,40 @@ display names and the kind are answered. `kind` is `person` or `agent`: this is 
 asks the directory to include the AI agents of the virtual employees (`IncludeAgents`), and an agent is
 shown with the AI badge.
 
+## Messages an agent sends
+
+A reply made through an **agent grant** (the principal's `Via.Kind` is `agent`, set by the agents
+module's runs; no network request can set it) is the same `POST /conversations/{id}/reply` with
+rules of its own (virtual employees design V11, V13, V15, V22). What marks it, and what it is refused,
+is decided by this module from the principal and never from the body:
+
+- **`agent_id`.** `conversation_messages.agent_id` (`uuid`, null for a person's message, migration 00145)
+  holds the agent's id. A body field of that name is ignored.
+- **The mark.** An e-mail goes out with the header `X-Vantigo-Agent: <agent id>; ai-generated`
+  (`mail.Outbound.Headers`, written from the stored column by the outbox, so a retried send carries it
+  too). A Messenger message stores `agent` in `channel_metadata_json`. The disclosure line at the top of
+  the text is the agents module's, added to the text it sends.
+- **Never reply-all.** `replyMode: reply_all` through an agent grant is 422 `reply_all_not_allowed`.
+- **`conversation_taken`.** When the conversation is assigned to someone other than the agent whose
+  grant it is, the reply is **409 `conversation_taken`** and nothing is written. An unassigned
+  conversation, or one assigned to that agent, is answered. A person is not held to it.
+- **Never the human-agent window.** On a Messenger conversation, an agent's reply is accepted only while
+  the window is `open`. In the `human_agent` extension, which would send it tagged as a human's, it is
+  422 `reply_window_closed`; a person may still reply there.
+
+The conversation detail answers **`capabilities`**, the same shape for every channel type, so a caller
+never branches on the type: `subject`, `html`, `cc` and `replyAll` (true for e-mail), `components` and
+`shareEmail` (the provider's, for Messenger), `maxText` (`2000` for Messenger, null for e-mail),
+`maxAttachmentBytes` (the provider's, or the mail budget's) and `window` (the reply window, null for
+e-mail). A new channel type that answers its capabilities needs nothing changed in a caller.
+
+`getCommunicationsConversationsById` declares no `x-vantigo-customer-scope`. An agent's run with no
+customer, or on a conversation not linked yet, must still read the conversation it answers, so the
+agents module pins that operation to the run's own conversation instead.
+
 ## Events
 
-Communications publishes two events onto the
+Communications publishes three events onto the
 [domain-events outbox](/en/contributing/platform-packages/#the-domain-events-outbox), each on the
 transaction that makes the change and while it holds the conversation's row (rule 23 of the
 [module boundaries](/en/contributing/module-boundaries/)). A payload carries ids and states, never
@@ -633,7 +665,8 @@ conversation's messages and assignments in the order they were published, per co
 | Event (v1) | When | Payload |
 | --- | --- | --- |
 | `communications.conversation.message_received` | The mailbox import or the Messenger sync inserts an **inbound** message | `conversationId`, `messageId`, `channelId`, `channelType` (`email` or `messenger`), `autoReply`, `unreadable`, `assignedUserId` |
-| `communications.conversation.assigned` | `PATCH` changes the assignee | `conversationId`, `assignedUserId` (null when cleared), `previousAssignedUserId` (null when there was none), `byUserId` |
+| `communications.conversation.assigned` | `PATCH` changes the assignee | `conversationId`, `channelId`, `assignedUserId` (null when cleared), `previousAssignedUserId` (null when there was none), `byUserId` |
+| `communications.conversation.replied` | A reply is queued in a conversation | `conversationId`, `messageId`, `byUserId`, `byAgent` (true when it was sent through an agent grant) |
 
 - `communications.conversation.message_received` is published for every imported inbound message, in a new
   conversation and in an existing one. `autoReply` is the [auto-reply](#auto-replies) flag;
@@ -648,7 +681,14 @@ conversation's messages and assignments in the order they were published, per co
   conversation's other fields are written with the assignee read under that lock, so a `PATCH` that
   does not mention `assignedUserId` never overwrites a concurrent assignment.
 
-Nothing in the module handles either event.
+- `communications.conversation.replied` is published on the reply's own transaction, under the
+  conversation's row lock that the activity update takes. `byAgent` tells the agents module whether a
+  person answered: a person's reply ends a hand-off ([Agents](/en/reference/agents/#the-hand-off)); an
+  agent's own reply does not.
+
+`ChannelID` on `assigned` is the conversation's channel, so a handler can find what answers it.
+Nothing in this module handles any of the events; the [agents module](/en/reference/agents/#the-trigger)
+handles all three.
 
 ## Live updates
 

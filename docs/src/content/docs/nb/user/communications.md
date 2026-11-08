@@ -436,6 +436,21 @@ Messenger-kanaler har sin egen standard: den første Messenger-kanalen er standa
 Messenger-kanal, og å gjøre en annen kanal til standard endrer aldri standarden for den
 andre typen.
 
+## En agent i innboksen
+
+Når en [virtuell ansatt](/nb/user/agents/) svarer på en kanal, ser du den i Innboksen som en kollega,
+med **KI**-merket på avataren:
+
+- **Meldingene** begynner med en linje som sier hvem som skrev dem og at det er en KI, for eksempel
+  *«Hanna» er «Hansen Rør» sin virtuelle assistent (KI).* E-posten har også topptekstfeltet
+  `X-Vantigo-Agent`, så en e-postregel kan skille den fra en persons.
+- **Et internt notat** sier når agenten har et svar som **venter på gjennomgang**, med en lenke til det,
+  og når den har **levert samtalen videre til en kollega**, med det kunden vil.
+- **En samtale tildelt deg er din.** Agenten svarer ikke på den, og hvis den skrev da du tok den, sendes
+  ikke svaret. Tildel en samtale til agenten, eller til ingen, for å la den svare.
+- **Etter en overlevering** lar agenten samtalen være til en person svarer i den eller tildeler den, eller
+  den gis tilbake til agenten.
+
 ## Legg til et internt notat
 
 **Legg til notat** bytter skrivefeltet til **Internt notat**. Et notat ligger i samtalen
