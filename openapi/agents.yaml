@@ -522,7 +522,7 @@ components:
                 - model
             type: object
         AgentsProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503), and for the review queue reviewer_not_permitted (403), item_decided (409), reply_key_reused (409), held (422, rules names them), channel_refused (422) and send_unknown (502). errors carries the field errors of a 400.'
+            description: 'An RFC 9457 problem with this module''s refusal code: not_found (404), invalid (400), version_conflict (409), company_name_required (409), channel_bound (409), owner_required (403), level_locked (409), ai_unavailable (503), suggestion_decided (409), suggestion_stale (409), and for the review queue reviewer_not_permitted (403), item_decided (409), reply_key_reused (409), held (422, rules names them), channel_refused (422) and send_unknown (502). errors carries the field errors of a 400.'
             properties:
                 code:
                     nullable: true
@@ -958,6 +958,88 @@ components:
                 - autoShare
                 - badCount
                 - badShare
+            type: object
+        AgentMemoryCounts:
+            additionalProperties: false
+            properties:
+                conversationNotes:
+                    description: Notes about conversations with no customer.
+                    format: int32
+                    type: integer
+                customerNotes:
+                    description: Notes about customers.
+                    format: int32
+                    type: integer
+                customers:
+                    description: How many customers the notes are about.
+                    format: int32
+                    type: integer
+            required:
+                - customerNotes
+                - conversationNotes
+                - customers
+            type: object
+        InstructionSuggestion:
+            additionalProperties: false
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                decidedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                decidedBy:
+                    description: The person who applied or dismissed it.
+                    format: uuid
+                    nullable: true
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                itemIds:
+                    description: The review items the suggestion rests on, ids only.
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+                newText:
+                    description: The wording to put in.
+                    type: string
+                oldText:
+                    description: The passage of the instructions to replace; null to append newText as a paragraph.
+                    nullable: true
+                    type: string
+                rationale:
+                    description: Why, in a sentence or two. It quotes no customer.
+                    type: string
+                roleId:
+                    format: uuid
+                    type: string
+                state:
+                    enum:
+                        - proposed
+                        - applied
+                        - dismissed
+                    type: string
+            required:
+                - id
+                - roleId
+                - newText
+                - rationale
+                - itemIds
+                - state
+                - createdAt
+            type: object
+        InstructionSuggestionList:
+            additionalProperties: false
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/InstructionSuggestion'
+                    type: array
+            required:
+                - items
             type: object
         ReviewChange:
             additionalProperties: false
@@ -2636,6 +2718,242 @@ paths:
             tags:
                 - Agents
             x-vantigo-access: permission:agents:activity
+            x-vantigo-assistant: never
+    /api/v1/agents/agents/{agentId}/memory:
+        parameters:
+            - in: path
+              name: agentId
+              required: true
+              schema:
+                format: uuid
+                type: string
+        get:
+            description: How many notes the agent holds (virtual employees design V27) - about customers, about conversations with no customer, and how many customers the notes are about. The notes themselves are read on the customer's page, under the customer's permissions.
+            operationId: getAgentMemory
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AgentMemoryCounts'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AgentsProblem'
+                    description: Not Found - not_found.
+            summary: Count what an agent remembers
+            tags:
+                - Agents
+            x-vantigo-access: permission:agents:view
+            x-vantigo-assistant: never
+    /api/v1/agents/memory/{noteId}:
+        parameters:
+            - in: path
+              name: noteId
+              required: true
+              schema:
+                format: uuid
+                type: string
+        delete:
+            description: Deletes one note an agent keeps about a customer or a conversation. The record of the change names the note and the subject, never the text.
+            operationId: deleteAgentMemory
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AgentsProblem'
+                    description: Not Found - not_found.
+            summary: Delete a note an agent remembers
+            tags:
+                - Agents
+            x-vantigo-access: permission:agents:manage
+            x-vantigo-assistant: never
+    /api/v1/agents/roles/{roleId}/suggestions:
+        parameters:
+            - in: path
+              name: roleId
+              required: true
+              schema:
+                format: uuid
+                type: string
+        get:
+            description: What the weekly check proposes for the role's instructions (virtual employees design V28), newest first, at most 20. state narrows them to proposed, applied or dismissed. A suggestion rests on review items the people corrected, named by id; it quotes none of them.
+            operationId: listRoleSuggestions
+            parameters:
+                - in: query
+                  name: state
+                  required: false
+                  schema:
+                    enum:
+                        - proposed
+                        - applied
+                        - dismissed
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InstructionSuggestionList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AgentsProblem'
+                    description: Not Found - not_found.
+            summary: List a role's instruction suggestions
+            tags:
+                - Agents
+            x-vantigo-access: permission:agents:manage
+            x-vantigo-assistant: never
+    /api/v1/agents/suggestions/{suggestionId}/apply:
+        parameters:
+            - in: path
+              name: suggestionId
+              required: true
+              schema:
+                format: uuid
+                type: string
+        post:
+            description: Applies the suggestion to the role's instructions as an ordinary role edit - versioned, guarded by If-Match on the ROLE's version, and recorded in the audit - and marks it applied. The passage it replaces must still be in the instructions exactly once (409 suggestion_stale); a suggestion without a passage is appended as a paragraph. The result must fit the instructions' limit (400 invalid).
+            operationId: applyInstructionSuggestion
+            parameters:
+                - description: The role's version the instructions were read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AgentRole'
+                    description: OK - the role as it now is.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AgentsProblem'
+                    description: Bad Request - the instructions would be too long, or If-Match is not a version.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AgentsProblem'
+                    description: Not Found - not_found.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AgentsProblem'
+                    description: Conflict - version_conflict, suggestion_decided (applied or dismissed already) or suggestion_stale (the passage is gone or occurs twice).
+            summary: Apply an instruction suggestion
+            tags:
+                - Agents
+            x-vantigo-access: permission:agents:manage
+            x-vantigo-assistant: never
+    /api/v1/agents/suggestions/{suggestionId}/dismiss:
+        parameters:
+            - in: path
+              name: suggestionId
+              required: true
+              schema:
+                format: uuid
+                type: string
+        post:
+            description: Dismisses the suggestion. The instructions stay as they are.
+            operationId: dismissInstructionSuggestion
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InstructionSuggestion'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AgentsProblem'
+                    description: Not Found - not_found.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AgentsProblem'
+                    description: Conflict - suggestion_decided.
+            summary: Dismiss an instruction suggestion
+            tags:
+                - Agents
+            x-vantigo-access: permission:agents:manage
             x-vantigo-assistant: never
     /api/v1/agents/settings:
         get:

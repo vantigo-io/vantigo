@@ -544,6 +544,17 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.ContactChannels = channelsProvider.ContactChannels(deps)
 	}
 
+	// What the virtual employees remember about a customer
+	// (contracts.AgentMemory, virtual employees design V27) reads only its
+	// provider's own schema. Workers does not resolve it — no worker reads it.
+	memoryProvider, err := soleProvider(mods, "agent memory", func(m Module) bool { return m.AgentMemory != nil })
+	if err != nil {
+		return nil, nil, err
+	}
+	if memoryProvider != nil {
+		deps.AgentMemory = memoryProvider.AgentMemory(deps)
+	}
+
 	// The operations dispatcher (module boundaries rule 18) exists before any
 	// module mounts, so those modules can hold it, and is bound once the
 	// router it dispatches through exists, below. Only the modules in

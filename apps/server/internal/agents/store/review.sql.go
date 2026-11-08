@@ -717,15 +717,26 @@ func (q *Queries) ListExpiredItems(ctx context.Context, arg ListExpiredItemsPara
 }
 
 const listLabelledItems = `-- name: ListLabelledItems :many
-SELECT score, held_by, state, edit_ratio FROM agents.review_items
-WHERE role_id = $1 AND kind = 'reply' AND state IN ('sent', 'edited_sent', 'discarded')
-ORDER BY decided_at DESC, id
-LIMIT $2
+SELECT score, held_by, state, edit_ratio FROM (
+    SELECT i.score, i.held_by, i.state::text AS state, i.edit_ratio, i.decided_at AS at, i.id::text AS key
+    FROM agents.review_items i
+    WHERE i.role_id = $1 AND i.kind = 'reply' AND i.state IN ('sent', 'edited_sent', 'discarded')
+    UNION ALL
+    SELECT (r.verdict->>'score')::smallint, '{}'::text[],
+           CASE WHEN r.answered_over_at IS NOT NULL THEN 'answered_over' ELSE 'sent_auto' END,
+           NULL::real, coalesce(r.answered_over_at, r.sent_at), r.id::text
+    FROM agents.runs r
+    WHERE r.role_id = $1 AND r.outcome = 'sent' AND r.verdict->>'score' IS NOT NULL
+      AND (r.answered_over_at IS NOT NULL OR r.sent_at < $2::timestamptz)
+) labelled
+ORDER BY at DESC, key
+LIMIT $3
 `
 
 type ListLabelledItemsParams struct {
-	RoleID uuid.UUID
-	N      int32
+	RoleID  uuid.UUID
+	Matured time.Time
+	N       int32
 }
 
 type ListLabelledItemsRow struct {
@@ -735,9 +746,11 @@ type ListLabelledItemsRow struct {
 	EditRatio *float32
 }
 
-// The role's last labelled replies (V21): the ones a person decided.
+// The role's last labelled replies (V21): the ones a person decided, and the
+// Auto replies, which a person answered over within 24 hours (bad) or that were
+// left alone for 24 hours (good).
 func (q *Queries) ListLabelledItems(ctx context.Context, arg ListLabelledItemsParams) ([]ListLabelledItemsRow, error) {
-	rows, err := q.db.Query(ctx, listLabelledItems, arg.RoleID, arg.N)
+	rows, err := q.db.Query(ctx, listLabelledItems, arg.RoleID, arg.Matured, arg.N)
 	if err != nil {
 		return nil, err
 	}
@@ -900,7 +913,7 @@ func (q *Queries) ListRunMessages(ctx context.Context, runID uuid.UUID) ([]Agent
 }
 
 const listRunsOfAgent = `-- name: ListRunsOfAgent :many
-SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict FROM agents.runs
+SELECT id, agent_id, role_id, conversation_id, customer_id, reason, attempt, state, outcome, error_code, summary, claimed_by, claimed_until, tool_calls, model_turns, input_tokens, output_tokens, started_at, ended_at, sent_at, verdict, answered_over_at FROM agents.runs
 WHERE agent_id = $1 AND ($2::text IS NULL OR state = $2::text)
 ORDER BY started_at DESC, id
 LIMIT $4 OFFSET $3
@@ -949,6 +962,7 @@ func (q *Queries) ListRunsOfAgent(ctx context.Context, arg ListRunsOfAgentParams
 			&i.EndedAt,
 			&i.SentAt,
 			&i.Verdict,
+			&i.AnsweredOverAt,
 		); err != nil {
 			return nil, err
 		}

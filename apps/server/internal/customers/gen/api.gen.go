@@ -208,6 +208,28 @@ type CustomerAddressRequest struct {
 	Type       string  `json:"type"`
 }
 
+// CustomerAgentMemory defines model for CustomerAgentMemory.
+type CustomerAgentMemory struct {
+	Agents []CustomerAgentMemoryEntry `json:"agents"`
+
+	// CanDelete Whether the caller may delete a note (agents:manage).
+	CanDelete bool `json:"canDelete"`
+}
+
+// CustomerAgentMemoryEntry defines model for CustomerAgentMemoryEntry.
+type CustomerAgentMemoryEntry struct {
+	AgentId   openapi_types.UUID        `json:"agentId"`
+	AgentName string                    `json:"agentName"`
+	Notes     []CustomerAgentMemoryNote `json:"notes"`
+}
+
+// CustomerAgentMemoryNote defines model for CustomerAgentMemoryNote.
+type CustomerAgentMemoryNote struct {
+	CreatedAt time.Time          `json:"createdAt"`
+	Id        openapi_types.UUID `json:"id"`
+	Text      string             `json:"text"`
+}
+
 // CustomerAnonymisation A private person's anonymisation (customers GDPR design D4): anonymiseOn is the day it is scheduled for, a business day in the workspace's business time zone, anonymisedAt the moment the worker ran it — absent until then, omitted, never null. From anonymisedAt on the customer is read-only: every write answers 409 customer_anonymised.
 type CustomerAnonymisation struct {
 	AnonymiseOn  openapi_types.Date `json:"anonymiseOn"`
@@ -1531,6 +1553,9 @@ type ServerInterface interface {
 	// PutCustomersByIdAddressesByAddressId Replace a customer's address
 	// (PUT /api/v1/customers/{id}/addresses/{addressId})
 	PutCustomersByIdAddressesByAddressId(w http.ResponseWriter, r *http.Request, id int32, addressId int32)
+	// GetCustomersByIdAgentMemory What the agents remember about a customer
+	// (GET /api/v1/customers/{id}/agent-memory)
+	GetCustomersByIdAgentMemory(w http.ResponseWriter, r *http.Request, id int32)
 	// DeleteCustomersByIdAnonymisation Cancel a private person's anonymisation
 	// (DELETE /api/v1/customers/{id}/anonymisation)
 	DeleteCustomersByIdAnonymisation(w http.ResponseWriter, r *http.Request, id int32)
@@ -3155,6 +3180,32 @@ func (siw *ServerInterfaceWrapper) PutCustomersByIdAddressesByAddressId(w http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetCustomersByIdAgentMemory operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersByIdAgentMemory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersByIdAgentMemory(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteCustomersByIdAnonymisation operation middleware
 func (siw *ServerInterfaceWrapper) DeleteCustomersByIdAnonymisation(w http.ResponseWriter, r *http.Request) {
 
@@ -4376,6 +4427,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/overview", wrapper.GetCustomersByIdOverview)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/owner", wrapper.PutCustomersByIdOwner)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/peppol-lookup", wrapper.PostCustomersByIdPeppolLookup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/agent-memory", wrapper.GetCustomersByIdAgentMemory)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/personal-data", wrapper.GetCustomersByIdPersonalData)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/registry-record", wrapper.GetCustomersByIdRegistryRecord)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/registry-refresh", wrapper.PostCustomersByIdRegistryRefresh)
@@ -7309,6 +7361,64 @@ func (response PutCustomersByIdAddressesByAddressId409ApplicationProblemPlusJSON
 	return err
 }
 
+type GetCustomersByIdAgentMemoryRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetCustomersByIdAgentMemoryResponseObject interface {
+	VisitGetCustomersByIdAgentMemoryResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersByIdAgentMemory200JSONResponse CustomerAgentMemory
+
+func (response GetCustomersByIdAgentMemory200JSONResponse) VisitGetCustomersByIdAgentMemoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdAgentMemory401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdAgentMemory401JSONResponse) VisitGetCustomersByIdAgentMemoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdAgentMemory403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdAgentMemory403JSONResponse) VisitGetCustomersByIdAgentMemoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdAgentMemory404Response struct {
+}
+
+func (response GetCustomersByIdAgentMemory404Response) VisitGetCustomersByIdAgentMemoryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type DeleteCustomersByIdAnonymisationRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -10076,6 +10186,9 @@ type StrictServerInterface interface {
 	// PutCustomersByIdAddressesByAddressId Replace a customer's address
 	// (PUT /api/v1/customers/{id}/addresses/{addressId})
 	PutCustomersByIdAddressesByAddressId(ctx context.Context, request PutCustomersByIdAddressesByAddressIdRequestObject) (PutCustomersByIdAddressesByAddressIdResponseObject, error)
+	// GetCustomersByIdAgentMemory What the agents remember about a customer
+	// (GET /api/v1/customers/{id}/agent-memory)
+	GetCustomersByIdAgentMemory(ctx context.Context, request GetCustomersByIdAgentMemoryRequestObject) (GetCustomersByIdAgentMemoryResponseObject, error)
 	// DeleteCustomersByIdAnonymisation Cancel a private person's anonymisation
 	// (DELETE /api/v1/customers/{id}/anonymisation)
 	DeleteCustomersByIdAnonymisation(ctx context.Context, request DeleteCustomersByIdAnonymisationRequestObject) (DeleteCustomersByIdAnonymisationResponseObject, error)
@@ -11371,6 +11484,32 @@ func (sh *strictHandler) PutCustomersByIdAddressesByAddressId(w http.ResponseWri
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCustomersByIdAddressesByAddressIdResponseObject); ok {
 		if err := validResponse.VisitPutCustomersByIdAddressesByAddressIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersByIdAgentMemory operation middleware
+func (sh *strictHandler) GetCustomersByIdAgentMemory(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetCustomersByIdAgentMemoryRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersByIdAgentMemory(ctx, request.(GetCustomersByIdAgentMemoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersByIdAgentMemory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersByIdAgentMemoryResponseObject); ok {
+		if err := validResponse.VisitGetCustomersByIdAgentMemoryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

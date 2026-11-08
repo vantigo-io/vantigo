@@ -9,6 +9,7 @@ sql:
       - ../db/migrations/00144_agents_baseline.sql
       - ../db/migrations/00146_agents_runs.sql
       - ../db/migrations/00147_agents_review.sql
+      - ../db/migrations/00148_agents_memory.sql
     queries: queries
     gen:
       go:

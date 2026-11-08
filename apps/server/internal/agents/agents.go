@@ -401,6 +401,9 @@ func (s *server) DeleteAgent(ctx context.Context, req gen.DeleteAgentRequestObje
 		if err := q.DeleteChannelsOfAgent(ctx, current.ID); err != nil {
 			return fmt.Errorf("agents: free the agent's channels: %w", err)
 		}
+		if _, err := q.DeleteMemoryOfAgent(ctx, current.ID); err != nil {
+			return fmt.Errorf("agents: forget what the agent remembered: %w", err)
+		}
 		return s.audit(ctx, q, actor, "agent.deleted", current.ID.String(), agentSnapshot(current, ""), map[string]any{"state": stateDeleted})
 	})
 	if errors.Is(err, pgx.ErrNoRows) {

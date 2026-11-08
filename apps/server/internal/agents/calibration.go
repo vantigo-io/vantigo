@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/agents/gen"
 	"github.com/vantigo-io/vantigo/server/internal/agents/store"
@@ -36,6 +37,14 @@ type label struct {
 	Bad bool
 }
 
+// labelAnsweredOver is the state an Auto reply gets as a label when a person
+// answered over it within 24 hours (V21): a reply of a person in the same
+// conversation, which contradicts the agent's.
+const labelAnsweredOver = "answered_over"
+
+// autoMatures is how long an Auto reply must stand unanswered to count as good.
+const autoMatures = 24 * time.Hour
+
 // ruleCodes are the codes of the hard rules and the check; the other codes a
 // held_by carries (SEND, TAKEN, MOVED, CHANGE) are the machinery's, not a rule
 // holding the score.
@@ -50,7 +59,7 @@ func heldByRule(codes []string) bool {
 func labelOf(score int16, heldBy []string, state string, ratio *float32) label {
 	l := label{Score: int(score), Held: heldByRule(heldBy)}
 	switch state {
-	case itemDiscarded:
+	case itemDiscarded, labelAnsweredOver:
 		l.Bad = true
 	case itemEditedSent:
 		// The ratio is stored as a float32, so the line is compared as one.
@@ -102,7 +111,7 @@ func (s *server) GetRoleCalibration(ctx context.Context, req gen.GetRoleCalibrat
 	if err != nil {
 		return nil, fmt.Errorf("agents: read the role: %w", err)
 	}
-	rows, err := q.ListLabelledItems(ctx, store.ListLabelledItemsParams{RoleID: role.ID, N: calibrationSample})
+	rows, err := q.ListLabelledItems(ctx, store.ListLabelledItemsParams{RoleID: role.ID, Matured: s.deps.Clock().Add(-autoMatures), N: calibrationSample})
 	if err != nil {
 		return nil, fmt.Errorf("agents: read the labelled items: %w", err)
 	}

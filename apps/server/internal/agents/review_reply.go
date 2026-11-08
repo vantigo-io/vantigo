@@ -252,6 +252,7 @@ func (s *server) approveReply(ctx context.Context, row itemRow, reviewer uuid.UU
 		out := reviewOutcome{state: itemSent, outcome: "sent"}
 		if edited {
 			out.state = itemEditedSent
+			stored.AgentText = agentText
 			stored.Text = text
 			out.editRatio = ptr(float32(editRatio(agentText, text)))
 			stored.Components = components

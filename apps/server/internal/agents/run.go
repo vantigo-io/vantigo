@@ -73,7 +73,8 @@ type runState struct {
 	conv    conversation
 
 	customerID *int32
-	contacts   *contactSet // the run's customer's contacts, read once
+	contacts   *contactSet          // the run's customer's contacts, read once
+	memory     []store.AgentsMemory // the notes the run starts with (V27)
 
 	dispatch *agentloop.Dispatch
 
@@ -281,6 +282,9 @@ func (rs *runState) prepare(ctx, persist context.Context) (end func(), err error
 	}
 	if rs.grant, err = rs.issue(ctx, customer); err != nil {
 		return nil, fmt.Errorf("issue the run's grant: %w", err)
+	}
+	if err := rs.loadMemory(persist); err != nil {
+		return nil, err
 	}
 	return nil, nil
 }
@@ -542,6 +546,9 @@ func (rs *runState) seed() []aiMessage {
 		"conversationId": rs.conv.ID, "channelType": rs.conv.ChannelType, "channelAddress": rs.conv.ChannelAddress,
 		"subject": subject, "status": rs.conv.Status, "customerId": rs.customerID, "capabilities": rs.conv.Capabilities,
 		"replyWindow": rs.conv.Reply, "messages": msgs,
+	}
+	if len(rs.memory) > 0 {
+		data["memory"] = rs.memoryData()
 	}
 	if rs.customerID == nil {
 		data["customerNote"] = "No customer is known for this conversation. Answer from Knowledge and the product catalog, ask who they are, or hand off."

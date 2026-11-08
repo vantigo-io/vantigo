@@ -173,6 +173,14 @@ var markedByHand = map[string]string{
 	"listAgentRuns":        "never",
 	"getAgentRun":          "never",
 	"listAgentsAudit":      "never",
+	// What an agent remembers and what the weekly check proposes (V27, V28): the notes are
+	// what a stranger's mail made a model write down, and an instruction edit is the Owner's.
+	"getAgentMemory":               "never",
+	"deleteAgentMemory":            "never",
+	"getCustomersByIdAgentMemory":  "never",
+	"listRoleSuggestions":          "never",
+	"applyInstructionSuggestion":   "never",
+	"dismissInstructionSuggestion": "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {

@@ -88,7 +88,7 @@ var aiTasks = []contracts.AITask{
 		Key:         aiTaskCheck,
 		Module:      "agents",
 		Display:     "Agent content check",
-		Description: "Checks a virtual employee's draft against a fixed rubric before it is sent: whether it claims to be a person and whether it promises what the instructions do not allow. The model is sent the instructions and the draft, never the conversation.",
+		Description: "Checks a virtual employee's draft against a fixed rubric before it is sent: whether it claims to be a person and whether it promises what the instructions do not allow. The model is sent the instructions and the draft, never the conversation. Once a week it also reads the corrections people made in the review queue (the reasons they gave for discarding, and the text before and after their edits) and proposes edits to the role's instructions; a suggestion is applied by the Owner, never by itself.",
 	},
 }
 
@@ -118,6 +118,8 @@ func Module() module.Module {
 		// What the module holds about a customer or a contact as a person (V26),
 		// handed over and erased with Customers' anonymisation, module enabled or not.
 		CustomerPersonalData: newCustomerPersonalData,
+		// What the agents remember about a customer, for the customer page (V27).
+		AgentMemory: newAgentMemory,
 	}
 }
 

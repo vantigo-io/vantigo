@@ -1,6 +1,8 @@
 package agents
 
 import (
+	"time"
+
 	"context"
 
 	"github.com/google/uuid"
@@ -73,3 +75,13 @@ func RetentionCapMonths(d module.Deps) int { return newServer(d).retentionCapMon
 
 // SeeKeys are the permissions a person needs to see what the front desk read.
 func SeeKeys() []string { return frontDesk.seeKeys() }
+
+// FeedbackCycle is one pass of the weekly check, over d, which must carry the AI client.
+func FeedbackCycle(d module.Deps) error {
+	return (&feedbackRunner{s: newServer(d)}).cycle(context.Background())
+}
+
+// FeedbackWeekStart is when the check of the week that now falls in opens.
+func FeedbackWeekStart(now time.Time, zone *time.Location) time.Time {
+	return feedbackWeekStart(now, zone)
+}

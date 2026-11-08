@@ -32,6 +32,9 @@ const (
 	debounce   = 20 * time.Second
 	maxWait    = 2 * time.Minute
 	staleAfter = 24 * time.Hour
+	// answeredOverWindow is how long after an Auto reply a person's reply in the
+	// same conversation answers it over (V21).
+	answeredOverWindow = 24 * time.Hour
 )
 
 // eventHandlers is the module's handlers (module.Module.EventHandlers), built
@@ -86,7 +89,15 @@ func (t *trigger) handle(ctx context.Context, tx pgx.Tx, ev events.Delivered) er
 		}
 		// A person answering takes the conversation back from the hand-off.
 		if !e.ByAgent {
-			_, err := q.DeleteHandedOff(ctx, e.ConversationID)
+			if _, err := q.DeleteHandedOff(ctx, e.ConversationID); err != nil {
+				return err
+			}
+			// And answers over an Auto reply the agent sent in the last 24 hours (V21).
+			now := ev.OccurredAt
+			if now.IsZero() {
+				now = t.clock()
+			}
+			_, err := q.MarkAnsweredOver(ctx, store.MarkAnsweredOverParams{ConversationID: e.ConversationID, Now: now, Since: now.Add(-answeredOverWindow)})
 			return err
 		}
 	}
