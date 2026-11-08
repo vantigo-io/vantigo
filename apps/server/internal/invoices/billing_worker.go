@@ -90,6 +90,9 @@ type BillingWorker struct {
 	// every cycle says why it does nothing.
 	srvErr error
 	deps   module.Deps
+	// notified is when each run's screen was last told of an item's outcome
+	// (live design K37).
+	notified runNotifier
 }
 
 var _ worker.Worker = (*BillingWorker)(nil)
@@ -153,11 +156,16 @@ func (w *BillingWorker) sweep(ctx context.Context) error {
 		return w.srvErr
 	}
 	q, now := store.New(w.deps.Pool), w.now()
-	if _, err := q.CancelAbandonedBillingRunItems(ctx, now); err != nil {
+	cancelled, err := q.CancelAbandonedBillingRunItems(ctx, now)
+	if err != nil {
 		return fmt.Errorf("invoices: cancel the abandoned items of cancelled billing runs: %w", err)
 	}
-	if _, err := q.FinishIdleBillingRuns(ctx, now); err != nil {
+	finished, err := q.FinishIdleBillingRuns(ctx, now)
+	if err != nil {
 		return fmt.Errorf("invoices: finish the billing runs with nothing left: %w", err)
+	}
+	if cancelled+finished > 0 {
+		w.notifyRunsSwept(ctx)
 	}
 	return nil
 }
@@ -188,6 +196,7 @@ func (w *BillingWorker) ProcessOne(ctx context.Context) (bool, error) {
 	} else if c.run, err = q.GetBillingRun(ctx, row.RunID); err != nil {
 		err = c.retry(ctx, fmt.Errorf("invoices: read billing run %d: %w", row.RunID, err))
 	} else {
+		w.notifyRunProgress(ctx, row.RunID)
 		err = c.carry(ctx)
 	}
 	if err != nil {
@@ -261,6 +270,9 @@ func (c *billingClaim) release(ctx context.Context) error {
 	n, err := store.New(c.w.deps.Pool).ReleaseBillingRunItem(ctx, store.ReleaseBillingRunItemParams{
 		Now: c.w.now(), ID: c.row.ID, LeaseID: c.lease,
 	})
+	if err == nil && n > 0 {
+		c.w.notifyRunProgress(ctx, c.row.RunID)
+	}
 	return c.done(ctx, "release", n, err)
 }
 
@@ -637,6 +649,9 @@ func (c *billingClaim) complete(ctx context.Context, out itemOutcome) error {
 	n, err := store.New(c.w.deps.Pool).CompleteBillingRunItem(ctx, store.CompleteBillingRunItemParams{
 		Status: out.status, Code: nonEmpty(out.code), Detail: nonEmpty(out.detail), Now: c.w.now(), ID: c.row.ID, LeaseID: c.lease,
 	})
+	if err == nil && n > 0 {
+		c.w.notifyRun(ctx, c.row.RunID)
+	}
 	return c.done(ctx, "complete", n, err)
 }
 
@@ -654,6 +669,9 @@ func (c *billingClaim) retry(ctx context.Context, cause error) error {
 		n, err := q.FailBillingRunItem(ctx, store.FailBillingRunItemParams{
 			Code: codeBillingError, Detail: reasonBillingError, Now: now, ID: c.row.ID, LeaseID: c.lease,
 		})
+		if err == nil && n > 0 {
+			c.w.notifyRun(ctx, c.row.RunID)
+		}
 		return c.done(ctx, "fail", n, err)
 	}
 	c.w.logger().WarnContext(ctx, "invoices: a billing run item failed; it is tried again",
@@ -661,6 +679,9 @@ func (c *billingClaim) retry(ctx context.Context, cause error) error {
 	n, err := q.RetryBillingRunItem(ctx, store.RetryBillingRunItemParams{
 		NextAttemptAt: now.Add(time.Duration(attempt) * time.Minute), Now: now, ID: c.row.ID, LeaseID: c.lease,
 	})
+	if err == nil && n > 0 {
+		c.w.notifyRunProgress(ctx, c.row.RunID)
+	}
 	return c.done(ctx, "reschedule", n, err)
 }
 
@@ -668,9 +689,20 @@ func (c *billingClaim) retry(ctx context.Context, cause error) error {
 func (c *billingClaim) finishRun(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), billingMarkTimeout)
 	defer cancel()
-	if _, err := store.New(c.w.deps.Pool).FinishBillingRun(ctx, store.FinishBillingRunParams{Now: c.w.now(), ID: c.row.RunID}); err != nil {
+	n, err := store.New(c.w.deps.Pool).FinishBillingRun(ctx, store.FinishBillingRunParams{Now: c.w.now(), ID: c.row.RunID})
+	if err != nil {
 		return fmt.Errorf("invoices: finish billing run %d: %w", c.row.RunID, err)
 	}
+	// Finished by this call, or already ended — cancelled while the item was
+	// carried — the screen is told either way once the run is no longer live.
+	if n == 0 {
+		run, err := store.New(c.w.deps.Pool).GetBillingRun(ctx, c.row.RunID)
+		if err != nil || run.Status == "queued" || run.Status == "running" {
+			return nil
+		}
+	}
+	c.w.notified.forget(c.row.RunID)
+	c.w.notifyRun(ctx, c.row.RunID)
 	return nil
 }
 

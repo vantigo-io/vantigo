@@ -233,7 +233,7 @@ func (s *server) PostInvoicesBillingRuns(ctx context.Context, req gen.PostInvoic
 	}
 
 	var run store.InvoicesBillingRun
-	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		now := s.deps.Clock()
 		var err error
 		run, err = txq.InsertBillingRun(ctx, store.InsertBillingRunParams{
@@ -250,7 +250,7 @@ func (s *server) PostInvoicesBillingRuns(ctx context.Context, req gen.PostInvoic
 		if err := txq.InsertBillingRunItems(ctx, store.InsertBillingRunItemsParams{RunID: run.ID, Now: now, CustomerIds: customers}); err != nil {
 			return fmt.Errorf("invoices: write billing run %d's items: %w", run.ID, err)
 		}
-		return nil
+		return notifyRun(ctx, tx, run.ID)
 	})
 	if errors.Is(err, errBillingRunActive) {
 		refusal, err := activeRunRefusal(ctx, q)
@@ -465,7 +465,7 @@ func (s *server) PostInvoicesBillingRunsByIdCancel(ctx context.Context, req gen.
 	}
 	var run store.InvoicesBillingRun
 	finished := false
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err := s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		now := s.deps.Clock()
 		var err error
 		run, err = txq.CancelBillingRun(ctx, store.CancelBillingRunParams{Now: now, ID: req.Id})
@@ -479,7 +479,7 @@ func (s *server) PostInvoicesBillingRunsByIdCancel(ctx context.Context, req gen.
 		if _, err := txq.CancelBillingRunItems(ctx, store.CancelBillingRunItemsParams{Now: now, RunID: run.ID}); err != nil {
 			return fmt.Errorf("invoices: cancel billing run %d's items: %w", run.ID, err)
 		}
-		return nil
+		return notifyRun(ctx, tx, run.ID)
 	})
 	if err != nil {
 		return nil, err

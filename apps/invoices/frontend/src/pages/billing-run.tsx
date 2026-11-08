@@ -11,20 +11,14 @@ import {
   billingRunQueryOptions,
   cancelBillingRun,
   runIsLive,
+  useBillingRunsLive,
 } from "../api/billing-runs";
 import { invoicesMetaQueryOptions } from "../api/meta";
 import { INVOICES_QUERY_KEY } from "../api/request";
 import { BillingRunCountBadges } from "../components/billing-run-counts";
 import { DocumentLink, RouteLink } from "../components/document-link";
 import "../i18n";
-import {
-  BILLING_RUN_POLL_MS,
-  itemCodeWords,
-  itemStatusColour,
-  itemStatusWords,
-  runStatusColour,
-  runStatusWords,
-} from "../lib/billing-runs";
+import { itemCodeWords, itemStatusColour, itemStatusWords, runStatusColour, runStatusWords } from "../lib/billing-runs";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { BILLING_RUNS_ROUTE_PATH } from "../lib/routes";
@@ -40,8 +34,9 @@ const ALL = "all";
  * its through date, issue or draft only, status and times, its items counted
  * by status, **Cancel** while it is queued or running, and its items — one per
  * customer — filtered by status a page at a time, each with its outcome, the
- * documents it made and why it was skipped or failed. The page reads the run
- * again every few seconds until it is done or cancelled.
+ * documents it made and why it was skipped or failed. The page updates by
+ * itself; with the live channel unavailable it reads the run again every few
+ * seconds until it is done or cancelled.
  */
 export const BillingRunPage = ({ runId }: BillingRunPageProps) => {
   const { t, date, dateTime } = useInvoiceFormat();
@@ -49,13 +44,11 @@ export const BillingRunPage = ({ runId }: BillingRunPageProps) => {
   const meta = useQuery(invoicesMetaQueryOptions());
   const [status, setStatus] = useState<string>(ALL);
   const [page, setPage] = useState(1);
+  // Live, the run is refetched on an event; the poll is only the fallback (live design K37, K40).
+  const live = useBillingRunsLive(runId);
   const detail = useQuery({
-    ...billingRunQueryOptions(runId, status === ALL ? null : status, page),
+    ...billingRunQueryOptions(runId, status === ALL ? null : status, page, live),
     placeholderData: keepPreviousData,
-    refetchInterval: (query) => {
-      const run = query.state.data?.run;
-      return run && runIsLive(run) ? BILLING_RUN_POLL_MS : false;
-    },
   });
   const cancel = useMutation({
     mutationFn: () => cancelBillingRun(runId),
