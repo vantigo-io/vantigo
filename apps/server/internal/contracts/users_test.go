@@ -29,7 +29,7 @@ func TestIncludeAgents_DefaultsToFalse(t *testing.T) {
 // that should see agents is added here on purpose.
 func TestIncludeAgents_OnlyTheModulesThatMeanToAskPass(t *testing.T) {
 	t.Parallel()
-	allowed := []string{"contracts", "identity", "communications"}
+	allowed := []string{"contracts", "identity", "communications", "knowledge"}
 	root := ".."
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

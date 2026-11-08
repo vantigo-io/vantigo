@@ -131,7 +131,7 @@ func (s *server) SearchKnowledge(ctx context.Context, req gen.SearchKnowledgeReq
 	}, q)
 	head, last := splitQuery(q)
 	user := callerID(ctx)
-	assistant := viaAssistant(ctx)
+	assistant := viaAI(ctx)
 
 	var (
 		rows []store.SearchRow

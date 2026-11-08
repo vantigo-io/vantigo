@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -82,5 +83,65 @@ func TestKnowledge_TheAssistantNeverSeesHiddenArticles(t *testing.T) {
 	}
 	if _, err := ops.Call(ctx, operations.CallRequest{OperationID: "getKnowledgeArticle", PathParams: map[string]any{"id": open}}); err == nil {
 		t.Error("the Assistant reached getKnowledgeArticle")
+	}
+}
+
+// An agent is covered by the same rule as the Assistant (virtual employees
+// design V9a): through its grant it never finds an article hidden from AI nor
+// anything below one, and it is offered, beside people, in the access dialog's
+// member picker.
+func TestKnowledge_AnAgentNeverSeesHiddenArticlesAndCanBeAMember(t *testing.T) {
+	t.Parallel()
+	h := modtest.New(t, modtest.WithRecorder(knowledgeRecorder), modtest.WithModule(knowledge.Module()))
+	c := h.SignIn(t, "knowledge:articles")
+	newArticle := func(title string) string {
+		t.Helper()
+		body := map[string]any{"title": title, "content": map[string]any{"type": "doc", "content": []any{
+			map[string]any{"type": "paragraph", "content": []any{map[string]any{"type": "text", "text": title + " søkes i kalenderen."}}},
+		}}}
+		r := c.Do(http.MethodPost, "/api/v1/knowledge/articles", body)
+		if r.Status != http.StatusCreated {
+			t.Fatalf("create %s: %d %s", title, r.Status, r.Body)
+		}
+		var a struct{ ID string }
+		r.JSON(&a)
+		return a.ID
+	}
+	open := newArticle("Ferie")
+	hidden := newArticle("Ferie for ledere")
+	if r := c.Do(http.MethodPatch, "/api/v1/knowledge/articles/"+hidden, map[string]any{"aiHidden": true}); r.Status != http.StatusOK {
+		t.Fatalf("hide: %d %s", r.Status, r.Body)
+	}
+
+	ctx, agent := h.AgentContext(t, nil, "knowledge:articles")
+	ops := h.Operations(t)
+	res, err := ops.Call(ctx, operations.CallRequest{OperationID: "searchKnowledge", Query: map[string]any{"q": "ferie"}})
+	if err != nil || res.Status != http.StatusOK {
+		t.Fatalf("the agent's search: %v %d %s", err, res.Status, res.Body)
+	}
+	var out struct{ Items []struct{ ID string } }
+	if err := json.Unmarshal(res.Body, &out); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, i := range out.Items {
+		got[i.ID] = true
+	}
+	if !got[open] || got[hidden] {
+		t.Errorf("the agent's search = %v, want only the open article", got)
+	}
+	for id, want := range map[string]int{open: http.StatusOK, hidden: http.StatusNotFound} {
+		res, err := ops.Call(ctx, operations.CallRequest{OperationID: "getKnowledgeArticleText", PathParams: map[string]any{"id": id}})
+		if err != nil || res.Status != want {
+			t.Errorf("the agent reads %s: %v %d, want %d", id, err, res.Status, want)
+		}
+	}
+
+	r := c.Do(http.MethodGet, "/api/v1/knowledge/assignable-users?query="+url.QueryEscape("Modtest agent"), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("the member picker: %d %s", r.Status, r.Body)
+	}
+	if !strings.Contains(string(r.Body), agent.String()) {
+		t.Errorf("the member picker = %s, want the agent among the users", r.Body)
 	}
 }
