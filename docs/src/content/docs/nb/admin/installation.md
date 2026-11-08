@@ -586,6 +586,10 @@ gang i minuttet. Gå gjennom dette avsnittet slik at forbindelsen kan opprettes.
   ping hvert 25. sekund og kutter en forbindelse som har vært stille i 60, så en proxy som
   kutter ledige forbindelser etter 60 sekunder går også bra, men en som kutter etter 30
   gjør det ikke.
+- Proxyen må slippe gjennom **binære** WebSocket-meldinger på samme måte som tekstmeldinger, og
+  tillate meldinger på minst **4 MiB**: samredigering i Kunnskap sender hele dokumenter i én
+  melding. En proxy som begrenser meldingsstørrelsen (nginx har ingen slik grense som
+  standard) må settes opp for denne stien.
 - Proxyen må videresende `Origin` uendret, og `APP_URL` må være adressen folk åpner i
   nettleseren: serveren godtar håndtrykket bare fra den opprinnelsen.
 - `LISTEN` må fungere på databasetilkoblingen ([Pooler](#pooler-og-live_database_url)).

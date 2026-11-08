@@ -1,6 +1,6 @@
 ---
 title: Platform packages
-description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam and its chat, the operations dispatcher the assistant calls the API through, the payments port with its Vipps MobilePay adapter, the public-holiday calendar, the image metadata stripper, the address rule a directory provider makes an account's address by, and live updates — the topics a module serves, notifying on the transaction that writes, the endpoint, presence and the limits.
+description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam and its chat, the operations dispatcher the assistant calls the API through, the payments port with its Vipps MobilePay adapter, the public-holiday calendar, the image metadata stripper, the address rule a directory provider makes an account's address by, and live updates — the topics a module serves, notifying on the transaction that writes, the endpoint, presence and the limits, and the binary frames and document topics that carry a collaboratively edited document.
 sidebar:
   order: 5
 sources:
@@ -651,7 +651,7 @@ A module registers the kinds it serves through `Module.LiveTopics func(Deps) []l
 ([the slot](/en/contributing/module-boundaries/#the-rules)):
 
 ```go
-live.Topic{Kind string, Presence bool, Authorize func(ctx context.Context, key string) error}
+live.Topic{Kind string, Presence bool, Authorize func(ctx context.Context, key string) error, Doc live.DocStore}
 ```
 
 - `Kind` is `<module>.<kind>` and its prefix must be the module's name, the way permission
@@ -666,6 +666,8 @@ live.Topic{Kind string, Presence bool, Authorize func(ctx context.Context, key s
   both `forbidden`. `unknown_topic` is only for a kind no enabled module registered. A
   key-level check uses the same rule the module's `GET` uses.
 - `Presence` says whether clients may announce presence on the topic.
+- `Doc`, when set, makes the topic a document's: see
+  [Binary frames and documents](#binary-frames-and-documents).
 
 ### The endpoint
 
@@ -686,7 +688,7 @@ handler answers before upgrading:
 The origin is checked by the handler itself because `CrossOriginProtection` lets every
 `GET` through; the session cookie's `SameSite=Strict` is the second layer. The endpoint is
 left out of the `otelhttp` filter so a socket never becomes an hours-long span. The wire is
-JSON text frames: `sub`, `unsub`, `presence` and `ping` from the client; `ok`, `denied`
+JSON text frames, and binary frames for a document topic (below): `sub`, `unsub`, `presence`, `ping`, `doc_sync` and `doc_error` from the client; `ok`, `denied`
 (`forbidden`, `unknown_topic`, `limit`, `unavailable`), `event`, `presence`, `resync` (with a
 `reason`), `degraded` and `pong` from the server. `unavailable` is a transient server error
 while authorising; the client retries the topic with backoff from 2 s to 60 s. A denial
@@ -735,18 +737,101 @@ notifying commit per replica every 3 s.
 | --- | --- |
 | Subscriptions per socket | 200 (`denied`, `limit`) |
 | Sockets per person and replica | 20; the 21st is accepted and closed with `4429` |
-| Client frame | 4 KiB; larger closes with `1009` |
+| Client text frame | 4 KiB; larger closes with `1009` |
+| Client binary frame | 4 MiB plus its header (the socket's read limit); larger closes with `1009`. Each kind has its own limit, [below](#binary-frames-and-documents) |
 | Keep-alive | a ping every 25 s; a socket silent for 60 s is dropped |
 | Send queue | 64 frames; overflowing three times in a minute closes with `1008` |
 
 | Close code | Meaning |
 | --- | --- |
 | `1001` | the process is shutting down; the hub closes every socket before the pool, and the browser reconnects to another replica |
-| `1003` | a binary frame; only text is accepted |
-| `1008` | slow consumer |
-| `1009` | frame over 4 KiB |
+| `1007` | a binary frame that is not a frame (a header that does not fit, a topic outside the grammar, an unknown kind) |
+| `1008` | slow consumer, a socket that cannot take a document's replay within 10 s, or ten binary frames for unsubscribed topics in a minute |
+| `1009` | a text frame over 4 KiB, or a binary one over the read limit |
+| `1011` | a document replay failed; the browser reconnects and syncs again |
 | `4401` | the session ended; the browser does not reconnect |
 | `4429` | more than 20 sockets for the person on this replica |
+
+### Binary frames and documents
+
+A topic whose `Topic.Doc` is set carries a document that browsers edit together (knowledge
+design K25, K26). The hub relays and stores **opaque bytes**; it does not decode them and
+knows no table. The module supplies a `live.DocStore`:
+
+```go
+type DocStore interface {
+    CanWrite(ctx, key) bool                                  // ctx carries AsUser; false on error
+    Replay(ctx, key, after, epoch int64, emit func(seq, data) error) (ReplayResult, error)
+    Append(ctx, key, DocWrite) (DocResult, error)            // ErrDocLogFull, ErrDocReadOnly, ErrDocNotSeeded, *StaleError
+    Seed(ctx, key, DocWrite) (accepted bool, seq int64, err error)
+    Compact(ctx, key, upTo int64, DocWrite) (ok bool, err error)
+    Fetch(ctx, key, seq int64) (data []byte, found bool, err error)
+}
+```
+
+`DocWrite` carries the user, the bytes, the **origin hub id**, the **epoch** the writing
+subscription synced at and, for a seed, the article version it was built from. `ReplayResult`
+carries the newest `seq`, the log's current epoch, and `Stale` when the epoch the client holds is
+not current (no row is emitted). `DocResult` carries the `seq` and whether to ask the writer to
+compact: the store decides, so that asks are spaced across replicas. A write runs under the
+document's lock, **re-checks that the person may still write** (`ErrDocReadOnly`), compares the
+write's epoch with the log's (`&StaleError{Epoch}`), and notifies on the same transaction:
+`live.NotifyDoc(ctx, tx, topic, seq, in.Hub)` for a row, `live.NotifyDocReset(ctx, tx, topic,
+epoch)` when it deletes the log. It must not call `Notify` itself. The *epoch* counts resets,
+from 1, because a `seq` is reused after one; 0 on the wire means "none held".
+
+**The layout of a binary frame** is `kind` (1 byte), the topic's length (2 bytes, big endian),
+the topic (UTF-8, the topic grammar, at most 80 bytes), the payload. Client to server: `0x01`
+update (at most 256 KiB), `0x02` seed (the article version, 8 bytes, then 2 MiB), `0x03`
+awareness (4 KiB), `0x04` compact (`upTo`, 8 bytes, then 2 MiB). Server to client: `0x01` update
+(`seq`, 8 bytes, then the update) and `0x03` awareness. A malformed frame closes with `1007`.
+
+**JSON control frames.** Client: `doc_sync {topic, after, epoch}`, with `after` the client's
+**contiguous watermark** (the newest `seq` such that it holds every row up to it; a
+compaction must also cover only up to it), and `doc_error {topic, message}`. Server:
+`synced {topic, seq, epoch}`, `ack {topic, seq}`, `update_rejected {topic, reason}` (`read_only`,
+`too_large`, `rate`, `log_full`, `stale`, `not_seeded`, `unavailable`), `seed_accepted`,
+`seed_rejected`, `compact_requested {topic, upTo}`, `compact_rejected`, `doc_reset {topic,
+epoch}` and `doc_stale {topic}`. Their meaning is in [Knowledge: the
+frames](/en/reference/knowledge/#the-frames).
+
+What the hub does for a document topic:
+
+- **Epoch.** A subscription holds no epoch until `synced`, which binds it to the log's. Its
+  writes carry that epoch; a store refusal as stale makes the hub answer `stale` and
+  `doc_reset {epoch}` and unbind it. A `doc_sync` whose epoch is not current is answered
+  `doc_reset` with no rows.
+- **Writing.** `CanWrite` is asked on subscribe and at every re-check. A subscription that
+  cannot write has its update, seed, compact and awareness frames dropped and counted; the
+  first update is answered `update_rejected read_only`. Update, seed and compact frames share
+  one rate bucket per connection (50 a second, burst 200); awareness has its own (30, burst 60).
+  A store failure on a write is `unavailable` (`seed_rejected`, `compact_rejected`), not a
+  close.
+- **Order.** Frames are handled in the order they arrive, so `ack`, `update_rejected` and the
+  seed and compaction answers come back in the order sent. An update is never echoed to the
+  connection that sent it.
+- **Replay.** `doc_sync` streams the rows after `after`, then `synced`. Replay frames go
+  through a blocking enqueue (10 s) instead of the drop-and-resync of the ordinary queue; it
+  stops between rows once its subscription is revoked or replaced; live rows that arrive
+  meanwhile are held and sent after `synced`, and rows at or below the replay's newest `seq` are
+  dropped as duplicates. **Never a silent gap:** when the ordinary queue is cleared (a slow
+  consumer), every document subscription of the connection is marked stale and sent `doc_stale`,
+  and a replay that overlapped the clearing sends no `synced`; the client syncs again from its
+  watermark.
+- **Other hubs.** A hub reads the rows other hubs announced on a worker per document that is
+  never the listener's loop: one `Fetch` for a single notification, one `Replay` for a burst,
+  filtered to the announced seqs. The hub that appended skips its own notification, so a row is
+  never pushed back to its sender nor pushed twice. A row `Fetch` cannot find gives `doc_stale`.
+- **Awareness** is ephemeral and never stored. It is relayed at once to the other
+  subscriptions on this hub; for other hubs the hub keeps each connection's newest frame and
+  every 250 ms sends one notification per document on its presence publisher's connection,
+  the frames base64 encoded, a new notification starting when the next frame would take the
+  encoded payload over 6 KiB. A frame over 4 KiB is dropped and counted, since its encoding
+  would not fit.
+- **Stray frames.** A binary frame for a topic without a document subscription is dropped and
+  counted; the tenth in a minute closes with `1008`.
+- **Compaction** is requested of the writer that has just stored, or been refused with
+  `log_full`, when `DocResult` says it is demanded.
 
 ### Telemetry
 
@@ -754,7 +839,11 @@ An OpenTelemetry meter named `vantigo.live`: the up-down counters
 `vantigo.live.connections` and `vantigo.live.subscriptions`, and the counters
 `vantigo.live.notifications` (events the listener received),
 `vantigo.live.resyncs{reason=reconnect|slow_consumer}` and
-`vantigo.live.denied{reason=forbidden|unknown_topic|limit|unavailable}`. The management listener's
+`vantigo.live.denied{reason=forbidden|unknown_topic|limit|unavailable}`, and for documents
+`vantigo.live.doc_updates{result=stored|read_only|too_large|rate|log_full}`,
+`vantigo.live.doc_seeds{result}`, `vantigo.live.doc_compactions{result}`,
+`vantigo.live.doc_dropped{reason}` and `vantigo.live.doc_apply_errors`, and the histogram
+`vantigo.live.doc_replay_rows`. The management listener's
 `/management/status` carries the listener's state
 ([Management listener](/en/admin/management-listener/#the-endpoint)).
 
