@@ -6847,6 +6847,8 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access
+            x-vantigo-customer-scope:
+                param: customerId
         post:
             description: "Creates a draft quote with the next quote number (O12), its customer snapshot from the billing profile (O13) and its lines priced from the catalog (O16). A repeated clientRequestId answers the first quote with 200 (O27)."
             operationId: createQuote
@@ -6983,6 +6985,8 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access
+            x-vantigo-customer-scope:
+                resource: customer.customerId
         put:
             description: "Replaces a draft quote's header and lines (O15); the snapshot is refreshed and catalog prices re-priced (O14, O16)."
             operationId: updateQuote

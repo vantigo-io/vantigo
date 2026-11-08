@@ -1128,7 +1128,7 @@ each on the transaction that makes the change and while it holds the document's 
 
 | Event (v1) | When | Payload |
 | --- | --- | --- |
-| `orders.quote.sent` | A quote is sent or marked as sent | `quoteId`, `number`, `revision`, `customerId`, `currency`, `netTotal`, `sentAt` |
+| `orders.quote.sent` | A quote is sent or marked as sent. The virtual employees' sales follow-up wakes on it, after the days its role chose | `quoteId`, `number`, `revision`, `customerId`, `currency`, `netTotal`, `sentAt` |
 | `orders.quote.accepted` | A quote is accepted | `quoteId`, `number`, `revision`, `customerId`, `acceptedIntoKind` (`order` or `subscription`), `acceptedIntoId`, `acceptedAt` |
 | `orders.sales_order.confirmed` | An order is confirmed | `orderId`, `number`, `version`, `customerId`, `currency`, `netTotal`, `confirmedAt` |
 | `orders.sales_order.cancelled` | A confirmed order is cancelled | `orderId`, `number`, `customerId`, `cancelledAt` |
@@ -1466,16 +1466,19 @@ empty without Inventory.
 
 An agent (a virtual employee) reads orders through the same API, and the operations dispatcher ties each
 call to the customer of its run ([module boundaries rule 18](/en/contributing/module-boundaries/)).
-Two operations declare `x-vantigo-customer-scope`:
+Four operations declare `x-vantigo-customer-scope`:
 
 | Operation | Scope |
 | --- | --- |
 | `GET /orders` (the list) | `param: customerId`: the query filter is the run's customer, filled in when left out and refused when it names another |
 | `GET /orders/{id}` (one order) | `resource: customer.customerId`: the answer is dropped, as a `customer_scope` error, when the order's customer is not the run's |
+| `GET /quotes` (`listQuotes`) | `param: customerId`, as the order list's |
+| `GET /quotes/{id}` (`getQuote`) | `resource: customer.customerId`, as one order's |
 
-A run with no customer reads neither. Quotes, deliveries and shipments name no customer on their own
-(an order's shipments carry only the order), so they declare no scope and cannot be allowed to an agent's
-role; the order is how an agent finds a customer's goods.
+The two quote reads are what the *Sales follow-up* template of the virtual employees allows its role, so that a
+follow-up reads the quote of the customer it writes to and no other. A run with no customer reads none of the four.
+Deliveries and shipments name no customer on their own (an order's shipments carry only the order), so they declare
+no scope and cannot be allowed to an agent's role; the order is how an agent finds a customer's goods.
 
 ## Assistant tour targets
 
