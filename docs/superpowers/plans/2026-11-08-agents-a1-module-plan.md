@@ -38,6 +38,16 @@ queue, calibration, activity, usage and retention are A3.
 
 ## Deviations
 
+- **Cross-module steps.** Create sets the model, then inserts the row, and undoes the user and the
+  model choice when a step fails. Update renames the user and sets the model inside the transaction,
+  after the version check and before the commit; a commit that fails after them is mended by sending
+  the same body again. Delete ends the grants, disables the user and forgets the model first (all
+  idempotent) and marks the row last, so a delete that fails half way is retried by sending it again.
+- **agentNever** also holds every permission that cannot be delegated (`entra:manage`, `google:manage`,
+  `knowledge:manage`, `orders:carriers-manage`, `orders:settings`); a test over the catalog fails for
+  a new `Delegable: false` key that is neither locked nor waived.
+- **The gate** keeps one lock per agent, never held across the map, and logs a table it cannot read.
+
 - **The gate's allowlist is the union of the agent's roles' templates**: a grant names the agent and the
   run, not the role, until A2 records the run's role. A2 narrows it to the run's role.
 - **Channels are not checked for existence**: no contract reads Communications' channels. An id that names

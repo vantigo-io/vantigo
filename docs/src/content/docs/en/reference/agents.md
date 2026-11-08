@@ -47,9 +47,10 @@ exist today.
 | `agents:activity` | yes | no | Read an agent's runs and transcripts, which hold customers' data. |
 
 Three changes need `agents:manage` **and** the Owner (`owner_required`, 403): raising an
-agent's level for a permission, raising a role's reply mode (or lowering the threshold of
-a role that is not in `review`), and binding a channel the role did not hold. Lowering a
-level, lowering a mode and unbinding are anyone's with `agents:manage`.
+agent's level for a permission; loosening a role's reply mode (to `auto_above` or `auto`),
+or lowering the threshold of a role that is not in `review`; and binding a channel the role
+did not hold. Lowering a level, tightening the mode and unbinding are anyone's with
+`agents:manage`, as are the role's caps (tool calls, turns and replies per day).
 
 ## Endpoints
 
@@ -70,7 +71,7 @@ cannot call this module.
 | `POST /agents/{agentId}/resume` | `agents:manage` | 200, 404 | Paused to active. |
 | `PUT /agents/{agentId}/permissions/{key}` | `agents:manage` | 200, 400, 404, 409 | Sets the level `off`, `read` or `change`. 403 `owner_required` when raising and not the Owner; 409 `level_locked` for a key in the never list; 404 for a key the catalog lacks. |
 | `POST /agents/{agentId}/roles` | `agents:manage` | 201, 400, 404 | Adds a role from a template, in `review` with no channel. Empty instructions take the template's. |
-| `PUT /agents/{agentId}/roles/{roleId}` | `agents:manage` | 200, 400, 404, 409 | Replaces the role. `If-Match`; 403 `owner_required` when it raises the mode. |
+| `PUT /agents/{agentId}/roles/{roleId}` | `agents:manage` | 200, 400, 404, 409 | Replaces the role. `If-Match`; 403 `owner_required` when it loosens the mode or lowers the threshold outside `review`. |
 | `DELETE /agents/{agentId}/roles/{roleId}` | `agents:manage` | 204, 404 | Removes the role and its channels. |
 | `PUT /agents/{agentId}/roles/{roleId}/channels` | `agents:manage` | 200, 400, 404, 409 | Replaces the role's channels (at most 50). 409 `channel_bound` when another role holds one. |
 | `GET /agents/{agentId}/setup` | `agents:view` | 200, 404 | What the agent's roles need against the levels it has, and whether its Identity roles hold each permission. |
@@ -150,13 +151,16 @@ No level can be set for these; a request is 409 `level_locked`, and the setup an
 as `locked`:
 
 `agents:activity`, `agents:manage`, `agents:review`, `agents:view`,
-`customers:personal-data`, `expenses:approve`, `identity:manage`, `invoices:issue`,
-`invoices:payments`, `staff:approve`, `staff:manage`, `staff:personal-data`,
-`time:approve`.
+`customers:personal-data`, `entra:manage`, `expenses:approve`, `google:manage`,
+`identity:manage`, `invoices:issue`, `invoices:payments`, `knowledge:manage`,
+`orders:carriers-manage`, `orders:settings`, `staff:approve`, `staff:manage`,
+`staff:personal-data`, `time:approve`.
 
 A test in `internal/integration` holds the list to the composed catalog by key patterns
 (`identity:*`, `agents:*`, `*:approve`, `*:personal-data`, `invoices:issue` and
 `payments`, `staff:manage`): a new permission that matches one and is not listed fails it.
+A second test requires every permission that cannot be delegated to be listed or waived
+with a reason.
 The Assistant's API is not on the list because it names no permission, and the dispatcher
 refuses it by its path.
 
