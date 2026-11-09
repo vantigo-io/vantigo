@@ -369,8 +369,9 @@ func (s *server) variantHeld(ctx context.Context, tx pgx.Tx, variantID int32, pu
 }
 
 // holdText is a hold as a refusal's detail says it: "34 pcs in stock at 3
-// locations", or "5 pcs reserved for orders at 1 site". The holder's decimal loses its trailing zeros, so 34.000
-// reads 34 and 2.500 reads 2.5.
+// locations", "5 pcs reserved for orders at 1 site", or "12 pcs in transit
+// between sites in 1 transfer" (inventory phase 2 design I47). The holder's
+// decimal loses its trailing zeros, so 34.000 reads 34 and 2.500 reads 2.5.
 func holdText(hold *contracts.VariantHold, unit string) string {
 	quantity := hold.Quantity
 	if strings.Contains(quantity, ".") {
@@ -382,6 +383,13 @@ func holdText(hold *contracts.VariantHold, unit string) string {
 			places = "site"
 		}
 		return fmt.Sprintf("%s %s reserved for orders at %d %s", quantity, unit, hold.Locations, places)
+	}
+	if hold.Kind == contracts.VariantHoldKindInTransit {
+		transfers := "transfers"
+		if hold.Locations == 1 {
+			transfers = "transfer"
+		}
+		return fmt.Sprintf("%s %s in transit between sites in %d %s", quantity, unit, hold.Locations, transfers)
 	}
 	places := "locations"
 	if hold.Locations == 1 {
@@ -401,8 +409,14 @@ func documentsText(hold *contracts.VariantHold) string {
 
 // holdRemedy is what a stock hold's refusal asks the user to do first.
 func holdRemedy(hold *contracts.VariantHold) string {
-	if hold.Kind == contracts.VariantHoldKindReserved {
+	switch hold.Kind {
+	case contracts.VariantHoldKindReserved:
 		return "Deliver or cancel the orders that reserve it"
+	case contracts.VariantHoldKindInTransit:
+		if hold.Locations == 1 {
+			return "Receive or cancel the transfer"
+		}
+		return "Receive or cancel the transfers"
 	}
 	return "Move the stock or adjust it to zero"
 }

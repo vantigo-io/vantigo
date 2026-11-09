@@ -405,3 +405,38 @@ func TestUpdateProduct_ServiceToGoodsOrUnchangedType_NeverAsksTheHolder(t *testi
 		t.Errorf("the holder was asked %d times, want none", n)
 	}
 }
+
+// TestVariantHold_InTransit_RefusesTheDeleteAndTheChangeToService pins the
+// inventory phase 2 design's I47 on Products' side: stock on its way between
+// sites holds the variant from a delete and its product from turning into a
+// service, each refused in its own words.
+func TestVariantHold_InTransit_RefusesTheDeleteAndTheChangeToService(t *testing.T) {
+	t.Parallel()
+	holder := &fakeHolder{hold: contracts.VariantHold{Kind: contracts.VariantHoldKindInTransit, Quantity: "12.000", Locations: 1}}
+	h := newHarness(t, modtest.WithVariantReferenceHolders(holder))
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+	created, _, second := productWithTwoVariants(t, c, taxCategoryID, "Travelling Widget")
+	holder.held.Store(second.Id)
+
+	r := c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/products/%d/variants/%d", created.Id, second.Id), nil)
+	var problem problemJSON
+	r.JSON(&problem)
+	want := "This variant still has 12 pcs in transit between sites in 1 transfer. Receive or cancel the transfer before you delete the variant."
+	if r.Status != http.StatusConflict || problem.Title != "Variant has stock" || problem.Detail != want {
+		t.Errorf("delete = %d %q: %q, want 409 Variant has stock: %q", r.Status, problem.Title, problem.Detail, want)
+	}
+
+	holder.hold.Locations = 2
+	r = c.Do(http.MethodPut, fmt.Sprintf("/api/v1/products/%d", created.Id), map[string]any{
+		"name": "Travelling Widget", "type": "Service", "taxCategoryId": taxCategoryID,
+	})
+	r.JSON(&problem)
+	want = fmt.Sprintf("Variant %s still has 12 pcs in transit between sites in 2 transfers. Receive or cancel the transfers before you make the product a service.", second.Sku)
+	if r.Status != http.StatusConflict || problem.Title != "Product has stock" || problem.Detail != want {
+		t.Errorf("change to Service = %d %q: %q, want 409 Product has stock: %q", r.Status, problem.Title, problem.Detail, want)
+	}
+	if got := holder.purpose.Load(); got != contracts.VariantHoldTypeChange {
+		t.Errorf("purpose = %v, want %v", got, contracts.VariantHoldTypeChange)
+	}
+}

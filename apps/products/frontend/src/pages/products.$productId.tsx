@@ -146,13 +146,15 @@ export const ProductDetailsPage = ({ extraPanels, stockHref }: ProductDetailsPag
     onError: (error, id) => {
       // Products' problems carry no code: the two 409s are told apart by title.
       if (error instanceof ApiConflictError && error.title === "Variant has stock") {
+        // A variant held on its way between sites (inventory phase 2 design I47) is said by the detail Inventory's hold gives.
+        const inTransit = /in transit between sites/.test(error.detail ?? error.message);
         notifications.show({
           color: "red",
           autoClose: stockHref ? false : undefined,
-          title: t("prices.variantHasStock"),
+          title: t(inTransit ? "prices.variantInTransit" : "prices.variantHasStock"),
           message: (
             <Stack gap={4}>
-              <Text size="sm">{t("prices.variantHasStockMessage")}</Text>
+              <Text size="sm">{t(inTransit ? "prices.variantInTransitMessage" : "prices.variantHasStockMessage")}</Text>
               {stockHref && (
                 <Anchor size="sm" href={stockHref(id)}>
                   {t("prices.seeWhereItLies")}
