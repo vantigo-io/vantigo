@@ -237,10 +237,16 @@ func TestRun_SIGTERMDuringMigrationWaitsForItToFinish(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Once the lock is free run applies every migration before it returns,
+	// and under -race on a loaded runner that takes a long time and grows
+	// with each migration added. The bound only catches a run that never
+	// returns, so it is generous and leaves room before the test binary's
+	// own deadline for the failure to be reported.
 	var code int
 	select {
 	case code = <-done:
-	case <-time.After(10 * time.Second):
+	case <-time.After(hangBound(t, 5*time.Minute)):
+		// Not the buffers: run is still writing to them.
 		t.Fatal("run did not return after the migration finished")
 	}
 	if code != 0 {
@@ -259,6 +265,19 @@ func TestRun_SIGTERMDuringMigrationWaitsForItToFinish(t *testing.T) {
 	if !strings.Contains(stdout.String(), "shutdown requested during migration") {
 		t.Errorf("stdout is missing the shutdown message: %s", stdout.String())
 	}
+}
+
+// hangBound is how long a test waits for something that only fails by never
+// happening: limit, or less when the test binary's -timeout would otherwise
+// kill the process first and lose the test's own failure message.
+func hangBound(t *testing.T, limit time.Duration) time.Duration {
+	t.Helper()
+	if deadline, ok := t.Deadline(); ok {
+		if left := time.Until(deadline) - 30*time.Second; left < limit {
+			return max(left, time.Second)
+		}
+	}
+	return limit
 }
 
 // startServe runs serve on a loopback listener and returns its base URL and a
