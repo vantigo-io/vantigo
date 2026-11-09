@@ -32,8 +32,14 @@ func newMentionRig(t *testing.T) mentionRig {
 	setupChannel(t, h)
 	reply := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
 	m := createConversation(t, reply, newConversationBody("x@example.test"))
-	c, author := h.SignInUser(t, "communications:conversations-manage", "communications:conversations-view")
+	c, author := h.SignInUser(t, "communications:conversations-manage", "communications:conversations-view", "agents:view")
 	return mentionRig{h: h, c: c, author: author, conversation: m.ConversationId}
+}
+
+// nameOf is the display name a user is mentioned by.
+func nameOf(t *testing.T, h *modtest.Harness, id uuid.UUID) string {
+	t.Helper()
+	return modtest.One[string](t, h, `SELECT display_name FROM identity.users WHERE id = $1`, id)
 }
 
 func TestNoteMentions_AreStoredWithTheNoteAndPublishedOnceWithoutItsText(t *testing.T) {
@@ -43,7 +49,7 @@ func TestNoteMentions_AreStoredWithTheNoteAndPublishedOnceWithoutItsText(t *test
 	_, agent := g.h.AgentContext(t, nil)
 
 	r := addNote(g.c, g.conversation, map[string]any{
-		"textBody": "@Colleague and @Agent please look at 4711, the customer is angry",
+		"textBody": "@" + nameOf(t, g.h, colleague) + " and @" + nameOf(t, g.h, agent) + " please look at 4711, the customer is angry",
 		// The author, a repeat and the agent: the author is left out, a repeat counts once.
 		"mentions": []string{colleague.String(), agent.String(), colleague.String(), g.author.String()},
 	})
@@ -78,10 +84,13 @@ func TestNoteMentions_AreStoredWithTheNoteAndPublishedOnceWithoutItsText(t *test
 func TestNoteMentions_APersonIsMailedAndAnAgentIsNot(t *testing.T) {
 	t.Parallel()
 	g := newMentionRig(t)
-	_, colleague := g.h.SignInUser(t)
+	_, colleague := g.h.SignInUser(t, "communications:conversations-view")
 	_, agent := g.h.AgentContext(t, nil)
 
-	r := addNote(g.c, g.conversation, map[string]any{"textBody": "@both, the invoice is wrong", "mentions": []string{colleague.String(), agent.String()}})
+	r := addNote(g.c, g.conversation, map[string]any{
+		"textBody": "@" + nameOf(t, g.h, colleague) + " @" + nameOf(t, g.h, agent) + ", the invoice is wrong",
+		"mentions": []string{colleague.String(), agent.String()},
+	})
 	if r.Status != http.StatusCreated {
 		t.Fatalf("add a note: %d %s", r.Status, r.Body)
 	}
@@ -93,6 +102,39 @@ func TestNoteMentions_APersonIsMailedAndAnAgentIsNot(t *testing.T) {
 		if strings.Contains(text.Body, "invoice") || strings.Contains(text.Subject, "invoice") {
 			t.Errorf("the %s notice holds the note's text: %q", lang, text.Body)
 		}
+	}
+}
+
+func TestNoteMentions_APersonWhoCannotReadConversationsIsNotMailed(t *testing.T) {
+	t.Parallel()
+	g := newMentionRig(t)
+	_, blind := g.h.SignInUser(t)
+	r := addNote(g.c, g.conversation, map[string]any{"textBody": "@" + nameOf(t, g.h, blind) + " look", "mentions": []string{blind.String()}})
+	if r.Status != http.StatusCreated {
+		t.Fatalf("add a note: %d %s", r.Status, r.Body)
+	}
+	if n := len(g.h.Notices()); n != 0 {
+		t.Errorf("%d notices to a person who cannot read conversations, want none", n)
+	}
+	if got := g.h.Count(t, `SELECT count(*) FROM communications.conversation_message_mentions`); got != 1 {
+		t.Errorf("%d mentions stored, want the one", got)
+	}
+}
+
+func TestNoteMentions_AMentionMustBeNamedInTheTextAndAnAgentNeedsAgentsView(t *testing.T) {
+	t.Parallel()
+	g := newMentionRig(t)
+	_, colleague := g.h.SignInUser(t)
+	_, agent := g.h.AgentContext(t, nil)
+	if r := addNote(g.c, g.conversation, map[string]any{"textBody": "no name here", "mentions": []string{colleague.String()}}); r.Status != http.StatusBadRequest {
+		t.Errorf("a mention whose @Name is not in the text = %d %s, want 400", r.Status, r.Body)
+	}
+	noView, _ := g.h.SignInUser(t, "communications:conversations-manage", "communications:conversations-view")
+	if r := addNote(noView, g.conversation, map[string]any{"textBody": "@" + nameOf(t, g.h, agent) + " help", "mentions": []string{agent.String()}}); r.Status != http.StatusBadRequest {
+		t.Errorf("mentioning an agent without agents:view = %d %s, want 400", r.Status, r.Body)
+	}
+	if r := addNote(noView, g.conversation, map[string]any{"textBody": "@" + nameOf(t, g.h, colleague) + " help", "mentions": []string{colleague.String()}}); r.Status != http.StatusCreated {
+		t.Errorf("mentioning a person without agents:view = %d %s, want 201", r.Status, r.Body)
 	}
 }
 
@@ -130,7 +172,7 @@ func TestNoteMentions_ANoteWithoutThemPublishesNothingAndAMissingConversationIs4
 		t.Errorf("%d events for a note that mentions no one", len(events))
 	}
 	_, colleague := g.h.SignInUser(t)
-	if r := addNote(g.c, uuid.NewString(), map[string]any{"textBody": "x", "mentions": []string{colleague.String()}}); r.Status != http.StatusNotFound {
+	if r := addNote(g.c, uuid.NewString(), map[string]any{"textBody": "@" + nameOf(t, g.h, colleague), "mentions": []string{colleague.String()}}); r.Status != http.StatusNotFound {
 		t.Errorf("a missing conversation: %d, want 404", r.Status)
 	}
 	if got := g.h.Count(t, `SELECT count(*) FROM communications.conversation_message_mentions`); got != 0 {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -52,7 +53,7 @@ func (s *server) PostCommunicationsConversationsByIdNotes(ctx context.Context, r
 	var mentioned []contracts.UserEntry
 	if len(errs) == 0 && !byAgent {
 		var merr error
-		if mentioned, merr = s.resolveMentions(ctx, body.Mentions, caller, errs); merr != nil {
+		if mentioned, merr = s.resolveMentions(ctx, body.Mentions, caller, *body.TextBody, errs); merr != nil {
 			return nil, merr
 		}
 	}
@@ -112,9 +113,10 @@ func (s *server) PostCommunicationsConversationsByIdNotes(ctx context.Context, r
 }
 
 // resolveMentions is the users a note mentions: each id once, the author left
-// out, every one a known, active user. An id that is not is a validation error
-// on mentions.
-func (s *server) resolveMentions(ctx context.Context, raw *[]uuid.UUID, author uuid.UUID, errs map[string][]string) ([]contracts.UserEntry, error) {
+// out, every one a known, active user whose @Name stands in the text, and an
+// agent only for an author who may see the agents (agents:view). An id that is
+// not is a validation error on mentions.
+func (s *server) resolveMentions(ctx context.Context, raw *[]uuid.UUID, author uuid.UUID, text string, errs map[string][]string) ([]contracts.UserEntry, error) {
 	if raw == nil || len(*raw) == 0 {
 		return nil, nil
 	}
@@ -144,6 +146,14 @@ func (s *server) resolveMentions(ctx context.Context, raw *[]uuid.UUID, author u
 		u, ok := byID[id]
 		if !ok || !u.Active {
 			errs["mentions"] = []string{"Every mentioned user must be a known, active user."}
+			return nil, nil
+		}
+		if !strings.Contains(text, "@"+u.DisplayName) {
+			errs["mentions"] = []string{"Every mentioned user must be named in the note as @Name."}
+			return nil, nil
+		}
+		if u.Kind == contracts.UserKindAgent && !contracts.HasPermission(ctx, s.deps.Access, "agents:view") {
+			errs["mentions"] = []string{"Mentioning a virtual employee needs the permission to see them (agents:view)."}
 			return nil, nil
 		}
 		out = append(out, u)
@@ -180,6 +190,10 @@ func (s *server) notifyMentioned(ctx context.Context, author, conversationID uui
 	}}
 	for _, u := range mentioned {
 		if u.Kind == contracts.UserKindAgent {
+			continue
+		}
+		// A person who cannot read conversations is not pointed at one.
+		if ok, err := s.deps.Access.UserHolds(ctx, u.ID, "communications:conversations-view"); err != nil || !ok {
 			continue
 		}
 		if err := s.deps.Users.Notify(context.WithoutCancel(ctx), u.ID, notice); err != nil {
