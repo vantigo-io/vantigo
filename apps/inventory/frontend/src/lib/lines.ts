@@ -6,6 +6,7 @@ import type {
   InventoryReceiptInput,
 } from "../api/movements";
 import type { InventoryVariantRef } from "../api/stock";
+import type { InventoryTransferLine, InventoryTransferLineInput, InventoryTransferSuggestion } from "../api/transfers";
 import type { components } from "../api-schema";
 import { packedQuantity } from "./breakdown";
 
@@ -13,6 +14,9 @@ type InventoryEntered = components["schemas"]["InventoryEntered"];
 
 /** The three records the line editor writes (I15); B's count joins them. */
 export type LineEditorKind = "adjustment" | "move" | "receipt";
+
+/** What the line editor's rows are for: the three postings, or a transfer's draft, whose lines name no location (phase 2 design I36). */
+export type EditorKind = LineEditorKind | "transfer";
 
 /** One row of the editor, as the person is filling it in. */
 export interface EditorLine {
@@ -35,6 +39,8 @@ export interface EditorLine {
   toLocationId: number | null;
   /** The adjustment's mode: a signed change, or the new on hand. */
   mode: InventoryAdjustmentMode;
+  /** A transfer line drafted from the low-stock list keeps its suggestion until the line is edited (I57). */
+  suggestion?: InventoryTransferSuggestion;
 }
 
 let nextKey = 0;
@@ -52,7 +58,7 @@ export const roundQuantity = (n: number): number => Math.round(n * 1000) / 1000;
  * packaging whose barcode was scanned (I25) — on the editor's default location.
  */
 export const newEditorLine = (
-  kind: LineEditorKind,
+  kind: EditorKind,
   defaultLocationId: number | null,
   variant?: InventoryVariantRef,
   packagingId?: number,
@@ -62,8 +68,8 @@ export const newEditorLine = (
   quantity: variant && packagingId === undefined ? 1 : "",
   packs: packagingId === undefined ? {} : { [packagingId]: 1 },
   decrease: false,
-  // A receipt line names a location only to override the receipt's own.
-  locationId: kind === "receipt" ? null : defaultLocationId,
+  // A receipt line names a location only to override the receipt's own; a transfer's names none until it is sent.
+  locationId: kind === "receipt" || kind === "transfer" ? null : defaultLocationId,
   toLocationId: null,
   mode: "change",
 });
@@ -72,7 +78,7 @@ export const newEditorLine = (
 export const isPacked = (line: Pick<EditorLine, "packs">) => Object.values(line.packs).some((count) => count > 0);
 
 /** Whether the row's direction is its Add / Remove choice rather than the quantity's sign. */
-export const usesDecrease = (kind: LineEditorKind, line: Pick<EditorLine, "variant" | "mode">) =>
+export const usesDecrease = (kind: EditorKind, line: Pick<EditorLine, "variant" | "mode">) =>
   kind === "adjustment" && line.mode === "change" && (line.variant?.packagings?.length ?? 0) > 0;
 
 /**
@@ -80,7 +86,7 @@ export const usesDecrease = (kind: LineEditorKind, line: Pick<EditorLine, "varia
  * the loose rest, or the quantity typed; negative when it takes stock away.
  * Empty while nothing is filled in.
  */
-export const lineQuantity = (kind: LineEditorKind, line: EditorLine): number | "" => {
+export const lineQuantity = (kind: EditorKind, line: EditorLine): number | "" => {
   const total = isPacked(line)
     ? packedQuantity(line.variant?.packagings ?? [], line.packs, Number(line.quantity || 0))
     : line.quantity;
@@ -101,7 +107,7 @@ export const enteredOf = (packs: Readonly<Record<number, number>>, loose: number
  * counted, else `quantity` — exactly one of the two (I25). An adjustment's
  * change entered in packagings takes away with `decrease`.
  */
-const amountOf = (kind: LineEditorKind, line: EditorLine) => {
+const amountOf = (kind: EditorKind, line: EditorLine) => {
   if (!isPacked(line)) {
     const quantity = roundQuantity(Number(line.quantity));
     return { quantity: usesDecrease(kind, line) && line.decrease ? -quantity : quantity };
@@ -113,7 +119,7 @@ const amountOf = (kind: LineEditorKind, line: EditorLine) => {
 };
 
 /** What the person must still fill in on a row before it can be sent; undefined when it is complete. */
-export const lineGap = (kind: LineEditorKind, line: EditorLine): "variant" | "quantity" | "location" | undefined => {
+export const lineGap = (kind: EditorKind, line: EditorLine): "variant" | "quantity" | "location" | undefined => {
   if (!line.variant) return "variant";
   const quantity = lineQuantity(kind, line);
   if (quantity === "") return "quantity";
@@ -184,3 +190,24 @@ export const receiptBody = (header: PostingHeader, lines: readonly EditorLine[])
     ...(line.locationId === null || line.locationId === header.toLocationId ? {} : { locationId: line.locationId }),
   })),
 });
+
+/** A transfer draft's lines (I36): each a variant and its quantity or packagings, and the suggestion it still keeps. */
+export const transferLinesBody = (lines: readonly EditorLine[]): InventoryTransferLineInput[] =>
+  lines.map((line) => ({
+    variantId: line.variant?.id ?? 0,
+    ...amountOf("transfer", line),
+    ...(line.suggestion ? { suggestion: line.suggestion } : {}),
+  }));
+
+/** A saved draft's lines as the editor's rows, packagings as they were entered (I25). */
+export const editorLinesOf = (lines: readonly InventoryTransferLine[]): EditorLine[] =>
+  lines.map((line) => {
+    const row = newEditorLine("transfer", null, line.variant);
+    if (!line.entered) return { ...row, quantity: line.quantity, suggestion: line.suggestion };
+    return {
+      ...row,
+      quantity: line.entered.loose ?? "",
+      packs: Object.fromEntries(line.entered.packagings.map((one) => [one.packagingId, one.count])),
+      suggestion: line.suggestion,
+    };
+  });

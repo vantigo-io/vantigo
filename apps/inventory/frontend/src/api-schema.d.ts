@@ -511,6 +511,158 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/stock/sites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stock of variants at sites
+         * @description Per variant and site asked for (I53): on hand, reserved, available, incoming, and the locations holding it — for the transfer form's columns and the send dialog's defaults.
+         */
+        get: operations["listInventoryStockAtSites"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/transfers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List transfers
+         * @description Transfers newest first, by cursor (I36). q is a transfer's number or a line's SKU; variantId with withMissing lists the closed differences of a variant (I46).
+         */
+        get: operations["listInventoryTransfers"];
+        put?: never;
+        /**
+         * Create a transfer
+         * @description Creates a draft transfer (I36, I37) with a number from the module's series. A draft holds nothing; the SKU and name of each line are snapshotted.
+         */
+        post: operations["createInventoryTransfer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/transfers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a transfer
+         * @description A transfer with its lines, their running totals, and its actions with where each part went (I38, I46).
+         */
+        get: operations["getInventoryTransfer"];
+        /**
+         * Change a draft transfer
+         * @description Replaces a draft's header and lines (I37).
+         */
+        put: operations["putInventoryTransfer"];
+        post?: never;
+        /**
+         * Delete a draft transfer
+         * @description Deletes a draft transfer and its lines (I37); a sent one is cancelled instead.
+         */
+        delete: operations["deleteInventoryTransfer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/transfers/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a transfer
+         * @description Cancels a sent transfer with nothing received or missing (I44): one transfer_in movement at the from site, each line back to the location it left.
+         */
+        post: operations["cancelInventoryTransfer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/transfers/{id}/note.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Print a transfer note
+         * @description The følgeseddel (I51): a PDF of a transfer sent or later — its number and TRF token as Code 128, the sites, the lines with their source locations, and a line for the receiver's signature. Never stored.
+         */
+        get: operations["getInventoryTransferNote"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/transfers/{id}/receive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive a transfer
+         * @description Receives what arrived now (I40) as one transfer_in movement at the to site, and with close records the rest as missing (I42). No If-Match (I41). The same clientRequestId and body replay.
+         */
+        post: operations["receiveInventoryTransfer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/transfers/{id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a transfer
+         * @description Sends a draft (I39): one transfer_out movement at the from site, each line from its source location. With receive, the send and a receive of everything sent in one transaction (I43). The client request id is derived from the transfer, so a retried send answers the transfer as it is now.
+         */
+        post: operations["sendInventoryTransfer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inventory/variants": {
         parameters: {
             query?: never;
@@ -912,18 +1064,19 @@ export interface components {
             sortOrder: number;
             status: components["schemas"]["InventoryStatus"];
         };
-        /** @description One match of the lookup (I28): a location by its LOC token or full code, or a variant by its SKU or barcode. */
+        /** @description One match of the lookup (I28): a location by its LOC token or full code, a variant by its SKU or barcode, or a transfer by its TRF token to a caller holding both views (I52). */
         InventoryLookupMatch: {
             /** @enum {string} */
-            kind: "location" | "variant";
+            kind: "location" | "variant" | "transfer";
             location?: components["schemas"]["InventoryLocationRef"];
+            transfer?: components["schemas"]["InventoryTransferRef"];
             variant?: components["schemas"]["InventoryVariantRef"];
         };
         /** @description The matches, locations first; empty when nothing matched. */
         InventoryLookupResult: {
             matches: components["schemas"]["InventoryLookupMatch"][];
         };
-        /** @description What the app needs to start (§5): the caller's six capabilities. */
+        /** @description What the app needs to start (§5): the caller's seven capabilities. */
         InventoryMeta: {
             /** @description inventory:stock-adjust — adjustments and moves. */
             canAdjust: boolean;
@@ -933,6 +1086,8 @@ export interface components {
             canManageLocations: boolean;
             /** @description inventory:receipts-manage — goods receipts. */
             canReceive: boolean;
+            /** @description inventory:transfers-manage — transfers between sites. */
+            canTransfer: boolean;
             /** @description inventory:locations-view — sites and locations, without quantities. */
             canViewLocations: boolean;
             /** @description inventory:stock-view — quantities and movements. */
@@ -965,7 +1120,7 @@ export interface components {
             /** Format: int32 */
             variantId: number;
         };
-        /** @description A posted movement (I8): never edited or deleted. */
+        /** @description A posted movement (I8): never edited or deleted. A transfer's movements name it in transfer (I45). */
         InventoryMovement: {
             /** Format: uuid */
             clientRequestId: string;
@@ -987,12 +1142,13 @@ export interface components {
             source?: components["schemas"]["InventorySourceRef"];
             supplierName?: string;
             supplierReference?: string;
+            transfer?: components["schemas"]["InventoryTransferRef"];
         };
         /**
-         * @description An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); production and transfer join later.
+         * @description An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production joins later.
          * @enum {string}
          */
-        InventoryMovementKind: "adjustment" | "move" | "receipt" | "count" | "issue";
+        InventoryMovementKind: "adjustment" | "move" | "receipt" | "count" | "issue" | "transfer_out" | "transfer_in";
         /** @description A quantity of a variant from a location, to one, or both (I9). */
         InventoryMovementLine: {
             entered?: components["schemas"]["InventoryEnteredSnapshot"];
@@ -1033,6 +1189,7 @@ export interface components {
             site: components["schemas"]["InventorySiteRef"];
             supplierName?: string;
             supplierReference?: string;
+            transfer?: components["schemas"]["InventoryTransferRef"];
         };
         /** @description A packaging of the variant as the catalog answers it (I24): what it holds in the variant's unit. The app breaks quantities down in them (I26). */
         InventoryPackaging: {
@@ -1045,7 +1202,19 @@ export interface components {
             /** Format: double */
             quantity: number;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description A variant's placement at a site (delivery B, I54): its primary location, reorder point and maximum, and whether it is low (I56). */
+        InventoryPlacement: {
+            low: boolean;
+            /** Format: double */
+            maximum: number | null;
+            /** Format: int64 */
+            primaryLocationId: number | null;
+            /** Format: double */
+            reorderPoint: number | null;
+            /** Format: int32 */
+            revision: number;
+        };
+        /** @description An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point, placement_empty and placement_location_invalid (400: a placement's rules, delivery B), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         InventoryProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1125,6 +1294,11 @@ export interface components {
             fulfilsOrders: boolean;
             /** Format: int64 */
             id: number;
+            /**
+             * Format: int32
+             * @description Open transfers to the site (sent or partly received); present to a caller holding inventory:stock-view.
+             */
+            incomingTransfers?: number;
             kind: components["schemas"]["InventorySiteKind"];
             /**
              * Format: date-time
@@ -1137,6 +1311,11 @@ export interface components {
              */
             locationCount: number;
             name: string;
+            /**
+             * Format: int32
+             * @description Open transfers from the site (sent or partly received); present to a caller holding inventory:stock-view.
+             */
+            outgoingTransfers?: number;
             /**
              * Format: int32
              * @description Send it back as If-Match on PUT /sites/{id}.
@@ -1184,13 +1363,18 @@ export interface components {
             name: string;
             status: components["schemas"]["InventoryStatus"];
         };
-        /** @description One variant's stock in one site. */
+        /** @description One variant's stock in one site; a site with only incoming has a row with nothing on hand. */
         InventorySiteStock: {
             /**
              * Format: double
              * @description On hand less reserved; negative when a correction took on hand below what is reserved.
              */
             available: number;
+            /**
+             * Format: double
+             * @description In transit to the site on open transfers (I46).
+             */
+            incoming: number;
             /** Format: double */
             onHand: number;
             /**
@@ -1248,7 +1432,7 @@ export interface components {
              */
             stockLines: number;
         };
-        /** @description One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views; entityId is the count's id. */
+        /** @description One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views, entityId the count's id; transferOverdue, a transfer sent or partly received past its expected arrival, or without one sent more than 7 days ago, to a caller holding inventory:transfers-manage with both views, entityId the transfer's id and occurredAt its expected arrival or sent date (I62). */
         InventoryStatsAttentionItem: {
             /**
              * Format: int32
@@ -1261,14 +1445,55 @@ export interface components {
             occurredAt: string;
             title: string;
             /** @enum {string} */
-            type: "countOpenLong";
+            type: "countOpenLong" | "transferOverdue";
         };
         /** @enum {string} */
         InventoryStatus: "active" | "archived";
+        /** @description One variant at one site (I53): what lies there, what is reserved, and what is on its way to it. */
+        InventoryStockAtSite: {
+            /**
+             * Format: double
+             * @description On hand less reserved.
+             */
+            available: number;
+            /**
+             * Format: double
+             * @description In transit to the site on open transfers (I46).
+             */
+            incoming: number;
+            /** @description The locations holding it, most first. */
+            locations: components["schemas"]["InventoryStockAtSiteLocation"][];
+            /** Format: double */
+            onHand: number;
+            placement?: components["schemas"]["InventoryPlacement"];
+            /** Format: double */
+            reserved: number;
+            /** Format: int64 */
+            siteId: number;
+            /** Format: int32 */
+            variantId: number;
+        };
+        /** @description What lies of the variant on one location of the site. */
+        InventoryStockAtSiteLocation: {
+            location: components["schemas"]["InventoryLocationRef"];
+            /** Format: double */
+            onHand: number;
+            /** @description The variant's primary location at the site (delivery B); absent until then. */
+            primary?: boolean;
+        };
+        /** @description One row per variant and site asked for, whether or not anything lies there. */
+        InventoryStockAtSites: {
+            stock: components["schemas"]["InventoryStockAtSite"][];
+        };
         /** @description A variant's on hand across every location, what is reserved of it across every site, and the difference. */
         InventoryStockTotal: {
             /** Format: double */
             available: number;
+            /**
+             * Format: double
+             * @description On its way between sites on open transfers (I46); not part of onHand.
+             */
+            inTransit: number;
             /** Format: double */
             onHand: number;
             /** Format: double */
@@ -1276,9 +1501,268 @@ export interface components {
             /** Format: int32 */
             variantId: number;
         };
-        /** @description One total per variant asked for that has stock or a reservation; a variant with neither is absent. */
+        /** @description One total per variant asked for that has stock, a reservation or something in transit; a variant with none is absent. */
         InventoryStockTotals: {
             totals: components["schemas"]["InventoryStockTotal"][];
+        };
+        /** @description A transfer of stock from one site to another (I36), with its lines and its actions. */
+        InventoryTransfer: {
+            /** @description Oldest first. */
+            actions: components["schemas"]["InventoryTransferAction"][];
+            closeNote?: string;
+            closeReason?: components["schemas"]["InventoryTransferCloseReason"];
+            /** Format: date-time */
+            closedAt?: string;
+            closedBy?: components["schemas"]["InventoryActor"];
+            /** Format: date-time */
+            createdAt: string;
+            createdBy: components["schemas"]["InventoryActor"];
+            /** Format: date */
+            expectedArrival?: string;
+            fromSite: components["schemas"]["InventorySiteRef"];
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: double
+             * @description The lines' in transit, summed.
+             */
+            inTransit: number;
+            /** @description By line number. */
+            lines: components["schemas"]["InventoryTransferLine"][];
+            note?: string;
+            /** Format: int64 */
+            number: number;
+            reference?: string;
+            /**
+             * Format: int32
+             * @description Send it back as If-Match on every write but receive (I41).
+             */
+            revision: number;
+            /** Format: date-time */
+            sentAt?: string;
+            sentBy?: components["schemas"]["InventoryActor"];
+            status: components["schemas"]["InventoryTransferStatus"];
+            toSite: components["schemas"]["InventorySiteRef"];
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description One send, receive or cancel (I38): who, when, the movement it posted, and its lines. */
+        InventoryTransferAction: {
+            closeNote?: string;
+            closeReason?: components["schemas"]["InventoryTransferCloseReason"];
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["InventoryTransferActionKind"];
+            lines: components["schemas"]["InventoryTransferActionLine"][];
+            /**
+             * Format: int64
+             * @description Absent on a close-only receive, which posts no movement.
+             */
+            movementId?: number;
+            /** Format: date-time */
+            postedAt: string;
+            postedBy: components["schemas"]["InventoryActor"];
+        };
+        /** @enum {string} */
+        InventoryTransferActionKind: "send" | "receive" | "cancel";
+        /** @description What one action did to one line: the source location for sent and returned, the destination for received, none for missing (I38). */
+        InventoryTransferActionLine: {
+            kind: components["schemas"]["InventoryTransferActionLineKind"];
+            /** Format: int64 */
+            lineId: number;
+            location?: components["schemas"]["InventoryLocationRef"];
+            /** Format: double */
+            quantity: number;
+        };
+        /** @enum {string} */
+        InventoryTransferActionLineKind: "sent" | "received" | "missing" | "returned";
+        /** @description Cancelling a sent transfer with nothing received or missing (I44). */
+        InventoryTransferCancelInput: {
+            /**
+             * Format: uuid
+             * @description A UUID made when the dialog opens and kept across retries (D I14).
+             */
+            clientRequestId: string;
+        };
+        /** @description Closing the difference (I42): after the quantities, every line's remaining outstanding is recorded as missing and the transfer is received. */
+        InventoryTransferClose: {
+            note?: string;
+            reason: components["schemas"]["InventoryTransferCloseReason"];
+        };
+        /**
+         * @description Why what was not received is missing (I42).
+         * @enum {string}
+         */
+        InventoryTransferCloseReason: "lost" | "damaged" | "not_packed" | "other";
+        /** @description Where one line is received: a location at the to site, its root included (D I3). */
+        InventoryTransferDestination: {
+            /** Format: int64 */
+            lineId: number;
+            /** Format: int64 */
+            toLocationId: number;
+        };
+        /** @description A draft transfer's header and lines, replaced whole on PUT (I36, I37): two different active sites, 1–500 lines. A field left out is empty. */
+        InventoryTransferInput: {
+            /** Format: date */
+            expectedArrival?: string;
+            /** Format: int64 */
+            fromSiteId: number;
+            lines: components["schemas"]["InventoryTransferLineInput"][];
+            note?: string;
+            reference?: string;
+            /** Format: int64 */
+            toSiteId: number;
+        };
+        /** @description A transfer line (I36, I46): what was asked for and the running totals. inTransit is sent − received − missing − returned, 0 on every line of a received or cancelled transfer. */
+        InventoryTransferLine: {
+            entered?: components["schemas"]["InventoryEnteredSnapshot"];
+            fromLocation?: components["schemas"]["InventoryLocationRef"];
+            /** Format: int64 */
+            id: number;
+            /** Format: double */
+            inTransit: number;
+            /** Format: int32 */
+            lineNo: number;
+            /** Format: double */
+            missing: number;
+            /**
+             * Format: double
+             * @description More than 0, in the variant's unit.
+             */
+            quantity: number;
+            /** Format: double */
+            received: number;
+            /** Format: double */
+            returned: number;
+            /** Format: double */
+            sent: number;
+            suggestion?: components["schemas"]["InventoryTransferSuggestion"];
+            variant: components["schemas"]["InventoryVariantRef"];
+        };
+        /** @description A draft line: a variant and a quantity of it, in its own unit or entered in packagings (I25). Exactly one of quantity and entered is given. A variant may appear on several lines. */
+        InventoryTransferLineInput: {
+            entered?: components["schemas"]["InventoryEntered"];
+            /**
+             * Format: double
+             * @description A quantity in the variant's own unit: more than 0, at most 99,999,999,999.999, at most three decimals (I11).
+             */
+            quantity?: number;
+            suggestion?: components["schemas"]["InventoryTransferSuggestion"];
+            /** Format: int32 */
+            variantId: number;
+        };
+        /** @description Transfers newest first. */
+        InventoryTransferPage: {
+            /** @description Pass as cursor for the next page; absent on the last. */
+            next?: string;
+            transfers: components["schemas"]["InventoryTransferSummary"][];
+        };
+        /** @description A receive (I40–I42): the quantities that arrived now and, optionally, the difference closed. No If-Match (I41): two receivers both land, each judged against the other's result. */
+        InventoryTransferReceiveInput: {
+            /**
+             * Format: uuid
+             * @description A UUID made when the page opens and kept across retries (D I14).
+             */
+            clientRequestId: string;
+            close?: components["schemas"]["InventoryTransferClose"];
+            lines: components["schemas"]["InventoryTransferReceiveLine"][];
+        };
+        /** @description What arrived now of one line and where it goes (I40): at most the line's outstanding, in the variant's unit or entered in packagings as they are today. Exactly one of quantity and entered is given; 0 receives nothing of the line. */
+        InventoryTransferReceiveLine: {
+            entered?: components["schemas"]["InventoryEntered"];
+            /** Format: int64 */
+            lineId: number;
+            /**
+             * Format: double
+             * @description 0 or more, at most three decimals.
+             */
+            quantity?: number;
+            /** Format: int64 */
+            toLocationId: number;
+        };
+        /** @description A transfer as other answers name it. */
+        InventoryTransferRef: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description From the module's own series, shown as Transfer 1042 and TRF-1042 (I36).
+             */
+            number: number;
+        };
+        /** @description Sending a draft (I39): a source location for every line. The client request id is derived from the transfer, so a retried send replays. */
+        InventoryTransferSendInput: {
+            lines: components["schemas"]["InventoryTransferSendLine"][];
+            receive?: components["schemas"]["InventoryTransferSendReceive"];
+        };
+        /** @description Where one line is sent from: a location at the from site. A line of the transfer without one is from_location_required. */
+        InventoryTransferSendLine: {
+            /** Format: int64 */
+            fromLocationId?: number;
+            /** Format: int64 */
+            lineId: number;
+        };
+        /** @description Send and receive (I43): a destination for every line, or receive_incomplete; everything sent is received in the same transaction. */
+        InventoryTransferSendReceive: {
+            lines: components["schemas"]["InventoryTransferDestination"][];
+        };
+        /**
+         * @description A transfer's status (I36): draft holds nothing and may be edited and deleted (I37); sent is in transit; partly_received has had some of it received; received has nothing outstanding — every line received, or its difference closed (I42); cancelled was sent and returned whole to the from site (I44).
+         * @enum {string}
+         */
+        InventoryTransferStatus: "draft" | "sent" | "partly_received" | "received" | "cancelled";
+        /**
+         * @description A status, or open: draft, sent and partly_received together.
+         * @enum {string}
+         */
+        InventoryTransferStatusFilter: "open" | "draft" | "sent" | "partly_received" | "received" | "cancelled";
+        /** @description The low-stock list's suggestion a line was drafted from (I57): what was needed, and the smallest packaging it was rounded up to and how many of it. Kept until the line is edited, which clears it; stored and returned as given. */
+        InventoryTransferSuggestion: {
+            /**
+             * Format: int32
+             * @description How many of the packaging; null when the variant has no packagings.
+             */
+            count: number | null;
+            /**
+             * Format: double
+             * @description What the rule found needed, in the variant's unit.
+             */
+            needed: number;
+            /**
+             * Format: int32
+             * @description The smallest packaging; null when the variant has none.
+             */
+            packagingId: number | null;
+        };
+        /** @description A transfer without its lines and actions, for the list. */
+        InventoryTransferSummary: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date */
+            expectedArrival?: string;
+            fromSite: components["schemas"]["InventorySiteRef"];
+            /** Format: int64 */
+            id: number;
+            /** Format: double */
+            inTransit: number;
+            /** Format: int32 */
+            lineCount: number;
+            /**
+             * Format: double
+             * @description What its closed difference recorded as missing, summed over the lines.
+             */
+            missing: number;
+            /** Format: int64 */
+            number: number;
+            /** @description Sent or partly received and past its expected arrival, or without one sent more than 7 days ago (I62). */
+            overdue: boolean;
+            reference?: string;
+            /** Format: date-time */
+            sentAt?: string;
+            status: components["schemas"]["InventoryTransferStatus"];
+            toSite: components["schemas"]["InventorySiteRef"];
+            /** Format: date-time */
+            updatedAt: string;
         };
         /**
          * @description What posting does with a line nobody counted: keep its balance, or count it as zero (I19).
@@ -1309,7 +1793,7 @@ export interface components {
         };
         /** @description One variant's stock by site (I27). */
         InventoryVariantStock: {
-            /** @description Sites holding stock or a reservation of it, by code. */
+            /** @description Sites holding stock, a reservation or incoming of it, by code. */
             sites: components["schemas"]["InventorySiteStock"][];
             /**
              * Format: double
@@ -3165,6 +3649,706 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    listInventoryStockAtSites: {
+        parameters: {
+            query: {
+                /** @description Comma-separated, at most 100. */
+                variantIds: number[];
+                /** @description Comma-separated, at most 20. */
+                siteIds: number[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryStockAtSites"];
+                };
+            };
+            /** @description Bad Request — no ids, more than 100 variants or more than 20 sites. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    listInventoryTransfers: {
+        parameters: {
+            query?: {
+                /** @description A status, or open (the default when absent is every status). */
+                status?: components["schemas"]["InventoryTransferStatusFilter"];
+                /** @description Only those from this site. */
+                fromSiteId?: number;
+                /** @description Only those to this site. */
+                toSiteId?: number;
+                /** @description Only those with a line of this variant. */
+                variantId?: number;
+                /** @description Only those with something recorded missing (of variantId, when given). */
+                withMissing?: boolean;
+                /** @description A transfer number, or a line's SKU. */
+                q?: string;
+                /** @description The previous page's next. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransferPage"];
+                };
+            };
+            /** @description Bad Request — a filter or cursor that does not parse. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    createInventoryTransfer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryTransferInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransfer"];
+                };
+            };
+            /** @description Bad Request — field errors, transfer_same_site, site_archived, too_many_lines, or the lines' codes in lines (variant_not_found, variant_not_stockable, quantity_invalid, entered_invalid, packaging_not_found). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    getInventoryTransfer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransfer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such transfer. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    putInventoryTransfer: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the transfer was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryTransferInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransfer"];
+                };
+            };
+            /** @description Bad Request — field errors, transfer_same_site, site_archived, too_many_lines, or the lines' codes in lines. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such transfer. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — transfer_not_draft or revision_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    deleteInventoryTransfer: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the transfer was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request — an If-Match that does not parse. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such transfer. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — transfer_not_draft or revision_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    cancelInventoryTransfer: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the transfer was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryTransferCancelInput"];
+            };
+        };
+        responses: {
+            /** @description OK — cancelled, or a replay of the same cancel. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransfer"];
+                };
+            };
+            /** @description Bad Request — field errors, or the lines' codes in lines (location_archived). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such transfer. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — transfer_not_cancellable, revision_conflict, or client_request_reused. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    getInventoryTransferNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such transfer, or a draft, which has no note. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    receiveInventoryTransfer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryTransferReceiveInput"];
+            };
+        };
+        responses: {
+            /** @description OK — received, or a replay of the same receive. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransfer"];
+                };
+            };
+            /** @description Bad Request — field errors, nothing_to_post, site_archived, or the lines' codes in lines (transfer_over_received, transfer_line_unknown, location_archived, location_not_found, quantity_invalid, entered_invalid, packaging_not_found). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such transfer. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — transfer_not_receivable, nothing_to_close, or client_request_reused. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    sendInventoryTransfer: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the transfer was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryTransferSendInput"];
+            };
+        };
+        responses: {
+            /** @description OK — sent, or a replay of the same send. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransfer"];
+                };
+            };
+            /** @description Bad Request — field errors, site_archived, receive_incomplete, or the lines' codes in lines (from_location_required, transfer_line_unknown, location_archived, location_not_found, variant_not_found, variant_not_stockable, move_crosses_sites). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such transfer. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — transfer_not_draft, revision_conflict, or insufficient_stock (in lines). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
                 };
             };
         };

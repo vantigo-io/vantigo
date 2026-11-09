@@ -58,6 +58,7 @@ const inventoryPermissionKeys = [
   "inventory:stock-adjust",
   "inventory:receipts-manage",
   "inventory:counts-manage",
+  "inventory:transfers-manage",
 ] as const;
 
 describe("the admin permission catalog", () => {
@@ -197,7 +198,7 @@ describe("the admin permission catalog", () => {
     );
   });
 
-  it("has a display name and a description, in English and Norwegian, for the six inventory permissions", () => {
+  it("has a display name and a description, in English and Norwegian, for the seven inventory permissions", () => {
     for (const key of inventoryPermissionKeys) {
       const translation = hostPermissionTranslationKeys[key];
       expect(translation, `no catalog entry for ${key}`).toBeDefined();

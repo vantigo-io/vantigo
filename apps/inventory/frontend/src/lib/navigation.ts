@@ -1,8 +1,14 @@
-import { COUNTS_ROUTE_PATH, IMPORT_ROUTE_PATH, INVENTORY_HOME_ROUTE_PATH, MOVEMENTS_ROUTE_PATH } from "./routes";
+import {
+  COUNTS_ROUTE_PATH,
+  IMPORT_ROUTE_PATH,
+  INVENTORY_HOME_ROUTE_PATH,
+  MOVEMENTS_ROUTE_PATH,
+  TRANSFERS_ROUTE_PATH,
+} from "./routes";
 
 /** One sidebar destination of the app; the host owns its label and icon. */
 export interface InventoryNavItem {
-  key: "overview" | "movements" | "receipts" | "counts" | "import";
+  key: "overview" | "transfers" | "movements" | "receipts" | "counts" | "import";
   /** The key of the destination's label in the package catalog. */
   label: string;
   to: string;
@@ -22,6 +28,14 @@ export const inventoryNavItems: readonly InventoryNavItem[] = [
     label: "navOverview",
     to: INVENTORY_HOME_ROUTE_PATH,
     requiredPermissions: ["inventory:locations-view", "inventory:stock-view"],
+  },
+  {
+    // Seeing transfers needs both views alone (phase 2 design I63); writing them needs transfers-manage.
+    key: "transfers",
+    label: "navTransfers",
+    to: TRANSFERS_ROUTE_PATH,
+    requiredPermissions: ["inventory:stock-view"],
+    requiredAllPermissions: stockViews,
   },
   {
     key: "movements",

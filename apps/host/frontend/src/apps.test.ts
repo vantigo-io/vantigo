@@ -6,6 +6,7 @@ import {
   IconFileImport,
   IconPackageImport,
   IconTransfer,
+  IconTruckDelivery,
   IconUsersGroup,
 } from "@tabler/icons-react";
 import { inventoryNavItems } from "@vantigo/inventory-ui";
@@ -144,6 +145,7 @@ describe("the app registry", () => {
       "/products/categories",
       "/products/tax-categories",
       "/inventory",
+      "/inventory/transfers",
       "/inventory/movements",
       "/inventory/movements",
       "/inventory/counts",
@@ -614,9 +616,10 @@ describe("the app registry", () => {
   // Inventory's destinations are the package's (`inventoryNavItems`), the host
   // adding the label and the icon. Receipts is the movements list filtered to
   // receipts (inventory design §13.3), so it shares Movements' path and
-  // carries the search. Counts and Import are offered by counts-manage and
-  // stock-adjust, each with both views, as every stock read asks (§5).
-  it("gives Inventory the overview, Movements, Receipts, Counts and Import, from the package's destinations", () => {
+  // carries the search. Transfers needs both views alone (phase 2 design
+  // I63). Counts and Import are offered by counts-manage and stock-adjust,
+  // each with both views, as every stock read asks (§5).
+  it("gives Inventory the overview, Transfers, Movements, Receipts, Counts and Import, from the package's destinations", () => {
     const inventory = appForKey("inventory");
     expect(inventory).toMatchObject({ module: "inventory", label: "navigation.inventory", home: "/inventory" });
     expect(inventory.icon).toBe(IconBuildingWarehouse);
@@ -638,6 +641,14 @@ describe("the app registry", () => {
         undefined,
         ["inventory:locations-view", "inventory:stock-view"],
         undefined,
+        undefined,
+      ],
+      [
+        "navigation.inventoryTransfers",
+        "/inventory/transfers",
+        undefined,
+        ["inventory:stock-view"],
+        ["inventory:locations-view", "inventory:stock-view"],
         undefined,
       ],
       [
@@ -675,6 +686,7 @@ describe("the app registry", () => {
     ]);
     expect(items.map((item) => item.icon)).toEqual([
       IconBuildingWarehouse,
+      IconTruckDelivery,
       IconTransfer,
       IconPackageImport,
       IconClipboardCheck,
@@ -708,6 +720,7 @@ describe("the app registry", () => {
     expect(paths(["inventory:locations-view"])).toEqual(["navigation.inventoryOverview"]);
     expect(paths(["inventory:locations-view", "inventory:stock-view"])).toEqual([
       "navigation.inventoryOverview",
+      "navigation.inventoryTransfers",
       "navigation.inventoryMovements",
       "navigation.inventoryReceipts",
     ]);
@@ -715,6 +728,7 @@ describe("the app registry", () => {
       paths(["inventory:locations-view", "inventory:stock-view", "inventory:counts-manage", "inventory:stock-adjust"]),
     ).toEqual([
       "navigation.inventoryOverview",
+      "navigation.inventoryTransfers",
       "navigation.inventoryMovements",
       "navigation.inventoryReceipts",
       "navigation.inventoryCounts",

@@ -1,14 +1,14 @@
 import { ActionIcon, Button, Group, NumberInput, SegmentedControl, Stack, Table, Text, TextInput } from "@mantine/core";
 import { IconPlus, IconScan, IconTrash } from "@tabler/icons-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { type Dispatch, type SetStateAction, useRef, useState } from "react";
+import { type Dispatch, type ReactNode, type SetStateAction, useRef, useState } from "react";
 import { lookupQueryOptions } from "../api/lookup";
 import type { InventoryAdjustmentMode } from "../api/movements";
 import { QUANTITY_DECIMALS, refusalMessage, useInventoryFormat } from "../lib/format";
 import {
+  type EditorKind,
   type EditorLine,
   isPacked,
-  type LineEditorKind,
   lineQuantity,
   newEditorLine,
   roundQuantity,
@@ -18,8 +18,15 @@ import { LocationPicker } from "./location-picker";
 import { PackagingSteppers } from "./packaging-steppers";
 import { VariantPicker } from "./variant-picker";
 
+/** Read-only columns a form adds after the quantity, as the transfer's stock at both sites (phase 2 design §7). */
+export interface LineEditorColumn {
+  key: string;
+  header: ReactNode;
+  cell: (line: EditorLine) => ReactNode;
+}
+
 export interface LineEditorProps {
-  kind: LineEditorKind;
+  kind: EditorKind;
   /** The site whose locations the pickers offer. */
   siteId: number | undefined;
   lines: readonly EditorLine[];
@@ -32,6 +39,8 @@ export interface LineEditorProps {
   defaultLocationId: number | null;
   /** What is wrong with a row, by its key: a refusal's failing line, or a field left empty. */
   lineErrors: ReadonlyMap<string, { message: string; detail?: string }>;
+  /** Columns drawn after the quantity, read-only. */
+  extraColumns?: readonly LineEditorColumn[];
 }
 
 /**
@@ -44,15 +53,26 @@ export interface LineEditorProps {
  * barcode adds one of that packaging. A refused posting's failing lines are
  * marked on their rows.
  */
-export const LineEditor = ({ kind, siteId, lines, onChange, defaultLocationId, lineErrors }: LineEditorProps) => {
+export const LineEditor = ({
+  kind,
+  siteId,
+  lines,
+  onChange,
+  defaultLocationId,
+  lineErrors,
+  extraColumns = [],
+}: LineEditorProps) => {
   const { t, quantity } = useInventoryFormat();
   const queryClient = useQueryClient();
   const [scan, setScan] = useState("");
   const [scanError, setScanError] = useState<string>();
   const scanRef = useRef<HTMLInputElement>(null);
 
+  // Editing a line drops the low-stock list's suggestion it was drafted with (I57).
   const update = (key: string, change: Partial<EditorLine>) =>
-    onChange((current) => current.map((line) => (line.key === key ? { ...line, ...change } : line)));
+    onChange((current) =>
+      current.map((line) => (line.key === key ? { ...line, ...change, suggestion: undefined } : line)),
+    );
 
   // The field empties as Enter is pressed, so a scanner's next code starts
   // afresh while this one is looked up; each lands on the lines as they are
@@ -80,8 +100,12 @@ export const LineEditor = ({ kind, siteId, lines, onChange, defaultLocationId, l
           line.key !== existing.key
             ? line
             : packaging
-              ? { ...line, packs: { ...line.packs, [packaging.id]: (line.packs[packaging.id] ?? 0) + 1 } }
-              : { ...line, quantity: roundQuantity(Number(line.quantity || 0) + 1) },
+              ? {
+                  ...line,
+                  packs: { ...line.packs, [packaging.id]: (line.packs[packaging.id] ?? 0) + 1 },
+                  suggestion: undefined,
+                }
+              : { ...line, quantity: roundQuantity(Number(line.quantity || 0) + 1), suggestion: undefined },
         );
       });
     } catch (error) {
@@ -119,15 +143,20 @@ export const LineEditor = ({ kind, siteId, lines, onChange, defaultLocationId, l
               <Table.Tr>
                 <Table.Th>{t("columnItem")}</Table.Th>
                 {kind === "adjustment" && <Table.Th>{t("columnMode")}</Table.Th>}
-                <Table.Th>
-                  {kind === "move"
-                    ? t("columnFrom")
-                    : kind === "receipt"
-                      ? t("columnReceiptLocation")
-                      : t("columnLocation")}
-                </Table.Th>
+                {kind !== "transfer" && (
+                  <Table.Th>
+                    {kind === "move"
+                      ? t("columnFrom")
+                      : kind === "receipt"
+                        ? t("columnReceiptLocation")
+                        : t("columnLocation")}
+                  </Table.Th>
+                )}
                 {kind === "move" && <Table.Th>{t("columnTo")}</Table.Th>}
                 <Table.Th>{t("columnQuantity")}</Table.Th>
+                {extraColumns.map((column) => (
+                  <Table.Th key={column.key}>{column.header}</Table.Th>
+                ))}
                 <Table.Th />
               </Table.Tr>
             </Table.Thead>
@@ -151,6 +180,11 @@ export const LineEditor = ({ kind, siteId, lines, onChange, defaultLocationId, l
                         value={line.variant}
                         onChange={(variant) => update(line.key, { variant, packs: {}, decrease: false })}
                       />
+                      {line.variant?.deleted && (
+                        <Text size="xs" c="red" mt={4}>
+                          {t("variantDeleted")}
+                        </Text>
+                      )}
                       {problem && (
                         <Stack gap={0} mt={4}>
                           <Text size="xs" c="red" fw={500}>
@@ -178,17 +212,19 @@ export const LineEditor = ({ kind, siteId, lines, onChange, defaultLocationId, l
                         />
                       </Table.Td>
                     )}
-                    <Table.Td miw={180}>
-                      <LocationPicker
-                        compact
-                        siteId={siteId}
-                        label={kind === "move" ? t("fromOfLine", { n }) : t("locationOfLine", { n })}
-                        placeholder={kind === "receipt" ? t("receiptLineLocationPlaceholder") : undefined}
-                        required={kind !== "receipt"}
-                        value={line.locationId}
-                        onChange={(locationId) => update(line.key, { locationId })}
-                      />
-                    </Table.Td>
+                    {kind !== "transfer" && (
+                      <Table.Td miw={180}>
+                        <LocationPicker
+                          compact
+                          siteId={siteId}
+                          label={kind === "move" ? t("fromOfLine", { n }) : t("locationOfLine", { n })}
+                          placeholder={kind === "receipt" ? t("receiptLineLocationPlaceholder") : undefined}
+                          required={kind !== "receipt"}
+                          value={line.locationId}
+                          onChange={(locationId) => update(line.key, { locationId })}
+                        />
+                      </Table.Td>
+                    )}
                     {kind === "move" && (
                       <Table.Td miw={180}>
                         <LocationPicker
@@ -252,6 +288,9 @@ export const LineEditor = ({ kind, siteId, lines, onChange, defaultLocationId, l
                         )}
                       </Stack>
                     </Table.Td>
+                    {extraColumns.map((column) => (
+                      <Table.Td key={column.key}>{column.cell(line)}</Table.Td>
+                    ))}
                     <Table.Td w={40}>
                       <ActionIcon
                         variant="subtle"

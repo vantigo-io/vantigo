@@ -16,7 +16,12 @@ import {
   IconUsersGroup,
 } from "@tabler/icons-react";
 import type { InventoryStats } from "@vantigo/inventory-ui/api/stats";
-import { COUNTS_ROUTE_PATH, countLinkOptions } from "@vantigo/inventory-ui/lib/routes";
+import {
+  COUNTS_ROUTE_PATH,
+  countLinkOptions,
+  TRANSFERS_ROUTE_PATH,
+  transferLinkOptions,
+} from "@vantigo/inventory-ui/lib/routes";
 import type { DailyPoint, InvoicesSummary, PlanningStats, StaffStats } from "../api/dashboard";
 import { hasAllPermissions, hasPermissions, type ModuleKey } from "../navigation";
 
@@ -438,14 +443,21 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
       return `/planning/people/${encodeURIComponent(item.entityId)}`;
     return "/planning";
   }
-  // A count open for a long time carries the count's id and opens the count;
-  // an id that is not one lands on the counts.
+  // A count open for a long time carries the count's id and opens the count,
+  // an overdue transfer the transfer's (phase 2 design I62); an id that is not
+  // one lands on the counts or the transfers.
   if (item.module === "inventory") {
+    const id = Number(item.entityId);
+    const valid = /^\d+$/.test(item.entityId) && Number.isSafeInteger(id) && id > 0;
     if (item.type === "countOpenLong") {
-      const countId = Number(item.entityId);
-      if (!/^\d+$/.test(item.entityId) || !Number.isSafeInteger(countId) || countId <= 0) return COUNTS_ROUTE_PATH;
-      const { to, params } = countLinkOptions(countId);
+      if (!valid) return COUNTS_ROUTE_PATH;
+      const { to, params } = countLinkOptions(id);
       return to.replace("$countId", params.countId);
+    }
+    if (item.type === "transferOverdue") {
+      if (!valid) return TRANSFERS_ROUTE_PATH;
+      const { to, params } = transferLinkOptions(id);
+      return to.replace("$transferId", params.transferId);
     }
     return "/inventory";
   }
@@ -469,12 +481,14 @@ const planningAttentionTitleKeys: Record<string, string> = {
 };
 
 /**
- * Inventory's sentences (inventory design §7, B): a count open for a long time
- * is worded here, in the reader's language, and names nothing — the link opens
- * the count.
+ * Inventory's sentences (inventory design §7, B; phase 2 design I62): a count
+ * open for a long time and a transfer past its expected arrival are worded
+ * here, in the reader's language, and name nothing — the link opens the count
+ * or the transfer.
  */
 const inventoryAttentionTitleKeys: Record<string, string> = {
   countOpenLong: "dashboard.inventoryCountOpenLong",
+  transferOverdue: "dashboard.inventoryTransferOverdue",
 };
 
 /**

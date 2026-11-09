@@ -15,6 +15,14 @@ export const canPost = (meta: InventoryMeta | undefined, kind: LineEditorKind): 
 export const canCount = (meta: InventoryMeta | undefined): boolean =>
   !!meta && meta.canViewLocations && meta.canViewStock && meta.canCount;
 
+/** Whether the caller may see transfers and their følgeseddel: both views (I63). */
+export const canViewTransfers = (meta: InventoryMeta | undefined): boolean =>
+  !!meta && meta.canViewLocations && meta.canViewStock;
+
+/** Whether the caller may create, send, receive and cancel transfers: `inventory:transfers-manage` and both views (I63). */
+export const canTransfer = (meta: InventoryMeta | undefined): boolean =>
+  !!meta && meta.canViewLocations && meta.canViewStock && meta.canTransfer;
+
 /** Whether the caller may import opening balances: `inventory:stock-adjust` and both views (I32). */
 export const canImport = (meta: InventoryMeta | undefined): boolean => canPost(meta, "adjustment");
 

@@ -489,6 +489,12 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.inventoryCountsManage",
     descriptionKey: "admin.permission.inventoryCountsManageDescription",
   },
+  "inventory:transfers-manage": {
+    moduleKey: "admin.permission.module.inventory",
+    categoryKey: "admin.permission.category.inventory",
+    displayNameKey: "admin.permission.inventoryTransfersManage",
+    descriptionKey: "admin.permission.inventoryTransfersManageDescription",
+  },
   "orders:access": {
     moduleKey: "admin.permission.module.orders",
     categoryKey: "admin.permission.category.orders",
@@ -1047,6 +1053,9 @@ const en = {
     "Post goods receipts, putting delivered goods on the locations of a site.",
   "admin.permission.inventoryCountsManage": "Count stock",
   "admin.permission.inventoryCountsManageDescription": "Open, count, post and cancel stock counts.",
+  "admin.permission.inventoryTransfersManage": "Transfer stock",
+  "admin.permission.inventoryTransfersManageDescription":
+    "Create, send, receive and cancel transfers of stock between sites, and close a transfer's difference.",
   "admin.permission.ordersAccess": "Use Orders",
   "admin.permission.ordersAccessDescription":
     "See the Orders app and read quotes, orders, subscriptions and deliveries.",
@@ -1786,6 +1795,9 @@ const nb: { [Key in keyof typeof en]: string } = {
     "Bokføre varemottak og legge leverte varer på lokasjonene til et lagersted.",
   "admin.permission.inventoryCountsManage": "Telle varer",
   "admin.permission.inventoryCountsManageDescription": "Åpne, telle, bokføre og avbryte varetellinger.",
+  "admin.permission.inventoryTransfersManage": "Overføre varer",
+  "admin.permission.inventoryTransfersManageDescription":
+    "Opprette, sende, motta og avbryte overføringer av varer mellom lagersteder, og avslutte en overføring med avvik.",
   "admin.permission.ordersAccess": "Bruke Ordre",
   "admin.permission.ordersAccessDescription": "Se Ordre-appen og lese tilbud, ordrer, abonnementer og leveranser.",
   "admin.permission.ordersQuotesManage": "Håndtere tilbud",

@@ -13,7 +13,7 @@ export interface MovementsSearch {
   siteId?: number;
   locationId?: number;
   variantId?: number;
-  kind?: "adjustment" | "move" | "receipt" | "count" | "issue";
+  kind?: "adjustment" | "move" | "receipt" | "count" | "issue" | "transfer_out" | "transfer_in";
   from?: string;
   to?: string;
 }
@@ -21,7 +21,7 @@ const positive = (value: unknown): number | undefined => {
   const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
   return Number.isSafeInteger(n) && n > 0 ? n : undefined;
 };
-const kinds = ["adjustment", "move", "receipt", "count", "issue"] as const;
+const kinds = ["adjustment", "move", "receipt", "count", "issue", "transfer_out", "transfer_in"] as const;
 export const validateMovementsSearch = (search: Record<string, unknown>): MovementsSearch => ({
   siteId: positive(search.siteId),
   locationId: positive(search.locationId),
@@ -49,3 +49,32 @@ export interface CountsSearch {
 }
 export const validateCountsSearch = (search: Record<string, unknown>): CountsSearch =>
   search.new === 1 || search.new === "1" || search.new === true || search.new === "true" ? { new: 1 } : {};
+
+/**
+ * The transfers list's filters (phase 2 design §7): the status — absent is
+ * open (draft, sent, partly received), `all` every status — the from and the
+ * to site, and a number or a SKU.
+ */
+export interface TransfersSearch {
+  status?: "all" | "draft" | "sent" | "partly_received" | "received" | "cancelled";
+  fromSiteId?: number;
+  toSiteId?: number;
+  q?: string;
+}
+const transferStatusFilters = ["all", "draft", "sent", "partly_received", "received", "cancelled"] as const;
+export const validateTransfersSearch = (search: Record<string, unknown>): TransfersSearch => ({
+  status: transferStatusFilters.find((one) => one === search.status),
+  fromSiteId: positive(search.fromSiteId),
+  toSiteId: positive(search.toSiteId),
+  q: typeof search.q === "string" && search.q.trim() !== "" ? search.q : undefined,
+});
+
+/** What a new transfer's form opens with: the from and the to site. */
+export interface NewTransferSearch {
+  fromSiteId?: number;
+  toSiteId?: number;
+}
+export const validateNewTransferSearch = (search: Record<string, unknown>): NewTransferSearch => ({
+  fromSiteId: positive(search.fromSiteId),
+  toSiteId: positive(search.toSiteId),
+});

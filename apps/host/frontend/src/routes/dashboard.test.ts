@@ -1417,4 +1417,28 @@ describe("the dashboard's inventory card", () => {
     expect(dashboardCatalog.en["dashboard.inventoryCountOpenLong"]).toBe("A count has been open for a long time");
     expect(dashboardCatalog.nb["dashboard.inventoryCountOpenLong"]).toBe("En varetelling har vært åpen lenge");
   });
+
+  // An overdue transfer (phase 2 design I62) carries the transfer's id: the
+  // link opens the transfer, and the sentence is the catalog's, naming nothing.
+  it("links an overdue transfer to the transfer, and words it from the catalog", () => {
+    expect(attentionHref({ module: "inventory", type: "transferOverdue", entityId: "42" })).toBe(
+      "/inventory/transfers/42",
+    );
+    for (const entityId of ["", "0", "-1", "abc", "1.5"])
+      expect(attentionHref({ module: "inventory", type: "transferOverdue", entityId })).toBe("/inventory/transfers");
+    expect(attentionTitleKey({ module: "inventory", type: "transferOverdue" })).toBe(
+      "dashboard.inventoryTransferOverdue",
+    );
+    expect(
+      attentionTitle(
+        { module: "inventory", type: "transferOverdue", entityId: "42", title: "Transfer 1042 to BGO" },
+        (key) => key,
+        () => "unused",
+      ),
+    ).toBe("dashboard.inventoryTransferOverdue");
+    expect(dashboardCatalog.en["dashboard.inventoryTransferOverdue"]).toBe("A transfer is past its expected arrival");
+    expect(dashboardCatalog.nb["dashboard.inventoryTransferOverdue"]).toBe(
+      "En overføring har passert forventet ankomst",
+    );
+  });
 });

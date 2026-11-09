@@ -23,7 +23,11 @@ import {
   NEW_ADJUSTMENT_ROUTE_PATH,
   NEW_MOVE_ROUTE_PATH,
   NEW_RECEIPT_ROUTE_PATH,
+  NEW_TRANSFER_ROUTE_PATH,
+  RECEIVE_TRANSFER_ROUTE_PATH,
   SITE_ROUTE_PATH,
+  TRANSFER_ROUTE_PATH,
+  TRANSFERS_ROUTE_PATH,
   VARIANT_STOCK_ROUTE_PATH,
 } from "../lib/routes";
 import {
@@ -31,6 +35,8 @@ import {
   validateLookupSearch,
   validateMovementsSearch,
   validateNewMovementSearch,
+  validateNewTransferSearch,
+  validateTransfersSearch,
 } from "../lib/search";
 import { CountPage } from "../pages/count";
 import { CountsPage } from "../pages/counts";
@@ -43,7 +49,11 @@ import { MovementsPage } from "../pages/movements";
 import { NewAdjustmentPage } from "../pages/new-adjustment";
 import { NewMovePage } from "../pages/new-move";
 import { NewReceiptPage } from "../pages/new-receipt";
+import { NewTransferPage } from "../pages/new-transfer";
+import { ReceiveTransferPage } from "../pages/receive-transfer";
 import { SitePage } from "../pages/site";
+import { TransferPage } from "../pages/transfer";
+import { TransfersPage } from "../pages/transfers";
 import { VariantStockPage } from "../pages/variant";
 import "../i18n";
 import { ProductSlot } from "./product-slot";
@@ -78,6 +88,10 @@ export const makeRouteTree = () => {
     route(COUNTS_ROUTE_PATH, CountsPage, validateCountsSearch),
     route(COUNT_ROUTE_PATH, CountPage),
     route(IMPORT_ROUTE_PATH, ImportPage),
+    route(TRANSFERS_ROUTE_PATH, TransfersPage, validateTransfersSearch),
+    route(NEW_TRANSFER_ROUTE_PATH, NewTransferPage, validateNewTransferSearch),
+    route(TRANSFER_ROUTE_PATH, TransferPage),
+    route(RECEIVE_TRANSFER_ROUTE_PATH, ReceiveTransferPage),
     route(PRODUCT_TEST_PATH, ProductSlot),
   ]);
 };

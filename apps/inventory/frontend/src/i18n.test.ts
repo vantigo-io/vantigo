@@ -6,6 +6,7 @@ import { labelLayouts } from "./api/labels";
 import { locationKinds } from "./api/locations";
 import { adjustmentModes, adjustmentReasons, movementKinds, refusalCodes } from "./api/movements";
 import { siteKinds, statuses } from "./api/sites";
+import { closeReasons, transferStatuses } from "./api/transfers";
 import { inventoryCatalog } from "./i18n";
 import { inventoryNavItems } from "./lib/navigation";
 
@@ -53,11 +54,12 @@ describe("the inventory catalog", () => {
       ...locationKinds.map((value) => `locationKind_${value}`),
       ...statuses.map((value) => `status_${value}`),
       ...movementKinds.map((value) => `kind_${value}`),
-      // A count is posted from its counting screen and an issue by another
-      // module, not from a new-movement form, so only the three posting kinds
+      // A count is posted from its counting screen, an issue by another
+      // module and a transfer's kinds by the transfer, not from a
+      // new-movement form, so only the three posting kinds
       // have the form's words.
       ...movementKinds
-        .filter((value) => value !== "count" && value !== "issue")
+        .filter((value) => !["count", "issue", "transfer_out", "transfer_in"].includes(value))
         .flatMap((value) => [
           `new_${value}`,
           `newDescription_${value}`,
@@ -67,7 +69,10 @@ describe("the inventory catalog", () => {
         ]),
       ...adjustmentReasons.map((value) => `reason_${value}`),
       ...adjustmentModes.map((value) => `mode_${value}`),
-      ...["location", "variant"].map((value) => `matchKind_${value}`),
+      ...["location", "variant", "transfer"].map((value) => `matchKind_${value}`),
+      ...transferStatuses.map((value) => `transferStatus_${value}`),
+      ...closeReasons.map((value) => `closeReason.${value}`),
+      ...["sent", "received", "missing", "returned"].map((value) => `actionLine_${value}`),
       ...["variant", "quantity", "location"].map((value) => `lineGap_${value}`),
       ...refusalCodes.map((value) => `refusal.${value}`),
       ...countStatuses.map((value) => `countStatus_${value}`),
@@ -88,7 +93,10 @@ describe("the inventory catalog", () => {
     expect([...movementKinds].sort()).toEqual(enumOf("InventoryMovementKind").sort());
     expect([...adjustmentReasons].sort()).toEqual(enumOf("InventoryAdjustmentReason").sort());
     expect([...adjustmentModes].sort()).toEqual(enumOf("InventoryAdjustmentLine", "mode").sort());
-    expect(["location", "variant"]).toEqual(enumOf("InventoryLookupMatch", "kind").sort());
+    expect(["location", "transfer", "variant"]).toEqual(enumOf("InventoryLookupMatch", "kind").sort());
+    expect([...transferStatuses].sort()).toEqual(enumOf("InventoryTransferStatus").sort());
+    expect([...closeReasons].sort()).toEqual(enumOf("InventoryTransferCloseReason").sort());
+    expect(["missing", "received", "returned", "sent"]).toEqual(enumOf("InventoryTransferActionLineKind").sort());
     expect([...countStatuses].sort()).toEqual(enumOf("InventoryCountStatus").sort());
     expect([...uncountedChoices].sort()).toEqual(enumOf("InventoryUncounted").sort());
     expect([...importOutcomes].sort()).toEqual(enumOf("InventoryImportOutcome").sort());

@@ -15,7 +15,15 @@ export type InventoryMoveInput = Schemas["InventoryMoveInput"];
 export type InventoryReceiptInput = Schemas["InventoryReceiptInput"];
 
 /** The movement kinds of this phase (I8), pinned to the contract by i18n.test.ts. */
-export const movementKinds: readonly InventoryMovementKind[] = ["adjustment", "move", "receipt", "count", "issue"];
+export const movementKinds: readonly InventoryMovementKind[] = [
+  "adjustment",
+  "move",
+  "receipt",
+  "count",
+  "issue",
+  "transfer_out",
+  "transfer_in",
+];
 /** An adjustment's reasons (I8). */
 export const adjustmentReasons: readonly InventoryAdjustmentReason[] = [
   "correction",
@@ -66,6 +74,20 @@ export const refusalCodes = [
   "labels_too_many",
   "packaging_not_found",
   "entered_invalid",
+  // Phase 2, delivery A: transfers between sites.
+  "transfer_same_site",
+  "site_archived",
+  "transfer_not_draft",
+  "transfer_not_receivable",
+  "transfer_not_cancellable",
+  "transfer_over_received",
+  "from_location_required",
+  "transfer_line_unknown",
+  "nothing_to_close",
+  "receive_incomplete",
+  "site_has_open_transfers",
+  "location_in_transit",
+  "site_has_transfers",
 ] as const;
 
 export interface MovementsFilter {

@@ -14,6 +14,7 @@ import {
   locationLinkOptions,
   MOVEMENTS_ROUTE_PATH,
   siteLinkOptions,
+  transferLinkOptions,
   variantStockLinkOptions,
 } from "../lib/routes";
 
@@ -103,7 +104,17 @@ export const MovementPage = () => {
               )}
               {data.supplierName && <Fact label={t("supplierName")}>{data.supplierName}</Fact>}
               {data.supplierReference && <Fact label={t("supplierReference")}>{data.supplierReference}</Fact>}
-              {data.source && (
+              {data.transfer && (
+                <Fact label={t("transfer")}>
+                  <Anchor
+                    size="sm"
+                    renderRoot={(props) => <Link {...transferLinkOptions(data.transfer?.id ?? 0)} {...props} />}
+                  >
+                    {t("transferNumber", { number: data.transfer.number })}
+                  </Anchor>
+                </Fact>
+              )}
+              {data.source && !data.transfer && (
                 <Fact label={t("source")}>
                   {[data.source.module, data.source.kind, data.source.id, data.source.lineId]
                     .filter(Boolean)

@@ -155,6 +155,21 @@
     "description": "The button on a site's page that downloads a PDF of location labels, for every location in the site or the ones chosen, on an Avery L7160 or L7163 sheet."
   },
   {
+    "key": "inventory.transfer-receive.scan",
+    "route": "/inventory/transfers/{transferId}/receive",
+    "description": "The field at the top of a transfer's receive page: each scan of a SKU or barcode counts one more on its line; the transfer note's barcode opens its transfer."
+  },
+  {
+    "key": "inventory.transfers.list",
+    "route": "/inventory/transfers",
+    "description": "The list on the Transfers page: transfers of stock between sites, filtered by status (open by default), from site and to site, and searched by transfer number or SKU; an overdue transfer is marked."
+  },
+  {
+    "key": "inventory.transfers.new",
+    "route": "/inventory/transfers",
+    "description": "The button on the Transfers page that opens a new transfer's draft: the from and to site, the lines, and the stock available at both sites beside each line."
+  },
+  {
     "key": "invoices.invoice.add-line",
     "route": "/invoices/{invoiceId}",
     "description": "The button below a draft invoice's lines that adds an empty line."

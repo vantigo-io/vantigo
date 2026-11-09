@@ -1,4 +1,4 @@
-import { ActionIcon, Alert, Badge, Button, Group, Menu, Stack, Switch, Text } from "@mantine/core";
+import { ActionIcon, Alert, Anchor, Badge, Button, Group, Menu, SimpleGrid, Stack, Switch, Text } from "@mantine/core";
 import {
   IconAlertCircle,
   IconAlertTriangle,
@@ -28,7 +28,7 @@ import { SiteFormModal } from "../components/site-form";
 import { subtreeOf, useStructureActions } from "../lib/actions";
 import { canCount, canPrintLabels } from "../lib/capabilities";
 import { useInventoryFormat } from "../lib/format";
-import { INVENTORY_HOME_ROUTE_PATH, movementsLinkOptions } from "../lib/routes";
+import { INVENTORY_HOME_ROUTE_PATH, movementsLinkOptions, transfersLinkOptions } from "../lib/routes";
 
 type Dialog =
   | { type: "new"; parent: InventoryLocation }
@@ -194,46 +194,76 @@ export const SitePage = () => {
       ) : site.isPending || list.isPending ? (
         <ContentSkeleton rows={6} rowHeight={32} />
       ) : (
-        <PageSection>
-          <Stack gap="sm">
-            <Group justify="space-between">
-              <Text fw={500}>{t("locations")}</Text>
-              <Switch
-                label={t("showArchived")}
-                checked={showArchived}
-                onChange={(event) => setShowArchived(event.currentTarget.checked)}
+        <>
+          {site.data && (site.data.incomingTransfers !== undefined || site.data.outgoingTransfers !== undefined) && (
+            <PageSection>
+              <SimpleGrid cols={{ base: 1, xs: 2 }}>
+                <Stack gap={0}>
+                  <Text size="xs" c="dimmed">
+                    {t("incoming")}
+                  </Text>
+                  <Anchor
+                    size="sm"
+                    renderRoot={(props) => <Link {...transfersLinkOptions({ toSiteId: siteId })} {...props} />}
+                  >
+                    {t("openTransfers", { count: site.data.incomingTransfers ?? 0 })}
+                  </Anchor>
+                </Stack>
+                <Stack gap={0}>
+                  <Text size="xs" c="dimmed">
+                    {t("outgoing")}
+                  </Text>
+                  <Anchor
+                    size="sm"
+                    renderRoot={(props) => <Link {...transfersLinkOptions({ fromSiteId: siteId })} {...props} />}
+                  >
+                    {t("openTransfers", { count: site.data.outgoingTransfers ?? 0 })}
+                  </Anchor>
+                </Stack>
+              </SimpleGrid>
+            </PageSection>
+          )}
+          <PageSection>
+            <Stack gap="sm">
+              <Group justify="space-between">
+                <Text fw={500}>{t("locations")}</Text>
+                <Switch
+                  label={t("showArchived")}
+                  checked={showArchived}
+                  onChange={(event) => setShowArchived(event.currentTarget.checked)}
+                />
+              </Group>
+              {list.data?.truncated && (
+                <Alert color="yellow" icon={<IconAlertTriangle size={16} />}>
+                  {t("locationsTruncated")}
+                </Alert>
+              )}
+              <LocationTree
+                locations={shown}
+                serverSearch={
+                  list.data?.truncated || (site.data?.locationCount ?? 0) > LIVE_SEARCH_LIMIT
+                    ? { siteId, status: showArchived ? undefined : "active" }
+                    : undefined
+                }
+                actions={
+                  canManage
+                    ? {
+                        onAddChild: (parent) => setDialog({ type: "new", parent }),
+                        onBulkAdd: (parent) => setDialog({ type: "bulk", parent }),
+                        onEdit: (location) => setDialog({ type: "edit", location }),
+                        onArchive: actions.archiveLocation,
+                        onReactivate: actions.reactivateLocation,
+                        onDelete: (location) => actions.deleteLocation(location),
+                      }
+                    : undefined
+                }
               />
-            </Group>
-            {list.data?.truncated && (
-              <Alert color="yellow" icon={<IconAlertTriangle size={16} />}>
-                {t("locationsTruncated")}
-              </Alert>
-            )}
-            <LocationTree
-              locations={shown}
-              serverSearch={
-                list.data?.truncated || (site.data?.locationCount ?? 0) > LIVE_SEARCH_LIMIT
-                  ? { siteId, status: showArchived ? undefined : "active" }
-                  : undefined
-              }
-              actions={
-                canManage
-                  ? {
-                      onAddChild: (parent) => setDialog({ type: "new", parent }),
-                      onBulkAdd: (parent) => setDialog({ type: "bulk", parent }),
-                      onEdit: (location) => setDialog({ type: "edit", location }),
-                      onArchive: actions.archiveLocation,
-                      onReactivate: actions.reactivateLocation,
-                      onDelete: (location) => actions.deleteLocation(location),
-                    }
-                  : undefined
-              }
-            />
-            <Text size="xs" c="dimmed">
-              {t("locationCount", { count: site.data?.locationCount ?? 0 })}
-            </Text>
-          </Stack>
-        </PageSection>
+              <Text size="xs" c="dimmed">
+                {t("locationCount", { count: site.data?.locationCount ?? 0 })}
+              </Text>
+            </Stack>
+          </PageSection>
+        </>
       )}
       {dialog?.type === "new" && (
         <LocationFormModal opened onClose={() => setDialog(undefined)} siteId={siteId} parentId={dialog.parent.id} />

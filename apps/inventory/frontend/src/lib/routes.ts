@@ -29,11 +29,13 @@ export const movementLinkOptions = (movementId: number) => ({
 /** The href of a variant's stock page, for a module that may only link (Products' delete dialog, through the host). */
 export const variantStockHref = (variantId: number) => `/inventory/variants/${variantId}`;
 
-/** Where one lookup match leads: the location's page, or the variant's stock. */
+/** Where one lookup match leads: the location's page, the transfer's, or the variant's stock. */
 export const matchLinkOptions = (match: InventoryLookupMatch) =>
   match.kind === "location" && match.location
     ? locationLinkOptions(match.location.id)
-    : variantStockLinkOptions(match.variant?.id ?? 0);
+    : match.kind === "transfer" && match.transfer
+      ? transferLinkOptions(match.transfer.id)
+      : variantStockLinkOptions(match.variant?.id ?? 0);
 
 /** The movements list filtered, as a link: a location's, a variant's or a site's movements. */
 export const movementsLinkOptions = (search: Record<string, string | number>) => ({ to: MOVEMENTS_ROUTE_PATH, search });
@@ -54,3 +56,26 @@ export const COUNT_ROUTE_PATH = "/inventory/counts/$countId";
 export const IMPORT_ROUTE_PATH = "/inventory/import";
 
 export const countLinkOptions = (countId: number) => ({ to: COUNT_ROUTE_PATH, params: { countId: String(countId) } });
+
+// Phase 2, delivery A: transfers between sites.
+export const TRANSFERS_ROUTE_PATH = "/inventory/transfers";
+export const NEW_TRANSFER_ROUTE_PATH = "/inventory/transfers/new";
+export const TRANSFER_ROUTE_PATH = "/inventory/transfers/$transferId";
+export const RECEIVE_TRANSFER_ROUTE_PATH = "/inventory/transfers/$transferId/receive";
+
+export const transferLinkOptions = (transferId: number) => ({
+  to: TRANSFER_ROUTE_PATH,
+  params: { transferId: String(transferId) },
+});
+export const receiveTransferLinkOptions = (transferId: number) => ({
+  to: RECEIVE_TRANSFER_ROUTE_PATH,
+  params: { transferId: String(transferId) },
+});
+
+/** The transfers list filtered, as a link: a site's incoming or outgoing transfers. */
+export const transfersLinkOptions = (search: Record<string, string | number>) => ({ to: TRANSFERS_ROUTE_PATH, search });
+/** A new transfer's form, opened with its sites. */
+export const newTransferLinkOptions = (search: { fromSiteId?: number; toSiteId?: number } = {}) => ({
+  to: NEW_TRANSFER_ROUTE_PATH,
+  search,
+});

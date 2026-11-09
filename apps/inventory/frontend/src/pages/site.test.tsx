@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
-import { inventoryProblem, stubInventoryApi } from "../test/server";
+import { inventoryProblem, stubInventoryApi, transferFixture, transferLine, variants } from "../test/server";
 
 describe("the site page", () => {
   it("opens the tree a level at a time, and searches it by code", async () => {
@@ -56,6 +56,32 @@ describe("the site page", () => {
     expect(screen.queryByRole("button", { name: "New location" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Bulk add" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Actions for OSL-A" })).not.toBeInTheDocument();
+  });
+});
+
+describe("a site's transfers", () => {
+  it("counts the open transfers to and from it, each linking to the list filtered", async () => {
+    const [tsM] = variants();
+    stubInventoryApi({
+      transfers: [
+        transferFixture({ id: 1, status: "sent", lines: [transferLine(1, tsM, 1, { sent: 1 })] }),
+        transferFixture({
+          id: 2,
+          status: "partly_received",
+          lines: [transferLine(2, tsM, 2, { sent: 2, received: 1 })],
+        }),
+        transferFixture({ id: 3, status: "draft", lines: [transferLine(3, tsM, 1)] }),
+      ],
+    });
+    renderRoute("/inventory/sites/2");
+    expect(await screen.findByRole("link", { name: "2 open transfers" })).toHaveAttribute(
+      "href",
+      "/inventory/transfers?toSiteId=2",
+    );
+    expect(screen.getByRole("link", { name: "0 open transfers" })).toHaveAttribute(
+      "href",
+      "/inventory/transfers?fromSiteId=2",
+    );
   });
 });
 

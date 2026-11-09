@@ -55,6 +55,15 @@ export const ReservedAvailable = ({
   );
 };
 
+/** What is on its way to the product's sites, per unit (I46): the sites' incoming, summed. */
+const inTransitByUnit = (variants: readonly InventoryVariantStock[]) => {
+  const totals = new Map<string, number>();
+  for (const one of variants)
+    for (const site of one.sites)
+      if (site.incoming > 0) totals.set(one.variant.unit, (totals.get(one.variant.unit) ?? 0) + site.incoming);
+  return [...totals];
+};
+
 /** A site's line, expanding to its locations by full code and name, sorted by full code. */
 const SiteStock = ({
   stock,
@@ -65,7 +74,7 @@ const SiteStock = ({
   unit: string;
   packagings?: readonly InventoryPackaging[];
 }) => {
-  const { t } = useInventoryFormat();
+  const { t, quantity } = useInventoryFormat();
   const rows = [...stock.rows].sort((a, b) => a.location.fullCode.localeCompare(b.location.fullCode));
   return (
     <Accordion.Item value={String(stock.site.id)}>
@@ -78,6 +87,11 @@ const SiteStock = ({
             <Text size="sm" fw={500} ta="right" component="div">
               <Quantity value={stock.onHand} unit={unit} packagings={packagings} />
             </Text>
+            {stock.incoming > 0 && (
+              <Text size="xs" c="blue">
+                {t("incomingQuantity", { quantity: quantity(stock.incoming, unit) })}
+              </Text>
+            )}
             <ReservedAvailable reserved={stock.reserved} available={stock.available} unit={unit} />
           </Stack>
         </Group>
@@ -135,7 +149,8 @@ export const ProductStock = ({ productId }: ProductStockProps) => {
 
   const variants = stock.data?.variants ?? [];
   const several = variants.length > 1;
-  const empty = variants.every((one) => one.totalOnHand === 0 && one.totalReserved === 0);
+  const inTransit = inTransitByUnit(variants);
+  const empty = variants.every((one) => one.totalOnHand === 0 && one.totalReserved === 0) && inTransit.length === 0;
   const short = variants.some((one) => one.sites.some((site) => site.available < 0));
   const only = several ? undefined : variants[0]?.variant;
 
@@ -145,11 +160,20 @@ export const ProductStock = ({ productId }: ProductStockProps) => {
         <Group justify="space-between">
           <Title order={4}>{t("stockCardTitle")}</Title>
           {stock.data && !empty && (
-            <Text fw={600} aria-label={t("totalOnHand")}>
-              {totalsByUnit(variants)
-                .map(([unit, total]) => quantity(total, unit))
-                .join(" · ")}
-            </Text>
+            <Group gap="xs">
+              <Text fw={600} aria-label={t("totalOnHand")}>
+                {totalsByUnit(variants)
+                  .map(([unit, total]) => quantity(total, unit))
+                  .join(" · ")}
+              </Text>
+              {inTransit.length > 0 && (
+                <Text c="blue" aria-label={t("inTransit")}>
+                  {t("inTransitQuantity", {
+                    quantity: inTransit.map(([unit, total]) => quantity(total, unit)).join(" · "),
+                  })}
+                </Text>
+              )}
+            </Group>
           )}
         </Group>
         {stock.error ? (
