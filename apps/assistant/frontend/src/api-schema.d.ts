@@ -2,6 +2,26 @@
 // CI regenerates this file and fails when it is stale.
 
 export interface paths {
+    "/api/v1/assistant/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the virtual employees the caller may talk to
+         * @description The active virtual employees the caller may talk to in the panel, ordered by name. Talking to one needs agents:view; a caller without it, or an installation without the agents module, gets an empty list.
+         */
+        get: operations["listAssistantAgents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/assistant/availability": {
         parameters: {
             query?: never;
@@ -527,7 +547,18 @@ export interface components {
             label?: string;
             route?: string;
         };
+        AssistantAgentList: {
+            items: components["schemas"]["AssistantAgentRef"][];
+        };
+        /** @description A virtual employee the person talks to in the panel. */
+        AssistantAgentRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
         AssistantConversation: {
+            /** @description The virtual employee this conversation is with, null for the Assistant's own. */
+            agent?: components["schemas"]["AssistantAgentRef"] | null;
             archived: boolean;
             /** Format: date-time */
             createdAt: string;
@@ -558,6 +589,11 @@ export interface components {
             nextCursor?: string | null;
         };
         AssistantCreateConversationRequest: {
+            /**
+             * Format: uuid
+             * @description Talk to this virtual employee instead of the Assistant. The caller needs agents:view, and the agent must be active.
+             */
+            agentId?: string | null;
             origin: components["schemas"]["AssistantOrigin"];
         };
         AssistantMe: {
@@ -838,6 +874,45 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listAssistantAgents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantAgentList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+        };
+    };
     getAssistantAvailability: {
         parameters: {
             query?: never;
@@ -1182,13 +1257,22 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal. */
+            /** @description Forbidden - assistant_unavailable (the assistant is not available to the caller), agent_unavailable (talking to an agent needs agents:view), or the session's own refusal. */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+            /** @description Not Found - the agent is unknown or not active. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/problem+json": components["schemas"]["AssistantProblem"];
                 };
             };
@@ -1416,7 +1500,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["AssistantProblem"];
                 };
             };
-            /** @description Conflict - run_in_progress. */
+            /** @description Conflict - run_in_progress, or agent_unavailable (the agent was paused or deleted, or the caller lost agents:view). */
             409: {
                 headers: {
                     [name: string]: unknown;

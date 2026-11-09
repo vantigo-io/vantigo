@@ -173,6 +173,8 @@ var markedByHand = map[string]string{
 	"listAgentRuns":        "never",
 	"getAgentRun":          "never",
 	"listAgentsAudit":      "never",
+	// The agents a person may talk to in the panel (V31): the Assistant's own endpoint.
+	"listAssistantAgents": "never",
 	// What an agent remembers and what the weekly check proposes (V27, V28): the notes are
 	// what a stranger's mail made a model write down, and an instruction edit is the Owner's.
 	"getAgentMemory":               "never",

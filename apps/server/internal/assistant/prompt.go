@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/assistant/gen"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 )
 
 // promptVersion names the system prompt below. It is bumped with any change of
@@ -45,6 +46,9 @@ type promptInput struct {
 	name     string
 	language string // "en" or "nb"
 	apps     []string
+	// agent is the virtual employee the person is talking to (V31), nil for the
+	// Assistant's own conversations.
+	agent *contracts.ColleagueAgent
 }
 
 func languageName(lang string) string {
@@ -79,7 +83,15 @@ func turnHeader(sent time.Time, loc *time.Location, c *gen.AssistantMessageConte
 // and a change waits for the person.
 func systemPrompt(in promptInput) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "You are the Assistant in Vantigo, a business application. You help the person you are talking to use it.\n\n")
+	if a := in.agent; a != nil {
+		fmt.Fprintf(&b, "You are %s, a virtual employee at the company, and an AI: you answer truthfully if anyone asks whether you are a person. A colleague is talking to you in the Assistant panel of Vantigo, a business application, and you help them use it and do their work.\n\n", a.Name)
+		if style := strings.TrimSpace(a.Style); style != "" {
+			fmt.Fprintf(&b, "How you write (your persona):\n%s\n\n", style)
+		}
+		b.WriteString("Here you act for your colleague, not on your own: you can read and propose only what both you and they may do, so you may find less than you would in your own work. Your modes for automatic work do not apply: every change is shown to the colleague on a card and runs only when they confirm it. You have no customer in this conversation, so you cannot read a customer's own data (their orders, invoices, contacts or messages) here: say so, and suggest they open the customer or ask the Assistant. Your colleague's questions about the company's own routines you answer from Knowledge.\n\n")
+	} else {
+		fmt.Fprintf(&b, "You are the Assistant in Vantigo, a business application. You help the person you are talking to use it.\n\n")
+	}
 	fmt.Fprintf(&b, "The person is %s. Answer in %s, the language they use Vantigo in, unless they write to you in another.\n", in.name, languageName(in.language))
 	b.WriteString("Each message from the person starts with a line in square brackets that the application adds: today's date and, when there is one, the screen the person is looking at. It is context, not something the person wrote.\n")
 	if len(in.apps) > 0 {

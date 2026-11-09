@@ -479,7 +479,7 @@ func (r *runner) perform(action store.AssistantPendingAction) settled {
 		return failedSettlement("failed", "the stored request could not be read")
 	}
 	call := operations.CallRequest{OperationID: req.OperationID, PathParams: req.PathParams, Query: req.Query, Headers: req.Headers, Body: req.Body, Confirmed: true}
-	res, err := r.s.deps.Operations.Call(r.ctx, call)
+	res, err := r.tools.ops.Ops.Call(r.ctx, call)
 	if err != nil {
 		var oe *operations.Error
 		if errors.As(err, &oe) {
@@ -690,15 +690,6 @@ func (s *server) decideAction(ctx context.Context, id uuid.UUID, confirm bool) (
 	if action.Kind == kindBulk {
 		return s.decideBulk(ctx, action, confirm)
 	}
-	if confirm {
-		// The Owner may have narrowed what the assistant may use while the card
-		// waited; a change the gate now refuses is not made.
-		if mode, ok := s.deps.Operations.Effective(ctx, action.OperationID); !ok || mode != operations.ModeConfirm {
-			r := refuse(403, codeNotAllowed, "The assistant may no longer make this change")
-			return nil, &r, nil
-		}
-	}
-
 	conv, err := q.GetConversation(ctx, store.GetConversationParams{ID: action.ConversationID, UserID: user})
 	if errors.Is(err, pgx.ErrNoRows) {
 		r := notFound()
@@ -706,6 +697,22 @@ func (s *server) decideAction(ctx context.Context, id uuid.UUID, confirm bool) (
 	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("assistant: read the conversation: %w", err)
+	}
+	if confirm {
+		// The Owner may have narrowed what the assistant may use while the card
+		// waited; a change the gate now refuses is not made.
+		if mode, ok := s.deps.Operations.Effective(ctx, action.OperationID); !ok || mode != operations.ModeConfirm {
+			r := refuse(403, codeNotAllowed, "The assistant may no longer make this change")
+			return nil, &r, nil
+		}
+		// A card of a conversation with an agent is the person's decision on a
+		// change the agent may make too: the agent being paused, the person losing
+		// agents:view or the agent's level for it being lowered since stops it (V31).
+		if conv.AgentID != nil {
+			if r := s.agentMayStillChange(ctx, *conv.AgentID, action.OperationID); r != nil {
+				return nil, r, nil
+			}
+		}
 	}
 
 	// The grant is from this request's session; the claim follows, and a claim
@@ -748,6 +755,7 @@ func (s *server) decideAction(ctx context.Context, id uuid.UUID, confirm bool) (
 func (s *server) resumeDecided(ctx context.Context, conv store.GetConversationRow, claimed store.AssistantPendingAction, grantID uuid.UUID, confirm bool) (*streamResponse, *refusal, error) {
 	user := callerID(ctx)
 	lang, name := s.person(ctx, user)
+	panel := s.panelAgentOf(ctx, conv.AgentID)
 	runCtx, cancel := context.WithCancelCause(context.Background())
 	runCtx, stopTimer := context.WithTimeoutCause(runCtx, runCeiling, errors.New("assistant: the run reached its ceiling"))
 	s.runs.add(claimed.RunID, conv.ID, func(cause error) { cancel(cause) })
@@ -759,7 +767,8 @@ func (s *server) resumeDecided(ctx context.Context, conv store.GetConversationRo
 
 	r := &runner{
 		s: s, ctx: runCtx, runID: claimed.RunID, convID: conv.ID, userID: user, grantID: grantID, queue: queue, lang: lang, name: name,
-		tools:  s.newToolbox(runCtx, user, lang),
+		agent:  panel,
+		tools:  s.newToolbox(runCtx, user, lang, panel),
 		resume: &decision{action: claimed, confirm: confirm},
 	}
 	go func() {

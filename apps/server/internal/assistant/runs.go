@@ -145,6 +145,23 @@ func (s *server) SendAssistantMessage(ctx context.Context, req gen.SendAssistant
 	if err != nil {
 		return nil, fmt.Errorf("assistant: read the conversation: %w", err)
 	}
+	// A conversation with a virtual employee goes on only while the person may see
+	// agents and the agent is active (V31); the agent's side of the double check is
+	// read now and used for the whole run.
+	var panel *panelAgent
+	if conv.AgentID != nil {
+		if !s.mayTalkToAgents(ctx) {
+			r := unavailableAgent()
+			return r, nil
+		}
+		var err error
+		if panel, err = s.loadPanelAgent(ctx, *conv.AgentID); errors.Is(err, contracts.ErrColleagueUnavailable) {
+			r := unavailableAgent()
+			return r, nil
+		} else if err != nil {
+			return nil, fmt.Errorf("assistant: read the agent: %w", err)
+		}
+	}
 	// The Owner's daily token budget (S14): a person who has used the day's is
 	// told so before anything is stored.
 	if over, err := s.overBudget(ctx, user); err != nil {
@@ -224,8 +241,8 @@ func (s *server) SendAssistantMessage(ctx context.Context, req gen.SendAssistant
 
 	r := &runner{
 		s: s, ctx: runCtx, runID: runID, convID: conv.ID, userID: user, grantID: grantID, queue: queue,
-		lang: lang, name: name,
-		tools: s.newToolbox(runCtx, user, lang),
+		lang: lang, name: name, agent: panel,
+		tools: s.newToolbox(runCtx, user, lang, panel),
 	}
 	started = true
 	go func() {
@@ -284,6 +301,9 @@ type runner struct {
 	name    string
 	tools   *toolbox
 	resume  *decision
+	// agent is the virtual employee the conversation is with (V31), nil for the
+	// Assistant's own.
+	agent *panelAgent
 
 	turns int
 	// final has the run answer once without tools: the resumed run after a bulk
@@ -292,6 +312,16 @@ type runner struct {
 	// proposed is the action this segment of the run created: the run pauses
 	// for it (S12).
 	proposed *store.AssistantPendingAction
+}
+
+// panelPerson is the agent the system prompt speaks as, nil for the Assistant's
+// own conversations and for a run whose agent is gone (its first run was refused
+// already, and a later one only closes a card).
+func (r *runner) panelPerson() *contracts.ColleagueAgent {
+	if r.agent == nil || r.agent.agent.ID == uuid.Nil {
+		return nil
+	}
+	return &r.agent.agent
 }
 
 // persist is the context database writes use: the run's own, minus its
@@ -363,7 +393,7 @@ func (r *runner) execute() {
 	// unchanged ever after: a Claude model's thinking blocks are bound to it.
 	cstate, err := q.FreezeConversationPrompt(r.persist(), store.FreezeConversationPromptParams{
 		ConversationID: r.convID, PromptVersion: promptVersion,
-		SystemPrompt: systemPrompt(promptInput{name: r.name, language: r.lang, apps: r.s.deps.Config.Modules}),
+		SystemPrompt: systemPrompt(promptInput{name: r.name, language: r.lang, apps: r.s.deps.Config.Modules, agent: r.panelPerson()}),
 	})
 	if err != nil {
 		state, code = "failed", "internal"

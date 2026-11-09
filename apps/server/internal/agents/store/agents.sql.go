@@ -182,6 +182,37 @@ func (q *Queries) ListAgentLevels(ctx context.Context, agentID uuid.UUID) ([]Age
 	return items, nil
 }
 
+const listAgentNames = `-- name: ListAgentNames :many
+SELECT id, name FROM agents.agents WHERE id = ANY($1::uuid[])
+`
+
+type ListAgentNamesRow struct {
+	ID   uuid.UUID
+	Name string
+}
+
+// The names of the agents asked for, whatever their state: a conversation with an
+// agent that was paused or deleted still names it (V31).
+func (q *Queries) ListAgentNames(ctx context.Context, ids []uuid.UUID) ([]ListAgentNamesRow, error) {
+	rows, err := q.db.Query(ctx, listAgentNames, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAgentNamesRow
+	for rows.Next() {
+		var i ListAgentNamesRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAgents = `-- name: ListAgents :many
 SELECT id, user_id, name, style, languages, disclosure_wording, state, daily_token_budget, version, created_at, updated_at, created_by_user_id FROM agents.agents WHERE state <> 'deleted' ORDER BY lower(name), id
 `

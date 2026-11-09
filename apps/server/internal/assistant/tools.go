@@ -199,13 +199,20 @@ type toolbox struct {
 	userID   uuid.UUID
 	lang     string
 	ops      *agentloop.Dispatch // search_operations, describe_operation and call_operation
+	agent    *panelAgent         // the agent the conversation is with (V31), nil for the Assistant's own
 	proposed bool                // a change was proposed in this run: one at a time
 }
 
-// newToolbox is the tools of one run of userID, who reads in lang.
-func (s *server) newToolbox(ctx context.Context, userID uuid.UUID, lang string) *toolbox {
-	t := &toolbox{s: s, ctx: ctx, userID: userID, lang: lang}
-	t.ops = &agentloop.Dispatch{Ops: s.deps.Operations, User: userID, Confirm: t.confirm}
+// newToolbox is the tools of one run of userID, who reads in lang. A run of a
+// conversation with an agent is given the agent, which narrows the operations to
+// those the agent may use too (V31).
+func (s *server) newToolbox(ctx context.Context, userID uuid.UUID, lang string, agent *panelAgent) *toolbox {
+	t := &toolbox{s: s, ctx: ctx, userID: userID, lang: lang, agent: agent}
+	var ops agentloop.Operations = s.deps.Operations
+	if agent != nil {
+		ops = colleagueOps{inner: ops, agent: agent}
+	}
+	t.ops = &agentloop.Dispatch{Ops: ops, User: userID, Confirm: t.confirm}
 	return t
 }
 
@@ -223,6 +230,9 @@ func (t *toolbox) tools() []agentloop.Tool {
 	}
 	tools := make([]agentloop.Tool, 0, len(toolDefs))
 	for _, def := range toolDefs {
+		if def.Name == toolProposeBulk && t.agent != nil {
+			continue // a bulk change is the Assistant's own (V31)
+		}
 		if tool, ok := own[def.Name]; ok {
 			tools = append(tools, tool)
 			continue

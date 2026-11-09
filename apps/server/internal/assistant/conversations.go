@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/assistant/gen"
 	"github.com/vantigo-io/vantigo/server/internal/assistant/store"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 )
 
@@ -26,19 +28,19 @@ const (
 )
 
 // conversationView is a conversation as the contract answers it.
-func conversationView(id uuid.UUID, title, app, route string, pinned bool, archivedAt *time.Time, running bool, created, last time.Time) gen.AssistantConversation {
+func conversationView(id uuid.UUID, title, app, route string, pinned bool, archivedAt *time.Time, running bool, created, last time.Time, agent *gen.AssistantAgentRef) gen.AssistantConversation {
 	return gen.AssistantConversation{
 		Id: id, Title: title, OriginApp: app, OriginRoute: route, Pinned: pinned, Archived: archivedAt != nil,
-		Running: running, CreatedAt: created, LastActivityAt: last,
+		Running: running, CreatedAt: created, LastActivityAt: last, Agent: agent,
 	}
 }
 
-func fromListRow(r store.ListConversationsRow) gen.AssistantConversation {
-	return conversationView(r.ID, r.Title, r.OriginApp, r.OriginRoute, r.Pinned, r.ArchivedAt, r.Running, r.CreatedAt, r.LastActivityAt)
+func fromListRow(r store.ListConversationsRow, names map[uuid.UUID]string) gen.AssistantConversation {
+	return conversationView(r.ID, r.Title, r.OriginApp, r.OriginRoute, r.Pinned, r.ArchivedAt, r.Running, r.CreatedAt, r.LastActivityAt, agentRef(r.AgentID, names))
 }
 
-func fromGetRow(r store.GetConversationRow) gen.AssistantConversation {
-	return conversationView(r.ID, r.Title, r.OriginApp, r.OriginRoute, r.Pinned, r.ArchivedAt, r.Running, r.CreatedAt, r.LastActivityAt)
+func fromGetRow(r store.GetConversationRow, names map[uuid.UUID]string) gen.AssistantConversation {
+	return conversationView(r.ID, r.Title, r.OriginApp, r.OriginRoute, r.Pinned, r.ArchivedAt, r.Running, r.CreatedAt, r.LastActivityAt, agentRef(r.AgentID, names))
 }
 
 // cursor is the keyset position of the last conversation of a page.
@@ -103,8 +105,13 @@ func (s *server) ListAssistantConversations(ctx context.Context, req gen.ListAss
 		out.NextCursor = &next
 		rows = rows[:pageSize]
 	}
+	var agentIDs []*uuid.UUID
 	for _, r := range rows {
-		out.Items = append(out.Items, fromListRow(r))
+		agentIDs = append(agentIDs, r.AgentID)
+	}
+	names := s.agentNames(ctx, agentIDs...)
+	for _, r := range rows {
+		out.Items = append(out.Items, fromListRow(r, names))
 	}
 	return gen.ListAssistantConversations200JSONResponse(out), nil
 }
@@ -128,12 +135,27 @@ func (s *server) CreateAssistantConversation(ctx context.Context, req gen.Create
 	if len(errs) > 0 {
 		return invalid("The origin is not valid", errs), nil
 	}
+	// A conversation with a virtual employee (V31) needs agents:view and an
+	// active agent.
+	var agentID *uuid.UUID
+	if req.Body.AgentId != nil {
+		id := *req.Body.AgentId
+		if !s.mayTalkToAgents(ctx) {
+			return refuse(http.StatusForbidden, codeAgentUnavailable, "You cannot talk to virtual employees"), nil
+		}
+		if _, err := s.deps.AgentColleagues.Agent(ctx, id); errors.Is(err, contracts.ErrColleagueUnavailable) {
+			return notFound(), nil
+		} else if err != nil {
+			return nil, fmt.Errorf("assistant: read the agent: %w", err)
+		}
+		agentID = &id
+	}
 	user, id, now := callerID(ctx), uuid.New(), s.deps.Clock()
 	var row store.AssistantConversation
 	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		var err error
-		row, err = q.CreateConversation(ctx, store.CreateConversationParams{ID: id, UserID: user, OriginApp: origin.App, OriginRoute: origin.Route, Now: now})
+		row, err = q.CreateConversation(ctx, store.CreateConversationParams{ID: id, UserID: user, OriginApp: origin.App, OriginRoute: origin.Route, AgentID: agentID, Now: now})
 		if err != nil {
 			return err
 		}
@@ -143,7 +165,7 @@ func (s *server) CreateAssistantConversation(ctx context.Context, req gen.Create
 		return nil, fmt.Errorf("assistant: start a conversation: %w", err)
 	}
 	s.countConversation(ctx, user)
-	return gen.CreateAssistantConversation201JSONResponse(conversationView(row.ID, row.Title, row.OriginApp, row.OriginRoute, row.Pinned, row.ArchivedAt, false, row.CreatedAt, row.LastActivityAt)), nil
+	return gen.CreateAssistantConversation201JSONResponse(conversationView(row.ID, row.Title, row.OriginApp, row.OriginRoute, row.Pinned, row.ArchivedAt, false, row.CreatedAt, row.LastActivityAt, agentRef(row.AgentID, s.agentNames(ctx, row.AgentID)))), nil
 }
 
 // GetAssistantConversation (GET /api/v1/assistant/conversations/{id})
@@ -164,7 +186,7 @@ func (s *server) GetAssistantConversation(ctx context.Context, req gen.GetAssist
 	if err != nil {
 		return nil, fmt.Errorf("assistant: read the messages: %w", err)
 	}
-	out := gen.AssistantConversationDetail{Conversation: fromGetRow(conv), Messages: make([]gen.AssistantMessage, 0, len(rows)), Actions: []gen.AssistantAction{}, PendingActions: []gen.AssistantPendingAction{}}
+	out := gen.AssistantConversationDetail{Conversation: fromGetRow(conv, s.agentNames(ctx, conv.AgentID)), Messages: make([]gen.AssistantMessage, 0, len(rows)), Actions: []gen.AssistantAction{}, PendingActions: []gen.AssistantPendingAction{}}
 	for _, m := range rows {
 		out.Messages = append(out.Messages, messageView(m))
 	}
@@ -225,7 +247,7 @@ func (s *server) UpdateAssistantConversation(ctx context.Context, req gen.Update
 	if err != nil {
 		return nil, err
 	}
-	return gen.UpdateAssistantConversation200JSONResponse(conversationView(row.ID, row.Title, row.OriginApp, row.OriginRoute, row.Pinned, row.ArchivedAt, running, row.CreatedAt, row.LastActivityAt)), nil
+	return gen.UpdateAssistantConversation200JSONResponse(conversationView(row.ID, row.Title, row.OriginApp, row.OriginRoute, row.Pinned, row.ArchivedAt, running, row.CreatedAt, row.LastActivityAt, agentRef(row.AgentID, s.agentNames(ctx, row.AgentID)))), nil
 }
 
 func (s *server) isRunning(ctx context.Context, conversationID, userID uuid.UUID) (bool, error) {

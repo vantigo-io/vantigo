@@ -13,9 +13,9 @@ import (
 )
 
 const createConversation = `-- name: CreateConversation :one
-INSERT INTO assistant.conversations (id, user_id, title, origin_app, origin_route, created_at, last_activity_at)
-VALUES ($1, $2, '', $3, $4, $5::timestamptz, $5::timestamptz)
-RETURNING id, user_id, title, origin_app, origin_route, pinned, archived_at, created_at, last_activity_at
+INSERT INTO assistant.conversations (id, user_id, title, origin_app, origin_route, agent_id, created_at, last_activity_at)
+VALUES ($1, $2, '', $3, $4, $5::uuid, $6::timestamptz, $6::timestamptz)
+RETURNING id, user_id, title, origin_app, origin_route, pinned, archived_at, created_at, last_activity_at, agent_id
 `
 
 type CreateConversationParams struct {
@@ -23,6 +23,7 @@ type CreateConversationParams struct {
 	UserID      uuid.UUID
 	OriginApp   string
 	OriginRoute string
+	AgentID     *uuid.UUID
 	Now         time.Time
 }
 
@@ -32,6 +33,7 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 		arg.UserID,
 		arg.OriginApp,
 		arg.OriginRoute,
+		arg.AgentID,
 		arg.Now,
 	)
 	var i AssistantConversation
@@ -45,6 +47,7 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 		&i.ArchivedAt,
 		&i.CreatedAt,
 		&i.LastActivityAt,
+		&i.AgentID,
 	)
 	return i, err
 }
@@ -66,7 +69,7 @@ func (q *Queries) DeleteConversation(ctx context.Context, arg DeleteConversation
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT c.id, c.user_id, c.title, c.origin_app, c.origin_route, c.pinned, c.archived_at, c.created_at, c.last_activity_at,
+SELECT c.id, c.user_id, c.title, c.origin_app, c.origin_route, c.pinned, c.archived_at, c.created_at, c.last_activity_at, c.agent_id,
        EXISTS (SELECT 1 FROM assistant.runs r WHERE r.conversation_id = c.id AND r.state = 'running') AS running
 FROM assistant.conversations c
 WHERE c.id = $1 AND c.user_id = $2
@@ -87,6 +90,7 @@ type GetConversationRow struct {
 	ArchivedAt     *time.Time
 	CreatedAt      time.Time
 	LastActivityAt time.Time
+	AgentID        *uuid.UUID
 	Running        bool
 }
 
@@ -103,6 +107,7 @@ func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams
 		&i.ArchivedAt,
 		&i.CreatedAt,
 		&i.LastActivityAt,
+		&i.AgentID,
 		&i.Running,
 	)
 	return i, err
@@ -110,7 +115,7 @@ func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams
 
 const listConversations = `-- name: ListConversations :many
 
-SELECT c.id, c.user_id, c.title, c.origin_app, c.origin_route, c.pinned, c.archived_at, c.created_at, c.last_activity_at,
+SELECT c.id, c.user_id, c.title, c.origin_app, c.origin_route, c.pinned, c.archived_at, c.created_at, c.last_activity_at, c.agent_id,
        EXISTS (SELECT 1 FROM assistant.runs r WHERE r.conversation_id = c.id AND r.state = 'running') AS running
 FROM assistant.conversations c
 WHERE c.user_id = $1
@@ -144,6 +149,7 @@ type ListConversationsRow struct {
 	ArchivedAt     *time.Time
 	CreatedAt      time.Time
 	LastActivityAt time.Time
+	AgentID        *uuid.UUID
 	Running        bool
 }
 
@@ -180,6 +186,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 			&i.ArchivedAt,
 			&i.CreatedAt,
 			&i.LastActivityAt,
+			&i.AgentID,
 			&i.Running,
 		); err != nil {
 			return nil, err
@@ -229,7 +236,7 @@ UPDATE assistant.conversations SET
         WHEN $3::boolean THEN COALESCE(archived_at, $4::timestamptz)
         ELSE NULL END
 WHERE id = $5 AND user_id = $6
-RETURNING id, user_id, title, origin_app, origin_route, pinned, archived_at, created_at, last_activity_at
+RETURNING id, user_id, title, origin_app, origin_route, pinned, archived_at, created_at, last_activity_at, agent_id
 `
 
 type UpdateConversationParams struct {
@@ -261,6 +268,7 @@ func (q *Queries) UpdateConversation(ctx context.Context, arg UpdateConversation
 		&i.ArchivedAt,
 		&i.CreatedAt,
 		&i.LastActivityAt,
+		&i.AgentID,
 	)
 	return i, err
 }

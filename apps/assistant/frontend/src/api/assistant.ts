@@ -2,6 +2,7 @@ import { infiniteQueryOptions, keepPreviousData, queryOptions } from "@tanstack/
 import { appUrl } from "@vantigo/frontend-shell";
 import { ASSISTANT_QUERY_KEY, json, request } from "./request";
 import type {
+  AssistantAgentList,
   AssistantAvailability,
   AssistantBulkJob,
   AssistantBulkState,
@@ -32,6 +33,7 @@ export const isVersionConflict = (error: unknown) => errorCode(error) === "versi
 export const isRunInProgress = (error: unknown) => errorCode(error) === "run_in_progress";
 export const isActionDecided = (error: unknown) => errorCode(error) === "action_decided";
 export const isActionExpired = (error: unknown) => errorCode(error) === "action_expired";
+export const isAgentUnavailable = (error: unknown) => errorCode(error) === "agent_unavailable";
 
 // -- bulk jobs (S13) ---------------------------------------------------------
 
@@ -134,8 +136,20 @@ export const conversationQueryOptions = (id: string) =>
     retry: false,
   });
 
-export const createConversation = (origin: { app: string; route: string }) =>
-  request<AssistantConversation>(`${base}/conversations`, json("POST", { origin }));
+/** Starts a conversation; with an agent's id it is a conversation with that virtual employee (V31). */
+export const createConversation = (origin: { app: string; route: string }, agentId?: string | null) =>
+  request<AssistantConversation>(`${base}/conversations`, json("POST", agentId ? { origin, agentId } : { origin }));
+
+export const agentsQueryKey = [ASSISTANT_QUERY_KEY, "agents"] as const;
+
+/** The virtual employees the person may talk to: empty without agents:view or without the Agents app. */
+export const agentsQueryOptions = () =>
+  queryOptions({
+    queryKey: agentsQueryKey,
+    queryFn: ({ signal }) => request<AssistantAgentList>(`${base}/agents`, { signal }),
+    retry: false,
+    staleTime: 60_000,
+  });
 
 export const updateConversation = (id: string, patch: AssistantUpdateConversation) =>
   request<AssistantConversation>(`${base}/conversations/${id}`, json("PATCH", patch));

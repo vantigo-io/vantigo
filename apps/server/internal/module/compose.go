@@ -568,6 +568,25 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	}
 	depsOf := make(map[string]Deps, len(mods))
 
+	// The agents a person may talk to in the Assistant's panel
+	// (contracts.AgentColleagues, virtual employees design V31) say what an agent
+	// may do from the dispatcher's descriptions, so it resolves once the
+	// dispatcher exists, and its provider is given the dispatcher when it is one
+	// of the modules that receive it. Workers does not resolve it — no worker
+	// reads it.
+	colleaguesProvider, err := soleProvider(mods, "agent colleagues", func(m Module) bool { return m.AgentColleagues != nil })
+	if err != nil {
+		return nil, nil, err
+	}
+	if colleaguesProvider != nil {
+		providerDeps := deps
+		providerDeps.Operations = nil
+		if operationsModules[colleaguesProvider.Name] {
+			providerDeps.Operations = ops
+		}
+		deps.AgentColleagues = colleaguesProvider.AgentColleagues(providerDeps)
+	}
+
 	outer := http.NewServeMux()
 	mounts := make([]moduleMount, 0, len(mods))
 	order := make([]string, 0, len(mods))

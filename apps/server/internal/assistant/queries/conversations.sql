@@ -24,8 +24,8 @@ FROM assistant.conversations c
 WHERE c.id = @id AND c.user_id = @user_id;
 
 -- name: CreateConversation :one
-INSERT INTO assistant.conversations (id, user_id, title, origin_app, origin_route, created_at, last_activity_at)
-VALUES (@id, @user_id, '', @origin_app, @origin_route, @now::timestamptz, @now::timestamptz)
+INSERT INTO assistant.conversations (id, user_id, title, origin_app, origin_route, agent_id, created_at, last_activity_at)
+VALUES (@id, @user_id, '', @origin_app, @origin_route, sqlc.narg(agent_id)::uuid, @now::timestamptz, @now::timestamptz)
 RETURNING *;
 
 -- name: UpdateConversation :one

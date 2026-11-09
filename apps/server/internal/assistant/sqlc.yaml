@@ -11,6 +11,7 @@ sql:
       - ../db/migrations/00105_assistant_bulk.sql
       - ../db/migrations/00106_assistant_bulk_once.sql
       - ../db/migrations/00107_assistant_anthropic.sql
+      - ../db/migrations/00153_assistant_agent_conversations.sql
     queries: queries
     gen:
       go:
