@@ -1234,7 +1234,12 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       a manual marking after it is turned off. Whether to reserve and issue at all the
       caller reads from `Deps.Stock`, the read of on hand, available, the sites and the
       locations holding a variant (`contracts.Stock`, a single-provider slot set only when
-      Inventory is enabled), on the pool and never inside the caller's transaction.
+      Inventory is enabled), on the pool and never inside the caller's transaction. Each
+      `contracts.StockLocation` that `Stock.Locations` answers carries **`Primary`**
+      (`contracts/stock.go`, Inventory phase 2 I55): whether the location is the variant's
+      primary location at its site. It is a suggestion, never a rule — Orders sorts it
+      first in the pick list and the delivery's proposal, and nothing refuses taking stock
+      from another location; a consumer must not treat it as more.
     - **Inventory's own corrections ignore reservations.** Its adjustments, moves and
       counts may take on hand below what is reserved, and available shows negative; an
       issue still refuses beyond on hand.

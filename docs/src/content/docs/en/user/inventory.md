@@ -1,6 +1,6 @@
 ---
 title: Inventory
-description: What lies where — the Inventory app and its sidebar, finding a location or an item by typing or scanning its code, setting up a site, adding locations one at a time and in bulk, changing, moving, archiving and deleting them, printing location labels, receiving goods, adjusting and moving stock with the line editor, entering quantities in packagings, counting stock, importing opening balances, transferring stock between sites — drafting, sending, receiving in parts, closing a difference and cancelling — the transfers list and a transfer's page, what lies on a location, an item's stock and movements, the Movements list and a movement's page, the Stock card on the product page, what orders have reserved and what is available, which sites fulfil orders, the dashboard card, its attention items and the quick actions, and who sees what.
+description: What lies where — the Inventory app and its sidebar, finding a location or an item by typing or scanning its code, setting up a site, adding locations one at a time and in bulk, changing, moving, archiving and deleting them, printing location labels, receiving goods, adjusting and moving stock with the line editor, entering quantities in packagings, counting stock, importing opening balances, transferring stock between sites — drafting, sending, receiving in parts, closing a difference and cancelling — the transfers list and a transfer's page, setting an item's primary location, reorder point and maximum at a site, the low-stock list — its suggestions rounded up to whole packagings, creating a transfer from it and exporting it — importing placements, what lies on a location, an item's stock and movements, the Movements list and a movement's page, the Stock card on the product page, what orders have reserved and what is available, which sites fulfil orders, the dashboard card, its attention items and the quick actions, and who sees what.
 sidebar:
   order: 65
 sources:
@@ -17,7 +17,9 @@ only when someone posts a **movement** — a **receipt** of delivered goods, an
 movement, once posted, is never changed: a mistake is put right with a new adjustment.
 A **count** checks what really lies on the shelves and posts the differences, and a
 **transfer** sends stock from one site to another, where it is **in transit** until it is
-received.
+received. A **placement** says, per item and site, where the item belongs — its
+**primary location** — and when it runs low — its **reorder point** — and **Low stock**
+lists what has.
 The items come from [Products](/en/user/products/): only **goods** are kept in stock,
 never services. The rules behind every screen — the codes, the refusals and the
 permission each request is checked against — are in the
@@ -37,7 +39,8 @@ The **Inventory** tile, after Products in the app switcher, is shown to everyone
 | **Movements** | `inventory:locations-view` and `inventory:stock-view` |
 | **Receipts** — the movements list showing receipts only | `inventory:locations-view` and `inventory:stock-view` |
 | **Counts** — the stock counts | `inventory:counts-manage`, with both views |
-| **Import opening balances** — a site's first stock from a spreadsheet | `inventory:stock-adjust`, with both views |
+| **Low stock** — the items at or below their reorder point | `inventory:locations-view` and `inventory:stock-view` |
+| **Import opening balances** — a site's first stock, or the placements, from a spreadsheet | `inventory:stock-adjust`, with both views |
 
 Anything your permissions do not allow is not shown at all: a button you do not see is a
 permission you do not have. The buttons that post — receipts, adjustments and moves —
@@ -197,7 +200,10 @@ Press **New receipt** on **Overview**, or **Receive here** on a location, or
 the **Site** and **Receive to**, the location the goods go to; optionally the
 **Supplier**, the **Supplier's reference** — the delivery note's number, say — and a
 **Note**. Then add the lines with the [line editor](#the-line-editor): each line's
-**Location** is *As the receipt* unless you choose another. Press **Post receipt**.
+**Location** is *As the receipt* unless you choose another — or, for an item with a
+[primary location](#set-an-items-primary-location-and-reorder-point) at the site, that
+location: a scanned or chosen item's line goes there until you choose another. Press
+**Post receipt**.
 
 A service cannot be received, and neither can an item whose product is discontinued.
 
@@ -319,7 +325,13 @@ Beside each line, two columns show the stock at both sites as you type:
   from site. Sending more than a location holds is refused.* The draft can still be
   saved.
 - **At BGN: available · incoming** — what is available at the to site and, after
-  *+… incoming*, what is already on its way there in other transfers.
+  *+… incoming*, what is already on its way there in other transfers; then, when the
+  item has a [reorder point](#set-an-items-primary-location-and-reorder-point) there,
+  *reorder ≤ …*, marked **Low** while it is low.
+
+A line [drafted from the low-stock list](#create-a-transfer-from-the-list) also says how
+its quantity was found — *21 needed, rounded up to 2 cases of 15 = 30* — until you
+change the line.
 
 If the stock cannot be read, the form says so and the draft can still be saved.
 
@@ -334,7 +346,8 @@ On the transfer's page, or straight from the form, press **Send…** (the form s
 you changed first). The dialog **Send transfer 1042 to BGN** asks you to *pick each line
 from a location at* the from site: in the column **From a location at OSL**, each line
 offers the locations at the from site where the item lies, with what lies there, and
-starts on the one holding most. An item that lies nowhere at the site says *Nothing of it
+starts on the item's primary location there, marked *(primary)*, when that holds some
+of it — else on the one holding most. An item that lies nowhere at the site says *Nothing of it
 lies at the site*.
 
 The dialog warns you before you send:
@@ -371,7 +384,8 @@ page — opens the transfer.
 When the two sites are next door — a store and its back room in another building, say —
 and the goods arrive as you send them, press **Send and receive…** instead. The dialog
 **Send and receive transfer 1042 at BGN** has, besides the source of each line, a column
-**To a location at BGN** where each line is put away; **Receive every line at a location
+**To a location at BGN** where each line is put away, starting on the item's primary
+location there when it has one; **Receive every line at a location
 of BGN** sets the same location on every line. Every line needs one (*Choose where every
 line is received.*). Press **Send and receive 3 lines**: *Transfer sent and received*. The
 stock leaves the from site and arrives at the to site in one step — a **Transfer out**
@@ -398,8 +412,8 @@ and lists each line still in transit: **Item**, **Sent**, **Received before**, *
 - **Accept all** fills every line with everything still in transit — for a delivery you
   have checked as complete.
 
-Each line is put away at the to site's own location unless you choose another in **To a
-location at BGN**. A line cannot take more than is still in transit on it (*More than is
+Each line is put away at the item's primary location at the to site — or, without one,
+at the to site's own location — unless you choose another in **To a location at BGN**. A line cannot take more than is still in transit on it (*More than is
 still in transit on the line.*). Under the lines, *2 lines will still be in transit.* tells
 you what you have not counted yet.
 
@@ -498,6 +512,100 @@ two sites you filtered by already chosen.
 A site's page shows, with **View stock**, **Incoming** and **Outgoing**: the number of
 transfers on their way to and from the site — *2 open transfers* — each opening the list
 filtered to the site.
+
+## Set an item's primary location and reorder point
+
+A **placement** is three settings of one item at one site, each optional:
+
+- **Primary location** — *Where it is received and picked by default. Stock may still
+  lie anywhere.* It is a suggestion, never a rule: a receipt line, a transfer's send and
+  its receipt, and an order's delivery start on it, and you may always choose another.
+- **Reorder point** — *Low when available + incoming is at or below it.* Zero or more,
+  in the item's unit.
+- **Maximum** — *The suggestion fills up to it.* More than 0, and never below the
+  reorder point.
+
+Open the item's stock page (from the lookup or the product page's **Stock** card). Under
+each site it shows the site's **Reorder point** and **Maximum** when they are set, and
+**Low** while the item is low there. Press **Edit placement** under the site (it needs
+**Adjust stock** and both views); a site that holds none of the item is listed too, so
+you can set its placement before the first receipt. The dialog **Placement at Central
+warehouse** has the three fields; press **Save** — *Placement saved*. **Remove** deletes
+the placement — *Placement removed* — and the item has no primary location, reorder
+point or maximum at the site any more.
+
+The dialog refuses what it cannot keep:
+
+- a maximum of 0 — *The maximum must be more than 0.*;
+- a maximum below the reorder point — *The maximum cannot be below the reorder point.*;
+- nothing set — *Set a primary location, a reorder point or a maximum — or remove the
+  placement.*;
+- a primary location archived in the meantime — *The primary location must be an active
+  location of this site.*
+
+If someone else changed the placement since you opened it, the page reloads and says
+*Changed by someone else*: make your change again.
+
+Archiving or deleting a location takes it away as anyone's primary location; a placement
+that had nothing else set is removed. Archiving a site does the same for all its
+locations and keeps the reorder points and maximums, but an archived site is never on the
+low-stock list.
+
+## The low-stock list
+
+**Low stock** in the sidebar — *Items at or below their reorder point at each site, and
+what would fill them up.* — lists every item that has run low at an active site. An item
+is **low** at a site when what is **available** there — on hand over all the site's
+locations, less what orders have [reserved](#reserved-and-available) — plus what is
+**incoming** on transfers to the site is at or below its reorder point. Stock already on
+its way counts: once a transfer bringing enough is sent, the item leaves the list.
+
+Each row shows the **Item**, the **Site** (when the list is not filtered to one),
+**Available** (red when negative), **Incoming**, the **Reorder point**, the **Maximum**,
+the **Suggested** quantity and **Elsewhere** — what each other active site where the item
+lies or is reserved has available, *Bergen store 12 · Trondheim store 0*. A draft
+transfer to the site that already carries the item is shown under it as *Draft 1043
+open*. Filter by **Site** (or **All sites**) and search for a SKU or name (press Enter);
+the rows are by site code, then SKU, and **Load more** fetches the next page. With
+nothing low it says *Nothing is at or below its reorder point.*
+
+**The suggestion.** The list suggests what fills the item up: to its **maximum**, or,
+without one, to **one above the reorder point**, so that receiving the suggestion takes
+the row off the list — filling it only *to* the reorder point would leave it low. It is
+always at least 1. When the item has [packagings](/en/user/products/#packagings), the
+suggestion is rounded **up** to a whole number of its **smallest** packaging, and the row
+says so under the quantity:
+
+- *21 needed* — nothing to round;
+- *21 needed, rounded up to 2 cases of 15 = 30* — the packaging named by its kind (inner
+  pack, case, pallet);
+- *25 needed, rounded up to 2 cases of 15 = 30, 5 above the maximum of 40* — when the
+  rounding passes the maximum, by how much.
+
+### Create a transfer from the list
+
+With **Transfer stock**, each row has a checkbox. Tick the rows of **one** site — the
+rows of other sites cannot be ticked once one is — and the bar beneath says *3 selected*.
+In **Create transfer to Bergen store from**, choose the site to send from; it starts on
+the site with most available of the chosen items. Press **Create transfer**: a draft is
+made with each item's suggested quantity — *Draft saved* — and opens, each line saying
+how its quantity was found until you change it. Nothing is capped: the draft shows the
+from site's stock beside each line, and the [send](#send-a-transfer) refuses what a
+location does not hold.
+
+If a draft to the site is already open for one of the chosen items, **Create transfer**
+asks first — *A draft is already open*: *A draft transfer to Bergen store is already open
+for some of these items. Create another?* — and **Create another draft** makes a second
+one.
+
+### Export the list
+
+**Export CSV** downloads the list as filtered — the site and the search — every row,
+as `low-stock-2026-11-09.csv`, with the columns `site` (its code), `sku`, `name`,
+`barcode`, `available`, `incoming`, `reorder_point`, `maximum`, `needed`, `suggested`,
+`packaging` (the packaging's name) and `packaging_count`. The columns are separated by
+semicolons and the quantities have a decimal comma, so Excel opens it as it is. There is
+no supplier column: a supplier is a free text on a receipt.
 
 ## Count stock
 
@@ -601,6 +709,34 @@ Uploading **the same file again to the same site** posts nothing new — it answ
 movement already posted — so a commit cannot be doubled by accident. A changed file is a
 new posting.
 
+## Import placements
+
+To set many [placements](#set-an-items-primary-location-and-reorder-point) at once,
+across every site, open **Import opening balances** in the sidebar (it needs **Adjust
+stock** and both views) and choose **Placements** under **What to import**.
+
+1. Press **Download template** for `placements.csv`, with the header
+   `sku,site,primary_location,reorder_point,maximum` — exactly those five columns, in any
+   order. Fill in one row per item and site: the item's **SKU**, the site's **code**
+   (`OSL`), the primary location's **full code** (`OSL-A-03-2`), the **reorder point**
+   and the **maximum**, in the item's unit. Separators, decimal commas and the 5000-row
+   limit are as for [opening balances](#import-opening-balances).
+2. **Each row sets all three fields.** An empty cell clears its field, and a row with all
+   three empty **removes** the placement. When a file names the same item and site twice,
+   the last row wins.
+3. Choose the **CSV file** and press **Dry run**. Nothing is written: each row shows its
+   **SKU**, **Site**, **Primary location**, **Reorder point**, **Maximum** and
+   **Outcome** — **OK**, **No such site**, **The site is archived**, **Not an active
+   location of the site**, **No such SKU**, **A service, not kept in stock**, **Not a
+   valid quantity** or **The maximum is below the reorder point**.
+4. When every row is OK (*All 120 rows are ready to import.*), press **Commit**:
+   **Placements imported** — *118 set, 2 removed.* If any row fails (*3 rows cannot be
+   imported. Fix the file and try again.*), nothing is written.
+
+Uploading **the same file again** writes nothing new, so a commit cannot be doubled by
+accident. If a site or a location in the file is archived between the dry run and the
+commit, the commit is refused and writes nothing: run the dry run again.
+
 ## See what lies on a location
 
 A location's page shows its path at the top, its full code with its kind, and the
@@ -620,7 +756,11 @@ item lies, what orders have [reserved](#reserved-and-available) there and what i
 available, and the item's movements, newest first. Under a site that a
 [transfer](#transfer-stock-between-sites) is bringing more of, *+… incoming* says how
 much is on its way there; a site with stock on its way and nothing on hand yet has a row
-too. **Receive** and **Adjust** are offered as your permissions allow. An item deleted
+too. The item's [primary location](#set-an-items-primary-location-and-reorder-point) at
+a site comes first among its locations, marked *primary*, and each site shows its
+**Reorder point** and **Maximum**, **Low** while it is low there and, with **Adjust
+stock**, **Edit placement**. **Receive** and
+**Adjust** are offered as your permissions allow. An item deleted
 from the catalog still shows its history, marked *Deleted from the catalog*.
 
 **Transfer differences** lists the transfers of the item that were
@@ -656,7 +796,9 @@ opening to the locations where the item lies — by full code and name — and, 
 product with several variants, the same for each SKU, with **Stock and movements of …**
 to its stock page. Stock on its way between sites in a transfer shows as *In transit …*
 beside the total, and *+… incoming* under the site it is going to; it is not part of the
-total on hand, which is what lies on shelves. With nothing in stock and nothing on its
+total on hand, which is what lies on shelves. Under a site where the item has a
+[reorder point](#set-an-items-primary-location-and-reorder-point), *reorder ≤ 10 pcs*
+says what it is, in red while the item is low there. With nothing in stock and nothing on its
 way it says **No stock** and offers **Receive** or **Adjust** as you may. A service has no Stock card. See
 [the product page](/en/user/products/#the-product-page).
 
@@ -704,6 +846,10 @@ passed, or that was sent more than 7 days ago without one; press it to open the
 transfer, and [receive it](#receive-a-transfer), [close the
 difference](#close-a-difference) or [cancel it](#cancel-a-transfer).
 
+With both views, **Needs attention** shows, for each active site with anything low,
+*4 items at or below their reorder point at a site*; press it to open
+[the low-stock list](#the-low-stock-list) filtered to that site.
+
 ## Who sees what
 
 | What | View locations | View stock | Manage locations | Adjust stock | Receive goods | Count stock | Transfer stock |
@@ -712,16 +858,18 @@ difference](#close-a-difference) or [cancel it](#cancel-a-transfer).
 | The sites, their locations and a location's page; locations in the lookup and **Find location or item**; **Print labels** | ✓ | – | – | – | – | – | – |
 | Quantities: **Contents**, an item's stock page, **Movements** and **Receipts**, the product page's **Stock** card, the **On hand** column of the product list, the dashboard figures, items in the lookup | ✓ | ✓ | – | – | – | – | – |
 | **New site**, **New location**, **Bulk add**, **Edit**, **Archive**, **Reactivate**, **Delete** | ✓ | – | ✓ | – | – | – | – |
-| **New adjustment**, **Adjust**, **New move**, **Move from here** — on Overview, a location, an item, the movements and the product's Stock card; **Import opening balances** | ✓ | ✓ | – | ✓ | – | – | – |
+| **Low stock**, **Export CSV**; the dashboard's low-stock item | ✓ | ✓ | – | – | – | – | – |
+| **New adjustment**, **Adjust**, **New move**, **Move from here** — on Overview, a location, an item, the movements and the product's Stock card; **Edit placement**; **Import opening balances**, both kinds | ✓ | ✓ | – | ✓ | – | – | – |
 | **New receipt**, **Receive here**, **Receive** — wherever they appear | ✓ | ✓ | – | – | ✓ | – | – |
 | **Counts**, **Open count**, **Count**, **Start count**, counting, posting and cancelling; the dashboard's **A count has been open for a long time** | ✓ | ✓ | – | – | – | ✓ | – |
 | **Transfers**, a transfer's page and its history, **Print transfer note**, transfers in the lookup, **Incoming** and **Outgoing** on a site, **Transfer differences** on an item | ✓ | ✓ | – | – | – | – | – |
-| **New transfer**, **Edit**, **Save draft**, **Send…**, **Send and receive…**, **Delete draft**, **Receive…**, closing a difference, **Cancel transfer**; the dashboard's **A transfer is past its expected arrival** | ✓ | ✓ | – | – | – | – | ✓ |
+| **New transfer**, **Edit**, **Save draft**, **Send…**, **Send and receive…**, **Delete draft**, **Receive…**, closing a difference, **Cancel transfer**; the dashboard's **A transfer is past its expected arrival**; **Create transfer** on the low-stock list | ✓ | ✓ | – | – | – | – | ✓ |
 
 Every other row needs every permission it ticks: the posting and counting buttons
 appear only to someone who holds both views **and** the write permission. Printing
 labels needs only **View locations**: a label shows nothing a location's page does not.
 Receiving a transfer needs **Transfer stock**, not **Receive goods**: it moves your own
-stock between your sites, and is not a receipt from a supplier.
+stock between your sites, and is not a receipt from a supplier. Setting a placement needs
+**Adjust stock**: it is a setting of the stock, never stock itself.
 None of the seven permissions is sensitive. The full table is under
 [Permissions](/en/reference/inventory/#permissions) in the reference.

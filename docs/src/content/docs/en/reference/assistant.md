@@ -306,7 +306,7 @@ it sees is a plain-text transcript, tool calls and results cut to 600 characters
 ## The system prompt
 
 The prompt is built **once, at a conversation's first run, and frozen**: it is stored on `conversation_state`
-with its `prompt_version` (`promptVersion`, `2026-11-09.1`, bumped with any change of the rules) and sent unchanged on every
+with its `prompt_version` (`promptVersion`, `2026-11-09.2`, bumped with any change of the rules) and sent unchanged on every
 later run, whatever the code says by then. A conversation that began under an older version keeps the prompt
 it began with; a new one gets the current. This is what a Claude model's thinking needs
 ([below](#claude-and-preserved-thinking)), and it keeps Anthropic's prompt cache warm. The prompt states, in order, who the assistant is; **the
@@ -347,12 +347,13 @@ that replays the turn carries the same bytes. The person never sees it, and the 
 
 The route list the prompt carries is the host's route shapes (`appRoutes` in `prompt.go`): the same
 list `navigate` validates against. It names one prefix per app with the record screens under it — for
-Inventory, `/inventory` with a site, a location, a variant's stock and the movements, and for Orders,
+Inventory, `/inventory` with a site, a location, a variant's stock, the movements, a transfer and, since phase 2's delivery B, the low-stock list `/inventory/low-stock`, and for Orders,
 `/orders` with a quote, an order, a delivery, a subscription, the templates, the settings and the sales analysis, beside the customer's `/orders` tab — so an app the
 list does not name cannot be linked to. Its targets join [the registry](#guided-tours) the same way:
 `@vantigo/inventory-ui` exports its own — the lookup, a new site, location, receipt,
 adjustment and move, bulk adding locations, printing labels, opening a count, the import's file, and since
-phase 2 the transfer list, a new transfer and the receive page's scan field — as
+phase 2 the transfer list, a new transfer, the receive page's scan field and the low-stock list
+(`inventory.low-stock.list`, on `/inventory/low-stock`) — as
 `@vantigo/orders-ui` exports its forty-seven — a new quote and order and their customer pickers, saving, sending
 and accepting a quote, saving and confirming an order, a new template, the settings and the customer tab's
 New quote and New order, since A2 a document's warnings, the settings' sales warnings, adding lines from
@@ -558,7 +559,7 @@ operations to the Assistant — **`searchKnowledge`** and **`getKnowledgeArticle
 the assistant cannot read a document, the access, the history or the trash, and cannot create,
 edit, move, share or trash an article.
 
-The prompt (`promptVersion` `2026-11-09.1`) has one rule for them: when a question may be about
+The prompt (`promptVersion` `2026-11-09.2`) has one rule for them: when a question may be about
 how this company does something, search with `searchKnowledge`, read the article with
 `getKnowledgeArticleText` before answering, answer from it, and cite it as a Markdown link to
 `/knowledge/articles/{id}`; `/knowledge` and `/knowledge/articles/{articleId}` are among the

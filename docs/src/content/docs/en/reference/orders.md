@@ -802,8 +802,9 @@ picked. One delivery names an order line once.
   deliveries hold, at what can go from the site — the line's own reservation less what its
   other drafts take, plus what is available, shared between the lines of one variant in line
   order — never more than is
-  open; each proposed line is picked from the first location by full code holding all of
-  it. Nothing to propose is `nothing_to_deliver` (409). Several drafts may exist.
+  open; each proposed line is picked from the first location holding all of it — the
+  variant's primary location at the site first (`contracts.StockLocation.Primary`,
+  Inventory phase 2 I55), then by full code. Nothing to propose is `nothing_to_deliver` (409). Several drafts may exist.
 - **Save** (`PUT /deliveries/{id}`) replaces a draft's lines: each names a delivery-method
   line of the order (`line_not_found`), once (`line_invalid`), at most what is open outside
   this delivery (`over_delivery`), and a location among `Stock.Locations` of the variant at
@@ -840,7 +841,9 @@ cancelled less delivered is above 0.
 Both are A4 PDFs in the module's style, in the order's language. The **pick list**
 (`GET /deliveries/{id}/pick-list`, *plukkliste*) is printed on demand and never stored:
 the lines sorted by the picked location's full code, those not picked last, each with the
-site's locations holding its variant and how much. The **packing slip** (`GET
+site's locations holding its variant and how much — the variant's
+[primary location](/en/reference/inventory/#placement) first, then by full code, as the
+draft's location picker lists them (`stockLocations` sorts on `Primary`, stably). The **packing slip** (`GET
 /deliveries/{id}/packing-slip`, *pakkseddel*) prints the seller, the order's delivery
 address, contact and references, and per line what was ordered, what this delivery takes
 and what is left as back order; a posted delivery's is the stored one (`orders.documents`,

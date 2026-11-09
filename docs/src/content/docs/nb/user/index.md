@@ -30,9 +30,10 @@ de åpne behovene og hvor mange som er ubemannet, for `planning:view`
 ([dashbordet](/nb/user/planning/#dashbordet)); Lagers, lagerlinjene med varemottakene
 bokført denne uken ved siden av, for `inventory:locations-view` sammen med
 `inventory:stock-view`, og i listen nedenfor, med `inventory:counts-manage` i tillegg, en
-varetelling som har stått åpen i mer enn en uke, og, med `inventory:transfers-manage`, en
+varetelling som har stått åpen i mer enn en uke, med `inventory:transfers-manage` en
 overføring mellom lagersteder som har passert forventet ankomst eller har vært under
-transport i mer enn en uke ([Lager](/nb/user/inventory/#dashbordet)).
+transport i mer enn en uke, og, per lagersted, varene på eller under bestillingspunktet
+([Lager](/nb/user/inventory/#dashbordet)).
 Listen **Trenger oppfølging** samler det i
 appene som venter på noen — også fra Fakturaer: forfalte fakturaer, penger som skal
 tilbake på en faktura, og, med `invoices:payments`, banklinjer i avvikskøen, purringer
@@ -86,7 +87,7 @@ kortere enn din:
 | [Kommunikasjon](/nb/user/communications/) | Innboks, Kanaler, Blokkeringer |
 | [Virtuelle ansatte](/nb/user/agents/) | Agenter (Persona, Roller, Tillatelser, Bruk, Aktivitet), Innstillinger |
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |
-| [Lager](/nb/user/inventory/) | Oversikt, Bevegelser, Varemottak, Varetellinger, Importer inngående beholdning |
+| [Lager](/nb/user/inventory/) | Oversikt, Overføringer, Bevegelser, Varemottak, Varetellinger, Lav beholdning, Importer inngående beholdning (og påfylling) |
 | [Ordre](/nb/user/orders/) | Tilbud, Ordre, Leveranser, Abonnement, Tilbudsmaler, Salgsanalyse, Ordreinnstillinger |
 | [Kunnskap](/nb/user/knowledge/) | Artikler, Papirkurv |
 | [Energi](/nb/user/energy/) | Målepunkter |

@@ -325,11 +325,14 @@ avvises når lagerstedet ikke har det disponibelt.
    mens du har endringer som ikke er lagret.
 2. Det nye leveranseutkastet åpnes med hver linje som gjenstår å levere, med det som kan gå fra
    lagerstedet: det linjen har reservert, og det som er disponibelt i tillegg. Hver linje
-   plukkes fra den første lokasjonen som har hele antallet.
+   plukkes fra den første lokasjonen som har hele antallet — varens
+   [hovedlokasjon](/nb/user/inventory/#angi-hovedlokasjon-og-bestillingspunkt-for-en-vare)
+   på lagerstedet først, når den har en.
 3. Endre en linjes **Antall**, eller sett det til 0 for å utelate den, og velg **Fra lokasjon**
-   blant lagerstedets lokasjoner som har produktet, og velg så **Lagre**.
+   blant lagerstedets lokasjoner som har produktet — hovedlokasjonen først — og velg så
+   **Lagre**.
 4. **Plukkliste** skriver ut linjene sortert etter lokasjon, med alle lokasjoner som har hvert
-   produkt, for den som plukker varene.
+   produkt, hovedlokasjonen først, for den som plukker varene.
 5. **Bokfør leveranse** trekker varene fra de valgte lokasjonene i Lager, legger antallene til
    ordrens leverte antall og lagrer **Pakkseddel** — linjene, hva som ble bestilt, hva denne
    leveransen tar, hva som står igjen som restordre og leveringsadressen. Alle linjer må være

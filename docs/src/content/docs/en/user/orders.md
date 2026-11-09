@@ -327,11 +327,14 @@ site does not have it available.
    and while you have unsaved changes.
 2. The new draft delivery opens with every line that is left to deliver, at what can go
    from the site: what the line holds reserved, and what is available beside it. Each line
-   is picked from the first location that holds all of it.
+   is picked from the first location that holds all of it — the item's
+   [primary location](/en/user/inventory/#set-an-items-primary-location-and-reorder-point)
+   at the site first, when it has one.
 3. Change a line's **Quantity**, or set it to 0 to leave it out, and choose its **From
-   location** among the site's locations holding the product, then **Save**.
+   location** among the site's locations holding the product — its primary location
+   first — then **Save**.
 4. **Pick list** prints the lines sorted by location, with every location holding each
-   product, for whoever picks the goods.
+   product, its primary location first, for whoever picks the goods.
 5. **Post delivery** takes the goods off the chosen locations in Inventory, adds the
    quantities to the order's delivered quantities and stores the **Packing slip** —
    the lines, what was ordered, what this delivery takes, what is left as back order and

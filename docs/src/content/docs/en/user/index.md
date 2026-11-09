@@ -29,9 +29,9 @@ the open requests and the people unbooked, for `planning:view`
 ([the dashboard](/en/user/planning/#the-dashboard)); Inventory's, the stock lines with the
 goods receipts posted this week beside them, for `inventory:locations-view` with
 `inventory:stock-view`, and in the list below, with `inventory:counts-manage` too, a count
-left open more than a week, and, with `inventory:transfers-manage`, a transfer between
-sites past its expected arrival or on its way more than a week
-([Inventory](/en/user/inventory/#the-dashboard)).
+left open more than a week, with `inventory:transfers-manage`, a transfer between
+sites past its expected arrival or on its way more than a week, and, per site, the items
+at or below their reorder point ([Inventory](/en/user/inventory/#the-dashboard)).
 Its **Needs attention**
 list gathers the apps' items that wait for someone — Invoices' among them: overdue
 invoices, money owed back on an invoice, and, with `invoices:payments`, bank lines in the
@@ -83,7 +83,7 @@ shorter than yours:
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Virtual employees](/en/user/agents/) | Agents (Persona, Roles, Permissions, Usage, Activity), Settings |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |
-| [Inventory](/en/user/inventory/) | Overview, Movements, Receipts, Counts, Import opening balances |
+| [Inventory](/en/user/inventory/) | Overview, Transfers, Movements, Receipts, Counts, Low stock, Import opening balances (and placements) |
 | [Orders](/en/user/orders/) | Quotes, Sales orders, Deliveries, Subscriptions, Quote templates, Sales analysis, Orders settings |
 | [Knowledge](/en/user/knowledge/) | Articles, Trash |
 | [Energy](/en/user/energy/) | Metering points |
