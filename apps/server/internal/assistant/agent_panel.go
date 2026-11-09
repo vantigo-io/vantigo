@@ -185,7 +185,14 @@ func (c colleagueOps) Search(ctx context.Context, userID uuid.UUID, query string
 	return found, nil
 }
 
-func (c colleagueOps) Describe(id string) (json.RawMessage, error) { return c.inner.Describe(id) }
+// Describe answers only for an operation the agent may use at all, as List does;
+// a change the agent may not make is described as one it may not use.
+func (c colleagueOps) Describe(id string) (json.RawMessage, error) {
+	if _, ok := c.agent.ops[id]; !ok {
+		return nil, &operations.Error{Code: operations.CodeUnknownOperation, Message: "there is no operation " + id + " that the virtual employee may use"}
+	}
+	return c.inner.Describe(id)
+}
 
 // Call makes the call only if the agent may. A call the model could not have
 // found through List is refused here too, and the confirmed call of a card is

@@ -1248,7 +1248,12 @@ INSERT INTO agents.run_queue (role_id, conversation_id, reason, note, not_before
 VALUES ($1, $2, $3, $4, $5::timestamptz, $6::timestamptz, $7::timestamptz)
 ON CONFLICT (role_id, conversation_id, subject_id) WHERE taken_at IS NULL
 DO UPDATE SET not_before = LEAST(EXCLUDED.not_before, agents.run_queue.due_by),
-              note = CASE WHEN EXCLUDED.note <> '' THEN EXCLUDED.note ELSE agents.run_queue.note END
+              note = CASE
+                  -- Two mentions before the run: the run reads both notes.
+                  WHEN EXCLUDED.note LIKE 'mention:%' AND agents.run_queue.note LIKE 'mention:%'
+                      THEN agents.run_queue.note || ',' || substr(EXCLUDED.note, 9)
+                  WHEN EXCLUDED.note <> '' THEN EXCLUDED.note
+                  ELSE agents.run_queue.note END
 `
 
 type UpsertRunRequestParams struct {

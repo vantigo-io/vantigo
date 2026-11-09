@@ -46,6 +46,9 @@ func (rs *runState) loop() *agentloop.Loop {
 	base := rs.dispatch.Tools()
 	tools := []agentloop.Tool{base[0], base[1], rs.callOperationTool(base[2])}
 	for _, name := range rs.tpl.Tools {
+		if rs.noteOnly && name != toolNote {
+			continue // a person holds the conversation: notes only
+		}
 		if t, ok := rs.ownTool(name); ok {
 			tools = append(tools, t)
 		}
@@ -218,6 +221,11 @@ func (rs *runState) pin(id string, params map[string]any, body json.RawMessage) 
 // item, never a call (V19). The operation is checked against the contract first,
 // so a reviewer is not asked to approve what cannot run.
 func (rs *runState) confirm(ctx context.Context, info operations.Info, req operations.CallRequest, explain string) agentloop.Result {
+	if rs.noteOnly {
+		r := agentloop.Refused("note_only", "a person holds this conversation: you only read it and write notes")
+		r.Operation, r.Mode = info.ID, string(operations.ModeConfirm)
+		return r
+	}
 	if err := rs.s.deps.Operations.Validate(rs.withGrant(ctx), req); err != nil {
 		r := agentloop.Refused("invalid_request", err.Error())
 		r.Operation, r.Mode = info.ID, string(operations.ModeConfirm)

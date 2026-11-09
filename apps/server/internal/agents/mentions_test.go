@@ -101,3 +101,22 @@ func TestMention_MeetsAMessageRequestWaitingInItsDebounceAndMakesItDueNow(t *tes
 		t.Errorf("the request's note does not name the note that mentioned the agent")
 	}
 }
+
+func TestMention_TwoMentionsBeforeTheRunAreBothKeptOldestFirst(t *testing.T) {
+	t.Parallel()
+	g := newRig(t)
+	conv := uuid.New()
+	first := g.mention(t, conv, g.channel, uuid.New(), g.agentUser(t))
+	second := g.mention(t, conv, g.channel, uuid.New(), g.agentUser(t))
+	if got := len(g.requests(t, conv)); got != 1 {
+		t.Fatalf("%d requests, want one", got)
+	}
+	if want := "mention:" + first.String() + "," + second.String(); g.noteOf(t, conv) != want {
+		t.Errorf("note = %q, want %q: the run reads every unanswered note", g.noteOf(t, conv), want)
+	}
+	// A message arriving meanwhile keeps both.
+	g.message(t, conv, nil)
+	if want := "mention:" + first.String() + "," + second.String(); g.noteOf(t, conv) != want {
+		t.Errorf("after a message the note = %q, want both kept", g.noteOf(t, conv))
+	}
+}
