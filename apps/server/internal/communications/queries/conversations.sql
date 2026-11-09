@@ -487,3 +487,14 @@ WHERE c.status = 'open'
         SELECT 1 FROM communications.conversation_read_states rs
         WHERE rs.conversation_id = c.id AND rs.user_id = @user_id::uuid
           AND rs.last_read_at >= c.last_activity_at);
+
+-- name: InsertNoteMention :exec
+-- One user a note mentions (virtual employees design V32). The note's author
+-- picked them; the handler has checked each is a known, active user.
+INSERT INTO communications.conversation_message_mentions (message_id, user_id)
+VALUES (@message_id, @user_id)
+ON CONFLICT DO NOTHING;
+
+-- name: GetConversationChannel :one
+-- The channel of a conversation, for the event a note's mentions publish.
+SELECT channel_id FROM communications.conversations WHERE id = @id;

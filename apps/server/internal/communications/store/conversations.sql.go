@@ -174,6 +174,18 @@ func (q *Queries) GetConversationByID(ctx context.Context, id uuid.UUID) (Commun
 	return i, err
 }
 
+const getConversationChannel = `-- name: GetConversationChannel :one
+SELECT channel_id FROM communications.conversations WHERE id = $1
+`
+
+// The channel of a conversation, for the event a note's mentions publish.
+func (q *Queries) GetConversationChannel(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getConversationChannel, id)
+	var channel_id uuid.UUID
+	err := row.Scan(&channel_id)
+	return channel_id, err
+}
+
 const getConversationChannelDetail = `-- name: GetConversationChannelDetail :one
 SELECT ch.type, ch.provider, ch.address, ch.display_name
 FROM communications.conversations c
@@ -770,6 +782,24 @@ func (q *Queries) InsertMessageEvent(ctx context.Context, arg InsertMessageEvent
 		arg.EventType,
 		arg.OccurredAt,
 	)
+	return err
+}
+
+const insertNoteMention = `-- name: InsertNoteMention :exec
+INSERT INTO communications.conversation_message_mentions (message_id, user_id)
+VALUES ($1, $2)
+ON CONFLICT DO NOTHING
+`
+
+type InsertNoteMentionParams struct {
+	MessageID uuid.UUID
+	UserID    uuid.UUID
+}
+
+// One user a note mentions (virtual employees design V32). The note's author
+// picked them; the handler has checked each is a known, active user.
+func (q *Queries) InsertNoteMention(ctx context.Context, arg InsertNoteMentionParams) error {
+	_, err := q.db.Exec(ctx, insertNoteMention, arg.MessageID, arg.UserID)
 	return err
 }
 

@@ -333,10 +333,15 @@ export const attachmentUploadStatusQueryOptions = (conversationId: string, attac
     enabled: Boolean(conversationId && attachmentId),
     refetchInterval: (query) => (["pending", "scanning"].includes(query.state.data?.scanStatus ?? "") ? 2000 : false),
   });
-export const addConversationNote = (id: string, textBody: string) =>
+/** Adds an internal note; `mentions` are the ids of the users it mentions (design V32). */
+export const addConversationNote = (id: string, textBody: string, mentions: string[] = []) =>
   request<{ conversationId: string; messageId: string | null; status: string }>(
     `/api/v1/communications/conversations/${encodeURIComponent(id)}/notes`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ textBody }) },
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(mentions.length > 0 ? { textBody, mentions } : { textBody }),
+    },
   );
 export const updateConversation = (
   id: string,

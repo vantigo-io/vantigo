@@ -1173,6 +1173,8 @@ export interface components {
             suggestedContactId: number | null;
         };
         NoteRequest: {
+            /** @description The users, people or agents, the note mentions, picked with the @ picker (at most 10). Each must be a known, active user. A person mentioned is mailed; an agent mentioned is woken for the conversation. A note written by an agent mentions no one. */
+            mentions?: string[] | null;
             textBody: string | null;
         };
         PaginatedResponseOfConversationListItem: {

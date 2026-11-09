@@ -66,3 +66,24 @@ type ConversationReplied struct {
 func (ConversationReplied) EventName() string     { return "communications.conversation.replied" }
 func (ConversationReplied) EventVersion() int     { return 1 }
 func (e ConversationReplied) AggregateID() string { return e.ConversationID.String() }
+
+// ConversationNoteMentioned is communications.conversation.note_mentioned v1: an
+// internal note mentioned one or more users, people or agents, picked with the @
+// picker (virtual employees design V32). MentionedUserIDs are the users picked,
+// without the author; the note's text is not in the payload, and the agents
+// module reads it from the conversation when it runs. ByUserID is the note's
+// author. A note written through an agent grant mentions no one, so the agents
+// cannot wake each other.
+type ConversationNoteMentioned struct {
+	ConversationID   uuid.UUID   `json:"conversationId"`
+	MessageID        uuid.UUID   `json:"messageId"`
+	ChannelID        uuid.UUID   `json:"channelId"`
+	ByUserID         uuid.UUID   `json:"byUserId"`
+	MentionedUserIDs []uuid.UUID `json:"mentionedUserIds"`
+}
+
+func (ConversationNoteMentioned) EventName() string {
+	return "communications.conversation.note_mentioned"
+}
+func (ConversationNoteMentioned) EventVersion() int     { return 1 }
+func (e ConversationNoteMentioned) AggregateID() string { return e.ConversationID.String() }

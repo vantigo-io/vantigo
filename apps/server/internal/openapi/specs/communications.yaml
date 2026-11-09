@@ -1356,6 +1356,14 @@ components:
             type: object
         NoteRequest:
             properties:
+                mentions:
+                    description: The users, people or agents, the note mentions, picked with the @ picker (at most 10). Each must be a known, active user. A person mentioned is mailed; an agent mentioned is woken for the conversation. A note written by an agent mentions no one.
+                    items:
+                        format: uuid
+                        type: string
+                    maxItems: 10
+                    nullable: true
+                    type: array
                 textBody:
                     nullable: true
                     type: string
