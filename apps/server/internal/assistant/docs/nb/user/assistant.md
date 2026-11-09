@@ -238,7 +238,7 @@ er valget der ikke, og samtalen er Assistentens egen.
 En samtale med en virtuell ansatt ser ut som alle andre, med navnet og **KI**-merket over meldingene. Det er en
 kollega som jobber for deg i panelet:
 
-- **Den skriver som seg selv.** Den svarer i stilen personaen setter, og den leser Kunnskap, selskapets egne
+- **Den skriver som seg selv.** Den svarer i stilen personaen setter (personaen slik den var da samtalen begynte: en senere endring gjelder nye samtaler), og den leser Kunnskap, selskapets egne
   rutiner, slik den gjør i sitt eget arbeid. Den sier at den er en KI hvis du spør.
 - **Du ser bare det du og den begge har lov til å se.** Alt den gjør kontrolleres som deg, slik det gjøres for
   Assistenten, **og** mot det den virtuelle ansatte selv har lov til: operasjonene i rollene dens, på nivåene

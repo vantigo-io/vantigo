@@ -241,7 +241,7 @@ active virtual employee, the choice is not there and the conversation is the Ass
 A conversation with a virtual employee looks like any other, with its name and the **AI** badge above the
 messages. It is a colleague who works for you in the panel:
 
-- **It writes as itself.** It answers in the style its persona sets, and it reads Knowledge, the company's own
+- **It writes as itself.** It answers in the style its persona sets (the persona as it was when the conversation began: a later change applies to new conversations), and it reads Knowledge, the company's own
   routines, as it does in its own work. It says it is an AI if you ask.
 - **You see only what you and it may both see.** Everything it does is checked as you, as it is for the Assistant,
   **and** against what that virtual employee may do itself: the operations of its roles, at the levels the Owner

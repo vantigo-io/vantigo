@@ -372,13 +372,14 @@ its role on the conversation's channel**, and one with no role there, or a pause
 mentioned is Communications' to mail ([Events](/en/reference/communications/#events)).
 
 The request is the conversation's ordinary one — one per `(role, conversation)`, reason `message` — but due **now**, with no
-debounce, and its `note` is `mention:<message id>`. A request waiting in its wait for a customer's message becomes due
-at once, and the run sees both. The run reads the note from the conversation (the event holds no text), puts it in its
-first message as `colleagueNote`, **data** like the rest, and the first message and the system prompt say a colleague
+debounce, and its `note` is `mention:<message id>[,<message id>…]`: a second mention before the run adds its id, so the run reads every unanswered note since the last run, oldest first. A request waiting in its wait for a customer's message becomes due
+at once, and the run sees both. The run reads the note from the conversation (the event holds no text), puts them in its
+first message as `colleagueNotes`, **data** like the rest, and the first message and the system prompt say a colleague
 asked: the agent answers the colleague with `note`, and writes to the customer only if the colleague asks. Everything
 else holds: the run's role, allowlist, customer scope, the pipeline's hard rules and the role's modes. Unlike a
-message's run, a mention's goes on when the conversation is assigned to a person, or has no inbound message to answer;
-a reply to a conversation a person has is refused by Communications (`conversation_taken`) as always.
+message's run, a mention's goes on when the conversation has no inbound message to answer. When the conversation is assigned to a
+person other than the agent, the run is **note-only**: it is offered the `note` tool alone (no reply, tag, remember, follow-up or
+hand-off), every change `call_operation` would queue is refused, and it ends without a hand-off.
 
 ## Talking to an agent in the panel
 
