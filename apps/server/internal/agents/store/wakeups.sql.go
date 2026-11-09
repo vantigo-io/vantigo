@@ -42,6 +42,44 @@ func (q *Queries) DeleteRequestsOfCustomer(ctx context.Context, customerID *int3
 	return result.RowsAffected(), nil
 }
 
+const deleteRunsByIds = `-- name: DeleteRunsByIds :execrows
+DELETE FROM agents.runs WHERE id = ANY($1::uuid[])
+`
+
+func (q *Queries) DeleteRunsByIds(ctx context.Context, ids []uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRunsByIds, ids)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteStartItemsOfContacts = `-- name: DeleteStartItemsOfContacts :many
+DELETE FROM agents.review_items WHERE kind = 'start' AND (item->>'contactId')::integer = ANY($1::integer[])
+RETURNING run_id
+`
+
+// The conversations an agent would start to an erased contact (V26): the contact's id is kept on the item.
+func (q *Queries) DeleteStartItemsOfContacts(ctx context.Context, contactIds []int32) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, deleteStartItemsOfContacts, contactIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var run_id uuid.UUID
+		if err := rows.Scan(&run_id); err != nil {
+			return nil, err
+		}
+		items = append(items, run_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteTakenWakeupsBefore = `-- name: DeleteTakenWakeupsBefore :execrows
 DELETE FROM agents.wakeups WHERE taken_at IS NOT NULL AND taken_at < $1::timestamptz
 `

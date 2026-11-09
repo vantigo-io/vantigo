@@ -191,3 +191,12 @@ func TestAgentNever_IsSortedAndOnlyWhatIsLocked(t *testing.T) {
 		t.Errorf("the front desk's reply permission is locked off")
 	}
 }
+
+// A run about a subject has no conversation: an operation that names one is refused for it, whatever the id.
+func TestPin_RefusesAnOwnConversationOperationInARunAboutASubject(t *testing.T) {
+	t.Parallel()
+	rs := &runState{tpl: &frontDesk}
+	if r := rs.pin(opGetConversation, map[string]any{"id": "x"}, nil); r == nil {
+		t.Error("a run about a subject was allowed an operation on its conversation")
+	}
+}

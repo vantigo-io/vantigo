@@ -70,6 +70,12 @@ type AgentsHandedOff struct {
 	Reason         string
 }
 
+type AgentsHandoffNotice struct {
+	RoleID uuid.UUID
+	Day    time.Time
+	N      int32
+}
+
 type AgentsInstructionSuggestion struct {
 	ID        uuid.UUID
 	RoleID    uuid.UUID

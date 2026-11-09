@@ -2,12 +2,14 @@ package agents_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/agents"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -354,5 +356,54 @@ func TestRoles_TheNewFieldsAreValidatedAndLooseningThemIsTheOwnersAlone(t *testi
 	r.JSON(&digest)
 	if digest.Schedule.Kind != "none" || digest.Schedule.Day != nil {
 		t.Errorf("schedule after clearing = %+v", digest.Schedule)
+	}
+}
+
+// A conversation the agent would start to a contact goes when the contact is erased (V26), with the run
+// that wrote it and its transcript; another contact's stays.
+func TestErasure_AContactsStartedConversationAndItsRunGoWithThem(t *testing.T) {
+	t.Parallel()
+	g := newQueueRig(t)
+	mk := func(contact int32) uuid.UUID {
+		run, item := uuid.New(), uuid.New()
+		g.h.Exec(t, `INSERT INTO agents.runs (id, agent_id, role_id, conversation_id, subject_type, subject_id, customer_id, reason, state, started_at)
+		             VALUES ($1, $2, $3, '00000000-0000-0000-0000-000000000000', 'quote', gen_random_uuid()::text, 7, 'wakeup', 'waiting_review', $4)`, run, g.agent.ID, g.role.ID, g.h.Now())
+		g.h.Exec(t, `INSERT INTO agents.run_messages (run_id, role, text, created_at) VALUES ($1, 'assistant', 'Kari at kari@example.test', $2)`, run, g.h.Now())
+		g.h.Exec(t, `INSERT INTO agents.review_items (id, run_id, agent_id, role_id, conversation_id, customer_id, kind, item, score, sources, model_score, held_by, state, expires_at, created_at)
+		             VALUES ($1, $2, $3, $4, '00000000-0000-0000-0000-000000000000', 7, 'start', $5, 90, '[]', 90, '{}', 'waiting', $6, $6)`,
+			item, run, g.agent.ID, g.role.ID, fmt.Sprintf(`{"text":"Hei","disclosure":"x","channelId":"%s","to":"kari@example.test","subject":"Hei","contactId":%d}`, uuid.New(), contact), g.h.Now().Add(time.Hour))
+		return run
+	}
+	gone, kept := mk(41), mk(42)
+	eraser := agents.Module().CustomerPersonalData(g.h.Deps()).(contracts.ContactDataEraser)
+	out := erase(t, g, func(ctx context.Context, tx pgx.Tx) ([]contracts.ErasedData, error) {
+		return eraser.EraseContactData(ctx, tx, []int32{41})
+	})
+	if out["agents.runs"] < 1 {
+		t.Errorf("erased = %v, want the run counted", out)
+	}
+	if g.runExists(t, gone) || g.rows(t, `SELECT count(*) FROM agents.run_messages WHERE run_id = $1`, gone) != 0 || g.rows(t, `SELECT count(*) FROM agents.review_items WHERE run_id = $1`, gone) != 0 {
+		t.Error("the erased contact's started conversation, its run or its transcript is left")
+	}
+	if !g.runExists(t, kept) || g.rows(t, `SELECT count(*) FROM agents.review_items WHERE run_id = $1`, kept) != 1 {
+		t.Error("another contact's started conversation was erased")
+	}
+}
+
+// The wait after a quote is calendar days in the business zone: seven days from noon in Oslo before the clocks
+// change is noon in Oslo after it, an hour earlier in UTC.
+func TestTrigger_TheWaitAfterAQuoteIsCalendarDaysInTheBusinessZone(t *testing.T) {
+	t.Parallel()
+	loc := oslo(t)
+	g := newRig(t)
+	rl := addRoleOf(t, g, "sales_followup", "Follow-up")
+	sent := time.Date(2027, 3, 25, 12, 0, 0, 0, loc) // CET; the clocks change on Sunday 28 March
+	g.publish(t, contracts.QuoteSent{QuoteID: 77, Number: 1, Revision: 1, CustomerID: 7, Currency: "NOK", NetTotal: "1.00", SentAt: sent.UTC()})
+	var at time.Time
+	if err := g.h.Pool().QueryRow(context.Background(), `SELECT at FROM agents.wakeups WHERE role_id = $1`, rl.ID).Scan(&at); err != nil {
+		t.Fatal(err)
+	}
+	if want := time.Date(2027, 4, 1, 12, 0, 0, 0, loc); !at.Equal(want) {
+		t.Errorf("wakeup at %s, want %s (noon in Oslo)", at.UTC(), want.UTC())
 	}
 }

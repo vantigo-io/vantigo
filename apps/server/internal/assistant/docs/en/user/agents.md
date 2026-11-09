@@ -204,7 +204,7 @@ Changes to a role take effect at the agent's next step.
 - **Notices to colleagues.** The Timesheet reminders and the Project digest write by e-mail through
   Vantigo's notifications, not through Communications. Each message has the opening line that says it is
   an AI. The agent does not choose the recipient: a timesheet reminder goes to the person whose week it
-  is, a digest to the person named on the role. These notices are not left for review.
+  is, a digest to the person named on the role, who gets only what they may see themselves. A role sends at most 50 notices in 24 hours, and a role that hands work over mails its person for the first hand-off of a day and then for every tenth, with the count. These notices are not left for review.
 
 If the hand-off person is disabled or may no longer see conversations, the hand-off
 goes to the Inbox, unassigned, and the role page shows a warning beside the person.

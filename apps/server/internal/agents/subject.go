@@ -12,8 +12,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -41,6 +43,9 @@ const (
 	maxReasonChars  = 200
 	maxNoticeTitle  = 120
 	maxNoticeText   = 4000
+	// maxNoticesPerRoleDay is the most notices to colleagues one role sends in 24 hours (V30): an event
+	// for every person who missed a week must not become a flood of mail.
+	maxNoticesPerRoleDay = 50
 	// wakeupStale is how long after its time a wakeup is still acted on: a worker
 	// that was down for days does not send a week-old digest.
 	wakeupStale = 7 * 24 * time.Hour
@@ -203,7 +208,7 @@ func (rs *runState) notifyTool() agentloop.Tool {
 			if err := agentloop.ToolArgs(raw, &a); err != nil {
 				return agentloop.Refused("invalid_arguments", "title and text are required"), nil
 			}
-			title, body := strings.TrimSpace(a.Title), strings.TrimSpace(a.Text)
+			title, body := cleanLine(a.Title), strings.TrimSpace(a.Text)
 			if title == "" || body == "" {
 				return agentloop.Refused("invalid_arguments", "title and text are required"), nil
 			}
@@ -220,6 +225,10 @@ func (rs *runState) notifyTool() agentloop.Tool {
 			if !ok {
 				return agentloop.Refused("no_recipient", "there is no colleague to write to; hand off instead"), nil
 			}
+			now := rs.s.deps.Clock()
+			if n, err := store.New(rs.s.deps.Pool).CountSentSince(ctx, store.CountSentSinceParams{RoleID: rs.role.ID, Since: now.Add(-24 * time.Hour)}); err == nil && n >= maxNoticesPerRoleDay {
+				return agentloop.Refused("daily_limit", "this role has sent the most notices a day allows; end your work"), nil
+			}
 			u, err := rs.s.deps.Users.User(ctx, to)
 			if err != nil {
 				return agentloop.Result{Content: agentloop.Wrap(map[string]string{"error": "call_failed"}), Status: "error", Mode: "tool", Operation: "tool:" + toolNotify}, nil
@@ -227,9 +236,12 @@ func (rs *runState) notifyTool() agentloop.Tool {
 			if u == nil || !u.Active || u.Kind == contracts.UserKindAgent {
 				return agentloop.Refused("recipient_unavailable", "that colleague cannot be notified; hand off instead"), nil
 			}
+			if rs.tpl.Recipient && !rs.s.recipientMay(ctx, rs.tpl, to, rs.calledOperations(ctx)) {
+				return agentloop.Refused("recipient_unavailable", "that colleague may not see what you read, so the message cannot go to them; hand off instead"), nil
+			}
 			lang := disclosureLanguage(rs.agent.Languages, body)
 			full := withDisclosure(disclosureLine(rs.agent.DisclosureWording, lang, rs.agent.Name, rs.company), body)
-			chk := rs.s.contentCheck(ctx, rs.agent.ID, rs.role.Instructions, full)
+			chk := rs.s.contentCheck(ctx, rs.agent.ID, rs.role.Instructions, title+"\n\n"+full)
 			if !chk.OK || chk.ClaimsHuman {
 				return agentloop.Refused("rejected", "the message was stopped by the rules (it must not claim to be a person); rewrite it"), nil
 			}
@@ -244,7 +256,7 @@ func (rs *runState) notifyTool() agentloop.Tool {
 				rs.s.warn("agents: a notification failed", "run", rs.run.ID, "err", err)
 				return agentloop.Result{Content: agentloop.Wrap(map[string]string{"error": "call_failed"}), Status: "error", Mode: "tool", Operation: "tool:" + toolNotify}, nil
 			}
-			now := rs.s.deps.Clock()
+			now = rs.s.deps.Clock()
 			rs.mu.Lock()
 			rs.replied, rs.sent, rs.sentAt = true, true, now
 			rs.mu.Unlock()
@@ -271,6 +283,50 @@ func (rs *runState) notifyRecipient() (uuid.UUID, bool) {
 	return uuid.Nil, false
 }
 
+// cleanLine is s as one line of text: control characters, line ends included, are dropped.
+func cleanLine(s string) string {
+	return strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s))
+}
+
+// calledOperations are the operations the run called and was answered, from its action log.
+func (rs *runState) calledOperations(ctx context.Context) []string {
+	var out []string
+	for _, a := range rs.actionLog(ctx) {
+		if a.OK && !strings.HasPrefix(a.Operation, "tool:") && !slices.Contains(out, a.Operation) {
+			out = append(out, a.Operation)
+		}
+	}
+	return out
+}
+
+// recipientMay says the person satisfies the access rule of every one of the operations that
+// the template allows and that are in called (all of them when called is nil): what the agent
+// read for them is nothing they could not read themselves. Anything unreadable reads as no.
+func (s *server) recipientMay(ctx context.Context, tpl *template, userID uuid.UUID, called []string) bool {
+	if s.deps.Operations == nil || s.deps.Access == nil {
+		return false
+	}
+	for _, op := range tpl.Allowlist {
+		if called != nil && !slices.Contains(called, op.ID) {
+			continue
+		}
+		rule, ok := s.deps.Operations.AccessRule(op.ID)
+		if !ok {
+			return false
+		}
+		met, err := s.deps.Access.UserSatisfies(ctx, userID, rule)
+		if err != nil || !met {
+			return false
+		}
+	}
+	return true
+}
+
 // handOffSubject is a hand-off of a run with no conversation: the role's
 // hand-off person is told by mail, through the host's notifications, that the
 // agent handed work over, with a link to the run. The summary is not in the mail,
@@ -280,13 +336,20 @@ func (s *server) handOffSubject(ctx context.Context, agent store.AgentsAgent, ro
 	if role.HandOffUserID == nil || s.deps.Users == nil {
 		return
 	}
+	// One notice for the first hand-off of a role in a business day, then one for every tenth with the count, so
+	// that a role that hands off every run does not mail its person for each.
+	n, err := store.New(s.deps.Pool).CountHandOffNotice(ctx, store.CountHandOffNoticeParams{RoleID: role.ID, Day: s.day(s.deps.Clock())})
+	if err == nil && n != 1 && n%10 != 0 {
+		return
+	}
+	count := int(n)
 	link := ""
 	if cfg := s.deps.Config; cfg != nil && cfg.AppOrigin != "" {
 		link = cfg.AppOrigin + cfg.BasePath + "/agents/runs/" + runID.String()
 	}
 	notice := contracts.Notice{Texts: map[string]contracts.NoticeText{
-		"en": {Subject: agent.Name + " handed work to you", Body: noticeBody(fmt.Sprintf("%s handed work in the role %s to you.", agent.Name, role.Name), "Read what it found in Vantigo:", link)},
-		"nb": {Subject: agent.Name + " overlot arbeid til deg", Body: noticeBody(fmt.Sprintf("%s overlot arbeid i rollen %s til deg.", agent.Name, role.Name), "Les hva den fant i Vantigo:", link)},
+		"en": {Subject: agent.Name + " handed work to you", Body: noticeBody(fmt.Sprintf("%s handed work in the role %s to you (%d today).", agent.Name, role.Name, count), "Read what it found in Vantigo:", link)},
+		"nb": {Subject: agent.Name + " overlot arbeid til deg", Body: noticeBody(fmt.Sprintf("%s overlot arbeid i rollen %s til deg (%d i dag).", agent.Name, role.Name, count), "Les hva den fant i Vantigo:", link)},
 	}}
 	if err := s.deps.Users.Notify(context.WithoutCancel(ctx), *role.HandOffUserID, notice); err != nil {
 		s.warn("agents: notify the hand-off person", "err", err)

@@ -354,7 +354,7 @@ func (s *server) finish(ctx context.Context, row itemRow, reviewer uuid.UUID, ou
 				return err
 			}
 		}
-		if out.rerun {
+		if out.rerun && row.ConversationID != uuid.Nil {
 			return q.UpsertRunRequest(ctx, store.UpsertRunRequestParams{
 				RoleID: row.RoleID, ConversationID: row.ConversationID, Reason: reasonMessage, NotBefore: now, DueBy: now.Add(maxWait), Now: now,
 			})
@@ -378,6 +378,15 @@ func (s *server) finish(ctx context.Context, row itemRow, reviewer uuid.UUID, ou
 	}
 	if err != nil {
 		return gen.ReviewItem{}, nil, fmt.Errorf("agents: record the decision: %w", err)
+	}
+	if out.handOff != nil && row.ConversationID == uuid.Nil {
+		// A start that was withdrawn has no conversation to hand off: the hand-off person is told by mail.
+		q := store.New(s.deps.Pool)
+		if agent, err := q.GetAgentByID(ctx, row.AgentID); err == nil {
+			if role, err := q.GetRoleByID(ctx, row.RoleID); err == nil {
+				s.handOffSubject(ctx, agent, role, row.RunID)
+			}
+		}
 	}
 	return itemView(withNames(row, saved)), nil, nil
 }

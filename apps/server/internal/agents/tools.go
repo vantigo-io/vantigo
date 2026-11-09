@@ -181,6 +181,12 @@ func (rs *runState) allowed(id string) (allowedOperation, bool) {
 // status and nothing else (the customer link and the assignee are not the
 // model's to set; the assignee is hand_off's).
 func (rs *runState) pin(id string, params map[string]any, body json.RawMessage) *agentloop.Result {
+	if op, ok := rs.allowed(id); ok && op.OwnConversation && rs.isSubjectRun() {
+		// A run about a subject has no conversation of its own: nothing here may name one.
+		r := agentloop.Refused("own_conversation_only", "this work has no conversation")
+		r.Operation = id
+		return &r
+	}
 	if op, ok := rs.allowed(id); ok && op.OwnConversation {
 		if given, present := params["id"]; present {
 			if s, ok := given.(string); !ok || !strings.EqualFold(s, rs.run.ConversationID.String()) {

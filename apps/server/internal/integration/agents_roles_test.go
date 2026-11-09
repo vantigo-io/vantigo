@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -25,7 +26,7 @@ import (
 // and the project digest write to a colleague through the host's notifications.
 // The model is scripted; everything it reads and writes is real.
 
-var rolesRecorder = mergedRecorder("agents", modCustomers, modInvoices, modProducts, modOrders, "communications", "knowledge")
+var rolesRecorder = mergedRecorder("agents", modCustomers, modInvoices, modProducts, modOrders, modProjects, "communications", "knowledge")
 
 // salesRig is a front desk rig with Orders composed, and a second role, the sales
 // follow-up, on a channel of its own.
@@ -244,6 +245,9 @@ func TestSalesFollowup_StartConversationIsHeldToTheContactsAndTheRolesOwnChannel
 	s.script.setTurns(
 		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{readOp("getQuote", map[string]any{"id": quote})}},
 		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{readOp("getCustomersByIdContacts", map[string]any{"id": s.customer})}},
+		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{toolCall("call_operation", map[string]any{
+			"id": "postCommunicationsConversations", "body": map[string]any{"channelId": s.salesChannel.String(), "to": []map[string]string{{"email": "attacker@evil.test"}}, "subject": "x", "textBody": "bypass"},
+		})}},
 		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{startCall(s.salesChannel, "attacker@evil.test", text, []string{read}, 90)}},
 		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{startCall(s.channel, s.contact, text, []string{read}, 90)}},
 		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{startCall(s.salesChannel, s.contact, text, []string{read}, 90)}},
@@ -274,7 +278,7 @@ func TestSalesFollowup_StartConversationIsHeldToTheContactsAndTheRolesOwnChannel
 	}
 	rows.Close()
 	all := strings.Join(results, "\n")
-	for _, code := range []string{"not_a_contact", "channel_not_yours", "already_started"} {
+	for _, code := range []string{"use_the_tool", "not_a_contact", "channel_not_yours", "already_started"} {
 		if !strings.Contains(all, code) {
 			t.Errorf("the tool results do not hold %q:\n%s", code, all)
 		}
@@ -430,9 +434,12 @@ type colleagueRig struct {
 
 func newColleagueRig(t *testing.T, turns ...modtest.ChatTurn) *colleagueRig {
 	t.Helper()
-	r := newRunRig(t, "review", turns...)
+	r := newRunRigWith(t, "review", []modtest.Option{
+		modtest.WithRecorder(rolesRecorder),
+		modtest.WithModule(moduleNamed(t, modProjects)),
+	}, turns...)
 	c := &colleagueRig{runRig: r}
-	_, c.colleague = r.h.SignInUser(t)
+	_, c.colleague = r.h.SignInUser(t, "projects:access")
 	c.email = modtest.One[string](t, r.h, `SELECT email FROM identity.users WHERE id = $1`, c.colleague)
 	for _, tpl := range []string{"timesheet_reminders", "project_digest"} {
 		okJSON(t, r.owner, http.MethodPost, "/api/v1/agents/agents/"+r.agentID.String()+"/roles", map[string]any{"template": tpl, "name": tpl, "instructions": ""}, nil)
@@ -461,6 +468,14 @@ func newColleagueRig(t *testing.T, turns ...modtest.ChatTurn) *colleagueRig {
 			}
 		}
 	}
+	// The levels the two new roles need, and the Identity role that holds them.
+	a := &agentsInstall{h: r.h, owner: r.owner}
+	var keys []string
+	for key, level := range a.needs(t, r.agentID) {
+		a.level(t, r.agentID, key, level)
+		keys = append(keys, key)
+	}
+	a.roles(t, r.userID, keys...)
 	return c
 }
 
@@ -675,4 +690,173 @@ func TestChangeMode_OnlyAnOperationTheTemplateMarksSafeFollowsTheMode(t *testing
 			}
 		})
 	}
+}
+
+// TestStartThroughAnAgentGrant_NamesAChannelAndTakesNoCcAndNoPersonalSending is Communications' half of
+// V29: through an agent grant POST /conversations must name its channel, and a Cc or a personal
+// mailbox is refused, whatever a caller sends.
+func TestStartThroughAnAgentGrant_NamesAChannelAndTakesNoCcAndNoPersonalSending(t *testing.T) {
+	t.Parallel()
+	s := newSalesRig(t, "auto")
+	ops := s.h.Operations(t)
+	ops.SetGate(contracts.GrantAgent, func(_ context.Context, info operations.Info) operations.Mode { return info.Mode })
+	agent, _ := s.h.AgentContext(t, &s.customer, "communications:conversations-reply")
+	call := func(body map[string]any) int {
+		raw, _ := json.Marshal(body)
+		res, err := ops.Call(agent, operations.CallRequest{OperationID: "postCommunicationsConversations", Body: raw, Headers: map[string]string{"Idempotency-Key": "k-" + uuid.NewString()}, Confirmed: true})
+		if err != nil {
+			t.Fatalf("call: %v", err)
+		}
+		return res.Status
+	}
+	to := []map[string]string{{"email": s.contact}}
+	base := func() map[string]any {
+		return map[string]any{"channelId": s.salesChannel.String(), "to": to, "subject": "Hei", "textBody": "Hei"}
+	}
+	if got := call(map[string]any{"to": to, "subject": "Hei", "textBody": "Hei"}); got != http.StatusBadRequest {
+		t.Errorf("no channelId = %d, want 400", got)
+	}
+	cc := base()
+	cc["cc"] = []map[string]string{{"email": "boss@example.test"}}
+	if got := call(cc); got != http.StatusUnprocessableEntity {
+		t.Errorf("a Cc = %d, want 422 agent_start_not_allowed", got)
+	}
+	personal := base()
+	personal["sendFromPersonal"] = true
+	if got := call(personal); got != http.StatusUnprocessableEntity {
+		t.Errorf("personal sending = %d, want 422 agent_start_not_allowed", got)
+	}
+	if got := call(base()); got != http.StatusCreated {
+		t.Errorf("a plain start = %d, want 201", got)
+	}
+}
+
+// putDigest saves the digest role with a recipient and answers the response.
+func (c *colleagueRig) putDigest(t *testing.T, recipient uuid.UUID) *modtest.Response {
+	t.Helper()
+	var ag struct {
+		Roles []struct {
+			ID      string `json:"id"`
+			Version int    `json:"version"`
+		} `json:"roles"`
+	}
+	okJSON(t, c.owner, http.MethodGet, "/api/v1/agents/agents/"+c.agentID.String(), nil, &ag)
+	version := 0
+	for _, r := range ag.Roles {
+		if r.ID == c.digest.String() {
+			version = r.Version
+		}
+	}
+	return c.owner.Do(http.MethodPut, fmt.Sprintf("/api/v1/agents/agents/%s/roles/%s", c.agentID, c.digest), map[string]any{
+		"name": "Digest", "instructions": "Write the digest.", "replyMode": "review", "threshold": 85, "capsToolCalls": 30, "capsTurns": 8,
+		"maxRepliesPerDay": 5, "handOffUserId": nil, "recipientUserId": recipient.String(),
+	}, modtest.Header("If-Match", fmt.Sprint(version)))
+}
+
+// TestProjectDigest_TheRecipientMustHoldWhatTheDigestReads: the note carries what the agent read, so a
+// person who may not read it is no recipient, when the role is saved and when the note is sent.
+func TestProjectDigest_TheRecipientMustHoldWhatTheDigestReads(t *testing.T) {
+	t.Parallel()
+	c := newColleagueRig(t,
+		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{readOp("getProjects", map[string]any{})}},
+		notifyTurn("Ukens prosjekter", "Ingen prosjekter."), modtest.ChatTurn{Text: "Ferdig."})
+	_, outsider := c.h.SignInUser(t) // holds no project permission
+	if r := c.putDigest(t, outsider); r.Status != http.StatusBadRequest || !strings.Contains(string(r.Body), "recipientUserId") {
+		t.Errorf("a recipient with no project access = %d %s, want 400", r.Status, r.Body)
+	}
+	if r := c.putDigest(t, c.colleague); r.Status != http.StatusOK {
+		t.Fatalf("a recipient with project access = %d %s", r.Status, r.Body)
+	}
+	// The recipient loses the permission before the note is sent: the note is refused.
+	c.h.Exec(t, `DELETE FROM identity.role_permissions WHERE permission_key = 'projects:access'
+	             AND role_id IN (SELECT role_id FROM identity.user_roles WHERE user_id = $1)`, c.colleague)
+	c.h.Exec(t, `INSERT INTO agents.wakeups (id, role_id, subject_type, subject_id, at, reason, created_at) VALUES ($1, $2, 'schedule', 'now', $3, 'schedule', $3)`,
+		uuid.New(), c.digest, c.h.Now().Add(-time.Minute))
+	c.awaitSubjectRun(t, "schedule")
+	if mails := c.mails(t); len(mails) != 0 {
+		t.Errorf("mails = %+v, want none to a recipient who may not read the projects", mails)
+	}
+}
+
+// TestTimesheetReminders_ARoleSendsAtMostFiftyNoticesADay.
+func TestTimesheetReminders_ARoleSendsAtMostFiftyNoticesADay(t *testing.T) {
+	t.Parallel()
+	c := newColleagueRig(t, notifyTurn("Husk timelisten", "Uke 45 mangler timer."), modtest.ChatTurn{Text: "Ferdig."})
+	for range 50 {
+		c.h.Exec(t, `INSERT INTO agents.runs (id, agent_id, role_id, conversation_id, subject_type, subject_id, reason, state, started_at, ended_at, sent_at)
+		             VALUES (gen_random_uuid(), $1, $2, '00000000-0000-0000-0000-000000000000', 'person_week', gen_random_uuid()::text, 'event', 'done', $3, $3, $3)`,
+			c.agentID, c.reminders, c.h.Now())
+	}
+	if err := publishOnOutbox(t, c.h, contracts.WeekUnsubmitted{UserID: c.colleague, WeekStart: "2026-11-02", Hours: "0.00"}); err != nil {
+		t.Fatal(err)
+	}
+	d := events.NewDispatcher(c.h.Pool(), agents.Module().EventHandlers(c.h.Deps()), c.h.Deps().Logger, c.h.Now)
+	if err := d.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	c.awaitSubjectRunNewest(t, "person_week", c.reminders)
+	if mails := c.mails(t); len(mails) != 0 {
+		t.Errorf("mails = %+v, want none past the day's limit", mails)
+	}
+}
+
+// TestHandOffNotices_AreCoalescedForARoleADay: a role that hands off every run mails its person once, then
+// at every tenth, with the count.
+func TestHandOffNotices_AreCoalescedForARoleADay(t *testing.T) {
+	t.Parallel()
+	hand := modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{toolCall("hand_off", map[string]any{"summary": "Cannot tell.", "reason": "unsure"})}}
+	c := newColleagueRig(t, hand, hand, hand)
+	var ag struct {
+		Roles []struct {
+			ID      string `json:"id"`
+			Version int    `json:"version"`
+		} `json:"roles"`
+	}
+	okJSON(t, c.owner, http.MethodGet, "/api/v1/agents/agents/"+c.agentID.String(), nil, &ag)
+	for _, r := range ag.Roles {
+		if r.ID == c.reminders.String() {
+			resp := c.owner.Do(http.MethodPut, fmt.Sprintf("/api/v1/agents/agents/%s/roles/%s", c.agentID, r.ID), map[string]any{
+				"name": "Reminders", "instructions": "Remind.", "replyMode": "review", "threshold": 85, "capsToolCalls": 30, "capsTurns": 8,
+				"maxRepliesPerDay": 5, "handOffUserId": c.colleague.String(),
+			}, modtest.Header("If-Match", fmt.Sprint(r.Version)))
+			if resp.Status != http.StatusOK {
+				t.Fatalf("set the hand-off person: %d %s", resp.Status, resp.Body)
+			}
+		}
+	}
+	for range 3 {
+		if err := publishOnOutbox(t, c.h, contracts.WeekUnsubmitted{UserID: uuid.New(), WeekStart: "2026-11-02", Hours: "0.00"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d := events.NewDispatcher(c.h.Pool(), agents.Module().EventHandlers(c.h.Deps()), c.h.Deps().Logger, c.h.Now)
+	if err := d.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(40 * time.Second)
+	for time.Now().Before(deadline) && c.h.Count(t, `SELECT count(*) FROM agents.runs WHERE role_id = $1 AND state = 'handed_off' AND outcome IS NOT NULL`, c.reminders) < 3 {
+		time.Sleep(200 * time.Millisecond)
+	}
+	if n := c.h.Count(t, `SELECT count(*) FROM agents.runs WHERE role_id = $1 AND state = 'handed_off'`, c.reminders); n != 3 {
+		t.Fatalf("%d runs handed off, want 3; log:\n%s", n, c.h.Logs())
+	}
+	if mails := c.mails(t); len(mails) != 1 {
+		t.Errorf("%d mails for three hand-offs, want one", len(mails))
+	}
+}
+
+// awaitSubjectRunNewest is awaitSubjectRun for the newest run of a role.
+func (r *runRig) awaitSubjectRunNewest(t *testing.T, subjectType string, role uuid.UUID) {
+	t.Helper()
+	deadline := time.Now().Add(40 * time.Second)
+	for time.Now().Before(deadline) {
+		var state string
+		err := r.h.Pool().QueryRow(context.Background(),
+			`SELECT state FROM agents.runs WHERE subject_type = $1 AND role_id = $2 AND sent_at IS NULL ORDER BY started_at DESC LIMIT 1`, subjectType, role).Scan(&state)
+		if err == nil && state != "running" && state != "queued" {
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("the run never ended; log:\n%s", r.h.Logs())
 }

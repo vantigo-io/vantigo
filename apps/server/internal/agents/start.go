@@ -32,6 +32,8 @@ type storedStart struct {
 	ChannelID  uuid.UUID `json:"channelId"`
 	To         string    `json:"to"`
 	Subject    string    `json:"subject"`
+	// ContactID is the contact whose address it is, kept so that the contact's erasure finds the item.
+	ContactID int32 `json:"contactId,omitempty"`
 }
 
 const maxStartSubject = 200
@@ -173,7 +175,7 @@ func (rs *runState) start(ctx context.Context, raw json.RawMessage) agentloop.Re
 	dec := decideReply(in)
 	rs.recordVerdict(ctx, in, dec, score, *a.Score, valid)
 
-	st := storedStart{Text: body, Disclosure: line, ChannelID: channelID, To: to, Subject: subject}
+	st := storedStart{Text: body, Disclosure: line, ChannelID: channelID, To: to, Subject: subject, ContactID: rs.contacts.ByEmail[to]}
 	item, _ := json.Marshal(st)
 	rs.conv.ChannelID = channelID // the item belongs to the channel it would be sent on
 	if dec.Send {
@@ -182,11 +184,10 @@ func (rs *runState) start(ctx context.Context, raw json.RawMessage) agentloop.Re
 	return rs.queueStart(ctx, item, score, valid, *a.Score, dec.Held)
 }
 
-// startKey makes a run's start idempotent per role, subject, address and day: a
-// run that is retried the same day starts the conversation once.
+// startKey makes a start idempotent per role, subject and address: a run that is retried, or
+// a second wakeup about the same subject, starts the conversation once.
 func (rs *runState) startKey(to string) string {
-	day := rs.run.StartedAt.UTC().Format(time.DateOnly)
-	return fmt.Sprintf("agents-start-%s-%s-%s-%s-%s", rs.role.ID, rs.run.SubjectType, rs.run.SubjectID, day, to)
+	return fmt.Sprintf("agents-start-%s-%s-%s-%s", rs.role.ID, rs.run.SubjectType, rs.run.SubjectID, to)
 }
 
 // startRequest is the call that starts the conversation through Communications as

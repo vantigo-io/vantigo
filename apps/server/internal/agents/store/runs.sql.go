@@ -123,6 +123,25 @@ func (q *Queries) ClaimDueRequest(ctx context.Context, now time.Time) (ClaimDueR
 	return i, err
 }
 
+const countHandOffNotice = `-- name: CountHandOffNotice :one
+INSERT INTO agents.handoff_notices (role_id, day, n) VALUES ($1, $2::date, 1)
+ON CONFLICT (role_id, day) DO UPDATE SET n = agents.handoff_notices.n + 1
+RETURNING n
+`
+
+type CountHandOffNoticeParams struct {
+	RoleID uuid.UUID
+	Day    time.Time
+}
+
+// Counts one more hand-off of a role about a subject on a business day, atomically, and answers the count.
+func (q *Queries) CountHandOffNotice(ctx context.Context, arg CountHandOffNoticeParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countHandOffNotice, arg.RoleID, arg.Day)
+	var n int32
+	err := row.Scan(&n)
+	return n, err
+}
+
 const countRepliesSince = `-- name: CountRepliesSince :one
 SELECT (
     (SELECT count(*) FROM agents.runs r WHERE r.conversation_id = $1 AND r.sent_at >= $2::timestamptz) +
@@ -157,6 +176,23 @@ type CountRunsSinceParams struct {
 // Runs of a conversation started since a moment (S7: at most 6 an hour).
 func (q *Queries) CountRunsSince(ctx context.Context, arg CountRunsSinceParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countRunsSince, arg.ConversationID, arg.Since, arg.ExceptRun)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countSentSince = `-- name: CountSentSince :one
+SELECT count(*) FROM agents.runs WHERE role_id = $1 AND conversation_id = '00000000-0000-0000-0000-000000000000' AND sent_at >= $2::timestamptz
+`
+
+type CountSentSinceParams struct {
+	RoleID uuid.UUID
+	Since  time.Time
+}
+
+// Messages a role sent since a moment in runs about a subject: its notices to colleagues (V30).
+func (q *Queries) CountSentSince(ctx context.Context, arg CountSentSinceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSentSince, arg.RoleID, arg.Since)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
