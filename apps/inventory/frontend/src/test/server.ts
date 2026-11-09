@@ -5,6 +5,7 @@ import type { InventoryMeta } from "../api/meta";
 import type { InventoryMovement, InventoryMovementKind } from "../api/movements";
 import type { InventorySite, InventorySiteRef } from "../api/sites";
 import type { InventoryProductStock, InventoryVariantRef, InventoryVariantStock } from "../api/stock";
+import type { InventoryTransfer, InventoryTransferLine } from "../api/transfers";
 import { jsonResponse } from "./api";
 import { type StubbedFetch, stubFetch } from "./fetch";
 
@@ -105,6 +106,7 @@ export interface InventoryServer {
   /** Answers `GET /products/{id}/stock` instead of working it out: a Service product's empty answer. */
   productStock?: Record<number, InventoryProductStock>;
   counts?: InventoryCount[];
+  transfers?: InventoryTransfer[];
   /** How many locations a site's list answers before it says it was truncated; 10,000 as the server's. */
   locationLimit?: number;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
@@ -118,7 +120,61 @@ export interface InventoryState {
   reservations: Reservation[];
   movements: InventoryMovement[];
   counts: InventoryCount[];
+  transfers: InventoryTransfer[];
 }
+
+/** A transfer line as the fixtures write it: a variant, what was asked, and what has happened to it so far. */
+export const transferLine = (
+  id: number,
+  variant: InventoryVariantRef,
+  quantity: number,
+  totals: Partial<Pick<InventoryTransferLine, "sent" | "received" | "missing" | "returned" | "fromLocation">> = {},
+): InventoryTransferLine => {
+  const sent = totals.sent ?? 0;
+  const received = totals.received ?? 0;
+  const missing = totals.missing ?? 0;
+  const returned = totals.returned ?? 0;
+  return {
+    id,
+    lineNo: id,
+    variant,
+    quantity,
+    sent,
+    received,
+    missing,
+    returned,
+    inTransit: sent - received - missing - returned,
+    ...(totals.fromLocation ? { fromLocation: totals.fromLocation } : {}),
+  };
+};
+
+/** A transfer from Oslo to Bergen, a draft unless the fixture says otherwise. */
+export const transferFixture = (
+  fields: Partial<InventoryTransfer> & Pick<InventoryTransfer, "lines">,
+): InventoryTransfer => {
+  const [osl, bgo] = sites();
+  const ref = (site: InventorySite) => ({
+    id: site.id,
+    code: site.code,
+    name: site.name,
+    kind: site.kind,
+    status: site.status,
+  });
+  return {
+    id: 5,
+    number: 1042,
+    status: "draft",
+    fromSite: ref(osl),
+    toSite: ref(bgo),
+    revision: 1,
+    createdAt: STAMP,
+    createdBy: { displayName: "Kari N." },
+    updatedAt: STAMP,
+    actions: [],
+    ...fields,
+    inTransit: fields.lines.reduce((sum, line) => sum + line.inTransit, 0),
+  };
+};
 
 /** A Euro pallet of 600 and a box of 15, with their barcodes, for a variant that is stocked in packagings (I24). */
 export const packagings = () => [
@@ -166,6 +222,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     reservations: server.reservations ?? [],
     movements: server.movements ?? [],
     counts: server.counts ?? [],
+    transfers: server.transfers ?? [],
   };
   const catalog = server.variants ?? variants();
   let nextId = 900;
@@ -177,6 +234,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     canAdjust: true,
     canReceive: true,
     canCount: true,
+    canTransfer: true,
     ...server.meta,
   };
   const siteRef = (site: InventorySite): InventorySiteRef => ({
@@ -227,6 +285,12 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
       ...(meta.canViewStock
         ? {
             stockLines: state.balances.filter((one) => one.onHand !== 0 && inSite.has(one.locationId)).length,
+            incomingTransfers: state.transfers.filter(
+              (one) => one.toSite.id === site.id && (one.status === "sent" || one.status === "partly_received"),
+            ).length,
+            outgoingTransfers: state.transfers.filter(
+              (one) => one.fromSite.id === site.id && (one.status === "sent" || one.status === "partly_received"),
+            ).length,
             ...(lastReceipt ? { lastReceiptAt: lastReceipt.postedAt } : {}),
           }
         : {}),
@@ -270,6 +334,13 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
       .sort(
         (a, b) => a.location.fullCode.localeCompare(b.location.fullCode) || a.variant.sku.localeCompare(b.variant.sku),
       );
+  /** What is in transit of a variant to a site on its open transfers (I46). */
+  const incomingAt = (variantId: number, siteId: number) =>
+    state.transfers
+      .filter((one) => one.toSite.id === siteId)
+      .flatMap((one) => one.lines)
+      .filter((line) => line.variant.id === variantId)
+      .reduce((sum, line) => sum + line.inTransit, 0);
   const variantStock = (variant: InventoryVariantRef): InventoryVariantStock => {
     const rows = rowsOf(state.balances.filter((one) => one.variantId === variant.id));
     const reservedAt = (siteId?: number) =>
@@ -281,9 +352,10 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
         const here = rows.filter((row) => row.location.siteId === site.id);
         const onHand = here.reduce((sum, row) => sum + row.onHand, 0);
         const reserved = reservedAt(site.id);
-        return { site: siteRef(site), onHand, reserved, available: onHand - reserved, rows: here };
+        const incoming = incomingAt(variant.id, site.id);
+        return { site: siteRef(site), onHand, reserved, available: onHand - reserved, incoming, rows: here };
       })
-      .filter((one) => one.rows.length > 0 || one.reserved !== 0);
+      .filter((one) => one.rows.length > 0 || one.reserved !== 0 || one.incoming !== 0);
     const totalOnHand = rows.reduce((sum, row) => sum + row.onHand, 0);
     const totalReserved = reservedAt();
     return { variant, totalOnHand, totalReserved, totalAvailable: totalOnHand - totalReserved, sites: perSite };
@@ -330,7 +402,332 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     return jsonResponse(201, movement);
   };
 
-  const answer = (method: string, path: string, query: URLSearchParams, body: unknown): Response => {
+  const transferAnswer = (one: InventoryTransfer): InventoryTransfer => ({
+    ...one,
+    lines: one.lines.map((line) => ({
+      ...line,
+      inTransit: line.sent - line.received - line.missing - line.returned,
+    })),
+    inTransit: one.lines.reduce((sum, line) => sum + line.sent - line.received - line.missing - line.returned, 0),
+  });
+  const stale = (one: InventoryTransfer, headers: Headers) =>
+    headers.get("If-Match") !== String(one.revision)
+      ? inventoryProblem(409, "revision_conflict", { title: "Revision conflict" })
+      : undefined;
+  const transferRoutes = (
+    method: string,
+    path: string,
+    query: URLSearchParams,
+    body: unknown,
+    headers: Headers,
+  ): Response | undefined => {
+    if (path === "/stock/sites") {
+      const variantIds = (query.get("variantIds") ?? "").split(",").filter(Boolean).map(Number);
+      const siteIds = (query.get("siteIds") ?? "").split(",").filter(Boolean).map(Number);
+      return jsonResponse(200, {
+        stock: variantIds.flatMap((variantId) =>
+          siteIds.map((siteId) => {
+            const held = state.balances
+              .filter(
+                (one) =>
+                  one.variantId === variantId && one.onHand !== 0 && locationOf(one.locationId)?.siteId === siteId,
+              )
+              .sort((a, b) => b.onHand - a.onHand);
+            const onHand = held.reduce((sum, one) => sum + one.onHand, 0);
+            const reserved = state.reservations
+              .filter((one) => one.variantId === variantId && one.siteId === siteId)
+              .reduce((sum, one) => sum + one.quantity, 0);
+            return {
+              variantId,
+              siteId,
+              onHand,
+              reserved,
+              available: onHand - reserved,
+              incoming: incomingAt(variantId, siteId),
+              locations: held.map((one) => ({
+                location: ref(locationOf(one.locationId) as InventoryLocation),
+                onHand: one.onHand,
+              })),
+            };
+          }),
+        ),
+      });
+    }
+    if (path === "/transfers" && method === "GET") {
+      const status = query.get("status");
+      const q = (query.get("q") ?? "").toUpperCase();
+      const variantId = Number(query.get("variantId") ?? 0);
+      const rows = state.transfers.filter(
+        (one) =>
+          (!status ||
+            (status === "open" ? ["draft", "sent", "partly_received"].includes(one.status) : one.status === status)) &&
+          (!query.get("fromSiteId") || one.fromSite.id === Number(query.get("fromSiteId"))) &&
+          (!query.get("toSiteId") || one.toSite.id === Number(query.get("toSiteId"))) &&
+          (!variantId || one.lines.some((line) => line.variant.id === variantId)) &&
+          (query.get("withMissing") !== "true" ||
+            one.lines.some((line) => line.missing > 0 && (!variantId || line.variant.id === variantId))) &&
+          (!q || String(one.number) === q || one.lines.some((line) => line.variant.sku.toUpperCase() === q)),
+      );
+      return jsonResponse(200, {
+        transfers: rows.map((one) => ({
+          id: one.id,
+          number: one.number,
+          status: one.status,
+          fromSite: one.fromSite,
+          toSite: one.toSite,
+          createdAt: one.createdAt,
+          updatedAt: one.updatedAt,
+          lineCount: one.lines.length,
+          inTransit: transferAnswer(one).inTransit,
+          missing: one.lines.reduce((sum, line) => sum + line.missing, 0),
+          overdue: one.reference === "overdue",
+          ...(one.reference ? { reference: one.reference } : {}),
+          ...(one.expectedArrival ? { expectedArrival: one.expectedArrival } : {}),
+          ...(one.sentAt ? { sentAt: one.sentAt } : {}),
+        })),
+      });
+    }
+    const draftLines = (input: {
+      lines: { variantId: number; quantity?: number; entered?: Entered; suggestion?: unknown }[];
+    }) =>
+      input.lines.map((line, index) => ({
+        ...transferLine(++nextId, variantOf(line.variantId) ?? catalog[0], amount(line)),
+        lineNo: index + 1,
+        ...(line.entered ? { entered: snapshot(line.variantId, line.entered) } : {}),
+        ...(line.suggestion ? { suggestion: line.suggestion as InventoryTransferLine["suggestion"] } : {}),
+      }));
+    const siteRefOf = (siteId: number) => siteRef(state.sites.find((one) => one.id === siteId) ?? state.sites[0]);
+    if (path === "/transfers" && method === "POST") {
+      const input = body as Parameters<typeof draftLines>[0] & {
+        fromSiteId: number;
+        toSiteId: number;
+        reference?: string;
+        note?: string;
+        expectedArrival?: string;
+      };
+      if (input.fromSiteId === input.toSiteId) return inventoryProblem(400, "transfer_same_site");
+      const created: InventoryTransfer = transferAnswer({
+        id: ++nextId,
+        number: 1001 + state.transfers.length,
+        status: "draft",
+        fromSite: siteRefOf(input.fromSiteId),
+        toSite: siteRefOf(input.toSiteId),
+        revision: 1,
+        createdAt: STAMP,
+        createdBy: { displayName: "Test User" },
+        updatedAt: STAMP,
+        actions: [],
+        inTransit: 0,
+        lines: draftLines(input),
+        ...(input.reference ? { reference: input.reference } : {}),
+        ...(input.note ? { note: input.note } : {}),
+        ...(input.expectedArrival ? { expectedArrival: input.expectedArrival } : {}),
+      });
+      state.transfers.unshift(created);
+      return jsonResponse(201, created);
+    }
+    const match = /^\/transfers\/(\d+)(\/send|\/receive|\/cancel|\/note\.pdf)?$/.exec(path);
+    if (!match) return undefined;
+    const at = state.transfers.findIndex((one) => one.id === Number(match[1]));
+    const one = state.transfers[at];
+    if (!one) return new Response(null, { status: 404 });
+    const action = match[2];
+    const save = (next: InventoryTransfer) => {
+      const answered = transferAnswer(next);
+      state.transfers[at] = answered;
+      return jsonResponse(200, answered);
+    };
+    if (!action && method === "GET") return jsonResponse(200, transferAnswer(one));
+    if (action === "/note.pdf")
+      return new Response(new Blob(["%PDF-1.7 note"], { type: "application/pdf" }), {
+        status: 200,
+        headers: { "Content-Type": "application/pdf" },
+      });
+    if (!action && method === "PUT") {
+      const conflict = stale(one, headers);
+      if (conflict) return conflict;
+      if (one.status !== "draft") return inventoryProblem(409, "transfer_not_draft", { title: "Not a draft" });
+      const input = body as Parameters<typeof draftLines>[0] & {
+        fromSiteId: number;
+        toSiteId: number;
+        reference?: string;
+      };
+      return save({
+        ...one,
+        fromSite: siteRefOf(input.fromSiteId),
+        toSite: siteRefOf(input.toSiteId),
+        reference: input.reference,
+        revision: one.revision + 1,
+        lines: draftLines(input),
+      });
+    }
+    if (!action && method === "DELETE") {
+      const conflict = stale(one, headers);
+      if (conflict) return conflict;
+      state.transfers.splice(at, 1);
+      return new Response(null, { status: 204 });
+    }
+    const movement = (
+      kind: InventoryMovementKind,
+      siteId: number,
+      lines: { variantId: number; from?: number; to?: number; quantity: number }[],
+    ) => {
+      posted(kind, { siteId, clientRequestId: `transfer-${one.id}-${kind}` }, lines, {
+        transfer: { id: one.id, number: one.number },
+      });
+      return state.movements[0].id;
+    };
+    if (action === "/send") {
+      const conflict = stale(one, headers);
+      if (conflict) return conflict;
+      const input = body as {
+        lines: { lineId: number; fromLocationId?: number }[];
+        receive?: { lines: { lineId: number; toLocationId: number }[] };
+      };
+      const refused = input.lines
+        .map((line, index) => ({ line, index }))
+        .filter(({ line }) => line.fromLocationId === undefined)
+        .map(({ index }) => ({ index, code: "from_location_required", detail: "No source." }));
+      if (refused.length > 0) return inventoryProblem(400, undefined, { lines: refused });
+      const sourceOf = (lineId: number) => input.lines.find((line) => line.lineId === lineId)?.fromLocationId ?? 0;
+      const sentId = movement(
+        "transfer_out",
+        one.fromSite.id,
+        one.lines.map((line) => ({ variantId: line.variant.id, from: sourceOf(line.id), quantity: line.quantity })),
+      );
+      const lines = one.lines.map((line) => {
+        const from = locationOf(sourceOf(line.id));
+        return { ...line, sent: line.quantity, ...(from ? { fromLocation: ref(from) } : {}) };
+      });
+      const actions = [
+        ...one.actions,
+        {
+          id: ++nextId,
+          kind: "send" as const,
+          movementId: sentId,
+          postedAt: STAMP,
+          postedBy: { displayName: "Test User" },
+          lines: lines.map((line) => ({
+            kind: "sent" as const,
+            lineId: line.id,
+            quantity: line.sent,
+            location: line.fromLocation,
+          })),
+        },
+      ];
+      if (!input.receive)
+        return save({
+          ...one,
+          status: "sent",
+          sentAt: STAMP,
+          sentBy: { displayName: "Test User" },
+          revision: one.revision + 1,
+          lines,
+          actions,
+        });
+      const destinationOf = (lineId: number) =>
+        input.receive?.lines.find((line) => line.lineId === lineId)?.toLocationId ?? 0;
+      const receivedId = movement(
+        "transfer_in",
+        one.toSite.id,
+        lines.map((line) => ({ variantId: line.variant.id, to: destinationOf(line.id), quantity: line.sent })),
+      );
+      return save({
+        ...one,
+        status: "received",
+        sentAt: STAMP,
+        revision: one.revision + 1,
+        lines: lines.map((line) => ({ ...line, received: line.sent })),
+        actions: [
+          ...actions,
+          {
+            id: ++nextId,
+            kind: "receive" as const,
+            movementId: receivedId,
+            postedAt: STAMP,
+            postedBy: { displayName: "Test User" },
+            lines: lines.map((line) => ({ kind: "received" as const, lineId: line.id, quantity: line.sent })),
+          },
+        ],
+      });
+    }
+    if (action === "/receive") {
+      if (one.status !== "sent" && one.status !== "partly_received")
+        return inventoryProblem(409, "transfer_not_receivable", { title: "Not receivable" });
+      const input = body as {
+        lines: { lineId: number; toLocationId: number; quantity?: number; entered?: Entered }[];
+        close?: { reason: InventoryTransfer["closeReason"]; note?: string };
+      };
+      const current = transferAnswer(one);
+      const refused = input.lines
+        .map((line, index) => ({ line, index }))
+        .filter(({ line }) => {
+          const held = current.lines.find((one) => one.id === line.lineId);
+          return !held || amount({ ...line, variantId: held.variant.id }) > held.inTransit;
+        })
+        .map(({ index }) => ({ index, code: "transfer_over_received", detail: "Too many." }));
+      if (refused.length > 0) return inventoryProblem(400, undefined, { lines: refused });
+      const now = input.lines.map((line) => {
+        const held = current.lines.find((one) => one.id === line.lineId) as InventoryTransferLine;
+        return { line, held, quantity: amount({ ...line, variantId: held.variant.id }) };
+      });
+      const movementId =
+        now.length > 0
+          ? movement(
+              "transfer_in",
+              one.toSite.id,
+              now.map(({ line, held, quantity }) => ({ variantId: held.variant.id, to: line.toLocationId, quantity })),
+            )
+          : undefined;
+      let lines = current.lines.map((line) => {
+        const got = now.filter((one) => one.held.id === line.id).reduce((sum, one) => sum + one.quantity, 0);
+        return { ...line, received: line.received + got, inTransit: line.inTransit - got };
+      });
+      if (input.close) lines = lines.map((line) => ({ ...line, missing: line.missing + line.inTransit, inTransit: 0 }));
+      const done = lines.every((line) => line.inTransit === 0);
+      return save({
+        ...one,
+        status: done ? "received" : "partly_received",
+        ...(input.close ? { closeReason: input.close.reason, closeNote: input.close.note } : {}),
+        lines,
+        actions: [
+          ...one.actions,
+          {
+            id: ++nextId,
+            kind: "receive" as const,
+            ...(movementId ? { movementId } : {}),
+            postedAt: STAMP,
+            postedBy: { displayName: "Test User" },
+            lines: now.map(({ held, quantity }) => ({ kind: "received" as const, lineId: held.id, quantity })),
+          },
+        ],
+      });
+    }
+    if (action === "/cancel") {
+      const conflict = stale(one, headers);
+      if (conflict) return conflict;
+      movement(
+        "transfer_in",
+        one.fromSite.id,
+        one.lines.map((line) => ({ variantId: line.variant.id, to: line.fromLocation?.id, quantity: line.sent })),
+      );
+      return save({
+        ...one,
+        status: "cancelled",
+        revision: one.revision + 1,
+        lines: one.lines.map((line) => ({ ...line, returned: line.sent })),
+      });
+    }
+    return undefined;
+  };
+
+  const answer = (
+    method: string,
+    path: string,
+    query: URLSearchParams,
+    body: unknown,
+    headers: Headers = new Headers(),
+  ): Response => {
     let match: RegExpExecArray | null;
     if (method !== "GET") {
       const custom = server.write?.(method, path, body);
@@ -428,6 +825,9 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
             (one) => one.sku.toUpperCase() === q || one.barcode === q || !!one.packagings?.some((p) => p.barcode === q),
           )
           .map((one) => ({ kind: "variant", variant: one })),
+        ...state.transfers
+          .filter((one) => q === `TRF-${one.number}`)
+          .map((one) => ({ kind: "transfer", transfer: { id: one.id, number: one.number } })),
       ];
       return jsonResponse(200, { matches: found });
     }
@@ -479,6 +879,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
           ...(one.reason ? { reason: one.reason } : {}),
           ...(one.note ? { note: one.note } : {}),
           ...(one.supplierName ? { supplierName: one.supplierName } : {}),
+          ...(one.transfer ? { transfer: one.transfer } : {}),
         })),
         ...(start + limit < rows.length ? { nextCursor: String(start + limit) } : {}),
       });
@@ -555,7 +956,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
             const reserved = state.reservations
               .filter((one) => one.variantId === variantId)
               .reduce((sum, one) => sum + one.quantity, 0);
-            return { variantId, onHand, reserved, available: onHand - reserved };
+            return { variantId, onHand, reserved, available: onHand - reserved, inTransit: 0 };
           })
           .filter((one) => one.onHand !== 0 || one.reserved !== 0),
       });
@@ -729,6 +1130,8 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
       );
       return jsonResponse(201, { ok, rows, movementId: state.movements[0].id });
     }
+    const transfer = transferRoutes(method, path, query, body, headers);
+    if (transfer) return transfer;
     if (path === "/stats")
       return jsonResponse(200, {
         sites: state.sites.length,
@@ -745,7 +1148,15 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     const prefix = "/api/v1/inventory";
     if (!url.pathname.startsWith(prefix)) return Promise.resolve(new Response(null, { status: 404 }));
     const body = parseBody(init?.body);
-    return Promise.resolve(answer(init?.method ?? "GET", url.pathname.slice(prefix.length), url.searchParams, body));
+    return Promise.resolve(
+      answer(
+        init?.method ?? "GET",
+        url.pathname.slice(prefix.length),
+        url.searchParams,
+        body,
+        new Headers(init?.headers),
+      ),
+    );
   }) as InventoryStub;
   fetchMock.state = state;
   return fetchMock;

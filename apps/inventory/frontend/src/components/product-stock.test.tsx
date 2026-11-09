@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { renderRoute } from "../test/route-tree";
-import { stubInventoryApi } from "../test/server";
+import { stubInventoryApi, transferFixture, transferLine, variants } from "../test/server";
 
 describe("the product's Stock card", () => {
   it("says there is no stock and offers Receive and Adjust as the caller may", async () => {
@@ -87,5 +87,18 @@ describe("the product's Stock card", () => {
     );
     await waitFor(() => expect(screen.queryByText("Stock")).not.toBeInTheDocument());
     expect(screen.queryByTestId("content-skeleton")).not.toBeInTheDocument();
+  });
+
+  it("shows what is in transit in its header, and the incoming beside the site it goes to", async () => {
+    const bolt = variants()[2];
+    stubInventoryApi({
+      balances: [{ variantId: 201, locationId: 12, onHand: 5 }],
+      transfers: [transferFixture({ status: "sent", lines: [transferLine(1, bolt, 30, { sent: 30 })] })],
+    });
+    renderRoute("/products/2");
+    expect(await screen.findByLabelText("Total on hand")).toHaveTextContent("5 pcs");
+    expect(screen.getByLabelText("In transit")).toHaveTextContent("In transit 30 pcs");
+    // Bergen holds nothing yet, but has a row for what is on its way (I46).
+    expect(screen.getByRole("button", { name: /BGO · Bergen butikk/ })).toHaveTextContent("+30 pcs incoming");
   });
 });

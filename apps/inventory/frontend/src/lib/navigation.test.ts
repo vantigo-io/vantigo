@@ -7,20 +7,37 @@ describe("the sidebar entries", () => {
   it("offers the overview to either view, and the movements only to both", () => {
     expect(keys(["inventory:locations-view"])).toEqual(["overview"]);
     expect(keys(["inventory:stock-view"])).toEqual(["overview"]);
-    expect(keys(["inventory:locations-view", "inventory:stock-view"])).toEqual(["overview", "movements", "receipts"]);
+    expect(keys(["inventory:locations-view", "inventory:stock-view"])).toEqual([
+      "overview",
+      "transfers",
+      "movements",
+      "receipts",
+    ]);
   });
 
   it("offers Counts to counts-manage and Import to stock-adjust, each with both views", () => {
     const views = ["inventory:locations-view", "inventory:stock-view"];
-    expect(keys([...views, "inventory:counts-manage"])).toEqual(["overview", "movements", "receipts", "counts"]);
-    expect(keys([...views, "inventory:stock-adjust"])).toEqual(["overview", "movements", "receipts", "import"]);
+    expect(keys([...views, "inventory:counts-manage"])).toEqual([
+      "overview",
+      "transfers",
+      "movements",
+      "receipts",
+      "counts",
+    ]);
+    expect(keys([...views, "inventory:stock-adjust"])).toEqual([
+      "overview",
+      "transfers",
+      "movements",
+      "receipts",
+      "import",
+    ]);
     expect(keys(["inventory:locations-view", "inventory:counts-manage", "inventory:stock-adjust"])).toEqual([
       "overview",
     ]);
   });
 
   it("offers everything to a holder of every permission, and nothing to nobody", () => {
-    expect(keys(["*"])).toEqual(["overview", "movements", "receipts", "counts", "import"]);
+    expect(keys(["*"])).toEqual(["overview", "transfers", "movements", "receipts", "counts", "import"]);
     expect(keys(undefined)).toEqual([]);
   });
 });

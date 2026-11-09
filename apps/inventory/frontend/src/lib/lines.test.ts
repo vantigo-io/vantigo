@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   adjustmentBody,
   type EditorLine,
+  editorLinesOf,
   lineGap,
   lineQuantity,
   moveBody,
   type PostingHeader,
   receiptBody,
   roundQuantity,
+  transferLinesBody,
 } from "./lines";
 
 const header: PostingHeader = {
@@ -118,5 +120,41 @@ describe("quantities entered in packagings (I25)", () => {
     expect(lineQuantity("adjustment", { ...packed, decrease: true })).toBe(-1830);
     expect(lineGap("receipt", packed)).toBeUndefined();
     expect(lineGap("receipt", { ...packed, packs: {} })).toBe("quantity");
+  });
+});
+
+describe("a transfer's draft lines (I36)", () => {
+  const variant = {
+    id: 201,
+    sku: "BOLT-10",
+    productName: "Bolt",
+    unit: "pcs",
+    packagings: [{ id: 72, name: "Box", kind: "case", quantity: 15 }],
+  };
+  const totals = { sent: 0, received: 0, missing: 0, returned: 0, inTransit: 0 };
+
+  it("round-trips a saved draft through the editor: packagings as entered, the suggestion kept", () => {
+    const suggestion = { needed: 21, packagingId: 72, count: 2 };
+    const rows = editorLinesOf([
+      {
+        ...totals,
+        id: 1,
+        lineNo: 1,
+        variant,
+        quantity: 35,
+        entered: { packagings: [{ packagingId: 72, count: 2, name: "Box", quantity: 15 }], loose: 5 },
+        suggestion,
+      },
+      { ...totals, id: 2, lineNo: 2, variant, quantity: 4 },
+    ]);
+    expect(rows.map((row) => [row.quantity, row.packs, row.locationId])).toEqual([
+      [5, { 72: 2 }, null],
+      [4, {}, null],
+    ]);
+    expect(lineGap("transfer", rows[0])).toBeUndefined();
+    expect(transferLinesBody(rows)).toEqual([
+      { variantId: 201, entered: { packagings: [{ packagingId: 72, count: 2 }], loose: 5 }, suggestion },
+      { variantId: 201, quantity: 4 },
+    ]);
   });
 });

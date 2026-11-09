@@ -239,6 +239,7 @@ const agentsNavPresentation: Record<AgentsNavItem["key"], Pick<NavItem, "label" 
  */
 const inventoryNavPresentation: Record<InventoryNavItem["key"], Pick<NavItem, "label" | "icon">> = {
   overview: { label: "navigation.inventoryOverview", icon: IconBuildingWarehouse },
+  transfers: { label: "navigation.inventoryTransfers", icon: IconTruckDelivery },
   movements: { label: "navigation.inventoryMovements", icon: IconTransfer },
   receipts: { label: "navigation.inventoryReceipts", icon: IconPackageImport },
   counts: { label: "navigation.inventoryCounts", icon: IconClipboardCheck },

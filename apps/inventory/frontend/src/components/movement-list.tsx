@@ -5,7 +5,7 @@ import { Link } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState } from "@vantigo/frontend-shell";
 import { type MovementsFilter, movementsInfiniteQueryOptions } from "../api/movements";
 import { movementKindColor, useInventoryFormat } from "../lib/format";
-import { movementLinkOptions } from "../lib/routes";
+import { movementLinkOptions, transferLinkOptions } from "../lib/routes";
 
 export interface MovementListProps {
   filter: MovementsFilter;
@@ -62,6 +62,14 @@ export const MovementList = ({ filter, limit = 100 }: MovementListProps) => {
                 <Table.Td>{stamp(movement.postedAt)}</Table.Td>
                 <Table.Td>{movement.site.code}</Table.Td>
                 <Table.Td>
+                  {movement.transfer && (
+                    <Anchor
+                      size="sm"
+                      renderRoot={(props) => <Link {...transferLinkOptions(movement.transfer?.id ?? 0)} {...props} />}
+                    >
+                      {t("transferNumber", { number: movement.transfer.number })}
+                    </Anchor>
+                  )}
                   <Text size="sm" lineClamp={1}>
                     {[
                       movement.reason ? t(`reason_${movement.reason}`) : undefined,

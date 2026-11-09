@@ -21,6 +21,8 @@ export const useInventoryFormat = () => {
     quantity: (value: number, unit?: string) => (unit ? `${number(value)} ${unit}` : number(value)),
     /** An instant, day and time. */
     stamp: (instant: string) => formatters.formatDate(instant, { dateStyle: "medium", timeStyle: "short" }),
+    /** A calendar date (`2026-11-12`), as the day it names wherever the viewer is. */
+    day: (date: string) => formatters.formatDate(`${date}T00:00:00Z`, { dateStyle: "medium", timeZone: "UTC" }),
   };
 };
 
@@ -64,7 +66,18 @@ export const movementKindColor = {
   receipt: "teal",
   count: "grape",
   issue: "indigo",
+  transfer_out: "cyan",
+  transfer_in: "lime",
 } as const;
 
 /** A count status's badge colour. */
 export const countStatusColor = { counting: "blue", posted: "teal", cancelled: "gray" } as const;
+
+/** A transfer status's badge colour. */
+export const transferStatusColor = {
+  draft: "gray",
+  sent: "blue",
+  partly_received: "orange",
+  received: "teal",
+  cancelled: "dark",
+} as const;

@@ -8,7 +8,8 @@ import { variantStockQueryOptions } from "../api/stock";
 import { MovementList } from "../components/movement-list";
 import { ReservedAvailable } from "../components/product-stock";
 import { StockTable } from "../components/stock-table";
-import { canPost } from "../lib/capabilities";
+import { TransferList } from "../components/transfer-list";
+import { canPost, canViewTransfers } from "../lib/capabilities";
 import { useInventoryFormat } from "../lib/format";
 import { INVENTORY_HOME_ROUTE_PATH, newMovementLinkOptions } from "../lib/routes";
 
@@ -103,6 +104,11 @@ export const VariantStockPage = () => {
                     </Text>
                     <Stack gap={0} align="flex-end">
                       <Text size="sm">{quantity(site.onHand, stock.data.variant.unit)}</Text>
+                      {site.incoming > 0 && (
+                        <Text size="xs" c="blue">
+                          {t("incomingQuantity", { quantity: quantity(site.incoming, stock.data.variant.unit) })}
+                        </Text>
+                      )}
                       <ReservedAvailable
                         reserved={site.reserved}
                         available={site.available}
@@ -123,6 +129,21 @@ export const VariantStockPage = () => {
           <MovementList filter={{ variantId }} limit={20} />
         </Stack>
       </PageSection>
+      {canViewTransfers(meta.data) && (
+        <PageSection>
+          <Stack gap="sm">
+            <Title order={4}>{t("transferDifferences")}</Title>
+            <Text size="sm" c="dimmed">
+              {t("transferDifferencesHint")}
+            </Text>
+            <TransferList
+              filter={{ variantId, withMissing: true }}
+              showMissing
+              emptyTitle={t("noTransferDifferences")}
+            />
+          </Stack>
+        </PageSection>
+      )}
     </Stack>
   );
 };
