@@ -120,6 +120,8 @@ func Module() module.Module {
 		CustomerPersonalData: newCustomerPersonalData,
 		// What the agents remember about a customer, for the customer page (V27).
 		AgentMemory: newAgentMemory,
+		// Who a person may talk to in the Assistant's panel, and what each may do (V31).
+		AgentColleagues: newAgentColleagues,
 	}
 }
 

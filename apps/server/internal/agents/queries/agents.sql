@@ -58,3 +58,8 @@ ON CONFLICT (agent_id, permission_key) DO UPDATE SET
 
 -- name: DeleteAgentLevel :exec
 DELETE FROM agents.permission_levels WHERE agent_id = @agent_id AND permission_key = @permission_key;
+
+-- name: ListAgentNames :many
+-- The names of the agents asked for, whatever their state: a conversation with an
+-- agent that was paused or deleted still names it (V31).
+SELECT id, name FROM agents.agents WHERE id = ANY(@ids::uuid[]);

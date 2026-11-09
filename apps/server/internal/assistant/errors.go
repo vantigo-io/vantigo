@@ -16,6 +16,9 @@ const (
 	codeVersion       = "version_conflict"
 	codeInvalid       = "invalid"
 	codeAIUnavailable = "ai_unavailable"
+	// codeAgentUnavailable: a conversation with a virtual employee cannot go on
+	// (V31): the agent was paused or deleted, or the person lost agents:view.
+	codeAgentUnavailable = "agent_unavailable"
 )
 
 // refusal is a problem+json answer. It satisfies every operation's response
@@ -69,7 +72,8 @@ func (r refusal) VisitCancelAssistantPendingActionResponse(w http.ResponseWriter
 func (r refusal) VisitConfirmAssistantPendingActionResponse(w http.ResponseWriter) error {
 	return r.write(w)
 }
-func (r refusal) VisitGetAssistantUsageResponse(w http.ResponseWriter) error { return r.write(w) }
+func (r refusal) VisitListAssistantAgentsResponse(w http.ResponseWriter) error { return r.write(w) }
+func (r refusal) VisitGetAssistantUsageResponse(w http.ResponseWriter) error   { return r.write(w) }
 func (r refusal) VisitGetAssistantBulkJobResponse(w http.ResponseWriter) error {
 	return r.write(w)
 }

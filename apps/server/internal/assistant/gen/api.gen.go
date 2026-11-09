@@ -430,6 +430,17 @@ type AssistantAction struct {
 	RunId       openapi_types.UUID `json:"runId"`
 }
 
+// AssistantAgentList defines model for AssistantAgentList.
+type AssistantAgentList struct {
+	Items []AssistantAgentRef `json:"items"`
+}
+
+// AssistantAgentRef A virtual employee the person talks to in the panel.
+type AssistantAgentRef struct {
+	Id   openapi_types.UUID `json:"id"`
+	Name string             `json:"name"`
+}
+
 // AssistantAvailability defines model for AssistantAvailability.
 type AssistantAvailability struct {
 	Available bool `json:"available"`
@@ -552,6 +563,8 @@ type AssistantBulkSample struct {
 
 // AssistantConversation defines model for AssistantConversation.
 type AssistantConversation struct {
+	// Agent The virtual employee this conversation is with, null for the Assistant's own.
+	Agent          *AssistantAgentRef `json:"agent,omitempty"`
 	Archived       bool               `json:"archived"`
 	CreatedAt      time.Time          `json:"createdAt"`
 	Id             openapi_types.UUID `json:"id"`
@@ -589,6 +602,9 @@ type AssistantConversationList struct {
 
 // AssistantCreateConversationRequest defines model for AssistantCreateConversationRequest.
 type AssistantCreateConversationRequest struct {
+	// AgentId Talk to this virtual employee instead of the Assistant. The caller needs agents:view, and the agent must be active.
+	AgentId *openapi_types.UUID `json:"agentId,omitempty"`
+
 	// Origin Where a conversation began: the app key and the route.
 	Origin AssistantOrigin `json:"origin"`
 }
@@ -939,6 +955,9 @@ type PutAssistantPermissionJSONRequestBody = AssistantPermissionRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListAssistantAgents List the virtual employees the caller may talk to
+	// (GET /api/v1/assistant/agents)
+	ListAssistantAgents(w http.ResponseWriter, r *http.Request)
 	// GetAssistantAvailability Say whether the assistant is available to the caller
 	// (GET /api/v1/assistant/availability)
 	GetAssistantAvailability(w http.ResponseWriter, r *http.Request)
@@ -1018,6 +1037,20 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListAssistantAgents operation middleware
+func (siw *ServerInterfaceWrapper) ListAssistantAgents(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAssistantAgents(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetAssistantAvailability operation middleware
 func (siw *ServerInterfaceWrapper) GetAssistantAvailability(w http.ResponseWriter, r *http.Request) {
@@ -1806,6 +1839,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/assistant/agents", wrapper.ListAssistantAgents)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/assistant/availability", wrapper.GetAssistantAvailability)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/assistant/bulk-jobs/{id}", wrapper.GetAssistantBulkJob)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/assistant/bulk-jobs/{id}/continue", wrapper.ContinueAssistantBulkJob)
@@ -1831,6 +1865,69 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/assistant/usage", wrapper.GetAssistantUsage)
 
 	return m
+}
+
+type ListAssistantAgentsRequestObject struct {
+}
+
+type ListAssistantAgentsResponseObject interface {
+	VisitListAssistantAgentsResponse(w http.ResponseWriter) error
+}
+
+type ListAssistantAgents200JSONResponse AssistantAgentList
+
+func (response ListAssistantAgents200JSONResponse) VisitListAssistantAgentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssistantAgents401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAssistantAgents401JSONResponse) VisitListAssistantAgentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssistantAgents403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAssistantAgents403JSONResponse) VisitListAssistantAgentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssistantAgents403ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response ListAssistantAgents403ApplicationProblemPlusJSONResponse) VisitListAssistantAgentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetAssistantAvailabilityRequestObject struct {
@@ -2366,6 +2463,20 @@ func (response CreateAssistantConversation403ApplicationProblemPlusJSONResponse)
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAssistantConversation404ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response CreateAssistantConversation404ApplicationProblemPlusJSONResponse) VisitCreateAssistantConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -3775,6 +3886,9 @@ func (response GetAssistantUsage403JSONResponse) VisitGetAssistantUsageResponse(
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// ListAssistantAgents List the virtual employees the caller may talk to
+	// (GET /api/v1/assistant/agents)
+	ListAssistantAgents(ctx context.Context, request ListAssistantAgentsRequestObject) (ListAssistantAgentsResponseObject, error)
 	// GetAssistantAvailability Say whether the assistant is available to the caller
 	// (GET /api/v1/assistant/availability)
 	GetAssistantAvailability(ctx context.Context, request GetAssistantAvailabilityRequestObject) (GetAssistantAvailabilityResponseObject, error)
@@ -3883,6 +3997,30 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ListAssistantAgents operation middleware
+func (sh *strictHandler) ListAssistantAgents(w http.ResponseWriter, r *http.Request) {
+	var request ListAssistantAgentsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAssistantAgents(ctx, request.(ListAssistantAgentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAssistantAgents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAssistantAgentsResponseObject); ok {
+		if err := validResponse.VisitListAssistantAgentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetAssistantAvailability operation middleware

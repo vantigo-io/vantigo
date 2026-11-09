@@ -2,6 +2,8 @@ import type { components } from "../api-schema";
 
 type Schemas = components["schemas"];
 
+export type AssistantAgentRef = Schemas["AssistantAgentRef"];
+export type AssistantAgentList = Schemas["AssistantAgentList"];
 export type AssistantAvailability = Schemas["AssistantAvailability"];
 export type AssistantConversation = Schemas["AssistantConversation"];
 export type AssistantConversationDetail = Schemas["AssistantConversationDetail"];

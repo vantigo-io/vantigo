@@ -1261,6 +1261,70 @@ func TestCompose_AgentMemorySlot(t *testing.T) {
 	}
 }
 
+type fakeAgentColleagues struct{ contracts.AgentColleagues }
+
+// AgentColleagues (virtual employees design V31) is a sole-provider slot like
+// AgentMemory: resolved onto every module's Deps, nil when its provider is
+// disabled, a preset survives when no module provides it, two providers are a
+// compose error naming both.
+func TestCompose_AgentColleaguesSlot(t *testing.T) {
+	provided := &fakeAgentColleagues{}
+	var got Deps
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", AgentColleagues: func(Deps) contracts.AgentColleagues { return provided }, Mount: staticHandler("beta")},
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.AgentColleagues != provided {
+		t.Errorf("Deps.AgentColleagues = %v, want the provider's", got.AgentColleagues)
+	}
+
+	got = Deps{}
+	_, err = compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+		Module{Name: "beta", AgentColleagues: func(Deps) contracts.AgentColleagues { return provided }, Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose with the provider disabled: %v", err)
+	}
+	if got.AgentColleagues != nil {
+		t.Errorf("Deps.AgentColleagues = %v, want nil: the provider is disabled", got.AgentColleagues)
+	}
+
+	preset := &fakeAgentColleagues{}
+	got = Deps{}
+	_, err = compose(Deps{Access: &fakeAccess{}, AgentColleagues: preset}, fakeLoad(map[string]string{"alpha": alphaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose with a preset: %v", err)
+	}
+	if got.AgentColleagues != preset {
+		t.Errorf("Deps.AgentColleagues = %v, want the preset to survive with no provider", got.AgentColleagues)
+	}
+
+	_, err = compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", AgentColleagues: func(Deps) contracts.AgentColleagues { return &fakeAgentColleagues{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", AgentColleagues: func(Deps) contracts.AgentColleagues { return &fakeAgentColleagues{} }, Mount: staticHandler("beta")},
+	)
+	if err == nil || !strings.Contains(err.Error(), "agent colleagues") || !strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+		t.Errorf("two providers: error %v, want one naming the slot and both modules", err)
+	}
+}
+
 // Two modules both declaring Timesheets is a compose error naming both.
 func TestCompose_DuplicateTimesheetsProvider_Fails(t *testing.T) {
 	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),

@@ -345,6 +345,14 @@ type Deps struct {
 	// seam modtest.WithAgentMemory fills). Consumer-gated, and never called
 	// inside a transaction. nil when Agents is disabled.
 	AgentMemory contracts.AgentMemory
+	// AgentColleagues is what the Assistant needs of the virtual employees to
+	// let a person talk to one in the panel (see contracts.AgentColleagues,
+	// virtual employees design V31). Compose sets it, on every module's Deps
+	// copy, from whichever enabled module declares Module.AgentColleagues;
+	// Workers does not — no worker reads it. A preset value is kept when no
+	// enabled module provides one (the seam modtest.WithAgentColleagues fills).
+	// Consumer-gated. nil when Agents is disabled.
+	AgentColleagues contracts.AgentColleagues
 	// AITasks are the AI tasks the enabled modules declare
 	// (Module.AITasks, contracts.AITask), by key — composed the way Catalog is
 	// composed from Permissions: a disabled module's are absent, and a key two
@@ -751,4 +759,11 @@ type Module struct {
 	// Compose calls it after ContactChannels and puts the result on every
 	// module's Deps. Workers never calls it.
 	AgentMemory func(Deps) contracts.AgentMemory
+	// AgentColleagues builds this module's contracts.AgentColleagues, if it
+	// answers which agents a person may talk to and what they may do to the
+	// Assistant (virtual employees design V31: Agents). At most one enabled
+	// module may set it; Compose calls it once the operations dispatcher exists
+	// (the provider's Deps carries it when the provider is one of the modules that
+	// receive it) and puts the result on every module's Deps. Workers never calls it.
+	AgentColleagues func(Deps) contracts.AgentColleagues
 }

@@ -1,4 +1,5 @@
 import type {
+  AssistantAgentRef,
   AssistantAvailability,
   AssistantBulkJob,
   AssistantBulkPlan,
@@ -180,6 +181,8 @@ export const permissions = (overrides: Partial<AssistantPermissions> = {}): Assi
 });
 
 export interface AssistantServer {
+  /** The virtual employees `GET /agents` lists. */
+  agents?: AssistantAgentRef[];
   availability?: AssistantAvailability;
   me?: AssistantMe;
   conversations?: AssistantConversation[];
@@ -240,11 +243,13 @@ export const stubAssistantApi = (server: AssistantServer = {}): AssistantStub =>
         details[one[1]] ?? (one[1] === "c-new" ? detailOf(conversation({ id: "c-new", title: "" })) : undefined);
       return detail ? jsonResponse(200, detail) : problemResponse(404, "not found", { code: "not_found" });
     }
-    if (method === "POST" && bare === "/api/v1/assistant/conversations")
-      return jsonResponse(
-        201,
-        conversation({ id: "c-new", title: "", originApp: (body as { origin: { app: string } }).origin.app }),
-      );
+    if (method === "GET" && bare === "/api/v1/assistant/agents")
+      return jsonResponse(200, { items: server.agents ?? [] });
+    if (method === "POST" && bare === "/api/v1/assistant/conversations") {
+      const asked = body as { origin: { app: string }; agentId?: string };
+      const agent = server.agents?.find((one) => one.id === asked.agentId);
+      return jsonResponse(201, conversation({ id: "c-new", title: "", originApp: asked.origin.app, agent }));
+    }
     const messages = bare.match(/^\/api\/v1\/assistant\/conversations\/([^/]+)\/messages$/);
     if (messages && method === "POST")
       return server.stream?.(body as { text: string }, messages[1]) ?? new Response(null, { status: 500 });

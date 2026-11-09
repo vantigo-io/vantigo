@@ -26,6 +26,7 @@ type ErrorKey =
   | "errorActionDecided"
   | "errorActionExpired"
   | "errorNotAllowed"
+  | "errorAgentUnavailable"
   | "errorBulkNotWaiting";
 
 /** The run this tab is listening to: what the stream has said so far. */
@@ -53,6 +54,8 @@ export interface UseConversationOptions {
   conversationId: string | null;
   /** Where a conversation started from here began. */
   origin: { app: string; route: string };
+  /** The virtual employee a draft is started with (V31); null talks to the Assistant itself. */
+  agentId?: string | null;
   /** A draft became a conversation. */
   onCreated: (id: string) => void;
   /** The conversation is gone (deleted, or never the person's): the host should leave it. */
@@ -74,6 +77,7 @@ const errorKeyFor = (error: unknown): ErrorKey => {
     if (error.code === "action_decided") return "errorActionDecided";
     if (error.code === "action_expired") return "errorActionExpired";
     if (error.code === "operation_unavailable") return "errorNotAllowed";
+    if (error.code === "agent_unavailable") return "errorAgentUnavailable";
     if (error.code === "assistant_unavailable" || error.status === 403) return "errorUnavailable";
     if (error.code === "ai_unavailable" || error.status === 503) return "errorProvider";
   }
@@ -108,6 +112,7 @@ const errorKeyForCode = (code: string): ErrorKey =>
 export const useConversation = ({
   conversationId,
   origin,
+  agentId,
   onCreated,
   onMissing,
   onWorkingChange,
@@ -329,7 +334,7 @@ export const useConversation = ({
       let id = conversationId ?? undefined;
       try {
         if (!id) {
-          const conversation = await createConversation(origin);
+          const conversation = await createConversation(origin, agentId);
           id = conversation.id;
           created.current = id;
           onCreated(id);
@@ -356,7 +361,7 @@ export const useConversation = ({
         }
       }
     },
-    [conversationId, serverRunning, waiting, bulkRunning, origin, onCreated, queryClient, follow],
+    [conversationId, serverRunning, waiting, bulkRunning, origin, agentId, onCreated, queryClient, follow],
   );
 
   /** The person's decision on a proposed change: the run goes on and streams as a message's does. */

@@ -688,7 +688,7 @@ func (s *server) summariseBulk(job store.AssistantBulkJob) {
 	}
 	r := &runner{
 		s: s, ctx: runCtx, runID: job.RunID, convID: job.ConversationID, userID: job.UserID, grantID: grant, queue: queue, lang: lang, name: name,
-		tools: s.newToolbox(runCtx, job.UserID, lang),
+		tools: s.newToolbox(runCtx, job.UserID, lang, nil),
 		final: true,
 	}
 	r.execute()

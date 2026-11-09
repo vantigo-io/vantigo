@@ -72,6 +72,7 @@ type AssistantConversation struct {
 	ArchivedAt     *time.Time
 	CreatedAt      time.Time
 	LastActivityAt time.Time
+	AgentID        *uuid.UUID
 }
 
 type AssistantConversationState struct {

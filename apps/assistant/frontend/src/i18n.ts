@@ -59,7 +59,16 @@ export const assistantCatalog = {
     errorActionDecided: "Somebody already decided this change.",
     errorActionExpired: "This change waited too long and has expired. Ask the assistant again.",
     errorNotAllowed: "The assistant may no longer make this change.",
+    errorAgentUnavailable: "This virtual employee is not available now.",
     composerWaiting: "Confirm or cancel the change above first",
+
+    // Talking to a virtual employee (V31)
+    talkTo: "Talk to",
+    talkToAssistant: "The Assistant",
+    talkToLabel: "Who do you want to talk to?",
+    agentConversationNote:
+      "{{name}} is a virtual employee, an AI. {{name}} works for you here: only what you and {{name}} may both see, and every change waits for you to confirm it.",
+    agentBadgeLabel: "{{name}}, virtual employee",
 
     // A change the assistant proposed
     cardLabel: "Proposed change",
@@ -293,7 +302,16 @@ export const assistantCatalog = {
     errorActionDecided: "Noen har allerede avgjort denne endringen.",
     errorActionExpired: "Denne endringen ventet for lenge og er utløpt. Be assistenten på nytt.",
     errorNotAllowed: "Assistenten har ikke lenger lov til å gjøre denne endringen.",
+    errorAgentUnavailable: "Denne virtuelle ansatte er ikke tilgjengelig nå.",
     composerWaiting: "Bekreft eller avbryt endringen over først",
+
+    // Samtale med en virtuell ansatt (V31)
+    talkTo: "Snakk med",
+    talkToAssistant: "Assistenten",
+    talkToLabel: "Hvem vil du snakke med?",
+    agentConversationNote:
+      "{{name}} er en virtuell ansatt, en KI. {{name}} jobber for deg her: bare det du og {{name}} begge har lov til å se, og hver endring venter på at du bekrefter den.",
+    agentBadgeLabel: "{{name}}, virtuell ansatt",
 
     cardLabel: "Foreslått endring",
     cardTarget: "Gjelder",
