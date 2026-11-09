@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -201,7 +202,8 @@ func (e *docEnv) join(t *testing.T) *client {
 	return c
 }
 
-// joinSynced subscribes and syncs from 0, leaving the queue empty.
+// joinSynced subscribes and syncs from 0, leaving the queue empty and the
+// replay finished, so that live rows go straight to the queue.
 func (e *docEnv) joinSynced(t *testing.T) *client {
 	t.Helper()
 	c := e.join(t)
@@ -211,9 +213,30 @@ func (e *docEnv) joinSynced(t *testing.T) *client {
 			var m map[string]any
 			_ = json.Unmarshal(f, &m)
 			if m["type"] == "synced" {
+				waitReplayed(t, c.doc(docTopic))
 				return c
 			}
 		}
+	}
+}
+
+// waitReplayed waits for s's replay to end. The synced frame is queued
+// before the replay re-takes the lock to flush the rows it held back and
+// clear syncing; a row delivered in between is held back, not queued.
+func waitReplayed(t *testing.T, s *docSub) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		s.mu.Lock()
+		syncing := s.syncing
+		s.mu.Unlock()
+		if !syncing {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the replay did not end")
+		}
+		runtime.Gosched()
 	}
 }
 
