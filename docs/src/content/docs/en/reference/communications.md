@@ -15,7 +15,7 @@ sources:
   - apps/server/internal/db/migrations/00138_communications_inbox_counts.sql
   - apps/server/internal/db/migrations/00139_communications_contact_hints.sql
   - apps/server/internal/db/migrations/00145_communications_agent_messages.sql
-  - apps/server/internal/db/migrations/00152_communications_note_mentions.sql
+  - apps/server/internal/db/migrations/00154_communications_note_mentions.sql
   - apps/server/internal/contracts/contact_channels.go
   - apps/server/internal/contracts/events_communications.go
   - apps/server/internal/contracts/outbound_mail.go
@@ -633,7 +633,7 @@ for its readers; the ids are what the module acts on, so a name typed by hand me
   author must hold `agents:view`; otherwise the answer is **400** with a field error under `mentions`. So are more
   than ten. The directory is asked before the transaction opens.
 - **Storage and event.** In the note's transaction the ids go to `conversation_message_mentions (message_id, user_id)`
-  (migration `00152`; no foreign key to the user, cascade from the message) and one
+  (migration `00154`; no foreign key to the user, cascade from the message) and one
   `communications.conversation.note_mentioned` is published, with the channel of the conversation and **no text**. A note
   that mentions no one publishes nothing.
 - **A note written through an agent grant mentions no one**: its `mentions` are ignored, so that the agents cannot wake
