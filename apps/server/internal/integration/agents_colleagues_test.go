@@ -41,7 +41,7 @@ func TestMention_ANoteThatMentionsTheAgentWakesItWithTheNoteAsDataFromAColleague
 		MessageID string `json:"messageId"`
 	}
 	okJSON(t, r.staff, http.MethodPost, "/api/v1/communications/conversations/"+conv.String()+"/notes",
-		map[string]any{"textBody": "@Hanna " + ask, "mentions": []string{r.userID.String()}}, &created)
+		map[string]any{"textBody": "@" + modtest.One[string](t, r.h, `SELECT display_name FROM identity.users WHERE id = $1`, r.userID) + " " + ask, "mentions": []string{r.userID.String()}}, &created)
 	d := events.NewDispatcher(r.h.Pool(), agents.Module().EventHandlers(r.h.Deps()), r.h.Deps().Logger, r.h.Now)
 	if err := d.RunOnce(context.Background()); err != nil {
 		t.Fatalf("deliver the events: %v", err)
@@ -67,6 +67,59 @@ func TestMention_ANoteThatMentionsTheAgentWakesItWithTheNoteAsDataFromAColleague
 	}
 	if !answered {
 		t.Errorf("the agent's note is not on the conversation: %v", r.notes(t, conv))
+	}
+}
+
+// TestMention_AConversationAPersonHoldsIsRead_AndAnsweredWithNotesOnly: the agent is mentioned in two notes
+// on a conversation assigned to a colleague. One run reads both notes, is offered no reply, tag or hand-off,
+// is refused every change, and leaves the conversation with the colleague and no hand-off.
+func TestMention_AConversationAPersonHoldsIsReadAndAnsweredWithNotesOnly(t *testing.T) {
+	t.Parallel()
+	r := newRunRig(t, "review",
+		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{
+			toolCall("note", map[string]any{"text": "Looked at it for you."}),
+			toolCall("reply", map[string]any{"text": "Hi customer", "sources": []string{}, "score": 90}),
+		}},
+		modtest.ChatTurn{Text: "Done."},
+	)
+	conv := r.mail(t, "Kari Nordmann <kari@example.test>", "", "Spørsmål", "Hei, hvor er fakturaen min?", "")
+	_, colleague := r.h.SignInUser(t)
+	okJSON(t, r.staff, http.MethodPatch, "/api/v1/communications/conversations/"+conv.String(), map[string]any{"assignedUserId": colleague.String()}, nil)
+	name := modtest.One[string](t, r.h, `SELECT display_name FROM identity.users WHERE id = $1`, r.userID)
+	for _, text := range []string{"first ask about the invoice", "second ask about the delivery"} {
+		okJSON(t, r.staff, http.MethodPost, "/api/v1/communications/conversations/"+conv.String()+"/notes",
+			map[string]any{"textBody": "@" + name + " " + text, "mentions": []string{r.userID.String()}}, nil)
+	}
+	d := events.NewDispatcher(r.h.Pool(), agents.Module().EventHandlers(r.h.Deps()), r.h.Deps().Logger, r.h.Now)
+	if err := d.RunOnce(context.Background()); err != nil {
+		t.Fatalf("deliver the events: %v", err)
+	}
+	if state := r.await(t, conv); state == "failed" {
+		t.Fatalf("the run failed; log:\n%s", r.h.Logs())
+	}
+	seeds := r.script.startedWith()
+	if len(seeds) != 1 || !strings.Contains(seeds[0], "first ask about the invoice") || !strings.Contains(seeds[0], "second ask about the delivery") {
+		t.Fatalf("seeds = %v, want one run that read both notes", seeds)
+	}
+	if n := len(r.sent(t)); n != 0 {
+		t.Errorf("%d mails sent from a conversation a person holds", n)
+	}
+	if n := r.h.Count(t, `SELECT count(*) FROM agents.review_items WHERE conversation_id = $1`, conv); n != 0 {
+		t.Errorf("%d review items, want none: no reply in note-only form", n)
+	}
+	if n := r.h.Count(t, `SELECT count(*) FROM agents.handed_off WHERE conversation_id = $1`, conv); n != 0 {
+		t.Errorf("the conversation was handed off")
+	}
+	assignee := modtest.One[string](t, r.h, `SELECT assigned_user_id::text FROM communications.conversations WHERE id = $1`, conv)
+	if assignee != colleague.String() {
+		t.Errorf("assignee = %s, want the colleague", assignee)
+	}
+	var answered bool
+	for _, n := range r.notes(t, conv) {
+		answered = answered || strings.Contains(n, "Looked at it for you.")
+	}
+	if !answered {
+		t.Errorf("no note from the agent: %v", r.notes(t, conv))
 	}
 }
 

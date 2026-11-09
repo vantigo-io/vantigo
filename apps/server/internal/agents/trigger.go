@@ -221,14 +221,20 @@ func (t *trigger) assigned(ctx context.Context, q *store.Queries, e contracts.Co
 // text (V32).
 const mentionNotePrefix = "mention:"
 
-// mentionOf is the note a request's note marks as the one that woke the run.
-func mentionOf(note string) (uuid.UUID, bool) {
+// mentionsOf are the notes a request's note marks as the ones that woke the run:
+// "mention:" and their ids, comma-separated, the oldest first.
+func mentionsOf(note string) []uuid.UUID {
 	rest, ok := strings.CutPrefix(note, mentionNotePrefix)
 	if !ok {
-		return uuid.Nil, false
+		return nil
 	}
-	id, err := uuid.Parse(rest)
-	return id, err == nil
+	var ids []uuid.UUID
+	for _, part := range strings.Split(rest, ",") {
+		if id, err := uuid.Parse(part); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // noteMentioned wakes the agent an internal note mentioned (V32), for that
