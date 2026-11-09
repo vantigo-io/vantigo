@@ -1,6 +1,6 @@
 ---
 title: Assistant
-description: Ask the assistant how to do something, about your data, or to change something — opening it from the header, with Cmd/Ctrl+J or from search, the side panel shared with Conversations and the context chip, the Assistant app with every conversation, the changes it proposes and you confirm, a change to many records at once (preview, the first five, the rest in the background, the failed items), what is private and kept, what is sent to the AI provider, and why it might not be there.
+description: Ask the assistant how to do something, about your data, or to change something — opening it from the header, with Cmd/Ctrl+J or from search, the side panel shared with Conversations and the context chip, the Assistant app with every conversation, talking to a virtual employee instead, the changes it proposes and you confirm, a change to many records at once (preview, the first five, the rest in the background, the failed items), what is private and kept, what is sent to the AI provider, and why it might not be there.
 sidebar:
   order: 3
 sources:
@@ -229,6 +229,35 @@ change** card appears in the conversation. A bulk change has four steps, and you
 - **Waiting.** A plan nobody starts, and a job that waits for **Continue**, expire after 24 hours. While
   a bulk change waits or runs, the message box is off, as for a single change; **Stop** on the card, or
   the stop button beside the message box, stops the job.
+
+## Talk to a virtual employee
+
+If you hold **View virtual employees** (`agents:view`) and your organisation has
+[virtual employees](/en/user/agents/), the message box of a **new conversation** has a choice above it,
+**Who do you want to talk to?**: **The Assistant**, or one of the virtual employees that are active. Choose
+one before you send your first message; the conversation stays with it. Without the permission, or without any
+active virtual employee, the choice is not there and the conversation is the Assistant's own.
+
+A conversation with a virtual employee looks like any other, with its name and the **AI** badge above the
+messages. It is a colleague who works for you in the panel:
+
+- **It writes as itself.** It answers in the style its persona sets, and it reads Knowledge, the company's own
+  routines, as it does in its own work. It says it is an AI if you ask.
+- **You see only what you and it may both see.** Everything it does is checked as you, as it is for the Assistant,
+  **and** against what that virtual employee may do itself: the operations of its roles, at the levels the Owner
+  gave it. If you may do something and it may not, it says it cannot; if it may and you may not, you do not get it
+  through it either. It has no customer in this conversation, so it does not read a customer's orders, invoices,
+  contacts or messages here: open the customer, or ask the Assistant.
+- **Every change is a card for you.** The virtual employee's modes for its own work (Review, Auto) do not apply
+  here. A change it proposes is shown on a card, exactly as the Assistant's, and **nothing is written until you press
+  Confirm**. It writes nothing to a customer from here: a reply or a new conversation to a customer goes through
+  its own work, with the review queue.
+- **It can go away.** If the virtual employee is paused or deleted, or you no longer hold `agents:view`, the
+  conversation stays in your list but you cannot write to it, and a card that waits cannot be confirmed. Cards
+  are also refused if the Owner has lowered the virtual employee's level for the change since it was proposed.
+
+What you say counts against your own daily token budget, like any message to the Assistant; what the virtual
+employee does in the panel is not one of its runs, and is not in its activity.
 
 ## What it cannot do
 

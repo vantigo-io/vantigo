@@ -1,6 +1,6 @@
 ---
 title: Assistent
-description: Spør assistenten hvordan du gjør noe, om dataene dine, eller be den endre noe — åpne den fra toppfeltet, med Cmd/Ctrl+J eller fra søket, panelet på siden og kontekstbrikken, appen Assistent med alle samtalene, endringene den foreslår og du bekrefter, en endring i mange poster på én gang (forhåndsvisning, de fem første, resten i bakgrunnen, elementene som mislyktes), hva som er privat og hvor lenge det beholdes, hva som sendes til AI-leverandøren, og hvorfor den kanskje ikke er der.
+description: Spør assistenten hvordan du gjør noe, om dataene dine, eller be den endre noe — åpne den fra toppfeltet, med Cmd/Ctrl+J eller fra søket, panelet på siden og kontekstbrikken, appen Assistent med alle samtalene, å snakke med en virtuell ansatt i stedet, endringene den foreslår og du bekrefter, en endring i mange poster på én gang (forhåndsvisning, de fem første, resten i bakgrunnen, elementene som mislyktes), hva som er privat og hvor lenge det beholdes, hva som sendes til AI-leverandøren, og hvorfor den kanskje ikke er der.
 sidebar:
   order: 3
 sources:
@@ -226,6 +226,36 @@ alle på én gang**. Den gjør den ikke. Den leser listen du beskrev, som deg, o
 - **Venting.** En plan ingen starter, og en jobb som venter på **Fortsett**, utløper etter 24 timer. Mens
   en masseendring venter eller kjører, er meldingsfeltet av, som for en enkelt endring; **Stopp** på
   kortet, eller stoppknappen ved meldingsfeltet, stopper jobben.
+
+## Snakk med en virtuell ansatt
+
+Hvis du har **Se virtuelle ansatte** (`agents:view`) og organisasjonen din har
+[virtuelle ansatte](/nb/user/agents/), har meldingsfeltet i en **ny samtale** et valg over seg,
+**Hvem vil du snakke med?**: **Assistenten**, eller en av de virtuelle ansatte som er aktive. Velg før du sender
+den første meldingen; samtalen blir hos den du valgte. Uten rettigheten, eller uten noen aktiv virtuell ansatt,
+er valget der ikke, og samtalen er Assistentens egen.
+
+En samtale med en virtuell ansatt ser ut som alle andre, med navnet og **KI**-merket over meldingene. Det er en
+kollega som jobber for deg i panelet:
+
+- **Den skriver som seg selv.** Den svarer i stilen personaen setter, og den leser Kunnskap, selskapets egne
+  rutiner, slik den gjør i sitt eget arbeid. Den sier at den er en KI hvis du spør.
+- **Du ser bare det du og den begge har lov til å se.** Alt den gjør kontrolleres som deg, slik det gjøres for
+  Assistenten, **og** mot det den virtuelle ansatte selv har lov til: operasjonene i rollene dens, på nivåene
+  Eieren har gitt den. Hvis du har lov til noe og den ikke har det, sier den at den ikke kan; hvis den har lov og du
+  ikke har det, får du det heller ikke gjennom den. Den har ingen kunde i denne samtalen, så den leser ikke en kundes
+  ordre, fakturaer, kontakter eller meldinger her: åpne kunden, eller spør Assistenten.
+- **Hver endring er et kort til deg.** Den virtuelle ansattes moduser for eget arbeid (Gjennomgang, Auto) gjelder
+  ikke her. En endring den foreslår vises på et kort, nøyaktig som Assistentens, og **ingenting skrives før du
+  trykker Bekreft**. Den skriver ingenting til en kunde herfra: et svar eller en ny samtale til en kunde går gjennom
+  dens eget arbeid, med gjennomgangskøen.
+- **Den kan forsvinne.** Hvis den virtuelle ansatte settes på pause eller slettes, eller du ikke lenger har
+  `agents:view`, blir samtalen i listen din, men du kan ikke skrive i den, og et kort som venter kan ikke
+  bekreftes. Kort avvises også hvis Eieren har senket den virtuelle ansattes nivå for endringen etter at den ble
+  foreslått.
+
+Det du sier teller mot ditt eget daglige tokenbudsjett, som enhver melding til Assistenten; det den virtuelle
+ansatte gjør i panelet er ikke en av dens kjøringer, og står ikke i aktiviteten dens.
 
 ## Hva den ikke kan
 
