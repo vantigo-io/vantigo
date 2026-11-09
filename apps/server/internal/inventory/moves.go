@@ -8,8 +8,8 @@ import (
 )
 
 // Moves (design I15, I13): lines of a variant, from, to and a quantity, inside
-// one site — a move between sites waits for Orders' transfer
-// (move_crosses_sites) — and never from a location to itself
+// one site — stock goes between sites on a transfer (transfers.go), never on
+// a move (move_crosses_sites) — and never from a location to itself
 // (same_location). A move accepts a discontinued product's variant, and a
 // service's, so stock left on either can still be put where it belongs
 // (I12, design §9).

@@ -418,6 +418,7 @@ var filesOrRedirects = []string{
 	"putStaffPeopleByIdPhoto",
 	"postInvoicesBankFiles",
 	"printInventoryLabels",
+	"getInventoryTransferNote",
 	"getQuotePdf",
 	"getQuoteProforma",
 	"getSalesOrderPdf",

@@ -9,6 +9,7 @@ sql:
       - ../db/migrations/00108_inventory_baseline.sql
       - ../db/migrations/00110_inventory_counts.sql
       - ../db/migrations/00125_inventory_reservations.sql
+      - ../db/migrations/00152_inventory_transfers.sql
     queries: queries
     gen:
       go:

@@ -51,6 +51,24 @@ const (
 	codeCountLinesMoved      = "count_lines_moved"
 	codeLocationHasOpenCount = "location_has_open_count"
 	codeLabelsTooMany        = "labels_too_many"
+
+	// Phase 2's: transfers (A) and placement (B), the phase 2 design's §4.
+	codeTransferSameSite         = "transfer_same_site"
+	codeSiteArchived             = "site_archived"
+	codeTransferNotDraft         = "transfer_not_draft"
+	codeTransferNotReceivable    = "transfer_not_receivable"
+	codeTransferNotCancellable   = "transfer_not_cancellable"
+	codeTransferOverReceived     = "transfer_over_received"
+	codeFromLocationRequired     = "from_location_required"
+	codeTransferLineUnknown      = "transfer_line_unknown"
+	codeNothingToClose           = "nothing_to_close"
+	codeReceiveIncomplete        = "receive_incomplete"
+	codeSiteHasOpenTransfers     = "site_has_open_transfers"
+	codeLocationInTransit        = "location_in_transit"
+	codeSiteHasTransfers         = "site_has_transfers"
+	codeMaximumBelowReorderPoint = "maximum_below_reorder_point"
+	codePlacementEmpty           = "placement_empty"
+	codePlacementLocationInvalid = "placement_location_invalid"
 )
 
 // The titles this module's validation problems carry, one per thing a

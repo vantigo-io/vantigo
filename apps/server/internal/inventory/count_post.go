@@ -152,7 +152,7 @@ func (s *server) postCount(ctx context.Context, tx pgx.Tx, txq *store.Queries, w
 	}
 
 	// Moved lines, judged against the balances the engine has locked.
-	check := func(variants map[int32]contracts.VariantEntry, balances map[balanceKey]*big.Rat) error {
+	check := func(_ []engineLine, variants map[int32]contracts.VariantEntry, balances map[balanceKey]*big.Rat) error {
 		var moved []lineFailure
 		for _, p := range postings {
 			now, expected := balances[balanceKey{p.row.VariantID, p.row.LocationID}], ratFromNumeric(p.row.Expected)

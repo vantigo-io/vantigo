@@ -705,15 +705,18 @@ components:
             type: object
         InventoryLookupMatch:
             additionalProperties: false
-            description: 'One match of the lookup (I28): a location by its LOC token or full code, or a variant by its SKU or barcode.'
+            description: 'One match of the lookup (I28): a location by its LOC token or full code, a variant by its SKU or barcode, or a transfer by its TRF token to a caller holding both views (I52).'
             properties:
                 kind:
                     enum:
                         - location
                         - variant
+                        - transfer
                     type: string
                 location:
                     $ref: '#/components/schemas/InventoryLocationRef'
+                transfer:
+                    $ref: '#/components/schemas/InventoryTransferRef'
                 variant:
                     $ref: '#/components/schemas/InventoryVariantRef'
             required:
@@ -732,7 +735,7 @@ components:
             type: object
         InventoryMeta:
             additionalProperties: false
-            description: 'What the app needs to start (§5): the caller''s six capabilities.'
+            description: 'What the app needs to start (§5): the caller''s seven capabilities.'
             properties:
                 canAdjust:
                     description: inventory:stock-adjust — adjustments and moves.
@@ -745,6 +748,9 @@ components:
                     type: boolean
                 canReceive:
                     description: inventory:receipts-manage — goods receipts.
+                    type: boolean
+                canTransfer:
+                    description: inventory:transfers-manage — transfers between sites.
                     type: boolean
                 canViewLocations:
                     description: inventory:locations-view — sites and locations, without quantities.
@@ -759,6 +765,7 @@ components:
                 - canAdjust
                 - canReceive
                 - canCount
+                - canTransfer
             type: object
         InventoryMoveInput:
             additionalProperties: false
@@ -810,7 +817,7 @@ components:
             type: object
         InventoryMovement:
             additionalProperties: false
-            description: 'A posted movement (I8): never edited or deleted.'
+            description: 'A posted movement (I8): never edited or deleted. A transfer''s movements name it in transfer (I45).'
             properties:
                 clientRequestId:
                     format: uuid
@@ -845,6 +852,8 @@ components:
                     type: string
                 supplierReference:
                     type: string
+                transfer:
+                    $ref: '#/components/schemas/InventoryTransferRef'
             required:
                 - id
                 - clientRequestId
@@ -855,13 +864,15 @@ components:
                 - postedAt
             type: object
         InventoryMovementKind:
-            description: 'An open set (design §12): issue is stock taken out for another module''s document, such as an order''s delivery (orders design O45); production and transfer join later.'
+            description: 'An open set (design §12): issue is stock taken out for another module''s document, such as an order''s delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production joins later.'
             enum:
                 - adjustment
                 - move
                 - receipt
                 - count
                 - issue
+                - transfer_out
+                - transfer_in
             type: string
         InventoryMovementLine:
             additionalProperties: false
@@ -932,6 +943,8 @@ components:
                     type: string
                 supplierReference:
                     type: string
+                transfer:
+                    $ref: '#/components/schemas/InventoryTransferRef'
             required:
                 - id
                 - kind
@@ -963,8 +976,36 @@ components:
                 - kind
                 - quantity
             type: object
+        InventoryPlacement:
+            additionalProperties: false
+            description: 'A variant''s placement at a site (delivery B, I54): its primary location, reorder point and maximum, and whether it is low (I56).'
+            properties:
+                low:
+                    type: boolean
+                maximum:
+                    format: double
+                    nullable: true
+                    type: number
+                primaryLocationId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                reorderPoint:
+                    format: double
+                    nullable: true
+                    type: number
+                revision:
+                    format: int32
+                    type: integer
+            required:
+                - primaryLocationId
+                - reorderPoint
+                - maximum
+                - revision
+                - low
+            type: object
         InventoryProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site''s in the deployment, a location''s among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site''s root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), and a posting''s line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither.'
+            description: 'An RFC 9457 problem with this module''s refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site''s in the deployment, a location''s among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site''s root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point, placement_empty and placement_location_invalid (400: a placement''s rules, delivery B), and a posting''s line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line''s outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither.'
             properties:
                 code:
                     nullable: true
@@ -1105,6 +1146,10 @@ components:
                 id:
                     format: int64
                     type: integer
+                incomingTransfers:
+                    description: Open transfers to the site (sent or partly received); present to a caller holding inventory:stock-view.
+                    format: int32
+                    type: integer
                 kind:
                     $ref: '#/components/schemas/InventorySiteKind'
                 lastReceiptAt:
@@ -1117,6 +1162,10 @@ components:
                     type: integer
                 name:
                     type: string
+                outgoingTransfers:
+                    description: Open transfers from the site (sent or partly received); present to a caller holding inventory:stock-view.
+                    format: int32
+                    type: integer
                 revision:
                     description: Send it back as If-Match on PUT /sites/{id}.
                     format: int32
@@ -1212,10 +1261,14 @@ components:
             type: object
         InventorySiteStock:
             additionalProperties: false
-            description: One variant's stock in one site.
+            description: One variant's stock in one site; a site with only incoming has a row with nothing on hand.
             properties:
                 available:
                     description: On hand less reserved; negative when a correction took on hand below what is reserved.
+                    format: double
+                    type: number
+                incoming:
+                    description: In transit to the site on open transfers (I46).
                     format: double
                     type: number
                 onHand:
@@ -1238,6 +1291,7 @@ components:
                 - reserved
                 - available
                 - rows
+                - incoming
             type: object
         InventorySiteUpdate:
             additionalProperties: false
@@ -1316,7 +1370,7 @@ components:
             type: object
         InventoryStatsAttentionItem:
             additionalProperties: false
-            description: 'One thing the dashboard wants a human to look at, in the shape every module''s /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views; entityId is the count''s id.'
+            description: 'One thing the dashboard wants a human to look at, in the shape every module''s /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views, entityId the count''s id; transferOverdue, a transfer sent or partly received past its expected arrival, or without one sent more than 7 days ago, to a caller holding inventory:transfers-manage with both views, entityId the transfer''s id and occurredAt its expected arrival or sent date (I62).'
             properties:
                 count:
                     description: How many the item stands for, when more than one.
@@ -1334,6 +1388,7 @@ components:
                 type:
                     enum:
                         - countOpenLong
+                        - transferOverdue
                     type: string
             required:
                 - id
@@ -1347,11 +1402,82 @@ components:
                 - active
                 - archived
             type: string
+        InventoryStockAtSite:
+            additionalProperties: false
+            description: 'One variant at one site (I53): what lies there, what is reserved, and what is on its way to it.'
+            properties:
+                available:
+                    description: On hand less reserved.
+                    format: double
+                    type: number
+                incoming:
+                    description: In transit to the site on open transfers (I46).
+                    format: double
+                    type: number
+                locations:
+                    description: The locations holding it, most first.
+                    items:
+                        $ref: '#/components/schemas/InventoryStockAtSiteLocation'
+                    type: array
+                onHand:
+                    format: double
+                    type: number
+                placement:
+                    $ref: '#/components/schemas/InventoryPlacement'
+                reserved:
+                    format: double
+                    type: number
+                siteId:
+                    format: int64
+                    type: integer
+                variantId:
+                    format: int32
+                    type: integer
+            required:
+                - variantId
+                - siteId
+                - onHand
+                - reserved
+                - available
+                - incoming
+                - locations
+            type: object
+        InventoryStockAtSiteLocation:
+            additionalProperties: false
+            description: What lies of the variant on one location of the site.
+            properties:
+                location:
+                    $ref: '#/components/schemas/InventoryLocationRef'
+                onHand:
+                    format: double
+                    type: number
+                primary:
+                    description: The variant's primary location at the site (delivery B); absent until then.
+                    type: boolean
+            required:
+                - location
+                - onHand
+            type: object
+        InventoryStockAtSites:
+            additionalProperties: false
+            description: One row per variant and site asked for, whether or not anything lies there.
+            properties:
+                stock:
+                    items:
+                        $ref: '#/components/schemas/InventoryStockAtSite'
+                    type: array
+            required:
+                - stock
+            type: object
         InventoryStockTotal:
             additionalProperties: false
             description: A variant's on hand across every location, what is reserved of it across every site, and the difference.
             properties:
                 available:
+                    format: double
+                    type: number
+                inTransit:
+                    description: On its way between sites on open transfers (I46); not part of onHand.
                     format: double
                     type: number
                 onHand:
@@ -1368,10 +1494,11 @@ components:
                 - onHand
                 - reserved
                 - available
+                - inTransit
             type: object
         InventoryStockTotals:
             additionalProperties: false
-            description: One total per variant asked for that has stock or a reservation; a variant with neither is absent.
+            description: One total per variant asked for that has stock, a reservation or something in transit; a variant with none is absent.
             properties:
                 totals:
                     items:
@@ -1379,6 +1506,492 @@ components:
                     type: array
             required:
                 - totals
+            type: object
+        InventoryTransfer:
+            additionalProperties: false
+            description: A transfer of stock from one site to another (I36), with its lines and its actions.
+            properties:
+                actions:
+                    description: Oldest first.
+                    items:
+                        $ref: '#/components/schemas/InventoryTransferAction'
+                    type: array
+                closeNote:
+                    type: string
+                closeReason:
+                    $ref: '#/components/schemas/InventoryTransferCloseReason'
+                closedAt:
+                    format: date-time
+                    type: string
+                closedBy:
+                    $ref: '#/components/schemas/InventoryActor'
+                createdAt:
+                    format: date-time
+                    type: string
+                createdBy:
+                    $ref: '#/components/schemas/InventoryActor'
+                expectedArrival:
+                    format: date
+                    type: string
+                fromSite:
+                    $ref: '#/components/schemas/InventorySiteRef'
+                id:
+                    format: int64
+                    type: integer
+                inTransit:
+                    description: The lines' in transit, summed.
+                    format: double
+                    type: number
+                lines:
+                    description: By line number.
+                    items:
+                        $ref: '#/components/schemas/InventoryTransferLine'
+                    type: array
+                note:
+                    type: string
+                number:
+                    format: int64
+                    type: integer
+                reference:
+                    type: string
+                revision:
+                    description: Send it back as If-Match on every write but receive (I41).
+                    format: int32
+                    type: integer
+                sentAt:
+                    format: date-time
+                    type: string
+                sentBy:
+                    $ref: '#/components/schemas/InventoryActor'
+                status:
+                    $ref: '#/components/schemas/InventoryTransferStatus'
+                toSite:
+                    $ref: '#/components/schemas/InventorySiteRef'
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - number
+                - status
+                - fromSite
+                - toSite
+                - revision
+                - createdBy
+                - createdAt
+                - updatedAt
+                - lines
+                - actions
+                - inTransit
+            type: object
+        InventoryTransferAction:
+            additionalProperties: false
+            description: 'One send, receive or cancel (I38): who, when, the movement it posted, and its lines.'
+            properties:
+                closeNote:
+                    type: string
+                closeReason:
+                    $ref: '#/components/schemas/InventoryTransferCloseReason'
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    $ref: '#/components/schemas/InventoryTransferActionKind'
+                lines:
+                    items:
+                        $ref: '#/components/schemas/InventoryTransferActionLine'
+                    type: array
+                movementId:
+                    description: Absent on a close-only receive, which posts no movement.
+                    format: int64
+                    type: integer
+                postedAt:
+                    format: date-time
+                    type: string
+                postedBy:
+                    $ref: '#/components/schemas/InventoryActor'
+            required:
+                - id
+                - kind
+                - lines
+                - postedBy
+                - postedAt
+            type: object
+        InventoryTransferActionKind:
+            enum:
+                - send
+                - receive
+                - cancel
+            type: string
+        InventoryTransferActionLine:
+            additionalProperties: false
+            description: 'What one action did to one line: the source location for sent and returned, the destination for received, none for missing (I38).'
+            properties:
+                kind:
+                    $ref: '#/components/schemas/InventoryTransferActionLineKind'
+                lineId:
+                    format: int64
+                    type: integer
+                location:
+                    $ref: '#/components/schemas/InventoryLocationRef'
+                quantity:
+                    format: double
+                    type: number
+            required:
+                - lineId
+                - kind
+                - quantity
+            type: object
+        InventoryTransferActionLineKind:
+            enum:
+                - sent
+                - received
+                - missing
+                - returned
+            type: string
+        InventoryTransferCancelInput:
+            additionalProperties: false
+            description: Cancelling a sent transfer with nothing received or missing (I44).
+            properties:
+                clientRequestId:
+                    description: A UUID made when the dialog opens and kept across retries (D I14).
+                    format: uuid
+                    type: string
+            required:
+                - clientRequestId
+            type: object
+        InventoryTransferClose:
+            additionalProperties: false
+            description: 'Closing the difference (I42): after the quantities, every line''s remaining outstanding is recorded as missing and the transfer is received.'
+            properties:
+                note:
+                    maxLength: 500
+                    type: string
+                reason:
+                    $ref: '#/components/schemas/InventoryTransferCloseReason'
+            required:
+                - reason
+            type: object
+        InventoryTransferCloseReason:
+            description: Why what was not received is missing (I42).
+            enum:
+                - lost
+                - damaged
+                - not_packed
+                - other
+            type: string
+        InventoryTransferDestination:
+            additionalProperties: false
+            description: 'Where one line is received: a location at the to site, its root included (D I3).'
+            properties:
+                lineId:
+                    format: int64
+                    type: integer
+                toLocationId:
+                    format: int64
+                    type: integer
+            required:
+                - lineId
+                - toLocationId
+            type: object
+        InventoryTransferInput:
+            additionalProperties: false
+            description: 'A draft transfer''s header and lines, replaced whole on PUT (I36, I37): two different active sites, 1–500 lines. A field left out is empty.'
+            properties:
+                expectedArrival:
+                    format: date
+                    type: string
+                fromSiteId:
+                    format: int64
+                    type: integer
+                lines:
+                    items:
+                        $ref: '#/components/schemas/InventoryTransferLineInput'
+                    minItems: 1
+                    type: array
+                note:
+                    maxLength: 2000
+                    type: string
+                reference:
+                    maxLength: 100
+                    type: string
+                toSiteId:
+                    format: int64
+                    type: integer
+            required:
+                - fromSiteId
+                - toSiteId
+                - lines
+            type: object
+        InventoryTransferLine:
+            additionalProperties: false
+            description: 'A transfer line (I36, I46): what was asked for and the running totals. inTransit is sent − received − missing − returned, 0 on every line of a received or cancelled transfer.'
+            properties:
+                entered:
+                    $ref: '#/components/schemas/InventoryEnteredSnapshot'
+                fromLocation:
+                    $ref: '#/components/schemas/InventoryLocationRef'
+                id:
+                    format: int64
+                    type: integer
+                inTransit:
+                    format: double
+                    type: number
+                lineNo:
+                    format: int32
+                    type: integer
+                missing:
+                    format: double
+                    type: number
+                quantity:
+                    description: More than 0, in the variant's unit.
+                    format: double
+                    type: number
+                received:
+                    format: double
+                    type: number
+                returned:
+                    format: double
+                    type: number
+                sent:
+                    format: double
+                    type: number
+                suggestion:
+                    $ref: '#/components/schemas/InventoryTransferSuggestion'
+                variant:
+                    $ref: '#/components/schemas/InventoryVariantRef'
+            required:
+                - id
+                - lineNo
+                - variant
+                - quantity
+                - sent
+                - received
+                - missing
+                - returned
+                - inTransit
+            type: object
+        InventoryTransferLineInput:
+            additionalProperties: false
+            description: 'A draft line: a variant and a quantity of it, in its own unit or entered in packagings (I25). Exactly one of quantity and entered is given. A variant may appear on several lines.'
+            properties:
+                entered:
+                    $ref: '#/components/schemas/InventoryEntered'
+                quantity:
+                    description: 'A quantity in the variant''s own unit: more than 0, at most 99,999,999,999.999, at most three decimals (I11).'
+                    format: double
+                    type: number
+                suggestion:
+                    $ref: '#/components/schemas/InventoryTransferSuggestion'
+                variantId:
+                    format: int32
+                    type: integer
+            required:
+                - variantId
+            type: object
+        InventoryTransferPage:
+            additionalProperties: false
+            description: Transfers newest first.
+            properties:
+                next:
+                    description: Pass as cursor for the next page; absent on the last.
+                    type: string
+                transfers:
+                    items:
+                        $ref: '#/components/schemas/InventoryTransferSummary'
+                    type: array
+            required:
+                - transfers
+            type: object
+        InventoryTransferReceiveInput:
+            additionalProperties: false
+            description: 'A receive (I40–I42): the quantities that arrived now and, optionally, the difference closed. No If-Match (I41): two receivers both land, each judged against the other''s result.'
+            properties:
+                clientRequestId:
+                    description: A UUID made when the page opens and kept across retries (D I14).
+                    format: uuid
+                    type: string
+                close:
+                    $ref: '#/components/schemas/InventoryTransferClose'
+                lines:
+                    items:
+                        $ref: '#/components/schemas/InventoryTransferReceiveLine'
+                    type: array
+            required:
+                - clientRequestId
+                - lines
+            type: object
+        InventoryTransferReceiveLine:
+            additionalProperties: false
+            description: 'What arrived now of one line and where it goes (I40): at most the line''s outstanding, in the variant''s unit or entered in packagings as they are today. Exactly one of quantity and entered is given; 0 receives nothing of the line.'
+            properties:
+                entered:
+                    $ref: '#/components/schemas/InventoryEntered'
+                lineId:
+                    format: int64
+                    type: integer
+                quantity:
+                    description: 0 or more, at most three decimals.
+                    format: double
+                    type: number
+                toLocationId:
+                    format: int64
+                    type: integer
+            required:
+                - lineId
+                - toLocationId
+            type: object
+        InventoryTransferRef:
+            additionalProperties: false
+            description: A transfer as other answers name it.
+            properties:
+                id:
+                    format: int64
+                    type: integer
+                number:
+                    description: From the module's own series, shown as Transfer 1042 and TRF-1042 (I36).
+                    format: int64
+                    type: integer
+            required:
+                - id
+                - number
+            type: object
+        InventoryTransferSendInput:
+            additionalProperties: false
+            description: 'Sending a draft (I39): a source location for every line. The client request id is derived from the transfer, so a retried send replays.'
+            properties:
+                lines:
+                    items:
+                        $ref: '#/components/schemas/InventoryTransferSendLine'
+                    minItems: 1
+                    type: array
+                receive:
+                    $ref: '#/components/schemas/InventoryTransferSendReceive'
+            required:
+                - lines
+            type: object
+        InventoryTransferSendLine:
+            additionalProperties: false
+            description: 'Where one line is sent from: a location at the from site. A line of the transfer without one is from_location_required.'
+            properties:
+                fromLocationId:
+                    format: int64
+                    type: integer
+                lineId:
+                    format: int64
+                    type: integer
+            required:
+                - lineId
+            type: object
+        InventoryTransferSendReceive:
+            additionalProperties: false
+            description: 'Send and receive (I43): a destination for every line, or receive_incomplete; everything sent is received in the same transaction.'
+            properties:
+                lines:
+                    items:
+                        $ref: '#/components/schemas/InventoryTransferDestination'
+                    minItems: 1
+                    type: array
+            required:
+                - lines
+            type: object
+        InventoryTransferStatus:
+            description: 'A transfer''s status (I36): draft holds nothing and may be edited and deleted (I37); sent is in transit; partly_received has had some of it received; received has nothing outstanding — every line received, or its difference closed (I42); cancelled was sent and returned whole to the from site (I44).'
+            enum:
+                - draft
+                - sent
+                - partly_received
+                - received
+                - cancelled
+            type: string
+        InventoryTransferStatusFilter:
+            description: 'A status, or open: draft, sent and partly_received together.'
+            enum:
+                - open
+                - draft
+                - sent
+                - partly_received
+                - received
+                - cancelled
+            type: string
+        InventoryTransferSuggestion:
+            additionalProperties: false
+            description: 'The low-stock list''s suggestion a line was drafted from (I57): what was needed, and the smallest packaging it was rounded up to and how many of it. Kept until the line is edited, which clears it; stored and returned as given.'
+            properties:
+                count:
+                    description: How many of the packaging; null when the variant has no packagings.
+                    format: int32
+                    nullable: true
+                    type: integer
+                needed:
+                    description: What the rule found needed, in the variant's unit.
+                    format: double
+                    type: number
+                packagingId:
+                    description: The smallest packaging; null when the variant has none.
+                    format: int32
+                    nullable: true
+                    type: integer
+            required:
+                - needed
+                - packagingId
+                - count
+            type: object
+        InventoryTransferSummary:
+            additionalProperties: false
+            description: A transfer without its lines and actions, for the list.
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                expectedArrival:
+                    format: date
+                    type: string
+                fromSite:
+                    $ref: '#/components/schemas/InventorySiteRef'
+                id:
+                    format: int64
+                    type: integer
+                inTransit:
+                    format: double
+                    type: number
+                lineCount:
+                    format: int32
+                    type: integer
+                missing:
+                    description: What its closed difference recorded as missing, summed over the lines.
+                    format: double
+                    type: number
+                number:
+                    format: int64
+                    type: integer
+                overdue:
+                    description: Sent or partly received and past its expected arrival, or without one sent more than 7 days ago (I62).
+                    type: boolean
+                reference:
+                    type: string
+                sentAt:
+                    format: date-time
+                    type: string
+                status:
+                    $ref: '#/components/schemas/InventoryTransferStatus'
+                toSite:
+                    $ref: '#/components/schemas/InventorySiteRef'
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - number
+                - status
+                - fromSite
+                - toSite
+                - lineCount
+                - inTransit
+                - missing
+                - overdue
+                - createdAt
+                - updatedAt
             type: object
         InventoryUncounted:
             description: 'What posting does with a line nobody counted: keep its balance, or count it as zero (I19).'
@@ -1435,7 +2048,7 @@ components:
             description: One variant's stock by site (I27).
             properties:
                 sites:
-                    description: Sites holding stock or a reservation of it, by code.
+                    description: Sites holding stock, a reservation or incoming of it, by code.
                     items:
                         $ref: '#/components/schemas/InventorySiteStock'
                     type: array
@@ -2920,6 +3533,599 @@ paths:
             tags:
                 - Inventory
             x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
+    /api/v1/inventory/stock/sites:
+        get:
+            description: 'Per variant and site asked for (I53): on hand, reserved, available, incoming, and the locations holding it — for the transfer form''s columns and the send dialog''s defaults.'
+            operationId: listInventoryStockAtSites
+            parameters:
+                - description: Comma-separated, at most 100.
+                  explode: false
+                  in: query
+                  name: variantIds
+                  required: true
+                  schema:
+                    items:
+                        format: int32
+                        type: integer
+                    maxItems: 100
+                    minItems: 1
+                    type: array
+                  style: form
+                - description: Comma-separated, at most 20.
+                  explode: false
+                  in: query
+                  name: siteIds
+                  required: true
+                  schema:
+                    items:
+                        format: int64
+                        type: integer
+                    maxItems: 20
+                    minItems: 1
+                    type: array
+                  style: form
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryStockAtSites'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Bad Request — no ids, more than 100 variants or more than 20 sites.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed.'
+            summary: Stock of variants at sites
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
+    /api/v1/inventory/transfers:
+        get:
+            description: Transfers newest first, by cursor (I36). q is a transfer's number or a line's SKU; variantId with withMissing lists the closed differences of a variant (I46).
+            operationId: listInventoryTransfers
+            parameters:
+                - description: A status, or open (the default when absent is every status).
+                  in: query
+                  name: status
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/InventoryTransferStatusFilter'
+                - description: Only those from this site.
+                  in: query
+                  name: fromSiteId
+                  required: false
+                  schema:
+                    format: int64
+                    type: integer
+                - description: Only those to this site.
+                  in: query
+                  name: toSiteId
+                  required: false
+                  schema:
+                    format: int64
+                    type: integer
+                - description: Only those with a line of this variant.
+                  in: query
+                  name: variantId
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - description: Only those with something recorded missing (of variantId, when given).
+                  in: query
+                  name: withMissing
+                  required: false
+                  schema:
+                    type: boolean
+                - description: A transfer number, or a line's SKU.
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                    maxLength: 100
+                    type: string
+                - description: The previous page's next.
+                  in: query
+                  name: cursor
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryTransferPage'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Bad Request — a filter or cursor that does not parse.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed.'
+            summary: List transfers
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
+        post:
+            description: Creates a draft transfer (I36, I37) with a number from the module's series. A draft holds nothing; the SKU and name of each line are snapshotted.
+            operationId: createInventoryTransfer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InventoryTransferInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryTransfer'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Bad Request — field errors, transfer_same_site, site_archived, too_many_lines, or the lines' codes in lines (variant_not_found, variant_not_stockable, quantity_invalid, entered_invalid, packaging_not_found).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed.'
+            summary: Create a transfer
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view+inventory:transfers-manage
+    /api/v1/inventory/transfers/{id}:
+        delete:
+            description: Deletes a draft transfer and its lines (I37); a sent one is cancelled instead.
+            operationId: deleteInventoryTransfer
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: The revision the transfer was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Bad Request — an If-Match that does not parse.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such transfer. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Conflict — transfer_not_draft or revision_conflict.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed.'
+            summary: Delete a draft transfer
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view+inventory:transfers-manage
+        get:
+            description: A transfer with its lines, their running totals, and its actions with where each part went (I38, I46).
+            operationId: getInventoryTransfer
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryTransfer'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such transfer. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed.'
+            summary: Get a transfer
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
+        put:
+            description: Replaces a draft's header and lines (I37).
+            operationId: putInventoryTransfer
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: The revision the transfer was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InventoryTransferInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryTransfer'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Bad Request — field errors, transfer_same_site, site_archived, too_many_lines, or the lines' codes in lines.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such transfer. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Conflict — transfer_not_draft or revision_conflict.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed.'
+            summary: Change a draft transfer
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view+inventory:transfers-manage
+    /api/v1/inventory/transfers/{id}/cancel:
+        post:
+            description: 'Cancels a sent transfer with nothing received or missing (I44): one transfer_in movement at the from site, each line back to the location it left.'
+            operationId: cancelInventoryTransfer
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: The revision the transfer was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InventoryTransferCancelInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryTransfer'
+                    description: OK — cancelled, or a replay of the same cancel.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Bad Request — field errors, or the lines' codes in lines (location_archived).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such transfer. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Conflict — transfer_not_cancellable, revision_conflict, or client_request_reused.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed.'
+            summary: Cancel a transfer
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view+inventory:transfers-manage
+    /api/v1/inventory/transfers/{id}/note.pdf:
+        get:
+            description: 'The følgeseddel (I51): a PDF of a transfer sent or later — its number and TRF token as Code 128, the sites, the lines with their source locations, and a line for the receiver''s signature. Never stored.'
+            operationId: getInventoryTransferNote
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/pdf:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such transfer, or a draft, which has no note. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed.'
+            summary: Print a transfer note
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
+    /api/v1/inventory/transfers/{id}/receive:
+        post:
+            description: Receives what arrived now (I40) as one transfer_in movement at the to site, and with close records the rest as missing (I42). No If-Match (I41). The same clientRequestId and body replay.
+            operationId: receiveInventoryTransfer
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InventoryTransferReceiveInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryTransfer'
+                    description: OK — received, or a replay of the same receive.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Bad Request — field errors, nothing_to_post, site_archived, or the lines' codes in lines (transfer_over_received, transfer_line_unknown, location_archived, location_not_found, quantity_invalid, entered_invalid, packaging_not_found).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such transfer. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Conflict — transfer_not_receivable, nothing_to_close, or client_request_reused.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed.'
+            summary: Receive a transfer
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view+inventory:transfers-manage
+    /api/v1/inventory/transfers/{id}/send:
+        post:
+            description: 'Sends a draft (I39): one transfer_out movement at the from site, each line from its source location. With receive, the send and a receive of everything sent in one transaction (I43). The client request id is derived from the transfer, so a retried send answers the transfer as it is now.'
+            operationId: sendInventoryTransfer
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: The revision the transfer was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InventoryTransferSendInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryTransfer'
+                    description: OK — sent, or a replay of the same send.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Bad Request — field errors, site_archived, receive_incomplete, or the lines' codes in lines (from_location_required, transfer_line_unknown, location_archived, location_not_found, variant_not_found, variant_not_stockable, move_crosses_sites).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such transfer. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Conflict — transfer_not_draft, revision_conflict, or insufficient_stock (in lines).
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed.'
+            summary: Send a transfer
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view+inventory:transfers-manage
     /api/v1/inventory/variants:
         get:
             description: Goods variants by SKU, product name or barcode, for the line editor's picker (I22).

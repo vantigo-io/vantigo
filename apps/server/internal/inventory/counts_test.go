@@ -91,7 +91,7 @@ func TestCount_FirstCount(t *testing.T) {
 	h.catalog.setPackagings(varBolt, boxAndPallet()...)
 
 	count := mustOpenCount(t, c, s.site.Id, 0)
-	if count.Status != gen.Counting || count.LineCount != 0 || count.Lines == nil || len(*count.Lines) != 0 ||
+	if count.Status != gen.InventoryCountStatusCounting || count.LineCount != 0 || count.Lines == nil || len(*count.Lines) != 0 ||
 		count.Scope.Id != s.site.RootLocationId || count.OpenedBy.DisplayName == "" {
 		t.Fatalf("count = %+v, want an open count of the whole site with no lines", count)
 	}
@@ -110,7 +110,7 @@ func TestCount_FirstCount(t *testing.T) {
 	}
 
 	count = countAnswer(t, postCount(c, count.Id, gen.Keep, false), http.StatusOK, "post")
-	if count.Status != gen.Posted || count.MovementId == nil || count.PostedBy == nil || count.Uncounted == nil || *count.Uncounted != gen.Keep {
+	if count.Status != gen.InventoryCountStatusPosted || count.MovementId == nil || count.PostedBy == nil || count.Uncounted == nil || *count.Uncounted != gen.Keep {
 		t.Fatalf("count = %+v, want it posted with its movement", count)
 	}
 	res := admin.Do(http.MethodGet, movementPath(*count.MovementId), nil)
@@ -174,7 +174,7 @@ func TestCount_KeepAndZero(t *testing.T) {
 	count = mustOpenCount(t, c, s.site.Id, s.shelf1.Id)
 	countAnswer(t, putCounted(c, count.Id, counted(varNut, s.shelf1.Id, 5)), http.StatusOK, "count the nuts again")
 	count = countAnswer(t, postCount(c, count.Id, gen.Keep, false), http.StatusOK, "post a count that changes nothing")
-	if count.Status != gen.Posted || count.MovementId != nil {
+	if count.Status != gen.InventoryCountStatusPosted || count.MovementId != nil {
 		t.Errorf("count = %+v, want it posted without a movement", count)
 	}
 	if n := h.Count(t, `SELECT count(*) FROM inventory.movements WHERE kind = 'count'`); n != 2 {
@@ -251,7 +251,7 @@ func TestCount_Refusals(t *testing.T) {
 	mustStatus(t, postCount(c, 999999, gen.Keep, false), http.StatusNotFound, "post no count")
 
 	count = countAnswer(t, c.Do(http.MethodPost, countPath(count.Id)+"/cancel", nil), http.StatusOK, "cancel")
-	if count.Status != gen.Cancelled || count.CancelledBy == nil || count.CancelledAt == nil {
+	if count.Status != gen.InventoryCountStatusCancelled || count.CancelledBy == nil || count.CancelledAt == nil {
 		t.Errorf("count = %+v, want cancelled", count)
 	}
 	expectRefusal(t, putCounted(c, count.Id, counted(varBolt, s.shelf1.Id, 1)), http.StatusConflict, "count_not_open", "count a cancelled count")

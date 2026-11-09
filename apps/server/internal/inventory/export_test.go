@@ -19,3 +19,13 @@ func SetContractCallHook(hook func(ctx context.Context, method string)) {
 // ErrDependencyUnavailable is what an accessor answers when the catalog is not
 // there; a fake catalog answers it to reach the 503s.
 var ErrDependencyUnavailable = errDependencyUnavailable
+
+// SetTransferNoteHook installs the hook a transfer note's lines are reported
+// to as they are printed (transfer_note.go); nil removes it.
+func SetTransferNoteHook(hook func(rows [][]string)) {
+	if hook == nil {
+		noteRowsBuilt.Store(nil)
+		return
+	}
+	noteRowsBuilt.Store(&hook)
+}

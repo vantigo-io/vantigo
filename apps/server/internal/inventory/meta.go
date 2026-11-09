@@ -9,7 +9,7 @@ import (
 // GetInventoryMeta Inventory capabilities
 // (GET /api/v1/inventory/meta)
 //
-// The caller's six keys (§5), so the app shows only what works. The access
+// The caller's seven keys (§5), so the app shows only what works. The access
 // is the session: a caller with none of them learns that, not a 403.
 func (s *server) GetInventoryMeta(ctx context.Context, _ gen.GetInventoryMetaRequestObject) (gen.GetInventoryMetaResponseObject, error) {
 	return gen.GetInventoryMeta200JSONResponse(gen.InventoryMeta{
@@ -19,5 +19,6 @@ func (s *server) GetInventoryMeta(ctx context.Context, _ gen.GetInventoryMetaReq
 		CanAdjust:          s.has(ctx, permStockAdjust),
 		CanReceive:         s.has(ctx, permReceiptsManage),
 		CanCount:           s.has(ctx, permCountsManage),
+		CanTransfer:        s.has(ctx, permTransfersManage),
 	}), nil
 }

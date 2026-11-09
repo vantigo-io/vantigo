@@ -12,12 +12,12 @@ import (
 )
 
 // The lookup (design I28): one field a keyboard-wedge scanner types into. It
-// matches, in order, a location's LOC token, a location's full code, and a
-// variant's SKU or barcode through the catalog. Its access is the session:
-// each kind of match is shown by its own key — a location with
-// inventory:locations-view, a variant with locations-view and stock-view, as
-// every stock read — so a caller holding neither gets no matches rather than
-// a 403.
+// matches, in order, a location's LOC token, a location's full code, a
+// transfer's TRF-<number> token (phase 2 design I52), and a variant's SKU or
+// barcode through the catalog. Its access is the session: each kind of match
+// is shown by its own key — a location with inventory:locations-view, a
+// variant and a transfer with locations-view and stock-view, as every stock
+// read — so a caller holding neither gets no matches rather than a 403.
 
 // lookupLocations is the lookup's location half: the location a LOC token
 // names, then the one whose full code is the text, ignoring case.
@@ -70,6 +70,16 @@ func (s *server) LookupInventory(ctx context.Context, req gen.LookupInventoryReq
 		}
 	}
 	if canLocations && s.has(ctx, permStockView) {
+		// A transfer by its note's token (phase 2 design I52).
+		if number, ok := transferTokenNumber(text); ok {
+			t, err := store.New(s.deps.Pool).GetTransferByNumber(ctx, number)
+			switch {
+			case err == nil:
+				out.Matches = append(out.Matches, gen.InventoryLookupMatch{Kind: gen.Transfer, Transfer: &gen.InventoryTransferRef{Id: t.ID, Number: t.Number}})
+			case !noRows(err):
+				return nil, fmt.Errorf("inventory: find transfer %d: %w", number, err)
+			}
+		}
 		matches, err := s.catalogLookupCode(ctx, text)
 		if status, p, ok := answerOf(err); ok && status == http.StatusServiceUnavailable {
 			return gen.LookupInventory503ApplicationProblemPlusJSONResponse(p), nil
@@ -87,4 +97,14 @@ func (s *server) LookupInventory(ctx context.Context, req gen.LookupInventoryReq
 		}
 	}
 	return gen.LookupInventory200JSONResponse(out), nil
+}
+
+// transferTokenNumber is the number a scanned TRF-<number> names; ok false
+// when text is not one.
+func transferTokenNumber(text string) (int64, bool) {
+	t := strings.ToUpper(strings.TrimSpace(text))
+	if !strings.HasPrefix(t, transferTokenPrefix) {
+		return 0, false
+	}
+	return transferNumberOf(t)
 }

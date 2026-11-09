@@ -17,7 +17,8 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 )
 
-// The six permission keys (§5). None is sensitive and all are delegable.
+// The seven permission keys (§5; the phase 2 design's I63 adds
+// transfers-manage). None is sensitive and all are delegable.
 // Every stock read and every write also needs both views, because they show
 // location codes and their forms pick locations; so a stock role is
 // locations-view + stock-view (+ the write keys), and locations-view alone
@@ -29,6 +30,7 @@ const (
 	permStockAdjust     = "inventory:stock-adjust"
 	permReceiptsManage  = "inventory:receipts-manage"
 	permCountsManage    = "inventory:counts-manage"
+	permTransfersManage = "inventory:transfers-manage"
 )
 
 var permissions = []contracts.Permission{
@@ -60,6 +62,11 @@ var permissions = []contracts.Permission{
 	{
 		Key: permCountsManage, Display: "Count stock",
 		Description: "Open, count, post and cancel stock counts.",
+		Category:    "Inventory", Sensitive: false, Delegable: true,
+	},
+	{
+		Key: permTransfersManage, Display: "Transfer stock",
+		Description: "Create, send, receive and cancel transfers of stock between sites, and close a transfer's difference.",
 		Category:    "Inventory", Sensitive: false, Delegable: true,
 	},
 }
